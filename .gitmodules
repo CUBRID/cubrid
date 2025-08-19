@@ -5,8 +5,8 @@
 [submodule "cubrid-jdbc"]
 	path = cubrid-jdbc
 	url = https://github.com/cubrid/cubrid-jdbc
-	branch = develop
+	branch = feature/internal_lob
 [submodule "cubrid-cci"]
 	path = cubrid-cci
 	url = https://github.com/CUBRID/cubrid-cci.git
-	branch = develop
+	branch = feature/internal_lob

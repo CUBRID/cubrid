@@ -121,7 +121,7 @@
 #define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
 
 static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
-  /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
+  /* db_full_name */ NULL, /* host_name */ NULL, /* lobfile_path */ NULL,
   /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
   /* root_class_hfid */ {{NULL_FILEID, NULL_VOLID}, NULL_PAGEID},
@@ -412,28 +412,28 @@ boot_check_and_fill_db_path_info (BOOT_CLIENT_CREDENTIAL * client_credential, BO
       strcpy (boot_Log_path_buf, db_path_info->db_path);
       db_path_info->log_path = boot_Log_path_buf;
     }
-  if (db_path_info->lob_path == NULL)
+  if (db_path_info->lobfile_path == NULL)
     {
       /* assign the data volume directory */
-      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX,
+      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clobfile", LOBFILE_PATH_DEFAULT_PREFIX,
 		db_path_info->db_path, PATH_SEPARATOR);
-      db_path_info->lob_path = boot_Lob_path_buf;
+      db_path_info->lobfile_path = boot_Lob_path_buf;
     }
   else
     {
-      ES_TYPE es_type = es_get_type (db_path_info->lob_path);
+      ES_TYPE es_type = es_get_type (db_path_info->lobfile_path);
 
       switch (es_type)
 	{
 	case ES_NONE:
 	  /* prepend default prefix */
-	  snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s", LOB_PATH_DEFAULT_PREFIX,
-		    db_path_info->lob_path);
-	  db_path_info->lob_path = boot_Lob_path_buf;
+	  snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s", LOBFILE_PATH_DEFAULT_PREFIX,
+		    db_path_info->lobfile_path);
+	  db_path_info->lobfile_path = boot_Lob_path_buf;
 	  break;
 #if !defined (CUBRID_OWFS)
 	case ES_OWFS:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, db_path_info->lob_path);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, db_path_info->lobfile_path);
 	  return ER_ES_INVALID_PATH;
 #endif /* !CUBRID_OWFS */
 	default:
@@ -1849,9 +1849,9 @@ boot_client_all_finalize (int final_level)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
-      if (boot_Server_credential.lob_path)
+      if (boot_Server_credential.lobfile_path)
 	{
-	  db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+	  db_private_free_and_init (NULL, boot_Server_credential.lobfile_path);
 	}
       if (boot_Server_credential.db_lang)
 	{
@@ -2113,12 +2113,12 @@ boot_get_ha_server_state (void)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * boot_get_lob_path - return the lob path which is received from the server
+ * boot_get_lobfile_path - return the lobfile path which is received from the server
  */
 const char *
-boot_get_lob_path (void)
+boot_get_lobfile_path (void)
 {
-  return boot_Server_credential.lob_path;
+  return boot_Server_credential.lobfile_path;
 }
 #endif /* CS_MODE */
 

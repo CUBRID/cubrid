@@ -593,8 +593,8 @@ static DB_VALUE ldr_timestamptz_tmpl;
 static DB_VALUE ldr_datetime_tmpl;
 static DB_VALUE ldr_datetimeltz_tmpl;
 static DB_VALUE ldr_datetimetz_tmpl;
-static DB_VALUE ldr_blob_tmpl;
-static DB_VALUE ldr_clob_tmpl;
+static DB_VALUE ldr_bfile_tmpl;
+static DB_VALUE ldr_cfile_tmpl;
 static DB_VALUE ldr_bit_tmpl;
 static DB_VALUE ldr_json_tmpl;
 
@@ -3744,13 +3744,13 @@ ldr_elo_ext_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
       assert (str[0] == 'B' || str[0] == 'C');
       if (str[0] == 'B')
 	{
-	  type = DB_TYPE_BLOB;
-	  val->domain = ldr_blob_tmpl.domain;
+	  type = DB_TYPE_BFILE;
+	  val->domain = ldr_bfile_tmpl.domain;
 	}
       else
 	{
-	  type = DB_TYPE_CLOB;
-	  val->domain = ldr_clob_tmpl.domain;
+	  type = DB_TYPE_CFILE;
+	  val->domain = ldr_cfile_tmpl.domain;
 	}
 
       /* size */
@@ -5277,8 +5277,8 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       ldr_store_convert (attdesc, LDR_XSTR, false, false);
       break;
 
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       ldr_store_cast (attdesc, LDR_ELO_EXT, true, false);
       ldr_store_handler (attdesc, LDR_ELO_INT, &ldr_elo_int_db_elo);
       break;
@@ -6076,8 +6076,8 @@ ldr_init_loader (LDR_CONTEXT *context)
   datetimetz.tz_id = 0;
   db_make_datetimeltz (&ldr_datetimeltz_tmpl, & (datetimetz.datetime));
   db_make_datetimetz (&ldr_datetimetz_tmpl, &datetimetz);
-  db_make_elo (&ldr_blob_tmpl, DB_TYPE_BLOB, null_elo);
-  db_make_elo (&ldr_clob_tmpl, DB_TYPE_CLOB, null_elo);
+  db_make_elo (&ldr_bfile_tmpl, DB_TYPE_BFILE, null_elo);
+  db_make_elo (&ldr_cfile_tmpl, DB_TYPE_CFILE, null_elo);
   db_make_bit (&ldr_bit_tmpl, 1, "0", 1);
   db_make_json (&ldr_json_tmpl, NULL, false);
 

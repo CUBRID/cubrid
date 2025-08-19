@@ -90,9 +90,9 @@ extern int ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf
 extern SESSION_ID ux_get_session_id (void);
 extern void ux_set_session_id (const SESSION_ID session_id);
 
-extern int ux_lob_new (int lob_type, T_NET_BUF * net_buf);
-extern int ux_lob_write (DB_VALUE * lob_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
-extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
+extern int ux_lobfile_new (int lobfile_type, T_NET_BUF * net_buf);
+extern int ux_lobfile_write (DB_VALUE * lobfile_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
+extern int ux_lobfile_read (DB_VALUE * lobfile_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 

@@ -43,7 +43,7 @@
  * db_create_fbo () - create a new fbo value
  * return: NO_ERROR if successful, error code otherwise
  * value(in): DB_VALUE
- * type(in): one of DB_TYPE_BLOB, DB_TYPE_CLOB
+ * type(in): one of DB_TYPE_BFILE, DB_TYPE_CFILE
  */
 int
 db_create_fbo (DB_VALUE * value, DB_TYPE type)

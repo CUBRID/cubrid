@@ -1192,8 +1192,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
-	case PT_TYPE_BLOB:
-	case PT_TYPE_CLOB:
+	case PT_TYPE_BFILE:
+	case PT_TYPE_CFILE:
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
@@ -1217,8 +1217,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
-	case PT_TYPE_BLOB:
-	case PT_TYPE_CLOB:
+	case PT_TYPE_BFILE:
+	case PT_TYPE_CFILE:
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
@@ -1242,8 +1242,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
-	case PT_TYPE_BLOB:
-	case PT_TYPE_CLOB:
+	case PT_TYPE_BFILE:
+	case PT_TYPE_CFILE:
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
@@ -1276,8 +1276,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
-	case PT_TYPE_BLOB:
-	case PT_TYPE_CLOB:
+	case PT_TYPE_BFILE:
+	case PT_TYPE_CFILE:
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
@@ -1301,8 +1301,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
-	case PT_TYPE_BLOB:
-	case PT_TYPE_CLOB:
+	case PT_TYPE_BFILE:
+	case PT_TYPE_CFILE:
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
@@ -1351,7 +1351,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
-	case PT_TYPE_CLOB:
+	case PT_TYPE_CFILE:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -1387,8 +1387,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_DATETIME:
 	case PT_TYPE_DATETIMETZ:
 	case PT_TYPE_DATETIMELTZ:
-	case PT_TYPE_BLOB:
-	case PT_TYPE_CLOB:
+	case PT_TYPE_BFILE:
+	case PT_TYPE_CFILE:
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
@@ -1400,15 +1400,15 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	}
       break;
-    case PT_TYPE_BLOB:
+    case PT_TYPE_BFILE:
       switch (cast_type)
 	{
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
-	case PT_TYPE_BLOB:
+	case PT_TYPE_BFILE:
 	case PT_TYPE_ENUMERATION:
 	  break;
-	case PT_TYPE_CLOB:
+	case PT_TYPE_CFILE:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -1416,15 +1416,16 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	}
       break;
-    case PT_TYPE_CLOB:
+    case PT_TYPE_CFILE:
       switch (cast_type)
 	{
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
 	case PT_TYPE_CLOB:
+	case PT_TYPE_CFILE:
 	case PT_TYPE_ENUMERATION:
 	  break;
-	case PT_TYPE_BLOB:
+	case PT_TYPE_BFILE:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -5789,15 +5790,15 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_EXP:
     case PT_SQRT:
     case PT_TRUNC:
-    case PT_BIT_TO_BLOB:
-    case PT_BLOB_FROM_FILE:
-    case PT_BLOB_LENGTH:
-    case PT_BLOB_TO_BIT:
-    case PT_CHAR_TO_BLOB:
-    case PT_CHAR_TO_CLOB:
-    case PT_CLOB_FROM_FILE:
-    case PT_CLOB_LENGTH:
-    case PT_CLOB_TO_CHAR:
+    case PT_BIT_TO_BFILE:
+    case PT_BFILE_FROM_FILE:
+    case PT_BFILE_LENGTH:
+    case PT_BFILE_TO_BIT:
+    case PT_CHAR_TO_BFILE:
+    case PT_CHAR_TO_CFILE:
+    case PT_CFILE_FROM_FILE:
+    case PT_CFILE_LENGTH:
+    case PT_CFILE_TO_CHAR:
     case PT_TYPEOF:
     case PT_INET_ATON:
     case PT_INET_NTOA:
@@ -16908,7 +16909,7 @@ pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func)
 	  continue;
 	}
 
-      if (PT_IS_LOB_TYPE (r->type_enum))
+      if (PT_IS_LOBFILE_TYPE (r->type_enum))
 	{
 	  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_ORDERBY_ALLOWED,
 		      pt_short_print (parser, r));
@@ -17132,7 +17133,7 @@ pt_check_cume_dist_percent_rank_order_by (PARSER_CONTEXT * parser, PT_NODE * fun
       /* check order by */
       order_expr = order->info.sort_spec.expr;
       if (order->node_type != PT_SORT_SPEC || (order_expr->node_type != PT_NAME && order_expr->node_type != PT_VALUE)
-	  || PT_IS_LOB_TYPE (order_expr->type_enum))
+	  || PT_IS_LOBFILE_TYPE (order_expr->type_enum))
 	{
 	  PT_ERRORmf (parser, func, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_FUNCTION_ORDERBY, func_name);
 	  goto error_exit;
@@ -18142,10 +18143,10 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_DEFAULTF:
 	case PT_LIKE_LOWER_BOUND:
 	case PT_LIKE_UPPER_BOUND:
-	case PT_BLOB_LENGTH:
-	case PT_BLOB_TO_BIT:
-	case PT_CLOB_LENGTH:
-	case PT_CLOB_TO_CHAR:
+	case PT_BFILE_LENGTH:
+	case PT_BFILE_TO_BIT:
+	case PT_CFILE_LENGTH:
+	case PT_CFILE_TO_CHAR:
 	case PT_RLIKE:
 	case PT_RLIKE_BINARY:
 	case PT_NOT_RLIKE:

@@ -12538,7 +12538,7 @@ exit_on_error:
 }
 
 /*
- * heap_attrinfo_delete_lob ()
+ * heap_attrinfo_delete_lobfile ()
  *   return: NO_ERROR
  *   thread_p(in):
  *   recdes(in): The instance Record descriptor
@@ -12547,7 +12547,7 @@ exit_on_error:
  *
  */
 int
-heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_delete_lobfile (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
   int i;
   HEAP_ATTRVALUE *value;
@@ -12585,13 +12585,13 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
     }
 
   /*
-   * Go over each attribute and delete the data if it's lob type
+   * Go over each attribute and delete the data if it's lobfile type
    */
 
   for (i = 0; i < attr_info->num_values; i++)
     {
       value = &attr_info->values[i];
-      if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+      if (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE)
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
 	    {
@@ -12604,8 +12604,8 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	  if (!db_value_is_null (&value->dbvalue))
 	    {
 	      DB_ELO *elo;
-	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BLOB
-		      || db_value_type (&value->dbvalue) == DB_TYPE_CLOB);
+	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BFILE
+		      || db_value_type (&value->dbvalue) == DB_TYPE_CFILE);
 	      elo = db_get_elo (&value->dbvalue);
 	      if (elo)
 		{
@@ -13600,7 +13600,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	    }
 	}
       else if (value->state == HEAP_WRITTEN_ATTRVALUE
-	       && (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB))
+	       && (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE))
 	{
 	  DB_VALUE *save;
 	  save = db_value_copy (&value->dbvalue);
@@ -13616,8 +13616,8 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	    {
 	      DB_ELO *elo;
 
-	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BLOB
-		      || db_value_type (&value->dbvalue) == DB_TYPE_CLOB);
+	      assert (db_value_type (&value->dbvalue) == DB_TYPE_BFILE
+		      || db_value_type (&value->dbvalue) == DB_TYPE_CFILE);
 	      elo = db_get_elo (&value->dbvalue);
 	      if (elo)
 		{
@@ -14303,13 +14303,14 @@ SCAN_CODE
 heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 				 record_descriptor * new_recdes)
 {
-  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB);
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes,
+						   LOB_FLAG_INCLUDE_LOBFILE);
 }
 
 /*
- * heap_attrinfo_transform_to_disk_except_lob () -
+ * heap_attrinfo_transform_to_disk_except_lobfile () -
  *                           Transform to disk an attribute information
- *                           kind of instance. Do not create lob.
+ *                           kind of instance. Do not create lobfile.
  *   return: SCAN_CODE
  *           (Either of S_SUCCESS, S_DOESNT_FIT,
  *                      S_ERROR)
@@ -14320,10 +14321,11 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
  * Note: Transform the object represented by attr_info to disk format
  */
 SCAN_CODE
-heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					    RECDES * old_recdes, record_descriptor * new_recdes)
+heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+						RECDES * old_recdes, record_descriptor * new_recdes)
 {
-  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_EXCLUDE_LOB);
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes,
+						   LOB_FLAG_EXCLUDE_LOBFILE);
 }
 
 /*
@@ -14796,7 +14798,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
  *   attr_info(in/out): The attribute information structure
  *   old_recdes(in): where the object's disk format is deposited
  *   new_recdes(in):
- *   lob_create_flag(in):
+ *   lobfile_create_flag(in):
  *
  * Note: Transform the object represented by attr_info to disk format
  */

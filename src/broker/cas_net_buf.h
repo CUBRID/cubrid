@@ -128,7 +128,7 @@ extern int net_buf_cp_float (T_NET_BUF * net_buf, float value);
 extern int net_buf_cp_double (T_NET_BUF * net_buf, double value);
 extern int net_buf_cp_short (T_NET_BUF * net_buf, short value);
 extern int net_buf_cp_object (T_NET_BUF * net_buf, T_OBJECT * oid);
-extern int net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob);
+extern int net_buf_cp_lobfile_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lobfile);
 
 extern void net_buf_error_msg_set (T_NET_BUF * net_buf, int errindicator, int errcode, char *errstr, const char *file,
 				   int line);
@@ -164,8 +164,8 @@ extern void net_arg_get_object (T_OBJECT * obj, void *arg);
 extern void net_arg_get_cache_time (void *ct, void *arg);
 extern void net_arg_get_dbobject (DB_OBJECT ** obj, void *arg);
 extern void net_arg_get_cci_object (int *pageid, short *slotid, short *volid, void *arg);
-extern void net_arg_get_lob_handle (T_LOB_HANDLE * lob, void *arg);
-extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
+extern void net_arg_get_lobfile_handle (T_LOB_HANDLE * lobfile, void *arg);
+extern void net_arg_get_lobfile_value (DB_VALUE * db_lobfile, void *arg);
 
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size);

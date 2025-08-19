@@ -55,8 +55,8 @@ using MVCC_REEV_DATA = cubquery::mvcc_reev_data;
 
 enum
 {
-  LOB_FLAG_EXCLUDE_LOB,
-  LOB_FLAG_INCLUDE_LOB
+  LOB_FLAG_EXCLUDE_LOBFILE,
+  LOB_FLAG_INCLUDE_LOBFILE
 };
 
 extern bool locator_Dont_check_foreign_key;

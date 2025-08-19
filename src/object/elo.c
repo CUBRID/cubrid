@@ -29,7 +29,7 @@
  * LOCATOR FORMAT: <scheme name>:<scheme specific data>
  *   <scheme name>
  *     inline : data is encoded in locator
- *     <other>: for server side BLOB/CLOB storage extension.
+ *     <other>: for server side BFILE/CFILE storage extension.
  *
  *   <scheme specific data>
  *     inline : 2byte hexa decimal code encoding

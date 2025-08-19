@@ -530,7 +530,7 @@ extern int heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID 
 					     HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    HEAP_CACHE_ATTRINFO * attr_info);
-extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_delete_lobfile (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
@@ -539,8 +539,9 @@ extern int heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB
 					TP_VALUE_CONVERTER conv);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, record_descriptor * new_recdes);
-extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							     RECDES * old_recdes, record_descriptor * new_recdes);
+extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * thread_p,
+								 HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+								 record_descriptor * new_recdes);
 
 /* *INDENT-OFF* */
 extern SCAN_CODE heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info,

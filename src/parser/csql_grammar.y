@@ -1164,7 +1164,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BIT_LENGTH
 %token BITSHIFT_LEFT
 %token BITSHIFT_RIGHT
-%token BLOB_
+%token BFILE_
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
@@ -1181,7 +1181,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CHECK
 %token CLASS
 %token CLASSES
-%token CLOB_
+%token CFILE_
 %token COALESCE
 %token COLLATE
 %token COLUMN
@@ -1557,7 +1557,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> CHARACTER_SET_
 %token <cptr> CHARSET
 %token <cptr> CHR
-%token <cptr> CLOB_TO_CHAR
+%token <cptr> CFILE_TO_CHAR
 %token <cptr> CLOSE
 %token <cptr> COLLATION
 %token <cptr> COLUMNS
@@ -16185,6 +16185,16 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| CFILE_TO_CHAR
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CFILE_TO_CHAR); }
+	  '(' expression_ opt_using_charset ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = parser_make_expression (this_parser, PT_CFILE_TO_CHAR, $4, $5, NULL);
+			PICE (node);
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| CAST
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CAST); }
 	  '(' expression_ AS of_cast_data_type ')'
@@ -19483,6 +19493,18 @@ primitive_type
 			  {
 			    parser_free_node (this_parser, coll_node);
 			  }
+		}}
+	| BFILE_ opt_internal_external
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BFILE), NULL);
+			$$ = ctn;
+		}}
+	| CFILE_ opt_internal_external
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CFILE), NULL);
+			$$ = ctn;
 		}}
 	| BLOB_ opt_internal_external
 		{{
@@ -24911,11 +24933,11 @@ parser_keyword_func (const char *name, PT_NODE * args)
       return parser_make_expression (this_parser, key->op, a1, a2,
 				     parser_make_date_lang (c, a3));
 
-    case PT_BIT_TO_BLOB:
-    case PT_CHAR_TO_BLOB:
-    case PT_CHAR_TO_CLOB:
-    case PT_BLOB_LENGTH:
-    case PT_CLOB_LENGTH:
+    case PT_BIT_TO_BFILE:
+    case PT_CHAR_TO_BFILE:
+    case PT_CHAR_TO_CFILE:
+    case PT_BFILE_LENGTH:
+    case PT_CFILE_LENGTH:
       if (c != 1)
 	{
 	  return NULL;
@@ -24926,17 +24948,17 @@ parser_keyword_func (const char *name, PT_NODE * args)
          a2 = parser_new_node (this_parser, PT_VALUE);
          if (a2)
          {
-         if (key->op == PT_BIT_TO_BLOB ||
-         key->op == PT_CHAR_TO_BLOB)
+         if (key->op == PT_BIT_TO_BFILE ||
+         key->op == PT_CHAR_TO_BFILE)
          {
-         a2->type_enum = PT_TYPE_BLOB;
+         a2->type_enum = PT_TYPE_BFILE;
          }
-         else if (key->op == PT_CHAR_TO_CLOB)
+         else if (key->op == PT_CHAR_TO_CFILE)
          {
-         a2->type_enum = PT_TYPE_CLOB;
+         a2->type_enum = PT_TYPE_CFILE;
          }
-         else if (key->op == PT_BLOB_LENGTH ||
-         key->op == PT_CLOB_LENGTH)
+         else if (key->op == PT_BFILE_LENGTH ||
+         key->op == PT_CFILE_LENGTH)
          {
          a2->type_enum = PT_TYPE_BIGINT;
          }
@@ -24944,7 +24966,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
        */
       return parser_make_expression (this_parser, key->op, a1, NULL, NULL);
 
-    case PT_BLOB_TO_BIT:
+    case PT_BFILE_TO_BIT:
       if (c != 1)
 	{
 	  return NULL;
@@ -24953,8 +24975,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
       a1 = args;
       return parser_make_expression (this_parser, key->op, a1, NULL, NULL);
 
-    case PT_BLOB_FROM_FILE:
-    case PT_CLOB_FROM_FILE:
+    case PT_BFILE_FROM_FILE:
+    case PT_CFILE_FROM_FILE:
       if (c != 1)
 	{
 	  return NULL;
@@ -24967,13 +24989,13 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  a2 = parser_new_node (this_parser, PT_VALUE);
 	  if (a2)
 	    {
-	      if (key->op == PT_BLOB_FROM_FILE)
+	      if (key->op == PT_BFILE_FROM_FILE)
 		{
-		  a2->type_enum = PT_TYPE_BLOB;
+		  a2->type_enum = PT_TYPE_BFILE;
 		}
-	      else if (key->op == PT_CLOB_FROM_FILE)
+	      else if (key->op == PT_CFILE_FROM_FILE)
 		{
-		  a2->type_enum = PT_TYPE_CLOB;
+		  a2->type_enum = PT_TYPE_CFILE;
 		}
 	    }
 
