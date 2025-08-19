@@ -390,7 +390,7 @@ namespace cubpl
   }
 
   bool
-  session::is_running ()
+  session::is_sp_running ()
   {
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
     return m_stack_idx >= 0;
