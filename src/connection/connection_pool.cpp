@@ -30,6 +30,9 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubconn
 {
   connection_pool::connection_pool () :

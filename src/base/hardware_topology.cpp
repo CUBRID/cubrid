@@ -29,6 +29,9 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubbase
 {
   hardware_topology::hardware_topology ()

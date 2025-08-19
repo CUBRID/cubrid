@@ -30,6 +30,9 @@
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #define NEXT_STATE(x) do { \
     _er_log_debug (__FILE__, __LINE__, "transmitter state %d -> state = %d\n", m_state, state::x); \
     (m_state = state::x); \
