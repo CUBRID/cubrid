@@ -56,7 +56,7 @@
 #include "xserver_interface.h"
 #include "btree_load.h"
 #include "boot_sr.h"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "resource_tracker.hpp"
 #include "tde.h"
 #include "show_scan.h"
