@@ -153,7 +153,7 @@ static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 static T_EMGR_VERSION get_client_version (char *cli_ver_val);
 
 static void get_authorization_base (void);
-static bool is_class_entry (DB_COLLECTION *col, int index);
+static bool is_class_entry (DB_COLLECTION * col, int index);
 static int cubrid_version = -1;
 static int grant_base = 0;
 
@@ -2807,9 +2807,9 @@ revoke_all_from_user (DB_OBJECT * user)
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
       if (!is_class_entry (col, i))
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
@@ -2886,9 +2886,9 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
       if (!is_class_entry (col, i))
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
@@ -2899,7 +2899,7 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 }
 
 static bool
-is_class_entry (DB_COLLECTION *col, int index)
+is_class_entry (DB_COLLECTION * col, int index)
 {
   DB_VALUE v;
 
