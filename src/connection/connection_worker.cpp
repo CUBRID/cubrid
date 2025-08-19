@@ -34,6 +34,9 @@
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #ifdef _er_log_debug
 #undef _er_log_debug
 #endif
