@@ -890,7 +890,7 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
   if (histo_is_collecting ())
     {
       int received = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
-      histo_finish_request (request, recevied);
+      histo_finish_request (request, received);
     }
 
   return error;
@@ -984,7 +984,7 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
       if (histo_is_collecting ())
 	{
 	  int received = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
-	  histo_finish_request (request, recevied);
+	  histo_finish_request (request, received);
 	}
 
     }
@@ -1937,7 +1937,7 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
   if (histo_is_collecting ())
     {
       int received = replysize + (replydatasize_ptr ? *replydatasize_ptr : 0);
-      histo_finish_request (request, recevied);
+      histo_finish_request (request, received);
     }
 
   return error;
@@ -2383,7 +2383,7 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
       if (histo_is_collecting ())
 	{
 	  int received = replysize + content_size + packed_desc_size;
-	  histo_finish_request (request, recevied);
+	  histo_finish_request (request, received);
 	}
 
       return error;
@@ -3229,7 +3229,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
       if (histo_is_collecting ())
 	{
 	  int received = replysize + (recvbuffer_size ? *recvbuffer_size : 0) + content_size + packed_desc_size;
-	  histo_finish_request (request, recevied);
+	  histo_finish_request (request, received);
 	}
 
       return error;
@@ -3298,7 +3298,7 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
   if (histo_is_collecting ())
     {
       int received = replysize + (recvbuffer_size ? *recvbuffer_size : 0) + content_size + packed_desc_size;
-      histo_finish_request (request, recevied);
+      histo_finish_request (request, received);
     }
 
   return error;
