@@ -27,7 +27,7 @@
 #ident "$Id$"
 
 #include "connection_defs.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 
 /* the order to connect to db-hosts in databases.txt */
 #define DB_CONNECT_ORDER_SEQ         0
