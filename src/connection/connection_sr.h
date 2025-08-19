@@ -26,7 +26,7 @@
 
 #ident "$Id$"
 
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "connection_list_sr.h"
 #include "connection_defs.h"
 #include "critical_section.h"

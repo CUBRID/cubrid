@@ -183,6 +183,10 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/host_lookup.c
   )
 
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
+  )
+
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
   ${COMMUNICATION_DIR}/network_callback_cl.cpp
@@ -532,6 +536,7 @@ add_library(cubridcs SHARED
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${HEAPLAYER_SOURCES}
   ${OBJECT_HEADERS}

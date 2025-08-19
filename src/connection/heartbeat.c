@@ -64,7 +64,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */

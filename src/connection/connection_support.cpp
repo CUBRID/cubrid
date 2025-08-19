@@ -17,7 +17,7 @@
  */
 
 /*
- * connection_support.c - general networking function
+ * connection_support.cpp - general networking function
  */
 
 #ident "$Id$"
@@ -1070,42 +1070,6 @@ css_net_send (CSS_CONN_ENTRY *conn, const char *buff, int len, int timeout)
 {
   return css_net_send_with_socket (conn->fd, buff, len, timeout);
 }
-
-/*
-template <typename... Args>
-int
-css_net_send_general (int socket, int timeout, Args &&...args)
-{
-  static_assert (sizeof...(Args) % 2 == 0, "arguments must be in pairs of buffer, size");
-
-  struct iovec iov[sizeof...(Args) * 2];
-  char padding[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-  const char *buffer;
-  int buffer_size;
-  int total_length;
-
-  total_length = 0;
-  ([&] (auto &&arg) {
-    if constexpr (std::is_pointer_v<std::decay_t<decltype (arg)>>)
-    {
-      buffer = static_cast<const char *> (arg);
-    }
-    else if constexpr (std::is_integral_v<std::decay_t<decltype (arg)>>)
-    {
-      buffer_size = arg;
-
-      if (buffer && buffer_size > 0)
-      {
-	*templen = htonl (len);
-	vec1_p->iov_base = (caddr_t) templen;
-	vec1_p->iov_len = sizeof (int);
-      }
-    }
-  } (std::forward<Args> (args)), ...);
-
-  return 1;
-}
-*/
 
 int
 css_net_send_with_socket (SOCKET &socket, const char *buff, int len, int timeout)
