@@ -456,7 +456,7 @@ struct css_conn_entry
   char *version_string;		/* client version string */
 
     cubconn::connection_worker * worker;
-    void *context;
+  void *context;
 
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
