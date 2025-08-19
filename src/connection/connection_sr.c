@@ -3185,7 +3185,8 @@ css_get_argv (void)
   return css_Server_argv;
 }
 
-void css_release_packet (css_conn_entry *conn, void *buffer, int size)
+void
+css_release_packet (css_conn_entry * conn, void *buffer, int size)
 {
   cubconn::connection_worker::message request;
 
@@ -3195,7 +3196,8 @@ void css_release_packet (css_conn_entry *conn, void *buffer, int size)
   conn->worker->enqueue (std::move (request));
 }
 
-void css_wakeup_handler (css_conn_entry *conn)
+void
+css_wakeup_handler (css_conn_entry * conn)
 {
   if (!conn->worker->notify ())
     {

@@ -102,15 +102,15 @@ namespace cubbase
 
     size = first.size () + (rest.size () + ... + 0);
     if (size == 0)
-    {
-      return ;
-    }
+      {
+	return ;
+      }
     auto append = [&] (const cubbase::span<std::byte> &s)
     {
       if (s.size () != 0)
-      {
-	m_buf.push_back (s);
-      }
+	{
+	  m_buf.push_back (s);
+	}
     };
 
     m_header.push_back (htonl (static_cast<int> (size)));

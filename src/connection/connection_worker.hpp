@@ -47,7 +47,7 @@ namespace cubconn
       {
 	NEW_CLIENT,
 	SHUTDOWN,
-	
+
 	SEND_PACKET,
 	RELEASE_PACKET
       };

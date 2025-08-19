@@ -47,13 +47,14 @@
 namespace cubconn
 {
   connection_worker::context::context (std::size_t capacity) :
-    m_recv {
-      .m_state = state::HEADER,
-      .m_receiver = receiver (capacity),
-      .m_header = { nullptr, 0 },
-      .m_request_id = -1,
-      .m_command = false
-    }
+    m_recv
+  {
+    .m_state = state::HEADER,
+    .m_receiver = receiver (capacity),
+    .m_header = { nullptr, 0 },
+    .m_request_id = -1,
+    .m_command = false
+  }
   {
   }
 
@@ -263,17 +264,17 @@ namespace cubconn
     ctx = reinterpret_cast<context *> (item.conn->context);
 
     for (auto &packet : item.packet)
-    {
-      ctx->m_send.m_transmitter.push_for_send ({ packet.data (), packet.size () });
-    }
+      {
+	ctx->m_send.m_transmitter.push_for_send ({ packet.data (), packet.size () });
+      }
     ctx->m_send.m_transmitter.stamp ();
     ctx->m_send.m_transmitter.push_for_deleter (std::move (item.deleter));
 
     if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
-    {
-      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
-      return false;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
+	return false;
+      }
     _er_log_debug (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     return true;
@@ -288,10 +289,11 @@ namespace cubconn
 
     ctx = reinterpret_cast<context *> (item.conn->context);
     for (auto &packet : item.packet)
-    {
-      ctx->m_recv.m_receiver.release (packet);
-      _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
-    }
+      {
+	ctx->m_recv.m_receiver.release (packet);
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
+      }
 
     return true;
   }
@@ -394,7 +396,8 @@ namespace cubconn
 
     if (!css_is_request_aborted (conn, ctx->m_recv.m_request_id))
       {
-	error = css_add_queue_entry (conn, &conn->error_queue, ctx->m_recv.m_request_id, reinterpret_cast<char *> (packet.data ()),
+	error = css_add_queue_entry (conn, &conn->error_queue, ctx->m_recv.m_request_id,
+				     reinterpret_cast<char *> (packet.data ()),
 				     packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	if (error != NO_ERRORS)
 	  {
@@ -469,7 +472,8 @@ namespace cubconn
 	else
 	  {
 	    /* if waiter not exists, add to data queue */
-	    error = css_add_queue_entry (conn, &conn->data_queue, ctx->m_recv.m_request_id, reinterpret_cast<char *> (packet.data ()),
+	    error = css_add_queue_entry (conn, &conn->data_queue, ctx->m_recv.m_request_id,
+					 reinterpret_cast<char *> (packet.data ()),
 					 packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	    if (error != NO_ERRORS)
 	      {
@@ -660,6 +664,7 @@ namespace cubconn
 	break;
 
       default:
+	status = result::Error;
 	_er_log_debug (ARG_FILE_LINE, "connection_worker->handle_packet: unknown state\n");
 	assert_release (false);
 	break;

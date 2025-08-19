@@ -39,7 +39,7 @@ namespace cubconn
     public:
       transmitter ();
       ~transmitter ();
-      
+
       result fill (int fd);
 
       template <typename... Spans>

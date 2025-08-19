@@ -116,9 +116,9 @@ namespace cubconn
   void transmitter::clear ()
   {
     for (auto &deleter : m_deleter)
-    {
-      deleter ();
-    }
+      {
+	deleter ();
+      }
     m_deleter.clear ();
     m_buf.clear ();
   }
