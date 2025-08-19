@@ -6379,11 +6379,6 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  tsc_getticks (&start_tick);
 	}
 
-      if (visid->query_dbvalue == NULL)
-	{
-	  return S_END;
-	}
-
       int k = db_get_int (visid->k_dbvalue);
       if (k > 0)
 	{
