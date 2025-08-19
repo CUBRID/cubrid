@@ -162,7 +162,8 @@ namespace cubconn
       {
 	return result::Error;
       }
-    _er_log_debug (ARG_FILE_LINE, "receiver->parse_size_in_tmpsize: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
+    _er_log_debug (ARG_FILE_LINE,
+		   "receiver->parse_size_in_tmpsize: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
 		   m_bufsize, m_size);
 
     assert (m_received == SIZE_HEADER);
@@ -214,7 +215,7 @@ namespace cubconn
 
 	/* m_received < SIZE_HEADER */
 	/* m_bufsize >= SIZE_HEADER + sizeof (NET_HEADER) */
-	
+
 	NEXT_STATE (Recv);
 	return result::Partial;
       }
@@ -260,7 +261,8 @@ namespace cubconn
     if (bytes > 0)
       {
 	m_received += bytes;
-	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n", (int) m_state,
+	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n",
+		       (int) m_state,
 		       (int) bytes, (int) m_received);
 
 	if (m_received < SIZE_HEADER + m_size)
@@ -299,7 +301,8 @@ namespace cubconn
     if (bytes > 0)
       {
 	m_received += bytes;
-	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n", (int) m_state,
+	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n",
+		       (int) m_state,
 		       (int) bytes, (int) m_received);
 
 	if (m_received < SIZE_HEADER)
@@ -317,7 +320,8 @@ namespace cubconn
   {
     ssize_t bytes;
 
-    _er_log_debug (__FILE__, __LINE__, "receiver (%p) drain from fd = %d\n", this, fd); \
+    _er_log_debug (__FILE__, __LINE__, "receiver (%p) drain from fd = %d\n", this, fd);
+    \
     /* receive data from socket */
     assert (m_bufsize - m_received > 0);
     bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
@@ -368,6 +372,7 @@ namespace cubconn
 	    break;
 
 	  default:
+	    status = result::Error;
 	    _er_log_debug (ARG_FILE_LINE, "receiver->drain: unknown state\n");
 	    assert_release (false);
 	    break;
