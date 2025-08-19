@@ -25,6 +25,9 @@
 #include <cstring>
 #include <cstddef>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubbase
 {
   DMRBMemoryPool::DMRBMemoryPool (std::size_t capacity) :
