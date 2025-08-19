@@ -350,8 +350,8 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_MIDXKEY:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
@@ -446,8 +446,8 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.set = NULL;
       value->domain.general_info.is_null = 1;	/* NULL SET value */
       break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
@@ -615,8 +615,8 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.set = NULL;
       value->domain.general_info.is_null = 1;	/* NULL SET value */
       break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
       break;
@@ -867,8 +867,8 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_ENUMERATION:
       db_make_enumeration (value, 0, NULL, 0, codeset, collation_id);
       break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       value->data.elo.type = ELO_NULL;
       value->domain.general_info.is_null = 0;
       break;
@@ -1692,8 +1692,8 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
     case DB_TYPE_NULL:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_ENUMERATION:
     case DB_TYPE_ELO:
     case DB_TYPE_JSON:
@@ -2591,8 +2591,8 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	  break;
 
-	case DB_TYPE_BLOB:
-	case DB_TYPE_CLOB:
+	case DB_TYPE_BFILE:
+	case DB_TYPE_CFILE:
 	  elo_p = db_get_elo (value_p);
 	  if (elo_p == NULL)
 	    {
@@ -2796,15 +2796,15 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	  buffer_p = valcnv_append_string (buffer_p, "'");
 	  break;
 
-	case DB_TYPE_BLOB:
-	case DB_TYPE_CLOB:
-	  if (DB_VALUE_TYPE (value_p) == DB_TYPE_BLOB)
+	case DB_TYPE_BFILE:
+	case DB_TYPE_CFILE:
+	  if (DB_VALUE_TYPE (value_p) == DB_TYPE_BFILE)
 	    {
-	      buffer_p = valcnv_append_string (buffer_p, "BLOB'");
+	      buffer_p = valcnv_append_string (buffer_p, "BFILE'");
 	    }
 	  else
 	    {
-	      buffer_p = valcnv_append_string (buffer_p, "CLOB'");
+	      buffer_p = valcnv_append_string (buffer_p, "CFILE'");
 	    }
 
 	  if (buffer_p == NULL)

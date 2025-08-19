@@ -1333,7 +1333,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
   error = smt_find_attribute (template_, name, class_attribute, &att);
   if (error == NO_ERROR)
     {
-      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB) && proposed_value
+      if ((att->type->id == DB_TYPE_BFILE || att->type->id == DB_TYPE_CFILE) && proposed_value
 	  && !DB_IS_NULL (proposed_value))
 	{
 	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
@@ -2255,7 +2255,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	{
 	  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
 	}
-      else if (atts[0]->type->id == DB_TYPE_BLOB || atts[0]->type->id == DB_TYPE_CLOB)
+      else if (atts[0]->type->id == DB_TYPE_BFILE || atts[0]->type->id == DB_TYPE_CFILE)
 	{
 	  ERROR1 (error, ER_SM_NOT_NULL_NOT_ALLOWED, atts[0]->type->name);
 	}

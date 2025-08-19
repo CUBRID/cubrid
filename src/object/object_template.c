@@ -2559,13 +2559,13 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 	}
 
       /*
-       * The following code block is for handling LOB type.
-       * If the client is the log applier, it doesn't care LOB type.
+       * The following code block is for handling LOBFILE type.
+       * If the client is the log applier, it doesn't care LOBFILE type.
        */
       if (db_get_client_type () != DB_CLIENT_TYPE_LOG_APPLIER)
 	{
 
-	  if (a->att->type->id == DB_TYPE_BLOB || a->att->type->id == DB_TYPE_CLOB)
+	  if (a->att->type->id == DB_TYPE_BFILE || a->att->type->id == DB_TYPE_CFILE)
 	    {
 	      DB_VALUE old;
 	      DB_TYPE value_type;
@@ -2577,7 +2577,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		  DB_ELO *elo;
 
 		  value_type = db_value_type (&old);
-		  assert (value_type == DB_TYPE_BLOB || value_type == DB_TYPE_CLOB);
+		  assert (value_type == DB_TYPE_BFILE || value_type == DB_TYPE_CFILE);
 		  elo = db_get_elo (&old);
 		  if (elo)
 		    {
@@ -2592,7 +2592,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		  char *save_meta_data;
 
 		  value_type = db_value_type (a->variable);
-		  assert (value_type == DB_TYPE_BLOB || value_type == DB_TYPE_CLOB);
+		  assert (value_type == DB_TYPE_BFILE || value_type == DB_TYPE_CFILE);
 		  elo_p = db_get_elo (a->variable);
 
 		  assert (sm_ch_name ((MOBJ) class_) != NULL);
@@ -2609,7 +2609,7 @@ obt_apply_assignments (OBJ_TEMPLATE * template_ptr, int check_uniques, int level
 		      (a->variable)->need_clear = true;
 		    }
 		}
-	    }			/* if (a->att->type->id == DB_TYPE_BLOB) || */
+	    }			/* if (a->att->type->id == DB_TYPE_BFILE) || */
 	}			/* if (db_get_client_type () != */
 
       if (error == NO_ERROR)

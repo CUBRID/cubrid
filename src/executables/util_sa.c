@@ -354,7 +354,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const char *database_name;
   const char *volume_path;
   const char *log_path;
-  const char *lob_path;
+  const char *lobfile_path;
   const char *host_name;
   bool overwrite;
   bool verbose;
@@ -378,7 +378,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   const TZ_DATA *tzd;
 
   char required_size[16];
-  char abs_lob_path[PATH_MAX];
+  char abs_lobfile_path[PATH_MAX];
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   cubrid_charset = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
@@ -405,7 +405,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
   program_name = arg->command_name;
   volume_path = utility_get_option_string_value (arg_map, CREATE_FILE_PATH_S, 0);
   log_path = utility_get_option_string_value (arg_map, CREATE_LOG_PATH_S, 0);
-  lob_path = utility_get_option_string_value (arg_map, CREATE_LOB_PATH_S, 0);
+  lobfile_path = utility_get_option_string_value (arg_map, CREATE_LOBFILE_PATH_S, 0);
   host_name = utility_get_option_string_value (arg_map, CREATE_SERVER_NAME_S, 0);
   overwrite = utility_get_option_bool_value (arg_map, CREATE_REPLACE_S);
   verbose = utility_get_option_bool_value (arg_map, CREATE_VERBOSE_S);
@@ -639,13 +639,13 @@ createdb (UTIL_FUNCTION_ARG * arg)
   AU_DISABLE_PASSWORDS ();
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
 
-  if (lob_path && (IS_ABS_PATH (lob_path)) == false)
+  if (lobfile_path && (IS_ABS_PATH (lobfile_path)) == false)
     {
       char cwd[PATH_MAX];
 
       if (getcwd (cwd, PATH_MAX) != NULL)
 	{
-	  if (snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path) >= PATH_MAX)
+	  if (snprintf (abs_lobfile_path, PATH_MAX, "%s/%s", cwd, lobfile_path) >= PATH_MAX)
 	    {
 	      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning.
 	       * Additional review will be required.        
@@ -653,7 +653,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	      goto error_exit;
 	    }
 
-	  lob_path = abs_lob_path;
+	  lobfile_path = abs_lobfile_path;
 	}
       else
 	{
@@ -662,7 +662,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
 
   db_login ("DBA", NULL);
-  status = db_init (program_name, true, database_name, volume_path, NULL, log_path, lob_path, host_name, overwrite,
+  status = db_init (program_name, true, database_name, volume_path, NULL, log_path, lobfile_path, host_name, overwrite,
 		    comment, volume_spec_file_name, db_volume_pages, db_page_size, log_volume_pages, log_page_size,
 		    cubrid_charset);
 
@@ -1179,7 +1179,7 @@ installdb (UTIL_FUNCTION_ARG * arg)
 {
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char er_msg_file[PATH_MAX];
-  char lob_path_buf[PATH_MAX];
+  char lobfile_path_buf[PATH_MAX];
   const char *server_name;
   const char *db_path;
   const char *log_path;
@@ -1233,13 +1233,13 @@ installdb (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
-  if (db->lobpath == NULL)
+  if (db->lobfilepath == NULL)
     {
       /* assign the data volume directory */
-      snprintf (lob_path_buf, sizeof (lob_path_buf), "%s%s%clob", LOB_PATH_DEFAULT_PREFIX, db->pathname,
+      snprintf (lobfile_path_buf, sizeof (lobfile_path_buf), "%s%s%clob", LOBFILE_PATH_DEFAULT_PREFIX, db->pathname,
 		PATH_SEPARATOR);
-      lob_path_buf[PATH_MAX - 1] = '\0';
-      db->lobpath = strdup (lob_path_buf);
+      lobfile_path_buf[PATH_MAX - 1] = '\0';
+      db->lobfilepath = strdup (lobfile_path_buf);
     }
 
   cfg_write_directory (dir);
@@ -1301,11 +1301,11 @@ copydb (UTIL_FUNCTION_ARG * arg)
   const char *server_name;
   const char *db_path;
   const char *log_path;
-  const char *lob_path;
-  char lob_pathbuf[PATH_MAX];
+  const char *lobfile_path;
+  char lobfile_pathbuf[PATH_MAX];
   const char *ext_path;
   const char *control_file_name;
-  bool overwrite, delete_src, copy_lob_path;
+  bool overwrite, delete_src, copy_lobfile_path;
 
   src_db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   dest_db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 1);
@@ -1317,25 +1317,25 @@ copydb (UTIL_FUNCTION_ARG * arg)
   server_name = utility_get_option_string_value (arg_map, COPY_SERVER_NAME_S, 0);
   db_path = utility_get_option_string_value (arg_map, COPY_FILE_PATH_S, 0);
   log_path = utility_get_option_string_value (arg_map, COPY_LOG_PATH_S, 0);
-  lob_path = utility_get_option_string_value (arg_map, COPY_LOB_PATH_S, 0);
+  lobfile_path = utility_get_option_string_value (arg_map, COPY_LOBFILE_PATH_S, 0);
   ext_path = utility_get_option_string_value (arg_map, COPY_EXTENTED_VOLUME_PATH_S, 0);
   control_file_name = utility_get_option_string_value (arg_map, COPY_CONTROL_FILE_S, 0);
   overwrite = utility_get_option_bool_value (arg_map, COPY_REPLACE_S);
   delete_src = utility_get_option_bool_value (arg_map, COPY_DELETE_SOURCE_S);
-  copy_lob_path = utility_get_option_bool_value (arg_map, COPY_COPY_LOB_PATH_S);
+  copy_lobfile_path = utility_get_option_bool_value (arg_map, COPY_COPY_LOBFILE_PATH_S);
 
   if (utility_get_option_string_table_size (arg_map) != 2)
     {
       goto print_copy_usage;
     }
 
-  if (lob_path != NULL && copy_lob_path == true)
+  if (lobfile_path != NULL && copy_lobfile_path == true)
     {
       goto print_copy_usage;
     }
-  if (delete_src == true && lob_path == NULL)
+  if (delete_src == true && lobfile_path == NULL)
     {
-      copy_lob_path = true;
+      copy_lobfile_path = true;
     }
 
   /* error message log file */
@@ -1366,15 +1366,15 @@ copydb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  if (copy_lob_path)
+  if (copy_lobfile_path)
     {
-      const char *s = boot_get_lob_path ();
+      const char *s = boot_get_lobfile_path ();
       if (*s != '\0')
 	{
-	  lob_path = strcpy (lob_pathbuf, s);
+	  lobfile_path = strcpy (lobfile_pathbuf, s);
 	}
     }
-  if (boot_copy (src_db_name, dest_db_name, db_path, log_path, lob_path, server_name, ext_path, control_file_name,
+  if (boot_copy (src_db_name, dest_db_name, db_path, log_path, lobfile_path, server_name, ext_path, control_file_name,
 		 overwrite) != NO_ERROR)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));

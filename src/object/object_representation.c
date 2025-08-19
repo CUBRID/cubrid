@@ -3449,8 +3449,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      [[fallthrough]];
 
 	    case DB_TYPE_NULL:
-	    case DB_TYPE_BLOB:
-	    case DB_TYPE_CLOB:
+	    case DB_TYPE_BFILE:
+	    case DB_TYPE_CFILE:
 	      dom = tp_domain_find_noparam (type, is_desc);
 	      break;
 

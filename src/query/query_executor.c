@@ -353,16 +353,16 @@ struct parent_pos_info
   PARENT_POS_INFO *stack;
 };
 
-/* used for deleting lob files */
-typedef struct del_lob_info DEL_LOB_INFO;
-struct del_lob_info
+/* used for deleting lobfile files */
+typedef struct del_lobfile_info DEL_LOBFILE_INFO;
+struct del_lobfile_info
 {
-  OID *class_oid;		/* OID of the class that has lob attributes */
+  OID *class_oid;		/* OID of the class that has lobfile attributes */
   HFID *class_hfid;		/* class hfid */
 
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
 
-  DEL_LOB_INFO *next;		/* next DEL_LOB_INFO in a list */
+  DEL_LOBFILE_INFO *next;	/* next DEL_LOBFILE_INFO in a list */
 };
 
 /* used for internal update/delete execution */
@@ -380,9 +380,9 @@ struct upddel_class_info_internal
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
   PRUNING_CONTEXT context;	/* partition pruning context */
-  int num_lob_attrs;		/* number of lob attributes */
-  int *lob_attr_ids;		/* lob attribute ids */
-  DEL_LOB_INFO *crt_del_lob_info;	/* DEL_LOB_INFO for current class_oid */
+  int num_lobfile_attrs;	/* number of lobfile attributes */
+  int *lobfile_attr_ids;	/* lobfile attribute ids */
+  DEL_LOBFILE_INFO *crt_del_lobfile_info;	/* DEL_LOBFILE_INFO for current class_oid */
   multi_index_unique_stats m_unique_stats;
   HEAP_SCANCACHE m_scancache;
   bool m_inited_scancache;
@@ -598,12 +598,13 @@ static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 				     bool * empty_result);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
-static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
-						   UPDDEL_CLASS_INFO_INTERNAL * class_info);
-static DEL_LOB_INFO *qexec_change_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
-						   UPDDEL_CLASS_INFO_INTERNAL * class_info,
-						   DEL_LOB_INFO ** del_lob_info_list_ptr);
-static void qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lob_info_list_ptr);
+static DEL_LOBFILE_INFO *qexec_create_delete_lobfile_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+							   UPDDEL_CLASS_INFO_INTERNAL * class_info);
+static DEL_LOBFILE_INFO *qexec_change_delete_lobfile_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+							   UPDDEL_CLASS_INFO_INTERNAL * class_info,
+							   DEL_LOBFILE_INFO ** del_lobfile_info_list_ptr);
+static void qexec_free_delete_lobfile_info_list (THREAD_ENTRY * thread_p,
+						 DEL_LOBFILE_INFO ** del_lobfile_info_list_ptr);
 static const char *qexec_schema_get_type_name_from_id (DB_TYPE id);
 static int qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result);
 static int qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
@@ -9612,7 +9613,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   int should_delete = 0;
   int current_op_type = SINGLE_ROW_UPDATE;
   PRUNING_CONTEXT *pcontext = NULL;
-  DEL_LOB_INFO *del_lob_info_list = NULL;
+  DEL_LOBFILE_INFO *del_lobfile_info_list = NULL;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   MVCC_REEV_DATA mvcc_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
@@ -9896,18 +9897,19 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 		  if (should_delete)
 		    {
-		      if (internal_class->num_lob_attrs)
+		      if (internal_class->num_lobfile_attrs)
 			{
-			  internal_class->crt_del_lob_info =
-			    qexec_change_delete_lob_info (thread_p, xasl_state, internal_class, &del_lob_info_list);
-			  if (internal_class->crt_del_lob_info == NULL)
+			  internal_class->crt_del_lobfile_info =
+			    qexec_change_delete_lobfile_info (thread_p, xasl_state, internal_class,
+							      &del_lobfile_info_list);
+			  if (internal_class->crt_del_lobfile_info == NULL)
 			    {
 			      GOTO_EXIT_ON_ERROR;
 			    }
 			}
 		      else
 			{
-			  internal_class->crt_del_lob_info = NULL;
+			  internal_class->crt_del_lobfile_info = NULL;
 			}
 		    }
 		}
@@ -9915,17 +9917,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      /* don't update, just delete */
 	      if (should_delete)
 		{
-		  /* handle lobs first */
-		  if (internal_class->crt_del_lob_info)
+		  /* handle lobfiles first */
+		  if (internal_class->crt_del_lobfile_info)
 		    {
-		      /* delete lob files */
-		      DEL_LOB_INFO *crt_del_lob_info = internal_class->crt_del_lob_info;
+		      /* delete lobfile files */
+		      DEL_LOBFILE_INFO *crt_del_lobfile_info = internal_class->crt_del_lobfile_info;
 		      SCAN_CODE scan_code;
 		      int error;
 		      int i;
 		      RECDES recdes = RECDES_INITIALIZER;
 
-		      /* read lob attributes */
+		      /* read lobfile attributes */
 		      scan_code =
 			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
 						  NULL_CHN);
@@ -9935,21 +9937,22 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 			}
 		      if (scan_code == S_SUCCESS)
 			{
-			  error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &crt_del_lob_info->attr_info);
+			  error =
+			    heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &crt_del_lobfile_info->attr_info);
 			  if (error != NO_ERROR)
 			    {
 			      GOTO_EXIT_ON_ERROR;
 			    }
-			  for (i = 0; i < internal_class->num_lob_attrs; i++)
+			  for (i = 0; i < internal_class->num_lobfile_attrs; i++)
 			    {
-			      DB_VALUE *attr_valp = &crt_del_lob_info->attr_info.values[i].dbvalue;
+			      DB_VALUE *attr_valp = &crt_del_lobfile_info->attr_info.values[i].dbvalue;
 			      if (!db_value_is_null (attr_valp))
 				{
 				  DB_ELO *elo;
 				  error = NO_ERROR;
 
-				  assert (db_value_type (attr_valp) == DB_TYPE_BLOB
-					  || db_value_type (attr_valp) == DB_TYPE_CLOB);
+				  assert (db_value_type (attr_valp) == DB_TYPE_BFILE
+					  || db_value_type (attr_valp) == DB_TYPE_CFILE);
 				  elo = db_get_elo (attr_valp);
 				  if (elo)
 				    {
@@ -10222,7 +10225,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
   if (has_delete)
     {
-      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
+      qexec_free_delete_lobfile_info_list (thread_p, &del_lobfile_info_list);
     }
 
   if (internal_classes)
@@ -10284,9 +10287,9 @@ exit_on_error:
       qexec_close_scan (thread_p, specp);
     }
 
-  if (del_lob_info_list != NULL)
+  if (del_lobfile_info_list != NULL)
     {
-      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
+      qexec_free_delete_lobfile_info_list (thread_p, &del_lobfile_info_list);
     }
 
   if (mvcc_reev_classes != NULL)
@@ -10476,7 +10479,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool scan_open = false;
   UPDDEL_CLASS_INFO *query_class = NULL;
   UPDDEL_CLASS_INFO_INTERNAL *internal_classes = NULL, *internal_class = NULL;
-  DEL_LOB_INFO *del_lob_info_list = NULL;
+  DEL_LOBFILE_INFO *del_lobfile_info_list = NULL;
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
@@ -10665,18 +10668,19 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  GOTO_EXIT_ON_ERROR;
 			}
 
-		      if (internal_class->num_lob_attrs)
+		      if (internal_class->num_lobfile_attrs)
 			{
-			  internal_class->crt_del_lob_info =
-			    qexec_change_delete_lob_info (thread_p, xasl_state, internal_class, &del_lob_info_list);
-			  if (internal_class->crt_del_lob_info == NULL)
+			  internal_class->crt_del_lobfile_info =
+			    qexec_change_delete_lobfile_info (thread_p, xasl_state, internal_class,
+							      &del_lobfile_info_list);
+			  if (internal_class->crt_del_lobfile_info == NULL)
 			    {
 			      GOTO_EXIT_ON_ERROR;
 			    }
 			}
 		      else
 			{
-			  internal_class->crt_del_lob_info = NULL;
+			  internal_class->crt_del_lobfile_info = NULL;
 			}
 		    }
 		}
@@ -10726,16 +10730,16 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  continue;
 		}
 
-	      if (internal_class->crt_del_lob_info)
+	      if (internal_class->crt_del_lobfile_info)
 		{
-		  /* delete lob files */
-		  DEL_LOB_INFO *crt_del_lob_info = internal_class->crt_del_lob_info;
+		  /* delete lobfile files */
+		  DEL_LOBFILE_INFO *crt_del_lobfile_info = internal_class->crt_del_lobfile_info;
 		  SCAN_CODE scan_code;
 		  int error;
 		  int i;
 		  RECDES recdes = RECDES_INITIALIZER;
 
-		  /* read lob attributes */
+		  /* read lobfile attributes */
 		  scan_code =
 		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
 					      NULL_CHN);
@@ -10745,21 +10749,21 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		  if (scan_code == S_SUCCESS)
 		    {
-		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &crt_del_lob_info->attr_info);
+		      error = heap_attrinfo_read_dbvalues (thread_p, oid, &recdes, &crt_del_lobfile_info->attr_info);
 		      if (error != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
-		      for (i = 0; i < internal_class->num_lob_attrs; i++)
+		      for (i = 0; i < internal_class->num_lobfile_attrs; i++)
 			{
-			  DB_VALUE *attr_valp = &crt_del_lob_info->attr_info.values[i].dbvalue;
+			  DB_VALUE *attr_valp = &crt_del_lobfile_info->attr_info.values[i].dbvalue;
 			  if (!db_value_is_null (attr_valp))
 			    {
 			      DB_ELO *elo;
 			      error = NO_ERROR;
 
-			      assert (db_value_type (attr_valp) == DB_TYPE_BLOB
-				      || db_value_type (attr_valp) == DB_TYPE_CLOB);
+			      assert (db_value_type (attr_valp) == DB_TYPE_BFILE
+				      || db_value_type (attr_valp) == DB_TYPE_CFILE);
 			      elo = db_get_elo (attr_valp);
 			      if (elo)
 				{
@@ -10802,7 +10806,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  DB_ELO *elo;
 		  int error = NO_ERROR;
 
-		  assert (db_value_type (valp) == DB_TYPE_BLOB || db_value_type (valp) == DB_TYPE_CLOB);
+		  assert (db_value_type (valp) == DB_TYPE_BFILE || db_value_type (valp) == DB_TYPE_CFILE);
 		  elo = db_get_elo (valp);
 		  if (elo)
 		    {
@@ -10849,7 +10853,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   qexec_close_scan (thread_p, specp);
 
-  qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
+  qexec_free_delete_lobfile_info_list (thread_p, &del_lobfile_info_list);
 
   if (internal_classes)
     {
@@ -10904,9 +10908,9 @@ exit_on_error:
       qexec_close_scan (thread_p, specp);
     }
 
-  if (del_lob_info_list != NULL)
+  if (del_lobfile_info_list != NULL)
     {
-      qexec_free_delete_lob_info_list (thread_p, &del_lob_info_list);
+      qexec_free_delete_lobfile_info_list (thread_p, &del_lobfile_info_list);
     }
 
   if (internal_classes)
@@ -10935,141 +10939,143 @@ exit_on_error:
 }
 
 /*
- * qexec_create_delete_lob_info () - creates a new DEL_LOB_INFO object using
+ * qexec_create_delete_lobfile_info () - creates a new DEL_LOBFILE_INFO object using
  *			data from class_info
  *
  * thread_p (in)      :
  * xasl_state (in)    :
  * class_info (in)    :
  *
- * return	      : new DEL_LOB_INFO object
+ * return	      : new DEL_LOBFILE_INFO object
  */
-static DEL_LOB_INFO *
-qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, UPDDEL_CLASS_INFO_INTERNAL * class_info)
+static DEL_LOBFILE_INFO *
+qexec_create_delete_lobfile_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+				  UPDDEL_CLASS_INFO_INTERNAL * class_info)
 {
-  DEL_LOB_INFO *del_lob_info;
+  DEL_LOBFILE_INFO *del_lobfile_info;
 
-  del_lob_info = (DEL_LOB_INFO *) db_private_alloc (thread_p, sizeof (DEL_LOB_INFO));
-  if (!del_lob_info)
+  del_lobfile_info = (DEL_LOBFILE_INFO *) db_private_alloc (thread_p, sizeof (DEL_LOBFILE_INFO));
+  if (!del_lobfile_info)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto error;
     }
 
-  del_lob_info->class_oid = class_info->class_oid;
-  del_lob_info->class_hfid = class_info->class_hfid;
+  del_lobfile_info->class_oid = class_info->class_oid;
+  del_lobfile_info->class_hfid = class_info->class_hfid;
 
-  if (heap_attrinfo_start (thread_p, class_info->class_oid, class_info->num_lob_attrs, class_info->lob_attr_ids,
-			   &del_lob_info->attr_info) != NO_ERROR)
+  if (heap_attrinfo_start (thread_p, class_info->class_oid, class_info->num_lobfile_attrs, class_info->lobfile_attr_ids,
+			   &del_lobfile_info->attr_info) != NO_ERROR)
     {
       goto error;
     }
 
-  del_lob_info->next = NULL;
+  del_lobfile_info->next = NULL;
 
-  return del_lob_info;
+  return del_lobfile_info;
 
 error:
-  if (del_lob_info)
+  if (del_lobfile_info)
     {
-      db_private_free (thread_p, del_lob_info);
+      db_private_free (thread_p, del_lobfile_info);
     }
   return NULL;
 }
 
 /*
- * qexec_change_delete_lob_info () - When the class_oid of the tuple that
- *		needs to be deleted changes, also the current DEL_LOB_INFO
+ * qexec_change_delete_lobfile_info () - When the class_oid of the tuple that
+ *		needs to be deleted changes, also the current DEL_LOBFILE_INFO
  *		needs to be changed. This can also be used to initialize
  *		the list
  *
  * thread_p (in)	    :
  * xasl_state (in)	    :
  * class_info (in)	    :
- * del_lob_info_list_ptr    : pointer to current list of DEL_LOB_INFO
+ * del_lobfile_info_list_ptr    : pointer to current list of DEL_LOBFILE_INFO
  *
- * return		    : DEL_LOB_INFO object specific to current class_info
+ * return		    : DEL_LOBFILE_INFO object specific to current class_info
  */
-static DEL_LOB_INFO *
-qexec_change_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, UPDDEL_CLASS_INFO_INTERNAL * class_info,
-			      DEL_LOB_INFO ** del_lob_info_list_ptr)
+static DEL_LOBFILE_INFO *
+qexec_change_delete_lobfile_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
+				  UPDDEL_CLASS_INFO_INTERNAL * class_info,
+				  DEL_LOBFILE_INFO ** del_lobfile_info_list_ptr)
 {
-  DEL_LOB_INFO *del_lob_info_list = *del_lob_info_list_ptr;
-  DEL_LOB_INFO *del_lob_info = NULL;
+  DEL_LOBFILE_INFO *del_lobfile_info_list = *del_lobfile_info_list_ptr;
+  DEL_LOBFILE_INFO *del_lobfile_info = NULL;
 
-  assert (del_lob_info_list_ptr != NULL);
-  del_lob_info_list = *del_lob_info_list_ptr;
+  assert (del_lobfile_info_list_ptr != NULL);
+  del_lobfile_info_list = *del_lobfile_info_list_ptr;
 
-  if (del_lob_info_list == NULL)
+  if (del_lobfile_info_list == NULL)
     {
-      /* create new DEL_LOB_INFO */
-      del_lob_info_list = qexec_create_delete_lob_info (thread_p, xasl_state, class_info);
-      *del_lob_info_list_ptr = del_lob_info_list;
-      return del_lob_info_list;
+      /* create new DEL_LOBFILE_INFO */
+      del_lobfile_info_list = qexec_create_delete_lobfile_info (thread_p, xasl_state, class_info);
+      *del_lobfile_info_list_ptr = del_lobfile_info_list;
+      return del_lobfile_info_list;
     }
 
-  /* verify if a DEL_LOB_INFO for current class_oid already exists */
-  for (del_lob_info = del_lob_info_list; del_lob_info; del_lob_info = del_lob_info->next)
+  /* verify if a DEL_LOBFILE_INFO for current class_oid already exists */
+  for (del_lobfile_info = del_lobfile_info_list; del_lobfile_info; del_lobfile_info = del_lobfile_info->next)
     {
-      if (del_lob_info->class_oid == class_info->class_oid)
+      if (del_lobfile_info->class_oid == class_info->class_oid)
 	{
 	  /* found */
-	  return del_lob_info;
+	  return del_lobfile_info;
 	}
     }
 
-  /* create a new DEL_LOB_INFO */
-  del_lob_info = qexec_create_delete_lob_info (thread_p, xasl_state, class_info);
-  if (!del_lob_info)
+  /* create a new DEL_LOBFILE_INFO */
+  del_lobfile_info = qexec_create_delete_lobfile_info (thread_p, xasl_state, class_info);
+  if (!del_lobfile_info)
     {
       return NULL;
     }
-  del_lob_info->next = del_lob_info_list;
-  del_lob_info_list = del_lob_info;
-  *del_lob_info_list_ptr = del_lob_info_list;
+  del_lobfile_info->next = del_lobfile_info_list;
+  del_lobfile_info_list = del_lobfile_info;
+  *del_lobfile_info_list_ptr = del_lobfile_info_list;
 
-  return del_lob_info_list;
+  return del_lobfile_info_list;
 }
 
 /*
- * qexec_free_delete_lob_info_list () - frees the list of DEL_LOB_INFO
- *	      created for deleting lob files.
+ * qexec_free_delete_lobfile_info_list () - frees the list of DEL_LOBFILE_INFO
+ *	      created for deleting lobfile files.
  *
  * thread_p (in)	  :
- * del_lob_info_list_ptr  : pointer to the list of DEL_LOB_INFO structures
+ * del_lobfile_info_list_ptr  : pointer to the list of DEL_LOBFILE_INFO structures
  *
  * NOTE: also all HEAP_CACHE_ATTRINFO must be ended
  */
 static void
-qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lob_info_list_ptr)
+qexec_free_delete_lobfile_info_list (THREAD_ENTRY * thread_p, DEL_LOBFILE_INFO ** del_lobfile_info_list_ptr)
 {
-  DEL_LOB_INFO *del_lob_info_list;
-  DEL_LOB_INFO *del_lob_info, *next_del_lob_info;
+  DEL_LOBFILE_INFO *del_lobfile_info_list;
+  DEL_LOBFILE_INFO *del_lobfile_info, *next_del_lobfile_info;
 
-  if (!del_lob_info_list_ptr)
+  if (!del_lobfile_info_list_ptr)
     {
       /* invalid pointer, nothing to free */
       return;
     }
 
-  del_lob_info_list = *del_lob_info_list_ptr;
-  if (!del_lob_info_list)
+  del_lobfile_info_list = *del_lobfile_info_list_ptr;
+  if (!del_lobfile_info_list)
     {
       /* no item in the list, nothing to free */
       return;
     }
 
-  del_lob_info = del_lob_info_list;
-  while (del_lob_info)
+  del_lobfile_info = del_lobfile_info_list;
+  while (del_lobfile_info)
     {
-      next_del_lob_info = del_lob_info->next;
+      next_del_lobfile_info = del_lobfile_info->next;
       /* end HEAP_CACHE_ATTRINFO first */
-      heap_attrinfo_end (thread_p, &del_lob_info->attr_info);
+      heap_attrinfo_end (thread_p, &del_lobfile_info->attr_info);
 
-      db_private_free (thread_p, del_lob_info);
-      del_lob_info = next_del_lob_info;
+      db_private_free (thread_p, del_lobfile_info);
+      del_lobfile_info = next_del_lobfile_info;
     }
-  *del_lob_info_list_ptr = NULL;
+  *del_lobfile_info_list_ptr = NULL;
 }
 
 
@@ -11122,7 +11128,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB);
+  copyarea =
+    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOBFILE);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -11360,7 +11367,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB);
+  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOBFILE);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -23336,11 +23343,11 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
     case DB_TYPE_VARBIT:
       return "BIT VARYING";
 
-    case DB_TYPE_BLOB:
-      return "BLOB";
+    case DB_TYPE_BFILE:
+      return "BFILE";
 
-    case DB_TYPE_CLOB:
-      return "CLOB";
+    case DB_TYPE_CFILE:
+      return "CFILE";
 
     case DB_TYPE_ENUMERATION:
       return "ENUM";
@@ -24236,9 +24243,9 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
 
-      class_->num_lob_attrs = 0;
-      class_->lob_attr_ids = NULL;
-      class_->crt_del_lob_info = NULL;
+      class_->num_lobfile_attrs = 0;
+      class_->lobfile_attr_ids = NULL;
+      class_->crt_del_lobfile_info = NULL;
       class_->m_unique_stats.construct ();
       class_->extra_assign_reev_cnt = 0;
       class_->mvcc_extra_assign_reev = NULL;
@@ -24472,8 +24479,8 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * q
 	  internal_class->class_hfid = &query_class->class_hfid[0];
 	  internal_class->subclass_idx = 0;
 
-	  internal_class->num_lob_attrs = 0;
-	  internal_class->lob_attr_ids = NULL;
+	  internal_class->num_lobfile_attrs = 0;
+	  internal_class->lobfile_attr_ids = NULL;
 	}
       else
 	{
@@ -24486,8 +24493,8 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * q
 		  internal_class->class_hfid = &internal_class->context.partitions[i].class_hfid;
 		  internal_class->subclass_idx = 0;
 
-		  internal_class->num_lob_attrs = 0;
-		  internal_class->lob_attr_ids = NULL;
+		  internal_class->num_lobfile_attrs = 0;
+		  internal_class->lobfile_attr_ids = NULL;
 		  break;
 		}
 	    }
@@ -24504,15 +24511,15 @@ qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * q
 	      internal_class->class_hfid = &query_class->class_hfid[i];
 	      internal_class->subclass_idx = i;
 
-	      if (query_class->num_lob_attrs && query_class->lob_attr_ids)
+	      if (query_class->num_lobfile_attrs && query_class->lobfile_attr_ids)
 		{
-		  internal_class->num_lob_attrs = query_class->num_lob_attrs[i];
-		  internal_class->lob_attr_ids = query_class->lob_attr_ids[i];
+		  internal_class->num_lobfile_attrs = query_class->num_lobfile_attrs[i];
+		  internal_class->lobfile_attr_ids = query_class->lobfile_attr_ids[i];
 		}
 	      else
 		{
-		  internal_class->num_lob_attrs = 0;
-		  internal_class->lob_attr_ids = NULL;
+		  internal_class->num_lobfile_attrs = 0;
+		  internal_class->lobfile_attr_ids = NULL;
 		}
 	      break;
 	    }

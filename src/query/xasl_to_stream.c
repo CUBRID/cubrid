@@ -3761,17 +3761,18 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
   /* has_uniques */
   ptr = or_pack_int (ptr, upd_cls->has_uniques);
 
-  /* make sure num_lob_attrs and lob_attr_ids are both NULL or are both not NULL */
-  assert ((upd_cls->num_lob_attrs && upd_cls->lob_attr_ids) || (!upd_cls->num_lob_attrs && !upd_cls->lob_attr_ids));
-  /* num_lob_attrs */
-  offset = xts_save_int_array (upd_cls->num_lob_attrs, upd_cls->num_subclasses);
+  /* make sure num_lobfile_attrs and lobfile_attr_ids are both NULL or are both not NULL */
+  assert ((upd_cls->num_lobfile_attrs && upd_cls->lobfile_attr_ids)
+	  || (!upd_cls->num_lobfile_attrs && !upd_cls->lobfile_attr_ids));
+  /* num_lobfile_attrs */
+  offset = xts_save_int_array (upd_cls->num_lobfile_attrs, upd_cls->num_subclasses);
   if (offset == ER_FAILED)
     {
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
-  /* lob_attr_ids */
-  if (upd_cls->lob_attr_ids)
+  /* lobfile_attr_ids */
+  if (upd_cls->lobfile_attr_ids)
     {
       offset = xts_reserve_location_in_stream (upd_cls->num_subclasses * sizeof (int));
       if (offset == ER_FAILED)
@@ -3782,7 +3783,7 @@ xts_save_upddel_class_info (char *ptr, const UPDDEL_CLASS_INFO * upd_cls)
       p = &xts_Stream_buffer[offset];
       for (i = 0; i < upd_cls->num_subclasses; i++)
 	{
-	  offset = xts_save_int_array (upd_cls->lob_attr_ids[i], upd_cls->num_lob_attrs[i]);
+	  offset = xts_save_int_array (upd_cls->lobfile_attr_ids[i], upd_cls->num_lobfile_attrs[i]);
 	  if (offset == ER_FAILED)
 	    {
 	      return NULL;
@@ -6361,8 +6362,8 @@ xts_sizeof_upddel_class_info (const UPDDEL_CLASS_INFO * upd_cls)
 	   + PTR_SIZE		/* att_id */
 	   + OR_INT_SIZE	/* needs pruning */
 	   + OR_INT_SIZE	/* has_uniques */
-	   + PTR_SIZE		/* num_lob_attrs */
-	   + PTR_SIZE		/* lob_attr_ids */
+	   + PTR_SIZE		/* num_lobfile_attrs */
+	   + PTR_SIZE		/* lobfile_attr_ids */
 	   + OR_INT_SIZE	/* num_extra_assign_reev */
 	   + PTR_SIZE);		/* mvcc_extra_assign_reev */
 

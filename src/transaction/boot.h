@@ -119,7 +119,7 @@ struct boot_db_path_info
   char *db_path;
   char *vol_path;
   char *log_path;
-  char *lob_path;
+  char *lobfile_path;
   char *db_host;
   char *db_comments;
 };
@@ -152,7 +152,7 @@ struct boot_server_credential
 {
   char *db_full_name;		/* PATH_MAX */
   char *host_name;		/* CUB_MAXHOSTNAMELEN */
-  char *lob_path;		/* PATH_MAX + LOB_PATH_PREFIX_MAX */
+  char *lobfile_path;		/* PATH_MAX + LOBFILE_PATH_PREFIX_MAX */
   int process_id;
   OID root_class_oid;
   HFID root_class_hfid;
@@ -167,8 +167,8 @@ struct boot_server_credential
 
 extern char boot_Host_name[CUB_MAXHOSTNAMELEN];
 
-#define LOB_PATH_PREFIX_MAX     ES_URI_PREFIX_MAX
-#define LOB_PATH_DEFAULT_PREFIX ES_POSIX_PATH_PREFIX
+#define LOBFILE_PATH_PREFIX_MAX     ES_URI_PREFIX_MAX
+#define LOBFILE_PATH_DEFAULT_PREFIX ES_POSIX_PATH_PREFIX
 
 /* Compose the full name of a database */
 

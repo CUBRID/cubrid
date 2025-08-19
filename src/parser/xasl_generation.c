@@ -5688,7 +5688,8 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * col_lis
       /* GROUP BY ? or ORDER BY ? are not allowed */
       dom_type = TP_DOMAIN_TYPE (node->info.sort_spec.pos_descr.dom);
 
-      if (is_analytic_window && (dom_type == DB_TYPE_BLOB || dom_type == DB_TYPE_CLOB || dom_type == DB_TYPE_VARIABLE))
+      if (is_analytic_window
+	  && (dom_type == DB_TYPE_BFILE || dom_type == DB_TYPE_CFILE || dom_type == DB_TYPE_VARIABLE))
 	{
 	  /* analytic sort spec expressions have been moved to select list; check for host variable there */
 	  for (col = col_list, k = 1; col; col = col->next, k++)
@@ -5714,7 +5715,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * col_lis
 
 	  /* we allow variable domain but no host var */
 	}
-      else if (dom_type == DB_TYPE_BLOB || dom_type == DB_TYPE_CLOB
+      else if (dom_type == DB_TYPE_BFILE || dom_type == DB_TYPE_CFILE
 	       || (node->info.sort_spec.expr->node_type == PT_HOST_VAR && dom_type == DB_TYPE_VARIABLE))
 	{
 	  if (sort_mode == SORT_LIST_ORDERBY)
@@ -7332,8 +7333,8 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     case PT_TYPE_DATETIMETZ:
     case PT_TYPE_DATETIMELTZ:
     case PT_TYPE_MONETARY:
-    case PT_TYPE_BLOB:
-    case PT_TYPE_CLOB:
+    case PT_TYPE_BFILE:
+    case PT_TYPE_CFILE:
     case PT_TYPE_JSON:
       dt->data_type = NULL;
       break;
@@ -7778,7 +7779,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_STRCMP || node->info.expr.op == PT_REPEAT
 		  || node->info.expr.op == PT_WEEKF || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
-		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CLOB_TO_CHAR
+		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CFILE_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
@@ -8103,15 +8104,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      goto end_expr_op_switch;
 		    }
 		}
-	      else if (node->info.expr.op == PT_BIT_TO_BLOB || node->info.expr.op == PT_CHAR_TO_BLOB
-		       || node->info.expr.op == PT_BLOB_LENGTH || node->info.expr.op == PT_CHAR_TO_CLOB
-		       || node->info.expr.op == PT_CLOB_LENGTH)
+	      else if (node->info.expr.op == PT_BIT_TO_BFILE || node->info.expr.op == PT_CHAR_TO_BFILE
+		       || node->info.expr.op == PT_BFILE_LENGTH || node->info.expr.op == PT_CHAR_TO_CFILE
+		       || node->info.expr.op == PT_CFILE_LENGTH)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  r2 = NULL;
 		  r3 = NULL;
 		}
-	      else if (node->info.expr.op == PT_BLOB_TO_BIT)
+	      else if (node->info.expr.op == PT_BFILE_TO_BIT)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if (node->info.expr.arg2 == NULL)
@@ -9298,32 +9299,32 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_SYS_GUID, domain);
 		  break;
 
-		case PT_BIT_TO_BLOB:
-		case PT_CHAR_TO_BLOB:
-		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BLOB);
+		case PT_BIT_TO_BFILE:
+		case PT_CHAR_TO_BFILE:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BFILE);
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_BIT_TO_BLOB, domain);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_BIT_TO_BFILE, domain);
 		  parser_free_tree (parser, data_type);
 		  break;
 
-		case PT_BLOB_TO_BIT:
+		case PT_BFILE_TO_BIT:
 		  data_type = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_BLOB_TO_BIT, domain);
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_BFILE_TO_BIT, domain);
 		  parser_free_tree (parser, data_type);
 		  break;
 
-		case PT_CHAR_TO_CLOB:
-		  data_type = pt_make_prim_data_type (parser, PT_TYPE_CLOB);
+		case PT_CHAR_TO_CFILE:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_CFILE);
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CHAR_TO_CLOB, domain);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CHAR_TO_CFILE, domain);
 		  parser_free_tree (parser, data_type);
 		  break;
 
-		case PT_CLOB_TO_CHAR:
+		case PT_CFILE_TO_CHAR:
 		  if (node->data_type == NULL)
 		    {
 		      data_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
@@ -9335,15 +9336,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_CLOB_TO_CHAR, domain);
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_CFILE_TO_CHAR, domain);
 		  break;
 
-		case PT_BLOB_LENGTH:
-		case PT_CLOB_LENGTH:
+		case PT_BFILE_LENGTH:
+		case PT_CFILE_LENGTH:
 		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
-		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOB_LENGTH, domain);
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOBFILE_LENGTH, domain);
 		  parser_free_tree (parser, data_type);
 		  break;
 
@@ -20611,7 +20612,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      /* append LOB type attributes to select_list */
+      /* append LOBFILE type attributes to select_list */
       node = statement->info.delete_.spec;
       while (node)
 	{
@@ -20629,9 +20630,9 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      attr = db_get_attributes (class_obj);
 	      while (attr)
 		{
-		  if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+		  if (attr->type->id == DB_TYPE_BFILE || attr->type->id == DB_TYPE_CFILE)
 		    {
-		      /* add lob to select list */
+		      /* add lobfile to select list */
 		      select_node = pt_name (parser, attr->header.name);
 		      if (select_node)
 			{
@@ -20786,7 +20787,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * must match the order of OID's in the generated SELECT statement */
       for (i = num_classes - 1, node = statement->info.delete_.spec; i >= 0 && node != NULL; node = node->next)
 	{
-	  bool found_lob = false;
+	  bool found_lobfile = false;
 
 	  if (!(node->info.spec.flag & PT_SPEC_FLAG_DELETE))
 	    {
@@ -20830,21 +20831,21 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (!class_info->needs_pruning)
 	    {
-	      class_info->num_lob_attrs = regu_int_array_alloc (num_subclasses);
-	      if (class_info->num_lob_attrs == NULL)
+	      class_info->num_lobfile_attrs = regu_int_array_alloc (num_subclasses);
+	      if (class_info->num_lobfile_attrs == NULL)
 		{
 		  goto error_return;
 		}
-	      regu_array_alloc (&class_info->lob_attr_ids, num_subclasses);
-	      if (class_info->lob_attr_ids == NULL)
+	      regu_array_alloc (&class_info->lobfile_attr_ids, num_subclasses);
+	      if (class_info->lobfile_attr_ids == NULL)
 		{
 		  goto error_return;
 		}
 	    }
 	  else
 	    {
-	      class_info->num_lob_attrs = NULL;
-	      class_info->lob_attr_ids = NULL;
+	      class_info->num_lobfile_attrs = NULL;
+	      class_info->lobfile_attr_ids = NULL;
 	    }
 
 	  j = 0;
@@ -20868,41 +20869,41 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      if (!class_info->needs_pruning)
 		{
-		  class_info->num_lob_attrs[j] = 0;
-		  class_info->lob_attr_ids[j] = NULL;
+		  class_info->num_lobfile_attrs[j] = 0;
+		  class_info->lobfile_attr_ids[j] = NULL;
 
 		  if (cl_name_node != node->info.spec.flat_entity_list)
 		    {
-		      /* lob attributes from root table are already handled */
+		      /* lobfile attributes from root table are already handled */
 		      DB_ATTRIBUTE *attrs, *attr;
 
 		      attrs = db_get_attributes (class_obj);
 		      for (attr = attrs; attr; attr = (DB_ATTRIBUTE *) attr->header.next)
 			{
-			  if ((attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+			  if ((attr->type->id == DB_TYPE_BFILE || attr->type->id == DB_TYPE_CFILE)
 			      && (attr->class_mop != node->info.spec.flat_entity_list->info.name.db_object))
 			    {
-			      /* count lob attributes that don't belong to the root table */
-			      class_info->num_lob_attrs[j]++;
-			      found_lob = true;
+			      /* count lobfile attributes that don't belong to the root table */
+			      class_info->num_lobfile_attrs[j]++;
+			      found_lobfile = true;
 			    }
 			}
-		      if (class_info->num_lob_attrs[j] > 0)
+		      if (class_info->num_lobfile_attrs[j] > 0)
 			{
-			  /* some lob attributes were found, save their ids */
+			  /* some lobfile attributes were found, save their ids */
 			  int count = 0;
 
-			  class_info->lob_attr_ids[j] = regu_int_array_alloc (class_info->num_lob_attrs[j]);
-			  if (!class_info->lob_attr_ids[j])
+			  class_info->lobfile_attr_ids[j] = regu_int_array_alloc (class_info->num_lobfile_attrs[j]);
+			  if (!class_info->lobfile_attr_ids[j])
 			    {
 			      goto error_return;
 			    }
 			  for (attr = attrs; attr; attr = (DB_ATTRIBUTE *) attr->header.next)
 			    {
-			      if ((attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+			      if ((attr->type->id == DB_TYPE_BFILE || attr->type->id == DB_TYPE_CFILE)
 				  && (attr->class_mop != node->info.spec.flat_entity_list->info.name.db_object))
 				{
-				  class_info->lob_attr_ids[j][count++] = attr->id;
+				  class_info->lobfile_attr_ids[j][count++] = attr->id;
 				}
 			    }
 			}
@@ -20913,12 +20914,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      j++;
 	    }
 
-	  if (!found_lob)
+	  if (!found_lobfile)
 	    {
-	      /* no lob attributes were found, num_lob_attrs and lob_attr_ids can be set to NULL. this avoids keeping
+	      /* no lobfile attributes were found, num_lobfile_attrs and lobfile_attr_ids can be set to NULL. this avoids keeping
 	       * useless information in xasl */
-	      class_info->num_lob_attrs = NULL;
-	      class_info->lob_attr_ids = NULL;
+	      class_info->num_lobfile_attrs = NULL;
+	      class_info->lobfile_attr_ids = NULL;
 	    }
 	}
 

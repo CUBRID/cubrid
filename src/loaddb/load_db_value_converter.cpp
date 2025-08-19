@@ -158,10 +158,10 @@ namespace cubload
     setters_[DB_TYPE_VARBIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
     setters_[DB_TYPE_VARBIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
 
-    setters_[DB_TYPE_BLOB][LDR_ELO_EXT] = &to_db_elo_ext;
-    setters_[DB_TYPE_BLOB][LDR_ELO_INT] = &to_db_elo_int;
-    setters_[DB_TYPE_CLOB][LDR_ELO_EXT] = &to_db_elo_ext;
-    setters_[DB_TYPE_CLOB][LDR_ELO_INT] = &to_db_elo_int;
+    setters_[DB_TYPE_BFILE][LDR_ELO_EXT] = &to_db_elo_ext;
+    setters_[DB_TYPE_BFILE][LDR_ELO_INT] = &to_db_elo_int;
+    setters_[DB_TYPE_CFILE][LDR_ELO_EXT] = &to_db_elo_ext;
+    setters_[DB_TYPE_CFILE][LDR_ELO_INT] = &to_db_elo_int;
 
     setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
 
@@ -790,11 +790,11 @@ namespace cubload
 
     if (str[0] == 'B')
       {
-	type = DB_TYPE_BLOB;
+	type = DB_TYPE_BFILE;
       }
     else
       {
-	type = DB_TYPE_CLOB;
+	type = DB_TYPE_CFILE;
       }
 
     /* size */

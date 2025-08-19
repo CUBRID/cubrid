@@ -786,7 +786,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      pt_desired_type = p->type_enum;
 
-	      if (pt_desired_type == PT_TYPE_BLOB || pt_desired_type == PT_TYPE_CLOB)
+	      if (pt_desired_type == PT_TYPE_BFILE || pt_desired_type == PT_TYPE_CFILE)
 		{
 		  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -7167,7 +7167,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		    PT_NODE *elem;
 		    for (elem = dtyp; elem != NULL; elem = elem->next)
 		      {
-			if (PT_IS_LOB_TYPE (elem->type_enum))
+			if (PT_IS_LOBFILE_TYPE (elem->type_enum))
 			  {
 			    PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
 					 MSGCAT_SEMANTIC_INVALID_SET_ELEMENT, pt_show_type_enum (attribute->type_enum),
@@ -7442,7 +7442,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
       TP_DOMAIN *elem;
       for (elem = column->domain->setdomain; elem != NULL; elem = elem->next)
 	{
-	  if (TP_DOMAIN_TYPE (elem) == DB_TYPE_BLOB || TP_DOMAIN_TYPE (elem) == DB_TYPE_CLOB)
+	  if (TP_DOMAIN_TYPE (elem) == DB_TYPE_BFILE || TP_DOMAIN_TYPE (elem) == DB_TYPE_CFILE)
 	    {
 	      PT_TYPE_ENUM elem_type, set_type;
 	      elem_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (elem));
@@ -12679,7 +12679,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
   /* NOT NULL : gaining is not always allowed */
   if (is_att_prop_set (attr_chg_prop->p[P_NOT_NULL], ATT_CHG_PROPERTY_GAINED))
     {
-      if (t == PT_TYPE_BLOB || t == PT_TYPE_CLOB)
+      if (t == PT_TYPE_BFILE || t == PT_TYPE_CFILE)
 	{
 	  error = ER_SM_NOT_NULL_NOT_ALLOWED;
 	  *new_attempt = false;
@@ -13466,8 +13466,8 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
     case PT_TYPE_MIDXKEY:
     case PT_TYPE_COMPOUND:
     case PT_TYPE_RESULTSET:
-    case PT_TYPE_BLOB:
-    case PT_TYPE_CLOB:
+    case PT_TYPE_BFILE:
+    case PT_TYPE_CFILE:
     case PT_TYPE_ELO:
       return NULL;
     case PT_TYPE_JSON:

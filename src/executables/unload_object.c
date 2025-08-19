@@ -2360,14 +2360,14 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
       CHECK_PRINT_ERROR (process_set (db_get_set (value), obj_out));
       break;
 
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       {
 	DB_ELO *elo;
 	DB_TYPE dt = db_value_type (value);
 	char dts;
 
-	if (dt == DB_TYPE_BLOB)
+	if (dt == DB_TYPE_BFILE)
 	  {
 	    dts = 'B';
 	  }

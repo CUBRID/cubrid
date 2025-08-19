@@ -1274,7 +1274,7 @@
 #define ER_ES_GENERAL                               -1016
 #define ER_ES_INVALID_PATH                          -1017
 #define ER_ES_COPY_TO_DIFFERENT_TYPE                -1018
-#define ER_ES_NO_LOB_PATH			    -1019
+#define ER_ES_NO_LOBFILE_PATH			    -1019
 #define ER_ES_FILE_NOT_FOUND                        -1020
 #define ER_LK_DEADLOCK_CYCLE_DETECTED		    -1021
 

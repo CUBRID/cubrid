@@ -53,7 +53,7 @@
         ((SRV_HANDLE) ? (SRV_HANDLE)->query_seq_num : 0)
 
 #if defined(CAS_FOR_ORACLE)
-#define CLOB_LOCATOR_LIMIT	32 * 1000	/* 32K */
+#define CFILE_LOCATOR_LIMIT	32 * 1000	/* 32K */
 #define MAX_LOCP_COUNT 		1024
 #define DATA_SIZE		1024 * 1000
 #endif

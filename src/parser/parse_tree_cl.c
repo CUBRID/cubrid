@@ -4018,24 +4018,24 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "sys_guid ";
     case PT_OID_OF_DUPLICATE_KEY:
       return "oid_of_duplicate_key ";
-    case PT_BIT_TO_BLOB:
-      return "bit_to_blob";
-    case PT_CHAR_TO_BLOB:
-      return "char_to_blob";
-    case PT_BLOB_TO_BIT:
-      return "blob_to_bit";
-    case PT_CHAR_TO_CLOB:
-      return "char_to_clob";
-    case PT_CLOB_TO_CHAR:
-      return "clob_to_char";
-    case PT_BLOB_FROM_FILE:
-      return "blob_from_file";
-    case PT_CLOB_FROM_FILE:
-      return "clob_from_file";
-    case PT_BLOB_LENGTH:
-      return "blob_length";
-    case PT_CLOB_LENGTH:
-      return "clob_length";
+    case PT_BIT_TO_BFILE:
+      return "bit_to_bfile";
+    case PT_CHAR_TO_BFILE:
+      return "char_to_bfile";
+    case PT_BFILE_TO_BIT:
+      return "bfile_to_bit";
+    case PT_CHAR_TO_CFILE:
+      return "char_to_cfile";
+    case PT_CFILE_TO_CHAR:
+      return "cfile_to_char";
+    case PT_BFILE_FROM_FILE:
+      return "bfile_from_file";
+    case PT_CFILE_FROM_FILE:
+      return "cfile_from_file";
+    case PT_BFILE_LENGTH:
+      return "bfile_length";
+    case PT_CFILE_LENGTH:
+      return "cfile_length";
     case PT_TYPEOF:
       return "typeof ";
     case PT_INDEX_CARDINALITY:
@@ -4222,10 +4222,10 @@ pt_show_type_enum (PT_TYPE_ENUM t)
     case PT_TYPE_COMPOUND:
       return "unknown";
 
-    case PT_TYPE_BLOB:
-      return "blob";
-    case PT_TYPE_CLOB:
-      return "clob";
+    case PT_TYPE_BFILE:
+      return "bfile";
+    case PT_TYPE_CFILE:
+      return "cfile";
     case PT_TYPE_ELO:
       return "*elo*";
 
@@ -12046,22 +12046,22 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_BIT_TO_BLOB:
-      q = pt_append_nulstring (parser, q, " bit_to_blob(");
+    case PT_BIT_TO_BFILE:
+      q = pt_append_nulstring (parser, q, " bit_to_bfile(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_CHAR_TO_BLOB:
-      q = pt_append_nulstring (parser, q, " char_to_blob(");
+    case PT_CHAR_TO_BFILE:
+      q = pt_append_nulstring (parser, q, " char_to_bfile(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_BLOB_TO_BIT:
-      q = pt_append_nulstring (parser, q, " blob_to_bit(");
+    case PT_BFILE_TO_BIT:
+      q = pt_append_nulstring (parser, q, " bfile_to_bit(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       if (p->info.expr.arg2)
@@ -12073,16 +12073,16 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_CHAR_TO_CLOB:
-      q = pt_append_nulstring (parser, q, " char_to_clob(");
+    case PT_CHAR_TO_CFILE:
+      q = pt_append_nulstring (parser, q, " char_to_cfile(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_CLOB_TO_CHAR:
+    case PT_CFILE_TO_CHAR:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
-      q = pt_append_nulstring (parser, q, " clob_to_char(");
+      q = pt_append_nulstring (parser, q, " cfile_to_char(");
       q = pt_append_varchar (parser, q, r1);
       if (p->info.expr.arg2 != NULL && p->info.expr.arg2->node_type == PT_VALUE
 	  && p->info.expr.arg2->info.value.data_value.i != LANG_SYS_CODESET)
@@ -12093,29 +12093,29 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_BLOB_FROM_FILE:
-      q = pt_append_nulstring (parser, q, " blob_from_file(");
+    case PT_BFILE_FROM_FILE:
+      q = pt_append_nulstring (parser, q, " bfile_from_file(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_CLOB_FROM_FILE:
-      q = pt_append_nulstring (parser, q, " clob_from_file(");
+    case PT_CFILE_FROM_FILE:
+      q = pt_append_nulstring (parser, q, " cfile_from_file(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_BLOB_LENGTH:
-      q = pt_append_nulstring (parser, q, " blob_length(");
+    case PT_BFILE_LENGTH:
+      q = pt_append_nulstring (parser, q, " bfile_length(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
 
-    case PT_CLOB_LENGTH:
-      q = pt_append_nulstring (parser, q, " clob_length(");
+    case PT_CFILE_LENGTH:
+      q = pt_append_nulstring (parser, q, " cfile_length(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
@@ -16777,8 +16777,8 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  }
       }
       break;
-    case PT_TYPE_BLOB:
-    case PT_TYPE_CLOB:
+    case PT_TYPE_BFILE:
+    case PT_TYPE_CFILE:
     case PT_TYPE_NULL:
     case PT_TYPE_NA:
     case PT_TYPE_STAR:		/* as in count (*) */

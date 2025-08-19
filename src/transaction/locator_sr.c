@@ -4348,7 +4348,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 	  do
 	    {
-	      bool lob_exist = false;
+	      bool lobfile_exist = false;
 
 	      error_code =
 		btree_prepare_bts (thread_p, &bt_scan, &fkref->self_btid, &isid, &key_val_range, NULL, &fkref->self_oid,
@@ -4419,9 +4419,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      for (i = 0; i < attr_info.num_values; i++)
 			{
 			  value = &attr_info.values[i];
-			  if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+			  if (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE)
 			    {
-			      lob_exist = true;
+			      lobfile_exist = true;
 			      break;
 			    }
 			}
@@ -4459,7 +4459,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
 		    {
-		      if (lob_exist)
+		      if (lobfile_exist)
 			{
 			  error_code = locator_delete_lob_force (thread_p, &fkref->self_oid, oid_ptr, NULL);
 			}
@@ -6448,7 +6448,7 @@ error:
 }
 
 /*
- * locator_delete_lob_force () - Delete all blob which is in the given object
+ * locator_delete_lob_force () - Delete all bfile which is in the given object
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
  *
@@ -6483,11 +6483,11 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
     }
   attr_info_inited = true;
 
-  /* check if lob attribute exists */
+  /* check if lobfile attribute exists */
   for (i = 0; i < attr_info.num_values; i++)
     {
       value = &attr_info.values[i];
-      if (value->last_attrepr->type == DB_TYPE_BLOB || value->last_attrepr->type == DB_TYPE_CLOB)
+      if (value->last_attrepr->type == DB_TYPE_BFILE || value->last_attrepr->type == DB_TYPE_CFILE)
 	{
 	  found = true;
 	  break;
@@ -6515,7 +6515,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 	  recdes = &copy_recdes;
 	}
 
-      error_code = heap_attrinfo_delete_lob (thread_p, recdes, &attr_info);
+      error_code = heap_attrinfo_delete_lobfile (thread_p, recdes, &attr_info);
     }
 
 error:
@@ -7386,9 +7386,9 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   new_recdes->data = copyarea->mem;
   new_recdes->area_size = copyarea->length;
 
-  if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
+  if (lob_create_flag == LOB_FLAG_EXCLUDE_LOBFILE)
     {
-      scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, &build_record);
+      scan = heap_attrinfo_transform_to_disk_except_lobfile (thread_p, attr_info, old_recdes, &build_record);
     }
   else
     {
@@ -7575,7 +7575,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
       copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
-						 LOB_FLAG_INCLUDE_LOB);
+						 LOB_FLAG_INCLUDE_LOBFILE);
       if (copyarea == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -13546,7 +13546,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	}
       mvcc_reev_data->copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
-						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
+						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOBFILE);
       if (mvcc_reev_data->copyarea == NULL)
 	{
 	  ev_res = V_ERROR;

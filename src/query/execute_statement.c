@@ -9936,12 +9936,12 @@ delete_object_tuple (DB_OBJECT * object)
   /* authorizations checked in compiler--turn off but remember in parser so we can re-enable in case we run out of
    * memory and longjmp to the cleanup routine. */
 
-  /* delete blob or clob data files if exist */
+  /* delete bfile or cfile data files if exist */
   class_obj = db_get_class (object);
   attr = db_get_attributes (class_obj);
   while (attr)
     {
-      if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+      if (attr->type->id == DB_TYPE_BFILE || attr->type->id == DB_TYPE_CFILE)
 	{
 	  DB_VALUE dbvalue;
 	  error = db_get (object, attr->header.name, &dbvalue);
@@ -9949,7 +9949,7 @@ delete_object_tuple (DB_OBJECT * object)
 	    {
 	      DB_ELO *elo;
 
-	      assert (db_value_type (&dbvalue) == DB_TYPE_BLOB || db_value_type (&dbvalue) == DB_TYPE_CLOB);
+	      assert (db_value_type (&dbvalue) == DB_TYPE_BFILE || db_value_type (&dbvalue) == DB_TYPE_CFILE);
 	      elo = db_get_elo (&dbvalue);
 	      if (elo)
 		{
@@ -9966,7 +9966,7 @@ delete_object_tuple (DB_OBJECT * object)
 	}
       attr = db_attribute_next (attr);
     }
-  /* TODO: to delete blob or clob at db api call */
+  /* TODO: to delete bfile or cfile at db api call */
   error = db_drop (object);
 
   return error;

@@ -912,8 +912,8 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
 
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       {
 	DB_ELO *db_elo;
 
@@ -927,7 +927,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	      }
 	  }
 
-	result->type_enum = db_type == DB_TYPE_BLOB ? PT_TYPE_BLOB : PT_TYPE_CLOB;
+	result->type_enum = db_type == DB_TYPE_BFILE ? PT_TYPE_BFILE : PT_TYPE_CFILE;
       }
       break;
 
@@ -1522,11 +1522,11 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       name = "bit varying";
       break;
 
-    case PT_TYPE_BLOB:
-      name = "blob";
+    case PT_TYPE_BFILE:
+      name = "bfile";
       break;
-    case PT_TYPE_CLOB:
-      name = "clob";
+    case PT_TYPE_CFILE:
+      name = "cfile";
       break;
 
     case PT_TYPE_ENUMERATION:
@@ -1592,8 +1592,8 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_DATETIMETZ:
       retval = tp_domain_construct (domain_type, NULL, DB_DATETIMETZ_PRECISION, DB_DATETIME_DECIMAL_SCALE, NULL);
       break;
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:
     case DB_TYPE_ERROR:
@@ -1827,8 +1827,8 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
     case DB_TYPE_INTEGER:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
@@ -2055,8 +2055,8 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_INTEGER:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_TIME:
     case DB_TYPE_TIMESTAMP:
     case DB_TYPE_TIMESTAMPTZ:
@@ -2420,12 +2420,12 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_RESULTSET;
       break;
 
-    case PT_TYPE_BLOB:
-      db_type = DB_TYPE_BLOB;
+    case PT_TYPE_BFILE:
+      db_type = DB_TYPE_BFILE;
       break;
 
-    case PT_TYPE_CLOB:
-      db_type = DB_TYPE_CLOB;
+    case PT_TYPE_CFILE:
+      db_type = DB_TYPE_CFILE;
       break;
 
     case PT_TYPE_MAYBE:
@@ -2697,11 +2697,11 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_RESULTSET:
       pt_type = PT_TYPE_RESULTSET;
       break;
-    case DB_TYPE_BLOB:
-      pt_type = PT_TYPE_BLOB;
+    case DB_TYPE_BFILE:
+      pt_type = PT_TYPE_BFILE;
       break;
-    case DB_TYPE_CLOB:
-      pt_type = PT_TYPE_CLOB;
+    case DB_TYPE_CFILE:
+      pt_type = PT_TYPE_CFILE;
       break;
     case DB_TYPE_ENUMERATION:
       pt_type = PT_TYPE_ENUMERATION;
@@ -2858,8 +2858,8 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMETZ:
     case DB_TYPE_DATETIMELTZ:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_RESULTSET:
       /*
        * Nothing more to do for these guys; their type is completely
@@ -3537,17 +3537,17 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       *more_type_info_needed = (value->data_type == NULL);
       break;
 
-    case PT_TYPE_BLOB:
-      /* db_make_blob (db_value, (DB_ELO *)value->info.value.data_value.elo); */
-      db_make_elo (db_value, DB_TYPE_BLOB, &value->info.value.data_value.elo);
-      db_value->domain.general_info.type = DB_TYPE_BLOB;
+    case PT_TYPE_BFILE:
+      /* db_make_bfile (db_value, (DB_ELO *)value->info.value.data_value.elo); */
+      db_make_elo (db_value, DB_TYPE_BFILE, &value->info.value.data_value.elo);
+      db_value->domain.general_info.type = DB_TYPE_BFILE;
       value->info.value.db_value_is_in_workspace = false;
       break;
 
-    case PT_TYPE_CLOB:
-      /* db_make_clob (db_value, (DB_ELO *)value->info.value.data_value.elo); */
-      db_make_elo (db_value, DB_TYPE_CLOB, &value->info.value.data_value.elo);
-      db_value->domain.general_info.type = DB_TYPE_CLOB;
+    case PT_TYPE_CFILE:
+      /* db_make_cfile (db_value, (DB_ELO *)value->info.value.data_value.elo); */
+      db_make_elo (db_value, DB_TYPE_CFILE, &value->info.value.data_value.elo);
+      db_value->domain.general_info.type = DB_TYPE_CFILE;
       value->info.value.db_value_is_in_workspace = false;
       break;
 

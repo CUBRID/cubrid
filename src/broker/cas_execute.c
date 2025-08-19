@@ -206,8 +206,8 @@ static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_fla
 			     char column_type_flag);
 static void dbobj_to_casobj (DB_OBJECT * obj, T_OBJECT * cas_obj);
 static void casobj_to_dbobj (T_OBJECT * cas_obj, DB_OBJECT ** obj);
-static void dblob_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob);
-static void caslob_to_dblob (T_LOB_HANDLE * cas_lob, DB_VALUE * lob);
+static void dblobfile_to_caslobfile (DB_VALUE * lobfile, T_LOB_HANDLE * cas_lobfile);
+static void caslobfile_to_dblobfile (T_LOB_HANDLE * cas_lobfile, DB_VALUE * lobfile);
 static int get_attr_name (DB_OBJECT * obj, char ***ret_attr_name);
 static int get_attr_name_from_argv (int argc, void **argv, char ***ret_attr_name);
 static int oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int num_attr, char **attr_name);
@@ -271,7 +271,8 @@ static void add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss
 static void add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short day, unsigned char ext_type,
 			       int *net_size);
 static void add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, unsigned char ext_type, int *net_size);
-static void add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob, unsigned char ext_type, int *net_size);
+static void add_res_data_lobfile_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lobfile, unsigned char ext_type,
+					 int *net_size);
 static void trigger_event_str (DB_TRIGGER_EVENT trig_event, char *buf);
 static void trigger_status_str (DB_TRIGGER_STATUS trig_status, char *buf);
 static void trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf);
@@ -376,8 +377,8 @@ static char cas_u_type[] = { 0,	/* 0 */
   0, 0,				/* 29 - 30 */
   CCI_U_TYPE_BIGINT,		/* 31 */
   CCI_U_TYPE_DATETIME,		/* 32 */
-  CCI_U_TYPE_BLOB,		/* 33 */
-  CCI_U_TYPE_CLOB,		/* 34 */
+  CCI_U_TYPE_BFILE,		/* 33 */
+  CCI_U_TYPE_CFILE,		/* 34 */
   CCI_U_TYPE_ENUM,		/* 35 */
   CCI_U_TYPE_TIMESTAMPTZ,	/* 36 */
   CCI_U_TYPE_TIMESTAMPLTZ,	/* 37 */
@@ -4837,13 +4838,13 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       coercion_flag = FALSE;
       break;
 
-    case CCI_U_TYPE_BLOB:
-    case CCI_U_TYPE_CLOB:
+    case CCI_U_TYPE_BFILE:
+    case CCI_U_TYPE_CFILE:
       {
-	T_LOB_HANDLE cas_lob;
+	T_LOB_HANDLE cas_lobfile;
 
-	net_arg_get_lob_handle (&cas_lob, net_value);
-	caslob_to_dblob (&cas_lob, &db_val);
+	net_arg_get_lobfile_handle (&cas_lobfile, net_value);
+	caslobfile_to_dblobfile (&cas_lobfile, &db_val);
 	coercion_flag = FALSE;
       }
       break;
@@ -5514,13 +5515,13 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       }
       break;
 
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
       {
-	T_LOB_HANDLE cas_lob;
+	T_LOB_HANDLE cas_lobfile;
 
-	dblob_to_caslob (val, &cas_lob);
-	add_res_data_lob_handle (net_buf, &cas_lob, ext_col_type, &data_size);
+	dblobfile_to_caslobfile (val, &cas_lobfile);
+	add_res_data_lobfile_handle (net_buf, &cas_lobfile, ext_col_type, &data_size);
       }
       break;
     case DB_TYPE_JSON:
@@ -5580,40 +5581,40 @@ casobj_to_dbobj (T_OBJECT * cas_obj, DB_OBJECT ** obj)
 }
 
 static void
-dblob_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob)
+dblobfile_to_caslobfile (DB_VALUE * lobfile, T_LOB_HANDLE * cas_lobfile)
 {
   DB_ELO *elo;
 
-  cas_lob->db_type = db_value_type (lob);
-  assert (cas_lob->db_type == DB_TYPE_BLOB || cas_lob->db_type == DB_TYPE_CLOB);
-  elo = db_get_elo (lob);
+  cas_lobfile->db_type = db_value_type (lobfile);
+  assert (cas_lobfile->db_type == DB_TYPE_BFILE || cas_lobfile->db_type == DB_TYPE_CFILE);
+  elo = db_get_elo (lobfile);
   if (elo == NULL)
     {
-      cas_lob->lob_size = -1;
-      cas_lob->locator_size = 0;
-      cas_lob->locator = NULL;
+      cas_lobfile->lob_size = -1;
+      cas_lobfile->locator_size = 0;
+      cas_lobfile->locator = NULL;
     }
   else
     {
-      cas_lob->lob_size = elo->size;
-      cas_lob->locator_size = elo->locator ? strlen (elo->locator) + 1 : 0;
+      cas_lobfile->lob_size = elo->size;
+      cas_lobfile->locator_size = elo->locator ? strlen (elo->locator) + 1 : 0;
       /* including null character */
-      cas_lob->locator = elo->locator;
+      cas_lobfile->locator = elo->locator;
     }
 }
 
 static void
-caslob_to_dblob (T_LOB_HANDLE * cas_lob, DB_VALUE * db_lob)
+caslobfile_to_dblobfile (T_LOB_HANDLE * cas_lobfile, DB_VALUE * db_lobfile)
 {
   DB_ELO elo;
 
-  assert (cas_lob->db_type == DB_TYPE_BLOB || cas_lob->db_type == DB_TYPE_CLOB);
+  assert (cas_lobfile->db_type == DB_TYPE_BFILE || cas_lobfile->db_type == DB_TYPE_CFILE);
   elo_init_structure (&elo);
-  elo.size = cas_lob->lob_size;
+  elo.size = cas_lobfile->lob_size;
   elo.type = ELO_FBO;
-  elo.locator = db_private_strdup (NULL, cas_lob->locator);
-  db_make_elo (db_lob, (DB_TYPE) (cas_lob->db_type), &elo);
-  db_lob->need_clear = true;
+  elo.locator = db_private_strdup (NULL, cas_lobfile->locator);
+  db_make_elo (db_lobfile, (DB_TYPE) (cas_lobfile->db_type), &elo);
+  db_lobfile->need_clear = true;
 }
 
 static int
@@ -7495,24 +7496,24 @@ add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, unsigned char ext_type
 }
 
 static void
-add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob, unsigned char ext_type, int *net_size)
+add_res_data_lobfile_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lobfile, unsigned char ext_type, int *net_size)
 {
-  int lob_handle_size = (NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lob->locator_size);
+  int lobfile_handle_size = (NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lobfile->locator_size);
 
-  /* db_type + lob_size + locator_size + locator including null character */
+  /* db_type + lobfile_size + locator_size + locator including null character */
   if (ext_type)
     {
-      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + lob_handle_size, NULL);
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + lobfile_handle_size, NULL);
       net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
     }
   else
     {
-      net_buf_cp_int (net_buf, lob_handle_size, NULL);
+      net_buf_cp_int (net_buf, lobfile_handle_size, NULL);
     }
-  net_buf_cp_lob_handle (net_buf, lob);
+  net_buf_cp_lobfile_handle (net_buf, lobfile);
   if (net_size)
     {
-      *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + lob_handle_size;
+      *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + lobfile_handle_size;
     }
 }
 
@@ -11216,16 +11217,16 @@ reset_optimization_level_as_saved (void)
 }
 
 int
-ux_lob_new (int lob_type, T_NET_BUF * net_buf)
+ux_lobfile_new (int lobfile_type, T_NET_BUF * net_buf)
 {
-  DB_VALUE lob_dbval;
+  DB_VALUE lobfile_dbval;
   int err_code;
-  T_LOB_HANDLE cas_lob;
-  int lob_handle_size;
+  T_LOB_HANDLE cas_lobfile;
+  int lobfile_handle_size;
   DB_ELO *elo_debug;
 
-  err_code = db_create_fbo (&lob_dbval, (lob_type == CCI_U_TYPE_BLOB) ? DB_TYPE_BLOB : DB_TYPE_CLOB);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: result_code=%d", err_code);
+  err_code = db_create_fbo (&lobfile_dbval, (lobfile_type == CCI_U_TYPE_BFILE) ? DB_TYPE_BFILE : DB_TYPE_CFILE);
+  cas_log_debug (ARG_FILE_LINE, "ux_lobfile_new: result_code=%d", err_code);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -11235,33 +11236,33 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
     }
 
   /* set result */
-  dblob_to_caslob (&lob_dbval, &cas_lob);
-  lob_handle_size = NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + cas_lob.locator_size;
-  net_buf_cp_int (net_buf, lob_handle_size, NULL);
-  net_buf_cp_lob_handle (net_buf, &cas_lob);
+  dblobfile_to_caslobfile (&lobfile_dbval, &cas_lobfile);
+  lobfile_handle_size = NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + cas_lobfile.locator_size;
+  net_buf_cp_int (net_buf, lobfile_handle_size, NULL);
+  net_buf_cp_lobfile_handle (net_buf, &cas_lobfile);
 
-  elo_debug = db_get_elo (&lob_dbval);
+  elo_debug = db_get_elo (&lobfile_dbval);
 
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: locator=%s, size=%lld, type=%u", elo_debug->locator,
+  cas_log_debug (ARG_FILE_LINE, "ux_lobfile_new: locator=%s, size=%lld, type=%u", elo_debug->locator,
 		 elo_debug->size, elo_debug->type);
 
-  db_value_clear (&lob_dbval);
+  db_value_clear (&lobfile_dbval);
   return 0;
 }
 
 int
-ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BUF * net_buf)
+ux_lobfile_write (DB_VALUE * lobfile_dbval, INT64 offset, int size, char *data, T_NET_BUF * net_buf)
 {
   DB_BIGINT size_written;
   int err_code;
   DB_ELO *elo_debug;
 
-  elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: locator=%s, size=%lld, type=%u", elo_debug->locator,
+  elo_debug = db_get_elo (lobfile_dbval);
+  cas_log_debug (ARG_FILE_LINE, "ux_lobfile_write: locator=%s, size=%lld, type=%u", elo_debug->locator,
 		 elo_debug->size, elo_debug->type);
 
   err_code = db_elo_write (elo_debug, offset, data, size, &size_written);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: result_code=%d", size_written);
+  cas_log_debug (ARG_FILE_LINE, "ux_lobfile_write: result_code=%d", size_written);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -11277,25 +11278,25 @@ ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BU
 }
 
 int
-ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
+ux_lobfile_read (DB_VALUE * lobfile_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
 {
   DB_BIGINT size_read;
   int err_code;
   char *data = NET_BUF_CURR_PTR (net_buf) + NET_SIZE_INT;
   DB_ELO *elo_debug;
 
-  elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: locator=%s, size=%lld, type=%u", elo_debug->locator,
+  elo_debug = db_get_elo (lobfile_dbval);
+  cas_log_debug (ARG_FILE_LINE, "ux_lobfile_read: locator=%s, size=%lld, type=%u", elo_debug->locator,
 		 elo_debug->size, elo_debug->type);
 
   if (size + NET_SIZE_INT > NET_BUF_FREE_SIZE (net_buf))
     {
       size = NET_BUF_FREE_SIZE (net_buf) - NET_SIZE_INT;
-      cas_log_debug (ARG_FILE_LINE, "ux_lob_read: length reduced to %d", size);
+      cas_log_debug (ARG_FILE_LINE, "ux_lobfile_read: length reduced to %d", size);
     }
 
   err_code = db_elo_read (elo_debug, offset, data, size, &size_read);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: result_code=%d size_read=%lld", err_code, size_read);
+  cas_log_debug (ARG_FILE_LINE, "ux_lobfile_read: result_code=%d size_read=%lld", err_code, size_read);
   if (err_code < 0)
     {
       errors_in_transaction++;

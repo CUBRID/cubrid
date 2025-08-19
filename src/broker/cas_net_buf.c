@@ -255,18 +255,18 @@ net_buf_cp_object (T_NET_BUF * net_buf, T_OBJECT * oid)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
-net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob)
+net_buf_cp_lobfile_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lobfile)
 {
-  int lob_handle_size = NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lob->locator_size;
-  /* db_type + lob_size + locator_size + locator including null character */
-  if (NET_BUF_FREE_SIZE (net_buf) < lob_handle_size && net_buf_realloc (net_buf, lob_handle_size))
+  int lobfile_handle_size = NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lobfile->locator_size;
+  /* db_type + lobfile_size + locator_size + locator including null character */
+  if (NET_BUF_FREE_SIZE (net_buf) < lobfile_handle_size && net_buf_realloc (net_buf, lobfile_handle_size))
     {
       return CAS_ER_NO_MORE_MEMORY;
     }
-  net_buf_cp_int (net_buf, lob->db_type, NULL);
-  net_buf_cp_bigint (net_buf, lob->lob_size, NULL);
-  net_buf_cp_int (net_buf, lob->locator_size, NULL);
-  net_buf_cp_str (net_buf, lob->locator, lob->locator_size);
+  net_buf_cp_int (net_buf, lobfile->db_type, NULL);
+  net_buf_cp_bigint (net_buf, lobfile->lob_size, NULL);
+  net_buf_cp_int (net_buf, lobfile->locator_size, NULL);
+  net_buf_cp_str (net_buf, lobfile->locator, lobfile->locator_size);
   /* including null character */
 
   return 0;
@@ -730,45 +730,45 @@ net_arg_get_cci_object (int *pageid, short *slotid, short *volid, void *arg)
 }
 
 void
-net_arg_get_lob_handle (T_LOB_HANDLE * lob, void *arg)
+net_arg_get_lobfile_handle (T_LOB_HANDLE * lobfile, void *arg)
 {
   int tmp_i;
   INT64 tmp_i64;
   char *cur_p = (char *) arg + NET_SIZE_INT;
 
   memcpy (&tmp_i, cur_p, NET_SIZE_INT);
-  lob->db_type = ntohl (tmp_i);
+  lobfile->db_type = ntohl (tmp_i);
   cur_p += NET_SIZE_INT;
   memcpy (&tmp_i64, cur_p, NET_SIZE_INT64);
-  lob->lob_size = ntohi64 (tmp_i64);
+  lobfile->lob_size = ntohi64 (tmp_i64);
   cur_p += NET_SIZE_INT64;
   memcpy (&tmp_i, cur_p, NET_SIZE_INT);
-  lob->locator_size = ntohl (tmp_i);
+  lobfile->locator_size = ntohl (tmp_i);
   cur_p += NET_SIZE_INT;
-  if (lob->locator_size <= 0)
+  if (lobfile->locator_size <= 0)
     {
-      lob->locator = NULL;
-      lob->locator_size = 0;
+      lobfile->locator = NULL;
+      lobfile->locator_size = 0;
     }
   else
     {
-      lob->locator = cur_p;	/* null terminated */
+      lobfile->locator = cur_p;	/* null terminated */
     }
 }
 
 void
-net_arg_get_lob_value (DB_VALUE * db_lob, void *arg)
+net_arg_get_lobfile_value (DB_VALUE * db_lobfile, void *arg)
 {
-  T_LOB_HANDLE lob_handle;
+  T_LOB_HANDLE lobfile_handle;
   DB_ELO elo;
 
-  net_arg_get_lob_handle (&lob_handle, arg);
+  net_arg_get_lobfile_handle (&lobfile_handle, arg);
   elo_init_structure (&elo);
-  elo.size = lob_handle.lob_size;
+  elo.size = lobfile_handle.lob_size;
   elo.type = ELO_FBO;
-  elo.locator = db_private_strdup (NULL, lob_handle.locator);
-  db_make_elo (db_lob, (DB_TYPE) lob_handle.db_type, &elo);
-  db_lob->need_clear = true;
+  elo.locator = db_private_strdup (NULL, lobfile_handle.locator);
+  db_make_elo (db_lobfile, (DB_TYPE) lobfile_handle.db_type, &elo);
+  db_lobfile->need_clear = true;
 }
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 

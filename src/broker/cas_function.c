@@ -144,8 +144,8 @@ static const char *type_str_tbl[] = {
   "RESULTSET",			/* CCI_U_TYPE_RESULTSET */
   "BIGINT",			/* CCI_U_TYPE_BIGINT */
   "DATETIME",			/* CCI_U_TYPE_DATETIME */
-  "BLOB",			/* CCI_U_TYPE_BLOB */
-  "CLOB",			/* CCI_U_TYPE_CLOB */
+  "BFILE",			/* CCI_U_TYPE_BFILE */
+  "CFILE",			/* CCI_U_TYPE_CFILE */
   "ENUM",			/* CCI_U_TYPE_ENUM */
   "USHORT",			/* CCI_U_TYPE_USHORT */
   "UINT",			/* CCI_U_TYPE_UINT */
@@ -2525,21 +2525,21 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	write2_func ("%d|%d|%d", pageid, slotid, volid);
       }
       break;
-    case CCI_U_TYPE_BLOB:
-    case CCI_U_TYPE_CLOB:
+    case CCI_U_TYPE_BFILE:
+    case CCI_U_TYPE_CFILE:
       {
 	DB_VALUE db_val;
 	DB_ELO *db_elo;
-	net_arg_get_lob_value (&db_val, net_value);
+	net_arg_get_lobfile_value (&db_val, net_value);
 	db_elo = db_get_elo (&db_val);
 	if (db_elo)
 	  {
-	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB", db_elo->size, db_elo->locator,
-			 db_elo->meta_data, db_elo->type);
+	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BFILE) ? "BFILE" : "CFILE", db_elo->size,
+			 db_elo->locator, db_elo->meta_data, db_elo->type);
 	  }
 	else
 	  {
-	    write2_func ("invalid LOB");
+	    write2_func ("invalid LOBFILE");
 	  }
 
 	db_value_clear (&db_val);
@@ -2600,11 +2600,11 @@ get_error_log_eids (int err)
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 FN_RETURN
-fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_lobfile_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  int lob_type, err_code;
+  int lobfile_type, err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
-  struct timeval lob_new_begin, lob_new_end;
+  struct timeval lobfile_new_begin, lobfile_new_end;
 
   if (argc != 1)
     {
@@ -2617,8 +2617,8 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
       return FN_KEEP_CONN;
     }
 
-  net_arg_get_int (&lob_type, argv[0]);
-  if (lob_type != CCI_U_TYPE_BLOB && lob_type != CCI_U_TYPE_CLOB)
+  net_arg_get_int (&lobfile_type, argv[0]);
+  if (lobfile_type != CCI_U_TYPE_BFILE && lobfile_type != CCI_U_TYPE_CFILE)
     {
 #if defined(CAS_FOR_DBMS)
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
@@ -2629,29 +2629,29 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
       return FN_KEEP_CONN;
     }
 
-  cas_log_write (0, false, "lob_new lob_type=%d", lob_type);
-  gettimeofday (&lob_new_begin, NULL);
+  cas_log_write (0, false, "lobfile_new lobfile_type=%d", lobfile_type);
+  gettimeofday (&lobfile_new_begin, NULL);
 
-  err_code = ux_lob_new (lob_type, net_buf);
+  err_code = ux_lobfile_new (lobfile_type, net_buf);
 
-  gettimeofday (&lob_new_end, NULL);
-  ut_timeval_diff (&lob_new_begin, &lob_new_end, &elapsed_sec, &elapsed_msec);
+  gettimeofday (&lobfile_new_end, NULL);
+  ut_timeval_diff (&lobfile_new_begin, &lobfile_new_end, &elapsed_sec, &elapsed_msec);
 
-  cas_log_write (0, false, "lob_new %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
+  cas_log_write (0, false, "lobfile_new %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_lobfile_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  DB_VALUE lob_dbval;
+  DB_VALUE lobfile_dbval;
   INT64 offset;
   char *data_buf = NULL;
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
-  struct timeval lob_new_begin, lob_new_end;
+  struct timeval lobfile_new_begin, lobfile_new_end;
   DB_ELO *elo_debug;
 
   if (argc != 3)
@@ -2665,34 +2665,35 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
       return FN_KEEP_CONN;
     }
 
-  net_arg_get_lob_value (&lob_dbval, argv[0]);
+  net_arg_get_lobfile_value (&lobfile_dbval, argv[0]);
   net_arg_get_bigint (&offset, argv[1]);
   net_arg_get_str (&data_buf, &data_length, argv[2]);
 
-  elo_debug = db_get_elo (&lob_dbval);
-  cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
-  gettimeofday (&lob_new_begin, NULL);
+  elo_debug = db_get_elo (&lobfile_dbval);
+  cas_log_write (0, false, "lobfile_write lobfile_type=%d offset=%lld, length=%d", elo_debug->type, offset,
+		 data_length);
+  gettimeofday (&lobfile_new_begin, NULL);
 
-  err_code = ux_lob_write (&lob_dbval, offset, data_length, data_buf, net_buf);
+  err_code = ux_lobfile_write (&lobfile_dbval, offset, data_length, data_buf, net_buf);
 
-  gettimeofday (&lob_new_end, NULL);
-  ut_timeval_diff (&lob_new_begin, &lob_new_end, &elapsed_sec, &elapsed_msec);
+  gettimeofday (&lobfile_new_end, NULL);
+  ut_timeval_diff (&lobfile_new_begin, &lobfile_new_end, &elapsed_sec, &elapsed_msec);
 
-  cas_log_write (0, false, "lob_write %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
+  cas_log_write (0, false, "lobfile_write %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
-  db_value_clear (&lob_dbval);
+  db_value_clear (&lobfile_dbval);
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_lobfile_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  DB_VALUE lob_dbval;
+  DB_VALUE lobfile_dbval;
   INT64 offset;
   int err_code, data_length = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
-  struct timeval lob_new_begin, lob_new_end;
+  struct timeval lobfile_new_begin, lobfile_new_end;
   DB_ELO *elo_debug;
 
   if (argc != 3)
@@ -2706,23 +2707,23 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       return FN_KEEP_CONN;
     }
 
-  net_arg_get_lob_value (&lob_dbval, argv[0]);
+  net_arg_get_lobfile_value (&lobfile_dbval, argv[0]);
   net_arg_get_bigint (&offset, argv[1]);
   net_arg_get_int (&data_length, argv[2]);
 
-  elo_debug = db_get_elo (&lob_dbval);
-  cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
-  gettimeofday (&lob_new_begin, NULL);
+  elo_debug = db_get_elo (&lobfile_dbval);
+  cas_log_write (0, false, "lobfile_read lobfile_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
+  gettimeofday (&lobfile_new_begin, NULL);
 
-  err_code = ux_lob_read (&lob_dbval, offset, data_length, net_buf);
+  err_code = ux_lobfile_read (&lobfile_dbval, offset, data_length, net_buf);
 
-  gettimeofday (&lob_new_end, NULL);
-  ut_timeval_diff (&lob_new_begin, &lob_new_end, &elapsed_sec, &elapsed_msec);
+  gettimeofday (&lobfile_new_end, NULL);
+  ut_timeval_diff (&lobfile_new_begin, &lobfile_new_end, &elapsed_sec, &elapsed_msec);
 
-  cas_log_write (0, false, "lob_read %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
+  cas_log_write (0, false, "lobfile_read %s%d time %d.%03d%s", err_code < 0 ? "error:" : "", err_info.err_number,
 		 elapsed_sec, elapsed_msec, get_error_log_eids (err_info.err_number));
 
-  db_value_clear (&lob_dbval);
+  db_value_clear (&lobfile_dbval);
   return FN_KEEP_CONN;
 }
 

@@ -3497,7 +3497,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	{
 	  /* A lob file must be deleted */
 	  (void) or_unpack_string (undo_data, &es_uri);
-	  vacuum_er_log (VACUUM_ER_LOG_WORKER, "Delete lob %s based on %lld|%d", es_uri, LSA_AS_ARGS (&rcv_lsa));
+	  vacuum_er_log (VACUUM_ER_LOG_WORKER, "Delete lobfile %s based on %lld|%d", es_uri, LSA_AS_ARGS (&rcv_lsa));
 	  if (es_delete_file (es_uri) != NO_ERROR)
 	    {
 	      er_clear ();

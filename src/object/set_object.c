@@ -5762,8 +5762,8 @@ setobj_get_element (COL * set, int index, DB_VALUE * value)
       if ((db_type == DB_TYPE_STRING && db_get_string (value) == NULL)
 	  || (TP_IS_SET_TYPE (db_type) && db_get_set (value) == NULL)
 	  || (db_type == DB_TYPE_OBJECT && db_get_object (value) == NULL)
-	  || (db_type == DB_TYPE_BLOB && db_get_elo (value) == NULL)
-	  || (db_type == DB_TYPE_CLOB && db_get_elo (value) == NULL)
+	  || (db_type == DB_TYPE_BFILE && db_get_elo (value) == NULL)
+	  || (db_type == DB_TYPE_CFILE && db_get_elo (value) == NULL)
 	  || (db_type == DB_TYPE_ELO && db_get_elo (value) == NULL))
 	{
 	  db_make_null (value);

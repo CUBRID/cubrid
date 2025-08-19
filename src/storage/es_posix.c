@@ -208,7 +208,7 @@ es_rename_path (char *src, char *tgt, char *metaname)
  *
  * return: return code of file open
  * path(in): file path for open, relative or absolute
- *           if relative, (lob_base_path) + path will be opened
+ *           if relative, (lobfile_base_path) + path will be opened
  */
 
 static int
@@ -256,7 +256,7 @@ es_abs_open (const char *path, int flags, mode_t mode)
  *
  * return: return code, 0: already absolute path
  * path(in): file path for open, relative or absolute
- *           if relative, (lob_base_path) + path will be opened
+ *           if relative, (lobfile_base_path) + path will be opened
  */
 static int
 es_make_abs_path (char *dst, const char *src)

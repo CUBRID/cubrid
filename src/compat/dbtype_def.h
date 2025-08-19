@@ -726,8 +726,8 @@ extern "C"
     DB_TYPE_TABLE = 30,		/* internal use only */
     DB_TYPE_BIGINT = 31,
     DB_TYPE_DATETIME = 32,
-    DB_TYPE_BLOB = 33,
-    DB_TYPE_CLOB = 34,
+    DB_TYPE_BFILE = 33,
+    DB_TYPE_CFILE = 34,
     DB_TYPE_ENUMERATION = 35,
     DB_TYPE_TIMESTAMPTZ = 36,
     DB_TYPE_TIMESTAMPLTZ = 37,

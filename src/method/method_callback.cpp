@@ -491,8 +491,8 @@ namespace cubmethod
       case DB_TYPE_BIT:
       case DB_TYPE_VARBIT:
       case DB_TYPE_TABLE:
-      case DB_TYPE_BLOB:
-      case DB_TYPE_CLOB:
+      case DB_TYPE_BFILE:
+      case DB_TYPE_CFILE:
       case DB_TYPE_TIMESTAMPTZ:
       case DB_TYPE_TIMESTAMPLTZ:
       case DB_TYPE_DATETIMETZ:

@@ -924,8 +924,8 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:
     case DB_TYPE_POINTER:

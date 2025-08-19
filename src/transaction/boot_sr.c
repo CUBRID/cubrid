@@ -167,7 +167,7 @@ static OID boot_Header_oid;	/* Location of parameters */
 static BOOT_DB_PARM boot_Struct_db_parm;	/* The structure */
 static BOOT_DB_PARM *boot_Db_parm = &boot_Struct_db_parm;
 static OID *boot_Db_parm_oid = &boot_Header_oid;
-static char boot_Lob_path[PATH_MAX + LOB_PATH_PREFIX_MAX] = "";
+static char boot_Lob_path[PATH_MAX + LOBFILE_PATH_PREFIX_MAX] = "";
 static bool skip_to_check_ct_classes_for_rebuild = false;
 static char boot_Server_session_key[SERVER_SESSION_KEY_SIZE];
 
@@ -477,10 +477,10 @@ boot_db_full_name ()
 }
 
 /*
- * boot_get_lob_path - return the lob path which is read from databases.txt
+ * boot_get_lobfile_path - return the lobfile path which is read from databases.txt
  */
 const char *
-boot_get_lob_path (void)
+boot_get_lobfile_path (void)
 {
   return boot_Lob_path;
 }
@@ -1400,7 +1400,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   char db_pathbuf[PATH_MAX];
   char vol_real_path[PATH_MAX];
   char log_pathbuf[PATH_MAX];
-  char lob_pathbuf[LOB_PATH_PREFIX_MAX + PATH_MAX];
+  char lobfile_pathbuf[LOBFILE_PATH_PREFIX_MAX + PATH_MAX];
   char dbtxt_label[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
   char original_namebuf[PATH_MAX];
@@ -1411,7 +1411,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   void (*volatile old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
-  const char *db_path, *log_path, *lob_path;
+  const char *db_path, *log_path, *lobfile_path;
   char *p;
   THREAD_ENTRY *thread_p = NULL;
 
@@ -1497,13 +1497,13 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   /*
-   * Make sure that the db_path and log_path and lob_path are the canonicalized
+   * Make sure that the db_path and log_path and lobfile_path are the canonicalized
    * absolute pathnames
    */
 
   memset (db_pathbuf, 0, sizeof (db_pathbuf));
   memset (log_pathbuf, 0, sizeof (log_pathbuf));
-  memset (lob_pathbuf, 0, sizeof (lob_pathbuf));
+  memset (lobfile_pathbuf, 0, sizeof (lobfile_pathbuf));
 
   /*
    * for db path,
@@ -1539,49 +1539,49 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   boot_remove_useless_path_separator (log_path, log_pathbuf);
 
   /*
-   * for lob path,
+   * for lobfile path,
    * convert to absolute path, remove useless PATH_SEPARATOR
    */
-  lob_path = db_path_info->lob_path;
-  if (es_get_type (lob_path) == ES_NONE)
+  lobfile_path = db_path_info->lobfile_path;
+  if (es_get_type (lobfile_path) == ES_NONE)
     {
-      snprintf (lob_pathbuf, sizeof (lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, lob_path);
-      p = strchr (lob_pathbuf, ':') + 1;
+      snprintf (lobfile_pathbuf, sizeof (lobfile_pathbuf), "%s%s", LOBFILE_PATH_DEFAULT_PREFIX, lobfile_path);
+      p = strchr (lobfile_pathbuf, ':') + 1;
     }
   else
     {
-      p = strchr (strcpy (lob_pathbuf, lob_path), ':') + 1;
+      p = strchr (strcpy (lobfile_pathbuf, lobfile_path), ':') + 1;
     }
-  lob_path = p;
+  lobfile_path = p;
 
-  if (lob_path == NULL)
+  if (lobfile_path == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, lob_pathbuf);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, lobfile_pathbuf);
       return NULL_TRAN_INDEX;
     }
 
-  if (es_get_type (lob_pathbuf) == ES_POSIX)
+  if (es_get_type (lobfile_pathbuf) == ES_POSIX)
     {
 #if defined (WINDOWS)
-      if (realpath (lob_path, fixed_pathbuf) != NULL
+      if (realpath (lobfile_path, fixed_pathbuf) != NULL
 	  && (stat (fixed_pathbuf, &stat_buf) == 0 && S_ISDIR (stat_buf.st_mode)))
 #else
-      if (realpath (lob_path, fixed_pathbuf) != NULL)
+      if (realpath (lobfile_path, fixed_pathbuf) != NULL)
 #endif
 	{
-	  lob_path = fixed_pathbuf;
+	  lobfile_path = fixed_pathbuf;
 	}
       else
 	{
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lob_path);
-	  if (mkdir (lob_path, 0700) < 0)
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_DIRECTORY_DOESNOT_EXIST, 1, lobfile_path);
+	  if (mkdir (lobfile_path, 0700) < 0)
 	    {
-	      cub_dirname_r (lob_path, fixed_pathbuf, PATH_MAX);
+	      cub_dirname_r (lobfile_path, fixed_pathbuf, PATH_MAX);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", fixed_pathbuf);
 	      goto exit_on_error;
 	    }
 	}
-      boot_remove_useless_path_separator (lob_path, p);
+      boot_remove_useless_path_separator (lobfile_path, p);
     }
 
   /*
@@ -1804,15 +1804,15 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
 	  if (db == NULL)
 	    {
 	      db =
-		cfg_add_db (&dir, client_credential->get_db_name (), db_pathbuf, log_pathbuf, lob_pathbuf,
+		cfg_add_db (&dir, client_credential->get_db_name (), db_pathbuf, log_pathbuf, lobfile_pathbuf,
 			    db_path_info->db_host);
 	    }
 	  else
 	    {
-	      cfg_update_db (db, db_pathbuf, log_pathbuf, lob_pathbuf, db_path_info->db_host);
+	      cfg_update_db (db, db_pathbuf, log_pathbuf, lobfile_pathbuf, db_path_info->db_host);
 	    }
 
-	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobpath == NULL
+	  if (db == NULL || db->name == NULL || db->pathname == NULL || db->logpath == NULL || db->lobfilepath == NULL
 	      || db->hosts == NULL)
 	    {
 	      goto exit_on_error;
@@ -2129,9 +2129,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       strcpy (log_path, db->logpath);
     }
 
-  if (db->lobpath != NULL)
+  if (db->lobfilepath != NULL)
     {
-      strlcpy (boot_Lob_path, db->lobpath, sizeof (boot_Lob_path));
+      strlcpy (boot_Lob_path, db->lobfilepath, sizeof (boot_Lob_path));
     }
   else
     {
@@ -2572,7 +2572,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
   else
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
     }
 
   if (xtran_server_commit (thread_p, false) != TRAN_UNACTIVE_COMMITTED)
@@ -3232,7 +3232,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 #endif /* SERVER_MODE */
       server_credential->db_full_name = boot_Db_full_name;
       server_credential->host_name = boot_Host_name;
-      server_credential->lob_path = boot_Lob_path;
+      server_credential->lobfile_path = boot_Lob_path;
       server_credential->process_id = getpid ();
       COPY_OID (&server_credential->root_class_oid, &boot_Db_parm->rootclass_oid);
       if (boot_find_root_heap (&(server_credential->root_class_hfid)) != NO_ERROR
@@ -3926,7 +3926,7 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  *   newdb_name(in): Name of new database
  *   newdb_path(in): Directory where the new database will reside
  *   newlog_path(in): Directory where the log volumes of the new database will reside
- *   newlob_path(in): Directory where the lob volumes of the new database will reside
+ *   newlobfile_path(in): Directory where the lobfile volumes of the new database will reside
  *   newdb_server_host(in): Server host where the new database reside
  *   new_volext_path(in): A path is included if all volumes are placed in one place/directory. If NULL is given,
  *                        - If file "fileof_vols_and_wherepaths" is given, the path is found in this file.
@@ -3940,7 +3940,7 @@ xboot_backup (THREAD_ENTRY * thread_p, const char *backup_path, FILEIO_BACKUP_LE
  */
 int
 xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char *new_db_name, const char *new_db_path,
-	    const char *new_log_path, const char *new_lob_path, const char *new_db_server_host,
+	    const char *new_log_path, const char *new_lobfile_path, const char *new_db_server_host,
 	    const char *new_volext_path, const char *fileof_vols_and_copypaths, bool new_db_overwrite)
 {
   DB_INFO *dir = NULL;
@@ -3950,8 +3950,8 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
   char new_db_pathbuf[PATH_MAX];
   char new_db_pathbuf2[PATH_MAX];
   char new_log_pathbuf[PATH_MAX];
-  char new_lob_pathbuf2[PATH_MAX];
-  char new_lob_pathbuf[PATH_MAX];
+  char new_lobfile_pathbuf2[PATH_MAX];
+  char new_lobfile_pathbuf[PATH_MAX];
   char new_volext_pathbuf[PATH_MAX];
   char fixed_pathbuf[PATH_MAX];
   char new_db_server_host_buf[CUB_MAXHOSTNAMELEN + 1];
@@ -4006,39 +4006,43 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
       new_log_path = new_log_pathbuf;
     }
 
-  if (new_lob_path == NULL)
+  if (new_lobfile_path == NULL)
     {
       assert_release (new_db_path != NULL);
-      if (snprintf (new_lob_pathbuf2, sizeof (new_lob_pathbuf2), "%s%s/lob", LOB_PATH_DEFAULT_PREFIX, new_db_path) < 0)
+      if (snprintf
+	  (new_lobfile_pathbuf2, sizeof (new_lobfile_pathbuf2), "%s%s/lobfile", LOBFILE_PATH_DEFAULT_PREFIX,
+	   new_db_path) < 0)
 	{
 	  assert_release (false);
 	}
-      new_lob_path = new_lob_pathbuf2;
+      new_lobfile_path = new_lobfile_pathbuf2;
     }
 
-  if (new_lob_path != NULL)
+  if (new_lobfile_path != NULL)
     {
-      ES_TYPE es_type = es_get_type (new_lob_path);
+      ES_TYPE es_type = es_get_type (new_lobfile_path);
       char *p = NULL;
 
       switch (es_type)
 	{
 	case ES_NONE:
 	  /* prepend default prefix */
-	  if (snprintf (new_lob_pathbuf, sizeof (new_lob_pathbuf), "%s%s", LOB_PATH_DEFAULT_PREFIX, new_lob_path) < 0)
+	  if (snprintf
+	      (new_lobfile_pathbuf, sizeof (new_lobfile_pathbuf), "%s%s", LOBFILE_PATH_DEFAULT_PREFIX,
+	       new_lobfile_path) < 0)
 	    {
 	      assert_release (false);
 	    }
-	  new_lob_path = new_lob_pathbuf;
+	  new_lobfile_path = new_lobfile_pathbuf;
 	  es_type = ES_POSIX;
-	  p = (char *) strchr (new_lob_path, ':') + 1;
+	  p = (char *) strchr (new_lobfile_path, ':') + 1;
 	  break;
 	case ES_POSIX:
-	  p = strchr (strcpy (new_lob_pathbuf, new_lob_path), ':') + 1;
+	  p = strchr (strcpy (new_lobfile_pathbuf, new_lobfile_path), ':') + 1;
 	  break;
 	case ES_OWFS:
 #if !defined (CUBRID_OWFS)
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, new_lob_path);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, new_lobfile_path);
 	  error_code = ER_ES_INVALID_PATH;
 	  goto error;
 #endif /* !CUBRID_OWFS */
@@ -4175,8 +4179,8 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 	  // get current thread entry
 	  thread_p = thread_get_thread_entry_info ();
 	  error_code =
-	    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host,
-			new_volext_path, fileof_vols_and_copypaths, false);
+	    xboot_copy (thread_p, from_dbname, new_db_name, new_db_path, new_log_path, new_lobfile_path,
+			new_db_server_host, new_volext_path, fileof_vols_and_copypaths, false);
 	  assert (thread_p == NULL);
 
 	  return error_code;
@@ -4247,7 +4251,7 @@ xboot_copy (REFPTR (THREAD_ENTRY, thread_p), const char *from_dbname, const char
 
       if (db == NULL)
 	{
-	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host);
+	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lobfile_path, new_db_server_host);
 	}
       else
 	{
@@ -4518,18 +4522,18 @@ xboot_soft_rename (THREAD_ENTRY * thread_p, const char *old_db_name, const char 
     {
       if (db == NULL)
 	{
-	  const char *old_lob_path = NULL;
-	  char new_lob_pathbuf[PATH_MAX] = { '\0' };
-	  char *new_lob_path = NULL;
+	  const char *old_lobfile_path = NULL;
+	  char new_lobfile_pathbuf[PATH_MAX] = { '\0' };
+	  char *new_lobfile_path = NULL;
 
-	  old_lob_path = boot_get_lob_path ();
-	  if (*old_lob_path != '\0')
+	  old_lobfile_path = boot_get_lobfile_path ();
+	  if (*old_lobfile_path != '\0')
 	    {
-	      new_lob_path = strncpy_bufsize (new_lob_pathbuf, old_lob_path);
+	      new_lobfile_path = strncpy_bufsize (new_lobfile_pathbuf, old_lobfile_path);
 	    }
 
 	  cfg_delete_db (&dir, old_db_name);
-	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lob_path, new_db_server_host);
+	  db = cfg_add_db (&dir, new_db_name, new_db_path, new_log_path, new_lobfile_path, new_db_server_host);
 	}
       else
 	{

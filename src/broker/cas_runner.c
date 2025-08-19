@@ -1122,9 +1122,9 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info, int bind_
 	  return -1;
 	}
     }
-  else if (bind_info[num_bind].type == CCI_U_TYPE_BLOB || bind_info[num_bind].type == CCI_U_TYPE_CLOB)
+  else if (bind_info[num_bind].type == CCI_U_TYPE_BFILE || bind_info[num_bind].type == CCI_U_TYPE_CFILE)
     {
-      fprintf (stderr, "binding BLOB/CLOB is not implemented : %s\nreplaced with NULL value.\n", p + 1);
+      fprintf (stderr, "binding BFILE/CFILE is not implemented : %s\nreplaced with NULL value.\n", p + 1);
       bind_info[num_bind].type = CCI_U_TYPE_NULL;
     }
 

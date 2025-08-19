@@ -3605,7 +3605,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 		   + OR_INT_SIZE	/* tran_state */
 		   + or_packed_string_length (server_credential.db_full_name, &strlen1)	/* db_full_name */
 		   + or_packed_string_length (server_credential.host_name, &strlen2)	/* host_name */
-		   + or_packed_string_length (server_credential.lob_path, &strlen3)	/* lob_path */
+		   + or_packed_string_length (server_credential.lobfile_path, &strlen3)	/* lobfile_path */
 		   + OR_INT_SIZE	/* process_id */
 		   + OR_OID_SIZE	/* root_class_oid */
 		   + OR_HFID_SIZE	/* root_class_hfid */
@@ -3628,7 +3628,7 @@ sboot_register_client (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 	  ptr = or_pack_int (ptr, (int) tran_state);
 	  ptr = or_pack_string_with_length (ptr, server_credential.db_full_name, strlen1);
 	  ptr = or_pack_string_with_length (ptr, server_credential.host_name, strlen2);
-	  ptr = or_pack_string_with_length (ptr, server_credential.lob_path, strlen3);
+	  ptr = or_pack_string_with_length (ptr, server_credential.lobfile_path, strlen3);
 	  ptr = or_pack_int (ptr, server_credential.process_id);
 	  ptr = or_pack_oid (ptr, &server_credential.root_class_oid);
 	  ptr = or_pack_hfid (ptr, &server_credential.root_class_hfid);
