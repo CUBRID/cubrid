@@ -112,8 +112,10 @@ namespace cubconn
       void enqueue (const message &item);
       bool notify ();
 
-      void init ();
+      void initialize ();
+      void finalize ();
       bool run ();
+
       void attach ();
 
     private:
