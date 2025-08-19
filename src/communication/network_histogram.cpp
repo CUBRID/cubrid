@@ -26,6 +26,9 @@
 #if defined (SERVER_MODE)
 #include "session.h"
 #include "thread_manager.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 #endif
 
 #if defined (CS_MODE)
