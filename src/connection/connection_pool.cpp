@@ -68,6 +68,10 @@ namespace cubconn
     for (auto &worker : m_workers)
       {
 	worker->enqueue (request);
+	if (!worker->notify ())
+	  {
+	    assert_release (false);
+	  }
       }
     m_max_connections = -1;
     m_workers.clear ();

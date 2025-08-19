@@ -1356,7 +1356,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       goto shutdown;
     }
 
-  /* init epoll worker pool */
+  /* initialize epoll worker pool */
   connections.initialize (std::thread::hardware_concurrency () / 2, MAX_CONNECTIONS);
 
   /* attach pool */
@@ -1373,6 +1373,9 @@ shutdown:
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+  connector.stop ();
+  connections.finalize ();
 
   /* stop vacuum threads. */
   vacuum_stop_workers (thread_p);
@@ -1391,21 +1394,24 @@ shutdown:
   // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
+
   if (prm_get_bool_value (PRM_ID_STATS_ON))
     {
       perfmon_er_log_current_stats (thread_p);
     }
   css_Server_request_worker_pool->er_log_stats ();
-  css_Connection_worker_pool->er_log_stats ();
+  //css_Connection_worker_pool->er_log_stats ();
 
   // destroy thread worker pools
   thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
-  thread_get_manager ()->destroy_worker_pool (css_Connection_worker_pool);
+  /*
+     thread_get_manager ()->destroy_worker_pool (css_Connection_worker_pool);
 
-  if (!HA_DISABLED ())
-    {
-      css_close_connection_to_master ();
-    }
+     if (!HA_DISABLED ())
+     {
+     css_close_connection_to_master ();
+     }
+   */
 
   if (css_Master_server_name)
     {
@@ -3280,12 +3286,12 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
       if (stop_phase == THREAD_STOP_LOGWR)
         {
           css_Server_request_worker_pool->map_running_contexts (css_stop_log_writer);
-          css_Connection_worker_pool->map_running_contexts (css_stop_log_writer);
+          //css_Connection_worker_pool->map_running_contexts (css_stop_log_writer);
         }
       else
         {
           css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
-          css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
+          //css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
         }
 
       // sleep for 50 milliseconds
@@ -3298,8 +3304,10 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
       if (!is_not_stopped)
         {
           // check connection threads too
+	  /*
           css_Connection_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
                                                             is_not_stopped);
+	  */
         }
       if (!is_not_stopped)
         {
@@ -3603,7 +3611,7 @@ css_get_server_request_thread_timeout_configuration (void)
 static void
 css_start_all_threads (void)
 {
-  if (css_Connection_worker_pool == NULL || css_Server_request_worker_pool == NULL)
+  if (/*css_Connection_worker_pool == NULL || */css_Server_request_worker_pool == NULL)
     {
       // not started yet
       return;
@@ -3616,10 +3624,12 @@ css_start_all_threads (void)
   bool start_connections = css_get_connection_thread_pooling_configuration ();
   bool start_workers = css_get_server_request_thread_pooling_configuration ();
 
+  /*
   if (start_connections)
     {
       css_Connection_worker_pool->start_all_workers ();
     }
+  */
   if (start_workers)
     {
       css_Server_request_worker_pool->start_all_workers ();
