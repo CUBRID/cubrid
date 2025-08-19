@@ -25426,10 +25426,6 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	  /* Safe guard: Fence keys can be only first or last keys in page, but never first or last in entire index. */
 	  assert ((bts->slot_id == 1 && !VPID_ISNULL (&node_header->prev_vpid))
 		  || (bts->slot_id == key_count && !VPID_ISNULL (&node_header->next_vpid)));
-
-	  /* Increment read_keys for fence keys */
-	  bts->read_keys++;
-
 	  /* Fall through. */
 
 	  /* TODO: Get key info should be able to obtain fences too. */
