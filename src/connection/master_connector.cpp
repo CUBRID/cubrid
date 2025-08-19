@@ -37,6 +37,7 @@
 
 #include <tuple>
 #include <cstdint>
+#include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
@@ -100,13 +101,45 @@ namespace cubconn
     return false;
   }
 
-  master_connector::master_connector ()
+  master_connector::master_connector () :
+    m_stop (false)
   {
+    context *ctx;
+
+    m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (m_eventfd == -1)
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector: failed to create eventfd\n");
+	assert_release (false);
+      }
+    ctx = new context ();
+    if (!ctx)
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector: failed to allocate memory\n");
+	assert_release (false);
+      }
+    ctx->m_conn = reinterpret_cast<css_conn_entry *> (new int { m_eventfd });
+    if (!ctx->m_conn)
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector: failed to allocate memory\n");
+	assert_release (false);
+      }
+    if (!m_events.add_descriptor (m_eventfd, EPOLLIN, ctx))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector: add_descriptor failed\n");
+	delete ctx->m_conn;
+	assert_release (false);
+      }
     m_context.reset ();
   }
 
   master_connector::~master_connector ()
   {
+  }
+
+  void master_connector::stop () noexcept
+  {
+    m_stop = true;
   }
 
   bool master_connector::attach (connection_pool &pool) noexcept
@@ -814,7 +847,7 @@ namespace cubconn
     context *ctx;
     int nfds, i;
 
-    while (true)
+    while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
 	if (nfds < 0)
@@ -847,6 +880,11 @@ namespace cubconn
 	      }
 	    if (events[i].events & EPOLLIN)
 	      {
+		if (ctx->m_conn->fd == m_eventfd)
+		  {
+		    /* finalize */
+		    return true;
+		  }
 		if (!this->handle_master_reception (ctx))
 		  {
 		    _er_log_debug (__FILE__, __LINE__, "master_connector->execute: handle_master_reception failed: %d\n", 0);

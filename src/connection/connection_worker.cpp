@@ -68,7 +68,8 @@ namespace cubconn
   connection_worker::connection_worker (connection_pool *pool, std::size_t index) :
     m_stop (false),
     m_parent (pool),
-    m_index (index)
+    m_index (index),
+    m_entry (nullptr)
   {
     context *ctx;
 
@@ -107,7 +108,6 @@ namespace cubconn
 	m_thread.join ();
       }
     ::close (m_eventfd);
-    m_entry->unregister_id ();
   }
 
   void connection_worker::enqueue (const message &item)
@@ -791,7 +791,7 @@ namespace cubconn
     return status;
   }
 
-  void connection_worker::init ()
+  void connection_worker::initialize ()
   {
     m_entry = cubthread::get_manager ()->claim_entry ();
     m_entry->register_id ();
@@ -803,13 +803,18 @@ namespace cubconn
     m_entry->get_error_context ().register_thread_local ();
   }
 
+  void connection_worker::finalize ()
+  {
+    m_entry->unregister_id ();
+    cubthread::get_manager ()->retire_entry (*m_entry);
+  }
+
   bool connection_worker::run ()
   {
     std::array<epoll_event, 128> events;
     result status;
     context *ctx;
     int nfds, i;
-
 
     while (!m_stop)
       {
@@ -886,7 +891,8 @@ namespace cubconn
 
   void connection_worker::attach ()
   {
-    this->init ();
+    this->initialize ();
     this->run ();
+    this->finalize ();
   }
 }
