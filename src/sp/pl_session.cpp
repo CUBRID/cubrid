@@ -211,23 +211,6 @@ namespace cubpl
     return it->second;
   }
 
-  bool
-  session::is_thread_involved (thread_id_t id)
-  {
-    std::lock_guard<std::mutex> lock (m_mutex_stack);
-
-    for (const auto &it : m_stack_map)
-      {
-	execution_stack *stack = it.second;
-	if (stack->get_thread_entry () && id == stack->get_thread_entry ()->get_id ())
-	  {
-	    return true;
-	  }
-      }
-
-    return false;
-  }
-
   connection_view
   session::claim_connection ()
   {
@@ -294,6 +277,23 @@ namespace cubpl
 	  }
 	release_connection (cv);
       }
+  }
+
+  bool
+  session::is_thread_involved (thread_id_t id)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex_stack);
+
+    for (const auto &it : m_stack_map)
+      {
+	execution_stack *stack = it.second;
+	if (stack->get_thread_entry () && id == stack->get_thread_entry ()->get_id ())
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
   }
 
   void
