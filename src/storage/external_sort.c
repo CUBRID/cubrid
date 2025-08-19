@@ -4869,9 +4869,9 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
 
       if (parallel_num <= 1)
-        {
-          return 1;
-        }
+	{
+	  return 1;
+	}
 
       /* Find the number of parallel processes by page_cnt and tuple_cnt */
       if (sort_info_p->input_file->page_cnt <= parallel_num || sort_info_p->input_file->tuple_cnt <= parallel_num)
