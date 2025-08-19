@@ -222,7 +222,7 @@ set(CONNECTION_HEADERS
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_common.cpp
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
-  ${COMMUNICATION_DIR}/network_interface_sr.c
+  ${COMMUNICATION_DIR}/network_interface_sr.cpp
   ${COMMUNICATION_DIR}/network_sr.c
   )
 

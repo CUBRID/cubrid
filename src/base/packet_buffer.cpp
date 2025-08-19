@@ -80,15 +80,15 @@ namespace cubbase
     assert (m_buf.size () != 0);
 
     if (m_index == 0)
-    {
-      m_msg.msg_iov = reinterpret_cast<struct ::iovec *> (m_buf.data ());
-      m_msg.msg_iovlen = m_buf.size ();
-    }
+      {
+	m_msg.msg_iov = reinterpret_cast<struct ::iovec *> (m_buf.data ());
+	m_msg.msg_iovlen = m_buf.size ();
+      }
     else
-    {
-       m_msg.msg_iov = reinterpret_cast<struct ::iovec *> (&m_buf[m_index]);
-       m_msg.msg_iovlen = m_buf.size () - m_index;
-    }
+      {
+	m_msg.msg_iov = reinterpret_cast<struct ::iovec *> (&m_buf[m_index]);
+	m_msg.msg_iovlen = m_buf.size () - m_index;
+      }
 
     assert_release (m_msg.msg_iovlen <= IOV_MAX);
   }
@@ -103,17 +103,17 @@ namespace cubbase
     size_t delta;
 
     if (m_msg.msg_iov)
-    {
-      assert (reinterpret_cast<char *> (m_buf.data ()) <= reinterpret_cast<char *> (m_msg.msg_iov));
+      {
+	assert (reinterpret_cast<char *> (m_buf.data ()) <= reinterpret_cast<char *> (m_msg.msg_iov));
 
-      /* previous packets have not yet been sent */
-      delta = static_cast<size_t> (reinterpret_cast<char *> (m_msg.msg_iov) - reinterpret_cast<char *> (m_buf.data ()));
-      m_index = delta / sizeof (cubbase::span<std::byte>);
-    }
+	/* previous packets have not yet been sent */
+	delta = static_cast<size_t> (reinterpret_cast<char *> (m_msg.msg_iov) - reinterpret_cast<char *> (m_buf.data ()));
+	m_index = delta / sizeof (cubbase::span<std::byte>);
+      }
     else
-    {
-      m_index = 0;
-    }
+      {
+	m_index = 0;
+      }
   }
 }
 
