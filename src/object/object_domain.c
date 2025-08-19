@@ -568,7 +568,7 @@ static void tp_swizzle_oid (TP_DOMAIN * domain);
 static int tp_domain_check_class (TP_DOMAIN * domain, int *change);
 static const TP_DOMAIN *tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest);
 #if defined(ENABLE_UNUSED_FUNCTION)
-static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool *do_alloc);
+static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool * do_alloc);
 #endif
 static int tp_atotime (const DB_VALUE * src, DB_TIME * temp);
 static int tp_atodate (const DB_VALUE * src, DB_DATE * temp);
@@ -595,8 +595,8 @@ static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * d
 #if defined(CUBRID_DEBUG)
 static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
 #endif
-static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__((ALWAYS_INLINE));
-static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__((ALWAYS_INLINE));
+static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
+static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
 static int tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
@@ -608,7 +608,7 @@ static int tp_scientific_str_to_bi (const char *start, const char *end, INTL_COD
 static DB_BIGINT tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round,
 					 DB_DATA_STATUS * data_stat);
 
-static UINT64 tp_ubi_times_ten (UINT64 ubi, bool *truncated);
+static UINT64 tp_ubi_times_ten (UINT64 ubi, bool * truncated);
 
 /*
  * tp_init - Global initialization for this module.
@@ -799,7 +799,7 @@ tp_final (void)
  * enumeration (in/out): enumeration
  */
 void
-tp_domain_clear_enumeration (DB_ENUMERATION *enumeration)
+tp_domain_clear_enumeration (DB_ENUMERATION * enumeration)
 {
   int i = 0;
 
@@ -826,7 +826,7 @@ tp_domain_clear_enumeration (DB_ENUMERATION *enumeration)
  * db_enum2 (in);
  */
 static int
-tp_enumeration_match (const DB_ENUMERATION *db_enum1, const DB_ENUMERATION *db_enum2)
+tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2)
 {
   int i;
   DB_ENUM_ELEMENT *enum1 = NULL, *enum2 = NULL;
@@ -947,7 +947,7 @@ tp_get_fixed_precision (DB_TYPE domain_type)
  *    domain and free that.
  */
 void
-tp_domain_free (TP_DOMAIN *dom)
+tp_domain_free (TP_DOMAIN * dom)
 {
   TP_DOMAIN *d, *next;
 
@@ -991,7 +991,7 @@ tp_domain_free (TP_DOMAIN *dom)
  *    where we need to quickly synthesize some transient domain structures.
  */
 void
-tp_domain_init (TP_DOMAIN *domain, DB_TYPE type_id)
+tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 {
   assert (type_id <= DB_TYPE_LAST);
 
@@ -1080,7 +1080,7 @@ tp_domain_new (DB_TYPE type)
  *    The setdomain must also be a transient domain list.
  */
 TP_DOMAIN *
-tp_domain_construct (DB_TYPE domain_type, DB_OBJECT *class_obj, int precision, int scale, TP_DOMAIN *setdomain)
+tp_domain_construct (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale, TP_DOMAIN * setdomain)
 {
   TP_DOMAIN *new_dm;
   int fixed_precision;
@@ -1161,7 +1161,7 @@ tp_domain_construct (DB_TYPE domain_type, DB_OBJECT *class_obj, int precision, i
  * src (in) : source enumeration
  */
 int
-tp_domain_copy_enumeration (DB_ENUMERATION *dest, const DB_ENUMERATION *src)
+tp_domain_copy_enumeration (DB_ENUMERATION * dest, const DB_ENUMERATION * src)
 {
   int error = NO_ERROR, i;
   DB_ENUM_ELEMENT *dest_elem = NULL, *src_elem = NULL;
@@ -1276,7 +1276,7 @@ error_return:
  *    may be pointing to it.
  */
 TP_DOMAIN *
-tp_domain_copy (const TP_DOMAIN *domain, bool check_cache)
+tp_domain_copy (const TP_DOMAIN * domain, bool check_cache)
 {
   TP_DOMAIN *new_domain, *first, *last;
   const TP_DOMAIN *d;
@@ -1369,7 +1369,7 @@ error:
  *    domain(in): a domain list
  */
 static int
-tp_domain_size_internal (const TP_DOMAIN *domain)
+tp_domain_size_internal (const TP_DOMAIN * domain)
 {
   int size = 0;
 
@@ -1388,7 +1388,7 @@ tp_domain_size_internal (const TP_DOMAIN *domain)
  *    domain(in): domain
  */
 int
-tp_domain_size (const TP_DOMAIN *domain)
+tp_domain_size (const TP_DOMAIN * domain)
 {
   return tp_domain_size_internal (domain);
 }
@@ -1399,7 +1399,7 @@ tp_domain_size (const TP_DOMAIN *domain)
  *    domain(in): domain
  */
 int
-tp_setdomain_size (const TP_DOMAIN *domain)
+tp_setdomain_size (const TP_DOMAIN * domain)
 {
   if (TP_DOMAIN_TYPE (domain) == DB_TYPE_MIDXKEY)
     {
@@ -1426,7 +1426,7 @@ tp_setdomain_size (const TP_DOMAIN *domain)
  * only if you know exactly what you're doing!!!!
  */
 static void
-tp_value_slam_domain (DB_VALUE *value, const DB_DOMAIN *domain)
+tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain)
 {
   switch (TP_DOMAIN_TYPE (domain))
     {
@@ -1471,7 +1471,7 @@ tp_value_slam_domain (DB_VALUE *value, const DB_DOMAIN *domain)
  *    exact(in): how tolerant we are of mismatches
  */
 int
-tp_domain_match (const TP_DOMAIN *dom1, const TP_DOMAIN *dom2, TP_MATCH exact)
+tp_domain_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact)
 {
   return tp_domain_match_internal (dom1, dom2, exact, true);
 }
@@ -1484,7 +1484,7 @@ tp_domain_match (const TP_DOMAIN *dom1, const TP_DOMAIN *dom2, TP_MATCH exact)
  *    exact(in): how tolerant we are of mismatches
  */
 int
-tp_domain_match_ignore_order (const TP_DOMAIN *dom1, const TP_DOMAIN *dom2, TP_MATCH exact)
+tp_domain_match_ignore_order (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact)
 {
   return tp_domain_match_internal (dom1, dom2, exact, false);
 }
@@ -1498,7 +1498,7 @@ tp_domain_match_ignore_order (const TP_DOMAIN *dom1, const TP_DOMAIN *dom2, TP_M
  *    match_order(in): check for asc/desc
  */
 static int
-tp_domain_match_internal (const TP_DOMAIN *dom1, const TP_DOMAIN *dom2, TP_MATCH exact, bool match_order)
+tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact, bool match_order)
 {
   int match = 0;
 
@@ -1881,7 +1881,7 @@ tp_domain_match_internal (const TP_DOMAIN *dom1, const TP_DOMAIN *dom2, TP_MATCH
  *    setdomain(in): used to find appropriate list of MIDXKEY
  */
 STATIC_INLINE TP_DOMAIN **
-tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN *setdomain)
+tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
 {
   int list_index;
 
@@ -1904,7 +1904,7 @@ tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN *setdomain)
  *    setdomain(in): used to find appropriate list of MIDXKEY
  */
 STATIC_INLINE TP_DOMAIN *
-tp_domain_get_list (DB_TYPE type, TP_DOMAIN *setdomain)
+tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain)
 {
   TP_DOMAIN **dlist;
 
@@ -1924,7 +1924,7 @@ tp_domain_get_list (DB_TYPE type, TP_DOMAIN *setdomain)
  *                                             others: precision's asc order
  */
 static TP_DOMAIN *
-tp_is_domain_cached (TP_DOMAIN *dlist, TP_DOMAIN *transient, TP_MATCH exact, TP_DOMAIN **ins_pos)
+tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, TP_DOMAIN ** ins_pos)
 {
   TP_DOMAIN *domain = dlist;
   int match = 0;
@@ -2555,7 +2555,7 @@ tp_is_domain_cached (TP_DOMAIN *dlist, TP_DOMAIN *transient, TP_MATCH exact, TP_
  *   a lot of code that expects this to be the case.
  */
 static void
-tp_swizzle_oid (TP_DOMAIN *domain)
+tp_swizzle_oid (TP_DOMAIN * domain)
 {
   TP_DOMAIN *d;
   DB_TYPE type;
@@ -2742,7 +2742,7 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
  *    is_desc(in): desc order for index key_type
  */
 TP_DOMAIN *
-tp_domain_find_object (DB_TYPE type, OID *class_oid, struct db_object *class_mop, bool is_desc)
+tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_mop, bool is_desc)
 {
   TP_DOMAIN *dom;
 
@@ -2807,7 +2807,7 @@ tp_domain_find_object (DB_TYPE type, OID *class_oid, struct db_object *class_mop
  *    is_desc(in): desc order for index key_type
  */
 TP_DOMAIN *
-tp_domain_find_set (DB_TYPE type, TP_DOMAIN *setdomain, bool is_desc)
+tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 {
   TP_DOMAIN *dom;
   int dsize;
@@ -2915,7 +2915,7 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN *setdomain, bool is_desc)
  * is_desc(in): true if desc, false if asc (for only index key)
  */
 TP_DOMAIN *
-tp_domain_find_enumeration (const DB_ENUMERATION *enumeration, bool is_desc)
+tp_domain_find_enumeration (const DB_ENUMERATION * enumeration, bool is_desc)
 {
   TP_DOMAIN *dom = NULL;
 
@@ -2946,7 +2946,7 @@ tp_domain_find_enumeration (const DB_ENUMERATION *enumeration, bool is_desc)
  *    at the head of the domain lists in tp_Domains.
  */
 TP_DOMAIN *
-tp_domain_cache (TP_DOMAIN *transient)
+tp_domain_cache (TP_DOMAIN * transient)
 {
   TP_DOMAIN *domain, **dlist;
   TP_DOMAIN *ins_pos = NULL;
@@ -3067,7 +3067,7 @@ tp_domain_cache (TP_DOMAIN *transient)
  *    Current implementation just creates a new one then returns it.
  */
 TP_DOMAIN *
-tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT *class_obj, int precision, int scale, TP_DOMAIN *setdomain,
+tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale, TP_DOMAIN * setdomain,
 		   int collation)
 {
   TP_DOMAIN *d;
@@ -3173,7 +3173,7 @@ tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTI
  *    dbuf(out): if not NULL, founded domain initialized on dbuf
  */
 TP_DOMAIN *
-tp_domain_resolve_value (const DB_VALUE *val, TP_DOMAIN *dbuf)
+tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 {
   TP_DOMAIN *domain;
   DB_TYPE value_type;
@@ -3479,7 +3479,7 @@ tp_domain_resolve_value (const DB_VALUE *val, TP_DOMAIN *dbuf)
  * Note: val->domain changes
  */
 TP_DOMAIN *
-tp_create_domain_resolve_value (DB_VALUE *val, TP_DOMAIN *domain)
+tp_create_domain_resolve_value (DB_VALUE * val, TP_DOMAIN * domain)
 {
   DB_TYPE value_type;
 
@@ -3554,7 +3554,7 @@ tp_create_domain_resolve_value (DB_VALUE *val, TP_DOMAIN *domain)
  *    Note that there are no error messages if a duplicate isn't added.
  */
 int
-tp_domain_add (TP_DOMAIN **dlist, TP_DOMAIN *domain)
+tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 {
   int error = NO_ERROR;
   TP_DOMAIN *d, *found, *last;
@@ -3672,7 +3672,7 @@ tp_domain_add (TP_DOMAIN **dlist, TP_DOMAIN *domain)
  *    domain(in): domain 2
  */
 int
-tp_domain_attach (TP_DOMAIN **dlist, TP_DOMAIN *domain)
+tp_domain_attach (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 {
   int error = NO_ERROR;
   TP_DOMAIN *d;
@@ -3703,7 +3703,7 @@ tp_domain_attach (TP_DOMAIN **dlist, TP_DOMAIN *domain)
  *    This routine should only be used to modify a transient domain.
  */
 int
-tp_domain_drop (TP_DOMAIN **dlist, TP_DOMAIN *domain)
+tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 {
   TP_DOMAIN *d, *found, *prev;
   int dropped = 0;
@@ -3819,7 +3819,7 @@ tp_domain_drop (TP_DOMAIN **dlist, TP_DOMAIN *domain)
  *    domain to "object".
  */
 static int
-tp_domain_check_class (TP_DOMAIN *domain, int *change)
+tp_domain_check_class (TP_DOMAIN * domain, int *change)
 {
   int error = NO_ERROR;
 #if !defined (SERVER_MODE)
@@ -3876,7 +3876,7 @@ tp_domain_check_class (TP_DOMAIN *domain, int *change)
  *    "object" domain present.
  */
 int
-tp_domain_filter_list (TP_DOMAIN *dlist, int *list_changes)
+tp_domain_filter_list (TP_DOMAIN * dlist, int *list_changes)
 {
   TP_DOMAIN *d, *prev, *next;
   int has_object, changes, set_changes, domain_change;
@@ -3956,7 +3956,7 @@ tp_domain_filter_list (TP_DOMAIN *dlist, int *list_changes)
  *    maxlen(in): maximum length of buffer
  */
 int
-tp_domain_name (const TP_DOMAIN *domain, char *buffer, int maxlen)
+tp_domain_name (const TP_DOMAIN * domain, char *buffer, int maxlen)
 {
   /*
    * need to get more sophisticated here, do full name decomposition and
@@ -3976,7 +3976,7 @@ tp_domain_name (const TP_DOMAIN *domain, char *buffer, int maxlen)
  *    maxlen(in): maximum length of buffer
  */
 int
-tp_value_domain_name (const DB_VALUE *value, char *buffer, int maxlen)
+tp_value_domain_name (const DB_VALUE * value, char *buffer, int maxlen)
 {
   /* need to get more sophisticated here */
 
@@ -4011,7 +4011,7 @@ tp_value_domain_name (const DB_VALUE *value, char *buffer, int maxlen)
  *    an "is it equal to" operation.
  */
 static const TP_DOMAIN *
-tp_domain_find_compatible (const TP_DOMAIN *src, const TP_DOMAIN *dest)
+tp_domain_find_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 {
   const TP_DOMAIN *d, *found;
 
@@ -4055,7 +4055,7 @@ tp_domain_find_compatible (const TP_DOMAIN *src, const TP_DOMAIN *dest)
  *    dest(in): dest domain
  */
 int
-tp_domain_compatible (const TP_DOMAIN *src, const TP_DOMAIN *dest)
+tp_domain_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 {
   const TP_DOMAIN *d;
   int equal = 0;
@@ -4109,7 +4109,7 @@ tp_domain_compatible (const TP_DOMAIN *src, const TP_DOMAIN *dest)
  *    for more information.
  */
 TP_DOMAIN *
-tp_domain_select (const TP_DOMAIN *domain_list, const DB_VALUE *value, int allow_coercion, TP_MATCH exact_match)
+tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int allow_coercion, TP_MATCH exact_match)
 {
   TP_DOMAIN *best = NULL, *d = NULL;
   TP_DOMAIN **others = NULL;
@@ -4422,7 +4422,7 @@ tp_domain_select (const TP_DOMAIN *domain_list, const DB_VALUE *value, int allow
  *    this cannot be used for checking set domains.
  */
 TP_DOMAIN *
-tp_domain_select_type (const TP_DOMAIN *domain_list, DB_TYPE type, DB_OBJECT *class_mop, int allow_coercion)
+tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * class_mop, int allow_coercion)
 {
   const TP_DOMAIN *best, *d;
   TP_DOMAIN **others;
@@ -4525,7 +4525,7 @@ tp_domain_select_type (const TP_DOMAIN *domain_list, DB_TYPE type, DB_OBJECT *cl
  *    assigned.  See commentary in tp_domain_match for more information.
  */
 TP_DOMAIN_STATUS
-tp_domain_check (const TP_DOMAIN *domain, const DB_VALUE *value, TP_MATCH exact_match)
+tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value, TP_MATCH exact_match)
 {
   TP_DOMAIN_STATUS status;
   TP_DOMAIN *d;
@@ -4572,7 +4572,7 @@ tp_domain_check (const TP_DOMAIN *domain, const DB_VALUE *value, TP_MATCH exact_
  *    Since the desired domain is often a varying char, this wins often.
  */
 int
-tp_can_steal_string (const DB_VALUE *val, const DB_DOMAIN *desired_domain)
+tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
 {
   DB_TYPE original_type, desired_type;
   int original_length, original_size, desired_precision;
@@ -4660,7 +4660,7 @@ tp_can_steal_string (const DB_VALUE *val, const DB_DOMAIN *desired_domain)
  *    Don't call this unless src is a string db_value.
  */
 static int
-tp_null_terminate (const DB_VALUE *src, char **strp, int str_len, bool *do_alloc)
+tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool * do_alloc)
 {
   char *str;
   int str_size;
@@ -4712,7 +4712,7 @@ tp_null_terminate (const DB_VALUE *src, char **strp, int str_len, bool *do_alloc
  *    src is a string db_value.
  */
 static int
-tp_atotime (const DB_VALUE *src, DB_TIME *temp)
+tp_atotime (const DB_VALUE * src, DB_TIME * temp)
 {
   int milisec;
   const char *strp = db_get_string (src);
@@ -4737,7 +4737,7 @@ tp_atotime (const DB_VALUE *src, DB_TIME *temp)
  *    src is a string db_value.
  */
 static int
-tp_atodate (const DB_VALUE *src, DB_DATE *temp)
+tp_atodate (const DB_VALUE * src, DB_DATE * temp)
 {
   const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
@@ -4761,7 +4761,7 @@ tp_atodate (const DB_VALUE *src, DB_DATE *temp)
  *    src is a string db_value.
  */
 static int
-tp_atoutime (const DB_VALUE *src, DB_UTIME *temp)
+tp_atoutime (const DB_VALUE * src, DB_UTIME * temp)
 {
   const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
@@ -4785,7 +4785,7 @@ tp_atoutime (const DB_VALUE *src, DB_UTIME *temp)
  *    src is a string db_value.
  */
 static int
-tp_atotimestamptz (const DB_VALUE *src, DB_TIMESTAMPTZ *temp)
+tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
 {
   const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
@@ -4810,7 +4810,7 @@ tp_atotimestamptz (const DB_VALUE *src, DB_TIMESTAMPTZ *temp)
  *    src is a string db_value.
  */
 static int
-tp_atoudatetime (const DB_VALUE *src, DB_DATETIME *temp)
+tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp)
 {
   const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
@@ -4834,7 +4834,7 @@ tp_atoudatetime (const DB_VALUE *src, DB_DATETIME *temp)
  *    src is a string db_value.
  */
 static int
-tp_atodatetimetz (const DB_VALUE *src, DB_DATETIMETZ *temp)
+tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp)
 {
   const char *strp = db_get_string (src);
   int str_len = db_get_string_size (src);
@@ -4859,7 +4859,7 @@ tp_atodatetimetz (const DB_VALUE *src, DB_DATETIMETZ *temp)
  *    src is a string db_value.
  */
 static int
-tp_atonumeric (const DB_VALUE *src, DB_VALUE *temp)
+tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp)
 {
   const char *strp;
   int status = NO_ERROR;
@@ -4895,7 +4895,7 @@ tp_atonumeric (const DB_VALUE *src, DB_VALUE *temp)
  *    src is a string db_value.
  */
 static int
-tp_atof (const DB_VALUE *src, double *num_value, DB_DATA_STATUS *data_stat)
+tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat)
 {
   char str[NUM_BUF_SIZE];
   const char *strp = NULL;
@@ -5001,7 +5001,7 @@ tp_atof (const DB_VALUE *src, double *num_value, DB_DATA_STATUS *data_stat)
  *
  */
 static int
-tp_atobi (const DB_VALUE *src, DB_BIGINT *num_value, DB_DATA_STATUS *data_stat)
+tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   const char *strp = db_get_string (src);
   const char *stre = NULL;
@@ -5449,7 +5449,7 @@ format_floating_point (char *new_string, char *rve, int ndigits, int decpt, int 
  *		    the string resulting from conversion.
  */
 void
-tp_ftoa (DB_VALUE const *src, DB_VALUE *result)
+tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
 {
   /* dtoa() appears to ignore the requested number of digits... */
   const int ndigits = TP_FLOAT_MANTISA_DECIMAL_PRECISION;
@@ -5520,7 +5520,7 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE *result)
  *		    type and null value, to receive the converted float
  */
 void
-tp_dtoa (DB_VALUE const *src, DB_VALUE *result)
+tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
 {
   /* dtoa() appears to ignore the requested number of digits... */
   const int ndigits = TP_DOUBLE_MANTISA_DECIMAL_PRECISION;
@@ -5588,7 +5588,7 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE *result)
  *    value, it just points to it
  */
 int
-tp_enumeration_to_varchar (const DB_VALUE *src, DB_VALUE *result)
+tp_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * result)
 {
   int error = NO_ERROR;
 
@@ -5628,7 +5628,7 @@ tp_enumeration_to_varchar (const DB_VALUE *src, DB_VALUE *result)
  *    max_size(in): size of output buffer
  */
 static int
-bfmt_print (int bfmt, const DB_VALUE *the_db_bit, char *string, int max_size)
+bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 {
   int length = 0;
   int string_index = 0;
@@ -5726,7 +5726,7 @@ bfmt_print (int bfmt, const DB_VALUE *the_db_bit, char *string, int max_size)
  *    Accepts strings that are not null terminated.
  */
 int
-tp_value_string_to_double (const DB_VALUE *value, DB_VALUE *result)
+tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result)
 {
   DB_DATA_STATUS data_stat;
   double dbl;
@@ -5753,8 +5753,8 @@ tp_value_string_to_double (const DB_VALUE *value, DB_VALUE *result)
 }
 
 static void
-make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN *desired_domain, const char *new_string,
-			      DB_VALUE *target, TP_DOMAIN_STATUS *status, DB_DATA_STATUS *data_stat)
+make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN * desired_domain, const char *new_string,
+			      DB_VALUE * target, TP_DOMAIN_STATUS * status, DB_DATA_STATUS * data_stat)
 {
   DB_VALUE temp;
 
@@ -5804,7 +5804,7 @@ make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN *desired_dom
  *    desired_domain(in): destination domain
  */
 TP_DOMAIN_STATUS
-tp_value_coerce (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain)
+tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   return tp_value_cast (src, dest, desired_domain, true);
 }
@@ -5818,7 +5818,7 @@ tp_value_coerce (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_d
  * desired_domain (in) : destination domain
  */
 int
-tp_value_coerce_strict (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain)
+tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   DB_TYPE desired_type, original_type;
   int err = NO_ERROR;
@@ -7097,7 +7097,7 @@ tp_value_coerce_strict (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *de
  *    preserve_domain(in): flag to preserve dest's domain
  */
 static TP_DOMAIN_STATUS
-tp_value_cast_internal (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain,
+tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 			const TP_COERCION_MODE coercion_mode, bool do_domain_select, bool preserve_domain)
 {
   DB_TYPE desired_type, original_type;
@@ -10242,7 +10242,7 @@ tp_value_cast_internal (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *de
  *    This function does select domain from desired_domain
  */
 TP_DOMAIN_STATUS
-tp_value_cast (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain, bool implicit_coercion)
+tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion)
 {
   TP_COERCION_MODE mode;
 
@@ -10251,7 +10251,7 @@ tp_value_cast (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_dom
 }
 
 TP_DOMAIN_STATUS
-tp_value_cast_force (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain, bool implicit_coercion)
+tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion)
 {
   TP_COERCION_MODE mode;
 
@@ -10271,7 +10271,7 @@ tp_value_cast_force (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desir
  *    This function dose not change the domain type of dest to a DB_NULL_TYPE.
  */
 TP_DOMAIN_STATUS
-tp_value_cast_preserve_domain (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain,
+tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 			       bool implicit_coercion, bool preserve_domain)
 {
   TP_COERCION_MODE mode;
@@ -10291,7 +10291,7 @@ tp_value_cast_preserve_domain (const DB_VALUE *src, DB_VALUE *dest, const TP_DOM
  *    This function does not select domain from desired_domain
  */
 TP_DOMAIN_STATUS
-tp_value_cast_no_domain_select (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain,
+tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 				bool implicit_coercion)
 {
   TP_COERCION_MODE mode;
@@ -10310,7 +10310,7 @@ tp_value_cast_no_domain_select (const DB_VALUE *src, DB_VALUE *dest, const TP_DO
  *   codeset(in): destination codeset
  */
 TP_DOMAIN_STATUS
-tp_value_change_coll_and_codeset (DB_VALUE *src, DB_VALUE *dest, int coll_id, int codeset)
+tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest, int coll_id, int codeset)
 {
   TP_DOMAIN *temp_domain;
 
@@ -10360,7 +10360,7 @@ tp_value_change_coll_and_codeset (DB_VALUE *src, DB_VALUE *dest, int coll_id, in
  *    an extra level of indirection.
  */
 static DB_VALUE_COMPARE_RESULT
-oidcmp (OID *oid1, OID *oid2)
+oidcmp (OID * oid1, OID * oid2)
 {
   int c = oid_compare (oid1, oid2);
   if (c < 0)
@@ -10437,7 +10437,7 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
  *    SB_SUBSET, DB_SUPERSET, or DB_EQ, it will not return DB_UNK.
  */
 DB_VALUE_COMPARE_RESULT
-tp_set_compare (const DB_VALUE *value1, const DB_VALUE *value2, int do_coercion, int total_order)
+tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order)
 {
   DB_VALUE temp;
   int coercion;
@@ -10569,7 +10569,7 @@ tp_set_compare (const DB_VALUE *value1, const DB_VALUE *value2, int do_coercion,
  *    total_order(in): total order flag
  */
 DB_VALUE_COMPARE_RESULT
-tp_value_compare (const DB_VALUE *value1, const DB_VALUE *value2, int allow_coercion, int total_order)
+tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order)
 {
   return tp_value_compare_with_error (value1, value2, allow_coercion, total_order, NULL);
 }
@@ -10597,8 +10597,8 @@ tp_value_compare (const DB_VALUE *value1, const DB_VALUE *value2, int allow_coer
  *    will be set to false.
  */
 DB_VALUE_COMPARE_RESULT
-tp_value_compare_with_error (const DB_VALUE *value1, const DB_VALUE *value2, int do_coercion, int total_order,
-			     bool *can_compare)
+tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
+			     bool * can_compare)
 {
   DB_VALUE temp1, temp2, tmp_char_conv;
   int coercion, char_conv;
@@ -11051,7 +11051,7 @@ tp_value_compare_with_error (const DB_VALUE *value1, const DB_VALUE *value2, int
  *
  */
 int
-tp_value_equal (const DB_VALUE *value1, const DB_VALUE *value2, int do_coercion)
+tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion)
 {
   return tp_value_compare (value1, value2, do_coercion, 0) == DB_EQ;
 }
@@ -11074,7 +11074,7 @@ tp_value_equal (const DB_VALUE *value1, const DB_VALUE *value2, int do_coercion)
  *    it is cached.
  */
 int
-tp_domain_disk_size (TP_DOMAIN *domain)
+tp_domain_disk_size (TP_DOMAIN * domain)
 {
   if (domain->type->is_always_variable ())
     {
@@ -11100,7 +11100,7 @@ tp_domain_disk_size (TP_DOMAIN *domain)
  *    domain(in): domain to consider
  */
 int
-tp_domain_memory_size (TP_DOMAIN *domain)
+tp_domain_memory_size (TP_DOMAIN * domain)
 {
   if ((domain->type->get_id () == DB_TYPE_CHAR || domain->type->get_id () == DB_TYPE_NCHAR
        || domain->type->get_id () == DB_TYPE_BIT) && domain->precision == TP_FLOATING_PRECISION_VALUE)
@@ -11127,7 +11127,7 @@ tp_domain_memory_size (TP_DOMAIN *domain)
  *    db_value_domain_init() with the supplied arguments.
  */
 void
-tp_init_value_domain (TP_DOMAIN *domain, DB_VALUE *value)
+tp_init_value_domain (TP_DOMAIN * domain, DB_VALUE * value)
 {
   if (domain == NULL)
     {
@@ -11155,7 +11155,7 @@ tp_init_value_domain (TP_DOMAIN *domain, DB_VALUE *value)
  *    within a domain if the byte size is within tolerance.
  */
 TP_DOMAIN_STATUS
-tp_check_value_size (TP_DOMAIN *domain, DB_VALUE *value)
+tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 {
   TP_DOMAIN_STATUS status;
   int src_precision, src_length;
@@ -11260,7 +11260,7 @@ tp_check_value_size (TP_DOMAIN *domain, DB_VALUE *value)
  *    domain(in): domain to print
  */
 static void
-fprint_domain (FILE *fp, TP_DOMAIN *domain)
+fprint_domain (FILE * fp, TP_DOMAIN * domain)
 {
   TP_DOMAIN *d;
 
@@ -11357,7 +11357,7 @@ fprint_domain (FILE *fp, TP_DOMAIN *domain)
  *    domain(in): domain to print
  */
 void
-tp_dump_domain (TP_DOMAIN *domain)
+tp_dump_domain (TP_DOMAIN * domain)
 {
   fprint_domain (stdout, domain);
   fprintf (stdout, "\n");
@@ -11369,7 +11369,7 @@ tp_dump_domain (TP_DOMAIN *domain)
  *    domain(in): domain to print
  */
 void
-tp_domain_print (TP_DOMAIN *domain)
+tp_domain_print (TP_DOMAIN * domain)
 {
   fprint_domain (stdout, domain);
 }
@@ -11381,7 +11381,7 @@ tp_domain_print (TP_DOMAIN *domain)
  *    domain(in): domain to print
  */
 void
-tp_domain_fprint (FILE *fp, TP_DOMAIN *domain)
+tp_domain_fprint (FILE * fp, TP_DOMAIN * domain)
 {
   fprint_domain (fp, domain);
 }
@@ -11435,7 +11435,7 @@ tp_valid_indextype (DB_TYPE type)
  *    dom(in): the domain to be inspected
  */
 bool
-tp_domain_references_objects (const TP_DOMAIN *dom)
+tp_domain_references_objects (const TP_DOMAIN * dom)
 {
   switch (TP_DOMAIN_TYPE (dom))
     {
@@ -11490,7 +11490,7 @@ tp_domain_references_objects (const TP_DOMAIN *dom)
  *    desired_domain(in): destion domain
  */
 TP_DOMAIN_STATUS
-tp_value_auto_cast_with_precision_check (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain)
+tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
 
@@ -11568,7 +11568,7 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE *src, DB_VALUE *dest, co
  *	   not require late binding.
  */
 TP_DOMAIN_STATUS
-tp_value_auto_cast (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desired_domain)
+tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   TP_DOMAIN_STATUS status;
 
@@ -11599,7 +11599,7 @@ tp_value_auto_cast (const DB_VALUE *src, DB_VALUE *dest, const TP_DOMAIN *desire
  *	   string arguments.
  */
 int
-tp_value_str_auto_cast_to_number (DB_VALUE *src, DB_VALUE *dest, DB_TYPE *val_type)
+tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val_type)
 {
   TP_DOMAIN *cast_dom = NULL;
   TP_DOMAIN_STATUS dom_status;
@@ -11644,7 +11644,7 @@ tp_value_str_auto_cast_to_number (DB_VALUE *src, DB_VALUE *dest, DB_TYPE *val_ty
  *  Note :
  */
 TP_DOMAIN *
-tp_infer_common_domain (TP_DOMAIN *arg1, TP_DOMAIN *arg2)
+tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 {
   TP_DOMAIN *target_domain;
   DB_TYPE arg1_type, arg2_type, common_type;
@@ -11738,8 +11738,8 @@ tp_infer_common_domain (TP_DOMAIN *arg1, TP_DOMAIN *arg2)
  *  Note :
  */
 int
-tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const int line_no, const DB_VALUE *src,
-			 const TP_DOMAIN *domain)
+tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const int line_no, const DB_VALUE * src,
+			 const TP_DOMAIN * domain)
 {
   int error = NO_ERROR;
 
@@ -11810,7 +11810,7 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
  */
 int
 tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
-			   DB_BIGINT *num_value, DB_DATA_STATUS *data_stat)
+			   DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   char str[64] = { 0 };
   const char *p = NULL;
@@ -11959,8 +11959,8 @@ tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET code
  *                    DATA_STATUS_TRUNCATED
  */
 int
-tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT *num_value,
-		  DB_DATA_STATUS *data_stat)
+tp_hex_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative, DB_BIGINT * num_value,
+		  DB_DATA_STATUS * data_stat)
 {
 #define HIGHEST_4BITS_OF_UBI 0xF000000000000000
 
@@ -12085,7 +12085,7 @@ end:
  */
 int
 tp_scientific_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
-			 DB_BIGINT *num_value, DB_DATA_STATUS *data_stat)
+			 DB_BIGINT * num_value, DB_DATA_STATUS * data_stat)
 {
   int error = NO_ERROR;
   UINT64 ubi = 0;
@@ -12319,7 +12319,7 @@ end:
  *    NOTE: This is an internal function for convert string to bigint
  */
 DB_BIGINT
-tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round, DB_DATA_STATUS *data_stat)
+tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round, DB_DATA_STATUS * data_stat)
 {
 #define HIGHEST_BIT_OF_UINT64 0x8000000000000000
 
@@ -12411,7 +12411,7 @@ tp_ubi_to_bi_with_args (UINT64 ubi, bool is_negative, bool truncated, bool round
  *
  */
 UINT64
-tp_ubi_times_ten (UINT64 ubi, bool *truncated)
+tp_ubi_times_ten (UINT64 ubi, bool * truncated)
 {
 #define HIGHEST_3BITS_OF_UBI 0xE000000000000000
 

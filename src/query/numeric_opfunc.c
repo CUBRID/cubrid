@@ -140,7 +140,7 @@ static bool numeric_is_bit_set (DB_C_NUMERIC arg, int pos);
 static bool numeric_overflow (DB_C_NUMERIC arg, int exp);
 static void numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
 static void numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
-static void numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool *positive_flag, DB_C_NUMERIC answer);
+static void numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool * positive_flag, DB_C_NUMERIC answer);
 static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
@@ -159,12 +159,12 @@ static int numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num
 static FP_VALUE_TYPE get_fp_value_type (double d);
 static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					 bool is_float);
-static int analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool *negate_value,
+static int analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 				   char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
 				   int *int_last_nz, int *frac_first_nz, int *frac_last_nz);
 static void determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
 				  int int_first_nz, int int_last_nz, int frac_first_nz, int frac_last_nz,
-				  char *num_string, int *out_prec, int *out_scale, bool *need_round);
+				  char *num_string, int *out_prec, int *out_scale, bool * need_round);
 static void determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len,
 			     int frac_zero_cnt, char next_digit);
 static void determine_remove_trailing_zeros (char *out_str, int *out_prec, int *out_scale, int temp_int_len,
@@ -334,7 +334,7 @@ numeric_negative_one (DB_C_NUMERIC answer, int size)
  *       values: -1  -1  -1 ...... -1  -1   0
  */
 static void
-numeric_init_dec_str (DEC_STRING *answer)
+numeric_init_dec_str (DEC_STRING * answer)
 {
   /* sizeof(answer->digits[0]) == 1 */
   memset (answer->digits, -1, TWICE_NUM_MAX_PREC);
@@ -354,7 +354,7 @@ numeric_init_dec_str (DEC_STRING *answer)
  */
 
 static void
-numeric_add_dec_str (DEC_STRING *arg1, DEC_STRING *arg2, DEC_STRING *answer)
+numeric_add_dec_str (DEC_STRING * arg1, DEC_STRING * arg2, DEC_STRING * answer)
 {
   unsigned int answer_bit = 0;
   int digit;
@@ -889,7 +889,7 @@ numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size
  * Note: This routine multiplies two numerics and returns the results.
  */
 static void
-numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool *positive_ans, DB_C_NUMERIC answer)
+numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool * positive_ans, DB_C_NUMERIC answer)
 {
   unsigned int answer_bit;
   int digit1;
@@ -1377,7 +1377,7 @@ numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num)
  *       when an error occurs.
  */
 static int
-numeric_common_prec_scale (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *dbv1_common, DB_VALUE *dbv2_common)
+numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common, DB_VALUE * dbv2_common)
 {
   unsigned char temp[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   int scale1, scale2;
@@ -1442,8 +1442,8 @@ numeric_common_prec_scale (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE 
  *   dbv2_common(out)    :
  */
 static int
-numeric_prec_scale_when_overflow (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *dbv1_common,
-				  DB_VALUE *dbv2_common)
+numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * dbv1_common,
+				  DB_VALUE * dbv2_common)
 {
   int prec1, scale1, prec2, scale2;
   int prec, scale;
@@ -1614,7 +1614,7 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
  *
  */
 int
-numeric_db_value_add (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
+numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -1714,7 +1714,7 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_sub (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
+numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   DB_VALUE dbv1_common, dbv2_common;
   int ret = NO_ERROR;
@@ -1815,7 +1815,7 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_mul (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
+numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int prec;
@@ -1893,7 +1893,7 @@ exit_on_error:
  * The answer is set to a NULL-valued DB_C_NUMERIC's when an error occurs.
  */
 int
-numeric_db_value_div (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
+numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int prec;
   int max_scale, scale1, scale2;
@@ -2067,7 +2067,7 @@ exit_on_error:
  * Note: This routine returns the negative (2's complement) of arg in answer.
  */
 int
-numeric_db_value_negate (DB_VALUE *answer)
+numeric_db_value_negate (DB_VALUE * answer)
 {
   /* Check for NULL value */
   if (DB_IS_NULL (answer))
@@ -2109,7 +2109,7 @@ numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num)
  *   dbvalue(in): ptr to a DB_VALUE of type DB_TYPE_NUMERIC
  */
 int
-numeric_db_value_is_positive (const DB_VALUE *dbvalue)
+numeric_db_value_is_positive (const DB_VALUE * dbvalue)
 {
   int ret;
 
@@ -2142,7 +2142,7 @@ numeric_db_value_is_positive (const DB_VALUE *dbvalue)
  *           1   if    dbv1 > dbv2.
  */
 int
-numeric_db_value_compare (const DB_VALUE *dbv1, const DB_VALUE *dbv2, DB_VALUE *answer)
+numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
@@ -2370,7 +2370,7 @@ numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer)
  * If arg overflows answer, answer is set to +/- MAXINT.
  */
 int
-numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT *answer)
+numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
 {
   DB_NUMERIC zero_scale_numeric, numeric_rem, numeric_tmp;
 
@@ -3092,7 +3092,7 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
  * Note: Parse and analyze numeric string to extract integer/fractional components
  */
 static int
-analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool *negate_value,
+analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
 			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
 			int *int_last_nz, int *frac_first_nz, int *frac_last_nz)
 {
@@ -3331,7 +3331,7 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 static void
 determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len, int int_first_nz,
 		      int int_last_nz, int frac_first_nz, int frac_last_nz, char *out_num_string, int *out_prec,
-		      int *out_scale, bool *need_round)
+		      int *out_scale, bool * need_round)
 {
   int total = int_len + frac_len;
 
@@ -3651,7 +3651,7 @@ determine_remove_trailing_zeros (char *out_str, int *out_prec, int *out_scale, i
  *	 grouping symbols.
  */
 int
-numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE *result)
+numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE * result)
 {
   char num_string[DB_MAX_NUMERIC_PRECISION + 1];
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -3891,7 +3891,7 @@ get_significant_digit (DB_BIGINT i)
  * amount necessary in order to preserve as much data as possible.
  */
 int
-numeric_db_value_coerce_to_num (DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status)
+numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
 {
   int ret = NO_ERROR;
   unsigned char num[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
@@ -4034,7 +4034,7 @@ exit_on_error:
  * numerical type.
  */
 int
-numeric_db_value_coerce_from_num (DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status)
+numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
 {
   int ret = NO_ERROR;
 
@@ -4245,7 +4245,7 @@ exit_on_error:
  * dest(in/out) : the value to coerce to
  */
 int
-numeric_db_value_coerce_from_num_strict (DB_VALUE *src, DB_VALUE *dest)
+numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -4361,7 +4361,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE *src, DB_VALUE *dest)
  * Note: returns the null-terminated string form of val
  */
 char *
-numeric_db_value_print (const DB_VALUE *val, char *buf)
+numeric_db_value_print (const DB_VALUE * val, char *buf)
 {
   char temp[NUMERIC_MAX_STRING_SIZE];
   int nbuf;
@@ -4478,7 +4478,7 @@ numeric_db_value_print (const DB_VALUE *val, char *buf)
  *
  */
 bool
-numeric_db_value_is_zero (const DB_VALUE *arg)
+numeric_db_value_is_zero (const DB_VALUE * arg)
 {
   if (DB_IS_NULL (arg))		/* NULL values are not 0 */
     {
@@ -4499,7 +4499,7 @@ numeric_db_value_is_zero (const DB_VALUE *arg)
  *
  */
 int
-numeric_db_value_increase (DB_VALUE *arg)
+numeric_db_value_increase (DB_VALUE * arg)
 {
   /* Check for bad inputs */
   if (DB_IS_NULL (arg) || DB_VALUE_TYPE (arg) != DB_TYPE_NUMERIC)

@@ -162,7 +162,7 @@ shm_key_to_name (int shm_key, char *name_str)
 #endif
 #if defined(WINDOWS)
 static void *
-op_server_shm_open (int shm_key, HANDLE *hOut)
+op_server_shm_open (int shm_key, HANDLE * hOut)
 {
   LPVOID lpvMem = NULL;		/* address of shared memory */
   HANDLE hMapObject = NULL;
@@ -226,7 +226,7 @@ op_server_shm_open (int shm_key)
 
 
 static int
-_op_db_login (nvplist *out, nvplist *in, int ha_mode, char *_dbmt_error)
+_op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
 {
   int errcode;
   char *id, *pwd, *db_name;
@@ -262,7 +262,7 @@ _op_db_login (nvplist *out, nvplist *in, int ha_mode, char *_dbmt_error)
 }
 
 int
-cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE *ret_result, char *db_name, char *mon_db)
+cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE * ret_result, char *db_name, char *mon_db)
 {
   int i;
   T_SHM_DIAG_INFO_SERVER *server_shm = NULL;
@@ -330,7 +330,7 @@ cm_get_diag_data (T_CM_DIAG_MONITOR_DB_VALUE *ret_result, char *db_name, char *m
 }
 
 int
-cm_ts_delete_user (nvplist *req, nvplist *res, char *_dbmt_error)
+cm_ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   DB_OBJECT *dbuser;
   char *newdbusername = nv_get_val (req, "username");
@@ -378,7 +378,7 @@ error_return:
 
 
 int
-cm_tsDBMTUserLogin (nvplist *in, nvplist *out, char *_dbmt_error)
+cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   int errcode;
   int ha_mode = 0;
@@ -478,7 +478,7 @@ cm_tsDBMTUserLogin (nvplist *in, nvplist *out, char *_dbmt_error)
 }
 
 int
-cm_ts_optimizedb (nvplist *req, nvplist *res, char *_dbmt_error)
+cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   char *dbname, *classname;
   T_DB_SERVICE_MODE db_mode;
@@ -560,7 +560,7 @@ error_return:
 }
 
 int
-cm_ts_class_info (nvplist *in, nvplist *out, char *_dbmt_error)
+cm_ts_class_info (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *dbstatus, *dbname;
   T_DB_SERVICE_MODE db_mode;
@@ -618,7 +618,7 @@ cm_ts_class_info (nvplist *in, nvplist *out, char *_dbmt_error)
 }
 
 int
-cm_ts_class (nvplist *in, nvplist *out, char *_dbmt_error)
+cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *classname, *dbname;
   DB_OBJECT *classobj;
@@ -670,7 +670,7 @@ error_return:
 }
 
 int
-cm_ts_get_triggerinfo (nvplist *req, nvplist *res, char *_dbmt_error)
+cm_ts_get_triggerinfo (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   DB_OBJLIST *trigger_list, *temp;
   DB_OBJECT *p_trigger;
@@ -742,7 +742,7 @@ cm_ts_get_triggerinfo (nvplist *req, nvplist *res, char *_dbmt_error)
 }
 
 int
-cm_ts_update_attribute (nvplist *in, nvplist *out, char *_dbmt_error)
+cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   char *class_name, *attr_name, *category, *index, *not_null, *unique, *defaultv, *old_attr_name, *dbname;
   DB_OBJECT *classobj;
@@ -937,7 +937,7 @@ error_return:
 }
 
 int
-cm_ts_update_user (nvplist *req, nvplist *res, char *_dbmt_error)
+cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   int errcode;
   DB_OBJECT *dbuser;
@@ -1165,7 +1165,7 @@ error_return:
 }
 
 int
-cm_ts_create_user (nvplist *req, nvplist *res, char *_dbmt_error)
+cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
 {
   DB_OBJECT *dbuser;
   DB_OBJECT *obj;
@@ -1294,7 +1294,7 @@ error_return:
 }
 
 int
-cm_ts_userinfo (nvplist *in, nvplist *out, char *_dbmt_error)
+cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
 {
   DB_OBJECT *p_class_db_user, *p_user;
   DB_OBJLIST *user_list, *temp;
@@ -1368,7 +1368,7 @@ error_return:
 }
 
 static int
-user_login_sa (nvplist *out, char *_dbmt_error, char *dbname, char *dbuser, char *dbpasswd)
+user_login_sa (nvplist * out, char *_dbmt_error, char *dbname, char *dbuser, char *dbpasswd)
 {
   char opcode[10];
   char outfile[PATH_MAX], errfile[PATH_MAX];
@@ -1523,7 +1523,7 @@ read_file (char *filename, char **outbuf)
 }
 
 static int
-class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cli_ver_val, nvplist *out,
+class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cli_ver_val, nvplist * out,
 	       char *_dbmt_error)
 {
   char strbuf[1024];
@@ -1619,7 +1619,7 @@ class_info_sa_finale:
 }
 
 static int
-_op_get_system_classes_info (nvplist *out, char *_dbmt_error)
+_op_get_system_classes_info (nvplist * out, char *_dbmt_error)
 {
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *classobj;
@@ -1653,7 +1653,7 @@ _op_get_system_classes_info (nvplist *out, char *_dbmt_error)
 }
 
 static int
-_op_get_user_classes_info (nvplist *out, char *_dbmt_error)
+_op_get_user_classes_info (nvplist * out, char *_dbmt_error)
 {
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *classobj;
@@ -1688,7 +1688,7 @@ _op_get_user_classes_info (nvplist *out, char *_dbmt_error)
 
 /* save to nvplist with some information by class */
 static void
-_op_get_class_info (nvplist *out, DB_OBJECT *classobj)
+_op_get_class_info (nvplist * out, DB_OBJECT * classobj)
 {
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *obj;
@@ -1746,7 +1746,7 @@ get_client_version (char *cli_ver_val)
 }
 
 static int
-_op_get_detailed_class_info (nvplist *out, DB_OBJECT *classobj, char *_dbmt_error)
+_op_get_detailed_class_info (nvplist * out, DB_OBJECT * classobj, char *_dbmt_error)
 {
   DB_OBJLIST *objlist, *temp;
   DB_OBJECT *obj;
@@ -1879,7 +1879,7 @@ _op_get_detailed_class_info (nvplist *out, DB_OBJECT *classobj, char *_dbmt_erro
 
 /* constraint information retrieve */
 static void
-_op_get_constraint_info (nvplist *out, DB_CONSTRAINT *con)
+_op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
 {
   char *classname;
   char query[QUERY_BUFFER_MAX], attr_name[128], order[10];
@@ -1999,7 +1999,7 @@ _op_get_constraint_info (nvplist *out, DB_CONSTRAINT *con)
 }
 
 static void
-_op_get_attribute_info (nvplist *out, DB_ATTRIBUTE *attr, int isclass)
+_op_get_attribute_info (nvplist * out, DB_ATTRIBUTE * attr, int isclass)
 {
   char *type_name, *v_str;
   DB_OBJECT *superobj;
@@ -2078,7 +2078,7 @@ _op_get_attribute_info (nvplist *out, DB_ATTRIBUTE *attr, int isclass)
 
 /* resolution information retrieve */
 static void
-_op_get_resolution_info (nvplist *out, DB_RESOLUTION *res, int isclass)
+_op_get_resolution_info (nvplist * out, DB_RESOLUTION * res, int isclass)
 {
   if (isclass)
     {
@@ -2102,7 +2102,7 @@ _op_get_resolution_info (nvplist *out, DB_RESOLUTION *res, int isclass)
 }
 
 static void
-_op_get_method_info (nvplist *out, DB_METHOD *method, int isclass)
+_op_get_method_info (nvplist * out, DB_METHOD * method, int isclass)
 {
   int i, cnt;
   char *type_name;
@@ -2152,21 +2152,21 @@ _op_get_method_info (nvplist *out, DB_METHOD *method, int isclass)
 }
 
 static void
-_op_get_method_file_info (nvplist *out, DB_METHFILE *mfile)
+_op_get_method_file_info (nvplist * out, DB_METHFILE * mfile)
 {
   nv_add_nvp (out, "methodfile", db_methfile_name (mfile));
 }
 
 /* vclass's query spec information retrieve */
 static void
-_op_get_query_spec_info (nvplist *out, DB_QUERY_SPEC *spec)
+_op_get_query_spec_info (nvplist * out, DB_QUERY_SPEC * spec)
 {
   nv_add_nvp (out, "queryspec", db_query_spec_string (spec));
 }
 
 /* return 1 if argument's attribute is classattribute. or return 0 */
 static int
-_op_is_classattribute (DB_ATTRIBUTE *attr, DB_OBJECT *classobj)
+_op_is_classattribute (DB_ATTRIBUTE * attr, DB_OBJECT * classobj)
 {
   DB_ATTRIBUTE *temp;
   int id = db_attribute_id (attr);
@@ -2183,7 +2183,7 @@ _op_is_classattribute (DB_ATTRIBUTE *attr, DB_OBJECT *classobj)
 /* function that return domain's type name */
 /* it should be free by caller */
 static char *
-_op_get_type_name (DB_DOMAIN *domain)
+_op_get_type_name (DB_DOMAIN * domain)
 {
   DB_OBJECT *class_;
   DB_DOMAIN *set_domain;
@@ -2269,7 +2269,7 @@ _op_get_type_name (DB_DOMAIN *domain)
 }
 
 static char *
-_op_get_value_string (DB_VALUE *value)
+_op_get_value_string (DB_VALUE * value)
 {
 #if !defined (NUMERIC_MAX_STRING_SIZE)
 #define NUMERIC_MAX_STRING_SIZE (350 + 1)
@@ -2454,7 +2454,7 @@ exit_on_error:
 }
 
 static char *
-_op_get_set_value (DB_VALUE *val)
+_op_get_set_value (DB_VALUE * val)
 {
   char *result, *return_result;
   DB_TYPE type;
@@ -2539,7 +2539,7 @@ _op_get_set_value (DB_VALUE *val)
 }
 
 static int
-trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplist *out, char *_dbmt_error)
+trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplist * out, char *_dbmt_error)
 {
   char strbuf[1024];
   char outfile[PATH_MAX], errfile[PATH_MAX];
@@ -2614,7 +2614,7 @@ trigger_info_sa_finale:
 }
 
 static void
-op_get_trigger_information (nvplist *res, DB_OBJECT *p_trigger)
+op_get_trigger_information (nvplist * res, DB_OBJECT * p_trigger)
 {
   char *trigger_name, *action, *attr, *condition, *comment;
   DB_OBJECT *target_class;
@@ -2778,7 +2778,7 @@ op_get_trigger_information (nvplist *res, DB_OBJECT *p_trigger)
 }
 
 static int
-revoke_all_from_user (DB_OBJECT *user)
+revoke_all_from_user (DB_OBJECT * user)
 {
   int i;
   DB_VALUE v;
@@ -2814,7 +2814,7 @@ revoke_all_from_user (DB_OBJECT *user)
 }
 
 static void
-_op_get_db_user_name (nvplist *res, DB_OBJECT *user)
+_op_get_db_user_name (nvplist * res, DB_OBJECT * user)
 {
   DB_VALUE v;
 
@@ -2824,7 +2824,7 @@ _op_get_db_user_name (nvplist *res, DB_OBJECT *user)
 }
 
 static void
-_op_get_db_user_authorization (nvplist *res, DB_OBJECT *user)
+_op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 {
   DB_VALUE v;
   DB_OBJECT *obj;
@@ -2845,7 +2845,7 @@ _op_get_db_user_authorization (nvplist *res, DB_OBJECT *user)
 }
 
 static void
-_op_get_db_user_id (nvplist *res, DB_OBJECT *user)
+_op_get_db_user_id (nvplist * res, DB_OBJECT * user)
 {
   DB_VALUE v;
   char buf[20];
@@ -2866,7 +2866,7 @@ _op_get_db_user_id (nvplist *res, DB_OBJECT *user)
 }
 
 static void
-_op_get_db_user_groups (nvplist *res, DB_OBJECT *user)
+_op_get_db_user_groups (nvplist * res, DB_OBJECT * user)
 {
   DB_VALUE v;
   DB_OBJECT *obj;
