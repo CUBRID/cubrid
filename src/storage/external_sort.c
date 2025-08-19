@@ -244,7 +244,7 @@ struct sort_param
   int px_parallel_num;
   RESULT_RUN *px_result_run;
   ORDERBY_STATS orderby_stats;
-  cuberr::context *main_error_context;
+    cuberr::context * main_error_context;
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
   pthread_cond_t *complete_cond;	/* complete condition */
