@@ -4746,6 +4746,12 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
       mergeable_list_id = ((SORT_INFO *) px_sort_param[i].put_arg)->output_file;
       sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
     }
+  /* If QUERY_CACHE(FILE_QUERY_AREA), Merged list not possible.
+   * Here, just change the type and list is duplicated in xqmgr_execute_query. */
+  if (origin_list_id->tfile_vfid->temp_file_type == FILE_QUERY_AREA)
+    {
+      origin_list_id->tfile_vfid->temp_file_type = FILE_TEMP;
+    }
 
 cleanup:
   /* clear input_file for px */
