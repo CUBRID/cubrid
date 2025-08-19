@@ -2236,6 +2236,7 @@ retry:
 	    {
 	      /* retry simple_fix until finishing general fix and unfix */
 	      PGBUF_BCB_UNLOCK (bufptr);
+	      thread_sleep (5);
 	      goto retry;
 	    }
 

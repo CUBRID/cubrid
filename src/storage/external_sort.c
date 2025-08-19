@@ -4868,16 +4868,21 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
 	}
 
-      /* check worker */
-      if (parallel_num > 1 && !parallel_query::worker_manager::get_manager ().try_reserve_workers (parallel_num))
+      if (parallel_num <= 1)
+        {
+          return 1;
+        }
+
+      /* Find the number of parallel processes by page_cnt and tuple_cnt */
+      if (sort_info_p->input_file->page_cnt <= parallel_num || sort_info_p->input_file->tuple_cnt <= parallel_num)
 	{
+	  /* TO_DO : need to check the appropriate number of parallels depending on the number of pages */
 	  return 1;
 	}
 
-      /* Find the number of parallel processes by page_cnt and tuple_cnt */
-      if (sort_info_p->input_file->page_cnt > parallel_num && sort_info_p->input_file->tuple_cnt > parallel_num)
+      /* check worker */
+      if (parallel_query::worker_manager::get_manager ().try_reserve_workers (parallel_num))
 	{
-	  /* TO_DO : need to check the appropriate number of parallels depending on the number of pages */
 	  return parallel_num;
 	}
     }
