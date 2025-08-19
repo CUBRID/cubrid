@@ -30,6 +30,9 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubconn
 {
   bool buffer::set_data (const void *data, size_t size) noexcept
