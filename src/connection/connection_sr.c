@@ -3187,13 +3187,16 @@ css_get_argv (void)
 
 void css_release_packet (css_conn_entry *conn, void *buffer, int size)
 {
-  cubbase::span<std::byte> mem ((std::byte *) buffer, size);
   cubconn::connection_worker::message request;
 
   request.type = cubconn::connection_worker::message_type::RELEASE_PACKET;
   request.conn = conn;
-  request.mem = mem;
+  request.packet.emplace_back ((std::byte *) buffer, size);
   conn->worker->enqueue (request);
+}
+
+void css_wakeup_handler (css_conn_entry *conn)
+{
   if (!conn->worker->notify ())
     {
       assert_release (false);
