@@ -211,6 +211,7 @@ set(CONNECTION_SOURCES
   )
 
 set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   ${CONNECTION_DIR}/master_connector.hpp
   ${CONNECTION_DIR}/connection_pool.hpp
   ${CONNECTION_DIR}/connection_worker.hpp

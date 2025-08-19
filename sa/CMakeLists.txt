@@ -180,6 +180,10 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/host_lookup.c
   )
 
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
+  )
+
 set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
@@ -659,6 +663,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
