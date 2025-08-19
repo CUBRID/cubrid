@@ -42,7 +42,7 @@
 #include "msgcat_set_log.hpp"
 #include "object_representation.h"
 #include "system_parameter.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "log_applier.h"
 #include "log_storage.hpp"
 #include "log_volids.hpp"

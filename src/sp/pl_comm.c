@@ -46,7 +46,7 @@
 #endif /* not WINDOWS */
 
 #include "pl_file.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "porting.h"
 #include "error_manager.h"
 #include "environment_variable.h"
