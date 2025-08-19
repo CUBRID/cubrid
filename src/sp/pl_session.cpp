@@ -87,7 +87,7 @@ namespace cubpl
     er_log_debug (ARG_FILE_LINE, "pl_session (delete): %d\n", m_id);
     destroy_pl_context_jvm ();
 
-    std::unique_lock<std::mutex> lock (m_mutex_connection);
+    std::lock_guard<std::mutex> lock (m_mutex_connection);
     m_session_connections.clear ();
   }
 
@@ -99,11 +99,10 @@ namespace cubpl
 	thread_p = thread_get_thread_entry_info ();
       }
 
-    std::unique_lock<std::mutex> lock (m_mutex_stack);
+    std::lock_guard<std::mutex> lock (m_mutex_stack);
 
     if (m_stack_idx >= METHOD_MAX_RECURSION_DEPTH)
       {
-	lock.unlock ();
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
 	set_interrupt (ER_SP_TOO_MANY_NESTED_CALL);
 	return nullptr;
@@ -392,7 +391,7 @@ namespace cubpl
   bool
   session::is_sp_running ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex_stack);
+    std::lock_guard<std::mutex> lock (m_mutex_stack);
     return m_stack_idx >= 0;
   }
 
@@ -463,7 +462,7 @@ namespace cubpl
 	return;
       }
 
-    std::lock_guard<std::mutex> ulock (m_mutex_cursor);
+    std::lock_guard<std::mutex> lock (m_mutex_cursor);
 
     // find in map
     auto search = m_cursor_map.find (query_id);
@@ -483,7 +482,7 @@ namespace cubpl
 	return;
       }
 
-    std::lock_guard<std::mutex> ulock (m_mutex_cursor);
+    std::lock_guard<std::mutex> lock (m_mutex_cursor);
     m_session_cursors.insert (query_id);
   }
 
@@ -496,21 +495,21 @@ namespace cubpl
 	return;
       }
 
-    std::lock_guard<std::mutex> ulock (m_mutex_cursor);
+    std::lock_guard<std::mutex> lock (m_mutex_cursor);
     m_session_cursors.erase (query_id);
   }
 
   bool
   session::is_session_cursor (QUERY_ID query_id)
   {
-    std::lock_guard<std::mutex> ulock (m_mutex_cursor);
+    std::lock_guard<std::mutex> lock (m_mutex_cursor);
     return (m_session_cursors.find (query_id) != m_session_cursors.end ());
   }
 
   void
   session::destroy_all_cursors ()
   {
-    std::unique_lock<std::mutex> ulock (m_mutex_cursor);
+    std::lock_guard<std::mutex> lock (m_mutex_cursor);
 
     for (auto &it : m_cursor_map)
       {
