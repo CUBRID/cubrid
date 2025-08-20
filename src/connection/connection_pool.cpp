@@ -48,18 +48,20 @@ namespace cubconn
 
   void connection_pool::initialize (std::uint32_t max_connections)
   {
-    std::vector<std::vector<int>> *cores;
+    std::vector<int> *cores;
     std::uint32_t i;
 
+    /* topology setting */
+    cubbase::topology.map_nic_to_core ();
     cores = &cubbase::topology.get_cores ();
 
     /* TODO: consider dynamic increses */
     m_workers.reserve (cores->size () + 1);
 
     i = 0;
-    for (std::vector<int> &core : *cores)
+    for (int core : *cores)
     {
-      m_workers.emplace_back (std::make_unique<connection_worker> (this, core[0], i++));
+      m_workers.emplace_back (std::make_unique<connection_worker> (this, core, i++));
     }
 
     m_max_connections = max_connections;

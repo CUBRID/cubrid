@@ -20,10 +20,11 @@
  * hardware_topology.cpp
  */
 
-#include "ifname.hpp"
+#include "ifsys.hpp"
 #include "hardware_topology.hpp"
-#include "error_manager.h"
 
+#include <algorithm>
+#include <cinttypes>
 #include <hwloc.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -31,8 +32,12 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+#include <net/if.h>
 
 namespace cubbase
 {
@@ -66,9 +71,66 @@ namespace cubbase
     }
   }
 
-  std::vector<std::vector<int>> &hardware_topology::get_cores ()
+  std::vector<int> &hardware_topology::get_cores ()
   {
-    return m_cores;
+    return m_selected;
+  }
+
+  void hardware_topology::map_nic_to_core ()
+  {
+    cubbase::ifsys::qirq_vec qs = { 0, 0, 0 };
+    char qbase[256], rxdir[280], txdir[280];
+    std::string ifname;
+    int rx_count, tx_count;
+    int i, q;
+
+    /* get ifname */
+    ifname = cubbase::ifsys::auto_select_primary_iface ();
+    if (ifname.empty ())
+    {
+      fprintf (stderr, "[ERR] cannot auto select iface\n");
+      return ;
+    }
+
+    /* channel */
+    if (!this->set_nic_channels (ifname, m_selected.size ()))
+    {
+      fprintf(stderr, "[WARN] set_nic_channels_combined failed (driver may limit)\n");
+    }
+    /* wait until applied */
+    usleep (1000 * 1000);
+
+    if (cubbase::ifsys::find_irqs_for_iface (ifname.c_str (), &qs) == 0 && qs.n > 0)
+    {
+      for (i = 0; i < qs.n; i++)
+      {
+	q = qs.v[i].q;
+	cubbase::ifsys::set_irq_affinity_list (qs.v[i].irq, m_selected[q % m_selected.size ()]);
+      }
+    }
+    else
+    {
+      fprintf (stderr, "[WARN] no IRQ lines found for %s in /proc/interrupts\n", ifname.c_str ());
+    }
+    free (qs.v);
+
+    /* RPS/XPS */
+    snprintf (qbase, sizeof(qbase), "/sys/class/net/%s/queues", ifname.c_str ());
+    snprintf (rxdir, sizeof(rxdir), "%s/rx-", qbase);
+    snprintf (txdir, sizeof(txdir), "%s/tx-", qbase);
+    rx_count = cubbase::ifsys::listdir_count_prefix (qbase, "rx-");
+    tx_count = cubbase::ifsys::listdir_count_prefix (qbase, "tx-");
+
+    cubbase::ifsys::maybe_set_rps_sock_flow_entries (m_selected.size ());
+
+    for (q = 0; q < rx_count; q++)
+    {
+      cubbase::ifsys::set_rps_for_queue (ifname.c_str (), q, m_selected[q % m_selected.size ()]);
+    }
+    for (q = 0; q < tx_count; q++)
+    {
+      cubbase::ifsys::set_xps_for_queue (ifname.c_str (), q, m_selected[q % m_selected.size ()]);
+    }
   }
 
   void hardware_topology::load_cpu ()
@@ -103,8 +165,49 @@ namespace cubbase
 	}
       }
       std::sort (pus.begin (), pus.end ());
+      /* TODO: add selection strategy */
+      m_selected.emplace_back (pus[0]);
       m_cores.push_back (std::move (pus));
     }
+  }
+
+  bool hardware_topology::set_nic_channels (std::string &ifname, unsigned int combined)
+  {
+    struct ethtool_channels channel;
+    struct ifreq ifr;
+    char cmd[256];
+    int success;
+    int fd;
+
+    fd = socket (AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0)
+    {
+      perror ("socket");
+      return false;
+    }
+
+    memset (&ifr, 0, sizeof (ifr));
+    memset (&channel, 0, sizeof (channel));
+
+    channel.cmd = ETHTOOL_SCHANNELS;
+    channel.combined_count = combined;
+    strncpy (ifr.ifr_name, ifname.c_str (), IFNAMSIZ - 1);
+    ifr.ifr_data = reinterpret_cast<char *> (&channel);
+
+    success = ioctl (fd, SIOCETHTOOL, &ifr);
+    if (success)
+    {
+      snprintf (cmd, sizeof (cmd), "ethtool -L %s combined %u", ifname.c_str (), combined);
+      success = system (cmd);
+      if (success)
+      {
+	::close (fd);
+	return false;
+      }
+    }
+
+    ::close (fd);
+    return true;
   }
 }
 
