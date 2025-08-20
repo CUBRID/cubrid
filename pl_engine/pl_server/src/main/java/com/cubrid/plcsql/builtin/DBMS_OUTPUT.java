@@ -43,7 +43,9 @@ public class DBMS_OUTPUT {
     public DBMS_OUTPUT() {}
 
     private static Context getContext() {
-        return ContextManager.getContextofCurrentThread();
+        long tId = Thread.currentThread().getId();
+        long cId = ContextManager.getContextIdByThreadId(tId);
+        return ContextManager.getContext(cId);
     }
 
     public static void enable(int size) throws Exception {

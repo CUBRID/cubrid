@@ -592,7 +592,7 @@ namespace cubpl
 
     cubmem::block ping_response;
     connection_view cv = m_sys_conn_pool->claim ();
-    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING);
+    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING, 0);
 
     auto ping = [&] ()
     {
@@ -655,7 +655,7 @@ exit:
   req_header, server_params
 
   bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
-    : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP)
+    : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0)
     , server_params ()
   {
     while (pl_ctx_values != nullptr)

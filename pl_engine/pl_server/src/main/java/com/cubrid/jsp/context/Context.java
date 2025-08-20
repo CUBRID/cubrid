@@ -40,6 +40,7 @@ import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
 import com.cubrid.jsp.classloader.SessionClassLoaderManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import com.cubrid.jsp.protocol.Header;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -55,6 +56,9 @@ public class Context {
 
     // transaction Id
     private int tranactionId = -1;
+
+    // request Id (for future)
+    private int prevRequestId = 0;
 
     // charset
     private Charset sessionCharset = null;
@@ -107,7 +111,7 @@ public class Context {
         return connection;
     }
 
-    public void closeConnection() throws SQLException {
+    public void closeConnection(Connection conn) throws SQLException {
         if (connection != null) {
             connection.close();
         }
@@ -132,6 +136,15 @@ public class Context {
             systemParameters = new HashMap<Integer, SysParam>();
         }
         return systemParameters;
+    }
+
+    public void checkHeader(Header header) {
+        if (prevRequestId > header.requestId) {
+            // not incremented
+            // a new session is started with the same session Id or the trasaction is ended
+            clear();
+        }
+        prevRequestId = header.requestId;
     }
 
     public void checkTranId(int tid) {
@@ -168,7 +181,7 @@ public class Context {
 
     private void clear() {
         try {
-            closeConnection();
+            closeConnection(connection);
         } catch (Exception e) {
             // ignore
         } finally {

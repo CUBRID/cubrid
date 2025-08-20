@@ -95,9 +95,10 @@ namespace cubmethod
     int error = NO_ERROR;
 
     SESSION_ID s_id = cubpl::get_session ()->get_id ();
+    int req_id = m_stack->get_and_increment_request_id ();
     TRANID t_id = m_stack->get_tran_id ();
 
-    cubmethod::header header (s_id, METHOD_REQUEST_ARG_PREPARE);
+    cubmethod::header header (s_id, METHOD_REQUEST_ARG_PREPARE, req_id);
     cubmethod::prepare_args arg (m_id, t_id, METHOD_TYPE_CLASS_METHOD, arg_base); // TOD
 
     error = xs_callback_send_args (m_stack->get_thread_entry (), header, arg);
@@ -123,8 +124,9 @@ namespace cubmethod
 
     for (int i = 0; i < m_sig_array->num_sigs; i++)
       {
+	int req_id = m_stack->get_and_increment_request_id ();
 	// invoke
-	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */);
+	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */, 0);
 	error = xs_callback_send_args (m_stack->get_thread_entry (), header, m_id, m_sig_array->sigs[i]);
 	if (error != NO_ERROR)
 	  {

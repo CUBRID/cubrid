@@ -174,11 +174,16 @@ namespace cubpl
     std::unique_lock<std::mutex> ulock (m_mutex);
     m_cond_var.wait (ulock, pred);
 
-    assert (m_stack_idx > -1);
-    m_exec_stack[m_stack_idx] = -1;
-    m_stack_idx--;
+    if (pred ())
+      {
+	if (m_stack_idx > -1)
+	  {
+	    m_exec_stack[m_stack_idx] = -1;
+	    m_stack_idx--;
+	  }
 
-    m_stack_map.erase (sid);
+	m_stack_map.erase (sid);
+      }
 
     if (m_stack_idx < 0)
       {
@@ -194,21 +199,7 @@ namespace cubpl
   {
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    if (m_exec_stack.empty())
-      {
-	return nullptr;
-      }
-
-    PL_STACK_ID top = m_exec_stack[m_stack_idx];
-    const auto &it = m_stack_map.find (top);
-    if (it == m_stack_map.end ())
-      {
-	// should not happended
-	assert (false);
-	return nullptr;
-      }
-
-    return it->second;
+    return top_stack_internal ();
   }
 
   void
@@ -270,7 +261,7 @@ namespace cubpl
   void
   session::destroy_pl_context_jvm ()
   {
-    cubmethod::header header (m_id, SP_CODE_DESTROY);
+    cubmethod::header header (m_id, SP_CODE_DESTROY, get_and_increment_request_id ());
 
     m_last_conn_epoch = -1;
 
@@ -283,6 +274,26 @@ namespace cubpl
 	  }
 	release_connection (cv);
       }
+  }
+
+  execution_stack *
+  session::top_stack_internal ()
+  {
+    if (m_exec_stack.empty())
+      {
+	return nullptr;
+      }
+
+    PL_STACK_ID top = m_exec_stack[m_stack_idx];
+    const auto &it = m_stack_map.find (top);
+    if (it == m_stack_map.end ())
+      {
+	// should not happended
+	assert (false);
+	return nullptr;
+      }
+
+    return it->second;
   }
 
   bool
@@ -402,7 +413,7 @@ namespace cubpl
   int
   session::get_depth ()
   {
-    return m_stack_map.size ();
+    return m_stack_map.size () - m_deferred_free_stack.size ();
   }
 
   SESSION_ID
@@ -485,12 +496,23 @@ namespace cubpl
       }
 
     std::lock_guard<std::mutex> ulock (m_mutex);
+    return destroy_cursor_internal (thread_p, query_id);
+  }
 
+  void
+  session::destroy_cursor_internal (cubthread::entry *thread_p, QUERY_ID query_id)
+  {
     // find in map
     auto search = m_cursor_map.find (query_id);
     if (search != m_cursor_map.end ())
       {
-	delete search->second;  // search->second cannot be null
+	query_cursor *cursor = search->second;
+	if (cursor)
+	  {
+	    // close the cursor, if it is opened
+	    delete cursor;
+	  }
+
 	m_cursor_map.erase (search);
       }
   }
