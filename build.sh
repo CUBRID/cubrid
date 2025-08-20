@@ -541,7 +541,7 @@ function show_usage ()
 
 function get_options ()
 {
-  while getopts ":t:m:g:is:b:p:o:aj:c:C:z:vh" opt; do
+  while getopts ":t:m:g:is:b:p:o:aj:c:C:z:xvh" opt; do
     case $opt in
       t ) build_target="$OPTARG" ;;
       m ) build_mode="$OPTARG" ;;
@@ -564,6 +564,7 @@ function get_options ()
 	  packages="$packages $optval"
 	done
       ;;
+      x ) configure_options="$configure_options -DSUPPORT_XA=true" ;;
       v ) print_version_only=1 ;;
       h|\?|* ) show_usage; exit 1;;
     esac
