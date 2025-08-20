@@ -24,10 +24,10 @@
 #define _HARDWARE_TOPOLOGY_HPP_
 
 #ident "$Id$"
-#include "assert.h"
 
 #include <hwloc.h>
 #include <vector>
+#include <string>
 #include <cstddef>
 
 namespace cubbase
@@ -39,13 +39,17 @@ namespace cubbase
       ~hardware_topology ();
 
       void pin_core (int core);
-      std::vector<std::vector<int>> &get_cores ();
+      std::vector<int> &get_cores ();
+
+      void map_nic_to_core ();
 
     private:
       hwloc_topology_t m_topology;
       std::vector<std::vector<int>> m_cores;
+      std::vector<int> m_selected;
 
       void load_cpu ();
+      bool set_nic_channels (std::string &ifname, unsigned int combined);
   };
 
   extern hardware_topology topology;
