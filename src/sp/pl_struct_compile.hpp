@@ -36,6 +36,7 @@
 namespace cubpl
 {
   struct pl_parameter_info;
+  struct plcsql_dependency;
 
   struct EXPORT_IMPORT compile_request : public cubpacking::packable_object
   {
@@ -70,7 +71,21 @@ namespace cubpl
 
     int compiled_type;
     std::string compiled_code;
+
+    std::vector <plcsql_dependency> dependencies;
   };
+
+  struct EXPORT_IMPORT plcsql_dependency: public cubpacking::packable_object {
+
+    plcsql_dependency ();
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    int obj_type;       // TODO: use predefined enum
+    std::string obj_name;
+  }
 
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object
   {

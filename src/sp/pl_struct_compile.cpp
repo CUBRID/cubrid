@@ -96,6 +96,12 @@ namespace cubpl
 	  {
 	    serializator.pack_string (compiled_code);
 	  }
+
+        int dependencies_size = (int) dependencies.size();
+        serializator.pack_int(dependencies_size);
+        for (int i = 0; i < dependencies_size; i++) {
+	    dependencies[i].pack (serializator);
+        }
       }
   }
 
@@ -122,6 +128,11 @@ namespace cubpl
 	  {
 	    size += serializator.get_packed_string_size (compiled_code, size); // compiled_code
 	  }
+
+	size += serializator.get_packed_int_size (size); // size of dependencies
+        for (int i = 0; i < (int) dependencies.size(); i++) {
+	    dependencies[i].get_packed_size (serializator, size);
+        }
       }
 
     return size;
@@ -149,12 +160,44 @@ namespace cubpl
 	  {
 	    deserializator.unpack_string (compiled_code);
 	  }
+
+        int dependencies_size = 0;
+	deserializator.unpack_int (dependencies_size);
+        if (dependencies_size > 0) {
+            dependencies.resize(dependencies_size);
+            for (int i = 0; i < dependencies_size; i++) {
+		dependencies[i].unpack (deserializator);
+            }
+        }
       }
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// plcsql_dependency
+//////////////////////////////////////////////////////////////////////////
+
+  plcsql_dependency::plcsql_dependency () { }
+
+  void
+  plcsql_dependency::pack (cubpacking::packer &serializator) const {
+      // TODO
+  }
+
+  size_t
+  plcsql_dependency::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const {
+      // TODO
+  }
+
+  void
+  plcsql_dependency::unpack (cubpacking::unpacker &deserializator) {
+      // TODO
   }
 
 //////////////////////////////////////////////////////////////////////////
 // sql semantics
 //////////////////////////////////////////////////////////////////////////
+
+
   sql_semantics::sql_semantics ()
   {
     //
