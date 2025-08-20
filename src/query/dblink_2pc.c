@@ -83,8 +83,9 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_INFO *dblink;
+  float rel_ver = rel_disk_compatible ();
 
-  xid.formatID = 1105;
+  xid.formatID = (int) (rel_ver * 100);	/* release version */
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = sizeof (int);
 
@@ -121,8 +122,9 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bo
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_INFO *dblink;
+  float rel_ver = rel_disk_compatible ();
 
-  xid.formatID = 1105;		/* for ver. 11.5 */
+  xid.formatID = (int) (rel_ver * 100);	/* release version */
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = sizeof (int);
 
@@ -162,8 +164,10 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_INFO *dblink;
+  float rel_ver = rel_disk_compatible ();
 
-  xid.formatID = 1105;		/* for ver. 11.5 */
+  xid.formatID = (int) (rel_ver * 100);	/* release version */
+
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = sizeof (int);
 
