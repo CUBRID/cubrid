@@ -118,6 +118,20 @@ static void *op_server_shm_open (int shm_key);
 #define SH_MODE 0644
 #define MAX_SERVER_THREAD_COUNT         500
 
+
+#define CUBRID_VERSION(major,minor)     (major*100 + minor)
+#if (MAJOR_VERSION*100+MINOR_VERSION) < 1104
+#define GRANT_ENTRY_LENGTH              (3)
+#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
+#define GRANT_ENTRY_CLASS(index)        (index)
+#define GRANT_ENTRY_TYPE(index)         (index + 2)
+#else
+#define GRANT_ENTRY_LENGTH              (4)
+#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
+#define GRANT_ENTRY_CLASS(index)        (index + 1)
+#define GRANT_ENTRY_TYPE(index)         (index + 3)
+#endif
+
 static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname);
 static int getservershmid (char *dir, char *dbname);
 
@@ -152,15 +166,7 @@ static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 
 static T_EMGR_VERSION get_client_version (char *cli_ver_val);
 
-static void get_authorization_base (void);
 static bool is_class_entry (DB_COLLECTION * col, int index);
-static int cubrid_version = -1;
-static int grant_base = 0;
-
-#define GRANT_ENTRY_LENGTH              (3 + grant_base)
-#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
-#define GRANT_ENTRY_CLASS(index)        ((index) + grant_base)
-#define GRANT_ENTRY_TYPE(index)         ((index) + grant_base + 2)
 
 #if defined(WINDOWS)
 static void
@@ -2797,11 +2803,6 @@ revoke_all_from_user (DB_OBJECT * user)
   int num_auth = 0;
   DB_COLLECTION *col;
 
-  if (cubrid_version < 0)
-    {
-      get_authorization_base ();
-    }
-
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
@@ -2840,29 +2841,6 @@ _op_get_db_user_name (nvplist * res, DB_OBJECT * user)
 }
 
 static void
-get_authorization_base (void)
-{
-  char curid_version_string[256];
-
-  char *p;
-
-  rel_copy_version_string (curid_version_string, sizeof (curid_version_string));
-  p = strchr (curid_version_string, ' ');
-
-  cubrid_version = atoi (p + 1) * 100;
-  p = strchr (p + 1, '.');
-  if (p)
-    {
-      cubrid_version += atoi (p + 1);
-    }
-
-  if (cubrid_version >= 1104)
-    {
-      grant_base = 1;
-    }
-}
-
-static void
 _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 {
   DB_VALUE v;
@@ -2870,11 +2848,6 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
   DB_COLLECTION *col;
   char buf[20];
   int i;
-
-  if (cubrid_version < 0)
-    {
-      get_authorization_base ();
-    }
 
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
@@ -2898,7 +2871,7 @@ is_class_entry (DB_COLLECTION * col, int index)
 {
   DB_VALUE v;
 
-  if (cubrid_version < 1104)
+  if (CUBRID_VERSION (MAJOR_VERSION, MINOR_VERSION) < 1104)
     {
       return true;
     }

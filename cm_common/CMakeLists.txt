@@ -58,7 +58,6 @@ set(CMDEP_SOURCES
   ${CM_COMMON_DIR}/cm_dstring.c
   ${CM_COMMON_DIR}/cm_nameval.c
   ${CM_COMMON_DIR}/cm_utils.c
-  ${BASE_DIR}/release_string.c
   )
 if(WIN32)
   list(APPEND CMDEP_SOURCES ${BASE_DIR}/chartype.c)
