@@ -4722,6 +4722,10 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 	}
 
       SORT_WAIT_PARALLEL (merge_num, sort_param, px_sort_param);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
       remaining_run = merge_num;
       level++;
     }
@@ -4787,11 +4791,6 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   int error = NO_ERROR;
   int i = 0, idx = 0, file_pg_cnt_est;
 
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  struct timeval orderby_time = { 0, };
-  tsc_getticks (&start_tick);
-
   /* Create output temporary files make file and temporary volume page count estimates */
   file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
   file_pg_cnt_est = MAX (1, file_pg_cnt_est);
@@ -4829,16 +4828,6 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  VFID_SET_NULL (&sort_param->temp[i]);
 	}
     }
-
-
-
-  tsc_getticks (&end_tick);
-  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
-  printf ("%d\n", TO_MSEC (orderby_time));
-
-
-
   return error;
 }
 
