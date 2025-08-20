@@ -198,20 +198,17 @@ namespace cubbase
       }
     buf[0] = 0;
 
-    for (i = 0; i < words; ++i)
+    for (i = words - 1; i >= 0; i--)
     {
-      v = 0;
-      if (i == cpu / 32)
-	{
-	  v = (1u << (cpu % 32));
-	}
+      v = (i == cpu / 32) ? (1u << (cpu % 32)) : 0u;
       snprintf (tmp, sizeof (tmp), "%08x", v);
-      if (i > 0)
+      if (buf[0] != '\0')
 	{
-	    strncat (buf, ",", cap - strlen(buf) - 1);
+	  strncat (buf, ",", cap - strlen (buf) - 1);
 	}
-      strncat (buf, tmp, cap - strlen (buf) - 1);
+      strncat(buf, tmp, cap - strlen (buf) - 1);
     }
+
     return buf;
   }
 
@@ -457,10 +454,25 @@ namespace cubbase
   int ifsys::set_irq_affinity_list (int irq, int cpu)
   {
     char path[256], buf[32];
+    char *mask;
+    int success;
 
     snprintf (path, sizeof (path), "/proc/irq/%d/smp_affinity_list", irq);
     snprintf (buf, sizeof (buf), "%d", cpu);
-    return write_text (path, buf);
+    if (!write_text (path, buf))
+      {
+	return 0;
+      }
+
+    mask = cpumask_hex_for_single_cpu (cpu);
+    if (!mask)
+      {
+	return -1;
+      }
+    snprintf (path, sizeof (path), "/proc/irq/%d/smp_affinity", irq);
+    success = write_text (path, mask);
+    free(mask);
+    return success;
   }
 
   bool ifsys::set_rps_for_queue (const char *ifname, int rxq, int cpu)
@@ -483,7 +495,9 @@ namespace cubbase
       {
 	return false;
       }
-    if (write_text (p2, "4096") != 0)
+    /* TODO: is it better to turn this off? */
+    //if (write_text (p2, "4096") != 0)
+    if (write_text (p2, "0") != 0)
       {
       return false;
       }
@@ -520,7 +534,9 @@ namespace cubbase
       {
 	return;
       }
-    write_int (path, (long long int) ncores * 4096);
+    /* TODO: is it better to turn this off? */
+    //write_int (path, (long long int) ncores * 4096);
+    write_int (path, 0);
   }
 }
 
