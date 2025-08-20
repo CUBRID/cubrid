@@ -531,10 +531,11 @@ extern void scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_l
 				  MVCC_SNAPSHOT * mvcc_snapshot);
 extern int scan_initialize (void);
 extern void scan_finalize (void);
-extern void scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
-				   val_list_node * val_list, val_descr * val_descr, OID * class_oid,
-				   int btree_num_attrs, ATTR_ID * btree_attr_ids, int *num_vstr_ptr,
-				   ATTR_ID * vstr_ids);
+STATIC_INLINE void
+scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
+		       val_list_node * val_list, val_descr * val_descr, OID * class_oid,
+		       int btree_num_attrs, ATTR_ID * btree_attr_ids, int *num_vstr_ptr,
+		       ATTR_ID * vstr_ids) __attribute__ ((ALWAYS_INLINE));
 
 extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
@@ -544,5 +545,32 @@ extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_print_stats_json (SCAN_ID * scan_id, json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
 #endif /* SERVER_MODE */
+
+/*
+ * scan_init_filter_info () - initialize FILTER_INFO structure as a data/key filter
+ *   return: none
+ */
+
+STATIC_INLINE void
+scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
+		       val_list_node * val_list, val_descr * val_descr, OID * class_oid,
+		       int btree_num_attrs, ATTR_ID * btree_attr_ids, int *num_vstr_ptr, ATTR_ID * vstr_ids)
+{
+  assert (filter_info_p != NULL);
+
+  filter_info_p->scan_pred = scan_pred;
+  filter_info_p->scan_attrs = scan_attrs;
+  filter_info_p->val_list = val_list;
+  filter_info_p->val_descr = val_descr;
+  filter_info_p->class_oid = class_oid;
+  filter_info_p->btree_num_attrs = btree_num_attrs;
+  filter_info_p->btree_attr_ids = btree_attr_ids;
+  filter_info_p->num_vstr_ptr = num_vstr_ptr;
+  filter_info_p->vstr_ids = vstr_ids;
+  filter_info_p->func_idx_col_id = -1;
+
+  filter_info_p->matched_attid_idx_4_keyflt = NULL;
+  filter_info_p->matched_attid_idx_4_readval = NULL;
+}
 
 #endif /* _SCAN_MANAGER_H_ */
