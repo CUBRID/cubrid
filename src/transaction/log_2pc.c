@@ -75,11 +75,16 @@ struct log_2pc_global_data
   void (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
 		      void *block_particps_ids, bool collect);
 };
+
+#ifdef CCI_XA
 struct log_2pc_global_data log_2pc_Userfun =
   { dblink_2pc_get_participants, NULL, dblink_2pc_dump_participants, dblink_2pc_send_prepare,
   dblink_2pc_send_commit,
   dblink_2pc_send_abort
 };
+#else
+struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL };
+#endif
 
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
 static int log_2pc_make_global_tran_id (TRANID tranid);

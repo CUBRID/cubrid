@@ -76,6 +76,7 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
   return num_ids;
 }
 
+#ifdef CCI_XA
 bool
 dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids)
 {
@@ -85,7 +86,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   DBLINK_CONN_INFO *dblink;
   float rel_ver = rel_disk_compatible ();
 
-  xid.formatID = (int) (rel_ver * 100);	/* release version */
+  xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = sizeof (int);
 
@@ -124,7 +125,7 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bo
   DBLINK_CONN_INFO *dblink;
   float rel_ver = rel_disk_compatible ();
 
-  xid.formatID = (int) (rel_ver * 100);	/* release version */
+  xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = sizeof (int);
 
@@ -166,8 +167,7 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
   DBLINK_CONN_INFO *dblink;
   float rel_ver = rel_disk_compatible ();
 
-  xid.formatID = (int) (rel_ver * 100);	/* release version */
-
+  xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
   xid.gtrid_length = sizeof (int);
   xid.bqual_length = sizeof (int);
 
@@ -203,7 +203,6 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
   return;
 }
 
-
 void
 dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids)
 {
@@ -218,3 +217,4 @@ dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_
 	       dblink->user_name);
     }
 }
+#endif
