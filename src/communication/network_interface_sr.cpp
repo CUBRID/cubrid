@@ -5377,8 +5377,6 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	}
     }
 
-  aligned_page_buf = (char *) malloc (IO_MAX_PAGE_SIZE);
-
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   /* unpack XASL file id (XASL_ID), number of parameter values, size of the recieved data, and query execution mode
@@ -5538,6 +5536,7 @@ null_list:
 		  page_size = (offset + QFILE_GET_TUPLE_LENGTH (page_ptr + offset));
 		}
 
+	      aligned_page_buf = (char *) malloc (page_size);
 	      memcpy (aligned_page_buf, page_ptr, page_size);
 	      qmgr_free_old_page_and_init (thread_p, page_ptr, list_id->tfile_vfid);
 	      page_ptr = aligned_page_buf;
@@ -5969,8 +5968,6 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char 
   int query_timeout;
   bool is_tran_auto_commit;
 
-  aligned_page_buf = (char *) malloc (IO_MAX_PAGE_SIZE);
-
   xasl_stream = NULL;
   xasl_stream_size = 0;
 
@@ -6065,6 +6062,7 @@ sqmgr_prepare_and_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	    }
 
 	  /* to free page_ptr early */
+	  aligned_page_buf = (char *) malloc (page_size);
 	  memcpy (aligned_page_buf, page_ptr, page_size);
 	  qmgr_free_old_page_and_init (thread_p, page_ptr, q_result->tfile_vfid);
 	}
