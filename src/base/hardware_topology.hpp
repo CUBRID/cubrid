@@ -24,9 +24,9 @@
 #define _HARDWARE_TOPOLOGY_HPP_
 
 #ident "$Id$"
-
 #include "assert.h"
 
+#include <hwloc.h>
 #include <vector>
 #include <cstddef>
 
@@ -38,9 +38,17 @@ namespace cubbase
       hardware_topology ();
       ~hardware_topology ();
 
-    private:
+      void pin_core (int core);
+      std::vector<std::vector<int>> &get_cores ();
 
+    private:
+      hwloc_topology_t m_topology;
+      std::vector<std::vector<int>> m_cores;
+
+      void load_cpu ();
   };
+
+  extern hardware_topology topology;
 }
 
 #endif

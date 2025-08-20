@@ -105,7 +105,7 @@ namespace cubconn
       };
 
     public:
-      connection_worker (connection_pool *pool, std::size_t index);
+      connection_worker (connection_pool *pool, std::size_t core, std::size_t index);
       ~connection_worker ();
 
       /* used for control from other threads */
@@ -121,6 +121,7 @@ namespace cubconn
     private:
       /* thread handle */
       std::thread m_thread;
+      std::size_t m_core;
       bool m_stop;
       /* connection pool */
       connection_pool *m_parent;
