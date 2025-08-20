@@ -133,6 +133,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/xml_parser.c
   ${BASE_DIR}/packet_buffer.cpp
   ${BASE_DIR}/DMRBMemoryPool.cpp
+  ${BASE_DIR}/ifname.cpp
   ${BASE_DIR}/hardware_topology.cpp
   ${BASE_DIR}/nonblocking.cpp
   ${BASE_DIR}/epoll.cpp
@@ -176,6 +177,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/span.hpp
+  ${BASE_DIR}/ifname.hpp
   ${BASE_DIR}/hardware_topology.hpp
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp

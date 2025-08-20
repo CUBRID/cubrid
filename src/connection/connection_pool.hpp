@@ -40,7 +40,7 @@ namespace cubconn
       connection_pool ();
       ~connection_pool ();
 
-      void initialize (unsigned int worker_count, std::uint32_t max_connections);
+      void initialize (std::uint32_t max_connections);
       void finalize ();
 
       void dispatch (css_conn_entry *conn);

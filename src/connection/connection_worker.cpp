@@ -20,6 +20,7 @@
  * connection_worker.cpp
  */
 
+#include "hardware_topology.hpp"
 #include "network.h"
 #include "network_interface_sr.h"
 #include "connection_sr.h"
@@ -65,7 +66,8 @@ namespace cubconn
   {
   }
 
-  connection_worker::connection_worker (connection_pool *pool, std::size_t index) :
+  connection_worker::connection_worker (connection_pool *pool, std::size_t core, std::size_t index) :
+    m_core (core),
     m_stop (false),
     m_parent (pool),
     m_index (index),
@@ -793,6 +795,10 @@ namespace cubconn
 
   void connection_worker::initialize ()
   {
+    /* pin myself */
+    cubbase::topology.pin_core (m_core);
+
+    /* entry */
     m_entry = cubthread::get_manager ()->claim_entry ();
     m_entry->register_id ();
     m_entry->index = m_index;
