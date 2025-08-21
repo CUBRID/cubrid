@@ -35,21 +35,21 @@ namespace cubbase
 
   class ifsys
   {
-    friend hardware_topology;
+      friend hardware_topology;
 
     private:
       struct qirq
-	{
-	  int q;
-	  int irq;
-	};
+      {
+	int q;
+	int irq;
+      };
 
       struct qirq_vec
-	{
-	  struct qirq *v;
-	  int n;
-	  int cap;
-	};
+      {
+	struct qirq *v;
+	int n;
+	int cap;
+      };
 
     public:
       static std::string auto_select_primary_iface ();
