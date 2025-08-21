@@ -110,6 +110,8 @@ namespace cubconn
 	m_thread.join ();
       }
     ::close (m_eventfd);
+    
+    assert (m_context.size () == 0);
   }
 
   void connection_worker::enqueue (const message &item)
@@ -174,9 +176,15 @@ namespace cubconn
     /* net_server_conn_down */
     /* TODO: this function makes this thread blocked. epoll threads must not be blocked */
     m_entry->conn_entry = ctx->m_conn;
+    pthread_mutex_lock (&m_entry->tran_index_lock);
     css_Connection_error_handler (m_entry, ctx->m_conn);
     m_entry->conn_entry = NULL;
 
+    if (m_context.erase (ctx) == 0)
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->remove_connection: context not found\n");
+	return false;
+      }
     delete ctx;
 
     return true;
@@ -322,7 +330,12 @@ namespace cubconn
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
-
+    if (!m_context.insert (ctx).second)
+      {
+	delete ctx;
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
+	return false;
+      }
     _er_log_debug (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
     return true;
   }
@@ -811,6 +824,26 @@ namespace cubconn
 
   void connection_worker::finalize ()
   {
+    for (auto &ctx : m_context)
+      {
+	if (!m_events.remove_descriptor (ctx->m_conn->fd))
+	  {
+	    _er_log_debug (__FILE__, __LINE__, "connection_worker->finalize: remove_descriptor failed\n");
+	    assert_release (false);
+	  }
+
+	ctx->m_send.m_transmitter.clear ();
+
+	m_entry->conn_entry = ctx->m_conn;
+	/* net_server_conn_down */
+	pthread_mutex_lock (&m_entry->tran_index_lock);
+	css_Connection_error_handler (m_entry, ctx->m_conn);
+	m_entry->conn_entry = NULL;
+
+	delete ctx;
+      }
+    m_context.clear ();
+
     m_entry->unregister_id ();
     cubthread::get_manager ()->retire_entry (*m_entry);
   }
