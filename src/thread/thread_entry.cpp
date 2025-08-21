@@ -243,7 +243,6 @@ namespace cubthread
 
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
-	fprintf(stderr, "destroy(tran_index_lock)=%d (%s)\n", rc, strerror(rc));
 	assert (false);
       }
     if (pthread_mutex_destroy (&th_entry_lock) != 0)
