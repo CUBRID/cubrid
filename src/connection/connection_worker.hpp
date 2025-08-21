@@ -31,6 +31,7 @@
 #include "tbb/concurrent_queue.h"
 
 #include <thread>
+#include <unordered_set>
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -136,6 +137,7 @@ namespace cubconn
       tbb::concurrent_queue<message> m_queue;
 
       cubthread::entry *m_entry;
+      std::unordered_set<context *> m_context;
 
       void push_task_into_worker_pool (context *ctx);
 
