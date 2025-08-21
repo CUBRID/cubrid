@@ -38,7 +38,6 @@ import com.cubrid.jsp.code.SourceCode;
 import com.cubrid.jsp.compiler.MemoryJavaCompiler;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
-import com.cubrid.jsp.data.AuthInfo;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.CompileInfo;
@@ -144,7 +143,6 @@ public class ExecuteThread extends Thread {
                         case RequestCode.INVOKE_SP:
                             {
                                 processStoredProcedure();
-                                ctx = null;
                                 break;
                             }
 
@@ -196,20 +194,6 @@ public class ExecuteThread extends Thread {
                                 writeBuffer(resultBuffer);
                                 break;
                             }
-                        case RequestCode.UTIL_TERMINATE_THREAD:
-                            {
-                                // hacky way.. If thread is terminated and socket is closed
-                                // immediately,
-                                // "ping" or "status" command does not work properly
-                                sleep(100);
-                                Thread.currentThread().interrupt();
-                                break;
-                            }
-                        case RequestCode.UTIL_TERMINATE_SERVER:
-                            {
-                                Server.stop(0);
-                                break;
-                            }
 
                             /* invalid request */
                         default:
@@ -218,7 +202,6 @@ public class ExecuteThread extends Thread {
                                 // requestCode);
                             }
                     }
-                    ContextManager.deregisterThread(Thread.currentThread().getId());
                 } catch (Throwable e) {
                     if (e instanceof IOException) {
                         /*
@@ -287,8 +270,7 @@ public class ExecuteThread extends Thread {
 
         /* read header */
         Header header = new Header(unpacker);
-        ctx = ContextManager.getContext(header.id);
-        ctx.checkHeader(header);
+        ctx = ContextManager.getContext(header.sessionId);
 
         int startOffset = unpacker.getCurrentPosition();
         int payloadSize = unpacker.getCurrentLimit() - startOffset;
@@ -347,7 +329,6 @@ public class ExecuteThread extends Thread {
             prepareArgs.readArgs(unpacker);
         }
 
-        long id = unpacker.unpackBigint();
         int tid = unpacker.unpackInt();
 
         ctx.checkTranId(tid);
@@ -567,21 +548,5 @@ public class ExecuteThread extends Thread {
 
         resultBuffer = packer.getBuffer();
         writeBuffer(resultBuffer);
-    }
-
-    private void sendAuthCommand(int command, String authName) throws Exception {
-        AuthInfo info = new AuthInfo(command, authName);
-        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(128));
-        packer.packInt(RequestCode.REQUEST_CHANGE_AUTH_RIGHTS);
-        info.pack(packer);
-        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
-
-        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
-        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
-        /* read header, dummy */
-        Header header = new Header(unpacker);
-        ByteBuffer payload = unpacker.unpackBuffer();
-        unpacker.setBuffer(payload);
-        int responseCode = unpacker.unpackInt();
     }
 }
