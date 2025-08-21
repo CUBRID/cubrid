@@ -32,8 +32,7 @@
 package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.protocol.PackableObject;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Set;
 
 public class CompileInfo implements PackableObject {
     public int errCode = -1; // 0: no error, < 0: error
@@ -49,7 +48,7 @@ public class CompileInfo implements PackableObject {
     public int compiledType = -1;
     public byte[] compiledCode = null;
 
-    private List<Dependency> dependencies = new ArrayList<>();
+    private Set<Dependency> dependencies = null;
 
     public CompileInfo(int code, int line, int column, String msg) {
         assert code < 0;
@@ -60,16 +59,14 @@ public class CompileInfo implements PackableObject {
         errMsg = msg;
     }
 
-    public CompileInfo(String translated, String stmt, String name, String sig) {
+    public CompileInfo(
+            String translated, String stmt, String name, String sig, Set<Dependency> dependencies) {
         errCode = 0;
         this.translated = translated;
         this.createStmt = stmt;
         this.className = name;
         this.signature = sig;
-    }
-
-    public void addDependency(int objType, String objName) {
-        dependencies.add(new Dependency(objType, objName));
+        this.dependencies = dependencies;
     }
 
     @Override
@@ -97,20 +94,54 @@ public class CompileInfo implements PackableObject {
         }
     }
 
-    private class Dependency implements PackableObject {
+    public static final class Dependency implements PackableObject {
+
+        // TODO: use server-defined enumeration
+        public static final int OBJ_TYPE_TABLE = 1;
+        public static final int OBJ_TYPE_VIEW = 2;
+        public static final int OBJ_TYPE_FUNCTION = 3;
+        public static final int OBJ_TYPE_PROCEDURE = 4;
+        public static final int OBJ_TYPE_SERIAL = 5;
+        public static final int OBJ_TYPE_TRIGGER = 6;
+        public static final int OBJ_TYPE_SYNONYM = 7;
 
         int objType;
-        String objName;
+        String objUniqName;
 
-        Dependency(int objType, String objName) {
+        public Dependency(int objType, String objName, String spOwner) {
+            assert objName != null;
+            assert spOwner != null;
+
             this.objType = objType;
-            this.objName = objName;
+            if (objName.indexOf(".") < 0) {
+                this.objUniqName = spOwner + "." + objName;
+            } else {
+                this.objUniqName = objName;
+            }
         }
 
         @Override
         public void pack(CUBRIDPacker packer) {
             packer.packInt(objType);
-            packer.packString(objName);
+            packer.packString(objUniqName);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null) {
+                return false;
+            }
+            if (o.getClass() != Dependency.class) {
+                return false;
+            }
+
+            Dependency that = (Dependency) o;
+            return (this.objType == that.objType) && this.objUniqName.equals(that.objUniqName);
+        }
+
+        @Override
+        public int hashCode() {
+            return objType + objUniqName.hashCode();
         }
     }
 }
