@@ -38,6 +38,9 @@
 
 #include "subquery_cache.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /**************************************************************************************/
 
 /* Static functions for sq_cache hash table. */
