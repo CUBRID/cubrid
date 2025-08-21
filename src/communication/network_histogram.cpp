@@ -262,10 +262,11 @@ net_histo_ctx::print_histogram (FILE *stream)
 
 #if defined (SERVER_MODE)
   fprintf (stream, "\nHistogram of server requests:\n");
+  fprintf (stream, "%-31s %6s  %10s %10s , %10s \n", "Name", "Rcount", "Sent size", "Recv size", "Processing time");
 #else
   fprintf (stream, "\nHistogram of client requests:\n");
+  fprintf (stream, "%-31s %6s  %10s %10s , %10s \n", "Name", "Rcount", "Sent size", "Recv size", "Response (RTT) time");
 #endif /* SERVER_MODE */
-  fprintf (stream, "%-31s %6s  %10s %10s , %10s \n", "Name", "Rcount", "Sent size", "Recv size", "Server time");
 
   if (call_cnt > 0)
     {
@@ -407,7 +408,7 @@ histo_clear (void)
 }
 
 void
-histo_add_request (int request, int sent)
+histo_add_request (const int request, const int sent)
 {
 #if defined (CS_MODE)
   net_histo_context.add_request (request, sent);
@@ -415,7 +416,7 @@ histo_add_request (int request, int sent)
 }
 
 void
-histo_finish_request (int request, int received)
+histo_finish_request (const int request, const int received)
 {
 #if defined (CS_MODE)
   net_histo_context.finish_request (request, received);
@@ -424,7 +425,7 @@ histo_finish_request (int request, int received)
 
 #else
 void
-histo_finish_request (int request, int received)
+histo_finish_request (const int request, const int received)
 {
   net_histo_ctx *net_histo_ctx_p = NULL;
   session_get_net_histo_ctx (thread_get_thread_entry_info (), net_histo_ctx_p);
@@ -433,7 +434,9 @@ histo_finish_request (int request, int received)
       net_histo_ctx_p->finish_request (request, received);
     }
 
-  if (request == NET_SERVER_QM_QUERY_EXECUTE || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE)
+  const bool is_closure_request = (request == NET_SERVER_QM_QUERY_EXECUTE
+				   || request == NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE);
+  if (is_closure_request)
     {
       // stop collect
       net_histo_ctx_p->stop_collect ();

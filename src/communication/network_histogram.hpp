@@ -83,10 +83,10 @@ extern int histo_print_string (std::string &str);
 extern int histo_print_global_stats (FILE *stream, bool cumulative, const char *substr);
 extern void histo_clear (void);
 
-extern void histo_add_request (int request, int sent);
-extern void histo_finish_request (int request, int received);
+extern void histo_add_request (const int request, const int sent);
+extern void histo_finish_request (const int request, const int received);
 #else
-extern void histo_finish_request (int request, int received);
+extern void histo_finish_request (const int request, const int received);
 #endif /* !SERVER_MODE */
 
 #endif /* _NETWORK_HISTOGRAM_HPP_ */
