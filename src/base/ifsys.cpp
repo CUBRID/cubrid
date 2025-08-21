@@ -30,6 +30,9 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubbase
 {
   bool ifsys::file_exists (const std::string &path)

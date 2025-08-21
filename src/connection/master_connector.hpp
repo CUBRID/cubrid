@@ -96,7 +96,7 @@ namespace cubconn
       void stop () noexcept;
 
       bool attach (connection_pool &pool) noexcept;
-      bool run (int port, std::string server_name) noexcept;
+      bool run (int port, std::string &server_name) noexcept;
 
     private:
       bool m_stop;
