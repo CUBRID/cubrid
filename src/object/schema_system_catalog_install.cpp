@@ -866,6 +866,7 @@ namespace cubschema
       {"target_method", format_varchar (1024)},
       {"owner", AU_USER_CLASS_NAME},
       {SP_ATTR_SQL_DATA_ACCESS, "integer"},
+      {SP_ATTR_VALIDITY, "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
@@ -1144,6 +1145,7 @@ namespace cubschema
       {"target_unique_name", format_varchar (255)},
       {"target_name", format_varchar (255)},
       {"target_owner", AU_USER_CLASS_NAME},
+      {"validity", "integer"}, // for object dependency. but, not supported yet (value: NULL)
       {"comment", format_varchar (2048)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"}
@@ -1789,6 +1791,7 @@ namespace cubschema
       {"code", format_varchar (1073741823)},
 // TODO: implement sql_data_access
 //       {"sql_data_access", format_varchar (17)},
+      {"validity", format_varchar (7)},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},

@@ -1295,6 +1295,7 @@ sm_define_view_stored_procedure_spec (void)
         //     "WHEN 3 THEN 'MODIFIES SQL DATA' "
         //     "ELSE NULL "
         //   "END AS [sql_data_access], "
+	  "CASE [sp].[validity] & 1 WHEN 0 THEN 'VALID' ELSE 'INVALID' END AS [validity], "
 	  "[sp].[comment] AS [comment], "
 	  "[sp].[created_time] AS [created_time], "
 	  "[sp].[updated_time] AS [updated_time] "

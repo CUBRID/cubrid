@@ -147,6 +147,7 @@ const char *TR_ATT_ACTION_TIME = "action_time";
 const char *TR_ATT_ACTION = "action_definition";
 const char *TR_ATT_ACTION_OLD = "action";
 const char *TR_ATT_PROPERTIES = "properties";
+const char *TR_ATT_VALIDITY = "validity";
 const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
@@ -7501,6 +7502,12 @@ define_trigger_classes (void)
 
   db_make_int (&value, TR_TIME_AFTER);
   if (dbt_add_attribute (tmp, TR_ATT_ACTION_TIME, "integer", NULL))
+    {
+      goto tmp_error;
+    }
+
+  // for object dependency. but, not supported yet (value: NULL)
+  if (dbt_add_attribute (tmp, TR_ATT_VALIDITY, "integer", NULL))
     {
       goto tmp_error;
     }
