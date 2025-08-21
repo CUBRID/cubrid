@@ -110,7 +110,7 @@ namespace cubconn
 	m_thread.join ();
       }
     ::close (m_eventfd);
-    
+
     assert (m_context.size () == 0);
   }
 
@@ -333,7 +333,8 @@ namespace cubconn
     if (!m_context.insert (ctx).second)
       {
 	delete ctx;
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
 	return false;
       }
     _er_log_debug (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);

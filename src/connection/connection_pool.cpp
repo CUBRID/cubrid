@@ -60,9 +60,9 @@ namespace cubconn
 
     i = 0;
     for (int core : *cores)
-    {
-      m_workers.emplace_back (std::make_unique<connection_worker> (this, core, i++));
-    }
+      {
+	m_workers.emplace_back (std::make_unique<connection_worker> (this, core, i++));
+      }
 
     m_max_connections = max_connections;
   }
