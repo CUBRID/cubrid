@@ -1319,12 +1319,14 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   cubconn::master_connector connector;
   cubconn::connection_pool connections;
   std::size_t worker_count, core_count;
+  std::string name;
   int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
     {
       return ER_FAILED;
     }
+  name = std::string (server_name, name_length);
 
 #if defined(WINDOWS)
   if (css_windows_startup () < 0)
@@ -1363,7 +1365,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   /* attach pool */
   connector.attach (connections);
   /* handshake and dispatch connection */
-  connector.run (port_id, std::string (server_name, name_length));
+  connector.run (port_id, name);
 
 shutdown:
   /*

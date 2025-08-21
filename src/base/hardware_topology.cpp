@@ -39,6 +39,9 @@
 #include <linux/sockios.h>
 #include <net/if.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubbase
 {
   hardware_topology topology;
