@@ -71,7 +71,7 @@
  * = max fractional digits (38 + 127) = 165 + 10 extra digits
  * Must always be smaller than NUMERIC_MAX_STRING_SIZE.
  */
-#define TWICE_NUM_MAX_PREC      (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10
+#define TWICE_NUM_MAX_PREC      ((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10)
 #define SECONDS_IN_A_DAY	(int)(24L * 60L * 60L)
 
 #define ROUND(x)                ((x) > 0 ? ((x) + .5) : ((x) - .5))

@@ -50,7 +50,7 @@ typedef enum
  * Maximum string size for NUMERIC output: 175 * 2 = 350
  * = (max fractional digits (38 + 127) + 10 extra digits) * 2
  */
-#define NUMERIC_MAX_STRING_SIZE ((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10) * 2
+#define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10) * 2)
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
