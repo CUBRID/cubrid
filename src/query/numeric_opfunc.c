@@ -167,8 +167,6 @@ static void determine_prec_scale (const char *int_digits, int int_len, const cha
 				  char *num_string, int *out_prec, int *out_scale, bool * need_round);
 static void determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len,
 			     int frac_zero_cnt, char next_digit);
-static void determine_remove_trailing_zeros (char *out_str, int *out_prec, int *out_scale, int temp_int_len,
-					     int temp_frac_len);
 static void numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale,
 				       const int dst_prec, DB_C_NUMERIC dest);
 static void numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const int dst_prec,
@@ -3284,7 +3282,7 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
       *int_first_nz = -1;
       *int_last_nz = -1;
       *int_len = 1;
-      *frac_len = 0;
+      *frac_len = frac_count;
     }
   else if (!has_digit && (int_count + frac_count) == 0)
     {
@@ -3509,12 +3507,6 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 			      next_digit);
     }
 
-  /* Step 5: Trailing zero processing */
-  if (tmp_scale > 0 && temp_frac_len > 0)
-    {
-      (void) determine_remove_trailing_zeros (out_num_string, &tmp_prec, &tmp_scale, temp_int_len, temp_frac_len);
-    }
-
   *out_prec = tmp_prec;
   *out_scale = tmp_scale;
 }
@@ -3602,43 +3594,6 @@ determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len,
 }
 
 /*
- * determine_remove_trailing_zeros () -
- *   return:
- *   out_str(in/out) : Numeric string in format [integer_part][fractional_part] (without decimal point)
- *   out_prec(in/out) : Precision (total number of significant digits)
- *   out_scale(in/out) : Scale (number of fractional digits)
- *   temp_int_len(in) : Length of integer part (0 if pure decimal)
- *   temp_frac_len(in) : Length of fractional part
- *
- * Note: Remove trailing zeros from fractional part
- */
-static void
-determine_remove_trailing_zeros (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len)
-{
-  int trailing_zeros = 0;
-  int result_length = temp_int_len + temp_frac_len;
-  char *current_pos = out_str + temp_int_len + temp_frac_len - 1;
-
-  /* Count trailing zeros from the rightmost position of fractional part */
-  while (trailing_zeros < temp_frac_len && *current_pos == '0')
-    {
-      trailing_zeros++;
-      current_pos--;
-    }
-
-  if (trailing_zeros > 0)
-    {
-      /* Truncate string by adding null terminator */
-      result_length -= trailing_zeros;
-      out_str[result_length] = '\0';
-
-      /* Synchronize scale and precision values */
-      *out_scale -= trailing_zeros;
-      *out_prec -= trailing_zeros;
-    }
-}
-
-/*
  * numeric_coerce_string_to_num () -
  *   return:
  *   astring(in) : ptr to the input character string
@@ -3689,7 +3644,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     {
       /* Zero case */
       prec = 1;
-      scale = 0;
+      scale = frac_len;
       num_string[0] = '0';
       num_string[1] = '\0';
     }
