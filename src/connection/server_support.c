@@ -1318,8 +1318,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master_connector connector;
   cubconn::connection_pool connections;
-  std::string servername (server_name, name_length);
-  CSS_CONN_ENTRY *conn;
+  std::size_t worker_count, core_count;
   int status = NO_ERROR;
 
   if (server_name == NULL || port_id <= 0)
@@ -1340,10 +1339,12 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #define MAX_TASK_COUNT css_get_max_task_count ()
 #define MAX_CONNECTIONS css_get_max_connections ()
 
+  worker_count = (int) (std::thread::hardware_concurrency () * 2.5);
+  core_count = std::thread::hardware_concurrency ();
   // create request worker pool
   css_Server_request_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (MAX_WORKERS, MAX_TASK_COUNT, "transaction workers", NULL,
-						   css_get_server_request_thread_core_count_configruation (),
+    cubthread::get_manager ()->create_worker_pool (worker_count, MAX_TASK_COUNT, "transaction workers", NULL,
+						   core_count,
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
@@ -1362,7 +1363,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   /* attach pool */
   connector.attach (connections);
   /* handshake and dispatch connection */
-  connector.run (port_id, servername);
+  connector.run (port_id, std::string (server_name, name_length));
 
 shutdown:
   /*

@@ -148,7 +148,7 @@ namespace cubconn
     return true;
   }
 
-  bool master_connector::run (int port, std::string &server_name) noexcept
+  bool master_connector::run (int port, std::string server_name) noexcept
   {
     if (!this->connect (port))
       {
