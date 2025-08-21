@@ -423,22 +423,6 @@ struct scan_id_struct
   ((iscan_id_p)->indx_info != NULL \
    && (iscan_id_p)->indx_info->ils_prefix_len > 0)
 
-#define SCAN_INIT_FILTER_INFO(filter, scan_pred_p, scan_attrs_p, val_list_p, val_descr_p, class_oid_p, btree_num_attrs_p, btree_attr_ids_p, num_vstr_ptr_p, vstr_ids_p) \
-   do {\
-	   (filter).scan_pred = (scan_pred_p); \
-	   (filter).scan_attrs = (scan_attrs_p); \
-	   (filter).val_list = (val_list_p); \
-	   (filter).val_descr = (val_descr_p); \
-	   (filter).class_oid = (class_oid_p); \
-	   (filter).btree_num_attrs = (btree_num_attrs_p); \
-	   (filter).btree_attr_ids = (btree_attr_ids_p); \
-	   (filter).num_vstr_ptr = (num_vstr_ptr_p); \
-	   (filter).vstr_ids = (vstr_ids_p); \
-	   (filter).func_idx_col_id = -1; \
-	   (filter).matched_attid_idx_4_keyflt = NULL; \
-	   (filter).matched_attid_idx_4_readval = NULL; \
-   } while (0)
-
 extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */
 				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,

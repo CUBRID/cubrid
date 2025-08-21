@@ -241,9 +241,21 @@ namespace parallel_heap_scan
 	p_current_oid = &hsidp->curr_oid;
       }
 
-    /* set data filter information */
-    SCAN_INIT_FILTER_INFO (data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
-			   &hsidp->cls_oid, 0, NULL, NULL, NULL);
+    data_filter =
+    {
+      &hsidp->scan_pred,
+      &hsidp->pred_attrs,
+      NULL,
+      NULL,
+      scan_id->val_list,
+      scan_id->vd,
+      &hsidp->cls_oid,
+      NULL,
+      NULL,
+      NULL,
+      0,
+      -1,
+    };
 
     is_peeking = scan_id->fixed;
     if (scan_id->grouped)
