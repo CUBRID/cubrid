@@ -62,10 +62,10 @@ namespace cubquery
 	  sid.val_list,
 	  sid.vd,
 	  &sid.s.hsid.cls_oid,
+	  NULL,
+	  NULL,
+	  NULL,
 	  0,
-	  NULL,
-	  NULL,
-	  NULL,
 	  -1,
 	};
 	rest_attrs = &sid.s.hsid.rest_attrs;
@@ -83,10 +83,10 @@ namespace cubquery
 	  sid.val_list,
 	  sid.vd,
 	  &sid.s.isid.cls_oid,
-	  0,
+	  NULL,
 	  &sid.s.isid.num_vstr,
 	  sid.s.isid.vstr_ids,
-	  NULL,
+	  0,
 	  -1,
 	};
 	key_filter =
