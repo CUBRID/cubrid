@@ -10727,7 +10727,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
     {
       reprid = or_rep_id (recdes);
 
-      if (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid)
+      if (__builtin_expect (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid, 0))
 	{
 	  /* Get the needed representation */
 	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
