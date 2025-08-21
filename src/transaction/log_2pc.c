@@ -202,9 +202,7 @@ log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
 
   thread_p = thread_get_thread_entry_info ();
 
-  (void) (*log_2pc_Userfun.send_prepare) (thread_p, gtrid, num_particps, block_particps_ids);
-  sleep (10);
-  exit (-1);
+  return (*log_2pc_Userfun.send_prepare) (thread_p, gtrid, num_particps, block_particps_ids);
 }
 
 /*
