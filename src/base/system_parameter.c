@@ -9708,6 +9708,7 @@ prm_tune_parameters (void)
 	}
 
 #if defined (SERVER_MODE)
+      /*
       thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
       int safe_core_count = (css_get_max_workers () / 3);
       int system_cpu_count = cubthread::system_core_count ();
@@ -9717,6 +9718,7 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%d", core_upper_limit);
 	  (void) prm_set (thread_core_count_prm, newval, false);
 	}
+      */
 #endif
     }
 
