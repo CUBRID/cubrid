@@ -236,7 +236,7 @@ namespace cubxasl
   spawner::spawn (const cub_compiled_regex *src)
   {
     /* TODO: unsupported */
-    assert_release (src == nullptr);
+    assert_release_error (src == nullptr);
     return nullptr;
   }
 
@@ -280,7 +280,7 @@ namespace cubxasl
     dest->vfetch_to = spawn (src->vfetch_to);
 
     /* TODO: unsupported */
-    assert_release (src->xasl == nullptr);
+    assert_release_error (src->xasl == nullptr);
     dest->xasl = nullptr;
 
     /* union */
@@ -328,7 +328,7 @@ namespace cubxasl
       case TYPE_OID:
       case TYPE_CLASSOID:
 	/* TODO: unsupported */
-	assert_release (false);
+	assert_release_error (false);
 	return er_errid ();
 
       case TYPE_FUNC:
@@ -416,7 +416,7 @@ namespace cubxasl
 	break;
 
       default:
-	assert_release (src->pred == nullptr);
+	assert_release_error (src->pred == nullptr);
 	dest->pred = nullptr;
 	break;
       }
@@ -463,7 +463,7 @@ namespace cubxasl
     dest->cache_attrinfo = spawn (src->cache_attrinfo);
 
     /* TODO: unsupported */
-    assert_release (src->cache_dbvalp == nullptr);
+    assert_release_error (src->cache_dbvalp == nullptr);
     dest->cache_dbvalp = nullptr;
 
     return er_errid ();
@@ -498,7 +498,7 @@ namespace cubxasl
     dest->inst_chn = src->inst_chn;
     dest->num_values = src->num_values;
 
-    assert_release (find (src->values, src->num_values) == nullptr);
+    assert_release_error (find (src->values, src->num_values) == nullptr);
     dest->values = alloc (src->values, src->num_values);
     if (dest->values != nullptr)
       {
@@ -518,7 +518,7 @@ namespace cubxasl
   spawner::spawn (const OR_CLASSREP *src)
   {
     /* TODO: unsupported */
-    assert_release (src == nullptr);
+    assert_release_error (src == nullptr);
     return nullptr;
   }
 
@@ -548,7 +548,7 @@ namespace cubxasl
   spawner::spawn (const OR_ATTRIBUTE *src)
   {
     /* TODO: unsupported */
-    assert_release (src == nullptr);
+    assert_release_error (src == nullptr);
     return nullptr;
   }
 
@@ -596,7 +596,7 @@ namespace cubxasl
   spawner::spawn (const QFILE_LIST_ID *src)
   {
     /* TODO: unsupported */
-    assert_release (src == nullptr);
+    assert_release_error (src == nullptr);
     return nullptr;
   }
 
@@ -631,7 +631,7 @@ namespace cubxasl
   spawner::spawn (const function_tmp_obj *src)
   {
     /* TODO: unsupported */
-    assert_release (src == nullptr);
+    assert_release_error (src == nullptr);
     return nullptr;
   }
 
@@ -686,7 +686,7 @@ namespace cubxasl
 	i++;
       }
 
-    assert_release (i == src->count);
+    assert_release_error (i == src->count);
 
     dest->current_value = dest->regu_list;
     dest->count = src->count;
@@ -764,7 +764,7 @@ namespace cubxasl
 	i++;
       }
 
-    assert_release (i == count);
+    assert_release_error (i == count);
 
     return dest;
   }
@@ -799,7 +799,7 @@ namespace cubxasl
   spawner::spawn (const PL_SIGNATURE_TYPE *src)
   {
     /* TODO: unsupported */
-    assert_release (src == nullptr);
+    assert_release_error (src == nullptr);
     return nullptr;
   }
 
@@ -821,7 +821,7 @@ namespace cubxasl
       }
 
     /* ref: stx_build_val_list */
-    assert_release (find (src->valp, src->val_cnt) == nullptr);
+    assert_release_error (find (src->valp, src->val_cnt) == nullptr);
     dest->valp = alloc (src->valp, src->val_cnt);
     if (dest->valp == nullptr)
       {
@@ -848,7 +848,7 @@ namespace cubxasl
 	i++;
       }
 
-    assert_release (i == src->val_cnt);
+    assert_release_error (i == src->val_cnt);
 
     dest->val_cnt = src->val_cnt;
 
@@ -888,7 +888,7 @@ namespace cubxasl
       }
 
     /* ref: xqmgr_execute_query */
-    assert_release (find (src->dbval_ptr, src->dbval_cnt) == nullptr);
+    assert_release_error (find (src->dbval_ptr, src->dbval_cnt) == nullptr);
     dest->dbval_ptr = alloc (src->dbval_ptr, src->dbval_cnt);
     if (dest->dbval_ptr != nullptr)
       {
@@ -907,7 +907,7 @@ namespace cubxasl
 
     /* TODO: unsupported */
 #if 0
-    assert_release (src->xasl_state == nullptr);
+    assert_release_error (src->xasl_state == nullptr);
 #endif
     dest->xasl_state = NULL;
 
@@ -924,7 +924,7 @@ namespace cubxasl
 
     if (dest == nullptr)
       {
-	assert_release (false);
+	assert_release_error (false);
 	return false;
       }
 

@@ -100,7 +100,7 @@ namespace parallel_query_execute
     /* clear XASL tree */
     if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
       {
-	qfile_copy_list_id (&list_id, m_xasl->list_id, true); //+1
+	qfile_copy_list_id (&list_id, m_xasl->list_id, true, QFILE_MOVE_DEPENDENT); //+1
 	qfile_clear_list_id (m_xasl->list_id); //-1
 	is_list_id_kept = true;
       }
@@ -109,7 +109,7 @@ namespace parallel_query_execute
 
     if (is_list_id_kept)
       {
-	qfile_copy_list_id (m_xasl->list_id, &list_id, true);
+	qfile_copy_list_id (m_xasl->list_id, &list_id, true, QFILE_MOVE_DEPENDENT);
 	qfile_clear_list_id (&list_id);
       }
 
@@ -178,7 +178,7 @@ namespace parallel_query_execute
     /* clear XASL tree */
     if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
       {
-	qfile_copy_list_id (&list_id, m_xasl->list_id, true);
+	qfile_copy_list_id (&list_id, m_xasl->list_id, true, QFILE_MOVE_DEPENDENT);
 	qfile_clear_list_id (m_xasl->list_id);
 	is_list_id_kept = true;
       }
@@ -186,7 +186,7 @@ namespace parallel_query_execute
 
     if (is_list_id_kept)
       {
-	qfile_copy_list_id (m_xasl->list_id, &list_id, true);
+	qfile_copy_list_id (m_xasl->list_id, &list_id, true, QFILE_MOVE_DEPENDENT);
 	qfile_clear_list_id (&list_id);
       }
 

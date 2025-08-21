@@ -99,11 +99,11 @@ namespace cubthread
 	int ioreads_offset = pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset;
 	int fetch_time_offset = pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset;
 
-	pthread_mutex_lock (&parent_context->m_px_lock);
+	pthread_mutex_lock (&parent_context->m_px_stats_mutex);
 	perfmon_add_stat (parent_context, PSTAT_PB_NUM_FETCHES, context.m_px_stats[fetches_offset]);
 	perfmon_add_stat (parent_context, PSTAT_PB_NUM_IOREADS, context.m_px_stats[ioreads_offset]);
 	perfmon_add_at_offset_to_local (parent_context, fetch_time_offset, context.m_px_stats[fetch_time_offset]);
-	pthread_mutex_unlock (&parent_context->m_px_lock);
+	pthread_mutex_unlock (&parent_context->m_px_stats_mutex);
 
 	/* init */
 	context.m_px_stats[fetches_offset] = 0;

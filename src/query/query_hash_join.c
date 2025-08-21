@@ -235,19 +235,19 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	case HASHJOIN_STATUS_END:
 	  /* impossible case */
 	  /* hjoin_check_empty_inputs guarantees HASHJOIN_STATUS_END cannot occur here */
-	  assert_release (false);
+	  assert_release_error (false);
 	  goto error_exit;
 
 	case HASHJOIN_STATUS_ERROR:
 	  /* hjoin_try_partition always retries as HASHJOIN_STATUS_SINGLE;
 	   * except for ER_INTERRUPTED, never returns HASHJOIN_STATUS_ERROR */
 	  error = er_errid ();
-	  assert_release (error == ER_INTERRUPTED);
+	  assert_release_error (error == ER_INTERRUPTED);
 	  goto error_exit;
 
 	default:
 	  /* impossible case */
-	  assert_release (false);
+	  assert_release_error (false);
 	  goto error_exit;
 	}
       break;
@@ -261,7 +261,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       [[fallthrough]];
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       goto error_exit;
     }
 
@@ -276,7 +276,7 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       assert (single_context->list_id->last_pgptr == NULL);
 
       qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
-      qfile_copy_list_id (xasl->list_id, single_context->list_id, false);
+      qfile_copy_list_id (xasl->list_id, single_context->list_id, false, QFILE_MOVE_DEPENDENT);
       QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -301,7 +301,7 @@ cleanup:
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -380,7 +380,7 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -432,7 +432,7 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
 
     case HASHJOIN_STATUS_ERROR:
     default:
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
       break;
     }
@@ -487,7 +487,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       goto error_exit;
     }
 
@@ -582,7 +582,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -694,7 +694,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -778,7 +778,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   error = hjoin_init_domain_info (thread_p, manager, domain_info);
   if (error != NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -822,7 +822,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, type_cnt * sizeof (TP_DOMAIN *));
   if (type_list->domp == NULL)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
@@ -1095,7 +1095,7 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 				false);
 	      if (coerce_domains[domain_index] == NULL)
 		{
-		  assert_release (er_errid () != NO_ERROR);
+		  assert_release_error (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
 
@@ -1207,7 +1207,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       goto error_exit;
     }
 
@@ -1489,7 +1489,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -1583,7 +1583,7 @@ cleanup:
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -1673,6 +1673,27 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
 	}
 
+      if (temp_part_list_id[part_id] != NULL &&
+	  (temp_part_list_id[part_id]->tfile_vfid->membuf_last ==
+	   temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1) &&
+	  (temp_part_list_id[part_id]->last_offset + QFILE_GET_TUPLE_LENGTH (tuple_record.tpl)) > DB_PAGESIZE)
+	{
+	  qfile_close_list (thread_p, temp_part_list_id[part_id]);
+
+	  if (part_list_id[part_id]->tuple_cnt > 0)
+	    {
+	      qfile_append_list (thread_p, part_list_id[part_id], temp_part_list_id[part_id]);
+	      qfile_destroy_list (thread_p, temp_part_list_id[part_id]);
+	    }
+	  else
+	    {
+	      qfile_destroy_list (thread_p, part_list_id[part_id]);
+	      qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
+	    }
+
+	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
+	}
+
       if (temp_part_list_id[part_id] == NULL)
 	{
 	  temp_part_list_id[part_id] =
@@ -1687,25 +1708,6 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
-	}
-
-      if (temp_part_list_id[part_id]->tfile_vfid->membuf_last ==
-	  temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1)
-	{
-	  qfile_close_list (thread_p, temp_part_list_id[part_id]);
-
-	  if (part_list_id[part_id]->tuple_cnt > 0)
-	    {
-	      qfile_append_list (thread_p, part_list_id[part_id], temp_part_list_id[part_id]);
-	      qfile_destroy_list (thread_p, temp_part_list_id[part_id]);
-	    }
-	  else
-	    {
-	      qfile_destroy_list (thread_p, part_list_id[part_id]);
-	      qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false);
-	    }
-
-	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 	}
     }				/* while (qfile_scan_list_next (list_scan_id)) */
 
@@ -1730,7 +1732,8 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  else
 	    {
 	      qfile_destroy_list (thread_p, part_list_id[part_index]);
-	      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false);
+	      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
+				  QFILE_PROHIBIT_DEPENDENT);
 	    }
 
 	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
@@ -1748,7 +1751,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -1845,7 +1848,7 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       goto error_exit;
     }
 
@@ -1855,7 +1858,7 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -1988,7 +1991,7 @@ hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 error_exit:
   hjoin_clear_split_info (thread_p, manager, split_info, true);
 
-  assert_release (er_errid () != NO_ERROR);
+  assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -2117,7 +2120,7 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 error_exit:
   hjoin_clear_shared_split_info (thread_p, manager, shared_info);
 
-  assert_release (er_errid () != NO_ERROR);
+  assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -2220,7 +2223,7 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       goto error_exit;
     }
 
@@ -2246,7 +2249,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -2433,7 +2436,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -2549,7 +2552,7 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       status = HASHJOIN_STATUS_ERROR;
     }
 
@@ -2700,7 +2703,7 @@ skip_next:
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -2887,7 +2890,7 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -2922,14 +2925,15 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       hash_value = qdata_alloc_hscan_value (thread_p, tuple_record->tpl);
       if (hash_value == NULL)
 	{
-	  assert_release (er_errid () != NO_ERROR);
+	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
       if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
 	{
 	  qdata_free_hscan_value (thread_p, hash_value);
-	  assert_release (er_errid () != NO_ERROR);
+
+	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       break;
@@ -2940,17 +2944,15 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       hash_value = qdata_alloc_hscan_value_OID (thread_p, list_scan_id);
       if (hash_value == NULL)
 	{
-	  assert_release (er_errid () != NO_ERROR);
+	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
       if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
 	{
-	  if (er_errid () == NO_ERROR)
-	    {
-	      assert_release (false);
-	    }
 	  qdata_free_hscan_value (thread_p, hash_value);
+
+	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       break;
@@ -2961,7 +2963,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       SET_TFTID (tftid, list_scan_id->curr_vpid.volid, list_scan_id->curr_vpid.pageid, list_scan_id->curr_offset);
       if (fhs_insert (thread_p, hash_scan->file.hash_table, (void *) &hash_scan->curr_hash_key, &tftid) == NULL)
 	{
-	  assert_release (er_errid () != NO_ERROR);
+	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       break;
@@ -2970,7 +2972,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       [[fallthrough]];
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       return er_errid ();
     }
 
@@ -3126,7 +3128,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 		  need_skip_next = false;	/* init */
 
 		  /* impossible case */
-		  assert_release (false);
+		  assert_release_error (false);
 		  error = er_errid ();
 		  break;
 		}
@@ -3206,7 +3208,7 @@ cleanup:
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -3380,7 +3382,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		  need_skip_next = false;	/* init */
 
 		  /* impossible case */
-		  assert_release (false);
+		  assert_release_error (false);
 		  save_error = er_errid ();
 
 		  HJOIN_PRINT_TUPLE (&probe->list_scan_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
@@ -3542,7 +3544,7 @@ cleanup:
 error_exit:
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -3626,7 +3628,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
 	  if (scan_code != S_SUCCESS)
 	    {
-	      assert_release (er_errid () != NO_ERROR);
+	      assert_release_error (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -3656,7 +3658,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
 	  if (scan_code != S_SUCCESS)
 	    {
-	      assert_release (er_errid () != NO_ERROR);
+	      assert_release_error (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -3668,7 +3670,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	}
       else
 	{
-	  assert_release (er_errid () != NO_ERROR);
+	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
       break;			/* HASH_METH_HASH_FILE */
@@ -3677,7 +3679,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       [[fallthrough]];
     default:
       /* impossible case */
-      assert_release (false);
+      assert_release_error (false);
       return er_errid ();
     }
 
@@ -3748,7 +3750,7 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
   return NO_ERROR;
 
 error_exit:
-  assert_release (er_errid () != NO_ERROR);
+  assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();
 }
 
@@ -3803,7 +3805,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
       else
 	{
 	  /* impossible case */
-	  assert_release (false);
+	  assert_release_error (false);
 	  return er_errid ();
 	}
 
@@ -3842,7 +3844,7 @@ hjoin_merge_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * outer_record,
 	  error = qfile_reallocate_tuple (overflow_record, realloc_size);
 	  if (error != NO_ERROR)
 	    {
-	      assert_release (er_errid () != NO_ERROR);
+	      assert_release_error (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
 	}
@@ -3936,7 +3938,7 @@ hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert (false);
       break;
     }				/* switch (step) */
 }
@@ -4008,7 +4010,7 @@ hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats,
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert (false);
       break;
     }				/* switch (step) */
 }
@@ -4133,7 +4135,7 @@ hjoin_dump_hash_table (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFIL
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert (false);
       break;
     }
 }
@@ -4182,7 +4184,7 @@ hjoin_print_tuple (QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE tuple, HASHJOI
 
     default:
       /* impossible case */
-      assert_release (false);
+      assert (false);
       /* Nothing to do */
       break;
     }

@@ -95,6 +95,7 @@ namespace parallel_query
 
 	bool has_error ();
 	bool check_interrupt (cubthread::entry &thread_ref);
+	void clear_interrupt (cubthread::entry &thread_ref);
 	void handle_error (cubthread::entry &thread_ref);
 
       private:
@@ -206,7 +207,7 @@ namespace parallel_query
       auto *spawner = get_spawner (thread_ref);
       if (spawner == nullptr)
 	{
-	  assert_release (er_errid () != NO_ERROR);
+	  assert_release_error (er_errid () != NO_ERROR);
 	  return nullptr;
 	}
 

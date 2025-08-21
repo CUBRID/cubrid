@@ -14622,10 +14622,7 @@ pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
   if (xasl == NULL)
     {
-      if (er_errid () == NO_ERROR)
-	{
-	  assert_release (false);
-	}
+      assert_release_error (er_errid () != NO_ERROR);
       return NULL;
     }
 

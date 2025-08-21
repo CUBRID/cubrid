@@ -711,7 +711,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
     }
 
   return NULL;
@@ -1726,7 +1726,7 @@ make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
 	       * Only PT_NAME segments are allowed,
 	       * except for function expressions that match an existing function-based index.
 	       */
-	      assert_release (QO_SEG_FUNC_INDEX (seg));
+	      assert_release_error (QO_SEG_FUNC_INDEX (seg));
 	      /* Nothing to do */
 	    }
 	}
@@ -1878,7 +1878,7 @@ check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl)
   return xasl;
 
 error_exit:
-  assert_release (er_errid () != NO_ERROR);
+  assert_release_error (er_errid () != NO_ERROR);
 
   return NULL;
 }
@@ -2698,7 +2698,7 @@ cleanup:
   return xasl;
 
 error_exit:
-  assert_release (er_errid () != NO_ERROR);
+  assert_release_error (er_errid () != NO_ERROR);
 
   xasl = NULL;
 
@@ -5505,7 +5505,13 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	  BITSET_CLEAR (temp_segs_set);
 
 	  term_expr = QO_TERM_PT_EXPR (term);
-	  assert_release (term_expr->info.expr.op != PT_RANGE);
+
+	  if (term_expr->info.expr.op == PT_RANGE)
+	    {
+	      /* impossible case */
+	      assert_release_error (false);
+	      goto error_exit;
+	    }
 
 	  qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);
 
@@ -5522,7 +5528,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	  else
 	    {
 	      /* impossible case */
-	      assert (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
@@ -5706,7 +5712,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -5907,7 +5913,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (seg_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 	  assert (bitset_next_member (&seg_iter) == -1);
@@ -5918,7 +5924,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (found_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
@@ -5949,7 +5955,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (seg_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 	  assert (bitset_next_member (&seg_iter) == -1);
@@ -5960,7 +5966,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (found_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
@@ -6033,7 +6039,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  else
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
@@ -6081,7 +6087,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (er_errid () != NO_ERROR);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 

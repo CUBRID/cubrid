@@ -188,8 +188,13 @@
 #define STRINGIZE(s) #s
 #define assert_release(e) \
   ((e) ? (void) 0  : er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, STRINGIZE (e)))
+#define assert_release_notify(e) assert_release(e)
+#define assert_release_error(e) \
+  ((e) ? (void) 0  : er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, STRINGIZE (e)))
 #else
 #define assert_release(e) assert(e)
+#define assert_release_notify(e) assert_release(e)
+#define assert_release_error(e) assert(e)
 #endif
 
 enum er_exit_ask

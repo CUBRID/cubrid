@@ -161,7 +161,7 @@ namespace cubxasl
     auto old_it = m_cached_ptrs.find (src);
     if (old_it != m_cached_ptrs.end())
       {
-	assert_release (old_it->second.count == count);
+	assert_release_error (old_it->second.count == count);
 	return static_cast<T *> (old_it->second.ptr);
       }
 
@@ -218,7 +218,7 @@ namespace cubxasl
 	if (!inserted)
 	  {
 	    /* impossible case */
-	    assert_release (false);
+	    assert_release_error (false);
 	    return nullptr;
 	  }
       }

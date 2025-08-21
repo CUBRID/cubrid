@@ -300,7 +300,8 @@ namespace cubthread
 
       cubload::driver *m_loaddb_driver;
 
-      pthread_mutex_t m_px_lock;
+      pthread_mutex_t m_px_lock_mutex;
+      pthread_mutex_t m_px_stats_mutex;
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
 
