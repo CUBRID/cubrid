@@ -65,10 +65,10 @@ namespace cubbase
     CPU_SET (core, &set);
     fail = pthread_setaffinity_np (pthread_self (), sizeof (set), &set);
     if (fail)
-    {
-      errno = fail;
-      perror ("pthread_setaffinity_np");
-    }
+      {
+	errno = fail;
+	perror ("pthread_setaffinity_np");
+      }
   }
 
   std::vector<int> &hardware_topology::get_cores ()
@@ -87,50 +87,50 @@ namespace cubbase
     /* get ifname */
     ifname = cubbase::ifsys::auto_select_primary_iface ();
     if (ifname.empty ())
-    {
-      fprintf (stderr, "[ERR] cannot auto select iface\n");
-      return ;
-    }
+      {
+	fprintf (stderr, "[ERR] cannot auto select iface\n");
+	return ;
+      }
 
     /* channel */
     if (!this->set_nic_channels (ifname, m_selected.size ()))
-    {
-      fprintf(stderr, "[WARN] set_nic_channels_combined failed (driver may limit)\n");
-    }
+      {
+	fprintf (stderr, "[WARN] set_nic_channels_combined failed (driver may limit)\n");
+      }
     /* wait until applied */
     usleep (1000 * 1000);
 
     if (cubbase::ifsys::find_irqs_for_iface (ifname.c_str (), &qs) == 0 && qs.n > 0)
-    {
-      for (i = 0; i < qs.n; i++)
       {
-	q = qs.v[i].q;
-	cubbase::ifsys::set_irq_affinity_list (qs.v[i].irq, m_selected[q % m_selected.size ()]);
+	for (i = 0; i < qs.n; i++)
+	  {
+	    q = qs.v[i].q;
+	    cubbase::ifsys::set_irq_affinity_list (qs.v[i].irq, m_selected[q % m_selected.size ()]);
+	  }
       }
-    }
     else
-    {
-      fprintf (stderr, "[WARN] no IRQ lines found for %s in /proc/interrupts\n", ifname.c_str ());
-    }
+      {
+	fprintf (stderr, "[WARN] no IRQ lines found for %s in /proc/interrupts\n", ifname.c_str ());
+      }
     free (qs.v);
 
     /* RPS/XPS */
-    snprintf (qbase, sizeof(qbase), "/sys/class/net/%s/queues", ifname.c_str ());
-    snprintf (rxdir, sizeof(rxdir), "%s/rx-", qbase);
-    snprintf (txdir, sizeof(txdir), "%s/tx-", qbase);
+    snprintf (qbase, sizeof (qbase), "/sys/class/net/%s/queues", ifname.c_str ());
+    snprintf (rxdir, sizeof (rxdir), "%s/rx-", qbase);
+    snprintf (txdir, sizeof (txdir), "%s/tx-", qbase);
     rx_count = cubbase::ifsys::listdir_count_prefix (qbase, "rx-");
     tx_count = cubbase::ifsys::listdir_count_prefix (qbase, "tx-");
 
     cubbase::ifsys::maybe_set_rps_sock_flow_entries (m_selected.size ());
 
     for (q = 0; q < rx_count; q++)
-    {
-      cubbase::ifsys::set_rps_for_queue (ifname.c_str (), q, m_selected[q % m_selected.size ()]);
-    }
+      {
+	cubbase::ifsys::set_rps_for_queue (ifname.c_str (), q, m_selected[q % m_selected.size ()]);
+      }
     for (q = 0; q < tx_count; q++)
-    {
-      cubbase::ifsys::set_xps_for_queue (ifname.c_str (), q, m_selected[q % m_selected.size ()]);
-    }
+      {
+	cubbase::ifsys::set_xps_for_queue (ifname.c_str (), q, m_selected[q % m_selected.size ()]);
+      }
   }
 
   void hardware_topology::load_cpu ()
@@ -147,28 +147,28 @@ namespace cubbase
 
     m_cores.reserve (ncores);
     for (i = 0; i < ncores; i++)
-    {
-      core = hwloc_get_obj_by_type (m_topology, HWLOC_OBJ_CORE, i);
-      if (!core || !core->cpuset)
       {
-	continue;
-      }
+	core = hwloc_get_obj_by_type (m_topology, HWLOC_OBJ_CORE, i);
+	if (!core || !core->cpuset)
+	  {
+	    continue;
+	  }
 
-      pus.clear ();
-      npus = hwloc_get_nbobjs_inside_cpuset_by_type (m_topology, core->cpuset, HWLOC_OBJ_PU);
-      for (j = 0; j < npus; j++)
-      {
-	pu = hwloc_get_obj_inside_cpuset_by_type (m_topology, core->cpuset, HWLOC_OBJ_PU, j);
-	if (pu && pu->cpuset && hwloc_bitmap_isincluded (pu->cpuset, online))
-	{
-	  pus.push_back (pu->os_index);
-	}
+	pus.clear ();
+	npus = hwloc_get_nbobjs_inside_cpuset_by_type (m_topology, core->cpuset, HWLOC_OBJ_PU);
+	for (j = 0; j < npus; j++)
+	  {
+	    pu = hwloc_get_obj_inside_cpuset_by_type (m_topology, core->cpuset, HWLOC_OBJ_PU, j);
+	    if (pu && pu->cpuset && hwloc_bitmap_isincluded (pu->cpuset, online))
+	      {
+		pus.push_back (pu->os_index);
+	      }
+	  }
+	std::sort (pus.begin (), pus.end ());
+	/* TODO: add selection strategy */
+	m_selected.emplace_back (pus[0]);
+	m_cores.push_back (std::move (pus));
       }
-      std::sort (pus.begin (), pus.end ());
-      /* TODO: add selection strategy */
-      m_selected.emplace_back (pus[0]);
-      m_cores.push_back (std::move (pus));
-    }
   }
 
   bool hardware_topology::set_nic_channels (std::string &ifname, unsigned int combined)
@@ -181,10 +181,10 @@ namespace cubbase
 
     fd = socket (AF_INET, SOCK_DGRAM, 0);
     if (fd < 0)
-    {
-      perror ("socket");
-      return false;
-    }
+      {
+	perror ("socket");
+	return false;
+      }
 
     memset (&ifr, 0, sizeof (ifr));
     memset (&channel, 0, sizeof (channel));
@@ -196,15 +196,15 @@ namespace cubbase
 
     success = ioctl (fd, SIOCETHTOOL, &ifr);
     if (success)
-    {
-      snprintf (cmd, sizeof (cmd), "ethtool -L %s combined %u", ifname.c_str (), combined);
-      success = system (cmd);
-      if (success)
       {
-	::close (fd);
-	return false;
+	snprintf (cmd, sizeof (cmd), "ethtool -L %s combined %u", ifname.c_str (), combined);
+	success = system (cmd);
+	if (success)
+	  {
+	    ::close (fd);
+	    return false;
+	  }
       }
-    }
 
     ::close (fd);
     return true;
