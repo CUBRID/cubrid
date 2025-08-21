@@ -75,7 +75,8 @@ namespace cubpl
     std::vector <plcsql_dependency> dependencies;
   };
 
-  struct EXPORT_IMPORT plcsql_dependency: public cubpacking::packable_object {
+  struct EXPORT_IMPORT plcsql_dependency: public cubpacking::packable_object
+  {
 
     plcsql_dependency ();
 
@@ -85,7 +86,7 @@ namespace cubpl
 
     int obj_type;       // TODO: use predefined enum
     std::string obj_name;
-  }
+  };
 
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object
   {

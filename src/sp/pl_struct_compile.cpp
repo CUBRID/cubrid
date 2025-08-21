@@ -97,11 +97,12 @@ namespace cubpl
 	    serializator.pack_string (compiled_code);
 	  }
 
-        int dependencies_size = (int) dependencies.size();
-        serializator.pack_int(dependencies_size);
-        for (int i = 0; i < dependencies_size; i++) {
+	int dependencies_size = (int) dependencies.size();
+	serializator.pack_int (dependencies_size);
+	for (int i = 0; i < dependencies_size; i++)
+	  {
 	    dependencies[i].pack (serializator);
-        }
+	  }
       }
   }
 
@@ -130,9 +131,10 @@ namespace cubpl
 	  }
 
 	size += serializator.get_packed_int_size (size); // size of dependencies
-        for (int i = 0; i < (int) dependencies.size(); i++) {
+	for (int i = 0; i < (int) dependencies.size(); i++)
+	  {
 	    dependencies[i].get_packed_size (serializator, size);
-        }
+	  }
       }
 
     return size;
@@ -161,14 +163,16 @@ namespace cubpl
 	    deserializator.unpack_string (compiled_code);
 	  }
 
-        int dependencies_size = 0;
+	int dependencies_size = 0;
 	deserializator.unpack_int (dependencies_size);
-        if (dependencies_size > 0) {
-            dependencies.resize(dependencies_size);
-            for (int i = 0; i < dependencies_size; i++) {
+	if (dependencies_size > 0)
+	  {
+	    dependencies.resize (dependencies_size);
+	    for (int i = 0; i < dependencies_size; i++)
+	      {
 		dependencies[i].unpack (deserializator);
-            }
-        }
+	      }
+	  }
       }
   }
 
@@ -179,18 +183,25 @@ namespace cubpl
   plcsql_dependency::plcsql_dependency () { }
 
   void
-  plcsql_dependency::pack (cubpacking::packer &serializator) const {
-      // TODO
+  plcsql_dependency::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (obj_type);
+    serializator.pack_string (obj_name);
   }
 
   size_t
-  plcsql_dependency::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const {
-      // TODO
+  plcsql_dependency::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // obj_type
+    size += serializator.get_packed_string_size (obj_name, size); // obj_name
+    return size;
   }
 
   void
-  plcsql_dependency::unpack (cubpacking::unpacker &deserializator) {
-      // TODO
+  plcsql_dependency::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (obj_type);
+    deserializator.unpack_string (obj_name);
   }
 
 //////////////////////////////////////////////////////////////////////////
