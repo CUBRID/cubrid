@@ -1341,7 +1341,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #define MAX_TASK_COUNT css_get_max_task_count ()
 #define MAX_CONNECTIONS css_get_max_connections ()
 
-  worker_count = (int) (std::thread::hardware_concurrency () * 2.5);
+  worker_count = (int) prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
   core_count = std::thread::hardware_concurrency ();
   // create request worker pool
   css_Server_request_worker_pool =
