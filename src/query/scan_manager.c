@@ -5411,6 +5411,11 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 				   &scan_id->scan_stats.elapsed_lookup);
 	      break;
 
+	    case S_VECTOR_INDEX_SCAN:
+	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_lookup, &old_scan_stats.elapsed_lookup,
+				   &scan_id->scan_stats.elapsed_lookup);
+	      break;
+
 	    default:
 	      break;
 	    }
@@ -6364,8 +6369,16 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   RECDES recdes = RECDES_INITIALIZER;
   DB_LOGICAL ev_res;
 
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+
   if (visid->oidp == NULL)
     {
+      if (thread_is_on_trace (thread_p))
+	{
+	  tsc_getticks (&start_tick);
+	}
+
       int k = db_get_int (visid->k_dbvalue);
       if (k > 0)
 	{
@@ -6376,6 +6389,13 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (hnsw_search_element (visid->hnsw_id, visid->query_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
 	    {
 	      return S_ERROR;
+	    }
+
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_lookup, tv_diff);
 	    }
 	}
       else
@@ -8196,7 +8216,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
       return;
     }
 
-  scan = json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
+  scan = json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_scan), "fetch",
 		    scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
 
   switch (scan_id->type)
@@ -8269,7 +8289,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	}
       else
 	{
-	  lookup = json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
+	  lookup = json_pack ("{s:i, s:i}", "time", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_lookup), "rows",
 			      scan_id->scan_stats.data_qualified_rows);
 
 	  json_object_set_new (scan_stats, "lookup", lookup);
@@ -8352,15 +8372,15 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       if (scan_id->s.llsid.hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
 	{
-	  fprintf (fp, "(hash temp(m), build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp(m), build time: %.3f,", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_hash_build));
 	}
       else if (scan_id->s.llsid.hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	{
-	  fprintf (fp, "(hash temp(h), build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp(h), build time: %.3f,", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_hash_build));
 	}
       else if (scan_id->s.llsid.hlsid.hash_list_scan_type == HASH_METH_HASH_FILE)
 	{
-	  fprintf (fp, "(hash temp(f), build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	  fprintf (fp, "(hash temp(f), build time: %.3f,", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_hash_build));
 	}
       else
 	{
@@ -8388,12 +8408,16 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       fprintf (fp, "(class_attr");
       break;
 
+    case S_VECTOR_INDEX_SCAN:
+      fprintf (fp, "(hnsw");
+      break;
+
     default:
       fprintf (fp, "(noscan");
       break;
     }
 
-  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
+  fprintf (fp, " time: %.3f, fetch: %llu, ioread: %llu", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_scan),
 	   (unsigned long long int) scan_id->scan_stats.num_fetches,
 	   (unsigned long long int) scan_id->scan_stats.num_ioreads);
 
@@ -8461,9 +8485,13 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 
       if (scan_id->scan_stats.covered_index == false)
 	{
-	  fprintf (fp, " (lookup time: %d, rows: %llu)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
+	  fprintf (fp, " (lookup time: %.3f, rows: %llu)", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_lookup),
 		   (unsigned long long int) scan_id->scan_stats.data_qualified_rows);
 	}
+      break;
+
+    case S_VECTOR_INDEX_SCAN:
+      fprintf (fp, ", hnsw lookup time: %.3f)", TO_MSEC_DOUBLE (scan_id->scan_stats.elapsed_lookup));
       break;
 
     default:

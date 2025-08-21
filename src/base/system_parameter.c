@@ -3339,7 +3339,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ENABLE_HISTO,
    PRM_NAME_ENABLE_HISTO,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_enable_histo_flag,
    (void *) &prm_enable_histo_default,
@@ -4986,7 +4986,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_QUERY_TRACE,
    PRM_NAME_QUERY_TRACE,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_SERVER),
    PRM_BOOLEAN,
    &prm_query_trace_flag,
    (void *) &prm_query_trace_default,
@@ -10615,7 +10615,10 @@ sysprm_set_value (SYSPRM_PARAM * prm, SYSPRM_VALUE value, bool set_flag, bool du
   if (prm->id == PRM_ID_TIMEZONE)
     {
       int err_status = 0;
-      err_status = tz_str_to_region (value.str, strlen (value.str), tz_get_client_tz_region_session ());
+      if (value.str != NULL)
+	{
+	  err_status = tz_str_to_region (value.str, strlen (value.str), tz_get_client_tz_region_session ());
+	}
       if (err_status != NO_ERROR)
 	{
 	  return PRM_ERR_BAD_PARAM;
@@ -12574,7 +12577,10 @@ update_session_state_from_sys_params (THREAD_ENTRY * thread_p, SESSION_PARAM * s
 	{
 	  SESSION_PARAM *ssession_prm = &(session_params[prm_Def_session_idx[PRM_ID_TIMEZONE]]);
 	  assert (ssession_prm->prm_id == PRM_ID_TIMEZONE);
-	  tz_str_to_region (ssession_prm->value.str, strlen (ssession_prm->value.str), session_tz_region);
+	  if (ssession_prm->value.str != NULL)
+	    {
+	      tz_str_to_region (ssession_prm->value.str, strlen (ssession_prm->value.str), session_tz_region);
+	    }
 	}
     }
 }

@@ -197,6 +197,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_sr.c
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/network_histogram.cpp
   )
 
 set(DEBUGGING_HEADERS

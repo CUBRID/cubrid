@@ -1292,7 +1292,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	{
 	  if (!strcasecmp (argument, "on"))
 	    {
-	      if (histo_start (false) == NO_ERROR)
+	      if (histo_start (true, false) == NO_ERROR)
 		{
 		  csql_Is_histo_on = HISTO_ON;
 		}
@@ -2118,6 +2118,12 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  goto error;
 	}
 
+      if (csql_Is_time_on)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
+	}
+
       snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
 
       csql_Row_count = 0;
@@ -2202,10 +2208,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  char time[100];
 
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
-
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
+	  // INT64 current_time = elapsed_time.tv_sec * 1000000LL + elapsed_time.tv_usec;
+	  // sprintf (time, " (%.6f sec) ", (double) current_time / 1000000.0);
 	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
 	}
 

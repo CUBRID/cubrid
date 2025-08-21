@@ -881,10 +881,32 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       perfmon_inc_stat (thread_p, PSTAT_NET_NUM_REQUESTS);
     }
+
+  conn->current_request_id = (int) request;
   func = net_Requests[request].processing_function;
   assert (func != NULL);
   if (func)
     {
+#if defined (SERVER_MODE)
+      bool is_query_comm_trace = prm_get_bool_value (PRM_ID_ENABLE_HISTO);
+      if (is_query_comm_trace)
+	{
+	  net_histo_ctx *net_histo_ctx_p = NULL;
+	  session_get_net_histo_ctx (thread_p, net_histo_ctx_p);
+	  if (net_histo_ctx_p != NULL)
+	    {
+	      if (thread_need_clear_trace (thread_p) == false)
+		{
+		  if (!net_histo_ctx_p->is_started ())
+		    {
+		      net_histo_ctx_p->start_collect ();
+		    }
+		  net_histo_ctx_p->add_request (request, size);
+		}
+	    }
+	}
+#endif /* SERVER_MODE */
+
       if (prm_get_bool_value (PRM_ID_TRACK_REQUESTS))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "net_server_request(): request %s\n", get_net_request_name (request));

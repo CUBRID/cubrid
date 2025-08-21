@@ -249,7 +249,8 @@ check_power_savings (void)
       return;
     }
 
-  power_Savings = 1;
+  // TODO
+  power_Savings = 0;
 
 #else
   /*

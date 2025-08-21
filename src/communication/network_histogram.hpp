@@ -23,16 +23,11 @@
 #ifndef _NETWORK_HISTOGRAM_HPP_
 #define _NETWORK_HISTOGRAM_HPP_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
-
 #include <atomic>
 #include <array>
 
 #include "network.h"
 
-#if defined (CS_MODE)
 struct net_histogram_entry
 {
   int request_count;
@@ -41,6 +36,9 @@ struct net_histogram_entry
   int elapsed_time;
 
   net_histogram_entry () = default;
+
+  void clear (void);
+  void print (FILE *stream);
 };
 
 class net_histo_ctx
@@ -53,35 +51,42 @@ class net_histo_ctx
     bool is_started ();
     void clear (void);
 
-    int start_collect (bool for_all_trans);
+    int start_collect (void);
     int stop_collect (void);
+
+    int start_perfmon_stats (bool for_all_trans);
+    int stop_perfmon_stats (void);
+    int print_global_stats (FILE *stream, bool cumulative, const char *substr);
 
     void add_request (int request, int data_sent);
     void finish_request (int request, int data_received);
 
-    int print_global_stats (FILE *stream, bool cumulative, const char *substr);
     int print_histogram (FILE *stream);
 
   private:
     bool is_collecting; /* whether collecting histogram is started */
     bool is_perfmon_setup; /* whether perfmon stat should be setup */
     UINT64 call_cnt;
-    UINT64 last_call_time;
+    TSC_TICKS last_call_tick;
     UINT64 total_server_time;
     net_histogram_array_type histogram_entries;
 };
-#endif
 
+#if !defined (SERVER_MODE)
 /* common histogram API (CS/SA) */
 extern bool histo_is_collecting (void);
 extern bool histo_is_supported (void);
-extern int histo_start (bool for_all_trans);
+extern int histo_start (bool for_perfmon, bool for_all_trans);
 extern int histo_stop (void);
 extern int histo_print (FILE *stream);
+extern int histo_print_string (std::string &str);
 extern int histo_print_global_stats (FILE *stream, bool cumulative, const char *substr);
 extern void histo_clear (void);
 
-extern void histo_add_request (int request, int sent);
-extern void histo_finish_request (int request, int received);
+extern void histo_add_request (const int request, const int sent);
+extern void histo_finish_request (const int request, const int received);
+#else
+extern void histo_finish_request (const int request, const int received);
+#endif /* !SERVER_MODE */
 
 #endif /* _NETWORK_HISTOGRAM_HPP_ */
