@@ -2291,7 +2291,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
   ret = NO_ERROR;
 
   /* set key filter information */
-  scan_init_filter_info (&key_filter, &iscan_id->key_pred, &iscan_id->key_attrs, s_id->val_list, s_id->vd,
+  SCAN_INIT_FILTER_INFO (key_filter, &iscan_id->key_pred, &iscan_id->key_attrs, s_id->val_list, s_id->vd,
 			 &iscan_id->cls_oid, iscan_id->bt_num_attrs, iscan_id->bt_attr_ids, &iscan_id->num_vstr,
 			 iscan_id->vstr_ids);
   iscan_id->oids_count = 0;
@@ -5296,7 +5296,7 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     }
 
   /* set data filter information */
-  scan_init_filter_info (&data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
+  SCAN_INIT_FILTER_INFO (data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
 			 &hsidp->cls_oid, 0, NULL, NULL, NULL);
 
   is_peeking = scan_id->fixed;
@@ -5650,7 +5650,7 @@ scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   hpsidp = &scan_id->s.hpsid;
 
-  scan_init_filter_info (&data_filter, &hpsidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, &hpsidp->cls_oid, 0,
+  SCAN_INIT_FILTER_INFO (data_filter, &hpsidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, &hpsidp->cls_oid, 0,
 			 NULL, NULL, NULL);
 
   while (true)
@@ -5720,7 +5720,7 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   hsidp = &scan_id->s.hsid;
 
   /* set data filter information */
-  scan_init_filter_info (&data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
+  SCAN_INIT_FILTER_INFO (data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
 			 &hsidp->cls_oid, 0, NULL, NULL, NULL);
 
   if (scan_id->position == S_BEFORE)
@@ -5833,7 +5833,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     }
 
   /* set data filter information */
-  scan_init_filter_info (&data_filter, &isidp->scan_pred, &isidp->pred_attrs, scan_id->val_list, scan_id->vd,
+  SCAN_INIT_FILTER_INFO (data_filter, &isidp->scan_pred, &isidp->pred_attrs, scan_id->val_list, scan_id->vd,
 			 &isidp->cls_oid, 0, NULL, NULL, NULL);
 
   /* Due to the length of time that we hold onto the oid list, it is possible at lower isolation levels (UNCOMMITTED
@@ -6433,7 +6433,7 @@ scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   isidp = &scan_id->s.isid;
 
-  scan_init_filter_info (&data_filter, &isidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, &isidp->cls_oid, 0,
+  SCAN_INIT_FILTER_INFO (data_filter, &isidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, &isidp->cls_oid, 0,
 			 NULL, NULL, NULL);
 
   while (true)
@@ -6488,7 +6488,7 @@ scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   insidp = &scan_id->s.insid;
 
-  scan_init_filter_info (&data_filter, &insidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, NULL, 0, NULL, NULL,
+  SCAN_INIT_FILTER_INFO (data_filter, &insidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, NULL, 0, NULL, NULL,
 			 NULL);
 
   while (true)
