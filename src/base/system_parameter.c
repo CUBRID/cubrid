@@ -212,6 +212,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_QO_DUMP "qo_dump"
 
+#define PRM_NAME_CSS_CONNECTION_THREADS "connection_threads"
+
 #define PRM_NAME_CSS_MAX_CLIENTS "max_clients"
 
 #define PRM_NAME_THREAD_STACKSIZE "thread_stacksize"
@@ -726,6 +728,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
+#define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
 #define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
@@ -1529,6 +1532,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_CONNECTION_THREADS,
+   PRM_NAME_CSS_CONNECTION_THREADS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_css_connection_threads_flag,
+   (void *) &prm_css_connection_threads_default,
+   (void *) &PRM_CSS_CONNECTION_THREADS,
+   (void *) &prm_css_connection_threads_upper,
+   (void *) &prm_css_connection_threads_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -4706,6 +4721,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.bi = 0ULL}},
    {false, {.bi = LOGPAGEID_MAX}},
    {false, {.bi = 0ULL}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_WORKER_COUNT,
+   PRM_NAME_THREAD_WORKER_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_worker_count_flag,
+   (void *) &prm_thread_worker_count_default,
+   (void *) &PRM_THREAD_WORKER_COUNT,
+   (void *) &prm_thread_worker_count_upper,
+   (void *) &prm_thread_worker_count_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
