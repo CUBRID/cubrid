@@ -293,6 +293,9 @@ typedef enum tp_match
   (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_SMALLINT) \
    || ((typeid) == DB_TYPE_BIGINT))
 
+#define TP_IS_VECTOR_TYPE(typeid) \
+  (((typeid) == DB_TYPE_VECTOR))
+
 /*
  * Precision for non-parameterized predefined types
  *
