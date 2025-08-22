@@ -3484,8 +3484,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		}
 	      else if (scale == OR_DOMAIN_SCALE_MAX - 1)
 		{
-		  scale = or_get_int (buf, &rc);
-		  scale = -scale;
+		  scale = -(or_get_int (buf, &rc));
 		  if (rc != NO_ERROR)
 		    {
 		      goto error;

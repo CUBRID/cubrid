@@ -169,12 +169,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	}
-      else
-	{
-	  value->domain.numeric_info.precision = precision;
-	}
 
-      value->domain.numeric_info.scale = scale;
       if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;
@@ -182,7 +177,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
-      else if (scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION || scale < DB_MIN_NUMERIC_SCALE)
+      else if (scale > (DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION) || scale < DB_MIN_NUMERIC_SCALE)
 	{
 	  error = ER_INVALID_SCALE;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 3, scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE);
@@ -3063,7 +3058,7 @@ db_value_is_corrupted (const DB_VALUE * value)
     {
     case DB_TYPE_NUMERIC:
       if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION)
-	  && (value->domain.numeric_info.scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION
+	  && (value->domain.numeric_info.scale > (DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
 	      || value->domain.numeric_info.scale < DB_MIN_NUMERIC_SCALE))
 	{
 	  return true;

@@ -3654,7 +3654,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 				   frac_last_nz, num_string, &prec, &scale, &need_round);
 
       /* If there is no overflow, try to parse the decimal string */
-      if (prec > DB_MAX_NUMERIC_PRECISION || (scale > DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
+      if (prec > DB_MAX_NUMERIC_PRECISION || scale > (DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
 	  || scale < DB_MIN_NUMERIC_SCALE)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
