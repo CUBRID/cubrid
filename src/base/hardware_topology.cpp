@@ -22,7 +22,6 @@
 
 #include "ifsys.hpp"
 #include "hardware_topology.hpp"
-#include "system_parameter.h"
 
 #include <algorithm>
 #include <cinttypes>
@@ -51,8 +50,6 @@ namespace cubbase
   {
     hwloc_topology_init (&m_topology);
     hwloc_topology_load (m_topology);
-
-    this->load_cpu ();
   }
 
   hardware_topology::~hardware_topology ()
@@ -137,7 +134,7 @@ namespace cubbase
       }
   }
 
-  void hardware_topology::load_cpu ()
+  void hardware_topology::load_cpu (int limit)
   {
     hwloc_const_cpuset_t online;
     hwloc_obj_t core;
@@ -170,7 +167,7 @@ namespace cubbase
 	  }
 	std::sort (pus.begin (), pus.end ());
 	/* TODO: add selection strategy */
-	if (prm_get_integer_value (PRM_ID_CSS_CONNECTION_THREADS) >= static_cast<int> (m_selected.size ()))
+	if (limit > static_cast<int> (m_selected.size ()))
 	  {
 	    m_selected.emplace_back (pus[0]);
 	  }

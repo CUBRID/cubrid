@@ -41,6 +41,7 @@ namespace cubbase
       void pin_core (int core);
       std::vector<int> &get_cores ();
 
+      void load_cpu (int limit);
       void map_nic_to_core ();
 
     private:
@@ -48,7 +49,6 @@ namespace cubbase
       std::vector<std::vector<int>> m_cores;
       std::vector<int> m_selected;
 
-      void load_cpu ();
       bool set_nic_channels (std::string &ifname, unsigned int combined);
   };
 
