@@ -1227,7 +1227,7 @@ db_value_alloc_and_copy (const DB_VALUE * src)
       return dest;
     }
 
-  if (TP_IS_NUMERIC_TYPE (src_dbtype))
+  if (TP_IS_NUMERIC_TYPE (src_dbtype) || TP_IS_VECTOR_TYPE (src_dbtype))
     {
       pr_clone_value ((DB_VALUE *) src, dest);
       return dest;
