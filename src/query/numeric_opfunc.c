@@ -3342,10 +3342,10 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 
   if (frac_len == 0)
     {
-      /* Case 1: Integer part only exists */
+      /* Case 1: Only integer part exists */
       if (int_len <= DB_MAX_NUMERIC_PRECISION)
 	{
-	  /* Case 1-A: Traditional method - use integer part length as precision */
+	  /* Case 1-A: When length is within 38 digits, use only the integer part */
 	  tmp_prec = int_len;
 	  tmp_scale = 0;
 	  temp_int_digits = int_digits;
@@ -3353,7 +3353,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	}
       else
 	{
-	  /* Case 1-B: Oracle style - apply negative scale based on trailing zero count */
+	  /* Case 1-B: Apply negative scale based on trailing zero count */
 	  int sig_len = int_last_nz - int_first_nz + 1;
 	  int tz_cnt = int_len - (int_last_nz + 1);
 	  // Future consideration: when F-P NUMERIC is introduced and DB_MAX_NUMERIC_PRECISION increases from 38 to 40
@@ -3381,19 +3381,20 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
     }
   else if (int_len == 0)
     {
-      /* Case 2: Fractional part only exists */
+      /* Case 2: Only fractional part exists */
+      int nz_len = frac_last_nz - frac_first_nz + 1;
       if (frac_len <= DB_MAX_NUMERIC_PRECISION)
 	{
-	  /* Case 2-A: Traditional method - use fractional part length as precision */
-	  tmp_prec = frac_len;
+	  /* Case 2-A: When length is within 38 digits, use only the fractional part. 
+	     Precision is defined from the left-most nonzero digit to the right-most known digit. */
+	  tmp_prec = nz_len;
 	  tmp_scale = frac_len;
 	  temp_frac_digits = frac_digits;
 	  temp_frac_len = frac_len;
 	}
       else
 	{
-	  /* Case 2-B: Oracle style - skip leading zeros and use maximum MAX_PRECISION digits */
-	  int nz_len = frac_last_nz - frac_first_nz + 1;
+	  /* Case 2-B: Skip leading zeros in the fractional part and use up to MAX_PRECISION digits */
 	  if (nz_len > DB_MAX_NUMERIC_PRECISION)
 	    {
 	      tmp_prec = DB_MAX_NUMERIC_PRECISION;
@@ -3420,7 +3421,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
       /* Case 3: Both integer and fractional parts exist */
       if (total <= DB_MAX_NUMERIC_PRECISION)
 	{
-	  /* Case 3-A: Traditional method - use total length as precision */
+	  /* Case 3-A: When total length is within 38 digits, use both integer and fractional parts */
 	  tmp_prec = total;
 	  tmp_scale = frac_len;
 	  temp_int_digits = int_digits;
@@ -3430,11 +3431,12 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	}
       else
 	{
-	  /* Case 3-B: Total length exceeds MAX_PRECISION */
+	  /* Case 3-B: When total length exceeds 38 digits, determine whether to round or apply negative scale 
+	     depending on which part (integer vs fractional) has more digits */
 	  int drop_total = total - DB_MAX_NUMERIC_PRECISION;
 	  if (drop_total <= frac_len)
 	    {
-	      /* Case 3-B-1: Fractional part is larger - round from fractional part */
+	      /* Case 3-B-1: Fractional part is larger – round based on the fractional part */
 	      int keep_frac = frac_len - drop_total;
 	      tmp_prec = int_len + keep_frac;
 	      tmp_scale = keep_frac;
@@ -3447,12 +3449,12 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	    }
 	  else
 	    {
-	      /* Case 3-B-2: Integer part is larger - handle from integer part */
+	      /* Case 3-B-2: Integer part is larger – handle by trimming the integer part */
 	      int drop_int = drop_total - frac_len;
 	      int trailing_zeros_count = int_len - (int_last_nz + 1);
 	      if (drop_int <= trailing_zeros_count)
 		{
-		  /* Oracle style: treat trailing zeros as negative scale */
+		  /* Treat trailing zeros as negative scale */
 		  int sig_len = int_last_nz - int_first_nz + 1;
 		  tmp_prec = sig_len;
 		  tmp_scale = -trailing_zeros_count;
@@ -3462,7 +3464,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 		}
 	      else
 		{
-		  /* Integer part only output, remove scale */
+		  /* Output only the integer part, remove scale */
 		  int keep_int = int_len - drop_int;
 		  tmp_prec = keep_int;
 		  tmp_scale = 0;
