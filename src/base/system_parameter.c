@@ -1539,18 +1539,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_CSS_CONNECTION_THREADS,
-   PRM_NAME_CSS_CONNECTION_THREADS,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_css_connection_threads_flag,
-   (void *) &prm_css_connection_threads_default,
-   (void *) &PRM_CSS_CONNECTION_THREADS,
-   (void *) &prm_css_connection_threads_upper,
-   (void *) &prm_css_connection_threads_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_CSS_MAX_CLIENTS,
    PRM_NAME_CSS_MAX_CLIENTS,
    (PRM_FOR_SERVER),
@@ -4728,18 +4716,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_THREAD_WORKER_COUNT,
-   PRM_NAME_THREAD_WORKER_COUNT,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   &prm_thread_worker_count_flag,
-   (void *) &prm_thread_worker_count_default,
-   (void *) &PRM_THREAD_WORKER_COUNT,
-   (void *) &prm_thread_worker_count_upper,
-   (void *) &prm_thread_worker_count_lower,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_THREAD_CORE_COUNT,
    PRM_NAME_THREAD_CORE_COUNT,
    (PRM_FOR_SERVER),
@@ -5128,6 +5104,30 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},
    {false, {.i = 128}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_WORKER_COUNT,
+   PRM_NAME_THREAD_WORKER_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_thread_worker_count_flag,
+   (void *) &prm_thread_worker_count_default,
+   (void *) &PRM_THREAD_WORKER_COUNT,
+   (void *) &prm_thread_worker_count_upper,
+   (void *) &prm_thread_worker_count_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_CONNECTION_THREADS,
+   PRM_NAME_CSS_CONNECTION_THREADS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_css_connection_threads_flag,
+   (void *) &prm_css_connection_threads_default,
+   (void *) &PRM_CSS_CONNECTION_THREADS,
+   (void *) &prm_css_connection_threads_upper,
+   (void *) &prm_css_connection_threads_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -9764,16 +9764,16 @@ prm_tune_parameters (void)
 
 #if defined (SERVER_MODE)
       /*
-      thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
-      int safe_core_count = (css_get_max_workers () / 3);
-      int system_cpu_count = cubthread::system_core_count ();
-      int core_upper_limit = MIN (safe_core_count, system_cpu_count);
-      if (PRM_GET_INT (thread_core_count_prm->value) > core_upper_limit)
-	{
-	  sprintf (newval, "%d", core_upper_limit);
-	  (void) prm_set (thread_core_count_prm, newval, false);
-	}
-      */
+         thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
+         int safe_core_count = (css_get_max_workers () / 3);
+         int system_cpu_count = cubthread::system_core_count ();
+         int core_upper_limit = MIN (safe_core_count, system_cpu_count);
+         if (PRM_GET_INT (thread_core_count_prm->value) > core_upper_limit)
+         {
+         sprintf (newval, "%d", core_upper_limit);
+         (void) prm_set (thread_core_count_prm, newval, false);
+         }
+       */
 #endif
     }
 
