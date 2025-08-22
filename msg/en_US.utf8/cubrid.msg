@@ -1461,7 +1461,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1367 DBLINK Transaction ABORTED: %1$s
 
-1368 Given scale of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
+1368 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
 
 1369 Last Error
 
