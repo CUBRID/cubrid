@@ -327,7 +327,7 @@ static int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort
 static int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param);
 static void sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static void sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
-static void sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id);
+static int sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id);
 static void sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 				 int parallel_num);
 #endif
@@ -1689,7 +1689,12 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
       sort_param->px_status = PX_ERR_FAILED;
       goto cleanup;
     }
+  else
+    {
+      sort_param->px_status = PX_DONE;
+    }
 
+cleanup:
   if (sort_param->px_type == SORT_ORDER_BY)
     {
       SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
@@ -1713,7 +1718,6 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
       goto cleanup;
     }
 
-cleanup:
   if (sort_param->px_status == PX_ERR_FAILED)
     {
       sort_param->main_error_context->push_error_stack ();
@@ -1729,9 +1733,9 @@ cleanup:
 
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
-  sort_param->px_status = PX_DONE;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
+
 }
 #endif
 
@@ -3343,15 +3347,16 @@ bailout:
  *   src_list_id(in): src_list_id
  *
  */
-static void
+static int
 sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id)
 {
   PAGE_PTR last_pgptr, first_pgptr;
+  int error = NO_ERROR;
 
   /* check NULL list id */
   if (VPID_ISNULL (&src_list_id->first_vpid))
     {
-      return;
+      return ER_FAILED;
     }
 
   /* link last page of dest to first page of src */
@@ -3367,12 +3372,20 @@ sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE
       /* page from page buffer */
       last_pgptr =
 	pgbuf_fix (thread_p, &dest_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (last_pgptr == NULL)
+	{
+	  return ER_FAILED;
+	}
       QFILE_PUT_NEXT_VPID (last_pgptr, &src_list_id->first_vpid);
       pgbuf_set_dirty (thread_p, last_pgptr, FREE);
     }
 
   /* link first page of src to last page of dest */
   first_pgptr = pgbuf_fix (thread_p, &src_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (first_pgptr == NULL)
+    {
+      return ER_FAILED;
+    }
   QFILE_PUT_PREV_VPID (first_pgptr, &dest_list_id->last_vpid);
   pgbuf_set_dirty (thread_p, first_pgptr, FREE);
 
@@ -3382,6 +3395,8 @@ sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE
   dest_list_id->last_pgptr = src_list_id->last_pgptr;
   dest_list_id->last_offset = src_list_id->last_offset;
   dest_list_id->lasttpl_len = src_list_id->lasttpl_len;
+
+  return error;
 }
 
 /*
@@ -4729,7 +4744,6 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
       remaining_run = merge_num;
       level++;
     }
-  assert (sort_get_numpages_of_active_infiles (&px_sort_param[0]) == 1);
 
   /* split last run into px_sort_param */
   sort_split_last_run (thread_p, px_sort_param, sort_param, parallel_num);
@@ -4748,7 +4762,11 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   for (int i = 1; i < parallel_num; i++)
     {
       mergeable_list_id = ((SORT_INFO *) px_sort_param[i].put_arg)->output_file;
-      sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
+      error = sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
   /* If QUERY_CACHE(FILE_QUERY_AREA), Merged list not possible.
    * Here, just change the type and list is duplicated in xqmgr_execute_query. */
@@ -4762,8 +4780,11 @@ cleanup:
   for (int i = 0; i < parallel_num; i++)
     {
       sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
-      qfile_free_list_id (sort_info_p->input_file);
-      sort_info_p->input_file = NULL;
+      if (sort_info_p->input_file)
+        {
+          qfile_free_list_id (sort_info_p->input_file);
+          sort_info_p->input_file = NULL;
+        }
     }
 
   /* clear output_file for px */
@@ -4771,8 +4792,11 @@ cleanup:
     {
       /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
       sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
-      qfile_free_list_id (sort_info_p->output_file);
-      sort_info_p->output_file = NULL;
+      if (sort_info_p->output_file)
+        {
+          qfile_free_list_id (sort_info_p->output_file);
+          sort_info_p->output_file = NULL;
+        }
     }
 
   return error;
@@ -4933,6 +4957,10 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     {
       sort_param->px_status = PX_ERR_FAILED;
     }
+  else
+    {
+      sort_param->px_status = PX_DONE;
+    }
 
   qfile_close_list (thread_p, sort_info_p->output_file);
 
@@ -4957,10 +4985,8 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
-  sort_param->px_status = PX_DONE;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
-
 }
 
 /*
@@ -4997,6 +5023,10 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
     {
       sort_param->px_status = PX_ERR_FAILED;
     }
+  else
+    {
+      sort_param->px_status = PX_DONE;
+    }
 
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
     {
@@ -5019,10 +5049,8 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
     }
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
-  sort_param->px_status = PX_DONE;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
-
 }
 
 /*
