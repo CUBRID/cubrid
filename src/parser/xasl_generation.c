@@ -12006,7 +12006,7 @@ pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR 
 	      {
 		vector_query = arg_list->next;
 	      }
-	    else if (arg_list->node_type == PT_VALUE)
+	    else if (PT_IS_CONST (arg_list) || pt_is_pseudo_const (arg_list))
 	      {
 		vector_query = arg_list;
 	      }
@@ -12016,15 +12016,15 @@ pt_to_vector_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR 
 	    PT_NODE *arg1 = node->info.expr.arg1;
 	    PT_NODE *arg2 = node->info.expr.arg2;
 
-	    assert ((arg1->node_type == PT_NAME && PT_IS_CONST (arg2))
-		    || (arg2->node_type == PT_NAME && PT_IS_CONST (arg1)));
+	    assert ((arg1->node_type == PT_NAME && (pt_is_pseudo_const (arg2) || PT_IS_CONST (arg2)))
+		    || (arg2->node_type == PT_NAME && (pt_is_pseudo_const (arg1) || PT_IS_CONST (arg1))));
 
 	    // TODO (CUBVEC): imporve the following logic
 	    if (arg1->node_type == PT_NAME)
 	      {
 		vector_query = arg2;
 	      }
-	    else if (PT_IS_CONST (arg1))
+	    else if (PT_IS_CONST (arg1) || pt_is_pseudo_const (arg1))
 	      {
 		vector_query = arg1;
 	      }
