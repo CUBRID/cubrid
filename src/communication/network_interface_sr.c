@@ -4715,8 +4715,8 @@ shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
     }
 
   return_btid =
-    xhnsw_load_index (thread_p, &btid, class_oids, n_classes, n_attrs, attr_ids, hfids, dimension, hnsw_M,
-		      hnsw_efConstruction, metric_type);
+    xhnsw_load_index_batch (thread_p, &btid, class_oids, n_classes, n_attrs, attr_ids, hfids, dimension, hnsw_M,
+			    hnsw_efConstruction, metric_type);
 
   ptr = or_pack_int (reply, NO_ERROR);
   ptr = or_pack_btid (ptr, return_btid);
