@@ -163,7 +163,7 @@ namespace parallel_query_execute
 
     if (m_orig_thread_p->on_trace)
       {
-	perfmon_initialize_parallel_stats (&thread_ref, m_orig_thread_p);
+	perfmon_initialize_parallel_stats (&thread_ref);
       }
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);

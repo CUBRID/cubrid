@@ -3319,17 +3319,19 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 }
 
 void
-perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p)
+perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
 {
-  thread_p->m_px_orig_thread_entry = orig_thread_p;
+  assert (thread_p->m_px_stats == NULL);
   thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
 }
 
 void
 perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
 {
-  free (thread_p->m_px_stats);
-  thread_p->m_px_stats = NULL;
+  if (thread_p->m_px_stats != NULL)
+    {
+      free_and_init (thread_p->m_px_stats);
+    }
 }
 
 #endif /* SERVER_MODE || SA_MODE */

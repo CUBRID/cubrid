@@ -50,6 +50,7 @@ namespace parallel_query
       cubthread::entry_manager::on_create (context);
 
       emulate_main_thread (context);
+
       context.m_skip_end_resource_tracks_in_recycle = true;
 
       /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
@@ -60,16 +61,22 @@ namespace parallel_query
        * after all tasks have been completed. */
       context.push_resource_tracks ();
 
-      perfmon_initialize_parallel_stats (&context, &m_main_thread_ref);
+      if (context.on_trace)
+	{
+	  perfmon_initialize_parallel_stats (&context);
+	}
     }
 
     void
     entry_manager::on_retire (cubthread::entry &context)
     {
       clear_spawner ();
-      perfmon_destroy_parallel_stats (&context);	/* meaningless */
 
-      context.m_px_orig_thread_entry = nullptr;
+      if (context.on_trace)
+	{
+	  perfmon_destroy_parallel_stats (&context);	/* meaningless */
+	}
+
       context.m_skip_end_resource_tracks_in_recycle = false;
 
       cubthread::entry_manager::on_retire (context);
@@ -79,10 +86,16 @@ namespace parallel_query
     entry_manager::on_recycle (cubthread::entry &context)
     {
       cubthread::entry_manager::on_recycle (context);
-      assert (context.m_px_stats != nullptr);
-      assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] == 0);
-      assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] == 0);
-      assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] == 0);
+
+#if !defined (NDEBUG)
+      if (context.on_trace)
+	{
+	  assert (context.m_px_stats != nullptr);
+	  assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] == 0);
+	  assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] == 0);
+	  assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] == 0);
+	}
+#endif /* !NDEBUG */
 
       emulate_main_thread (context);
       context.m_skip_end_resource_tracks_in_recycle = true;
@@ -781,6 +794,7 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
+	  hjoin_trace_merge_parallel_stats (&thread_ref);
 	}
 
       if (task_manager.has_error ())
@@ -814,6 +828,7 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
+	  hjoin_trace_merge_parallel_stats (&thread_ref);
 	}
 
       /* cleanup */
@@ -876,6 +891,7 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
+	  hjoin_trace_merge_parallel_stats (&thread_ref);
 	}
 
       if (task_manager.has_error ())

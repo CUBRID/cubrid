@@ -929,6 +929,8 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       // *INDENT-ON*
       db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
     }
+
+  perfmon_destroy_parallel_stats (thread_p);
 #else
   assert (manager->px_worker_pool_manager == NULL);
 #endif /* defined (SERVER_MODE) */
@@ -1911,6 +1913,11 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	    throw std::runtime_error ("failed to reserve workers");
 	  }
 	assert (manager->px_worker_pool_manager->get_worker_pool () != NULL);
+
+	if (thread_is_on_trace (thread_p))
+	  {
+	    perfmon_initialize_parallel_stats (thread_p);
+	  }
 
 	return HASHJOIN_STATUS_PARALLEL;
       }
@@ -3899,6 +3906,23 @@ hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN
   TSC_ADD_TIMEVAL (stats->elapsed_time, tv_diff);
   stats->fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - start_stats->fetches;
   stats->ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - start_stats->ioreads;
+}
+
+void
+hjoin_trace_merge_parallel_stats (THREAD_ENTRY * thread_p)
+{
+  assert (thread_p != NULL);
+
+  if (thread_p->m_px_stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  perfmon_add_at_offset_to_local (thread_p, PSTAT_PB_NUM_FETCHES, thread_p->m_px_stats[PSTAT_PB_NUM_FETCHES]);
+  perfmon_add_at_offset_to_local (thread_p, PSTAT_PB_NUM_IOREADS, thread_p->m_px_stats[PSTAT_PB_NUM_IOREADS]);
+  perfmon_add_at_offset_to_local (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC,
+				  thread_p->m_px_stats[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC]);
 }
 
 #if HASHJOIN_PROFILE_TIME

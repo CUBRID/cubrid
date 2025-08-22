@@ -65,10 +65,6 @@ namespace cubthread
 
     context.end_resource_tracks ();
     context.m_skip_end_resource_tracks_in_recycle = false;
-    if (context.m_px_stats != NULL)
-      {
-	free_and_init (context.m_px_stats);
-      }
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
     context.tran_index = NULL_TRAN_INDEX;
@@ -78,6 +74,7 @@ namespace cubthread
     context.m_status = entry::status::TS_FREE;
     context.resume_status = THREAD_RESUME_NONE;
     context.m_px_orig_thread_entry = NULL;
+    perfmon_destroy_parallel_stats (&context);
 #endif // SERVER_MODE
 
     get_manager ()->retire_entry (context);
@@ -91,31 +88,33 @@ namespace cubthread
       {
 	context.end_resource_tracks ();
       }
-    if (context.m_px_stats != NULL && context.m_px_orig_thread_entry != NULL)
-      {
-	entry *parent_context = context.m_px_orig_thread_entry;
-
-	int fetches_offset = pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset;
-	int ioreads_offset = pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset;
-	int fetch_time_offset = pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset;
-
-	pthread_mutex_lock (&parent_context->m_px_stats_mutex);
-	perfmon_add_stat (parent_context, PSTAT_PB_NUM_FETCHES, context.m_px_stats[fetches_offset]);
-	perfmon_add_stat (parent_context, PSTAT_PB_NUM_IOREADS, context.m_px_stats[ioreads_offset]);
-	perfmon_add_at_offset_to_local (parent_context, fetch_time_offset, context.m_px_stats[fetch_time_offset]);
-	pthread_mutex_unlock (&parent_context->m_px_stats_mutex);
-
-	/* init */
-	context.m_px_stats[fetches_offset] = 0;
-	context.m_px_stats[ioreads_offset] = 0;
-	context.m_px_stats[fetch_time_offset] = 0;
-      }
-    context.m_px_orig_thread_entry = NULL;
+#if defined (SERVER_MODE)
+    {
+      entry *parent_context = context.m_px_orig_thread_entry;
+      if (context.m_px_stats != NULL)
+	{
+	  if (parent_context != NULL && parent_context->m_px_stats != NULL)
+	    {
+	      pthread_mutex_lock (&parent_context->m_px_stats_mutex);
+	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_FETCHES);
+	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_IOREADS);
+	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
+	      pthread_mutex_unlock (&parent_context->m_px_stats_mutex);
+	    }
+	  else
+	    {
+	      /* impossible case */
+	      assert (false);
+	    }
+	}
+    }
+#endif // SERVER_MODE
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
+    context.m_px_orig_thread_entry = NULL;
     context.shutdown = false;
 #endif // SERVER_MODE
 
