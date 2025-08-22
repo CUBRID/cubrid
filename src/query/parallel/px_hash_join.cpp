@@ -74,7 +74,7 @@ namespace parallel_query
 
       if (context.on_trace)
 	{
-	  perfmon_destroy_parallel_stats (&context);	/* meaningless */
+	  perfmon_destroy_parallel_stats (&context);
 	}
 
       context.m_skip_end_resource_tracks_in_recycle = false;
