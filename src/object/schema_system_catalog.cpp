@@ -75,7 +75,7 @@ namespace cubschema
     CT_HA_APPLY_INFO_NAME,	        // "_db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,			// "_db_charset"
-    CT_DB_SERVER_NAME,		// "_db_server"
+    CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_TRIGGER_NAME,		// "_db_trigger"
 
@@ -106,9 +106,9 @@ namespace cubschema
     CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
     CTV_SERIAL_NAME,		// "db_serial"
     CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
-    CTV_DB_COLLATION_NAME,	// "db_collation"
-    CTV_DB_CHARSET_NAME,		// "db_charset"
-    CTV_DB_SERVER_NAME,		// "db_server"
+    CTV_COLLATION_NAME,	// "db_collation"
+    CTV_CHARSET_NAME,		// "db_charset"
+    CTV_SERVER_NAME,		// "db_server"
     CTV_SYNONYM_NAME			// "db_synonym"
   };
 
