@@ -22,6 +22,7 @@
 
 #include "ifsys.hpp"
 #include "hardware_topology.hpp"
+#include "system_parameter.h"
 
 #include <algorithm>
 #include <cinttypes>
@@ -169,7 +170,10 @@ namespace cubbase
 	  }
 	std::sort (pus.begin (), pus.end ());
 	/* TODO: add selection strategy */
-	m_selected.emplace_back (pus[0]);
+	if (prm_get_integer_value (PRM_ID_CSS_CONNECTION_THREADS) >= static_cast<int> (m_selected.size ()))
+	  {
+	    m_selected.emplace_back (pus[0]);
+	  }
 	m_cores.push_back (std::move (pus));
       }
   }
