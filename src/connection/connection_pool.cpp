@@ -46,12 +46,13 @@ namespace cubconn
   {
   }
 
-  void connection_pool::initialize (std::uint32_t max_connections)
+  void connection_pool::initialize (std::uint32_t max_connections, int connection_threads)
   {
     std::vector<int> *cores;
     std::uint32_t i;
 
     /* topology setting */
+    cubbase::topology.load_cpu (connection_threads);
     cubbase::topology.map_nic_to_core ();
     cores = &cubbase::topology.get_cores ();
 
