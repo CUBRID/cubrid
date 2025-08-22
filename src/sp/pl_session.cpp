@@ -76,7 +76,7 @@ namespace cubpl
     , m_all_session_params_required {true}
     , m_last_conn_epoch (-1)
     , m_stack_idx {-1}
-    , m_interrupt_id (0)
+    , m_interrupt_id (NO_ERROR)
     , m_id (id)
   {
     m_exec_stack.reserve (METHOD_MAX_RECURSION_DEPTH + 1);
@@ -119,7 +119,7 @@ namespace cubpl
 	assert (m_stack_idx >= 0);
 
 	// check interrupt
-	if (m_interrupt_id)
+	if (m_interrupt_id != NO_ERROR)
 	  {
 	    // block creating a new stack
 	    set_local_error_for_interrupt ();
@@ -299,7 +299,7 @@ namespace cubpl
   void
   session::set_interrupt (int reason, std::string msg)
   {
-    if (m_interrupt_id)
+    if (m_interrupt_id != NO_ERROR)
       {
 	// do not overwrite interrupt
 	return;
@@ -330,7 +330,7 @@ namespace cubpl
       }
 
 #if !defined (NDEBUG)
-    if (m_interrupt_id)
+    if (m_interrupt_id != NO_ERROR)
       {
 	er_log_debug (ARG_FILE_LINE, "pl_session (interrupted): %d\n", m_id);
       }
@@ -348,7 +348,7 @@ namespace cubpl
   bool
   session::is_interrupted ()
   {
-    return m_interrupt_id != 0;
+    return m_interrupt_id != NO_ERROR;
   }
 
   int
@@ -366,7 +366,7 @@ namespace cubpl
   void
   session::clear_interrupt ()
   {
-    m_interrupt_id = 0;
+    m_interrupt_id = NO_ERROR;
     m_interrupt_msg.clear ();
   }
 
