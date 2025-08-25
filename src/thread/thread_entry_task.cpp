@@ -91,26 +91,18 @@ namespace cubthread
 #if defined (SERVER_MODE)
     {
       entry *parent_context = context.m_px_orig_thread_entry;
-      if (context.m_px_stats != NULL)
+      if (parent_context != NULL && parent_context != &context && context.m_px_stats != NULL)
 	{
-	  if (parent_context != NULL)
+	  if (parent_context->m_px_stats == NULL)
 	    {
-	      if (parent_context->m_px_stats == NULL)
-		{
-		  perfmon_initialize_parallel_stats (parent_context);
-		}
+	      perfmon_initialize_parallel_stats (parent_context);
+	    }
 
-	      pthread_mutex_lock (&parent_context->m_px_stats_mutex);
-	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_FETCHES);
-	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_IOREADS);
-	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
-	      pthread_mutex_unlock (&parent_context->m_px_stats_mutex);
-	    }
-	  else
-	    {
-	      /* impossible case */
-	      assert (false);
-	    }
+	  pthread_mutex_lock (&parent_context->m_px_stats_mutex);
+	  perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_FETCHES);
+	  perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_IOREADS);
+	  perfmon_drain_stat_to_parent (&context, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
+	  pthread_mutex_unlock (&parent_context->m_px_stats_mutex);
 	}
     }
 #endif // SERVER_MODE
