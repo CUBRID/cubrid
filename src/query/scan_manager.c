@@ -4876,16 +4876,6 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  (void) heap_scancache_end (thread_p, &visidp->scan_cache);
 	}
-#if 0
-      if (visidp->query_dbvalue)
-	{
-	  pr_clear_value (visidp->query_dbvalue);
-	}
-      if (visidp->k_dbvalue)
-	{
-	  pr_clear_value (visidp->k_dbvalue);
-	}
-#endif
       break;
 
     case S_INDX_SCAN:
