@@ -9353,11 +9353,14 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_DISTANCE_OP_EUCLIDEAN:
-	  if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
-	    {
-	      // CUBVEC todo: not yet analyzed
-	      ASSERT_CUBVEC (false);
-	    }
+	  {
+	    if (node->info.expr.op == PT_DISTANCE_OP_EUCLIDEAN)
+	      {
+		// CUBVEC todo: not yet analyzed
+		ASSERT_CUBVEC (false);
+	      }
+	    [[fallthrough]];
+	  }
 
 	case PT_NULLSAFE_EQ:
 	  selectivity = qo_equal_selectivity (env, node);

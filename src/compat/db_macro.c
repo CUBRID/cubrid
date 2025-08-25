@@ -1698,6 +1698,7 @@ db_type_to_db_domain (const DB_TYPE type)
 	  {
 	    vimkim_log ("WARNING: Not analyzed yet.\n");
 	  }
+	[[fallthrough]];
       }
     case DB_TYPE_NULL:
     case DB_TYPE_BLOB:

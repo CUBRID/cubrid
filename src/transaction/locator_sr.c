@@ -7775,7 +7775,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   DB_VALUE *key_dbvalue, *key_ins_del = NULL;
   DB_VALUE dbvalue;
   int unique_pk;
-  btree_unique_stats *unique_stat_info;
+  btree_unique_stats *unique_stat_info = NULL;
   HEAP_IDX_ELEMENTS_INFO idx_info;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
   OR_INDEX *index;
@@ -8297,7 +8297,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
-  btree_unique_stats *unique_stat_info;
+  btree_unique_stats *unique_stat_info = NULL;
   HEAP_IDX_ELEMENTS_INFO new_idx_info;
   HEAP_IDX_ELEMENTS_INFO old_idx_info;
   char newbuf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_newbuf;

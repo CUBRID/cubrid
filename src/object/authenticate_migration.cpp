@@ -960,7 +960,7 @@ issue_grant_statement (extract_context &ctxt, print_output &output_ctx, CLASS_AU
 		       int authbits, DB_OBJECT_TYPE obj_type)
 {
   const char *gtype;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   char *class_name = NULL;
   char *username = NULL;
