@@ -281,7 +281,7 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
       return NULL;
     }
 
-  auto ensure_capacity = [&](void) -> bool
+  auto ensure_capacity = [&] (void) -> bool
   {
     if (count < capacity)
       {
@@ -612,7 +612,7 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
 
       {
 	std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
-	size_t need = index->size () + static_cast<size_t>(n_vectors);
+	size_t need = index->size () + static_cast<size_t> (n_vectors);
 	if (need > index->capacity ())
 	  {
 	    size_t cap = index->capacity ();
