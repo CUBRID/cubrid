@@ -485,12 +485,8 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 	  key_dbvalue = &attr_info.values[0].dbvalue;
 	  assert (db_value_type (key_dbvalue) == DB_TYPE_VECTOR);
 
-<<<<<<< HEAD
 	  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
 	  hnsw_add_element (new_btid, &cur_oid, vf->float_array, 1);
-=======
-	  hnsw_add_element (new_btid, &cur_oid, key_dbvalue);
->>>>>>> upstream/cubvec/cubvec
 	  continue;
 	case S_END:
 	  heap_attrinfo_end (thread_p, &attr_info);
@@ -507,7 +503,6 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
   return new_btid;
 }
 
-<<<<<<< HEAD
 BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			      HFID *hfids, int dimension, int m, int ef_construction, int metric)
 {
@@ -674,8 +669,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
   return new_btid;
 }
 
-=======
->>>>>>> upstream/cubvec/cubvec
 int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
 {
   const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
