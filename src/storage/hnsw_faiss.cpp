@@ -377,16 +377,13 @@ int
 hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
 {
   int hnsw_id;
-  faiss::idx_t encoded_oid;
+  faiss::idx_t encoded_oid = encode_oid (*oid);
 
   if (!btid)
     {
       assert (false);
       return ER_FAILED;
     }
-
-  //const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
-
   hnsw_id = btid->root_pageid;
 
   if (hnsw_check_and_load_index (hnsw_id) != NO_ERROR)
