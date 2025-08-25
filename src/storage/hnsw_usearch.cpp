@@ -246,15 +246,9 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
       return NULL;
     }
 
-  /* Find first non-null HFID */
   while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
     {
       cur_class++;
-    }
-  if (cur_class >= n_classes)
-    {
-      /* Nothing to index */
-      return new_btid;
     }
 
   if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &oid[cur_class], true, NULL) != NO_ERROR)
@@ -263,6 +257,7 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
     }
 
   attr_offset = cur_class * n_attrs;
+
   if (heap_attrinfo_start (thread_p, &oid[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
     {
       (void) heap_scancache_end (thread_p, &scan_cache);
@@ -272,9 +267,8 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
   /* -------- Batch buffers --------
      - oids:    growable array of OID (count elements)
      - vectors: contiguous float buffer of size (capacity * dimension)
-     - For API (B) we’ll build vec_ptrs at the end without extra copies.
   */
-  int capacity = 1024;                 /* start modestly; will grow as needed */
+  int capacity = 1024;
   int count = 0;
   OID *oids = (OID *) malloc ((size_t) capacity * sizeof (OID));
   float *vectors = (float *) malloc ((size_t) capacity * (size_t) dimension * sizeof (float));
@@ -287,7 +281,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
       return NULL;
     }
 
-  /* Utility: ensure capacity for one more item */
   auto ensure_capacity = [&](void) -> bool
   {
     if (count < capacity)
@@ -299,7 +292,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
     float *new_vectors = (float *) realloc (vectors, (size_t) new_cap * (size_t) dimension * sizeof (float));
     if (new_oids == NULL || new_vectors == NULL)
       {
-	/* if one realloc fails, avoid losing original pointers when the other succeeded */
 	if (new_oids)
 	  {
 	    oids = new_oids;
@@ -316,7 +308,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
     return true;
   };
 
-  /* -------- Scan & collect -------- */
   do
     {
       attr_offset = cur_class * n_attrs;
@@ -335,12 +326,10 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 
 	  {
 	    const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
-	    /* Defensive: ensure dimension matches what index expects */
 	    assert (vf != NULL && vf->dim == dimension);
 
 	    if (!ensure_capacity ())
 	      {
-		/* OOM during accumulation */
 		free (oids);
 		free (vectors);
 		heap_attrinfo_end (thread_p, &attr_info);
@@ -348,9 +337,7 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 		return NULL;
 	      }
 
-	    /* Append OID */
 	    oids[count] = cur_oid;
-	    /* Append vector (contiguous write) */
 	    float *dst = vectors + ((size_t) count * (size_t) dimension);
 	    memcpy (dst, vf->float_array, (size_t) dimension * sizeof (float));
 
@@ -372,7 +359,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 	}
 
 	default:
-	  /* Unexpected scan result */
 	  free (oids);
 	  free (vectors);
 	  heap_attrinfo_end (thread_p, &attr_info);
@@ -383,7 +369,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
     }
   while (true);
 
-  /* Unreachable */
   return new_btid;
 }
 
@@ -608,8 +593,6 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
       return ER_FAILED;
     }
 
-  //const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
-
   hnsw_id = btid->root_pageid;
 
   if (hnsw_check_and_load_index (hnsw_id) != NO_ERROR)
@@ -627,7 +610,6 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
     {
       std::unique_ptr<usearch::index_dense_t> &index = it->second;
 
-      /* --- Pre-reserve once for the entire batch (under mutex) --- */
       {
 	std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
 	size_t need = index->size () + static_cast<size_t>(n_vectors);
@@ -640,13 +622,14 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
 	      }
 	    while (cap < need)
 	      {
-		cap *= 2;  /* exponential growth */
+		cap *= 2;
 	      }
 	    index->reserve (cap);
 	  }
       }
 
       size_t dimension = index->dimensions ();
+
 #ifdef _OPENMP
       # pragma omp parallel for schedule(static)
 #endif
