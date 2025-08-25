@@ -2600,27 +2600,26 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
 
-  if (QO_ENV_PT_TREE (env)->node_type == PT_SELECT)
+  switch (plan->parallel_opt_use)
     {
-      if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
-	{
-	  parallelism = 0;
-	}
-      else if (PT_SELECT_INFO_IS_FLAGED (QO_ENV_PT_TREE (env), PT_SELECT_INFO_IS_MERGE_QUERY))
-	{
-	  /* TODO: xtran_server_start_topop does not support concurrency. */
-	  parallelism = 0;
-	}
-      else
-	{
-	  parallelism = xasl->parallelism;
-	}
-    }
-  else
-    {
+    case PLAN_PARALLEL_OPT_USE:
+      parallelism = xasl->parallelism;
+      break;
+
+    case PLAN_PARALLEL_OPT_NO:
+    case PLAN_PARALLEL_OPT_CANNOT_USE:
+      parallelism = 0;		/* disable */
+      break;
+
+    case PLAN_PARALLEL_OPT_CAN_USE:
+      parallelism = -1;		/* default */
+      break;
+
+    default:
       /* impossible case */
       assert (false);
-      parallelism = xasl->parallelism;
+      parallelism = 0;
+      break;
     }
 
   /* projection_info */
@@ -2670,30 +2669,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
-
-  switch (plan->parallel_opt_use)
-    {
-    case PLAN_PARALLEL_OPT_USE:
-      hashjoin_xasl->parallelism = parallelism;
-      break;
-
-    case PLAN_PARALLEL_OPT_NO:
-      assert (parallelism == 0);
-    case PLAN_PARALLEL_OPT_CANNOT_USE:
-      hashjoin_xasl->parallelism = 0;	/* disable */
-      break;
-
-    case PLAN_PARALLEL_OPT_CAN_USE:
-      assert (parallelism == -1);
-      hashjoin_xasl->parallelism = -1;	/* default */
-      break;
-
-    default:
-      /* impossible case */
-      assert (false);
-      hashjoin_xasl->parallelism = 0;
-      break;
-    }
+  hashjoin_xasl->parallelism = parallelism;
 
   /* buildlist_proc */
   xasl = add_uncorrelated (env, xasl, hashjoin_xasl);

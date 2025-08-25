@@ -12219,6 +12219,12 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
       return PLAN_PARALLEL_OPT_CANNOT_USE;
     }
 
+  if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      /* TODO: xtran_server_start_topop does not support concurrency. */
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
   if (!bitset_is_empty (&plan->plan_un.join.during_join_terms))
     {
       for (bitset_index = bitset_iterate (&plan->plan_un.join.during_join_terms, &bitset_iter); bitset_index != -1;
