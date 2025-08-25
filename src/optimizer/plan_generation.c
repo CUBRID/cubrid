@@ -2670,7 +2670,30 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
-  hashjoin_xasl->parallelism = parallelism;
+
+  switch (plan->parallel_opt_use)
+    {
+    case PLAN_PARALLEL_OPT_USE:
+      hashjoin_xasl->parallelism = parallelism;
+      break;
+
+    case PLAN_PARALLEL_OPT_NO:
+      assert (parallelism == 0);
+    case PLAN_PARALLEL_OPT_CANNOT_USE:
+      hashjoin_xasl->parallelism = 0;	/* disable */
+      break;
+
+    case PLAN_PARALLEL_OPT_CAN_USE:
+      assert (parallelism == -1);
+      hashjoin_xasl->parallelism = -1;	/* default */
+      break;
+
+    default:
+      /* impossible case */
+      assert (false);
+      hashjoin_xasl->parallelism = 0;
+      break;
+    }
 
   /* buildlist_proc */
   xasl = add_uncorrelated (env, xasl, hashjoin_xasl);

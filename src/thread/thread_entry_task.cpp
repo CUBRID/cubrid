@@ -93,8 +93,13 @@ namespace cubthread
       entry *parent_context = context.m_px_orig_thread_entry;
       if (context.m_px_stats != NULL)
 	{
-	  if (parent_context != NULL && parent_context->m_px_stats != NULL)
+	  if (parent_context != NULL)
 	    {
+	      if (parent_context->m_px_stats == NULL)
+		{
+		  perfmon_initialize_parallel_stats (parent_context);
+		}
+
 	      pthread_mutex_lock (&parent_context->m_px_stats_mutex);
 	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_FETCHES);
 	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_IOREADS);

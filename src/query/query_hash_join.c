@@ -1422,14 +1422,19 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       current_context->outer.input = single_context->outer.input;
       current_context->outer.coerce_domains = single_context->outer.coerce_domains;
       current_context->outer.need_coerce_domains = single_context->outer.need_coerce_domains;
+      current_context->outer.regu_list_pred = single_context->outer.regu_list_pred;
 
       current_context->inner.list_id = inner_part_list_id[part_index];
       current_context->inner.input = single_context->inner.input;
       current_context->inner.coerce_domains = single_context->inner.coerce_domains;
       current_context->inner.need_coerce_domains = single_context->inner.need_coerce_domains;
+      current_context->inner.regu_list_pred = single_context->inner.regu_list_pred;
 
       assert (current_context->build == NULL);
       assert (current_context->probe == NULL);
+
+      current_context->during_join_pred = single_context->during_join_pred;
+      current_context->val_descr = single_context->val_descr;
     }
 
   manager->contexts = contexts;
