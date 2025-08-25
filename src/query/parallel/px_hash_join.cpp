@@ -61,7 +61,7 @@ namespace parallel_query
        * after all tasks have been completed. */
       context.push_resource_tracks ();
 
-      if (context.on_trace)
+      if (thread_is_on_trace (&context))
 	{
 	  perfmon_initialize_parallel_stats (&context);
 	}
@@ -72,10 +72,7 @@ namespace parallel_query
     {
       clear_spawner ();
 
-      if (context.on_trace)
-	{
-	  perfmon_destroy_parallel_stats (&context);
-	}
+      perfmon_destroy_parallel_stats (&context);
 
       context.m_skip_end_resource_tracks_in_recycle = false;
 

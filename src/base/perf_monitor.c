@@ -3321,8 +3321,21 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 void
 perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
 {
-  assert (thread_p->m_px_stats == NULL);
-  thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+  assert (thread_is_on_trace (thread_p));
+
+  /*
+   * m_px_stats should be NULL.
+   * memset is a temporary safeguard.
+   * TODO: replace with assert().
+   */
+  if (thread_p->m_px_stats == NULL)
+    {
+      thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+    }
+  else
+    {
+      memset (thread_p->m_px_stats, 0, PERFMON_VALUES_MEMSIZE);
+    }
 }
 
 void
