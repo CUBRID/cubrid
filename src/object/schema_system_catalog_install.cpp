@@ -24,17 +24,14 @@
 #include "schema_system_catalog_install.hpp"
 
 #include "schema_system_catalog.hpp"
-#include "cnv.h"
 #include "db.h"
 #include "dbtype_function.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_constants.hpp"
 #include "work_space.h"
-#include "schema_manager.h"
 #include "schema_system_catalog_builder.hpp"
 #include "schema_system_catalog_definition.hpp"
 #include "authenticate.h"
-#include "locator_cl.h"
 
 #define CT_DUAL_DUMMY   "dummy"
 
@@ -196,9 +193,6 @@ int
 catcls_add_charsets (struct db_object *class_mop)
 {
   int i;
-  int count_collations;
-
-  count_collations = lang_collation_count ();
 
   for (i = INTL_CODESET_BINARY; i <= INTL_CODESET_LAST; i++)
     {
@@ -303,7 +297,6 @@ int
 catcls_install (void)
 {
   int error_code = NO_ERROR;
-
   const size_t num_classes = clist.size ();
   const size_t num_vclasses = vclist.size ();
   std::vector<MOP> class_mop (num_classes, nullptr);
@@ -334,7 +327,6 @@ catcls_install (void)
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
-	  error_code = er_errid ();
 	  goto end;
 	}
     }
@@ -348,12 +340,7 @@ catcls_install (void)
 	  error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
 	}
 
-      if (er_errid () != NO_ERROR)
-	{
-	  error_code = er_errid ();
-	}
-
-
+      error_code = er_errid();
       if (error_code != NO_ERROR)
 	{
 	  goto end;
