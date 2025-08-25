@@ -24,17 +24,14 @@
 #include "schema_system_catalog_install.hpp"
 
 #include "schema_system_catalog.hpp"
-#include "cnv.h"
 #include "db.h"
 #include "dbtype_function.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_constants.hpp"
 #include "work_space.h"
-#include "schema_manager.h"
 #include "schema_system_catalog_builder.hpp"
 #include "schema_system_catalog_definition.hpp"
 #include "authenticate.h"
-#include "locator_cl.h"
 
 #define CT_DUAL_DUMMY   "dummy"
 
@@ -196,9 +193,6 @@ int
 catcls_add_charsets (struct db_object *class_mop)
 {
   int i;
-  int count_collations;
-
-  count_collations = lang_collation_count ();
 
   for (i = INTL_CODESET_BINARY; i <= INTL_CODESET_LAST; i++)
     {
@@ -255,48 +249,48 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_ATTRIBUTE_NAME, system_catalog_initializer::get_attribute ());
   ADD_TABLE_DEFINITION (CT_DOMAIN_NAME, system_catalog_initializer::get_domain ());
   ADD_TABLE_DEFINITION (CT_METHOD_NAME, system_catalog_initializer::get_method ());
-  ADD_TABLE_DEFINITION (CT_METHSIG_NAME, system_catalog_initializer::get_method_sig ());
-  ADD_TABLE_DEFINITION (CT_METHARG_NAME, system_catalog_initializer::get_meth_argument ());
+  ADD_TABLE_DEFINITION (CT_METHSIG_NAME, system_catalog_initializer::get_meth_sig ());
+  ADD_TABLE_DEFINITION (CT_METHARG_NAME, system_catalog_initializer::get_meth_arg ());
   ADD_TABLE_DEFINITION (CT_METHFILE_NAME, system_catalog_initializer::get_meth_file ());
   ADD_TABLE_DEFINITION (CT_QUERYSPEC_NAME, system_catalog_initializer::get_query_spec ());
   ADD_TABLE_DEFINITION (CT_INDEX_NAME, system_catalog_initializer::get_index ());
   ADD_TABLE_DEFINITION (CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ());
-  ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_class_authorization ());
+  ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_auth ());
   ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition ());
   ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type ());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure ());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_args ());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code ());
   ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial ());
   ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info ());
-  ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collations ());
-  ADD_TABLE_DEFINITION (CT_CHARSET_NAME, system_catalog_initializer::get_charsets ());
+  ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collation ());
+  ADD_TABLE_DEFINITION (CT_CHARSET_NAME, system_catalog_initializer::get_charset ());
   ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
   ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
-  ADD_TABLE_DEFINITION (CT_DB_SERVER_NAME, system_catalog_initializer::get_db_server ());
+  ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
   ADD_TABLE_DEFINITION (CT_DEPENDENCY_NAME, system_catalog_initializer::get_dependency ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
-  ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_super_class ());
+  ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_direct_super_class ());
   ADD_VIEW_DEFINITION (CTV_VCLASS_NAME, system_catalog_initializer::get_view_vclass ());
   ADD_VIEW_DEFINITION (CTV_ATTRIBUTE_NAME, system_catalog_initializer::get_view_attribute ());
-  ADD_VIEW_DEFINITION (CTV_ATTR_SD_NAME, system_catalog_initializer::get_view_attribute_set_domain ());
+  ADD_VIEW_DEFINITION (CTV_ATTR_SD_NAME, system_catalog_initializer::get_view_attr_setdomain_elm ());
   ADD_VIEW_DEFINITION (CTV_METHOD_NAME, system_catalog_initializer::get_view_method ());
-  ADD_VIEW_DEFINITION (CTV_METHARG_NAME, system_catalog_initializer::get_view_method_argument ());
-  ADD_VIEW_DEFINITION (CTV_METHARG_SD_NAME, system_catalog_initializer::get_view_method_argument_set_domain ());
-  ADD_VIEW_DEFINITION (CTV_METHFILE_NAME, system_catalog_initializer::get_view_method_file ());
+  ADD_VIEW_DEFINITION (CTV_METHARG_NAME, system_catalog_initializer::get_view_meth_arg ());
+  ADD_VIEW_DEFINITION (CTV_METHARG_SD_NAME, system_catalog_initializer::get_view_meth_arg_setdomain_elm ());
+  ADD_VIEW_DEFINITION (CTV_METHFILE_NAME, system_catalog_initializer::get_view_meth_file ());
   ADD_VIEW_DEFINITION (CTV_INDEX_NAME, system_catalog_initializer::get_view_index ());
   ADD_VIEW_DEFINITION (CTV_INDEXKEY_NAME, system_catalog_initializer::get_view_index_key ());
-  ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_authorization ());
+  ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_auth ());
   ADD_VIEW_DEFINITION (CTV_TRIGGER_NAME, system_catalog_initializer::get_view_trigger ());
   ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
-  ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_arguments ());
+  ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_args ());
   ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
   ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
-  ADD_VIEW_DEFINITION (CTV_DB_COLLATION_NAME, system_catalog_initializer::get_view_db_collation ());
-  ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
-  ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
+  ADD_VIEW_DEFINITION (CTV_COLLATION_NAME, system_catalog_initializer::get_view_collation ());
+  ADD_VIEW_DEFINITION (CTV_CHARSET_NAME, system_catalog_initializer::get_view_charset ());
+  ADD_VIEW_DEFINITION (CTV_SERVER_NAME, system_catalog_initializer::get_view_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
   ADD_VIEW_DEFINITION (CTV_DEPENDENCY_NAME, system_catalog_initializer::get_view_dependency ());
 }
@@ -305,7 +299,6 @@ int
 catcls_install (void)
 {
   int error_code = NO_ERROR;
-
   const size_t num_classes = clist.size ();
   const size_t num_vclasses = vclist.size ();
   std::vector<MOP> class_mop (num_classes, nullptr);
@@ -336,7 +329,6 @@ catcls_install (void)
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
-	  error_code = er_errid ();
 	  goto end;
 	}
     }
@@ -350,12 +342,7 @@ catcls_install (void)
 	  error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
 	}
 
-      if (er_errid () != NO_ERROR)
-	{
-	  error_code = er_errid ();
-	}
-
-
+      error_code = er_errid();
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -581,7 +568,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_method_sig ()
+  system_catalog_initializer::get_meth_sig ()
   {
     return system_catalog_definition (
 		   // name
@@ -609,7 +596,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_meth_argument ()
+  system_catalog_initializer::get_meth_arg ()
   {
     return system_catalog_definition (
 		   // name
@@ -760,7 +747,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_class_authorization ()
+  system_catalog_initializer::get_auth ()
   {
     return system_catalog_definition (
 		   // name
@@ -886,7 +873,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_stored_procedure_arguments ()
+  system_catalog_initializer::get_stored_procedure_args ()
   {
     return system_catalog_definition (
 		   // name
@@ -1050,7 +1037,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_collations ()
+  system_catalog_initializer::get_collation ()
   {
     return system_catalog_definition (
 		   // name
@@ -1081,7 +1068,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_charsets ()
+  system_catalog_initializer::get_charset ()
   {
     return system_catalog_definition (
 		   // name
@@ -1172,11 +1159,11 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_db_server ()
+  system_catalog_initializer::get_server ()
   {
     return system_catalog_definition (
 		   // name
-		   CT_DB_SERVER_NAME,
+		   CT_SERVER_NAME,
 		   // columns
     {
       {"link_name", format_varchar (255)},
@@ -1288,7 +1275,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_super_class ()
+  system_catalog_initializer::get_view_direct_super_class ()
   {
     return system_catalog_definition (
 		   // name
@@ -1300,7 +1287,7 @@ namespace cubschema
       {"super_class_name", format_varchar (255)},
       {"super_owner_name", format_varchar (255)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_super_class_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_direct_super_class_spec ()}
     },
 // constraint
     {},
@@ -1395,7 +1382,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_attribute_set_domain ()
+  system_catalog_initializer::get_view_attr_setdomain_elm ()
   {
     return system_catalog_definition (
 		   // name
@@ -1413,7 +1400,7 @@ namespace cubschema
       {"domain_class_name", format_varchar (255)},
       {"domain_owner_name", format_varchar (255)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_attribute_set_domain_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_attr_setdomain_elm_spec ()}
     },
 // constraint
     {},
@@ -1467,7 +1454,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_method_argument ()
+  system_catalog_initializer::get_view_meth_arg ()
   {
     return system_catalog_definition (
 		   // name
@@ -1486,7 +1473,7 @@ namespace cubschema
       {"domain_class_name", format_varchar (255)},
       {"domain_owner_name", format_varchar (255)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_method_arg_spec ()}
     },
 // constraint
     {},
@@ -1505,7 +1492,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_method_argument_set_domain ()
+  system_catalog_initializer::get_view_meth_arg_setdomain_elm ()
   {
     return system_catalog_definition (
 		   // name
@@ -1524,7 +1511,7 @@ namespace cubschema
       {"domain_class_name", format_varchar (255)},
       {"domain_owner_name", format_varchar (255)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_set_domain_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_meth_arg_setdomain_elm_spec ()}
     },
 // constraint
     {},
@@ -1543,7 +1530,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_method_file ()
+  system_catalog_initializer::get_view_meth_file ()
   {
     return system_catalog_definition (
 		   // name
@@ -1556,7 +1543,7 @@ namespace cubschema
       {"from_class_name", format_varchar (255)},
       {"from_owner_name", format_varchar (255)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_method_file_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_meth_file_spec ()}
     },
 // constraint
     {},
@@ -1663,7 +1650,7 @@ namespace cubschema
    * Is this no problem? */
 
   system_catalog_definition
-  system_catalog_initializer::get_view_authorization ()
+  system_catalog_initializer::get_view_auth ()
   {
     return system_catalog_definition (
 		   // name
@@ -1678,7 +1665,7 @@ namespace cubschema
       {"auth_type", format_varchar (7)},
       {"is_grantable", format_varchar (3)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_auth_spec ()}
     },
 // constraint
     {},
@@ -1815,7 +1802,7 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_stored_procedure_arguments ()
+  system_catalog_initializer::get_view_stored_procedure_args ()
   {
     return system_catalog_definition (
 		   // name
@@ -1833,7 +1820,7 @@ namespace cubschema
       {"default_value", format_varchar (255)},
       {"comment", format_varchar (1024)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_args_spec ()}
     },
 // constraint
     {},
@@ -1950,11 +1937,11 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_db_collation ()
+  system_catalog_initializer::get_view_collation ()
   {
     return system_catalog_definition (
 		   // name
-		   CTV_DB_COLLATION_NAME,
+		   CTV_COLLATION_NAME,
 		   // columns
     {
       {"coll_id", "integer"},
@@ -1965,7 +1952,7 @@ namespace cubschema
       {"contractions", "integer"},
       {"uca_strength", format_varchar (255)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_db_collation_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_collation_spec ()}
     },
 // constraint
     {},
@@ -1984,11 +1971,11 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_db_charset ()
+  system_catalog_initializer::get_view_charset ()
   {
     return system_catalog_definition (
 		   // name
-		   CTV_DB_CHARSET_NAME,
+		   CTV_CHARSET_NAME,
 		   // columns
     {
       {CT_DBCHARSET_CHARSET_ID, "integer"},
@@ -1996,7 +1983,7 @@ namespace cubschema
       {CT_DBCHARSET_DEFAULT_COLLATION, format_varchar (32)},
       {CT_DBCHARSET_CHAR_SIZE, "int"},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_db_charset_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_charset_spec ()}
     },
 // constraint
     {},
@@ -2050,11 +2037,11 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_db_server ()
+  system_catalog_initializer::get_view_server ()
   {
     return system_catalog_definition (
 		   // name
-		   CTV_DB_SERVER_NAME,
+		   CTV_SERVER_NAME,
 		   // columns
     {
       {"link_name", format_varchar (255)},
@@ -2069,7 +2056,7 @@ namespace cubschema
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_db_server_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_server_spec ()}
     },
 // constraint
     {},

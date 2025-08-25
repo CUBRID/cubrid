@@ -52,7 +52,7 @@
 #define CT_AUTHORIZATION_NAME      "db_authorization"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
-#define CT_DB_SERVER_NAME          "_db_server"
+#define CT_SERVER_NAME          "_db_server"
 #define CT_SYNONYM_NAME            "_db_synonym"
 #define CT_DEPENDENCY_NAME         "_db_dependency"
 
@@ -75,9 +75,9 @@
 #define CTV_SERIAL_NAME            "db_serial"
 #define CTV_HA_APPLY_INFO_NAME     "db_ha_apply_info"
 #define CTV_PARTITION_NAME         "db_partition"
-#define CTV_DB_COLLATION_NAME      "db_collation"
-#define CTV_DB_CHARSET_NAME	   "db_charset"
-#define CTV_DB_SERVER_NAME         "db_server"
+#define CTV_COLLATION_NAME      "db_collation"
+#define CTV_CHARSET_NAME	   "db_charset"
+#define CTV_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
 #define CTV_DEPENDENCY_NAME        "db_dependency"
 

@@ -109,7 +109,7 @@ const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Password_class, CT_PASSWORD_NAME},
   {&oid_Authorization_class, CT_AUTHORIZATION_NAME},
   {&oid_DB_root_class, CT_ROOT_NAME},
-  {&oid_DBServer_class, CT_DB_SERVER_NAME},
+  {&oid_DBServer_class, CT_SERVER_NAME},
   {&oid_Synonym_class, CT_SYNONYM_NAME},
   {&oid_Stored_proc_code_class, CT_STORED_PROC_CODE_NAME},
   {&oid_Dependency_class, CT_DEPENDENCY_NAME},

@@ -24,9 +24,6 @@
 
 #include <assert.h>
 
-#include "config.h"
-
-#include "misc_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
 #include "dbtype.h"
@@ -36,7 +33,6 @@
 #include "schema_manager.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
-#include "object_print.h"
 #include "set_object.h"
 #include "authenticate.h"
 #include "db.h"
@@ -128,7 +124,6 @@ static const char *OLD_REFERENCE_NAME = "old";
 const char *EVAL_PREFIX = "EVALUATE ( ";
 const char *EVAL_SUFFIX = " ) ";
 
-// TODO: move trigger system catalog code to schema_system_catalog_install.cpp
 const char *TR_CLASS_NAME = CT_TRIGGER_NAME;
 const char *TR_ATT_UNIQUE_NAME = "unique_name";
 const char *TR_ATT_NAME = "name";
@@ -4423,7 +4418,6 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 {
   int error = NO_ERROR;
   int save;
-  bool has_savepoint = false;
 
   if (need_savepoint)
     {
@@ -4433,8 +4427,6 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	{
 	  return error;
 	}
-
-      has_savepoint = true;
     }
 
   AU_DISABLE (save);
