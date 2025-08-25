@@ -39,11 +39,8 @@ BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hn
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			HFID *hfids, int dimension, int m, int ef_construction, int metric);
-<<<<<<< HEAD
 BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			      HFID *hfids, int dimension, int m, int ef_construction, int metric);
-=======
->>>>>>> upstream/cubvec/cubvec
 int hnsw_print_index_info (BTID *btid);
 
 int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances);
