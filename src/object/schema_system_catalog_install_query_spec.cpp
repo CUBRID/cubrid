@@ -146,7 +146,7 @@ sm_define_view_class_spec (void)
 }
 
 const char *
-sm_define_view_super_class_spec (void)
+sm_define_view_direct_super_class_spec (void)
 {
   static char stmt [2048];
 
@@ -378,7 +378,7 @@ sm_define_view_attribute_spec (void)
 }
 
 const char *
-sm_define_view_attribute_set_domain_spec (void)
+sm_define_view_attr_setdomain_elm_spec (void)
 {
   static char stmt [2048];
 
@@ -532,7 +532,7 @@ sm_define_view_method_spec (void)
 }
 
 const char *
-sm_define_view_method_argument_spec (void)
+sm_define_view_method_arg_spec (void)
 {
   static char stmt [2048];
 
@@ -615,7 +615,7 @@ sm_define_view_method_argument_spec (void)
 }
 
 const char *
-sm_define_view_method_argument_set_domain_spec (void)
+sm_define_view_meth_arg_setdomain_elm_spec (void)
 {
   static char stmt [2048];
 
@@ -698,7 +698,7 @@ sm_define_view_method_argument_set_domain_spec (void)
 }
 
 const char *
-sm_define_view_method_file_spec (void)
+sm_define_view_meth_file_spec (void)
 {
   static char stmt [2048];
 
@@ -963,7 +963,7 @@ sm_define_view_index_key_spec (void)
 }
 
 const char *
-sm_define_view_authorization_spec (void)
+sm_define_view_auth_spec (void)
 {
   static char stmt [4096];
 
@@ -1358,7 +1358,7 @@ sm_define_view_stored_procedure_spec (void)
 }
 
 const char *
-sm_define_view_stored_procedure_arguments_spec (void)
+sm_define_view_stored_procedure_args_spec (void)
 {
   static char stmt [2048];
 
@@ -1512,7 +1512,7 @@ sm_define_view_ha_apply_info_spec (void)
 }
 
 const char *
-sm_define_view_db_collation_spec (void)
+sm_define_view_collation_spec (void)
 {
   static char stmt [2048];
 
@@ -1549,7 +1549,7 @@ sm_define_view_db_collation_spec (void)
 }
 
 const char *
-sm_define_view_db_charset_spec (void)
+sm_define_view_charset_spec (void)
 {
   static char stmt [2048];
 
@@ -1627,7 +1627,7 @@ sm_define_view_synonym_spec (void)
 }
 
 const char *
-sm_define_view_db_server_spec (void)
+sm_define_view_server_spec (void)
 {
   static char stmt [2048];
 
@@ -1645,7 +1645,7 @@ sm_define_view_db_server_spec (void)
           "[ds].[created_time] AS [created_time], "
           "[ds].[updated_time] AS [updated_time] "
 	"FROM "
-	  /* CT_DB_SERVER_NAME */
+	  /* CT_SERVER_NAME */
 	  "[%s] AS [ds] "
 	"WHERE "
 	  "{'DBA'} SUBSETEQ ("
@@ -1684,7 +1684,7 @@ sm_define_view_db_server_spec (void)
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
 	    ")",
-	CT_DB_SERVER_NAME,
+	CT_SERVER_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,

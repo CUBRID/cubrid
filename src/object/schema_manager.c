@@ -3118,8 +3118,8 @@ sm_mark_system_class_for_catalog (void)
     CTV_STORED_PROC_ARGS_NAME,
     CTV_PARTITION_NAME,
     CT_COLLATION_NAME,
-    CT_DB_SERVER_NAME,
-    CTV_DB_SERVER_NAME,
+    CT_SERVER_NAME,
+    CTV_SERVER_NAME,
     NULL
   };
 
@@ -4420,7 +4420,7 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
     CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
     CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
-    CT_DB_SERVER_NAME, CT_SYNONYM_NAME, NULL
+    CT_SERVER_NAME, CT_SYNONYM_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
