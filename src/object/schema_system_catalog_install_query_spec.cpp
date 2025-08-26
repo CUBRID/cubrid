@@ -965,7 +965,7 @@ sm_define_view_authorization_spec (void)
           "[a].[object_of] = [c].[class_of] "
           "AND [a].[object_type] = 0 "
           "AND ( "
-	  "{'DBA'} SUBSETEQ ("
+	  "{'DBA', [c].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]} * ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
@@ -973,35 +973,8 @@ sm_define_view_authorization_spec (void)
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[c].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[a].[grantee].[name]} SUBSETEQ ("
-	      "SELECT "
-	        "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	      ") "
-	  "OR {[a].[grantor].[name]} SUBSETEQ ("
-	      "SELECT "
-	        "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	      ") "
-	    ") "
+	    ") SETNEQ {}"
+	  ") "
    "UNION ALL "
         "SELECT "
 	  "CAST ([a].[grantor].[name] AS VARCHAR(255)) AS [grantor_name], " /* string -> varchar(255) */
@@ -1018,7 +991,7 @@ sm_define_view_authorization_spec (void)
           "[a].[object_of] = [s] "
           "AND [a].[object_type] = 5 "
           "AND ( "
-	  "{'DBA'} SUBSETEQ ("
+	  "{'DBA', [s].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]} * ("
 	      "SELECT "
 		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
 	      "FROM "
@@ -1026,47 +999,14 @@ sm_define_view_authorization_spec (void)
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[s].[owner].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	    ") "
-	  "OR {[a].[grantee].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	      ") "
-	  "OR {[a].[grantor].[name]} SUBSETEQ ("
-	      "SELECT "
-		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-	      "FROM "
-		/* AU_USER_CLASS_NAME */
-		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-	      "WHERE "
-		"[u].[name] = CURRENT_USER"
-	      ") "
-	    ") ",
+	    ") SETNEQ {}"
+	  ") ",
 	CT_CLASSAUTH_NAME,
         CT_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 
         CT_CLASSAUTH_NAME,
         CT_STORED_PROC_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
-	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME
         );
   // *INDENT-ON*
