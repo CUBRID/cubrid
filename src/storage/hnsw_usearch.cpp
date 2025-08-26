@@ -274,8 +274,14 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
   float *vectors = (float *) malloc ((size_t) capacity * (size_t) dimension * sizeof (float));
   if (oids == NULL || vectors == NULL)
     {
-      free (oids);
-      free (vectors);
+      if (oids)
+        {
+          free (oids);
+        }
+      if (vectors)
+        {
+          free (vectors);
+        }
       heap_attrinfo_end (thread_p, &attr_info);
       (void) heap_scancache_end (thread_p, &scan_cache);
       return NULL;
@@ -330,8 +336,14 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 
 	    if (!ensure_capacity ())
 	      {
-		free (oids);
-		free (vectors);
+		if (oids)
+		  {
+		    free (oids);
+		  }
+		if (vectors)
+		  {
+		    free (vectors);
+		  }
 		heap_attrinfo_end (thread_p, &attr_info);
 		(void) heap_scancache_end (thread_p, &scan_cache);
 		return NULL;
@@ -349,8 +361,14 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 	{
 	  hnsw_add_element (new_btid, oids, vectors, count);
 
-	  free (oids);
-	  free (vectors);
+	  if (oids)
+	    {
+	      free (oids);
+	    }
+	  if (vectors)
+	    {
+	      free (vectors);
+	    }
 
 	  heap_attrinfo_end (thread_p, &attr_info);
 	  (void) heap_scancache_end (thread_p, &scan_cache);
@@ -359,8 +377,14 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 	}
 
 	default:
-	  free (oids);
-	  free (vectors);
+	  if (oids)
+	    {
+	      free (oids);
+	    }
+	  if (vectors)
+	    {
+	      free (vectors);
+	    }
 	  heap_attrinfo_end (thread_p, &attr_info);
 	  (void) heap_scancache_end (thread_p, &scan_cache);
 	  assert (false);
