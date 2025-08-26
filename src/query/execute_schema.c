@@ -9023,7 +9023,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      // TODO: Implement replicaiton option handling
+      // TODO: Implement replication option handling
       /*
        * Handle the replication option.
        * If the option is omitted, or if "on|off" is omitted,
