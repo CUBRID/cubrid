@@ -9003,9 +9003,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_TABLE_OPTION_COMMENT:
 	      tbl_opt_comment = tbl_opt;
 	      break;
-            case PT_TABLE_OPTION_REPLICATION:
-              tbl_opt_replication = tbl_opt;
-              break;
+	    case PT_TABLE_OPTION_REPLICATION:
+	      tbl_opt_replication = tbl_opt;
+	      break;
 	    default:
 	      break;
 	    }
@@ -9022,26 +9022,26 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto error_exit;
 	    }
 	}
-  
+
       // TODO: Implement replicaiton option handling
       /*
-      * Handle the replication option.
-      * If the option is omitted, or if "on|off" is omitted,
-      * the default value is set to "on".
-      */
+       * Handle the replication option.
+       * If the option is omitted, or if "on|off" is omitted,
+       * the default value is set to "on".
+       */
       if (tbl_opt_replication)
-      {
-        replication_node = tbl_opt_replication->info.table_option.val;
-        if(!replication_node || replication_node->info.value.data_value.i)
-        {
-          _er_log_debug(ARG_FILE_LINE, "[Not implemented] %s(replication=on) table created. \n", class_name);
-        }
-        else
-        {
-          _er_log_debug(ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created. \n", class_name);
-        }
-      }
-      
+	{
+	  replication_node = tbl_opt_replication->info.table_option.val;
+	  if (!replication_node || replication_node->info.value.data_value.i)
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table created. \n", class_name);
+	    }
+	  else
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created. \n", class_name);
+	    }
+	}
+
       /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
       if (!found_reuse_oid_option)
 	{
