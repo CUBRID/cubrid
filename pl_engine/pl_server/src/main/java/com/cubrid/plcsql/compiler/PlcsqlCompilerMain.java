@@ -239,7 +239,11 @@ public class PlcsqlCompilerMain {
         Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
         TypeChecker typeChecker =
                 new TypeChecker(
-                        iStore, converter.symbolStack, converter, owner, sqlUsesInRecursiveCalls);
+                        iStore,
+                        converter.symbolStack,
+                        converter.dependenciesOfStaticSql,
+                        owner,
+                        sqlUsesInRecursiveCalls);
         typeChecker.visitUnit(unit);
 
         if (verbose) {

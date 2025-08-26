@@ -85,7 +85,7 @@ namespace cubpl
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     int obj_type;       // TODO: use predefined enum
-    std::string obj_name;
+    std::string obj_uniq_name;
   };
 
   struct EXPORT_IMPORT sql_semantics : public cubpacking::packable_object
@@ -103,6 +103,7 @@ namespace cubpl
     std::vector <cubmethod::column_info> columns;
     std::vector <pl_parameter_info> hvs;
     std::vector <std::string> into_vars;
+    std::vector <plcsql_dependency> dependencies;
   };
 
   struct EXPORT_IMPORT sql_semantics_request : public cubpacking::packable_object
