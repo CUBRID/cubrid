@@ -137,7 +137,7 @@ static const char *prohibited_classes[] = {
   CT_COLLATION_NAME,
   CT_CHARSET_NAME,
   CT_DUAL_NAME,
-  CT_DB_SERVER_NAME,
+  CT_SERVER_NAME,
   CT_SYNONYM_NAME,
   /* catalog vclasses */
   CTV_CLASS_NAME,
@@ -158,9 +158,9 @@ static const char *prohibited_classes[] = {
   CTV_STORED_PROC_NAME,
   CTV_STORED_PROC_ARGS_NAME,
   CTV_PARTITION_NAME,
-  CTV_DB_COLLATION_NAME,
-  CTV_DB_CHARSET_NAME,
-  CTV_DB_SERVER_NAME,
+  CTV_COLLATION_NAME,
+  CTV_CHARSET_NAME,
+  CTV_SERVER_NAME,
   CTV_SYNONYM_NAME,
   NULL
 };

@@ -20712,7 +20712,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
   /* temporarily disable authorization to access _db_server class */
   AU_DISABLE (au_save);
 
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  server_class = sm_find_class (CT_SERVER_NAME);
   if (server_class == NULL)
     {
       error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
