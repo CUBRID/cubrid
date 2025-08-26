@@ -133,7 +133,7 @@ jobs:
                           sed -i '\|shell/_06_issues/_11_1h/bug_bts_5492/cases/bug_bts_5492.sh|d' tc.list
                           sed -i '\|shell/_06_issues/_11_2h/bug_bts_5675/cases/bug_bts_5675.sh|d' tc.list
                           sed -i '\|shell/_06_issues/_11_2h/bug_bts_5538/cases/bug_bts_5538.sh|d' tc.list
-                          #sed -i '\|shell/_08_shard/_17_shard_cas_log/cases/_17_shard_cas_log.sh|d' tc.list
+                          sed -i '\|shell/_08_shard/_17_shard_cas_log/cases/_17_shard_cas_log.sh|d' tc.list
                           
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] Remove tests that are not in the list"
