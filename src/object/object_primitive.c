@@ -46,6 +46,7 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+#include "numeric_opfunc.h"
 
 #include <utility>
 
@@ -8417,14 +8418,21 @@ static void
 mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
   int disk_size;
+  int precision;
 
-  disk_size = OR_NUMERIC_SIZE (domain->precision);
+  precision = domain->precision;
+  disk_size = calc_bytes_from_prec (precision);
+  disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
+
+  //disk_size = OR_NUMERIC_SIZE (domain->precision);
   or_put_data (buf, (char *) mem, disk_size);
 }
 
 static void
 mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
+  int precision;
+
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
     {
@@ -8440,16 +8448,22 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
     }
   else if (size)
     {
-      if (size != OR_NUMERIC_SIZE (domain->precision))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  assert (false);
-	  return;
-	}
-      else
-	{
-	  or_get_data (buf, (char *) mem, size);
-	}
+      //if (TP_DOMAIN_TYPE(domain) == DB_TYPE_NUMERIC)
+      precision = domain->precision;
+      size = calc_bytes_from_prec (precision);
+      size = DB_ALIGN (size, INT_ALIGNMENT);
+
+      // 음수 이면 에러처리를 할까?
+//       if (size != OR_NUMERIC_SIZE (domain->precision))
+//      {
+//        er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+//        assert (false);
+//        return;
+//      }
+//       else
+      {
+	or_get_data (buf, (char *) mem, size);
+      }
     }
 }
 
@@ -8464,15 +8478,18 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
 {
   int len;
 
+  len = calc_bytes_from_prec (domain->precision);
+  len = DB_ALIGN (len, INT_ALIGNMENT);
+
   /* think about caching this in the domain so we don't have to calculate it */
-  if (disk)
-    {
-      len = OR_NUMERIC_SIZE (domain->precision);
-    }
-  else
-    {
-      len = MR_NUMERIC_SIZE (domain->precision);
-    }
+//   if (disk)
+//     {
+//       len = OR_NUMERIC_SIZE (domain->precision);
+//     }
+//   else
+//     {
+//       len = MR_NUMERIC_SIZE (domain->precision);
+//     }
 
   return len;
 }
@@ -8536,14 +8553,17 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
     {
       /* better have a non-NULL value by the time writeval is called ! */
       precision = db_value_precision (value);
-      if (disk)
-	{
-	  len = OR_NUMERIC_SIZE (precision);
-	}
-      else
-	{
-	  len = MR_NUMERIC_SIZE (precision);
-	}
+      len = calc_bytes_from_prec (precision);
+      len = DB_ALIGN (len, INT_ALIGNMENT);
+
+//       if (disk)
+//      {
+//        len = OR_NUMERIC_SIZE (precision);
+//      }
+//       else
+//      {
+//        len = MR_NUMERIC_SIZE (precision);
+//      }
     }
   return len;
 }
@@ -8567,8 +8587,12 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
       if (numeric != NULL)
 	{
 	  precision = db_value_precision (value);
-	  disk_size = OR_NUMERIC_SIZE (precision);
-	  rc = or_put_data (buf, (char *) numeric, disk_size);
+	  //disk_size = OR_NUMERIC_SIZE (precision);
+
+	  disk_size = calc_bytes_from_prec (precision);
+	  disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
+	  //rc = or_put_data (buf, (char *) numeric, disk_size);
+	  rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
 	}
     }
   return rc;
@@ -8586,6 +8610,8 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 			 int copy_buf_len)
 {
   int rc = NO_ERROR;
+  int precision;
+  DB_C_NUMERIC num;
 
   if (domain == NULL)
     {
@@ -8615,11 +8641,53 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
     }
   else
     {
+      precision = domain->precision;
+      size = calc_bytes_from_prec (precision);
+//       else
+//         {
+//        // domain이 없는 경우가 있나?
+//        precision = db_value_precision (value);
+//           size = calc_bytes_from_prec(precision);
+//      }
+      size = DB_ALIGN (size, INT_ALIGNMENT);
+
       /*
        * the copy and no copy cases are identical because db_make_numeric
        * will copy the bits into its internal buffer.
        */
-      (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, domain->precision, domain->scale);
+      //(void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, domain->precision, domain->scale);
+
+      // size 만큼 짤라서 복사하기 위해 사용
+      // db_make_numeric에 argument를 추가하는 것이 너무 지저분해서 db_make_numeric을 풀어서 사용함
+      (void) db_value_domain_init (value, DB_TYPE_NUMERIC, domain->precision, domain->scale);
+
+      num = (DB_C_NUMERIC) buf->ptr;
+      if (num)
+	{
+	  value->domain.general_info.is_null = 0;
+	  if (DB_NUMERIC_BUF_SIZE == size)
+	    {
+	      memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+	    }
+	  else
+	    {
+	      // 여기서 memset을 하는 것이 비용임, 따라서 최적화를 하려면 이제 numeric은 prec을 보고 필요한 바이트를 읽어야함.
+	      if (numeric_is_negative (num))
+		{
+		  memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - size);
+		}
+	      else
+		{
+		  memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - size);
+		}
+	      memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - size), num, size);
+	    }
+	}
+      else
+	{
+	  value->domain.general_info.is_null = 1;
+	}
+
       value->need_clear = false;
       rc = or_advance (buf, size);
     }

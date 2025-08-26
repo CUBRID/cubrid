@@ -48,8 +48,8 @@ typedef enum
 } NUMERIC_OPERATION_TYPE;
 
 // numeric 출력 문자열 크기 최대 값 : 300 = 최대 정수(38 + 84) + 최대 소수 (38 + 127) = 287 + 여유 13자리
-// TWICE_NUM_MAX_PREC 값을 175 에서 288 까지 늘려서, 나중에 NUMERIC_MAX_STRING_SIZE 값도 더 늘려야할 수 있음.
-#define NUMERIC_MAX_STRING_SIZE (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 13
+// 찐 pr 에서는 TWICE_NUM_MAX_PREC * 2로 해서 350으로 함
+#define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10) * 2)
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
@@ -91,6 +91,8 @@ extern void numeric_coerce_num_to_double (DB_C_NUMERIC num, int scale, double *a
 extern int numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 extern int numeric_internal_float_to_num (float afloat, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale);
 
+extern bool numeric_is_negative (DB_C_NUMERIC arg);
+extern int calc_bytes_from_prec (int prec);
 extern int floating_point_numeric_mod (DB_VALUE * value1, DB_VALUE * value2, DB_VALUE * result);
 
 #if defined (ENABLE_UNUSED_FUNCTION)

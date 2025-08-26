@@ -63,12 +63,8 @@
 //#define TWICE_NUM_MAX_PREC    (2*DB_MAX_NUMERIC_PRECISION)
 
 /* TWICE_NUM_MAX_PREC : num(base-256) 값을 10진수 문자로 표현하기 위한 크기 */
-// TWICE_NUM_MAX_PREC : 288 = 최대 정수(38 + 84) + 최대 소수 (38 + 127) = 287 + 여유 1자리
-// **중요**
-// 나중에 NUMERIC_MAX_STRING_SIZE 처럼 못해도 287 이상으로 늘려야할 수 있음.
-// NUMERIC_MAX_STRING_SIZE 보다는 항상 작아야함.
-//#define TWICE_NUM_MAX_PREC    (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10
-#define TWICE_NUM_MAX_PREC      (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 1
+// 아 이거 찐 pr 에서는 165 + 10 으로 줄임 그래서 최종 175
+#define TWICE_NUM_MAX_PREC    ((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10)
 
 #define SECONDS_IN_A_DAY	  (int)(24L * 60L * 60L)
 
@@ -124,7 +120,6 @@ typedef enum numeric_parse_state
 }
 NUMERIC_PARSE_STATE;
 
-static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
 static void numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num);
 static void numeric_increase (DB_C_NUMERIC answer);
@@ -201,7 +196,6 @@ static void round_and_clamp (char *out_str, int *out_prec, int *out_scale, int t
 // base-256 덧셈 (1byte 씩 기존과 동일)
 static int floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
 				       int *result_scale, DB_VALUE * answer);
-static int calc_bytes_from_prec (int prec);
 static void fp_numeric_pad (uint8_t * src_buf, uint8_t * padded_dbv_buf, int calc_bytes);
 static void fp_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, int exponent);
 static void fp_numeric_add (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes);
@@ -241,7 +235,7 @@ static void fp_numeric_trim_trailing_zeros (uint8_t * result_buf, int *result_pr
  *   return: true, false
  *   arg(in) : DB_C_NUMERIC value
  */
-static bool
+bool
 numeric_is_negative (DB_C_NUMERIC arg)
 {
   return (arg[0] & 0x80) ? true : false;
@@ -1396,9 +1390,10 @@ fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int p
 
   // 2) 필요한 바이트 수 계산
   calc_bytes = calc_bytes_from_prec (common_prec) + 1;
-  if (calc_bytes < 1)
+  if (calc_bytes < (int) DB_NUMERIC_BUF_SIZE)
     {
-      return ER_FAILED;
+      //return ER_FAILED;
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE;
     }
 
   // 3) 새로운 계산 버퍼 초기화
@@ -2070,15 +2065,23 @@ floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *r
   return ret;
 }
 
-static int
+int
 calc_bytes_from_prec (int prec)
 {
-  const double log2_10 = 3.3219280948873626;
-  double bits;
-  // 필요한 비트 수
-  bits = 1.0 + prec * log2_10;
+  const double log10_256 = log10 (256.0);
+
+  if (prec == 0)
+    {
+      // 헤더를 제외한 40자리는 17바이트면 충분함.
+      // return 17;
+      return DB_NUMERIC_BUF_SIZE;
+    }
+  else if (prec < 0)
+    {
+      return 0;
+    }
   // 바이트로 나눠서 올림
-  return (int) ceil (bits / 8.0);
+  return (int) ceil ((double) prec / log10_256);
 }
 
 /* 바이트 값 padding 후, 바이트 단위 버퍼를 워드 단위 버퍼로 변환 */
@@ -4903,28 +4906,28 @@ parse_decimal_string4 (const char *astring, int astring_length, INTL_CODESET cod
       // 4) 0 처리
       // 0009000000.00 : pad_character_zero(t), has_digit(t), int_count(6), frac_count(2)
       // 0.000001 : pad_character_zero(f), has_digit(t), int_count(0), frac_count(6)
-      if (int_count == 0 && frac_count > 0)
-	{
-	  // 0.0 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(1)
-	  // 0.0000 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(4)
-	  int_digits[0] = '\0';
-	  frac_digits[0] = '\0';
-	  *int_first_nz = -1;
-	  *int_last_nz = -1;
-	  *int_len = 1;
-	  *frac_len = frac_count;
-	}
-      else
-	{
-	  // 0 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
-	  // 00000 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
-	  int_digits[0] = '\0';
-	  frac_digits[0] = '\0';
-	  *int_first_nz = -1;
-	  *int_last_nz = -1;
-	  *int_len = 1;
-	  *frac_len = 0;
-	}
+//       if (int_count == 0 && frac_count > 0)
+//      {
+//        // 0.0 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(1)
+//        // 0.0000 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(4)
+//        int_digits[0] = '\0';
+//        frac_digits[0] = '\0';
+//        *int_first_nz = -1;
+//        *int_last_nz = -1;
+//        *int_len = 1;
+//        *frac_len = frac_count;
+//      }
+//       else
+      {
+	// 0 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
+	// 00000 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
+	int_digits[0] = '\0';
+	frac_digits[0] = '\0';
+	*int_first_nz = -1;
+	*int_last_nz = -1;
+	*int_len = 1;
+	*frac_len = 0;
+      }
     }
   else if (!has_digit && (int_count + frac_count) == 0)
     {
