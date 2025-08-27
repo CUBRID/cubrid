@@ -70,7 +70,7 @@ namespace parallel_query
     void
     entry_manager::on_retire (cubthread::entry &context)
     {
-      clear_spawner ();
+      spawn_manager::destroy_instance();
 
       perfmon_destroy_parallel_stats (&context);
 
@@ -99,7 +99,7 @@ namespace parallel_query
     }
 
     void
-    entry_manager::emulate_main_thread (cubthread::entry &thread_ref)
+    entry_manager::emulate_main_thread (cubthread::entry &thread_ref) noexcept
     {
       thread_ref.m_px_orig_thread_entry = &m_main_thread_ref;
       thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
@@ -160,7 +160,7 @@ namespace parallel_query
     }
 
     cubthread::entry_workpool *
-    worker_pool_manager::get_worker_pool () const
+    worker_pool_manager::get_worker_pool () const noexcept
     {
       return m_worker_pool;
     }
@@ -210,7 +210,7 @@ namespace parallel_query
     }
 
     bool
-    task_manager::has_error ()
+    task_manager::has_error () const noexcept
     {
       return m_has_error.load();
     }
@@ -706,6 +706,7 @@ namespace parallel_query
     void
     join_task::execute (cubthread::entry &thread_ref)
     {
+      spawn_manager *spawn_manager;
       int error = NO_ERROR;
 
       if (m_task_manager.has_error () || m_task_manager.check_interrupt (thread_ref))
@@ -713,11 +714,19 @@ namespace parallel_query
 	  return;
 	}
 
+      spawn_manager = spawn_manager::get_instance (thread_ref);
+      if (spawn_manager == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  m_task_manager.handle_error (thread_ref);
+	  return;
+	}
+
       /* reuse TLS variables if already set */
-      m_context->val_descr = get_val_descr (thread_ref, m_manager->val_descr);
-      m_context->during_join_pred = get_during_join_pred (thread_ref, m_manager->during_join_pred);
-      m_context->outer.regu_list_pred = get_outer_regu_list_pred (thread_ref, m_manager->outer->regu_list_pred);
-      m_context->inner.regu_list_pred = get_inner_regu_list_pred (thread_ref, m_manager->inner->regu_list_pred);
+      m_context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
+      m_context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
+      m_context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
+      m_context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred ( m_manager->inner->regu_list_pred);
 
       if (er_errid () != NO_ERROR)
 	{
@@ -740,6 +749,135 @@ namespace parallel_query
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
+    }
+
+    /*
+     * spawn_manager
+     */
+
+    spawn_manager::spawn_manager (cubthread::entry &thread_ref)
+      : m_thread_ref (thread_ref)
+      , m_spawner (nullptr)
+      , m_val_descr (nullptr)
+      , m_during_join_pred (nullptr)
+      , m_outer_regu_list_pred (nullptr)
+      , m_inner_regu_list_pred (nullptr)
+    {
+      //
+    }
+
+    spawn_manager::~spawn_manager () noexcept
+    {
+      if (m_spawner != nullptr)
+	{
+	  m_spawner->~spawner();
+	  db_private_free_and_init (&m_thread_ref, m_spawner);
+	}
+    }
+
+    spawn_manager *
+    spawn_manager::get_instance (cubthread::entry &thread_ref) noexcept
+    {
+      if (tls_spawn_manager == nullptr)
+	{
+	  void *raw_memory = db_private_alloc (&thread_ref, sizeof (spawn_manager));
+	  if (raw_memory == nullptr)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return nullptr;
+	    }
+
+	  try
+	    {
+	      /* placement new */
+#undef new
+	      new (raw_memory) spawn_manager (thread_ref);
+#define new new(__FILE__, __LINE__)
+
+	      tls_spawn_manager = (spawn_manager *) raw_memory;
+	    }
+	  catch ( ...)
+	    {
+	      db_private_free_and_init (&thread_ref, raw_memory);
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return nullptr;
+	    }
+	}
+
+      return tls_spawn_manager;
+    }
+
+    void
+    spawn_manager::destroy_instance () noexcept
+    {
+      if (tls_spawn_manager != nullptr)
+	{
+	  cubthread::entry &thread_ref = tls_spawn_manager->get_thread_ref();
+	  tls_spawn_manager->~spawn_manager();
+	  db_private_free_and_init (&thread_ref, tls_spawn_manager);
+	}
+    }
+
+    cubthread::entry &
+    spawn_manager::get_thread_ref () const noexcept
+    {
+      return m_thread_ref;
+    }
+
+    VAL_DESCR *
+    spawn_manager::get_val_descr (VAL_DESCR *src)
+    {
+      return spawn (src, m_val_descr);
+    }
+
+    PRED_EXPR *
+    spawn_manager::get_during_join_pred (PRED_EXPR *src)
+    {
+      return spawn (src, m_during_join_pred);
+    }
+
+    REGU_VARIABLE_LIST
+    spawn_manager::get_outer_regu_list_pred (REGU_VARIABLE_LIST src)
+    {
+      return spawn (src, m_outer_regu_list_pred);
+    }
+
+    REGU_VARIABLE_LIST
+    spawn_manager::get_inner_regu_list_pred (REGU_VARIABLE_LIST src)
+    {
+      return spawn (src, m_inner_regu_list_pred);
+    }
+
+    cubxasl::spawner *
+    spawn_manager::get_spawner () noexcept
+    {
+      if (m_spawner == nullptr)
+	{
+	  void *raw_memory =  db_private_alloc (&m_thread_ref, sizeof (cubxasl::spawner));
+	  if (raw_memory == nullptr)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return nullptr;
+	    }
+
+	  try
+	    {
+	      /* placement new */
+#undef new
+	      new (raw_memory) cubxasl::spawner (m_thread_ref);
+#define new new(__FILE__, __LINE__)
+
+	      m_spawner = (cubxasl::spawner *) raw_memory;
+	    }
+	  catch ( ...)
+	    {
+	      db_private_free_and_init (&m_thread_ref, raw_memory);
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return nullptr;
+	    }
+	}
+
+      return m_spawner;
     }
 
     /*
@@ -945,64 +1083,6 @@ namespace parallel_query
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
       return NO_ERROR;
-    }
-
-    /*
-     * tls_spawner
-     */
-
-    thread_local std::unique_ptr<cubxasl::spawner> tls_spawner;
-    thread_local VAL_DESCR *tls_val_descr = nullptr;
-    thread_local PRED_EXPR *tls_during_join_pred = nullptr;
-    thread_local REGU_VARIABLE_LIST tls_outer_regu_list_pred = nullptr;
-    thread_local REGU_VARIABLE_LIST tls_inner_regu_list_pred = nullptr;
-
-    cubxasl::spawner *
-    get_spawner (cubthread::entry &thread_ref)
-    {
-      if (tls_spawner == nullptr)
-	{
-	  tls_spawner = std::make_unique<cubxasl::spawner> (thread_ref);
-	  if (tls_spawner == nullptr)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      return nullptr;
-	    }
-	}
-
-      /* return raw pointer, keep ownership */
-      return tls_spawner.get();
-    }
-
-    void
-    clear_spawner ()
-    {
-      /* call destructor */
-      tls_spawner.reset ();
-    }
-
-    VAL_DESCR *
-    get_val_descr (cubthread::entry &thread_ref, VAL_DESCR *val_descr)
-    {
-      return get_tls (thread_ref, val_descr, tls_val_descr);
-    }
-
-    PRED_EXPR *
-    get_during_join_pred (cubthread::entry &thread_ref, PRED_EXPR *during_join_pred)
-    {
-      return get_tls (thread_ref, during_join_pred, tls_during_join_pred);
-    }
-
-    REGU_VARIABLE_LIST
-    get_outer_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST outer_regu_list_pred)
-    {
-      return get_tls (thread_ref, outer_regu_list_pred, tls_outer_regu_list_pred);
-    }
-
-    REGU_VARIABLE_LIST
-    get_inner_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST inner_regu_list_pred)
-    {
-      return get_tls (thread_ref, inner_regu_list_pred, tls_inner_regu_list_pred);
     }
   } /* namespace hash_join */
 } /* namespace parallel_query */

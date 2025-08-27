@@ -57,7 +57,7 @@ namespace parallel_query
       private:
 	cubthread::entry &m_main_thread_ref;
 
-	void emulate_main_thread (cubthread::entry &thread_ref);
+	void emulate_main_thread (cubthread::entry &thread_ref) noexcept;
     };
 
     /*
@@ -73,7 +73,7 @@ namespace parallel_query
 	bool try_reserve_workers (int pool_size);
 	void release_workers ();
 
-	cubthread::entry_workpool *get_worker_pool () const;
+	cubthread::entry_workpool *get_worker_pool () const noexcept;
 
       private:
 	entry_manager m_entry_manager;
@@ -93,7 +93,7 @@ namespace parallel_query
 	void end_task ();
 	void join ();
 
-	bool has_error ();
+	bool has_error () const noexcept;
 	bool check_interrupt (cubthread::entry &thread_ref);
 	void clear_interrupt (cubthread::entry &thread_ref);
 	void handle_error (cubthread::entry &thread_ref);
@@ -157,6 +157,50 @@ namespace parallel_query
     };
 
     /*
+     * spawn_manager
+     */
+
+    class spawn_manager
+    {
+      public:
+	explicit spawn_manager (cubthread::entry &thread_ref);
+	~spawn_manager () noexcept;
+
+	spawn_manager (const spawn_manager &) = delete;
+	spawn_manager &operator= (const spawn_manager &) = delete;
+	spawn_manager (spawn_manager &&) = delete;
+	spawn_manager &operator= (spawn_manager &&) = delete;
+
+	static spawn_manager *get_instance (cubthread::entry &thread_ref) noexcept;
+	static void destroy_instance () noexcept;
+
+	cubthread::entry &get_thread_ref () const noexcept;
+
+	/* get_val_descr must be called first,
+	 * because it creates a DB_VALUE reused by other spawned structures. */
+	VAL_DESCR *get_val_descr (VAL_DESCR *src);
+	PRED_EXPR *get_during_join_pred (PRED_EXPR *src);
+	REGU_VARIABLE_LIST get_outer_regu_list_pred (REGU_VARIABLE_LIST src);
+	REGU_VARIABLE_LIST get_inner_regu_list_pred (REGU_VARIABLE_LIST src);
+
+      private:
+	cubthread::entry &m_thread_ref;
+
+	cubxasl::spawner *m_spawner;
+	VAL_DESCR *m_val_descr;
+	PRED_EXPR *m_during_join_pred;
+	REGU_VARIABLE_LIST m_outer_regu_list_pred;
+	REGU_VARIABLE_LIST m_inner_regu_list_pred;
+
+	inline static thread_local spawn_manager *tls_spawn_manager = nullptr;
+
+	cubxasl::spawner *get_spawner() noexcept;
+
+	template <typename T>
+	T *spawn (T *src, T *&dest) noexcept;
+    };
+
+    /*
      * build_partitions
      */
 
@@ -167,23 +211,6 @@ namespace parallel_query
      */
 
     int execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager);
-
-    /*
-     * tls_spawner
-     */
-
-    cubxasl::spawner *get_spawner (cubthread::entry &thread_ref);
-    void clear_spawner ();
-
-    /* get_val_descr must be called first,
-     * because it creates a DB_VALUE reused by other spawned structures. */
-    VAL_DESCR *get_val_descr (cubthread::entry &thread_ref, VAL_DESCR *val_descr);
-    PRED_EXPR *get_during_join_pred (cubthread::entry &thread_ref, PRED_EXPR *during_join_pred);
-    REGU_VARIABLE_LIST get_outer_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST outer_regu_list_pred);
-    REGU_VARIABLE_LIST get_inner_regu_list_pred (cubthread::entry &thread_ref, REGU_VARIABLE_LIST inner_regu_list_pred);
-
-    template <typename T>
-    T *get_tls (cubthread::entry &thread_ref, T *src, T *&dest);
   } /* namespace hash_join */
 } /* namespace parallel_query */
 
@@ -197,21 +224,29 @@ namespace parallel_query
   {
     template <typename T>
     T *
-    get_tls (cubthread::entry &thread_ref, T *src, T *&dest)
+    spawn_manager::spawn (T *src, T *&dest) noexcept
     {
       if (dest != nullptr)
 	{
 	  return dest;
 	}
 
-      auto *spawner = get_spawner (thread_ref);
+      auto *spawner = get_spawner ();
       if (spawner == nullptr)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return nullptr;
 	}
 
-      dest = spawner->spawn (src);
+      try
+	{
+	  dest = spawner->spawn (src);
+	}
+      catch (...)
+	{
+	  assert_release_error (er_errid() != NO_ERROR);
+	  dest = nullptr;
+	}
 
       return dest;
     }

@@ -1884,6 +1884,8 @@ static HASHJOIN_STATUS
 hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   THREAD_ENTRY *main_thread_p = NULL;
+  void *raw_memory = NULL;
+  parallel_query::hash_join::worker_pool_manager * px_worker_pool_manager = NULL;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
@@ -1895,47 +1897,57 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 
 #if defined (SERVER_MODE)
-  // *INDENT-OFF*
-  manager->px_worker_pool_manager =
-    (parallel_query::hash_join::worker_pool_manager *) db_private_alloc (thread_p,
-									 sizeof (parallel_query::hash_join::worker_pool_manager));
-  // *INDENT-ON*
-  if (manager->px_worker_pool_manager != NULL)
-    {
-      main_thread_p = (thread_p->m_px_orig_thread_entry == NULL) ? thread_p : thread_p->m_px_orig_thread_entry;
+  main_thread_p = (thread_p->m_px_orig_thread_entry == NULL) ? thread_p : thread_p->m_px_orig_thread_entry;
 
+  // *INDENT-OFF*
+  raw_memory = db_private_alloc (thread_p, sizeof (parallel_query::hash_join::worker_pool_manager));
+  // *INDENT-ON*
+  if (raw_memory != NULL)
+    {
       try
       {
+	/* placement new */
 #undef new
 	// *INDENT-OFF*
-	new (manager->px_worker_pool_manager) parallel_query::hash_join::worker_pool_manager(*main_thread_p);
+	px_worker_pool_manager = new (raw_memory) parallel_query::hash_join::worker_pool_manager(*main_thread_p);
 	// *INDENT-ON*
 #define new new(__FILE__, __LINE__)
 
-	if (!manager->px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
+	if (px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
 	  {
-	    /* fallback to HASHJOIN_STATUS_PARTITION */
-	    throw std::runtime_error ("failed to reserve workers");
-	  }
-	assert (manager->px_worker_pool_manager->get_worker_pool () != NULL);
+	    assert (px_worker_pool_manager->get_worker_pool () != NULL);
 
-	if (thread_is_on_trace (thread_p))
+	    manager->px_worker_pool_manager = px_worker_pool_manager;
+
+	    if (thread_is_on_trace (thread_p))
+	      {
+		if (main_thread_p == thread_p)
+		  {
+		    perfmon_initialize_parallel_stats (thread_p);
+		  }
+	      }
+
+	    return HASHJOIN_STATUS_PARALLEL;
+	  }
+	else
 	  {
-	    perfmon_initialize_parallel_stats (thread_p);
+	    px_worker_pool_manager->~worker_pool_manager ();
+	    db_private_free_and_init (thread_p, raw_memory);
 	  }
-
-	return HASHJOIN_STATUS_PARALLEL;
       }
       catch ( ...)
       {
-	/* fallback to HASHJOIN_STATUS_PARTITION */
-	/* nothing to do */
+	if (px_worker_pool_manager != nullptr)
+	  {
+	    px_worker_pool_manager->~worker_pool_manager ();
+	  }
+	db_private_free_and_init (thread_p, raw_memory);
+	assert_release_error (er_errid () != NO_ERROR);
       }
-
-      if (manager->px_worker_pool_manager != NULL)
-	{
-	  db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
-	}
+    }
+  else
+    {
+      assert_release_error (er_errid () != NO_ERROR);
     }
 #endif /* defined (SERVER_MODE) */
 
@@ -2091,6 +2103,7 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 			      HASHJOIN_SHARED_SPLIT_INFO * shared_info)
 {
   UINT32 part_cnt, part_index;
+  UINT32 init_cnt = 0;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
@@ -2113,11 +2126,14 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       {
 	for (part_index = 0; part_index < part_cnt; part_index++)
 	  {
+	    /* placement new */
 #undef new
 	    // *INDENT-OFF*
 	    new (&shared_info->part_mutexes[part_index]) std::mutex ();
 	    // *INDENT-ON*
 #define new new(__FILE__, __LINE__)
+
+	    ++init_cnt;
 	  }
       }
       catch ( ...)
@@ -2130,7 +2146,16 @@ hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   return NO_ERROR;
 
 error_exit:
-  hjoin_clear_shared_split_info (thread_p, manager, shared_info);
+  if (shared_info->part_mutexes != NULL)
+    {
+      for (part_index = 0; part_index < init_cnt; part_index++)
+	{
+      // *INDENT-OFF*
+      shared_info->part_mutexes[part_index].~mutex ();
+      // *INDENT-ON*
+	}
+      db_private_free_and_init (thread_p, shared_info->part_mutexes);
+    }
 
   assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();

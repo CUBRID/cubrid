@@ -179,6 +179,8 @@ namespace cubxasl
   T *
   spawner::alloc (const T *src, int count)
   {
+    int init_cnt = 0;
+
     if (src == nullptr)
       {
 	return nullptr;
@@ -197,28 +199,36 @@ namespace cubxasl
 
 	try
 	  {
+	    /* placement new */
 	    new (item) T();
+
+	    ++init_cnt;
+
+	    cached_entry entry;
+	    entry.ptr = item;
+	    entry.count = count;
+	    entry.deleter = (i == 0) ? &cached_entry_deleter<T> : nullptr;
+
+	    auto [new_it, inserted] = m_cached_ptrs.try_emplace (src + i, std::move (entry));
+	    if (!inserted)
+	      {
+		/* impossible case */
+		assert_release_error (false);
+		throw std::runtime_error ("spawner::alloc failed");
+	      }
 	  }
 	catch (...)
 	  {
-	    if (i == 0)
+	    auto it  = m_cached_ptrs.find (src);
+	    if (it != m_cached_ptrs.end() && it->second.deleter != nullptr)
 	      {
-		cached_entry_deleter<T> (&m_thread_ref, dest, count);
+		if (it->second.deleter != nullptr)
+		  {
+		    it->second.deleter (&m_thread_ref, it->second.ptr, init_cnt);
+		  }
+		m_cached_ptrs.erase (it);
 	      }
 
-	    return nullptr;
-	  }
-
-	cached_entry entry;
-	entry.ptr = item;
-	entry.count = count;
-	entry.deleter = (i == 0) ? &cached_entry_deleter<T> : nullptr;
-
-	auto [new_it, inserted] = m_cached_ptrs.try_emplace (src + i, std::move (entry));
-	if (!inserted)
-	  {
-	    /* impossible case */
-	    assert_release_error (false);
 	    return nullptr;
 	  }
       }
@@ -266,7 +276,11 @@ namespace cubxasl
 	/* fall through */
       }
 
-    typed_ptr->~T();
+    for (int i = 0; i < count; i++)
+      {
+	typed_ptr[i].~T();
+      }
+
     db_private_free_and_init (thread_p, typed_ptr);
   }
 } /* namespace cubxasl */
