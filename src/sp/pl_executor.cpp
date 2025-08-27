@@ -41,9 +41,8 @@ namespace cubpl
 {
   using namespace cubmethod;
 
-  invoke_java::invoke_java (uint64_t id, int tid, pl_signature *sig, bool tc)
-    : g_id (id)
-    , tran_id (tid)
+  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc)
+    : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
     auth.assign (sig->auth);
@@ -67,7 +66,6 @@ namespace cubpl
   void
   invoke_java::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_bigint (g_id);
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
     serializator.pack_string (auth);
@@ -94,8 +92,7 @@ namespace cubpl
   size_t
   invoke_java::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_bigint_size (start_offset); // group_id
-    size += serializator.get_packed_int_size (size); // tran_id
+    size_t size = serializator.get_packed_int_size (start_offset); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
     size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // lang
@@ -369,7 +366,6 @@ exit:
   {
     int error = NO_ERROR;
 
-    SESSION_ID sid = get_session ()->get_id ();
     TRANID tid = m_stack->get_tran_id ();
 
     m_stack->set_java_command (SP_CODE_INVOKE);
@@ -384,7 +380,7 @@ exit:
     // handling 'else' is not required because send_data_to_java will handle the case when sess is not found
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig,
+    invoke_java invoke_arg (tid, &m_sig,
 			    (m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
@@ -418,7 +414,6 @@ exit:
 	    break;
 	  }
 
-	cubpacking::unpacker unpacker (response_blk);
 	if (!response_blk.is_valid ())
 	  {
 	    error_code = ER_SP_NETWORK_ERROR;
@@ -426,6 +421,7 @@ exit:
 	    break;
 	  }
 
+	cubpacking::unpacker unpacker (response_blk);
 	unpacker.unpack_int (start_code);
 
 	(void) m_stack->read_payload_block (unpacker);
@@ -577,9 +573,6 @@ exit:
 	break;
       case METHOD_CALLBACK_END_TRANSACTION:
 	error_code = callback_end_transaction (thread_ref, unpacker);
-	break;
-      case METHOD_CALLBACK_CHANGE_RIGHTS:
-	error_code = callback_change_auth_rights (thread_ref, unpacker);
 	break;
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
@@ -964,26 +957,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client_recv (java_lambda, code, command);
-    return error;
-  }
-
-  int
-  executor::callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-    int code = METHOD_CALLBACK_CHANGE_RIGHTS;
-
-    int command;
-    std::string auth_name;
-
-    unpacker.unpack_all (command, auth_name);
-
-    auto java_lambda = [&] (const cubmem::block & b)
-    {
-      return m_stack->send_data_to_java (b);
-    };
-
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command, auth_name);
     return error;
   }
 

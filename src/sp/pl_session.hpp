@@ -50,7 +50,6 @@ namespace cubthread
 
 namespace cubmethod
 {
-  class method_invoke_group;
   struct db_parameter_info;
 }
 
@@ -173,8 +172,6 @@ namespace cubpl
       void set_session_param (const sys_param &param);
 
     private:
-      execution_stack *top_stack_internal ();
-      void destroy_cursor_internal (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_all_cursors ();
       void destroy_pl_context_jvm ();
 
@@ -186,7 +183,6 @@ namespace cubpl
 
       exec_stack_map_type m_stack_map; // method executor storage
       exec_stack_id_type m_exec_stack; // runtime stack (implemented using vector)
-      exec_stack_id_type m_deferred_free_stack;
 
       cursor_map_type m_cursor_map; // server-side cursor storage
 
