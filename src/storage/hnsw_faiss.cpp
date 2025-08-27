@@ -44,7 +44,7 @@
 //        This is not a problem in current implementation, but it may be a problem in the future,
 //        such as duplicate hnsw_index_id when cub_server restarts.
 //        We need to consider a better way to identify the hnsw index.
-int hnsw_index_id = 0;
+int hnsw_index_id = 1000;
 std::unordered_map<int, std::unique_ptr<faiss::IndexIDMap>> hnsw_index_map;
 char hnsw_index_directory[PATH_MAX] = {0};
 bool hnsw_index_directory_created = false;

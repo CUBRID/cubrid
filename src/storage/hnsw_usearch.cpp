@@ -52,7 +52,7 @@
 
 using namespace unum;
 
-int hnsw_index_id = 0;
+int hnsw_index_id = 1000;
 std::unordered_map<int, std::unique_ptr<usearch::index_dense_t>> hnsw_index_map;
 char hnsw_index_directory[PATH_MAX] = {0};
 bool hnsw_index_directory_created = false;
