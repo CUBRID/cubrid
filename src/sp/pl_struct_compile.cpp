@@ -96,6 +96,13 @@ namespace cubpl
 	  {
 	    serializator.pack_string (compiled_code);
 	  }
+
+	int dependencies_size = (int) dependencies.size();
+	serializator.pack_int (dependencies_size);
+	for (int i = 0; i < dependencies_size; i++)
+	  {
+	    dependencies[i].pack (serializator);
+	  }
       }
   }
 
@@ -121,6 +128,12 @@ namespace cubpl
 	if (compiled_type >= 0)
 	  {
 	    size += serializator.get_packed_string_size (compiled_code, size); // compiled_code
+	  }
+
+	size += serializator.get_packed_int_size (size); // size of dependencies
+	for (int i = 0; i < (int) dependencies.size(); i++)
+	  {
+	    dependencies[i].get_packed_size (serializator, size);
 	  }
       }
 
@@ -149,12 +162,53 @@ namespace cubpl
 	  {
 	    deserializator.unpack_string (compiled_code);
 	  }
+
+	int dependencies_size = 0;
+	deserializator.unpack_int (dependencies_size);
+	if (dependencies_size > 0)
+	  {
+	    dependencies.resize (dependencies_size);
+	    for (int i = 0; i < dependencies_size; i++)
+	      {
+		dependencies[i].unpack (deserializator);
+	      }
+	  }
       }
+  }
+
+//////////////////////////////////////////////////////////////////////////
+// plcsql_dependency
+//////////////////////////////////////////////////////////////////////////
+
+  plcsql_dependency::plcsql_dependency () { }
+
+  void
+  plcsql_dependency::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (obj_type);
+    serializator.pack_string (obj_uniq_name);
+  }
+
+  size_t
+  plcsql_dependency::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // obj_type
+    size += serializator.get_packed_string_size (obj_uniq_name, size); // obj_uniq_name
+    return size;
+  }
+
+  void
+  plcsql_dependency::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (obj_type);
+    deserializator.unpack_string (obj_uniq_name);
   }
 
 //////////////////////////////////////////////////////////////////////////
 // sql semantics
 //////////////////////////////////////////////////////////////////////////
+
+
   sql_semantics::sql_semantics ()
   {
     //
@@ -185,6 +239,12 @@ namespace cubpl
 	for (int i = 0; i < (int) into_vars.size (); i++)
 	  {
 	    serializator.pack_string (into_vars[i]);
+	  }
+
+	serializator.pack_int (dependencies.size ());
+	for (int i = 0; i < (int) dependencies.size(); i++)
+	  {
+	    dependencies[i].pack (serializator);
 	  }
       }
   }
@@ -217,11 +277,20 @@ namespace cubpl
 	  }
 
 	size += serializator.get_packed_int_size (size); // into_vars size
-	if (into_vars.size() > 0) // host variables
+	if (into_vars.size() > 0) // into variables
 	  {
 	    for (int i = 0; i < (int) into_vars.size (); i++)
 	      {
 		size += serializator.get_packed_string_size (into_vars[i], size);
+	      }
+	  }
+
+	size += serializator.get_packed_int_size (size); // dependencies size
+	if (dependencies.size() > 0) // dependencies
+	  {
+	    for (int i = 0; i < (int) dependencies.size(); i++)
+	      {
+		size += dependencies[i].get_packed_size (serializator, size);
 	      }
 	  }
       }
@@ -268,6 +337,18 @@ namespace cubpl
 	  {
 	    deserializator.unpack_string (s);
 	    into_vars.push_back (s);
+	  }
+
+	int dependencies_size = 0;
+	deserializator.unpack_int (dependencies_size);
+
+	if (dependencies_size > 0)
+	  {
+	    dependencies.resize (dependencies_size);
+	    for (int i = 0; i < (int) dependencies_size; i++)
+	      {
+		dependencies[i].unpack (deserializator);
+	      }
 	  }
       }
   }
