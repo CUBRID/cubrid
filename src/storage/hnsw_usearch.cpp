@@ -195,8 +195,6 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 
   do
     {
-      attr_offset = cur_class * n_attrs;
-
       scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
 			       &in_recdes, &scan_cache,
 			       scan_cache.cache_last_fix_page ? PEEK : COPY);
@@ -316,8 +314,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 
   do
     {
-      attr_offset = cur_class * n_attrs;
-
       scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
 			       &in_recdes, &scan_cache,
 			       scan_cache.cache_last_fix_page ? PEEK : COPY);
@@ -659,6 +655,11 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
 #endif
       for (int i = 0; i < n_vectors; ++i)
 	{
+	  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vector + i * dimension, dimension))
+	    {
+	      er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
+	      continue;
+	    }
 	  encoded_oid = encode_oid (oid[i]);
 	  index->add (encoded_oid, vector + i * dimension);
 	  er_log_debug (ARG_FILE_LINE, "Added element with OID %lld to HNSW Index ID %d.",
@@ -713,7 +714,7 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
 
   std::unique_ptr<usearch::index_dense_t> &index = it->second;
 
-  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf))
+  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf->float_array, vf->dim))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;

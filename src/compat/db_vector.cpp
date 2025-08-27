@@ -171,9 +171,9 @@ std::string db_vector_float_to_string (const DB_VECTOR_FLOAT &vf)
   return oss.str();
 }
 
-bool db_vector_is_all_zeros (const DB_VECTOR_FLOAT *vf)
+bool db_vector_is_all_zeros (const float *vf, int dim)
 {
-  return std::all_of (vf->float_array, vf->float_array + vf->dim, [] (float f)
+  return std::all_of (vf, vf + dim, [] (float f)
   {
     return f == 0.0f;
   });

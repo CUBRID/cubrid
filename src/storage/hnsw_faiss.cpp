@@ -401,6 +401,11 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
     {
       std::unique_ptr<faiss::IndexIDMap> &index = it->second;
 
+      if (index->metric_type == faiss::METRIC_INNER_PRODUCT && db_vector_is_all_zeros (vector, index->d))
+	{
+	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
+	  return NO_ERROR;
+	}
 
       std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
 
@@ -468,8 +473,6 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 
   do
     {
-      attr_offset = cur_class * n_attrs;
-
       scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
 			       &in_recdes, &scan_cache,
 			       scan_cache.cache_last_fix_page ? PEEK : COPY);
@@ -589,8 +592,6 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
 
   do
     {
-      attr_offset = cur_class * n_attrs;
-
       scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
 			       &in_recdes, &scan_cache,
 			       scan_cache.cache_last_fix_page ? PEEK : COPY);
@@ -693,7 +694,7 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
 
   std::unique_ptr<faiss::IndexIDMap> &index = it->second;
 
-  if (index->metric_type == faiss::METRIC_INNER_PRODUCT && db_vector_is_all_zeros (vf))
+  if (index->metric_type == faiss::METRIC_INNER_PRODUCT && db_vector_is_all_zeros (vf->float_array, vf->dim))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;
