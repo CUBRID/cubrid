@@ -3109,6 +3109,16 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
   assert (append_list_id->tfile_vfid->membuf == NULL);
 
+#if !defined (NDEBUG)
+  {
+    for (QFILE_LIST_ID * list_id = base_list_id->dependent_list_id; list_id != NULL;
+	 list_id = list_id->dependent_list_id)
+      {
+	assert (list_id != append_list_id);
+      }
+  }
+#endif /* !NDEBUG */
+
   base_last_page = qmgr_get_old_page (thread_p, &base_list_id->last_vpid, base_list_id->tfile_vfid);
   if (base_last_page == NULL)
     {
