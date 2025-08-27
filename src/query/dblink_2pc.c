@@ -93,7 +93,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   for (i = 0; i < num_particps; i++)
     {
       memcpy (xid.data, &gtrid, xid.gtrid_length);
-      memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle) + i, xid.bqual_length);
+      memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle), xid.bqual_length);
       /* while recovery conn_handle would be invaild, so retry once */
       if (cci_xa_prepare (dblink[i].conn_handle, &xid, &err_buf) != NO_ERROR)
 	{
@@ -136,7 +136,7 @@ dblink_2pc_send_commit (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bo
   for (i = 0; i < num_particps; i++)
     {
       memcpy (xid.data, &gtrid, xid.gtrid_length);
-      memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle) + i, xid.bqual_length);
+      memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle), xid.bqual_length);
       ack = cci_xa_end_tran (dblink[i].conn_handle, &xid, CCI_TRAN_COMMIT, &err_buf);
       /* while recovery conn_handle would be invaild, so retry once */
       if (ack != NO_ERROR)
@@ -186,7 +186,7 @@ dblink_2pc_send_abort (THREAD_ENTRY * thread_p, int gtrid, int num_particps, boo
   for (i = 0; i < num_particps; i++)
     {
       memcpy (xid.data, &gtrid, xid.gtrid_length);
-      memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle) + i, xid.bqual_length);
+      memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle), xid.bqual_length);
       ack = cci_xa_end_tran (dblink[i].conn_handle, &xid, CCI_TRAN_ROLLBACK, &err_buf);
       /* while recovery conn_handle would be invaild, so retry once */
       if (ack != NO_ERROR)
