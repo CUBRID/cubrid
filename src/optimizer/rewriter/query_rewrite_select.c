@@ -3644,3 +3644,53 @@ qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
     }
   return true;
 }
+
+void
+qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * count)
+{
+  bool is_rewrite_to_count_star_available = false;
+  PT_NODE *arg = count->info.function.arg_list;
+  SM_ATTRIBUTE *attrp;
+  int i;
+  /* check it's nonnull column */
+  assert (arg != NULL);
+  assert (arg->next == NULL);
+  if (arg->node_type == PT_NAME)
+    {
+      MOP cls;
+      SM_CLASS_CONSTRAINT *consp;
+      PT_NAME_INFO *name_info = &arg->info.name;
+      cls = sm_find_class (name_info->resolved);
+      if (cls == NULL)
+	{
+	  return;
+	}
+      consp = sm_class_constraints (cls);
+      if (consp == NULL)
+	{
+	  return;
+	}
+      for (; consp != NULL && !is_rewrite_to_count_star_available; consp = consp->next)
+	{
+	  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+	    {
+	      for (i = 0; consp->attributes[i]; i++)
+		{
+		  attrp = consp->attributes[i];
+		  if (intl_identifier_casecmp (arg->info.name.original, attrp->header.name) == 0)
+		    {
+		      is_rewrite_to_count_star_available = true;
+		      break;
+		    }
+		}
+	    }
+	}
+    }
+
+  if (is_rewrite_to_count_star_available)
+    {
+      count->info.function.function_type = PT_COUNT_STAR;
+      parser_free_tree (parser, count->info.function.arg_list);
+      count->info.function.arg_list = NULL;
+    }
+}
