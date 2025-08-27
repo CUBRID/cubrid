@@ -1690,8 +1690,16 @@ er_log (int err_id)
   else
     {
       gettimeofday (&tv, NULL);
-      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255, ".%03ld",
-		tv.tv_usec / 1000);
+
+      size_t bufsize = sizeof (time_array);
+      size_t len = strftime (time_array, bufsize, "%m/%d/%y %H:%M:%S", er_tm_p);
+
+      if (len > 0 && len < bufsize)
+	{
+	  // space left includes the null terminator, snprintf will overwrite it safely
+	  int remaining = (int) (bufsize - len);
+	  snprintf (time_array + len, remaining, ".%03ld", tv.tv_usec / 1000);
+	}
     }
 
   more_info_p = (char *) "";
@@ -2050,8 +2058,16 @@ _er_log_debug_internal (const char *file_name, const int line_no, const char *fm
   else
     {
       gettimeofday (&tv, NULL);
-      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255, ".%03ld",
-		tv.tv_usec / 1000);
+
+      size_t bufsize = sizeof (time_array);
+      size_t len = strftime (time_array, bufsize, "%m/%d/%y %H:%M:%S", er_tm_p);
+
+      if (len > 0 && len < bufsize)
+	{
+	  // space left includes the null terminator, snprintf will overwrite it safely
+	  int remaining = (int) (bufsize - len);
+	  snprintf (time_array + len, remaining, ".%03ld", tv.tv_usec / 1000);
+	}
     }
 
   fprintf (out, er_Cached_msg[ER_LOG_DEBUG_NOTIFY], time_array, file_name, line_no);
