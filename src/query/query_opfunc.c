@@ -68,6 +68,9 @@
 
 #define	SYS_CONNECT_BY_PATH_MEM_STEP	256
 
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
 static bool qdata_is_zero_value_date (DB_VALUE * dbval_p);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);
@@ -459,7 +462,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
     {
       regu_var_p = &reg_var_p->value;
       flags = regu_var_p->flags;
-      if (__builtin_expect (flags & REGU_VARIABLE_HIDDEN_COLUMN, 0))
+      if (unlikely (flags & REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  continue;
 	}
@@ -556,7 +559,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
     {
       regu_var_p = &reg_var_p->value;
       flags = regu_var_p->flags;
-      if (__builtin_expect (flags & REGU_VARIABLE_HIDDEN_COLUMN, 0))
+      if (unlikely (flags & REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  continue;
 	}
@@ -577,7 +580,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
       dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
 
       /* SET data-type cannot use tuple descriptor */
-      if (__builtin_expect (pr_is_set_type (dbval_type), 0))
+      if (unlikely (pr_is_set_type (dbval_type)))
 	{
 	  status = QPROC_TPLDESCR_RETRY_SET_TYPE;
 	  goto exit_with_status;

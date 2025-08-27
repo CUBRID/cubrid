@@ -156,7 +156,8 @@ static int rv;
 
 #define HEAP_SCAN_ORDERED_HFID(scan) \
   (((scan) != NULL) ? (&(scan)->node.hfid) : (PGBUF_ORDERED_NULL_HFID))
-
+  #define likely(x)   __builtin_expect(!!(x), 1)
+  #define unlikely(x) __builtin_expect(!!(x), 0)
 typedef enum
 {
   HEAP_FINDSPACE_FOUND,
@@ -10397,7 +10398,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   int disk_length = -1;
   int ret = NO_ERROR;
 
-  if (__builtin_expect (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid), 0))
+  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
     {
       /* In the case of deduplicate_key_attr_id, there is no content that actually exists in HEAP.
        * Therefore, the read operation is skipped and success is returned. */
@@ -10651,7 +10652,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
   int ret = NO_ERROR;
 
   /* check to make sure the attr_info has been used */
-  if (__builtin_expect (attr_info->num_values == -1, 0))
+  if (unlikely (attr_info->num_values == -1))
     {
       return NO_ERROR;
     }
@@ -10664,7 +10665,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
     {
       reprid = or_rep_id (recdes);
 
-      if (__builtin_expect (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid, 0))
+      if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
 	{
 	  /* Get the needed representation */
 	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
@@ -10727,7 +10728,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
     {
       reprid = or_rep_id (recdes);
 
-      if (__builtin_expect (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid, 0))
+      if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
 	{
 	  /* Get the needed representation */
 	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);

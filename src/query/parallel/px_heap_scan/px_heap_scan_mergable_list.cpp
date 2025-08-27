@@ -32,6 +32,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
 namespace parallel_heap_scan
 {
   mergable_list_array::mergable_list_array (THREAD_ENTRY *thread_p, std::size_t size)
@@ -144,13 +146,13 @@ namespace parallel_heap_scan
 
     status = qdata_generate_tuple_desc_for_valptr_list (thread_p, m_outptr_list, m_vd, & ((*m_list_id_p)->tpl_descr));
 
-    if (__builtin_expect (!m_is_list_id_domain_resolved, 0))
+    if (unlikely (!m_is_list_id_domain_resolved))
       {
 	qfile_update_domains_on_type_list (thread_p, *m_list_id_p, m_outptr_list);
 	m_is_list_id_domain_resolved = (*m_list_id_p)->is_domain_resolved;
       }
 
-    if (__builtin_expect (status == QPROC_TPLDESCR_SUCCESS, 1))
+    if (likely (status == QPROC_TPLDESCR_SUCCESS))
       {
 	if (qfile_generate_tuple_into_list (thread_p, (*m_list_id_p), T_NORMAL) != NO_ERROR)
 	  {
@@ -159,11 +161,11 @@ namespace parallel_heap_scan
 
 	return NO_ERROR;
       }
-    else if (__builtin_expect (status == QPROC_TPLDESCR_FAILURE, 0))
+    else if (unlikely (status == QPROC_TPLDESCR_FAILURE))
       {
 	return ER_FAILED;
       }
-    else if (__builtin_expect (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC, 0))
+    else if (unlikely (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
       {
 	tplrec = make_tuple_record (thread_p);
 	if (tplrec == nullptr)
