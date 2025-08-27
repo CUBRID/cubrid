@@ -7939,15 +7939,13 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #endif /* ENABLE_SYSTEMTAP */
 	      if (BTID_IS_VECTOR_INDEX (&index->btid))
 		{
-                  // *INDENT-OFF*
-                  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
+		  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
 
 		  error_code = hnsw_add_element (&btid, inst_oid, vf->float_array, 1);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
 		    }
-                  // *INDENT-ON*
 		}
 	      else
 		{
