@@ -275,13 +275,13 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
   if (oids == NULL || vectors == NULL)
     {
       if (oids)
-        {
-          free (oids);
-        }
+	{
+	  free (oids);
+	}
       if (vectors)
-        {
-          free (vectors);
-        }
+	{
+	  free (vectors);
+	}
       heap_attrinfo_end (thread_p, &attr_info);
       (void) heap_scancache_end (thread_p, &scan_cache);
       return NULL;
