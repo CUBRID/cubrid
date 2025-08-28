@@ -200,7 +200,7 @@ namespace cubpl
   void
   plcsql_dependency::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_int (obj_type);
+    deserializator.unpack_int ((int &)obj_type);
     deserializator.unpack_string (obj_uniq_name);
   }
 

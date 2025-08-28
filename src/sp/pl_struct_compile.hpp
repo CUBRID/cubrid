@@ -84,7 +84,7 @@ namespace cubpl
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    int obj_type;       // TODO: use predefined enum
+    DEP_OBJECT_TYPE obj_type;
     std::string obj_uniq_name;
   };
 

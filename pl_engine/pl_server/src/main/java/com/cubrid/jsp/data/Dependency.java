@@ -36,13 +36,12 @@ import com.cubrid.jsp.protocol.UnPackableObject;
 
 public final class Dependency implements PackableObject, UnPackableObject {
 
-    // TODO: use server-defined enumeration
     public static final int OBJ_TYPE_TABLE = 1;
     public static final int OBJ_TYPE_VIEW = 2;
-    public static final int OBJ_TYPE_FUNCTION = 3;
-    public static final int OBJ_TYPE_PROCEDURE = 4;
-    public static final int OBJ_TYPE_SERIAL = 5;
-    public static final int OBJ_TYPE_TRIGGER = 6;
+    public static final int OBJ_TYPE_TRIGGER = 3;
+    public static final int OBJ_TYPE_FUNCTION = 4;
+    public static final int OBJ_TYPE_PROCEDURE = 5;
+    public static final int OBJ_TYPE_SERIAL = 6;
     public static final int OBJ_TYPE_SYNONYM = 7;
 
     int objType;

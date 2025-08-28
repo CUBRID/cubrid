@@ -25,18 +25,16 @@
 
 #ident "$Id$"
 
-#include "parse_tree.h"
-
 typedef enum
 {
-  DEP_OBJ_NONE,
-  DEP_OBJ_TABLE,
-  DEP_OBJ_VIEW,
-  DEP_OBJ_TRIGGER,
-  DEP_OBJ_FUNCTION,
-  DEP_OBJ_PROCEDURE,
-  DEP_OBJ_SERIAL,
-  DEP_OBJ_SYNONYM,
+  DEP_OBJ_NONE = 0,
+  DEP_OBJ_TABLE = 1,
+  DEP_OBJ_VIEW = 2,
+  DEP_OBJ_TRIGGER = 3,
+  DEP_OBJ_FUNCTION = 4,
+  DEP_OBJ_PROCEDURE = 5,
+  DEP_OBJ_SERIAL = 6,
+  DEP_OBJ_SYNONYM = 7,
 } DEP_OBJECT_TYPE;
 
 // TODO: comment hard and ref
@@ -52,8 +50,14 @@ typedef enum
   DEP_INVALID,
 } DEP_VALIDITY_TYPE;
 
+#if !defined (SERVER_MODE)
+
+#include "parse_tree.h"
+
 int dep_create_dependencies (PARSER_CONTEXT * parser, PT_NODE * node, const char *unique_name, DEP_OBJECT_TYPE type);
 int dep_delete (const char *unique_name, DEP_OBJECT_TYPE type);
 int dep_invalidate_dependencies (const char *unique_name, DEP_OBJECT_TYPE type);
+
+#endif /* (SERVER_MODE) */
 
 #endif /* _DEPENDENCY_H_ */
