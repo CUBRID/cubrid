@@ -3910,8 +3910,9 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
   ordby_info.ordbynum_flag = ordbynum_flag;
   put_fn = (ordbynum_val) ? &qexec_ordby_put_next : NULL;
 
-  if (ordbynum_val == NULL && orderby_list && (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_with_rollup == false) && qfile_is_sort_list_covered (list_id->sort_list, orderby_list) == true
-      && option != Q_DISTINCT)
+  if (ordbynum_val == NULL && orderby_list
+      && (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_with_rollup == false)
+      && qfile_is_sort_list_covered (list_id->sort_list, orderby_list) == true && option != Q_DISTINCT)
     {
       /* no need to sort here */
     }
