@@ -1319,7 +1319,8 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto exit_on_error;
 	    }
 
-	  if (node->info.query.orderby_for == NULL && !node->info.query.q.select.connect_by && !node->info.query.q.select.group_by->flag.with_rollup)
+	  if (node->info.query.orderby_for == NULL && !node->info.query.q.select.connect_by
+	      && !node->info.query.q.select.group_by->flag.with_rollup)
 	    {
 	      /* clear unnecessary node info */
 	      parser_free_tree (parser, node->info.query.order_by);
