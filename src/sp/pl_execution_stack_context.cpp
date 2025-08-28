@@ -34,9 +34,8 @@ namespace cubpl
     : m_id ((std::uint64_t) this)
     , m_thread_p (thread_p)
     , m_connection {nullptr}
-    , m_client_header (-1,  METHOD_REQUEST_CALLBACK /* default */, 0)
-    , m_java_header (-1,  SP_CODE_INTERNAL_JDBC /* default */, 0)
-    , m_req_id {0}
+    , m_client_header (-1,  METHOD_REQUEST_CALLBACK /* default */)
+    , m_java_header (-1,  SP_CODE_INTERNAL_JDBC /* default */)
   {
     m_tid = logtb_find_current_tranid (thread_p);
     m_is_running = false;

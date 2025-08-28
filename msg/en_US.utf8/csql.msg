@@ -62,7 +62,7 @@ For additional information, see http://www.cubrid.org\n
 46 %1$d command(s) successfully processed.
 47 In the command from line %1$d,
 48 In line %1$d, column %2$d,
-49 Type `;help' for help messages.
+49 Type ';help' for help messages, or ';exit' to quit.
 50 ERROR: 
 51 CUBRID SQL Interpreter
 52 There have been updates. Do you want to commit ? (`Y' or `N') 
