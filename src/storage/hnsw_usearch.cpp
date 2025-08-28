@@ -633,19 +633,7 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
       {
 	std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
 	size_t need = index->size () + static_cast<size_t> (n_vectors);
-	if (need > index->capacity ())
-	  {
-	    size_t cap = index->capacity ();
-	    if (cap == 0)
-	      {
-		cap = 1;
-	      }
-	    while (cap < need)
-	      {
-		cap *= 2;
-	      }
-	    index->reserve (cap);
-	  }
+	index->reserve (need + 1024);
       }
 
       size_t dimension = index->dimensions ();
