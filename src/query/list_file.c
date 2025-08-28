@@ -2954,6 +2954,9 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   assert (base_list_id != NULL);
   assert (append_list_id != NULL);
 
+  assert (base_list_id->last_pgptr == NULL);
+  assert (append_list_id->last_pgptr == NULL);
+
   assert (append_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
 
@@ -2997,7 +3000,7 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 	  QFILE_COPY_VPID (&base_list_id->first_vpid, &new_vpid);
 	}
 
-      base_list_id->last_vpid = new_vpid;
+      QFILE_COPY_VPID (&base_list_id->last_vpid, &new_vpid);
 
       prev_page = new_page;
       prev_overflow_page = new_page;
@@ -3008,7 +3011,8 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 	{
 	  QFILE_PUT_PREV_VPID (new_page, &prev_vpid);
 	}
-      prev_vpid = new_vpid;
+
+      QFILE_COPY_VPID (&prev_vpid, &new_vpid);
 
       /* overflow page */
       QFILE_GET_OVERFLOW_VPID (&old_overflow_vpid, old_page);
@@ -3028,10 +3032,12 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 	    }
 
 	  QFILE_PUT_OVERFLOW_VPID (prev_overflow_page, &new_overflow_vpid);
+
 	  if (prev_page != prev_overflow_page)
 	    {
 	      qfile_set_dirty_page (thread_p, prev_overflow_page, FREE, base_list_id->tfile_vfid);
 	    }
+
 	  prev_overflow_page = new_overflow_page;
 
 	  memcpy (new_overflow_page, old_overflow_page, DB_PAGESIZE);
@@ -3039,6 +3045,13 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 	  /* next overflow page */
 	  QFILE_GET_OVERFLOW_VPID (&old_overflow_vpid, old_overflow_page);
 	  qmgr_free_old_page_and_init (thread_p, old_overflow_page, append_list_id->tfile_vfid);
+	}
+
+      if (prev_page != prev_overflow_page)
+	{
+	  assert (prev_overflow_page == new_overflow_page);
+	  QFILE_PUT_OVERFLOW_VPID_NULL (prev_overflow_page);
+	  qfile_set_dirty_page (thread_p, prev_overflow_page, FREE, base_list_id->tfile_vfid);
 	}
 
       /* next page */
@@ -3068,6 +3081,11 @@ error_exit:
   if (new_page != NULL)
     {
       qmgr_free_old_page_and_init (thread_p, new_page, base_list_id->tfile_vfid);
+    }
+
+  if (prev_overflow_page != NULL && prev_overflow_page != new_overflow_page)
+    {
+      qmgr_free_old_page_and_init (thread_p, prev_overflow_page, base_list_id->tfile_vfid);
     }
 
   if (new_overflow_page != NULL)

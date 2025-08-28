@@ -243,10 +243,23 @@ namespace parallel_query
     {
       if (!m_has_error.exchange (true))
 	{
-	  m_main_error_context.push_error_stack ();
 	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+	  notify_stop ();
 	}
       logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
+    }
+
+    void
+    task_manager::notify_stop ()
+    {
+      std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
+      m_all_tasks_done_cv.notify_all ();
+    }
+
+    void
+    task_manager::stop_execution ()
+    {
+      m_worker_pool->stop_execution ();
     }
 
     /*
@@ -346,7 +359,7 @@ namespace parallel_query
 	  if (m_task_manager.has_error () || m_task_manager.check_interrupt (thread_ref))
 	    {
 	      has_error = true;
-	      break;
+	      break;		/* error_exit */
 	    }
 
 	  page = get_next_page (thread_ref);
@@ -376,6 +389,8 @@ namespace parallel_query
 	  /* overflow page */
 	  if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
 	    {
+	      assert (tuple_cnt == 1);
+
 	      overflow_page = page;
 
 	      tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_record.tpl);
@@ -384,8 +399,10 @@ namespace parallel_query
 		{
 		  if (qfile_reallocate_tuple (&overflow_record, tuple_length) != NO_ERROR)
 		    {
+		      assert_release_error (er_errid () != NO_ERROR);
+		      m_task_manager.handle_error (thread_ref);
 		      has_error = true;
-		      break;
+		      break;		/* error_exit */
 		    }
 		}
 
@@ -398,7 +415,7 @@ namespace parallel_query
 		  memcpy (overflow_record.tpl + copy_offset, (char *) overflow_page + QFILE_PAGE_HEADER_SIZE, copy_size);
 
 		  copy_offset += copy_size;
-		  assert (copy_offset < tuple_length);
+		  assert (copy_offset <= tuple_length);
 
 		  QFILE_GET_OVERFLOW_VPID (&overflow_vpid, overflow_page);
 
@@ -417,15 +434,17 @@ namespace parallel_query
 		  overflow_page = qmgr_get_old_page (&thread_ref, &overflow_vpid, list_id->tfile_vfid);
 		  if (overflow_page == nullptr)
 		    {
+		      assert_release_error (er_errid () != NO_ERROR);
+		      m_task_manager.handle_error (thread_ref);
 		      has_error = true;
-		      break;
+		      break;		/* error_exit */
 		    }
 		}
 	      while (!VPID_ISNULL (&overflow_vpid));
 
 	      if (has_error)
 		{
-		  break;
+		  break;	/* error_exit */
 		}
 
 	      tuple_record.tpl = overflow_record.tpl;
@@ -488,14 +507,41 @@ namespace parallel_query
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}
 
+	      /* overflow page */
+	      if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
+		{
+		  std::unique_lock lock (m_shared_info->part_mutexes[part_id]);
+
+		  assert (part_list_id[part_id]->last_pgptr == NULL);
+
+		  if (qfile_reopen_list_as_append_mode (&thread_ref, part_list_id[part_id]) != NO_ERROR)
+		    {
+		      break;		/* error_exit */
+		    }
+
+		  error = qfile_add_tuple_to_list (&thread_ref, part_list_id[part_id], tuple_record.tpl);
+		  if (error != NO_ERROR)
+		    {
+		      break;		/* error_exit */
+		    }
+
+		  qfile_close_list (&thread_ref, part_list_id[part_id]);
+
+		  /* next page */
+		  break;
+		}
+
 	      if (temp_part_list_id[part_id] != nullptr
 		  && (temp_part_list_id[part_id]->tfile_vfid->membuf_last == temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1)
 		  && (temp_part_list_id[part_id]->last_offset + QFILE_GET_TUPLE_LENGTH (tuple_record.tpl)) > DB_PAGESIZE)
 		{
-		  qfile_close_list  (&thread_ref, temp_part_list_id[part_id]);
+		  qfile_close_list (&thread_ref, temp_part_list_id[part_id]);	/* may be meaningless since only memory buffer is used */
 
 		  {
 		    std::unique_lock lock (m_shared_info->part_mutexes[part_id]);
+
+		    assert (part_list_id[part_id]->last_pgptr == NULL);
+
 		    if (part_list_id[part_id]->tuple_cnt > 0)
 		      {
 			qfile_append_list (&thread_ref, part_list_id[part_id], temp_part_list_id[part_id]);
@@ -506,7 +552,6 @@ namespace parallel_query
 			qfile_destroy_list (&thread_ref, part_list_id[part_id]);
 			qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
 		      }
-
 		  }
 
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
@@ -533,6 +578,7 @@ namespace parallel_query
 		  has_error = true;
 		  break;
 		}
+	      assert (VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
 	    }
 	  while (true);		/* next tuple */
 
@@ -550,7 +596,6 @@ namespace parallel_query
 
       if (page != nullptr)
 	{
-	  assert (false);
 	  qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
 	}
 
@@ -573,25 +618,33 @@ namespace parallel_query
 	{
 	  for (part_index = 0; part_index < part_cnt; part_index++)
 	    {
-	      assert (part_list_id[part_index] != nullptr);
-
 	      if (temp_part_list_id[part_index] != nullptr)
 		{
-		  qfile_close_list  (&thread_ref, temp_part_list_id[part_index]);
+		  qfile_close_list  (&thread_ref,
+				     temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
 
-		  {
-		    std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
-		    if (part_list_id[part_index]->tuple_cnt > 0)
-		      {
-			qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
-			qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		      }
-		    else
-		      {
-			qfile_destroy_list (&thread_ref, part_list_id[part_index]);
-			qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
-		      }
-		  }
+		  if (temp_part_list_id[part_index]->tuple_cnt > 0)
+		    {
+		      std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
+
+		      assert (part_list_id[part_index]->last_pgptr == NULL);
+
+		      if (part_list_id[part_index]->tuple_cnt > 0)
+			{
+			  qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
+			  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
+			}
+		      else
+			{
+			  qfile_destroy_list (&thread_ref, part_list_id[part_index]);
+			  qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
+			}
+
+		    }
+		  else
+		    {
+		      qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
+		    }
 
 		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
 		}
@@ -935,6 +988,7 @@ namespace parallel_query
       if (task_manager.has_error ())
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
+	  task_manager.stop_execution();
 	  task_manager.clear_interrupt (thread_ref);
 
 	  /* cleanup */
@@ -972,6 +1026,7 @@ namespace parallel_query
       if (task_manager.has_error ())
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
+	  task_manager.stop_execution();
 	  task_manager.clear_interrupt (thread_ref);
 	  return er_errid ();
 	}
@@ -1032,6 +1087,7 @@ namespace parallel_query
       if (task_manager.has_error ())
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
+	  task_manager.stop_execution();
 	  task_manager.clear_interrupt (thread_ref);
 	  return er_errid ();
 	}

@@ -97,6 +97,8 @@ namespace parallel_query
 	bool check_interrupt (cubthread::entry &thread_ref);
 	void clear_interrupt (cubthread::entry &thread_ref);
 	void handle_error (cubthread::entry &thread_ref);
+	void notify_stop ();
+	void stop_execution ();
 
       private:
 	cubthread::entry_workpool *m_worker_pool;

@@ -1680,12 +1680,36 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
 	}
 
+      /* overflow page */
+      if (QFILE_GET_OVERFLOW_PAGE_ID (list_scan_id.curr_pgptr) != NULL_PAGEID)
+	{
+	  assert (part_list_id[part_id]->last_pgptr == NULL);
+
+	  if (qfile_reopen_list_as_append_mode (thread_p, part_list_id[part_id]) != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+
+	  error = qfile_add_tuple_to_list (thread_p, part_list_id[part_id], tuple_record.tpl);
+	  if (error != NO_ERROR)
+	    {
+	      break;		/* error_exit */
+	    }
+
+	  qfile_close_list (thread_p, part_list_id[part_id]);
+
+	  /* next tuple */
+	  continue;
+	}
+
       if (temp_part_list_id[part_id] != NULL &&
 	  (temp_part_list_id[part_id]->tfile_vfid->membuf_last ==
 	   temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1) &&
 	  (temp_part_list_id[part_id]->last_offset + QFILE_GET_TUPLE_LENGTH (tuple_record.tpl)) > DB_PAGESIZE)
 	{
-	  qfile_close_list (thread_p, temp_part_list_id[part_id]);
+	  qfile_close_list (thread_p, temp_part_list_id[part_id]);	/* may be meaningless since only memory buffer is used */
+
+	  assert (part_list_id[part_id]->last_pgptr == NULL);
 
 	  if (part_list_id[part_id]->tuple_cnt > 0)
 	    {
@@ -1707,7 +1731,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    qfile_open_list (thread_p, &list_id->type_list, NULL, list_id->query_id, QFILE_FLAG_ALL, NULL);
 	  if (temp_part_list_id[part_id] == NULL)
 	    {
-	      goto error_exit;
+	      break;		/* error_exit */
 	    }
 	}
 
@@ -1716,6 +1740,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	{
 	  break;		/* error_exit */
 	}
+      assert (VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
     }				/* while (qfile_scan_list_next (list_scan_id)) */
 
   /* After qfile_open_list_scan, if an error occurs,
@@ -1725,22 +1750,29 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   for (part_index = 0; part_index < part_cnt; part_index++)
     {
-      assert (part_list_id[part_index] != NULL);
-
       if (temp_part_list_id[part_index] != NULL)
 	{
-	  qfile_close_list (thread_p, temp_part_list_id[part_index]);
+	  qfile_close_list (thread_p, temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
 
-	  if (part_list_id[part_index]->tuple_cnt > 0)
+	  if (temp_part_list_id[part_index]->tuple_cnt > 0)
 	    {
-	      qfile_append_list (thread_p, part_list_id[part_index], temp_part_list_id[part_index]);
-	      qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
+	      assert (part_list_id[part_index]->last_pgptr == NULL);
+
+	      if (part_list_id[part_index]->tuple_cnt > 0)
+		{
+		  qfile_append_list (thread_p, part_list_id[part_index], temp_part_list_id[part_index]);
+		  qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
+		}
+	      else
+		{
+		  qfile_destroy_list (thread_p, part_list_id[part_index]);
+		  qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
+				      QFILE_PROHIBIT_DEPENDENT);
+		}
 	    }
 	  else
 	    {
-	      qfile_destroy_list (thread_p, part_list_id[part_index]);
-	      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
-				  QFILE_PROHIBIT_DEPENDENT);
+	      qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
 	    }
 
 	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
