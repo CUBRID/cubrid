@@ -3355,12 +3355,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         assert sqlSemantics.size() == 1;
 
         SqlSemantics ss = sqlSemantics.get(0);
-        if (ss.errCode == 0) {
-            dependenciesOfStaticSql.addAll(ss.dependencies);
-            return ss;
-        } else {
+        if (ss.errCode != 0) {
             throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
         }
+
+        if (ss.dependencies != null) {
+            dependenciesOfStaticSql.addAll(ss.dependencies);
+        }
+
+        return ss;
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
