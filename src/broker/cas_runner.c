@@ -1453,9 +1453,9 @@ make_node_info (T_NODE_INFO * node, char *node_name, char *info_str)
   return 0;
 
 err:
+  fprintf (stderr, "invalid node format (%s)\n", info_str ? info_str : "NULL");
   FREE_MEM (info_str);
   free_node (node);
-  fprintf (stderr, "invalid node format (%s)\n", info_str);
   return -1;
 }
 

@@ -18493,6 +18493,10 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
 	      db_make_null (gby_vallist->val);
 	    }
 	  i++;
+	  if (i >= gbstate->g_dim_levels - 1)
+	    {
+	      break;
+	    }
 	  gby_vallist = gby_vallist->next;
 	}
     }

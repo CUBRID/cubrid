@@ -93,9 +93,7 @@ extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_sessi
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_has_pl_session (THREAD_ENTRY * thread_p);
-#if defined (SERVER_MODE)
-extern void session_notify_pl_task_completion (const struct session_state *session_arg);
-#endif
+extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
 
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_destory);
 #endif /* _SESSION_H_ */
