@@ -422,7 +422,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/double_write_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.cpp
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_posix.c
@@ -443,6 +443,7 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
+  ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
 )
