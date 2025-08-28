@@ -172,6 +172,7 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
   int cur_class = 0;
   int attr_offset = 0;
   OID_SET_NULL (&cur_oid);
+  const DB_VECTOR_FLOAT *vf = NULL;
 
   BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
 
@@ -194,8 +195,6 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 
   do
     {
-      attr_offset = cur_class * n_attrs;
-
       scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
 			       &in_recdes, &scan_cache,
 			       scan_cache.cache_last_fix_page ? PEEK : COPY);
@@ -208,7 +207,8 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 	  key_dbvalue = &attr_info.values[0].dbvalue;
 	  assert (db_value_type (key_dbvalue) == DB_TYPE_VECTOR);
 
-	  hnsw_add_element (new_btid, &cur_oid, key_dbvalue);
+	  vf = db_get_vector_float (key_dbvalue);
+	  hnsw_add_element (new_btid, &cur_oid, vf->float_array, 1);
 	  continue;
 	case S_END:
 	  heap_attrinfo_end (thread_p, &attr_info);
@@ -216,6 +216,173 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 	  return new_btid;
 	  break;
 	default:
+	  assert (false);
+	  return NULL;
+	}
+    }
+  while (true);
+
+  return new_btid;
+}
+
+BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
+			      HFID *hfids, int dimension, int m, int ef_construction, int metric)
+{
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan_result;
+  RECDES in_recdes;
+  DB_VALUE *key_dbvalue;
+  HEAP_CACHE_ATTRINFO attr_info;
+  OID cur_oid;
+  int cur_class = 0;
+  int attr_offset = 0;
+  OID_SET_NULL (&cur_oid);
+
+  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
+  if (new_btid == NULL)
+    {
+      return NULL;
+    }
+
+  while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
+    {
+      cur_class++;
+    }
+
+  if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &oid[cur_class], true, NULL) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  attr_offset = cur_class * n_attrs;
+
+  if (heap_attrinfo_start (thread_p, &oid[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+      return NULL;
+    }
+
+  /* -------- Batch buffers --------
+     - oids:    growable array of OID (count elements)
+     - vectors: contiguous float buffer of size (capacity * dimension)
+  */
+  int capacity = 1024;
+  int count = 0;
+  OID *oids = (OID *) malloc ((size_t) capacity * sizeof (OID));
+  float *vectors = (float *) malloc ((size_t) capacity * (size_t) dimension * sizeof (float));
+  if (oids == NULL || vectors == NULL)
+    {
+      if (oids)
+	{
+	  free (oids);
+	}
+      if (vectors)
+	{
+	  free (vectors);
+	}
+      heap_attrinfo_end (thread_p, &attr_info);
+      (void) heap_scancache_end (thread_p, &scan_cache);
+      return NULL;
+    }
+
+  auto ensure_capacity = [&] (void) -> bool
+  {
+    if (count < capacity)
+      {
+	return true;
+      }
+    int new_cap = capacity * 2;
+    OID *new_oids = (OID *) realloc (oids, (size_t) new_cap * sizeof (OID));
+    float *new_vectors = (float *) realloc (vectors, (size_t) new_cap * (size_t) dimension * sizeof (float));
+    if (new_oids == NULL || new_vectors == NULL)
+      {
+	if (new_oids)
+	  {
+	    oids = new_oids;
+	  }
+	if (new_vectors)
+	  {
+	    vectors = new_vectors;
+	  }
+	return false;
+      }
+    oids = new_oids;
+    vectors = new_vectors;
+    capacity = new_cap;
+    return true;
+  };
+
+  do
+    {
+      scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
+			       &in_recdes, &scan_cache,
+			       scan_cache.cache_last_fix_page ? PEEK : COPY);
+
+      switch (scan_result)
+	{
+	case S_SUCCESS:
+	  heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &in_recdes, &attr_info);
+
+	  key_dbvalue = &attr_info.values[0].dbvalue;
+	  assert (db_value_type (key_dbvalue) == DB_TYPE_VECTOR);
+
+	  {
+	    const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
+	    assert (vf != NULL && vf->dim == dimension);
+
+	    if (!ensure_capacity ())
+	      {
+		if (oids)
+		  {
+		    free (oids);
+		  }
+		if (vectors)
+		  {
+		    free (vectors);
+		  }
+		heap_attrinfo_end (thread_p, &attr_info);
+		(void) heap_scancache_end (thread_p, &scan_cache);
+		return NULL;
+	      }
+
+	    oids[count] = cur_oid;
+	    float *dst = vectors + ((size_t) count * (size_t) dimension);
+	    memcpy (dst, vf->float_array, (size_t) dimension * sizeof (float));
+
+	    count++;
+	  }
+	  continue;
+
+	case S_END:
+	{
+	  hnsw_add_element (new_btid, oids, vectors, count);
+
+	  if (oids)
+	    {
+	      free (oids);
+	    }
+	  if (vectors)
+	    {
+	      free (vectors);
+	    }
+
+	  heap_attrinfo_end (thread_p, &attr_info);
+	  (void) heap_scancache_end (thread_p, &scan_cache);
+
+	  return new_btid;
+	}
+
+	default:
+	  if (oids)
+	    {
+	      free (oids);
+	    }
+	  if (vectors)
+	    {
+	      free (vectors);
+	    }
+	  heap_attrinfo_end (thread_p, &attr_info);
+	  (void) heap_scancache_end (thread_p, &scan_cache);
 	  assert (false);
 	  return NULL;
 	}
@@ -435,18 +602,16 @@ static int load_hnsw_index_from_file (int hnsw_id)
 }
 
 int
-hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
+hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
 {
   int hnsw_id;
-  int64_t encoded_oid = encode_oid (*oid);
+  int64_t encoded_oid;
 
   if (!btid)
     {
       assert (false);
       return ER_FAILED;
     }
-
-  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
 
   hnsw_id = btid->root_pageid;
 
@@ -464,23 +629,30 @@ hnsw_add_element (BTID *btid, OID *oid, DB_VALUE *key_dbvalue)
   try
     {
       std::unique_ptr<usearch::index_dense_t> &index = it->second;
-      if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf))
+
+      {
+	std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
+	size_t need = index->size () + static_cast<size_t> (n_vectors);
+	index->reserve (need + 1024);
+      }
+
+      size_t dimension = index->dimensions ();
+
+#ifdef _OPENMP
+      # pragma omp parallel for schedule(static)
+#endif
+      for (int i = 0; i < n_vectors; ++i)
 	{
-	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
-	  return NO_ERROR;
+	  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vector + i * dimension, dimension))
+	    {
+	      er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
+	      continue;
+	    }
+	  encoded_oid = encode_oid (oid[i]);
+	  index->add (encoded_oid, vector + i * dimension);
+	  er_log_debug (ARG_FILE_LINE, "Added element with OID %lld to HNSW Index ID %d.",
+			static_cast<long long> (encoded_oid), hnsw_id);
 	}
-
-      std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
-      if (index->size() >= index->capacity())
-	{
-	  size_t new_cap = index->capacity() * 2;
-	  index->reserve (new_cap);
-	}
-
-      index->add (encoded_oid, vf->float_array);
-
-      er_log_debug (ARG_FILE_LINE, "Added element with OID %lld to HNSW Index ID %d.",
-		    static_cast<long long> (encoded_oid), hnsw_id);
     }
   catch (const std::runtime_error &e)
     {
@@ -530,7 +702,7 @@ int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oid
 
   std::unique_ptr<usearch::index_dense_t> &index = it->second;
 
-  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf))
+  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf->float_array, vf->dim))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;

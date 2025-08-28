@@ -32,6 +32,6 @@ extern int db_string_to_vector (const char *p, int str_len, float *vector, int *
 
 std::string db_vector_float_to_string (const DB_VECTOR_FLOAT &vf);
 
-bool db_vector_is_all_zeros (const DB_VECTOR_FLOAT *vf);
+bool db_vector_is_all_zeros (const float *vf, int dim);
 
 #endif /* _DB_VECTOR_HPP_ */
