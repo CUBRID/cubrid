@@ -263,7 +263,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	}
       else if (node->info.function.function_type == PT_COUNT && node->info.function.all_or_distinct == PT_ALL)
 	{
-          qo_rewrite_nonnull_count (parser, node);
+	  qo_rewrite_nonnull_count (parser, node);
 	}
       /* no WHERE clause */
       return node;
