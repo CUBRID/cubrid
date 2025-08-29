@@ -8880,6 +8880,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
   tbl_opt_comment = comment_node = NULL;
   tbl_opt_encrypt = encrypt_node = NULL;
+  tbl_opt_replication = replication_node = NULL;
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
