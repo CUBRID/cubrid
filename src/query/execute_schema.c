@@ -10696,7 +10696,12 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   PT_NODE *replication_node = alter_node->info.alter.alter_clause.replication.tbl_replication;
 
   entity_name = alter_node->info.alter.entity_name->info.name.original;
-
+  // TODO: Implement replication option handling
+  /*
+   * Handle the replication option.
+   * If the option is omitted, or if "on|off" is omitted,
+   * the default value is set to "on".
+   */
   if (!replication_node || replication_node->info.value.data_value.i)
     {
       _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table replication set to on. \n",
