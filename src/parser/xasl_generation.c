@@ -17166,7 +17166,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && qo_plan_skip_orderby (qo_plan) && !qo_plan_multi_range_opt (qo_plan))
+	  if (qo_plan
+	      && ((qo_plan_skip_orderby (qo_plan) && !qo_plan_multi_range_opt (qo_plan)) || qo_is_viscan (qo_plan)))
 	    {
 	      orderby_skip = true;
 

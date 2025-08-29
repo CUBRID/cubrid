@@ -1141,6 +1141,11 @@ qo_top_plan_new (QO_PLAN * plan)
 		  return plan;
 		}
 
+	      if (qo_is_viscan (plan))
+		{
+		  return plan;
+		}
+
 	      plan = qo_sort_new (plan, QO_UNORDERED, all_distinct == PT_DISTINCT ? SORT_DISTINCT : SORT_ORDERBY);
 	    }
 	}
