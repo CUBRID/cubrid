@@ -1476,6 +1476,7 @@ typedef enum
   PT_CHANGE_AUTO_INCREMENT,
   PT_CHANGE_OWNER,
   PT_CHANGE_COLLATION,
+  PT_CHANGE_REPLICATION,
 #if defined (ENABLE_RENAME_CONSTRAINT)
   PT_RENAME_CONSTRAINT,
   PT_RENAME_INDEX,
@@ -2057,6 +2058,10 @@ struct pt_alter_info
     {
       PT_NODE *tbl_comment;	/* PT_VALUE, comment for table/view */
     } comment;
+    struct
+    {
+      PT_NODE *tbl_replication;
+    }replication;
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *create_index;	/* PT_CREATE_INDEX from ALTER ADD INDEX */

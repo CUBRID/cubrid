@@ -6195,6 +6195,16 @@ alter_clause_for_alter_list
 				alter_node->info.alter.alter_clause.comment.tbl_comment = $1;
 			  }
 		DBG_PRINT}}
+	| class_replication_spec
+		{{ DBG_TRACE_GRAMMAR(alter_clause_for_alter_list, | class_replication_spec );
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node != NULL && alter_node->info.alter.code != PT_CHANGE_REPLICATION)
+			  {
+				alter_node->info.alter.code = PT_CHANGE_REPLICATION;
+				alter_node->info.alter.alter_clause.replication.tbl_replication = $1;
+			  }
+		DBG_PRINT}}
 	;
 
 alter_clause_cubrid_specific

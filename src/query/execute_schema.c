@@ -263,7 +263,7 @@ static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NO
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
-
+static int do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
 				      PT_NODE * old_name_node, PT_NODE * constraints, SM_ATTR_PROP_CHG * attr_chg_prop,
 				      SM_ATTR_CHG_SOL * change_mode);
@@ -1099,7 +1099,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  pr_clear_value (&dest_val);
 	}
       break;
-
       /* If merely renaming resolution, will be done after switch statement */
     case PT_RENAME_RESOLUTION:
       break;
@@ -1691,6 +1690,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	case PT_CHANGE_COLUMN_COMMENT:
 	  error_code = do_alter_change_col_comment (parser, crt_clause);
 	  break;
+        case PT_CHANGE_REPLICATION:
+          error_code = do_alter_change_replication(parser, crt_clause);
+          break;
 	default:
 	  /* This code might not correctly handle a list of ALTER clauses so we keep crt_clause->next to NULL during
 	   * its execution just to be on the safe side. */
@@ -9041,7 +9043,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created. \n", class_name);
 	    }
-	}
+	}else{
+          _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=default) table created. \n", class_name);
+        }
 
       /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
       if (!found_reuse_oid_option)
@@ -10654,6 +10658,24 @@ exit:
     }
 
   return error;
+}
+
+static int do_alter_change_replication(PARSER_CONTEXT * const parser, PT_NODE * const alter_node)
+{
+  const char *entity_name = NULL;
+  PT_NODE *replication_node = alter_node->info.alter.alter_clause.replication.tbl_replication;
+
+  entity_name = alter_node->info.alter.entity_name->info.name.original;
+
+  if (!replication_node || replication_node->info.value.data_value.i)
+  {
+    _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table replication set to on. \n", entity_name);
+  }
+  else
+  {
+    _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created set to off. \n", entity_name);
+  }
+  return NO_ERROR;
 }
 
 /*
