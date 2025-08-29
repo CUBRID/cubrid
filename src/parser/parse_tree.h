@@ -2061,7 +2061,7 @@ struct pt_alter_info
     struct
     {
       PT_NODE *tbl_replication;
-    }replication;
+    } replication;
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
   PT_NODE *create_index;	/* PT_CREATE_INDEX from ALTER ADD INDEX */
