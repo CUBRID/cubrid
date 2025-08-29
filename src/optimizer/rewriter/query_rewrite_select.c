@@ -3656,6 +3656,7 @@ qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
   SM_ATTRIBUTE *attrp;
   PT_NODE *spec_node;
   int i;
+  const char *class_name;
   bool is_rewrite_to_count_star_available = false;
   if (node->node_type == PT_FUNCTION && node->info.function.function_type == PT_COUNT
       && node->info.function.all_or_distinct == PT_ALL)
@@ -3666,7 +3667,16 @@ qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	{
 	  name_info = &count_arg->info.name;
 	  spec_node = pt_find_entity (parser, from, name_info->spec_id);
-	  cls = sm_find_class (spec_node->info.spec.entity_name->info.name.original);
+	  if (spec_node == NULL || spec_node->info.spec.entity_name == NULL)
+	    {
+	      return node;
+	    }
+	  class_name = spec_node->info.spec.entity_name->info.name.original;
+	  if (class_name == NULL)
+	    {
+	      return node;
+	    }
+	  cls = sm_find_class (class_name);
 	  if (cls == NULL)
 	    {
 	      return node;
@@ -3714,12 +3724,4 @@ qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
 
 
   parser_walk_tree (parser, select_list, qo_rewrite_nonnull_count, (void *) from, NULL, NULL);
-#if 0
-  if (is_rewrite_to_count_star_available)
-    {
-      count->info.function.function_type = PT_COUNT_STAR;
-      parser_free_tree (parser, count->info.function.arg_list);
-      count->info.function.arg_list = NULL;
-    }
-#endif
 }
