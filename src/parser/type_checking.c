@@ -18119,13 +18119,51 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
   else
     {
-      if (op == PT_EQ && expr->info.expr.qualifier == PT_EQ_TORDER)
+      switch (op)
 	{
-	  goto end;
+	case PT_EQ:
+	  if (expr->info.expr.qualifier == PT_EQ_TORDER)
+	    {
+	      goto end;
+	    }
+	case PT_IS_NOT_NULL:
+	  if (opd1 && opd1->node_type == PT_NAME)
+	    {
+	      MOP cls;
+	      SM_CLASS_CONSTRAINT *consp;
+
+	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
+	      consp = sm_class_constraints (cls);
+
+	      for (; consp != NULL; consp = consp->next)
+		{
+		  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+		    {
+		      opd1 = parser_new_node (parser, PT_VALUE);
+		      if (opd1 == NULL)
+			{
+			  has_error = true;
+			  goto end;
+			}
+
+		      opd1->type_enum = PT_TYPE_INTEGER;
+		      opd1->info.value.data_value.i = 1;
+
+		      arg1 = pt_value_to_db (parser, opd1);
+		      type1 = opd1->type_enum;
+
+		      expr->info.expr.arg1 = opd1;
+		      break;
+		    }
+		}
+	      break;
+	    }
+
+	default:
+	  db_make_null (&dummy);
+	  arg1 = &dummy;
+	  type1 = PT_TYPE_NULL;
 	}
-      db_make_null (&dummy);
-      arg1 = &dummy;
-      type1 = PT_TYPE_NULL;
     }
 
   /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
@@ -18581,6 +18619,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && (opd3->type_enum == PT_TYPE_NA || opd3->type_enum == PT_TYPE_NULL))
 	       /* width_bucket special case */
 	       || (op == PT_WIDTH_BUCKET && pt_is_const_foldable_width_bucket (parser, expr))))
+    //        || (opd1->node_type == PT_NAME && (op == PT_IS_NOT_NULL || op == PT_IS_NULL))))
     {
       PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
       TP_DOMAIN *domain;
