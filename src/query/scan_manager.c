@@ -3717,17 +3717,9 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   visid->rest_regu_list = regu_list_rest;
   /* index scan info */
 
-  KEY_INFO *key_infop = &indx_info->key_info;
-  KEY_RANGE *key_ranges = key_infop->key_ranges;
-
   assert (key_ranges[0].range == K_NN);
 
-  fetch_peek_dbval (thread_p, key_ranges[0].key1, vd, NULL, NULL, NULL, &visid->query_dbvalue);
-  fetch_peek_dbval (thread_p, key_ranges[0].key2, vd, NULL, NULL, NULL, &visid->k_dbvalue);
-
   visid->hnsw_id = indx_info->btid.root_pageid;
-
-exit_on_error:
 
   return NO_ERROR;
 }
@@ -6366,6 +6358,29 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   if (visid->oidp == NULL)
     {
+      KEY_INFO *key_infop = &visid->indx_info->key_info;
+      KEY_RANGE *key_ranges = key_infop->key_ranges;
+
+      if (key_ranges[0].key1 == NULL || key_ranges[0].key2 == NULL)
+	{
+	  return S_ERROR;
+	}
+
+      if (fetch_peek_dbval (thread_p, key_ranges[0].key1, scan_id->vd, NULL, NULL, NULL, &visid->query_dbvalue) !=
+	  NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (fetch_peek_dbval (thread_p, key_ranges[0].key2, scan_id->vd, NULL, NULL, NULL, &visid->k_dbvalue) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      if (visid->k_dbvalue == NULL || visid->query_dbvalue == NULL)
+	{
+	  return S_END;
+	}
+
       int k = db_get_int (visid->k_dbvalue);
       if (k > 0)
 	{
