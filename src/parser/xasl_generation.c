@@ -8422,7 +8422,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_WEEK, domain);
 		  break;
 
-		case PT_SCHEMA:
 		case PT_DATABASE:
 		  {
 		    PT_NODE *dbname_val;
@@ -8949,12 +8948,21 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		    return NULL;
 		  }
+		case PT_SCHEMA:
 		case PT_USER:
 		  {
 		    char *user = NULL;
 		    PT_NODE *current_user_val = NULL;
 
-		    user = db_get_user_and_host_name ();
+		    if (node->info.expr.op == PT_USER)
+		      {
+			user = db_get_user_and_host_name ();
+		      }
+		    else
+		      {
+			user = db_get_user_name ();
+		      }
+
 		    if (user == NULL)
 		      {
 			assert (er_errid () != NO_ERROR);
@@ -28078,6 +28086,11 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
   PT_NODE *groupby = groupby_list;
   QPROC_DB_VALUE_LIST db_list = vallist->valp;
 
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
   int is_pseudocolumn = 0;
   (void) parser_walk_tree (parser, node, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
 
@@ -28087,7 +28100,23 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 
       for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
 	{
-	  char *str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	  char *str_group = NULL;
+
+	  if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
+	    {
+	      /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
+	      int tmp_paren_type = -1;
+	      tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
+	      groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
+
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	      groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
+	    }
+	  else
+	    {
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	    }
 
 	  /* brute method, compare printed trees */
 	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)

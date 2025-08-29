@@ -38,6 +38,7 @@ namespace cubpl
     , m_is_oid_included (oid_included)
     , m_is_opened (false)
     , m_fetch_count (1000) // FIXME: change the fixed value, 1000
+    , m_query_entry_no (0)
   {
     //
   }
@@ -53,8 +54,10 @@ namespace cubpl
     m_current_row_index = 0;
     int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
     m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
-    if (m_query_entry != NULL && m_query_entry->list_id != NULL)
+    if (m_query_entry && m_query_entry->list_id)
       {
+	m_query_entry_no = m_query_entry->alloc_no;
+	assert (m_query_entry_no != 0);         // see qmgr_allocate_query_entry()
 	m_current_tuple.resize (m_query_entry->list_id->type_list.type_cnt);
 	for (DB_VALUE &val : m_current_tuple)
 	  {
@@ -64,7 +67,7 @@ namespace cubpl
 	return NO_ERROR;
       }
 
-    return er_errid ();
+    return ER_FAILED;
   }
 
   int
@@ -72,7 +75,7 @@ namespace cubpl
   {
     if (m_is_opened == false)
       {
-	if (reset () == NO_ERROR && m_query_entry && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
+	if (reset () == NO_ERROR && qfile_open_list_scan (m_query_entry->list_id, &m_scan_id) == NO_ERROR)
 	  {
 	    m_is_opened = true;
 	  }
@@ -87,11 +90,17 @@ namespace cubpl
       {
 	qfile_close_scan (m_thread, &m_scan_id);
 
-	if (m_query_entry->list_id)
+	if (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no)
 	  {
-	    // Since the list was not created in this thread, incrementing the count of the list (m_qlist_count) is required
-	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+	  }
 
+	if (m_query_entry && m_query_entry->list_id)
+	  {
+	    // Since the list was not created in this thread,
+	    // incrementing the count of the list (m_qlist_count) is required
+	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
 	    qfile_close_list (m_thread, m_query_entry->list_id);
 	  }
 
@@ -112,6 +121,7 @@ namespace cubpl
   query_cursor::clear ()
   {
     m_query_entry = nullptr;
+    m_query_entry_no = 0;
     m_current_tuple.clear ();
     m_current_row_index = 0;
     m_fetch_count = 0;
@@ -135,7 +145,21 @@ namespace cubpl
 	OR_BUF buf;
 
 	assert (m_query_entry != NULL);
-	assert (m_query_entry->list_id != NULL);
+	if (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no)
+	  {
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+	    if (m_query_entry && m_query_entry->list_id)
+	      {
+		m_query_entry_no = m_query_entry->alloc_no;
+	      }
+	    else
+	      {
+		qfile_close_scan (m_thread, &m_scan_id);
+		return S_ERROR;
+	      }
+	  }
+
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
 	for (int i = 0; i < list_id->type_list.type_cnt; i++)
 	  {
@@ -195,7 +219,21 @@ namespace cubpl
 	OR_BUF buf;
 
 	assert (m_query_entry != NULL);
-	assert (m_query_entry->list_id != NULL);
+	if (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no)
+	  {
+	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
+	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
+	    if (m_query_entry && m_query_entry->list_id)
+	      {
+		m_query_entry_no = m_query_entry->alloc_no;
+	      }
+	    else
+	      {
+		qfile_close_scan (m_thread, &m_scan_id);
+		return S_ERROR;
+	      }
+	  }
+
 	QFILE_LIST_ID *list_id = m_query_entry->list_id;
 	for (int i = 0; i < list_id->type_list.type_cnt; i++)
 	  {

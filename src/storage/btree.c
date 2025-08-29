@@ -25390,6 +25390,9 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
+
+	  bts->read_keys++;
+
 	  error_code =
 	    btree_apply_key_range_and_filter (thread_p, bts, BTS_IS_INDEX_ISS (bts), &is_range_satisfied,
 					      &is_filter_satisfied);
@@ -25410,7 +25413,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	  if (is_filter_satisfied)
 	    {
 	      /* Filter is satisfied, which means key can be used. */
-	      bts->read_keys++;
+	      bts->qualified_keys++;
 	      bts->key_status = BTS_KEY_IS_VERIFIED;
 	      return NO_ERROR;
 	    }
