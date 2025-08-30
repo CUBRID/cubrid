@@ -3337,7 +3337,11 @@ sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, 
     }
 
 bailout:
-  return error;
+  if (long_record.data != NULL)
+    {
+      db_private_free_and_init (thread_p, long_record.data);
+    }
+  return (error == SORT_PUT_STOP) ? NO_ERROR : error;
 }
 
 /*
@@ -3356,7 +3360,8 @@ sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE
   /* check NULL list id */
   if (VPID_ISNULL (&src_list_id->first_vpid))
     {
-      return ER_FAILED;
+      /* the empty list is not linked */
+      return NO_ERROR;
     }
 
   /* link last page of dest to first page of src */
@@ -4781,10 +4786,10 @@ cleanup:
     {
       sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
       if (sort_info_p->input_file)
-        {
-          qfile_free_list_id (sort_info_p->input_file);
-          sort_info_p->input_file = NULL;
-        }
+	{
+	  qfile_free_list_id (sort_info_p->input_file);
+	  sort_info_p->input_file = NULL;
+	}
     }
 
   /* clear output_file for px */
@@ -4793,10 +4798,10 @@ cleanup:
       /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
       sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
       if (sort_info_p->output_file)
-        {
-          qfile_free_list_id (sort_info_p->output_file);
-          sort_info_p->output_file = NULL;
-        }
+	{
+	  qfile_free_list_id (sort_info_p->output_file);
+	  sort_info_p->output_file = NULL;
+	}
     }
 
   return error;
@@ -4963,6 +4968,11 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
 
   qfile_close_list (thread_p, sort_info_p->output_file);
+  if (sort_info_p->output_recdes.data)
+    {
+      db_private_free_and_init (NULL, sort_info_p->output_recdes.data);
+      sort_info_p->output_recdes.data = NULL;
+    }
 
   if (thread_is_on_trace (sort_param->px_orig_thread_p))
     {
