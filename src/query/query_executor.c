@@ -131,7 +131,7 @@ struct xasl_state
 
 /* minimum amount of tuples that have to be hashed before deciding if
    selectivity is very high */
-#define HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD   200
+#define HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD   2000
 
 /* maximum selectivity allowed for hash aggregate evaluation */
 #define HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD         0.5f
@@ -18493,6 +18493,10 @@ qexec_gby_finalize_group_val_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbst
 	      db_make_null (gby_vallist->val);
 	    }
 	  i++;
+	  if (i >= gbstate->g_dim_levels - 1)
+	    {
+	      break;
+	    }
 	  gby_vallist = gby_vallist->next;
 	}
     }
