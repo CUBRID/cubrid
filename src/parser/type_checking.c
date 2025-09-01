@@ -18126,6 +18126,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    {
 	      goto end;
 	    }
+	  [[fallthrough]];
+
 	case PT_IS_NOT_NULL:
 	  if (opd1 && opd1->node_type == PT_NAME)
 	    {
@@ -18156,8 +18158,12 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		      break;
 		    }
 		}
-	      break;
+	      if (consp != NULL)
+		{
+		  break;
+		}
 	    }
+	  [[fallthrough]];
 
 	default:
 	  db_make_null (&dummy);
