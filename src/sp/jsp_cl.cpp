@@ -1674,6 +1674,11 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	{
 	  goto error;
 	}
+
+      DEP_OBJECT_TYPE type = (real_type == SP_TYPE_PROCEDURE)
+			     ? DEP_OBJ_PROCEDURE
+			     : DEP_OBJ_FUNCTION;
+      err = dep_delete (name, type);
     }
 
   err = db_get (sp_mop, SP_ATTR_ARG_COUNT, &arg_cnt_val);
@@ -1704,6 +1709,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	}
     }
 
+  // TODO: remove unique_name, use name
   /* before deleting an object, all permissions are revoked. */
   if (jsp_get_unique_name (sp_mop, unique_name, DB_MAX_IDENTIFIER_LENGTH) == NULL)
     {

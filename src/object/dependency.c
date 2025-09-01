@@ -289,7 +289,6 @@ dep_delete (const char *unique_name, DEP_OBJECT_TYPE type)
   MOP sp_class = NULL;
   int has_savepoint = false;
 
-  // TODO: test that unique_name is single quote
   snprintf (query, sizeof (query),
 	    "SELECT [dep], [dep].[%s] "
 	    "FROM [%s] AS [dep] "
@@ -299,16 +298,6 @@ dep_delete (const char *unique_name, DEP_OBJECT_TYPE type)
 	    CT_DEPENDENCY_NAME,
 	    CT_DEPENDENCY_UNIQUE_NAME_COLUMN, unique_name, CT_DEPENDENCY_TYPE_COLUMN, (int) type,
 	    CT_DEPENDENCY_REFERENCED_UNIQUE_NAME_COLUMN, unique_name, CT_DEPENDENCY_REFERENCED_TYPE_COLUMN, (int) type);
-
-  error = db_compile_and_execute_local (query, &query_result, NULL);
-  if (error < 0)
-    {
-      goto end;
-    }
-  else if (error == 0)
-    {
-      return NO_ERROR;
-    }
 
   AU_DISABLE (save);
 
@@ -325,6 +314,12 @@ dep_delete (const char *unique_name, DEP_OBJECT_TYPE type)
       goto end;
     }
   has_savepoint = true;
+
+  error = db_compile_and_execute_local (query, &query_result, NULL);
+  if (error <= 0)
+    {
+      goto end;
+    }
 
   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
@@ -395,215 +390,6 @@ end:
   return error;
 }
 
-// int
-// dep_delete (const char *unique_name, DEP_OBJECT_TYPE type)
-// {
-//   assert (unique_name != NULL);
-
-//   int error = NO_ERROR;
-//   char query[256];
-//   DB_QUERY_RESULT *query_result = NULL;
-//   DB_VALUE dep_value, unique_name_value, type_value, referenced_unique_name_value, referenced_type_value;
-//   MOP class_obj = NULL;
-//   int save;
-
-//   AU_DISABLE (save);
-
-//   // TODO: replace literal with macro
-//   sprintf (query,
-//         "SELECT [X], [X].[unique_name], [X].[type], [X].[referenced_unique_name], [X].[referenced_type] FROM [%s] AS [X] "
-//         "WHERE ([%s] = '%s' AND [%s] = %d)",
-//         CT_DEPENDENCY_NAME, CT_DEPENDENCY_UNIQUE_NAME_COLUMN, unique_name, CT_DEPENDENCY_TYPE_COLUMN, type);
-
-//   error = db_compile_and_execute_local (query, &query_result, NULL);
-//   // error is row count if not negative
-//   if (error < 0)
-//     {
-//       goto end;
-//     }
-
-//   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-//     {
-//       error = db_query_get_tuple_value (query_result, 0, &dep_value);
-//       if (error != NO_ERROR)
-//      {
-//        goto end;
-//      }
-//       error = db_query_get_tuple_value (query_result, 1, &unique_name_value);
-//       if (error != NO_ERROR)
-//      {
-//        goto end;
-//      }
-//       error = db_query_get_tuple_value (query_result, 2, &type_value);
-//       if (error != NO_ERROR)
-//      {
-//        goto end;
-//      }
-
-//       error = db_query_get_tuple_value (query_result, 3, &referenced_unique_name_value);
-//       if (error != NO_ERROR)
-//      {
-//        goto end;
-//      }
-
-//       error = db_query_get_tuple_value (query_result, 4, &referenced_type_value);
-//       if (error != NO_ERROR)
-//      {
-//        goto end;
-//      }
-
-//       class_obj = db_get_object (&dep_value);
-//       if (class_obj == NULL)
-//      {
-//        goto end;
-//      }
-
-//       error = db_drop (class_obj);
-//       if (error != NO_ERROR)
-//      {
-//        goto end;
-//      }
-//       else
-//      {
-//        const char *unique_name = db_get_string (&unique_name_value);
-//        int type = db_get_int (&type_value);
-//        char query[256];
-//        DB_QUERY_RESULT *query_result = NULL;
-
-//        sprintf (query,
-//                 "SELECT [X], [X].[unique_name], [X].[type] FROM [%s] AS [X] "
-//                 "WHERE ([%s] = '%s' AND [%s] = %d)",
-//                 CT_DEPENDENCY_NAME, CT_DEPENDENCY_REFERENCED_UNIQUE_NAME_COLUMN,
-//                 unique_name, CT_DEPENDENCY_REFERENCED_TYPE_COLUMN, type);
-
-//        error = db_compile_and_execute_local (query, &query_result, NULL);
-//        // error is row count if not negative
-//        if (error < 0)
-//          {
-//            goto end;
-//          }
-
-//        while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
-//          {
-//            error = db_query_get_tuple_value (query_result, 0, &dep_value);
-//            if (error != NO_ERROR)
-//              {
-//                goto end;
-//              }
-//            error = db_query_get_tuple_value (query_result, 1, &unique_name_value);
-//            if (error != NO_ERROR)
-//              {
-//                goto end;
-//              }
-//            error = db_query_get_tuple_value (query_result, 2, &type_value);
-//            if (error != NO_ERROR)
-//              {
-//                goto end;
-//              }
-
-//            class_obj = db_get_object (&dep_value);
-//            if (class_obj == NULL)
-//              {
-//                goto end;
-//              }
-
-//            type = db_get_int (&type_value);
-//            if ((DEP_OBJECT_TYPE) type == DEP_OBJ_SYNONYM)
-//              {
-//                DB_VALUE value;
-//                MOP class_obj = db_find_class (CT_SYNONYM_NAME);
-//                const char *synonym_name = db_get_string (&unique_name_value);
-
-//                db_make_string (&value, synonym_name);
-//                MOP instance_obj = db_find_unique (class_obj, "unique_name", &value);
-
-//                DB_OTMPL *obj_tmpl = dbt_edit_object (instance_obj);
-//                db_make_int (&value, 1);
-//                error = dbt_put_internal (obj_tmpl, "validity", &value);
-//                db_value_clear (&value);
-
-//                instance_obj = dbt_finish_object (obj_tmpl);
-//                if (instance_obj == NULL)
-//                  {
-//                    ASSERT_ERROR_AND_SET (error);
-//                    goto end;
-//                  }
-
-//                error = locator_flush_instance (instance_obj);
-//                if (error != NO_ERROR)
-//                  {
-//                    ASSERT_ERROR ();
-//                  }
-//              }
-//            else if ((DEP_OBJECT_TYPE) type == DEP_OBJ_TRIGGER)
-//              {
-//                DB_VALUE value;
-//                MOP class_obj = db_find_class (CT_TRIGGER_NAME);
-//                const char *trigger_name = db_get_string (&unique_name_value);
-
-//                db_make_string (&value, trigger_name);
-//                MOP instance_obj = db_find_unique (class_obj, "unique_name", &value);
-
-//                DB_OTMPL *obj_tmpl = dbt_edit_object (instance_obj);
-//                db_make_int (&value, 1);
-//                error = dbt_put_internal (obj_tmpl, "validity", &value);
-//                db_value_clear (&value);
-
-//                instance_obj = dbt_finish_object (obj_tmpl);
-//                if (instance_obj == NULL)
-//                  {
-//                    ASSERT_ERROR_AND_SET (error);
-//                    goto end;
-//                  }
-
-//                error = locator_flush_instance (instance_obj);
-//                if (error != NO_ERROR)
-//                  {
-//                    ASSERT_ERROR ();
-//                  }
-//              }
-//            else if ((DEP_OBJECT_TYPE) type == DEP_OBJ_VIEW)
-//              {
-//                DB_VALUE value;
-//                MOP class_obj = db_find_class (CT_CLASS_NAME);
-//                const char *view_name = db_get_string (&unique_name_value);
-
-//                db_make_string (&value, view_name);
-//                MOP instance_obj = db_find_unique (class_obj, "unique_name", &value);
-
-//                DB_OTMPL *obj_tmpl = dbt_edit_object (instance_obj);
-//                db_make_int (&value, 1);
-//                error = dbt_put_internal (obj_tmpl, "validity", &value);
-//                db_value_clear (&value);
-
-//                instance_obj = dbt_finish_object (obj_tmpl);
-//                if (instance_obj == NULL)
-//                  {
-//                    ASSERT_ERROR_AND_SET (error);
-//                    goto end;
-//                  }
-
-//                error = locator_flush_instance (instance_obj);
-//                if (error != NO_ERROR)
-//                  {
-//                    ASSERT_ERROR ();
-//                  }
-//              }
-//          }
-//        // TODO: invalid object
-//      }
-//     }
-
-// end:
-//   if (query_result)
-//     {
-//       db_query_end (query_result);
-//     }
-//   AU_ENABLE (save);
-//   return error;
-// }
-
-// TODO: comment for only calling not duplicate
 int
 dep_create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
 		       const char *ref_unique_name, DB_OBJECT * ref_owner, DEP_OBJECT_TYPE ref_type,
@@ -622,16 +408,14 @@ dep_create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
   dep_class = sm_find_class (CT_DEPENDENCY_NAME);
   if (dep_class == NULL)
     {
-      // TODO: add error code
-      error = ER_GENERIC_ERROR;
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
   obj_tmpl = dbt_create_object_internal ((MOP) dep_class);
   if (obj_tmpl == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
       goto end;
     }
 
@@ -700,7 +484,7 @@ dep_create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
 
   if (dbt_finish_object (obj_tmpl) == NULL)
     {
-      error = er_errid ();
+      ASSERT_ERROR_AND_SET (error);
     }
 
 end:
