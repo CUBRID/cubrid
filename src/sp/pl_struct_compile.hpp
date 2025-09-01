@@ -27,6 +27,7 @@
 #include "packer.hpp"
 #include "packable_object.hpp"
 #include "method_struct_query.hpp"
+#include "dependency.h"
 
 #include <vector>
 #include <string>
@@ -79,6 +80,7 @@ namespace cubpl
   {
 
     plcsql_dependency ();
+    plcsql_dependency (DEP_OBJECT_TYPE dep_type, const char *unique_name);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -225,9 +227,16 @@ namespace cubpl
 
     std::vector <std::shared_ptr<global_semantics_response_common>> qs;
   };
-}
+} // namespace cubpl
 
 using PLCSQL_COMPILE_REQUEST = cubpl::compile_request;
 using PLCSQL_COMPILE_RESPONSE = cubpl::compile_response;
+
+extern "C"
+{
+  typedef struct cubpl_sql_semantics cubpl_sql_semantics;
+
+  int plcsql_add_dependency (cubpl_sql_semantics *semantics, DEP_OBJECT_TYPE dep_type, const char *unique_name) noexcept;
+}
 
 #endif //_PL_STRUCT_COMPILE_HPP_

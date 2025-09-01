@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
+#include "dependency.h"
 
 extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
     DB_QUERY_TYPE *column_info, bool is_holdable);
@@ -659,6 +660,25 @@ namespace cubmethod
 		    marker = db_marker_next (marker);
 		  }
 		while (marker);
+	      }
+
+	    if (error == NO_ERROR)
+	      {
+                // collect dependencies from the original statement to preserve references to synonyms
+		PT_NODE **no_rewritten_stmt = parser_parse_string (parser, parser->original_buffer);
+                if (no_rewritten_stmt != NULL && *no_rewritten_stmt != NULL)
+                  {
+                    (void)parser_walk_tree(parser, *no_rewritten_stmt,
+                                     dep_collect_dependencies_of_plcsql,
+                                     &semantics, NULL, NULL);
+                  }
+
+		if (no_rewritten_stmt == NULL || *no_rewritten_stmt == NULL || pt_has_error (parser))
+		  {
+		    error = ER_FAILED;
+		    semantics.sql_type = error;
+		    semantics.rewritten_query = "internal error: failed to collect dependencies";
+		  }
 	      }
 	  }
 	else

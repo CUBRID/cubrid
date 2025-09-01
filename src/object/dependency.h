@@ -57,6 +57,10 @@ typedef enum
 int dep_create_dependencies (PARSER_CONTEXT * parser, PT_NODE * node, const char *unique_name, DEP_OBJECT_TYPE type);
 int dep_delete (const char *unique_name, DEP_OBJECT_TYPE type);
 int dep_invalidate_dependencies (const char *unique_name, DEP_OBJECT_TYPE type);
+PT_NODE *dep_collect_dependencies_of_plcsql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+int dep_create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
+			   const char *ref_unique_name, DB_OBJECT * ref_owner, DEP_OBJECT_TYPE ref_type,
+			   DEP_DEPENDENCY_TYPE dep_type);
 
 #endif /* (SERVER_MODE) */
 

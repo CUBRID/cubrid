@@ -68,6 +68,7 @@
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
+#include "dependency.h"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -139,6 +140,8 @@ static int drop_stored_procedure_code (const char *name);
 
 static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
+static int create_sp_dependencies (const std::vector<cubpl::plcsql_dependency> &dependencies, const char *sp_name,
+				   SP_TYPE_ENUM sp_type);
 
 extern bool ssl_client;
 
@@ -976,6 +979,48 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
   return error;
 }
 
+static int
+create_sp_dependencies (const std::vector<cubpl::plcsql_dependency> &dependencies, const char *sp_name,
+			SP_TYPE_ENUM sp_type)
+{
+  DEP_OBJECT_TYPE type =
+	  (sp_type == SP_TYPE_PROCEDURE) ? DEP_OBJ_PROCEDURE : DEP_OBJ_FUNCTION;
+  const char *obj_uniq_name = NULL;
+  char obj_user_name[DB_MAX_USER_LENGTH];
+  const char *dep_owner_name = NULL;
+  MOP owner = NULL;
+
+  for (const auto &dep : dependencies)
+    {
+      obj_uniq_name = dep.obj_uniq_name.c_str();
+      if (sm_is_system_class (obj_uniq_name) || sm_is_system_vclass (obj_uniq_name))
+	{
+	  owner = Au_dba_user;
+	}
+      else if (strchr (obj_uniq_name, '.') == NULL)
+	{
+	  owner = Au_user;
+	}
+      else
+	{
+	  dep_owner_name = sm_qualifier_name (obj_uniq_name, obj_user_name, DB_MAX_USER_LENGTH);
+	  owner = db_find_user (dep_owner_name);
+	  if (owner == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
+      if (dep_create_dependency (sp_name, type, obj_uniq_name, owner,
+				 (DEP_OBJECT_TYPE)dep.obj_type,
+				 DEP_TYPE_HARD) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  return NO_ERROR;
+}
+
 /*
  * jsp_create_stored_procedure
  *   return: if failed return error code else execute jsp_add_stored_procedure
@@ -1224,6 +1269,15 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.owner = sp_info.owner;
 
       err = sp_add_stored_procedure_code (code_info);
+      if (err != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  if (sp_info.lang == SP_LANG_PLCSQL)
+    {
+      err = create_sp_dependencies (compile_response.dependencies, sp_info.unique_name.c_str(), sp_info.sp_type);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;

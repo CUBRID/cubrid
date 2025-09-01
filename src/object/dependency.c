@@ -34,14 +34,120 @@
 #include "schema_manager.h"
 #include "schema_system_catalog_constants.h"
 #include "transaction_cl.h"
-#include <cstdio>
+#include "pl_struct_compile.hpp"
 
 #define SAVEPOINT_DELETE_DEPENDENCY "DELETEDEPENDENCY"
 #define SAVEPOINT_INVALIDATE_DEPENDENCIES "INVALIDATEDEPENDENCIES"
 
-static int create_dependency (const char *unique_name, DEP_OBJECT_TYPE type, const char *ref_unique_name,
-			      DB_OBJECT * ref_owner, DEP_OBJECT_TYPE ref_type, DEP_DEPENDENCY_TYPE dep_type);
+#define UNIQUE_NAME_BUF_SIZE (DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 2)
+
 static int dep_set_validity (MOP class_, const char *unique_name, DEP_VALIDITY_TYPE type);
+static const char *get_unique_name (const char *name, char *buf);
+
+static const char *
+get_unique_name (const char *name, char *buf)
+{
+  if (strchr (name, '.') == NULL)
+    {
+      snprintf (buf, UNIQUE_NAME_BUF_SIZE, "%s.%s", Au_user_name, name);
+      return buf;
+    }
+
+  return name;
+}
+
+PT_NODE *
+dep_collect_dependencies_of_plcsql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  assert (parser != NULL && node != NULL && arg != NULL);
+
+  cubpl_sql_semantics *semantics = (cubpl_sql_semantics *) arg;
+  const char *ref_unique_name = NULL;
+  MOP class_ = NULL;
+  DEP_OBJECT_TYPE ref_type = DEP_OBJ_NONE;
+  int error = NO_ERROR;
+  char unique_name_buf[UNIQUE_NAME_BUF_SIZE];
+
+  switch (node->node_type)
+    {
+    case PT_SPEC:		// Table, View, Synonym
+      {
+	if (PT_SPEC_IS_DERIVED (node))
+	  {
+	    return node;
+	  }
+
+	ref_unique_name = get_unique_name (PT_NAME_ORIGINAL (PT_SPEC_ENTITY_NAME (node)), unique_name_buf);
+	if (db_find_synonym (ref_unique_name) != NULL)
+	  {
+	    ref_type = DEP_OBJ_SYNONYM;
+	    break;
+	  }
+
+	// synonym_obj == NULL, continue to find class
+	ASSERT_ERROR_AND_SET (error);
+	if (error == ER_SYNONYM_NOT_EXIST)
+	  {
+	    er_clear ();
+	    error = NO_ERROR;
+	  }
+	else
+	  {
+	    return NULL;
+	  }
+
+	class_ = db_find_class (ref_unique_name);
+	if (class_ == NULL)
+	  {
+	    return NULL;
+	  }
+
+	SM_CLASS_TYPE class_type = sm_get_class_type ((SM_CLASS *) class_->object);
+	ref_type = (class_type == SM_CLASS_CT) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+	break;
+      }
+    case PT_FUNCTION:
+      {
+	if (node->info.function.function_type != PT_GENERIC)	// built-in functions
+	  {
+	    return node;
+	  }
+
+	ref_unique_name = get_unique_name (node->info.function.generic_name, unique_name_buf);
+	ref_type = DEP_OBJ_FUNCTION;	// procedures not allowed in static SQL
+	break;
+      }
+    case PT_EXPR:
+      {
+	if (!PT_IS_SERIAL (PT_EXPR_OP (node)))
+	  {
+	    return node;
+	  }
+
+	ref_unique_name = get_unique_name (PT_NAME_ORIGINAL (PT_EXPR_ARG1 (node)), unique_name_buf);
+	class_ = db_find_class (CT_SERIAL_NAME);
+	if (class_ == NULL)
+	  {
+	    return NULL;
+	  }
+
+	DB_VALUE value;
+	db_make_string (&value, ref_unique_name);
+	if (db_find_unique (class_, SERIAL_ATTR_UNIQUE_NAME, &value) == NULL)
+	  {
+	    return NULL;
+	  }
+
+	ref_type = DEP_OBJ_SERIAL;
+	break;
+      }
+    default:
+      return node;
+    }
+
+  error = plcsql_add_dependency (semantics, ref_type, ref_unique_name);
+  return (error == NO_ERROR) ? node : NULL;
+}
 
 int
 dep_set_validity (MOP class_, const char *unique_name, DEP_VALIDITY_TYPE type)
@@ -498,10 +604,10 @@ end:
 // }
 
 // TODO: comment for only calling not duplicate
-static int
-create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
-		   const char *ref_unique_name, DB_OBJECT * ref_owner, DEP_OBJECT_TYPE ref_type,
-		   DEP_DEPENDENCY_TYPE dep_type)
+int
+dep_create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
+		       const char *ref_unique_name, DB_OBJECT * ref_owner, DEP_OBJECT_TYPE ref_type,
+		       DEP_DEPENDENCY_TYPE dep_type)
 {
   assert (unique_name != NULL && ref_unique_name != NULL && ref_owner != NULL);
 

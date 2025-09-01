@@ -22,6 +22,7 @@
 #include "connection_support.h"
 #include "dbtype.h"		/* db_value_* */
 
+#include "dependency.h"
 #include "method_struct_value.hpp"
 #include "sp_constants.hpp"
 
@@ -181,6 +182,10 @@ namespace cubpl
 //////////////////////////////////////////////////////////////////////////
 
   plcsql_dependency::plcsql_dependency () { }
+
+  plcsql_dependency::plcsql_dependency (DEP_OBJECT_TYPE dep_type, const char *unique_name)
+    : obj_type (dep_type),
+      obj_uniq_name (std::string (unique_name)) { }
 
   void
   plcsql_dependency::pack (cubpacking::packer &serializator) const
@@ -712,4 +717,21 @@ namespace cubpl
     //
     assert (false);
   }
+} // namespace cubpl
+
+extern "C" int
+plcsql_add_dependency (cubpl_sql_semantics *semantics_c, DEP_OBJECT_TYPE dep_type, const char *unique_name) noexcept
+{
+  assert (semantics_c != nullptr && unique_name != nullptr);
+
+  try
+    {
+      auto *semantics = reinterpret_cast<cubpl::sql_semantics *> (semantics_c);
+      semantics->dependencies.emplace_back (dep_type, unique_name);
+      return NO_ERROR;
+    }
+  catch (...)
+    {
+      return ER_FAILED;
+    }
 }
