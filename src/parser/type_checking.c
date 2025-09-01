@@ -18135,36 +18135,60 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  if (opd1 && opd1->node_type == PT_NAME)
 	    {
 	      MOP cls;
-	      SM_CLASS_CONSTRAINT *consp;
+	      SM_CONSTRAINT *consp;
+	      SM_CLASS *class_;
+	      SM_ATTRIBUTE *attr;
 
 	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
-	      consp = sm_class_constraints (cls);
-
-	      for (; consp != NULL; consp = consp->next)
+	      if (cls == NULL)
 		{
-		  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+		  has_error = true;
+		  goto end;
+		}
+
+	      if (au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
+		{
+		  attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
+		  if (attr == NULL)
 		    {
-		      opd1 = parser_new_node (parser, PT_VALUE);
-		      if (opd1 == NULL)
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
+		      PT_ERRORc (parser, expr, er_msg ());
+		      has_error = true;
+		      goto end;
+		    }
+
+		  for (consp = attr->constraints; consp != NULL; consp = consp->next)
+		    {
+		      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
 			{
-			  has_error = true;
-			  goto end;
+			  opd1 = parser_new_node (parser, PT_VALUE);
+			  if (opd1 == NULL)
+			    {
+			      has_error = true;
+			      goto end;
+			    }
+
+			  opd1->type_enum = PT_TYPE_INTEGER;
+			  opd1->info.value.data_value.i = 1;
+
+			  arg1 = pt_value_to_db (parser, opd1);
+			  type1 = opd1->type_enum;
+
+			  expr->info.expr.arg1 = opd1;
+			  break;
 			}
+		    }
 
-		      opd1->type_enum = PT_TYPE_INTEGER;
-		      opd1->info.value.data_value.i = 1;
-
-		      arg1 = pt_value_to_db (parser, opd1);
-		      type1 = opd1->type_enum;
-
-		      expr->info.expr.arg1 = opd1;
+		  if (consp != NULL)
+		    {
 		      break;
 		    }
 		}
-	      if (consp != NULL)
-		{
-		  break;
-		}
+                else
+                {
+                  has_error = true;
+		  goto end;
+                }
 	    }
 	  [[fallthrough]];
 
