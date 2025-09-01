@@ -346,6 +346,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
+  ${OBJECT_DIR}/dependency.c
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
