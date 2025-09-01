@@ -106,7 +106,7 @@ jobs:
                             ;;
                           sql)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
                             ;;
                           shell)
                             base_dir="cubrid-testcases-private-ex"
@@ -115,7 +115,7 @@ jobs:
                             ;;
                           *)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
                             ;;
                         esac
 
@@ -127,9 +127,9 @@ jobs:
                           find \$base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
                         else
                           echo "[debug] split tests for parallel execution"
-                          circleci tests glob "\$glob_path" | circleci tests split --split-by=name | tee tc.list
+                          circleci tests glob "\$glob_path" | sed "s|^\$base_dir/||" | circleci tests split --split-by=timings --timings-type=testname | tee tc.list
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+                          find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
                         fi
 
                         echo "[debug] Run the tests"
