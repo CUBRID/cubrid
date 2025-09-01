@@ -13577,6 +13577,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   char *fk_name = NULL;
   const char *table_name;
   MOP save_user, owner;
+  DEP_OBJECT_TYPE type = DEP_OBJ_NONE;
 
   if (op == NULL)
     {
@@ -13859,6 +13860,13 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 
   /* now delete _db_auth tuples refers to the table */
   error = au_delete_auth_of_dropping_database_object (DB_OBJECT_CLASS, table_name);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  type = (class_->class_type == SM_CLASS_CT) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+  error = dep_invalidate_dependencies (table_name, type);
   if (error != NO_ERROR)
     {
       goto end;

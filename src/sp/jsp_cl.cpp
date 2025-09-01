@@ -1316,6 +1316,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner_mop = NULL, owner_mop = NULL;
   DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
+  DEP_OBJECT_TYPE obj_type = DEP_OBJ_NONE;
 
   assert (statement != NULL);
 
@@ -1460,6 +1461,9 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       goto error;
     }
+
+  obj_type = (real_type == SP_TYPE_PROCEDURE) ? DEP_OBJ_PROCEDURE : DEP_OBJ_FUNCTION;
+  err = dep_invalidate_dependencies(name_str, obj_type);
 
 error:
 

@@ -61,6 +61,7 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
+#include "dependency.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -379,6 +380,7 @@ static int do_drop_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_
 static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_save_info);
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
+static bool is_invalidating_alter (PT_ALTER_CODE alter_code);
 
 int ib_thread_count = 0;
 
@@ -1615,6 +1617,22 @@ change_ai_error:
   return error;
 }
 
+static bool
+is_invalidating_alter (PT_ALTER_CODE alter_code)
+{
+  switch (alter_code)
+    {
+    case PT_DROP_ATTR_MTHD:
+    case PT_MODIFY_ATTR_MTHD:
+    case PT_RENAME_ATTR_MTHD:
+    case PT_RENAME_ENTITY:
+    case PT_CHANGE_ATTR:
+    case PT_CHANGE_OWNER:
+      return true;
+    default:
+      return false;
+    }
+}
 
 /*
  * do_alter() -
@@ -1705,6 +1723,19 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto error_exit;
 	}
+
+      if (is_invalidating_alter (alter_code))
+	{
+	  const char *unique_name = PT_NAME_ORIGINAL(crt_clause->info.alter.entity_name);
+	  DEP_OBJECT_TYPE type = (crt_clause->info.alter.entity_type == PT_CLASS) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+
+	  error_code = dep_invalidate_dependencies (unique_name, type);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+
       do_semantic_checks = true;
     }
 

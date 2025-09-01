@@ -162,7 +162,7 @@ dep_set_validity (MOP class_, const char *unique_name, DEP_VALIDITY_TYPE type)
   db_make_string (&unique_name_value, unique_name);
   db_make_int (&validity_value, type);
 
-  obj = db_find_unique (class_, "unique_name", &unique_name_value);
+  obj = db_find_unique (class_, SP_ATTR_UNIQUE_NAME, &unique_name_value);
   if (obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -171,7 +171,7 @@ dep_set_validity (MOP class_, const char *unique_name, DEP_VALIDITY_TYPE type)
 
   obt_p = dbt_edit_object (obj);
   db_make_int (&validity_value, (int) type);
-  error = dbt_put_internal (obt_p, "validity", &validity_value);
+  error = dbt_put_internal (obt_p, SP_ATTR_VALIDITY, &validity_value);
   if (error != NO_ERROR)
     {
       return error;
@@ -208,17 +208,13 @@ dep_invalidate_dependencies (const char *unique_name, DEP_OBJECT_TYPE type)
 	    CT_DEPENDENCY_NAME,
 	    CT_DEPENDENCY_REFERENCED_UNIQUE_NAME_COLUMN, unique_name, CT_DEPENDENCY_REFERENCED_TYPE_COLUMN, (int) type);
 
+  AU_DISABLE (save);
+
   error = db_compile_and_execute_local (query, &query_result, NULL);
-  if (error < 0)
+  if (error <= 0)
     {
       goto end;
     }
-  else if (error == 0)
-    {
-      return NO_ERROR;
-    }
-
-  AU_DISABLE (save);
 
   sp_class = db_find_class (CT_STORED_PROC_NAME);
   if (sp_class == NULL)
@@ -232,7 +228,6 @@ dep_invalidate_dependencies (const char *unique_name, DEP_OBJECT_TYPE type)
     {
       goto end;
     }
-
   has_savepoint = true;
 
   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
@@ -244,13 +239,7 @@ dep_invalidate_dependencies (const char *unique_name, DEP_OBJECT_TYPE type)
 	}
 
       dep_unique_name = db_get_string (&dep_unique_name_value);
-      if (dep_unique_name == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  goto end;
-	}
-
-      error = dep_set_validity (sp_class, unique_name, DEP_INVALID);
+      error = dep_set_validity (sp_class, dep_unique_name, DEP_INVALID);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -380,7 +369,7 @@ end:
       db_query_end (query_result);
     }
 
-  if (error != NO_ERROR && has_savepoint)
+  if (has_savepoint && error != NO_ERROR)
     {
       tran_abort_upto_system_savepoint (SAVEPOINT_DELETE_DEPENDENCY);
     }

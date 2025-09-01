@@ -92,6 +92,7 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
+#include "dependency.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2948,6 +2949,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  error = dep_invalidate_dependencies (name, DEP_OBJ_SERIAL);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   /* obj_tmpl has been released by dbt_finish_object */
   obj_tmpl = NULL;
 
@@ -3041,6 +3048,12 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_ERRORmf (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RT_SERIAL_ALTER_NOT_ALLOWED, 0);
 	}
+      goto end;
+    }
+
+  error = dep_invalidate_dependencies (name, DEP_OBJ_SERIAL);
+  if (error != NO_ERROR)
+    {
       goto end;
     }
 
@@ -18490,6 +18503,12 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
       ASSERT_ERROR_AND_SET (error);
       goto end;
     }
+
+  error = dep_invalidate_dependencies (synonym_name, DEP_OBJ_SYNONYM);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
   obj_tmpl = NULL;
 
   error = locator_flush_instance (instance_obj);
@@ -18504,7 +18523,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
     }
 
 end:
-  if (obj_tmpl != NULL && instance_obj == NULL)
+  if (obj_tmpl && error != NO_ERROR)
     {
       dbt_abort_object (obj_tmpl);
     }
@@ -18928,6 +18947,12 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
     }
   old_target_obj = locator_find_class_with_purpose (old_target_name, false);
   old_target_obj_id = ws_identifier (old_target_obj);
+
+  error = dep_invalidate_dependencies (synonym_name, DEP_OBJ_SYNONYM);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   error = db_drop (instance_obj);
   if (error != NO_ERROR)
