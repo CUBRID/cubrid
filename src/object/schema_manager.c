@@ -10923,6 +10923,15 @@ deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index)
 
   for (con = cons; con != NULL; con = con->next)
     {
+      // TODO : ref_count always 1 for every index since BTID assumed to be unique for every index.
+      // Temporarily, we use BTID for distinguishing vector index with -1 volid and fileid.
+      // Since NOT_NULL CONSTRAINT also use -1 volid and fileid, and BTID_IS_EQUAL only checks
+      // volid and fileid, we skip NOT_NULL CONSTRAINT for deallocation since it's not a real index.
+      // This code should be removed after we manage vector index separate from B-Tree.
+      if (con->type == SM_CONSTRAINT_NOT_NULL)
+      {
+        continue;
+      }
       if (BTID_IS_EQUAL (index, &con->index_btid))
 	{
 	  ctype = con->type;
