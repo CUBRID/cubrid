@@ -57,6 +57,7 @@ public final class Dependency implements PackableObject, UnPackableObject {
         } else {
             this.objUniqName = objName;
         }
+        this.objUniqName = this.objUniqName.toLowerCase();
     }
 
     public Dependency(CUBRIDUnpacker unpacker) {
