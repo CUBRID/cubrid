@@ -37,6 +37,7 @@
 #include "transaction_cl.h"
 #include "schema_manager.h"
 #include "dbtype.h"
+#include "dependency.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -60,6 +61,7 @@ static const std::vector<std::string> sp_entry_names
   SP_ATTR_DIRECTIVE,
   SP_ATTR_SQL_DATA_ACCESS,
   SP_ATTR_OWNER,
+  SP_ATTR_VALIDITY,
   SP_ATTR_COMMENT,
   SP_ATTR_CREATED_TIME,
   SP_ATTR_UPDATED_TIME
@@ -557,6 +559,14 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 
     db_make_int (&value, info.sql_data_access);
     err = dbt_put_internal (obt_p, SP_ATTR_SQL_DATA_ACCESS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_int (&value, DEP_VALID);
+    err = dbt_put_internal (obt_p, SP_ATTR_VALIDITY, &value);
     pr_clear_value (&value);
     if (err != NO_ERROR)
       {
