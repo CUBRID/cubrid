@@ -18140,9 +18140,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      SM_ATTRIBUTE *attr;
 
 	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
-	      if (cls == NULL)
+	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
 		{
-		  has_error = true;
+		  er_clear ();
 		  goto end;
 		}
 
@@ -18161,21 +18161,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		    {
 		      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
 			{
-			  opd1 = parser_new_node (parser, PT_VALUE);
-			  if (opd1 == NULL)
-			    {
-			      has_error = true;
-			      goto end;
-			    }
-
-			  opd1->type_enum = PT_TYPE_INTEGER;
-			  opd1->info.value.data_value.i = 1;
-
-			  arg1 = pt_value_to_db (parser, opd1);
-			  type1 = opd1->type_enum;
-
-			  expr->info.expr.arg1 = opd1;
-			  break;
+			  db_make_int (&dbval_res, 1);
+			  result = pt_dbval_to_value (parser, &dbval_res);
+			  goto end;
 			}
 		    }
 
@@ -18217,7 +18205,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg2 = pt_value_to_db (parser, opd2);
       type2 = opd2->type_enum;
 
-      if (op == PT_LIKE)
+      if (op == PT_LIKE && opd1 && opd1->node_type == PT_NAME)
 	{
 	  bool has_escape_char = false;
 	  DB_VALUE compressed_pattern;
@@ -18238,67 +18226,44 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	  if (num_logical_chars == 1 && num_match_many == 1 && num_match_one == 0)
 	    {
-	      if (opd1 && opd1->node_type == PT_NAME)
+	      SM_CLASS_CONSTRAINT *consp;
+	      SM_CLASS *class_;
+	      SM_ATTRIBUTE *attr, *attrs;
+
+	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
+
+	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
 		{
-		  SM_CLASS_CONSTRAINT *consp;
-		  SM_CLASS *class_;
-		  SM_ATTRIBUTE *attr, *attrs;
+		  er_clear ();
+		  goto end;
+		}
 
-		  cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
-		  if (cls == NULL)
+	      consp = sm_class_constraints (cls);
+
+	      au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+	      attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
+	      if (attr == NULL)
+		{
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
+		  PT_ERRORc (parser, expr, er_msg ());
+		  has_error = true;
+		  goto end;
+		}
+
+	      for (; consp != NULL; consp = consp->next)
+		{
+		  SM_ATTRIBUTE **consp_attrs = consp->attributes;
+
+		  for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
 		    {
-		      has_error = true;
-		      goto end;
-		    }
-
-		  consp = sm_class_constraints (cls);
-
-		  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
-		  attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
-
-		  for (; consp != NULL; consp = consp->next)
-		    {
-		      SM_ATTRIBUTE **consp_attrs = consp->attributes;
-		      int i;
-
-		      for (i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
+		      if (consp_attrs[i]->id == attr->id)
 			{
-			  if (consp_attrs[i]->id == attr->id)
+			  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
 			    {
-			      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
-				{
-				  opd1 = parser_new_node (parser, PT_VALUE);
-				  if (opd1 == NULL)
-				    {
-				      has_error = true;
-				      goto end;
-				    }
 
-				  opd1->type_enum = PT_TYPE_INTEGER;
-				  opd1->info.value.data_value.i = 1;
-
-				  arg1 = pt_value_to_db (parser, opd1);
-				  type1 = opd1->type_enum;
-
-				  expr->info.expr.arg1 = opd1;
-
-				  opd2 = parser_new_node (parser, PT_VALUE);
-				  if (opd2 == NULL)
-				    {
-				      has_error = true;
-				      goto end;
-				    }
-
-				  opd2->type_enum = PT_TYPE_INTEGER;
-				  opd2->info.value.data_value.i = 1;
-
-				  arg2 = pt_value_to_db (parser, opd2);
-				  type2 = opd2->type_enum;
-
-				  expr->info.expr.arg2 = opd2;
-                                  op = PT_EQ;
-				  break;
-				}
+			      db_make_int (&dbval_res, 1);
+			      result = pt_dbval_to_value (parser, &dbval_res);
+			      goto end;
 			    }
 			}
 		    }
