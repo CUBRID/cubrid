@@ -1613,6 +1613,46 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY *conn, int request, unsigned s
   return ERROR_ON_WRITE;
 }
 
+int
+css_send_request_with_data_buffer_with_padding (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id,
+				   const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size)
+{
+  NET_HEADER local_header = DEFAULT_HEADER_DATA;
+  NET_HEADER data_header = DEFAULT_HEADER_DATA;
+
+  if (!conn || conn->status != CONN_OPEN)
+    {
+      return CONNECTION_CLOSED;
+    }
+
+  *request_id = css_get_request_id (conn);
+  css_set_net_header (&local_header, COMMAND_TYPE, request, *request_id, arg_size, conn->get_tran_index (),
+		      conn->invalidate_snapshot, conn->db_error);
+
+  if (reply_buffer && (reply_size > 0))
+    {
+      css_queue_user_data_buffer (conn, *request_id, reply_size, reply_buffer);
+    }
+
+  if (arg_size > 0 && arg_buffer != NULL)
+    {
+      css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+
+      return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &data_header,
+			     sizeof (NET_HEADER), arg_buffer, arg_size);
+    }
+  else
+    {
+      if (css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER) == NO_ERRORS))
+	{
+	  return NO_ERRORS;
+	}
+    }
+
+  return ERROR_ON_WRITE;
+}
+
 #if defined(CS_MODE) || defined(SA_MODE)
 /*
  * css_send_request_no_reply () - transfer a request to the server (no reply)
@@ -1642,14 +1682,14 @@ css_send_request_no_reply (CSS_CONN_ENTRY *conn, int request, unsigned short *re
 
   if (arg_size == 0)
     {
-      return css_net_send (conn, (char *) &req_header, sizeof (NET_HEADER), -1);
+      return css_net_send_general (conn->fd, -1, (char *) &req_header, sizeof (NET_HEADER));
     }
 
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return (css_net_send3 (conn, (char *) &req_header, sizeof (NET_HEADER), (char *) &data_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size));
+  return css_net_send_general (conn->fd, -1, (char *) &req_header, sizeof (NET_HEADER), (char *) &data_header, sizeof (NET_HEADER),
+			 arg_buffer, arg_size);
 }
 
 /*
@@ -1677,7 +1717,7 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY *conn, int request, unsigned short *
 
   if (data_buffer == NULL || data_size <= 0)
     {
-      return (css_send_request_with_data_buffer (conn, request, request_id, arg_buffer, arg_size, reply_buffer,
+      return (css_send_request_with_data_buffer_with_padding (conn, request, request_id, arg_buffer, arg_size, reply_buffer,
 	      reply_size));
     }
   if (!conn || conn->status != CONN_OPEN)
@@ -1700,8 +1740,8 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY *conn, int request, unsigned short *
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, data_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return (css_net_send5 (conn, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size, (char *) &data_header, sizeof (NET_HEADER), data_buffer, data_size));
+  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
+			 arg_buffer, arg_size, (char *) &data_header, sizeof (NET_HEADER), data_buffer, data_size);
 }
 
 /*
@@ -1760,9 +1800,9 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY *conn, int request, unsigned short *
   css_set_net_header (&data2_header, DATA_TYPE, 0, *request_id, data2_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return (css_net_send7 (conn, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
+  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
 			 arg_buffer, arg_size, (char *) &data1_header, sizeof (NET_HEADER), data1_buffer, data1_size,
-			 (char *) &data2_header, sizeof (NET_HEADER), data2_buffer, data2_size));
+			 (char *) &data2_header, sizeof (NET_HEADER), data2_buffer, data2_size);
 }
 
 #if 0
@@ -1936,6 +1976,25 @@ css_send_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int
 		      conn->db_error);
 
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
+}
+
+int
+css_send_data_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size)
+{
+  NET_HEADER header = DEFAULT_HEADER_DATA;
+#if defined(SERVER_MODE)
+  if (!conn || conn->status == CONN_CLOSED)
+#else
+  if (!conn || conn->status != CONN_OPEN)
+#endif
+    {
+      return (CONNECTION_CLOSED);
+    }
+
+  css_set_net_header (&header, DATA_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+
+  return css_net_send_general (conn->fd, -1, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size);
 }
 
 #if defined(SERVER_MODE)
@@ -2126,6 +2185,26 @@ css_send_error (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, in
 		      conn->db_error);
 
   return (css_net_send2 (conn, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size));
+}
+
+int
+css_send_error_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size)
+{
+  NET_HEADER header = DEFAULT_HEADER_DATA;
+
+#if defined (SERVER_MODE)
+  if (!conn || conn->status == CONN_CLOSED)
+#else
+  if (!conn || conn->status != CONN_OPEN)
+#endif
+    {
+      return (CONNECTION_CLOSED);
+    }
+
+  css_set_net_header (&header, ERROR_TYPE, 0, rid, buffer_size, conn->get_tran_index (), conn->invalidate_snapshot,
+		      conn->db_error);
+
+  return css_net_send_general (conn->fd, -1, (char *) &header, sizeof (NET_HEADER), buffer, buffer_size);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -3017,17 +3096,11 @@ css_conn_entry::init_pending_request ()
 }
 
 void
-css_conn_entry::release_packet_origin (void *buffer, int size)
+css_conn_entry::release_packet (void *buffer, int size)
 {
 #if defined(SERVER_MODE)
   css_release_packet (this, buffer, size);
 #endif
 }
 
-/* remove this */
-void
-css_conn_entry::release_packet (void *buffer, int size)
-{
-  delete[] (std::byte *) buffer;
-}
 // *INDENT-ON*

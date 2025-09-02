@@ -64,6 +64,9 @@ extern int css_net_read_header (SOCKET fd, char *buffer, int *maxlen, int timeou
 extern int css_send_request_with_data_buffer (CSS_CONN_ENTRY *conn, int request, unsigned short *rid,
     const char *arg_buffer, int arg_buffer_size, char *data_buffer,
     int data_buffer_size);
+extern int css_send_request_with_data_buffer_with_padding (CSS_CONN_ENTRY *conn, int request, unsigned short *rid,
+    const char *arg_buffer, int arg_buffer_size, char *data_buffer,
+    int data_buffer_size);
 
 #if defined (CS_MODE) || defined (SA_MODE)
 extern int css_send_request_no_reply (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id, char *arg_buffer,
@@ -85,6 +88,7 @@ extern int css_send_request (CSS_CONN_ENTRY *conn, int request, unsigned short *
 			     int arg_buffer_size);
 
 extern int css_send_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size);
+extern int css_send_data_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size);
 #if defined (SERVER_MODE)
 extern int css_send_two_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer1, int buffer1_size,
 			      const char *buffer2, int buffer2_size);
@@ -95,6 +99,7 @@ extern int css_send_four_data (CSS_CONN_ENTRY *conn, unsigned short rid, const c
 			       const char *buffer4, int buffer4_size);
 #endif /* SERVER_MODE */
 extern int css_send_error (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size);
+extern int css_send_error_with_padding (CSS_CONN_ENTRY *conn, unsigned short rid, const char *buffer, int buffer_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int css_send_large_data (CSS_CONN_ENTRY *conn, unsigned short rid, const char **buffers, int *buffers_size,
 				int num_buffers);
