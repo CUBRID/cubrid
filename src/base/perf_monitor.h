@@ -845,6 +845,7 @@ extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
 extern void perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p);
 extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
+extern void perfmon_merge_parallel_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
