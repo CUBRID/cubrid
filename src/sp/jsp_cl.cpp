@@ -1295,6 +1295,49 @@ error_exit:
   return (err == NO_ERROR) ? er_errid () : err;
 }
 
+int
+jsp_recompile (PARSER_CONTEXT *parser, const char *name)
+{
+  assert (name != NULL);
+
+  MOP sp_mop = NULL;
+  int error = NO_ERROR;
+  DB_VALUE target_class_val;
+  const char *target_class = NULL;
+  char owner_name_buf[DB_MAX_USER_LENGTH];
+  const char *owner_name = NULL;
+
+  sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
+  if (sp_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_class_val);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  target_class = db_get_string (&target_class_val);
+  owner_name = jsp_get_owner_name (name, owner_name_buf, DB_MAX_USER_LENGTH);
+  if (owner_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error =
+	  alter_stored_procedure_code (parser, sp_mop, target_class, owner_name, true);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = dep_set_validity (name, DEP_VALID);
+  return error;
+}
 /*
  * jsp_alter_stored_procedure
  *   return: if failed return error code else NO_ERROR
@@ -1428,21 +1471,13 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       lang = db_get_int (&sp_lang_val);
       if (lang == SP_LANG_PLCSQL)
 	{
-	  err = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_cls_val);
-	  if (err != NO_ERROR)
-	    {
-	      goto error;
-	    }
-	  target_cls = db_get_string (&target_cls_val);
-
-	  owner_str = sm_qualifier_name (name_str, downcase_owner_name, DB_MAX_USER_LENGTH);
-
-	  err = alter_stored_procedure_code (parser, sp_mop, target_cls, owner_str, sp_recompile);
+	  err = jsp_recompile (parser, name_str);
 	  if (err != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	}
+      // TODO: check why SP_LANG_JAVA bypasses error handling
     }
 
   /* change the comment */
@@ -1463,7 +1498,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
 
   obj_type = (real_type == SP_TYPE_PROCEDURE) ? DEP_OBJ_PROCEDURE : DEP_OBJ_FUNCTION;
-  err = dep_invalidate_dependencies(name_str, obj_type);
+  err = dep_invalidate_dependencies (name_str, obj_type);
 
 error:
 

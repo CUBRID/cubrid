@@ -3315,6 +3315,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  node->info.method_call.method_type = (PT_MISC_TYPE) jsp_get_sp_type (method_name);
 	  method_name_node->info.name.meta_class = PT_METHOD;
 	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+	  if (!dep_is_valid (method_name))
+	    {
+	      if (er_errid () != NO_ERROR || jsp_recompile (parser, method_name) != NO_ERROR)
+		{
+		  return NULL;
+		}
+	    }
+
 	  /* don't revisit leaves */
 	  *continue_walk = PT_LIST_WALK;
 	}
@@ -3541,6 +3550,14 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		    }
 
 		  node1 = pt_resolve_stored_procedure (parser, node, bind_arg);
+
+		  if (!dep_is_valid (sp_unique_name))
+		    {
+		      if (er_errid () != NO_ERROR || jsp_recompile (parser, sp_unique_name) != NO_ERROR)
+			{
+			  return NULL;
+			}
+		    }
 		}
 	      else
 		{

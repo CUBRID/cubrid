@@ -61,6 +61,8 @@ PT_NODE *dep_collect_dependencies_of_plcsql (PARSER_CONTEXT * parser, PT_NODE * 
 int dep_create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
 			   const char *ref_unique_name, DB_OBJECT * ref_owner, DEP_OBJECT_TYPE ref_type,
 			   DEP_DEPENDENCY_TYPE dep_type);
+int dep_set_validity (const char *unique_name, DEP_VALIDITY_TYPE type);
+bool dep_is_valid (const char *name);
 
 #endif /* (SERVER_MODE) */
 

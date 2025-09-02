@@ -35,6 +35,7 @@
 #include "schema_system_catalog_constants.h"
 #include "transaction_cl.h"
 #include "pl_struct_compile.hpp"
+#include "jsp_cl.h"
 
 #define SAVEPOINT_DELETE_DEPENDENCY "DELETEDEPENDENCY"
 #define SAVEPOINT_INVALIDATE_DEPENDENCIES "INVALIDATEDEPENDENCIES"
@@ -150,23 +151,26 @@ dep_collect_dependencies_of_plcsql (PARSER_CONTEXT * parser, PT_NODE * node, voi
 }
 
 int
-dep_set_validity (MOP class_, const char *unique_name, DEP_VALIDITY_TYPE type)
+dep_set_validity (const char *name, DEP_VALIDITY_TYPE type)
 {
-  assert (unique_name != NULL);
+  assert (name != NULL);
 
   int error = NO_ERROR;
-  DB_VALUE unique_name_value, validity_value;
+  DB_VALUE name_value, validity_value;
   MOP obj = NULL;
   DB_OTMPL *obt_p = NULL;
+  int save;
 
-  db_make_string (&unique_name_value, unique_name);
+  db_make_string (&name_value, name);
   db_make_int (&validity_value, type);
 
-  obj = db_find_unique (class_, SP_ATTR_UNIQUE_NAME, &unique_name_value);
+  AU_DISABLE (save);
+
+  obj = jsp_find_stored_procedure (name, DB_AUTH_UPDATE);
   if (obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   obt_p = dbt_edit_object (obj);
@@ -174,16 +178,18 @@ dep_set_validity (MOP class_, const char *unique_name, DEP_VALIDITY_TYPE type)
   error = dbt_put_internal (obt_p, SP_ATTR_VALIDITY, &validity_value);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   if (dbt_finish_object (obt_p) == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
-  return NO_ERROR;
+end:
+  AU_ENABLE (save);
+  return error;
 }
 
 int
@@ -239,7 +245,7 @@ dep_invalidate_dependencies (const char *unique_name, DEP_OBJECT_TYPE type)
 	}
 
       dep_unique_name = db_get_string (&dep_unique_name_value);
-      error = dep_set_validity (sp_class, dep_unique_name, DEP_INVALID);
+      error = dep_set_validity (dep_unique_name, DEP_INVALID);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -352,7 +358,7 @@ dep_delete (const char *unique_name, DEP_OBJECT_TYPE type)
 	}
       else
 	{
-	  error = dep_set_validity (sp_class, unique_name, DEP_INVALID);
+	  error = dep_set_validity (unique_name, DEP_INVALID);
 	  if (error != NO_ERROR)
 	    {
 	      goto end;
@@ -484,4 +490,26 @@ end:
   AU_ENABLE (save);
 
   return error;
+}
+
+bool
+dep_is_valid (const char *name)
+{
+  MOP sp_mop = NULL;
+  DB_VALUE value;
+
+  sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
+  if (sp_mop == NULL)
+    {
+      ASSERT_ERROR ();
+      return false;
+    }
+
+  if (db_get (sp_mop, SP_ATTR_VALIDITY, &value) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return false;
+    }
+
+  return (DEP_VALIDITY_TYPE) db_get_int (&value) == DEP_VALID;
 }
