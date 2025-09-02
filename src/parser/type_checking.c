@@ -18135,9 +18135,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  if (opd1 && opd1->node_type == PT_NAME)
 	    {
 	      MOP cls;
-	      SM_CONSTRAINT *consp;
 	      SM_CLASS *class_;
-	      SM_ATTRIBUTE *attr;
+	      SM_CLASS_CONSTRAINT *consp;
+	      SM_ATTRIBUTE *attr, *attrs;
 
 	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
 	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
@@ -18146,30 +18146,34 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  goto end;
 		}
 
-	      if (au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
-		{
-		  attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
-		  if (attr == NULL)
-		    {
-		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
-		      PT_ERRORc (parser, expr, er_msg ());
-		      has_error = true;
-		      goto end;
-		    }
+	      consp = sm_class_constraints (cls);
 
-		  for (consp = attr->constraints; consp != NULL; consp = consp->next)
+	      au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+	      attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
+	      if (attr == NULL)
+		{
+		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
+		  PT_ERRORc (parser, expr, er_msg ());
+		  has_error = true;
+		  goto end;
+		}
+
+	      for (; consp != NULL; consp = consp->next)
+		{
+		  SM_ATTRIBUTE **consp_attrs = consp->attributes;
+
+		  for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
 		    {
-		      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+		      if (consp_attrs[i]->id == attr->id)
 			{
-			  db_make_int (&dbval_res, 1);
-			  result = pt_dbval_to_value (parser, &dbval_res);
-			  goto end;
+			  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+			    {
+			      db_make_int (&dbval_res, 1);
+			      result = pt_dbval_to_value (parser, &dbval_res);
+			      goto end;
+			    }
 			}
 		    }
-		}
-	      else
-		{
-		  goto end;
 		}
 	    }
 	  [[fallthrough]];
@@ -18194,8 +18198,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
   if (opd2 && opd2->node_type == PT_VALUE)
     {
-      MOP cls;
-      SM_CLASS_CONSTRAINT *cls_consp;
       arg2 = pt_value_to_db (parser, opd2);
       type2 = opd2->type_enum;
 
@@ -18217,8 +18219,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	  if (num_logical_chars >= 1 && num_logical_chars == num_match_many)
 	    {
-	      SM_CLASS_CONSTRAINT *consp;
+	      MOP cls;
 	      SM_CLASS *class_;
+	      SM_CLASS_CONSTRAINT *consp;
 	      SM_ATTRIBUTE *attr, *attrs;
 
 	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
@@ -18251,7 +18254,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 			{
 			  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
 			    {
-
 			      db_make_int (&dbval_res, 1);
 			      result = pt_dbval_to_value (parser, &dbval_res);
 			      goto end;
