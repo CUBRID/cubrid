@@ -18166,15 +18166,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 			  goto end;
 			}
 		    }
-
-		  if (consp != NULL)
-		    {
-		      break;
-		    }
 		}
 	      else
 		{
-		  has_error = true;
 		  goto end;
 		}
 	    }
@@ -18207,24 +18201,21 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
       if (op == PT_LIKE && opd1 && opd1->node_type == PT_NAME)
 	{
-	  bool has_escape_char = false;
 	  DB_VALUE compressed_pattern;
 	  int num_logical_chars = 0;
 	  int last_safe_logical_pos = 0;
 	  int num_match_many = 0;
 	  int num_match_one = 0;
-	  const char *escape_str = NULL;
 
 	  db_make_null (&compressed_pattern);
 
-	  db_compress_like_pattern (arg2, &compressed_pattern, has_escape_char, escape_str);
+	  db_compress_like_pattern (arg2, &compressed_pattern, false, NULL);
 
-
-	  db_get_info_for_like_optimization (arg2, has_escape_char, escape_str,
+	  db_get_info_for_like_optimization (arg2, false, NULL,
 					     &num_logical_chars, &last_safe_logical_pos,
 					     &num_match_many, &num_match_one);
 
-	  if (num_logical_chars == 1 && num_match_many == 1 && num_match_one == 0)
+	  if (num_logical_chars >= 1 && num_logical_chars == num_match_many)
 	    {
 	      SM_CLASS_CONSTRAINT *consp;
 	      SM_CLASS *class_;
