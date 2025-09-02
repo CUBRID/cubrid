@@ -5168,10 +5168,10 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	  return ER_FAILED;
 	}
 
-      if (thread_is_on_trace (thread_p))
+      /* Do not output parallel sort trace info from qfile_sort_list(). */
+      ORDERBY_STATS *orderby_stats = (ORDERBY_STATS *) ((SORT_INFO *) sort_param->get_arg)->orderby_stats;
+      if (orderby_stats && thread_is_on_trace (thread_p))
 	{
-	  ORDERBY_STATS *orderby_stats = (ORDERBY_STATS *) ((SORT_INFO *) sort_param->get_arg)->orderby_stats;
-
 	  orderby_stats->px_min_orderby_time = std::numeric_limits < UINT64 >::max ();
 	  orderby_stats->px_min_orderby_pages = std::numeric_limits < UINT64 >::max ();
 	  orderby_stats->px_min_orderby_ioreads = std::numeric_limits < UINT64 >::max ();
