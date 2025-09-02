@@ -25,14 +25,9 @@
 #include "dependency.h"
 #include "authenticate.h"
 #include "db.h"
-#include "dbi.h"
 #include "dbtype.h"
-#include "dbtype_def.h"
-#include "error_code.h"
-#include "error_manager.h"
 #include "locator_cl.h"
 #include "schema_manager.h"
-#include "schema_system_catalog_constants.h"
 #include "transaction_cl.h"
 #include "pl_struct_compile.hpp"
 #include "jsp_cl.h"
@@ -42,7 +37,6 @@
 
 #define UNIQUE_NAME_BUF_SIZE (DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 2)
 
-static int dep_set_validity (MOP class_, const char *unique_name, DEP_VALIDITY_TYPE type);
 static const char *get_unique_name (const char *name, char *buf);
 
 static const char *
@@ -78,33 +72,47 @@ dep_collect_dependencies_of_plcsql (PARSER_CONTEXT * parser, PT_NODE * node, voi
 	    return node;
 	  }
 
-	ref_unique_name = get_unique_name (PT_NAME_ORIGINAL (PT_SPEC_ENTITY_NAME (node)), unique_name_buf);
-	if (db_find_synonym (ref_unique_name) != NULL)
+	const char *name = PT_NAME_ORIGINAL (PT_SPEC_ENTITY_NAME (node));
+	if (sm_is_system_class (name))
 	  {
-	    ref_type = DEP_OBJ_SYNONYM;
-	    break;
+	    ref_type = DEP_OBJ_TABLE;
+	    ref_unique_name = name;
 	  }
-
-	// synonym_obj == NULL, continue to find class
-	ASSERT_ERROR_AND_SET (error);
-	if (error == ER_SYNONYM_NOT_EXIST)
+	else if (sm_is_system_vclass (name))
 	  {
-	    er_clear ();
-	    error = NO_ERROR;
+	    ref_type = DEP_OBJ_VIEW;
+	    ref_unique_name = name;
 	  }
 	else
 	  {
-	    return NULL;
-	  }
+	    ref_unique_name = get_unique_name (name, unique_name_buf);
+	    if (db_find_synonym (ref_unique_name) != NULL)
+	      {
+		ref_type = DEP_OBJ_SYNONYM;
+		break;
+	      }
 
-	class_ = db_find_class (ref_unique_name);
-	if (class_ == NULL)
-	  {
-	    return NULL;
-	  }
+	    // synonym_obj == NULL, continue to find class
+	    ASSERT_ERROR_AND_SET (error);
+	    if (error == ER_SYNONYM_NOT_EXIST)
+	      {
+		er_clear ();
+		error = NO_ERROR;
+	      }
+	    else
+	      {
+		return NULL;
+	      }
 
-	SM_CLASS_TYPE class_type = sm_get_class_type ((SM_CLASS *) class_->object);
-	ref_type = (class_type == SM_CLASS_CT) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+	    class_ = db_find_class (ref_unique_name);
+	    if (class_ == NULL)
+	      {
+		return NULL;
+	      }
+
+	    SM_CLASS_TYPE class_type = sm_get_class_type ((SM_CLASS *) class_->object);
+	    ref_type = (class_type == SM_CLASS_CT) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+	  }
 	break;
       }
     case PT_FUNCTION:

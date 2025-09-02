@@ -22,8 +22,6 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <sys/socket.h>
@@ -46,20 +44,16 @@
 #include "parser_message.h"
 #include "object_domain.h"
 #include "object_primitive.h"
-#include "object_representation.h"
 #include "db.h"
 #include "object_accessor.h"
 #include "set_object.h"
 #include "locator_cl.h"
 #include "transaction_cl.h"
 #include "schema_manager.h"
-#include "numeric_opfunc.h"
 #include "jsp_cl.h"
 #include "system_parameter.h"
 #include "network_interface_cl.h"
-#include "unicode_support.h"
 #include "dbtype.h"
-#include "pl_comm.h"
 #include "pl_struct_compile.hpp"
 #include "sp_catalog.hpp"
 #include "authenticate_access_auth.hpp"
@@ -120,8 +114,6 @@
 
 #define MAX_ARG_COUNT 64
 
-static int server_port = -1;
-static int call_cnt = 0;
 static bool is_prepare_call[MAX_CALL_COUNT] = { false, };
 
 static SP_TYPE_ENUM jsp_map_pt_misc_to_sp_type (PT_MISC_TYPE pt_enum);
@@ -579,7 +571,7 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
 }
 
 /*
- * jsp_get_owner_name - Return Java Stored Procedure'S Owner nmae
+ * jsp_get_owner_name - Return Java Stored Procedure'S Owner name
  *   return: if fail return MULL
  *           else return Java Stored Procedure Type
  *   name(in): java stored procedure name
@@ -728,7 +720,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int error = NO_ERROR;
   PT_NODE *method;
-  const char *method_name;
+
   if (!statement || ! (method = statement->info.method_call.method_name) || method->node_type != PT_NAME)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
@@ -1034,13 +1026,11 @@ create_sp_dependencies (const std::vector<cubpl::plcsql_dependency> &dependencie
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  const char *decl = NULL, *comment = NULL;
+  const char *decl = NULL;
   char owner_name[DB_MAX_USER_LENGTH];
   owner_name[0] = '\0';
 
   PT_NODE *param_list, *p;
-  PT_TYPE_ENUM ret_type = PT_TYPE_NONE;
-  int lang;
   int err = NO_ERROR;
   bool has_savepoint = false;
 
@@ -2378,10 +2368,6 @@ exit_on_error:
 static int
 check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 {
-  int error = NO_ERROR;
-  MOP owner_mop = NULL;
-  DB_VALUE owner;
-
   if (au_type != DB_AUTH_EXECUTE)
     {
       return NO_ERROR;

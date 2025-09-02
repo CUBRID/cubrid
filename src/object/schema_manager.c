@@ -20,7 +20,6 @@
  * schema_manager.c - "Schema" (in the SQL standard sense) implementation
  */
 
-#include "schema_system_catalog_constants.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -74,6 +73,8 @@
 #include "release_string.h"
 #include "execute_statement.h"
 #include "crypt_opfunc.h"
+#include "dependency.h"
+#include "schema_system_catalog_constants.h"
 
 #include "db.h"
 #include "object_accessor.h"
