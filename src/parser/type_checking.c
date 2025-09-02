@@ -18184,11 +18184,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		      break;
 		    }
 		}
-                else
-                {
-                  has_error = true;
+	      else
+		{
+		  has_error = true;
 		  goto end;
-                }
+		}
 	    }
 	  [[fallthrough]];
 
@@ -18212,8 +18212,99 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
   if (opd2 && opd2->node_type == PT_VALUE)
     {
+      MOP cls;
+      SM_CLASS_CONSTRAINT *cls_consp;
       arg2 = pt_value_to_db (parser, opd2);
       type2 = opd2->type_enum;
+
+      if (op == PT_LIKE)
+	{
+	  bool has_escape_char = false;
+	  DB_VALUE compressed_pattern;
+	  int num_logical_chars = 0;
+	  int last_safe_logical_pos = 0;
+	  int num_match_many = 0;
+	  int num_match_one = 0;
+	  const char *escape_str = NULL;
+
+	  db_make_null (&compressed_pattern);
+
+	  db_compress_like_pattern (arg2, &compressed_pattern, has_escape_char, escape_str);
+
+
+	  db_get_info_for_like_optimization (arg2, has_escape_char, escape_str,
+					     &num_logical_chars, &last_safe_logical_pos,
+					     &num_match_many, &num_match_one);
+
+	  if (num_logical_chars == 1 && num_match_many == 1 && num_match_one == 0)
+	    {
+	      if (opd1 && opd1->node_type == PT_NAME)
+		{
+		  SM_CLASS_CONSTRAINT *consp;
+		  SM_CLASS *class_;
+		  SM_ATTRIBUTE *attr, *attrs;
+
+		  cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
+		  if (cls == NULL)
+		    {
+		      has_error = true;
+		      goto end;
+		    }
+
+		  consp = sm_class_constraints (cls);
+
+		  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+		  attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
+
+		  for (; consp != NULL; consp = consp->next)
+		    {
+		      SM_ATTRIBUTE **consp_attrs = consp->attributes;
+		      int i;
+
+		      for (i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
+			{
+			  if (consp_attrs[i]->id == attr->id)
+			    {
+			      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+				{
+				  opd1 = parser_new_node (parser, PT_VALUE);
+				  if (opd1 == NULL)
+				    {
+				      has_error = true;
+				      goto end;
+				    }
+
+				  opd1->type_enum = PT_TYPE_INTEGER;
+				  opd1->info.value.data_value.i = 1;
+
+				  arg1 = pt_value_to_db (parser, opd1);
+				  type1 = opd1->type_enum;
+
+				  expr->info.expr.arg1 = opd1;
+
+				  opd2 = parser_new_node (parser, PT_VALUE);
+				  if (opd2 == NULL)
+				    {
+				      has_error = true;
+				      goto end;
+				    }
+
+				  opd2->type_enum = PT_TYPE_INTEGER;
+				  opd2->info.value.data_value.i = 1;
+
+				  arg2 = pt_value_to_db (parser, opd2);
+				  type2 = opd2->type_enum;
+
+				  expr->info.expr.arg2 = opd2;
+                                  op = PT_EQ;
+				  break;
+				}
+			    }
+			}
+		    }
+		}
+	    }
+	}
     }
   else
     {
