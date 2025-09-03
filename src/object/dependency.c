@@ -72,7 +72,19 @@ dep_collect_dependencies_of_plcsql (PARSER_CONTEXT * parser, PT_NODE * node, voi
 	    return node;
 	  }
 
-	const char *name = PT_NAME_ORIGINAL (PT_SPEC_ENTITY_NAME (node));
+	PT_NODE *entity = PT_SPEC_ENTITY_NAME (node);
+	const char *name = NULL;
+	if (PT_NAME_RESOLVED (entity))
+	  {
+	    snprintf (unique_name_buf, UNIQUE_NAME_BUF_SIZE, "%s.%s", PT_NAME_RESOLVED (entity),
+		      PT_NAME_ORIGINAL (entity));
+	    name = unique_name_buf;
+	  }
+	else
+	  {
+	    name = PT_NAME_ORIGINAL (entity);
+	  }
+
 	if (sm_is_system_class (name))
 	  {
 	    ref_type = DEP_OBJ_TABLE;
