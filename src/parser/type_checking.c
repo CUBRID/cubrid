@@ -18235,34 +18235,35 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  db_make_null (&dummy);
 		  arg1 = &dummy;
 		  type1 = PT_TYPE_NULL;
-		  break;
 		}
-
-	      consp = sm_class_constraints (cls);
-
-	      au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
-	      attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
-	      if (attr == NULL)
+	      else
 		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
-		  PT_ERRORc (parser, expr, er_msg ());
-		  has_error = true;
-		  goto end;
-		}
+		  consp = sm_class_constraints (cls);
 
-	      for (; consp != NULL; consp = consp->next)
-		{
-		  SM_ATTRIBUTE **consp_attrs = consp->attributes;
-
-		  for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
+		  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+		  attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
+		  if (attr == NULL)
 		    {
-		      if (consp_attrs[i]->id == attr->id)
+		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
+		      PT_ERRORc (parser, expr, er_msg ());
+		      has_error = true;
+		      goto end;
+		    }
+
+		  for (; consp != NULL; consp = consp->next)
+		    {
+		      SM_ATTRIBUTE **consp_attrs = consp->attributes;
+
+		      for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
 			{
-			  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+			  if (consp_attrs[i]->id == attr->id)
 			    {
-			      db_make_int (&dbval_res, 1);
-			      result = pt_dbval_to_value (parser, &dbval_res);
-			      goto end;
+			      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+				{
+				  db_make_int (&dbval_res, 1);
+				  result = pt_dbval_to_value (parser, &dbval_res);
+				  goto end;
+				}
 			    }
 			}
 		    }
