@@ -98,32 +98,11 @@ dep_collect_dependencies_of_plcsql (PARSER_CONTEXT * parser, PT_NODE * node, voi
 	else
 	  {
 	    ref_unique_name = get_unique_name (name, unique_name_buf);
-	    if (db_find_synonym (ref_unique_name) != NULL)
-	      {
-		ref_type = DEP_OBJ_SYNONYM;
-		break;
-	      }
-
-	    // synonym_obj == NULL, continue to find class
-	    ASSERT_ERROR_AND_SET (error);
-	    if (error == ER_SYNONYM_NOT_EXIST)
-	      {
-		er_clear ();
-		error = NO_ERROR;
-	      }
-	    else
+	    ref_type = dep_resolve_entity_type (ref_unique_name);
+	    if (ref_type == DEP_OBJ_NONE)
 	      {
 		return NULL;
 	      }
-
-	    class_ = db_find_class (ref_unique_name);
-	    if (class_ == NULL)
-	      {
-		return NULL;
-	      }
-
-	    SM_CLASS_TYPE class_type = sm_get_class_type ((SM_CLASS *) class_->object);
-	    ref_type = (class_type == SM_CLASS_CT) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
 	  }
 	break;
       }
@@ -537,4 +516,34 @@ dep_is_valid (const char *name)
 end:
   AU_ENABLE (save);
   return ((DEP_VALIDITY_TYPE) db_get_int (&value)) == DEP_VALID;
+}
+
+DEP_OBJECT_TYPE
+dep_resolve_entity_type (const char *unique_name)
+{
+  assert (unique_name != NULL);
+
+  MOP class_ = NULL;
+  SM_CLASS_TYPE class_type;
+
+  if (db_find_synonym (unique_name) != NULL)
+    {
+      return DEP_OBJ_SYNONYM;
+    }
+
+  // synonym_obj == NULL, continue to find class
+  if (er_errid () != ER_SYNONYM_NOT_EXIST)
+    {
+      return DEP_OBJ_NONE;
+    }
+  er_clear ();
+
+  class_ = db_find_class (unique_name);
+  if (class_ == NULL)
+    {
+      return DEP_OBJ_NONE;
+    }
+
+  class_type = sm_get_class_type ((SM_CLASS *) class_->object);
+  return dep_get_object_type (class_type);
 }

@@ -985,6 +985,8 @@ create_sp_dependencies (const std::vector<cubpl::plcsql_dependency> &dependencie
   for (const auto &dep : dependencies)
     {
       obj_uniq_name = dep.obj_uniq_name.c_str();
+      DEP_OBJECT_TYPE ref_type = DEP_OBJ_NONE;
+
       if (sm_is_system_class (obj_uniq_name) || sm_is_system_vclass (obj_uniq_name))
 	{
 	  owner = Au_dba_user;
@@ -1003,8 +1005,21 @@ create_sp_dependencies (const std::vector<cubpl::plcsql_dependency> &dependencie
 	    }
 	}
 
+      if (dep.obj_type == DEP_OBJ_TABLE)
+	{
+	  ref_type = dep_resolve_entity_type (obj_uniq_name);
+	  if (ref_type == DEP_OBJ_NONE)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  ref_type = (DEP_OBJECT_TYPE)dep.obj_type;
+	}
+
       if (dep_create_dependency (sp_name, type, obj_uniq_name, owner,
-				 (DEP_OBJECT_TYPE)dep.obj_type,
+				 ref_type,
 				 DEP_TYPE_HARD) != NO_ERROR)
 	{
 	  return ER_FAILED;

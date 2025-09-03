@@ -39,8 +39,8 @@ typedef enum
 
 typedef enum
 {
-  DEP_TYPE_HARD, /* Strong dependency: invalid if referenced object is dropped/changed */
-  DEP_TYPE_REF   /* Reference-only: still usable if referenced object is dropped (e.g. Materialized View) */
+  DEP_TYPE_HARD,		/* Strong dependency: invalid if referenced object is dropped/changed */
+  DEP_TYPE_REF			/* Reference-only: still usable if referenced object is dropped (e.g. Materialized View) */
 } DEP_DEPENDENCY_TYPE;
 
 typedef enum
@@ -82,6 +82,7 @@ int dep_create_dependency (const char *unique_name, DEP_OBJECT_TYPE type,
 			   DEP_DEPENDENCY_TYPE dep_type);
 int dep_set_validity (const char *unique_name, DEP_VALIDITY_TYPE type);
 bool dep_is_valid (const char *name);
+DEP_OBJECT_TYPE dep_resolve_entity_type (const char *unique_name);
 
 #endif /* (SERVER_MODE) */
 
