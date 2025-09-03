@@ -146,7 +146,7 @@ css_net_send_general (SOCKET &socket, int timeout, Args &&...args)
   char padding[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
   struct iovec iov[sizeof... (Args) * 2 + 1];
   int iov_size;
-  int header[sizeof... (Args) / 2 + 1];
+  int header[sizeof... (Args) + 1];
   int header_size;
   const char *buffer;
   int buffer_size;
@@ -174,9 +174,11 @@ css_net_send_general (SOCKET &socket, int timeout, Args &&...args)
 	iov[iov_size].iov_len = sizeof (int);
 	total_size += iov[iov_size++].iov_len;
 
-	/* padding */
-	iov[iov_size].iov_base = padding;
-	iov[iov_size].iov_len = 8 - sizeof (int);
+	/* not just padding */
+	/* use this space to indicate the amount of padding size at the end */
+	header[header_size] = htonl ((8 - (buffer_size % 8)) & 7);
+	iov[iov_size].iov_base = &header[header_size++];
+	iov[iov_size].iov_len = sizeof (int);
 	total_size += iov[iov_size++].iov_len;
 
 	/* buffer */
