@@ -167,7 +167,7 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
   if (session_has_pl_session (thread_p))
     {
       PL_SESSION *session = cubpl::get_session ();
-      if (!session || session->is_running () == false)
+      if (!session || session->is_sp_running () == false)
 	{
 	  net_cleanup_server_queues (rid);
 	}
@@ -208,7 +208,7 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
   if (session_has_pl_session (thread_p))
     {
       PL_SESSION *session = cubpl::get_session ();
-      if (!session || session->is_running () == false)
+      if (!session || session->is_sp_running () == false)
 	{
 	  net_cleanup_server_queues (rid);
 	}
