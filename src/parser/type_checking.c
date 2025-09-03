@@ -18232,9 +18232,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
 		{
 		  er_clear ();
-		  db_make_null (&dummy);
-		  arg1 = &dummy;
-		  type1 = PT_TYPE_NULL;
 		}
 	      else
 		{
