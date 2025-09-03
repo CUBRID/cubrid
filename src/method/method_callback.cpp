@@ -664,14 +664,14 @@ namespace cubmethod
 
 	    if (error == NO_ERROR)
 	      {
-                // collect dependencies from the original statement to preserve references to synonyms
+		// collect dependencies from the original statement to preserve references to synonyms
 		PT_NODE **no_rewritten_stmt = parser_parse_string (parser, parser->original_buffer);
-                if (no_rewritten_stmt != NULL && *no_rewritten_stmt != NULL)
-                  {
-                    (void)parser_walk_tree(parser, *no_rewritten_stmt,
-                                     dep_collect_dependencies_of_plcsql,
-                                     &semantics, NULL, NULL);
-                  }
+		if (no_rewritten_stmt != NULL && *no_rewritten_stmt != NULL)
+		  {
+		    (void)parser_walk_tree (parser, *no_rewritten_stmt,
+					    dep_collect_dependencies_of_plcsql,
+					    &semantics, NULL, NULL);
+		  }
 
 		if (no_rewritten_stmt == NULL || *no_rewritten_stmt == NULL || pt_has_error (parser))
 		  {
