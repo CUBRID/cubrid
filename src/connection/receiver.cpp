@@ -45,6 +45,7 @@
 } while (0)
 
 constexpr std::size_t SIZE_HEADER = sizeof (int);
+constexpr std::size_t SIZE_HEADER_PADDING = sizeof (int);
 
 namespace cubconn
 {
@@ -123,9 +124,11 @@ namespace cubconn
     while (m_received >= SIZE_HEADER + m_size)
       {
 	_er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: m_bufptr = %p, m_received = %d, m_size = %d, after parse = %d\n",
-		       m_bufptr + SIZE_HEADER, m_received, m_size, m_received - SIZE_HEADER - m_size);
+		       m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_received, m_size, m_received - SIZE_HEADER - m_size);
+	
+	assert ((reinterpret_cast<uintptr_t> (m_bufptr) & 7) == 0);
 
-	m_result.emplace_back (m_bufptr + SIZE_HEADER, m_size);
+	m_result.emplace_back (m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_size - SIZE_HEADER_PADDING);
 	m_received -= SIZE_HEADER + m_size;
 	if (is_buffer)
 	  {
@@ -208,7 +211,7 @@ namespace cubconn
 
 	/* m_received < SIZE_HEADER */
 
-	if (m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
+	if (m_bufsize < SIZE_HEADER + SIZE_HEADER_PADDING + sizeof (NET_HEADER))
 	  {
 	    /* need to recv the size header but the buffer was not large enough */
 	    std::memcpy (&m_tmpsize, m_bufptr, m_received);
@@ -217,7 +220,7 @@ namespace cubconn
 	  }
 
 	/* m_received < SIZE_HEADER */
-	/* m_bufsize >= SIZE_HEADER + sizeof (NET_HEADER) */
+	/* m_bufsize >= SIZE_HEADER + SIZE_HEADER_PADDING + sizeof (NET_HEADER) */
 
 	NEXT_STATE (Recv);
 	return result::Partial;
@@ -279,7 +282,7 @@ namespace cubconn
 	assert (m_bufptr == m_buf.buffer ().data ());
 	assert (m_bufsize == m_buf.buffer ().size ());
 
-	if (m_bufsize < SIZE_HEADER + sizeof (NET_HEADER))
+	if (m_bufsize < SIZE_HEADER + SIZE_HEADER_PADDING + sizeof (NET_HEADER))
 	  {
 	    NEXT_STATE (RecvSizeInTmp);
 	  }
@@ -410,12 +413,12 @@ namespace cubconn
 
     if (m_buf.is_in (mem))
       {
-	source = cubbase::span<std::byte> (mem.data () - SIZE_HEADER, mem.size () + SIZE_HEADER);
+	source = cubbase::span<std::byte> (mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING), mem.size () + SIZE_HEADER + SIZE_HEADER_PADDING);
 	m_buf.restore (source);
       }
     else
       {
-	auto it = std::find (m_allocated.begin (), m_allocated.end (), mem.data () - SIZE_HEADER);
+	auto it = std::find (m_allocated.begin (), m_allocated.end (), mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING));
 	if (it == m_allocated.end ())
 	  {
 	    _er_log_debug (ARG_FILE_LINE, "receiver: memory = %p does not belong to this receiver\n", mem.data () - SIZE_HEADER);
@@ -423,7 +426,7 @@ namespace cubconn
 	    return;
 	  }
 	m_allocated.erase (it);
-	delete[] (mem.data () - SIZE_HEADER);
+	delete[] (mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING));
       }
   }
 

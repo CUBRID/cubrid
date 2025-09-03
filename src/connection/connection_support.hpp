@@ -144,9 +144,9 @@ css_net_send_general (SOCKET &socket, int timeout, Args &&...args)
   static_assert (sizeof... (Args) % 2 == 0, "arguments must be in pairs of buffer, size");
 
   char padding[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-  struct iovec iov[sizeof... (Args) * 2];
+  struct iovec iov[sizeof... (Args) * 2 + 1];
   int iov_size;
-  int header[sizeof... (Args) / 2];
+  int header[sizeof... (Args) / 2 + 1];
   int header_size;
   const char *buffer;
   int buffer_size;
@@ -167,31 +167,31 @@ css_net_send_general (SOCKET &socket, int timeout, Args &&...args)
       {
 	buffer_size = arg;
 
-	if (buffer && buffer_size > 0)
+	assert (buffer && buffer_size > 0);
+	/* size */
+	header[header_size] = htonl ((8 - sizeof (int)) + buffer_size + ((8 - (buffer_size % 8)) & 7));
+	iov[iov_size].iov_base = &header[header_size++];
+	iov[iov_size].iov_len = sizeof (int);
+	total_size += iov[iov_size++].iov_len;
+
+	/* padding */
+	iov[iov_size].iov_base = padding;
+	iov[iov_size].iov_len = 8 - sizeof (int);
+	total_size += iov[iov_size++].iov_len;
+
+	/* buffer */
+	iov[iov_size].iov_base = reinterpret_cast<void *> (const_cast<char *> (buffer));
+	iov[iov_size].iov_len = buffer_size;
+	total_size += iov[iov_size++].iov_len;
+
+	if (buffer_size % 8 != 0)
 	  {
-	    /* size */
-	    header[header_size] = htonl ((8 - sizeof (int)) + buffer_size + ((8 - (buffer_size % 8)) & 7));
-	    iov[iov_size].iov_base = &header[header_size++];
-	    iov[iov_size].iov_len = sizeof (int);
-	    total_size += iov[iov_size++].iov_len;
-
-	    /* padding */
 	    iov[iov_size].iov_base = padding;
-	    iov[iov_size].iov_len = 8 - sizeof (int);
+	    iov[iov_size].iov_len = 8 - (buffer_size % 8);
 	    total_size += iov[iov_size++].iov_len;
-
-	    /* buffer */
-	    iov[iov_size].iov_base = reinterpret_cast<void *> (const_cast<char *> (buffer));
-	    iov[iov_size].iov_len = buffer_size;
-	    total_size += iov[iov_size++].iov_len;
-
-	    if (buffer_size % 8 != 0)
-	      {
-		iov[iov_size].iov_base = padding;
-		iov[iov_size].iov_len = 8 - (buffer_size % 8);
-		total_size += iov[iov_size++].iov_len;
-	      }
 	  }
+
+	buffer = nullptr;
       }
   }
   (std::forward<Args> (args)), ...);

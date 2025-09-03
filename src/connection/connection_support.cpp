@@ -1644,7 +1644,7 @@ css_send_request_with_data_buffer_with_padding (CSS_CONN_ENTRY *conn, int reques
     }
   else
     {
-      if (css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER) == NO_ERRORS))
+      if (css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER)) == NO_ERRORS)
 	{
 	  return NO_ERRORS;
 	}
