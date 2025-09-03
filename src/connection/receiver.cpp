@@ -118,6 +118,7 @@ namespace cubconn
   {
     cubbase::span<std::byte> buffer;
     std::uint32_t aligned;
+    int padding;
 
     assert (m_size > 0);
 
@@ -128,7 +129,15 @@ namespace cubconn
 	
 	assert ((reinterpret_cast<uintptr_t> (m_bufptr) & 7) == 0);
 
-	m_result.emplace_back (m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_size - SIZE_HEADER_PADDING);
+	std::memcpy (&aligned, m_bufptr + SIZE_HEADER, sizeof (std::uint32_t));
+	padding = ntohl (aligned);
+	assert_release (padding >= 0 && padding < 8);
+
+	*reinterpret_cast<int *> (m_bufptr + SIZE_HEADER) = padding;
+
+	_er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: packet size = %d, padding = %d, push size = %d.\n", m_size, SIZE_HEADER_PADDING + padding, m_size - SIZE_HEADER_PADDING - padding);
+
+	m_result.emplace_back (m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_size - SIZE_HEADER_PADDING - padding);
 	m_received -= SIZE_HEADER + m_size;
 	if (is_buffer)
 	  {
@@ -410,10 +419,12 @@ namespace cubconn
   void receiver::release (cubbase::span<std::byte> &mem)
   {
     cubbase::span<std::byte> source;
+    int padding;
 
     if (m_buf.is_in (mem))
       {
-	source = cubbase::span<std::byte> (mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING), mem.size () + SIZE_HEADER + SIZE_HEADER_PADDING);
+	padding = *reinterpret_cast<int *> (mem.data () - SIZE_HEADER_PADDING);
+	source = cubbase::span<std::byte> (mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING), mem.size () + SIZE_HEADER + SIZE_HEADER_PADDING + padding);
 	m_buf.restore (source);
       }
     else
