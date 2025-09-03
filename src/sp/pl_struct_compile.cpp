@@ -207,7 +207,7 @@ namespace cubpl
   {
     int value = 0;
     deserializator.unpack_int (value);
-    obj_type = static_cast<DEP_OBJECT_TYPE>(value);
+    obj_type = static_cast<DEP_OBJECT_TYPE> (value);
     deserializator.unpack_string (obj_uniq_name);
   }
 
