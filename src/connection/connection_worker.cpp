@@ -398,7 +398,7 @@ namespace cubconn
     css_conn_entry *conn;
     css_error_code error;
     NET_HEADER *header;
-    int size;
+    int size, aligned;
 
     assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
 
@@ -406,7 +406,7 @@ namespace cubconn
     header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
 
     size = ntohl (header->buffer_size);
-    if (static_cast<std::size_t> (size) != packet.size ())
+    if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
@@ -448,7 +448,7 @@ namespace cubconn
     header = reinterpret_cast<NET_HEADER *> (ctx->m_recv.m_header.data ());
 
     size = ntohl (header->buffer_size);
-    if (static_cast<std::size_t> (size) != packet.size ())
+    if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
@@ -468,25 +468,11 @@ namespace cubconn
       {
 	if (waiter)
 	  {
-	    /* for alignment */
-	    /* TODO: remove this and handle this problem in other way */
-	    char *buf;
-	    buf = (char *) new std::byte[packet.size ()];
-	    std::memcpy (buf, packet.data (), packet.size ());
-	    ctx->m_recv.m_receiver.release (packet);
-	    *waiter->buffer = buf;
-	    *waiter->size = packet.size ();
-	    *waiter->rc = NO_ERRORS;
-	    waiter->thrd_entry = NULL;
-	    css_free_wait_queue_entry (conn, waiter);
-
-	    /*
 	    *waiter->buffer = reinterpret_cast<char *> (packet.data ());
 	    *waiter->size = packet.size ();
 	    *waiter->rc = NO_ERRORS;
 	    waiter->thrd_entry = NULL;
 	    css_free_wait_queue_entry (conn, waiter);
-	    */
 	  }
 	else
 	  {
