@@ -18140,10 +18140,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      SM_ATTRIBUTE *attr, *attrs;
 
 	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
-	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
 		{
 		  er_clear ();
-		  goto end;
+		  db_make_null (&dummy);
+		  arg1 = &dummy;
+		  type1 = PT_TYPE_NULL;
+		  break;
 		}
 
 	      consp = sm_class_constraints (cls);
@@ -18226,10 +18229,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
 
-	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME)
+	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
 		{
 		  er_clear ();
-		  goto end;
+		  db_make_null (&dummy);
+		  arg1 = &dummy;
+		  type1 = PT_TYPE_NULL;
+		  break;
 		}
 
 	      consp = sm_class_constraints (cls);
