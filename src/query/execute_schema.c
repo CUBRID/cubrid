@@ -1985,7 +1985,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  for (entity = entity_list; entity != NULL; entity = entity->next)
 		    {
 		      const char *class_name = PT_NAME_ORIGINAL (entity);
-		      SM_CLASS_TYPE class_type = ((SM_CLASS *) class_mop->object)->class_type;
+		      SM_CLASS_TYPE class_type;
 
 		      class_mop = db_find_class (class_name);
 		      if (class_mop == NULL)
@@ -2001,6 +2001,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 			  goto end;
 			}
 
+		      class_type = ((SM_CLASS *) class_mop->object)->class_type;
 		      type = dep_get_object_type (class_type);
 		      error = dep_set_validity (class_name, DEP_INVALID);
 		      if (error != NO_ERROR)
