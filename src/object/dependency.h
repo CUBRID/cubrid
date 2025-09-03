@@ -37,11 +37,10 @@ typedef enum
   DEP_OBJ_SYNONYM = 7,
 } DEP_OBJECT_TYPE;
 
-// TODO: comment hard and ref
 typedef enum
 {
-  DEP_TYPE_HARD,
-  DEP_TYPE_REF
+  DEP_TYPE_HARD, /* Strong dependency: invalid if referenced object is dropped/changed */
+  DEP_TYPE_REF   /* Reference-only: still usable if referenced object is dropped (e.g. Materialized View) */
 } DEP_DEPENDENCY_TYPE;
 
 typedef enum
