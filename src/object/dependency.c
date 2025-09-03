@@ -505,19 +505,24 @@ dep_is_valid (const char *name)
 {
   MOP sp_mop = NULL;
   DB_VALUE value;
+  int save;
+
+  AU_DISABLE (save);
 
   sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
-      ASSERT_ERROR ();
-      return false;
+      assert (false);
+      goto end;
     }
 
   if (db_get (sp_mop, SP_ATTR_VALIDITY, &value) != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      return false;
+      assert (false);
+      goto end;
     }
 
-  return (DEP_VALIDITY_TYPE) db_get_int (&value) == DEP_VALID;
+end:
+  AU_ENABLE (save);
+  return ((DEP_VALIDITY_TYPE) db_get_int (&value)) == DEP_VALID;
 }

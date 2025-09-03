@@ -1290,6 +1290,7 @@ jsp_recompile (PARSER_CONTEXT *parser, const char *name)
 {
   assert (name != NULL);
 
+  int save;
   MOP sp_mop = NULL;
   int error = NO_ERROR;
   DB_VALUE target_class_val;
@@ -1297,17 +1298,19 @@ jsp_recompile (PARSER_CONTEXT *parser, const char *name)
   char owner_name_buf[DB_MAX_USER_LENGTH];
   const char *owner_name = NULL;
 
+  AU_DISABLE (save);
+
   sp_mop = jsp_find_stored_procedure (name, DB_AUTH_SELECT);
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   error = db_get (sp_mop, SP_ATTR_TARGET_CLASS, &target_class_val);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   target_class = db_get_string (&target_class_val);
@@ -1315,17 +1318,20 @@ jsp_recompile (PARSER_CONTEXT *parser, const char *name)
   if (owner_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   error =
 	  alter_stored_procedure_code (parser, sp_mop, target_class, owner_name, true);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   error = dep_set_validity (name, DEP_VALID);
+
+end:
+  AU_ENABLE (save);
   return error;
 }
 /*

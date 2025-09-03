@@ -53,6 +53,26 @@ typedef enum
 #if !defined (SERVER_MODE)
 
 #include "parse_tree.h"
+#include "class_object.h"
+#include "sp_constants.hpp"
+
+static inline DEP_OBJECT_TYPE
+dep_get_object_type (SM_CLASS_TYPE class_type)
+{
+  return (class_type == SM_CLASS_CT) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+}
+
+static inline DEP_OBJECT_TYPE
+dep_get_object_type (PT_MISC_TYPE class_type)
+{
+  return (class_type == PT_CLASS) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+}
+
+static inline DEP_OBJECT_TYPE
+dep_get_object_type (SP_TYPE_ENUM sp_type)
+{
+  return (sp_type == SP_TYPE_PROCEDURE) ? DEP_OBJ_PROCEDURE : DEP_OBJ_FUNCTION;
+}
 
 int dep_create_dependencies (PARSER_CONTEXT * parser, PT_NODE * node, const char *unique_name, DEP_OBJECT_TYPE type);
 int dep_delete (const char *unique_name, DEP_OBJECT_TYPE type);

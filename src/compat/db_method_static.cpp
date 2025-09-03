@@ -750,6 +750,7 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   bool has_savepoint = false;
   int i;
   int error = NO_ERROR;
+  DEP_OBJECT_TYPE type = DEP_OBJ_NONE;
 
   if (!return_val || !class_val || !owner_val)
     {
@@ -884,6 +885,13 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      db_make_error (return_val, error);
+    }
+
+  type = dep_get_object_type (class_->class_type);
+  error = dep_invalidate_dependencies (class_name, type);
+  if (error != NO_ERROR)
+    {
       db_make_error (return_val, error);
     }
 }

@@ -1726,8 +1726,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
       if (is_invalidating_alter (alter_code))
 	{
-	  const char *unique_name = PT_NAME_ORIGINAL(crt_clause->info.alter.entity_name);
-	  DEP_OBJECT_TYPE type = (crt_clause->info.alter.entity_type == PT_CLASS) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+	  const char *unique_name = PT_NAME_ORIGINAL (crt_clause->info.alter.entity_name);
+	  DEP_OBJECT_TYPE type = dep_get_object_type (crt_clause->info.alter.entity_type);
 
 	  error_code = dep_invalidate_dependencies (unique_name, type);
 	  if (error_code != NO_ERROR)
@@ -1930,6 +1930,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
       auth_list = auth_cmd_list;
       for (auth = auth_list; auth != NULL; auth = auth->next)
 	{
+	  DEP_OBJECT_TYPE type = DEP_OBJ_NONE;
 	  db_auth = pt_auth_to_db_auth (auth);
 
 	  if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PROCEDURE_PRIV)
@@ -1942,6 +1943,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		{
 		  // [TODO] Resovle user schema name, built-in package name
 		  const char *proc_name = procs->info.name.original;
+		  SP_TYPE_ENUM sp_type;
 
 		  MOP proc_mop = jsp_find_stored_procedure (proc_name, DB_AUTH_NONE);
 		  if (proc_mop == NULL)
@@ -1957,6 +1959,25 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      goto end;
 		    }
+
+		  sp_type = (SP_TYPE_ENUM) jsp_get_sp_type (proc_name);
+		  if (sp_type < NO_ERROR)
+		    {
+		      error = sp_type;
+		      goto end;
+		    }
+
+		  type = dep_get_object_type (sp_type);
+		  error = dep_set_validity (proc_name, DEP_INVALID);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+		  error = dep_invalidate_dependencies (proc_name, type);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
 		}
 	    }
 	  else
@@ -1966,7 +1987,10 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		  entity_list = spec->info.spec.flat_entity_list;
 		  for (entity = entity_list; entity != NULL; entity = entity->next)
 		    {
-		      class_mop = db_find_class (entity->info.name.original);
+		      const char *class_name = PT_NAME_ORIGINAL (entity);
+		      SM_CLASS_TYPE class_type = ((SM_CLASS *) class_mop->object)->class_type;
+
+		      class_mop = db_find_class (class_name);
 		      if (class_mop == NULL)
 			{
 			  assert (er_errid () != NO_ERROR);
@@ -1975,6 +1999,18 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 			}
 
 		      error = db_revoke_object (DB_OBJECT_CLASS, user_obj, class_mop, db_auth);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
+
+		      type = dep_get_object_type (class_type);
+		      error = dep_set_validity (class_name, DEP_INVALID);
+		      if (error != NO_ERROR)
+			{
+			  goto end;
+			}
+		      error = dep_invalidate_dependencies (class_name, type);
 		      if (error != NO_ERROR)
 			{
 			  goto end;

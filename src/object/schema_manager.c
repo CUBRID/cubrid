@@ -13866,7 +13866,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
       goto end;
     }
 
-  type = (class_->class_type == SM_CLASS_CT) ? DEP_OBJ_TABLE : DEP_OBJ_VIEW;
+  type = dep_get_object_type (class_->class_type);
   error = dep_invalidate_dependencies (table_name, type);
   if (error != NO_ERROR)
     {
