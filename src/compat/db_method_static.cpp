@@ -29,9 +29,7 @@
 #include "authenticate.h" /* au_ */
 #include "network_interface_cl.h" /* clogin_user */
 #include "schema_manager.h" /* sm_issystem */
-#include "execute_schema.h"
 #include "execute_statement.h" /* do_get_serial_obj_id */
-#include "transaction_cl.h" /* tran_system_savepoint */
 #include "optimizer.h" /* qo_plan_set_cost_fn */
 #include "object_print.h" /* help_print_info */
 #include "jsp_cl.h" /* jsp_find_stored_procedure */
@@ -741,14 +739,10 @@ au_change_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *class_val, DB_V
 {
   MOP class_mop = NULL;
   SM_CLASS *class_ = NULL;
-  MOP *sub_partitions = NULL;
   MOP owner_mop = NULL;
   const char *class_name = NULL;
   const char *owner_name = NULL;
   char new_class_name[DB_MAX_IDENTIFIER_LENGTH] = {'\0', };
-  int is_partition = DB_NOT_PARTITIONED_CLASS;
-  bool has_savepoint = false;
-  int i;
   int error = NO_ERROR;
   DEP_OBJECT_TYPE type = DEP_OBJ_NONE;
 

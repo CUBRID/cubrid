@@ -22,10 +22,7 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
 #include <stdarg.h>
-#include <ctype.h>
 #include <assert.h>
 
 #include "authenticate.h"
@@ -52,7 +49,6 @@
 #include "object_accessor.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "memory_hash.h"
 #include "locator_cl.h"
 #include "network_interface_cl.h"
 #include "view_transform.h"
@@ -1901,7 +1897,7 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_OBJECT *user_obj, *class_mop;
   PT_NODE *auth_cmd_list, *auth_list, *auth;
   DB_AUTH db_auth;
-  PT_NODE *spec_list, *s_list, *spec;
+  PT_NODE *spec_list;
   PT_NODE *entity_list, *entity;
   bool set_savepoint = false;
 

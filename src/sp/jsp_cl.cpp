@@ -1348,7 +1348,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   int err = NO_ERROR, sp_recompile, save, lang;
   PT_NODE *sp_name = NULL, *sp_owner = NULL, *sp_comment = NULL;
-  const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL, *target_cls = NULL;
+  const char *name_str = NULL, *owner_str = NULL, *comment_str = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH];
   downcase_owner_name[0] = '\0';
   PT_MISC_TYPE type;
