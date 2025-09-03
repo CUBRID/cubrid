@@ -845,7 +845,6 @@ extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
 extern void perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p);
 extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
-extern void perfmon_merge_parallel_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
@@ -867,10 +866,9 @@ STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, i
 STATIC_INLINE void perfmon_add_at_offset_to_global (int offset, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_drain_stat_to_parent (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
+STATIC_INLINE void perfmon_merge_parallel_stats (THREAD_ENTRY * thread_p, UINT64 * stats)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_drain_at_offset_to_parent (THREAD_ENTRY * thread_p, int offset)
-  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff, UINT64 count)
@@ -1163,70 +1161,68 @@ perfmon_set_at_offset_to_global (int offset, int statval)
   ATOMIC_TAS_64 (&(pstat_Global.global_stats[offset]), statval);
 }
 
-/*
- * perfmon_drain_stat_to_parent () - Drain statistic value in parent thread.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * psid (in)	 : Statistic ID.
- */
 STATIC_INLINE void
-perfmon_drain_stat_to_parent (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
+perfmon_merge_parallel_stats (THREAD_ENTRY * thread_p, UINT64 * stats)
 {
-  assert (PSTAT_BASE < psid && psid < PSTAT_COUNT);
+#if defined (SERVER_MODE)
+  /*
+   * m_px_stats should be NULL.
+   * perfmon_initialize_parallel_stats is a temporary safeguard.
+   * TODO: replace with assert().
+   */
+  if (thread_p->m_px_stats == NULL)
+    {
+      perfmon_initialize_parallel_stats (thread_p);
+    }
 
-  if (!pstat_Global.initialized)
+  const int targets[] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
+  };
+
+  for (size_t i = 0; i < sizeof (targets) / sizeof (targets[0]); ++i)
+    {
+      const int offset = targets[i];
+      thread_p->m_px_stats[offset] += stats[offset];
+      stats[offset] = 0;
+    }
+#endif /* SERVER_MODE */
+}
+
+STATIC_INLINE void
+perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  assert (thread_p != NULL);
+
+  if (thread_p->m_px_stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+
+  /* Only the top-level parent (parent is NULL or self) may drain parallel stats into tran_stats. */
+  if (parent_thread_p != NULL && parent_thread_p != thread_p)
     {
       return;
     }
 
-  assert (psid == PSTAT_PB_NUM_FETCHES || psid == PSTAT_PB_NUM_IOREADS
-	  || psid == PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
-  assert (pstat_Metadata[psid].valtype == PSTAT_ACCUMULATE_SINGLE_VALUE
-	  || pstat_Metadata[psid].valtype == PSTAT_COMPUTED_RATIO_VALUE);
+  const int targets[] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
+  };
 
-  perfmon_drain_at_offset_to_parent (thread_p, pstat_Metadata[psid].start_offset);
-}
-
-/*
- * perfmon_drain_at_offset_to_parent () - Drain statistic value in parent thread at offset.
- *
- * return	 : Void.
- * thread_p (in) : Thread entry.
- * offset (in)   : Offset to statistic value.
- */
-STATIC_INLINE void
-perfmon_drain_at_offset_to_parent (THREAD_ENTRY * thread_p, int offset)
-{
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
-  int tran_index;
-#endif /* SERVER_MODE || SA_MODE */
-
-  assert (offset >= 0 && offset < pstat_Global.n_stat_values);
-  assert (pstat_Global.initialized);
-
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  /* Update local statistic */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
+  for (size_t i = 0; i < sizeof (targets) / sizeof (targets[0]); ++i)
     {
-      if (parent_thread_p != NULL && parent_thread_p != thread_p)
-	{
-	  if (parent_thread_p->m_px_stats != NULL && thread_p->m_px_stats != NULL)
-	    {
-	      parent_thread_p->m_px_stats[offset] += thread_p->m_px_stats[offset];
-	      thread_p->m_px_stats[offset] = 0;
-	    }
-	  else
-	    {
-	      /* impossible case */
-	      assert (false);
-	    }
-	}
+      const int offset = targets[i];
+      perfmon_add_at_offset_to_local (thread_p, offset, thread_p->m_px_stats[offset]);
+      thread_p->m_px_stats[offset] = 0;
     }
-#endif /* SERVER_MODE || SA_MODE */
+#endif /* SERVER_MODE */
 }
 
 /*

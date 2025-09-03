@@ -49,10 +49,7 @@ namespace parallel_query
     entry_manager::on_create (cubthread::entry &context)
     {
       cubthread::entry_manager::on_create (context);
-
       emulate_main_thread (context);
-
-      context.m_skip_end_resource_tracks_in_recycle = true;
 
       /* For regular TT_WORKER threads, push_resource_tracks is set when calling the request processing
        * function in net_server_request. Since parallel threads are not called through net_server_request,
@@ -61,22 +58,11 @@ namespace parallel_query
        * For parallel threads, end_resource_tracks is expected to be called in retire_context,
        * after all tasks have been completed. */
       context.push_resource_tracks ();
-
-      if (thread_is_on_trace (&context))
-	{
-	  perfmon_initialize_parallel_stats (&context);
-	}
     }
 
     void
     entry_manager::on_retire (cubthread::entry &context)
     {
-      spawn_manager::destroy_instance();
-
-      perfmon_destroy_parallel_stats (&context);
-
-      context.m_skip_end_resource_tracks_in_recycle = false;
-
       cubthread::entry_manager::on_retire (context);
     }
 
@@ -84,19 +70,7 @@ namespace parallel_query
     entry_manager::on_recycle (cubthread::entry &context)
     {
       cubthread::entry_manager::on_recycle (context);
-
-#if !defined (NDEBUG)
-      if (context.on_trace)
-	{
-	  assert (context.m_px_stats != nullptr);
-	  assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset] == 0);
-	  assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset] == 0);
-	  assert (context.m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset] == 0);
-	}
-#endif /* !NDEBUG */
-
       emulate_main_thread (context);
-      context.m_skip_end_resource_tracks_in_recycle = true;
     }
 
     void
@@ -115,6 +89,8 @@ namespace parallel_query
     worker_pool_manager::worker_pool_manager (cubthread::entry &main_thread_ref)
       : m_entry_manager (main_thread_ref)
       , m_worker_pool (nullptr)
+      , m_worker_stats (nullptr)
+      , m_pool_size (0)
     {
       //
     }
@@ -122,6 +98,11 @@ namespace parallel_query
     worker_pool_manager::~worker_pool_manager ()
     {
       release_workers ();
+
+      if (m_worker_stats != nullptr)
+	{
+	  db_private_free_and_init (nullptr, m_worker_stats);
+	}
     }
 
     bool
@@ -148,6 +129,8 @@ namespace parallel_query
 	  return false;
 	}
 
+      m_pool_size = pool_size;
+
       return true;
     }
 
@@ -166,6 +149,44 @@ namespace parallel_query
       return m_worker_pool;
     }
 
+    int
+    worker_pool_manager::allocate_worker_stats (cubthread::entry &thread_ref)
+    {
+      assert (m_worker_stats == nullptr);
+      assert (m_pool_size > 0);
+      assert (thread_is_on_trace (&thread_ref));
+      assert (&thread_ref == thread_get_thread_entry_info ());
+
+      const int n_stat_values = perfmon_get_number_of_statistic_values ();
+
+      m_worker_stats =  (UINT64 *) db_private_alloc (&thread_ref, m_pool_size * n_stat_values * sizeof (UINT64));
+      if (m_worker_stats == nullptr)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      memset (m_worker_stats, 0, m_pool_size * n_stat_values * sizeof (UINT64));
+
+      return NO_ERROR;
+    }
+
+    UINT64 *
+    worker_pool_manager::get_worker_stats (int worker_index) const noexcept
+    {
+      if (m_worker_stats == nullptr)
+	{
+	  return nullptr;
+	}
+
+      if (worker_index < 0 || worker_index >= m_pool_size)
+	{
+	  assert (false);
+	  return nullptr;
+	}
+
+      return m_worker_stats + worker_index * perfmon_get_number_of_statistic_values ();
+    }
+
     /*
      * build_partitions
      */
@@ -175,7 +196,7 @@ namespace parallel_query
     {
       HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
-      UINT32 task_cnt, task_index;
+      UINT32 worker_cnt, worker_index;
 
       assert (manager != nullptr);
       assert (split_info != nullptr);
@@ -187,7 +208,7 @@ namespace parallel_query
       outer = &split_info->outer;
       inner = &split_info->inner;
 
-      task_cnt = manager->max_parallel_workers;
+      worker_cnt = manager->max_parallel_workers;
 
       if (hjoin_init_shared_split_info (&thread_ref, manager, &shared_info) != NO_ERROR)
 	{
@@ -204,9 +225,10 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      for (task_index = 0; task_index < task_cnt; task_index++)
+      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
 	{
-	  task = new split_task (task_manager, manager, outer, &shared_info);
+	  task = new split_task (task_manager, manager, outer, &shared_info,
+				 manager->px_worker_pool_manager->get_worker_stats (worker_index));
 	  task_manager.push_task (task);
 	}
 
@@ -214,8 +236,13 @@ namespace parallel_query
 
       if (thread_is_on_trace (&thread_ref))
 	{
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      UINT64 *current_worker_stats = manager->px_worker_pool_manager->get_worker_stats (worker_index);
+	      perfmon_merge_parallel_stats (&thread_ref, current_worker_stats);
+	    }
+	  perfmon_merge_parallel_stats_to_tran_stats (&thread_ref);
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
-	  perfmon_merge_parallel_stats (&thread_ref);
 	}
 
       if (task_manager.has_error ())
@@ -239,9 +266,10 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      for (task_index = 0; task_index < task_cnt; task_index++)
+      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
 	{
-	  task = new split_task (task_manager, manager, inner, &shared_info);
+	  task = new split_task (task_manager, manager, inner, &shared_info,
+				 manager->px_worker_pool_manager->get_worker_stats (worker_index));
 	  task_manager.push_task (task);
 	}
 
@@ -249,8 +277,13 @@ namespace parallel_query
 
       if (thread_is_on_trace (&thread_ref))
 	{
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      UINT64 *current_worker_stats = manager->px_worker_pool_manager->get_worker_stats (worker_index);
+	      perfmon_merge_parallel_stats (&thread_ref, current_worker_stats);
+	    }
+	  perfmon_merge_parallel_stats_to_tran_stats (&thread_ref);
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
-	  perfmon_merge_parallel_stats (&thread_ref);
 	}
 
       /* cleanup */
@@ -276,7 +309,9 @@ namespace parallel_query
     execute_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
     {
       HASHJOIN_CONTEXT *current_context;
+      HASHJOIN_SHARED_JOIN_INFO shared_info;
       UINT32 context_index;
+      UINT32 worker_cnt, worker_index;
 
       int error = NO_ERROR;
 
@@ -288,6 +323,8 @@ namespace parallel_query
       HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
 #endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
+
+      worker_cnt = manager->max_parallel_workers;
 
       task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
@@ -301,11 +338,10 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      for (context_index = 0; context_index < manager->context_cnt; context_index++)
+      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
 	{
-	  current_context = &manager->contexts[context_index];
-
-	  task = new join_task (task_manager, manager, current_context);
+	  task = new join_task (task_manager, manager, manager->contexts, &shared_info,
+				manager->px_worker_pool_manager->get_worker_stats (worker_index));
 	  task_manager.push_task (task);
 	}
 
@@ -313,8 +349,13 @@ namespace parallel_query
 
       if (thread_is_on_trace (&thread_ref))
 	{
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      UINT64 *current_worker_stats = manager->px_worker_pool_manager->get_worker_stats (worker_index);
+	      perfmon_merge_parallel_stats (&thread_ref, current_worker_stats);
+	    }
+	  perfmon_merge_parallel_stats_to_tran_stats (&thread_ref);
 	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
-	  perfmon_merge_parallel_stats (&thread_ref);
 	}
 
       if (task_manager.has_error ())

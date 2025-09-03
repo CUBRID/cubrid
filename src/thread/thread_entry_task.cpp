@@ -88,32 +88,6 @@ namespace cubthread
       {
 	context.end_resource_tracks ();
       }
-#if defined (SERVER_MODE)
-    {
-      entry *parent_context = context.m_px_orig_thread_entry;
-      if (parent_context != NULL && parent_context != &context)
-	{
-	  if (context.m_px_stats != NULL)
-	    {
-	      /*
-	       * m_px_stats should be NULL.
-	       * perfmon_initialize_parallel_stats is a temporary safeguard.
-	       * TODO: replace with assert().
-	       */
-	      if (parent_context->m_px_stats == NULL)
-		{
-		  perfmon_initialize_parallel_stats (parent_context);
-		}
-
-	      pthread_mutex_lock (&parent_context->m_px_stats_mutex);
-	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_FETCHES);
-	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_NUM_IOREADS);
-	      perfmon_drain_stat_to_parent (&context, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC);
-	      pthread_mutex_unlock (&parent_context->m_px_stats_mutex);
-	    }
-	}
-    }
-#endif // SERVER_MODE
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;

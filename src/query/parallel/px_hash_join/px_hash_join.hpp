@@ -66,9 +66,14 @@ namespace parallel_query
 
 	cubthread::entry_workpool *get_worker_pool () const noexcept;
 
+	int allocate_worker_stats (cubthread::entry &main_thread_ref);
+	UINT64 *get_worker_stats (int worker_index) const noexcept;
+
       private:
 	entry_manager m_entry_manager;
 	cubthread::entry_workpool *m_worker_pool;
+	UINT64 *m_worker_stats;
+	int m_pool_size;
     };
 
     /*

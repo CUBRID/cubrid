@@ -1945,27 +1945,24 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	// *INDENT-ON*
 #define new new(__FILE__, __LINE__)
 
-	if (px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
+	if (!px_worker_pool_manager->try_reserve_workers (manager->max_parallel_workers))
 	  {
-	    assert (px_worker_pool_manager->get_worker_pool () != NULL);
+	    throw std::runtime_error ("worker_pool_manager::try_reserve_workers failed");
+	  }
 
-	    manager->px_worker_pool_manager = px_worker_pool_manager;
+	assert (px_worker_pool_manager->get_worker_pool () != NULL);
 
-	    if (thread_is_on_trace (thread_p))
+	if (thread_is_on_trace (thread_p))
+	  {
+	    if (px_worker_pool_manager->allocate_worker_stats (*thread_p) != NO_ERROR)
 	      {
-		if (main_thread_p == thread_p)
-		  {
-		    perfmon_initialize_parallel_stats (thread_p);
-		  }
+		throw std::runtime_error ("worker_pool_manager::allocate_worker_stats failed");
 	      }
+	  }
 
-	    return HASHJOIN_STATUS_PARALLEL;
-	  }
-	else
-	  {
-	    px_worker_pool_manager->~worker_pool_manager ();
-	    db_private_free_and_init (thread_p, raw_memory);
-	  }
+	manager->px_worker_pool_manager = px_worker_pool_manager;
+
+	return HASHJOIN_STATUS_PARALLEL;
       }
       catch ( ...)
       {
@@ -1974,7 +1971,6 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	    px_worker_pool_manager->~worker_pool_manager ();
 	  }
 	db_private_free_and_init (thread_p, raw_memory);
-	assert_release_error (er_errid () != NO_ERROR);
       }
     }
   else

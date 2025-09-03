@@ -263,6 +263,24 @@ typedef struct hashjoin_shared_split_info
   // *INDENT-ON*
 } HASHJOIN_SHARED_SPLIT_INFO;
 
+/* HASHJOIN_SHARED_JOIN_INFO */
+typedef struct hashjoin_shared_join_info
+{
+  // *INDENT-OFF*
+  std::mutex scan_mutex;
+  SCAN_POSITION scan_position;
+  UINT32 next_index;
+
+  hashjoin_shared_join_info ()
+    : scan_mutex ()
+    , scan_position (S_BEFORE)
+    , next_index (0)
+  {
+    //
+  }
+  // *INDENT-ON*
+} HASHJOIN_SHARED_JOIN_INFO;
+
 /* HASHJOIN_CONTEXT*/
 typedef struct hashjoin_context
 {

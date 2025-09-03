@@ -1071,7 +1071,7 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_stats)
+  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p && thread_p->m_px_stats)
     {
       stats = thread_p->m_px_stats;
     }
@@ -3345,26 +3345,6 @@ perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
     {
       free_and_init (thread_p->m_px_stats);
     }
-}
-
-void
-perfmon_merge_parallel_stats (THREAD_ENTRY * thread_p)
-{
-  assert (thread_p != NULL);
-
-  if (thread_p->m_px_stats == NULL)
-    {
-      assert (false);
-      return;
-    }
-
-  perfmon_add_at_offset_to_local (thread_p, PSTAT_PB_NUM_FETCHES,
-				  thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
-  perfmon_add_at_offset_to_local (thread_p, PSTAT_PB_NUM_IOREADS,
-				  thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]);
-  perfmon_add_at_offset_to_local (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC,
-				  thread_p->
-				  m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset]);
 }
 
 #endif /* SERVER_MODE || SA_MODE */

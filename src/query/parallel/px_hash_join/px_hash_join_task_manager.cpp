@@ -134,9 +134,10 @@ namespace parallel_query
      * base_task
      */
 
-    base_task::base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager)
+    base_task::base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, UINT64 *worker_stats)
       : m_task_manager (task_manager)
       , m_manager (manager)
+      , m_worker_stats (worker_stats)
     {
       assert (m_manager != nullptr);
       assert (m_manager->context_cnt > 1);
@@ -153,8 +154,8 @@ namespace parallel_query
      */
 
     split_task::split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-			    HASHJOIN_SHARED_SPLIT_INFO *shared_info)
-      : base_task (task_manager, manager)
+			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, UINT64 *worker_stats)
+      : base_task (task_manager, manager, worker_stats)
       , m_split_info (split_info)
       , m_shared_info (shared_info)
     {
@@ -220,6 +221,8 @@ namespace parallel_query
 
 	  return;
 	}
+
+      thread_ref.m_px_stats = m_worker_stats;
 
       /* next page */
       do
@@ -380,7 +383,7 @@ namespace parallel_query
 		{
 		  std::unique_lock lock (m_shared_info->part_mutexes[part_id]);
 
-		  assert (part_list_id[part_id]->last_pgptr == NULL);
+		  assert (part_list_id[part_id]->last_pgptr == nullptr);
 
 		  if (qfile_reopen_list_as_append_mode (&thread_ref, part_list_id[part_id]) != NO_ERROR)
 		    {
@@ -408,7 +411,7 @@ namespace parallel_query
 		  {
 		    std::unique_lock lock (m_shared_info->part_mutexes[part_id]);
 
-		    assert (part_list_id[part_id]->last_pgptr == NULL);
+		    assert (part_list_id[part_id]->last_pgptr == nullptr);
 
 		    if (part_list_id[part_id]->tuple_cnt > 0)
 		      {
@@ -462,6 +465,8 @@ namespace parallel_query
 	}
       while (true);	/* next page */
 
+      thread_ref.m_px_stats = nullptr;
+
       if (page != nullptr)
 	{
 	  qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
@@ -495,7 +500,7 @@ namespace parallel_query
 		    {
 		      std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
 
-		      assert (part_list_id[part_index]->last_pgptr == NULL);
+		      assert (part_list_id[part_index]->last_pgptr == nullptr);
 
 		      if (part_list_id[part_index]->tuple_cnt > 0)
 			{
@@ -523,7 +528,7 @@ namespace parallel_query
 
       qdata_free_hscan_key (&thread_ref, temp_key, m_manager->key_cnt);
 
-      if (overflow_record.tpl != NULL)
+      if (overflow_record.tpl != nullptr)
 	{
 	  db_private_free_and_init (&thread_ref, overflow_record.tpl);
 	}
@@ -615,61 +620,154 @@ namespace parallel_query
      * join_task
      */
 
-    join_task::join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context)
-      : base_task (task_manager, manager)
-      , m_context (context)
+    join_task::join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *contexts,
+			  HASHJOIN_SHARED_JOIN_INFO *shared_info, UINT64 *worker_stats)
+      : base_task (task_manager, manager, worker_stats)
+      , m_contexts (contexts)
+      , m_shared_info (shared_info)
     {
       assert (m_manager != nullptr);
       assert (m_manager->context_cnt > 1);
-      assert (m_context != nullptr);
+      assert (m_contexts != nullptr);
+
+      assert (m_shared_info != nullptr);
     }
 
     void
     join_task::execute (cubthread::entry &thread_ref)
     {
-      spawn_manager *spawn_manager;
+      spawn_manager *spawn_manager = nullptr;
+      HASHJOIN_CONTEXT *context = nullptr;
       int error = NO_ERROR;
 
-      if (m_task_manager.has_error () || m_task_manager.check_interrupt (thread_ref))
-	{
-	  return;
-	}
-
       spawn_manager = spawn_manager::get_instance (thread_ref);
-      if (spawn_manager == NULL)
+      if (spawn_manager == nullptr)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
 	  return;
 	}
 
-      /* reuse TLS variables if already set */
-      m_context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
-      m_context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
-      m_context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
-      m_context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred ( m_manager->inner->regu_list_pred);
+      thread_ref.m_px_stats = m_worker_stats;
 
-      if (er_errid () != NO_ERROR)
+      /* next context */
+      do
 	{
-	  m_task_manager.handle_error (thread_ref);
-	  return;
+	  if (m_task_manager.has_error () || m_task_manager.check_interrupt (thread_ref))
+	    {
+	      break;		/* error_exit */
+	    }
+
+	  context = get_next_context ();
+	  if (context == nullptr)
+	    {
+	      if (er_errid () != NO_ERROR)
+		{
+		  m_task_manager.handle_error (thread_ref);
+		}
+
+	      /* end */
+	      break;
+	    }
+
+	  /* reuse TLS variables if already set */
+	  context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
+	  context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
+	  context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
+	  context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred ( m_manager->inner->regu_list_pred);
+
+	  if (er_errid () != NO_ERROR)
+	    {
+	      m_task_manager.handle_error (thread_ref);
+	      break;		/* error_exit */
+	    }
+
+	  error = hjoin_execute (&thread_ref, m_manager, context);
+
+	  /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
+	  context->val_descr = nullptr;
+	  context->during_join_pred = nullptr;
+	  context->outer.regu_list_pred = nullptr;
+	  context->inner.regu_list_pred = nullptr;
+
+	  if (error != NO_ERROR)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      m_task_manager.handle_error (thread_ref);
+	      break;		/* error_exit */
+	    }
+
+	}
+      while (true);	/* next page */
+
+      thread_ref.m_px_stats = nullptr;
+
+      spawn_manager::destroy_instance();
+    }
+
+    HASHJOIN_CONTEXT *
+    join_task::get_next_context ()
+    {
+      /* Do not perform NULL checks;
+      * validation is expected to be handled by the constructor */
+      HASHJOIN_CONTEXT *contexts = m_manager->contexts;
+      HASHJOIN_CONTEXT *current_context = nullptr;
+
+      std::lock_guard<std::mutex> lock (m_shared_info->scan_mutex);
+
+      switch (m_shared_info->scan_position)
+	{
+	case S_BEFORE:
+	  if (m_shared_info->next_index == 0)
+	    {
+	      current_context = &contexts[m_shared_info->next_index];
+	      assert (current_context != nullptr);
+
+	      m_shared_info->scan_position = S_ON;
+	      ++m_shared_info->next_index;
+	    }
+	  else
+	    {
+	      /* impossible case */
+	      assert_release_error (false);
+	      return nullptr;
+	    }
+	  break;
+
+	case S_ON:
+	  if (m_shared_info->next_index < m_manager->context_cnt)
+	    {
+	      current_context = &contexts[m_shared_info->next_index];
+	      assert (current_context != nullptr);
+
+	      ++m_shared_info->next_index;
+
+	      if (m_shared_info->next_index == m_manager->context_cnt)
+		{
+		  m_shared_info->scan_position = S_AFTER;
+		  m_shared_info->next_index = 0;
+		}
+	    }
+	  else
+	    {
+	      /* impossible case */
+	      assert_release_error (false);
+	      return nullptr;
+	    }
+	  break;
+
+	case S_AFTER:
+	  /* nothing to do */
+	  assert (m_shared_info->next_index == 0);
+	  return nullptr;
+
+	default:
+	  /* impossible case */
+	  assert_release_error (false);
+	  return nullptr;
 	}
 
-      error = hjoin_execute (&thread_ref, m_manager, m_context);
-
-      /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
-      m_context->val_descr = nullptr;
-      m_context->during_join_pred = nullptr;
-      m_context->outer.regu_list_pred = nullptr;
-      m_context->inner.regu_list_pred = nullptr;
-
-      if (error != NO_ERROR)
-	{
-	  m_task_manager.handle_error (thread_ref);
-	  return;
-	}
-
-      ASSERT_NO_ERROR_OR_INTERRUPTED ();
+      return current_context;
     }
   } /* namespace hash_join */
 } /* namespace parallel_query */

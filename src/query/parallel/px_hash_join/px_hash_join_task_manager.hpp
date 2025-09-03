@@ -77,12 +77,13 @@ namespace parallel_query
     class base_task: public cubthread::entry_task
     {
       public:
-	base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager);
+	base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, UINT64 *worker_stats);
 	void retire () override;
 
       protected:
 	task_manager &m_task_manager;
 	HASHJOIN_MANAGER *m_manager;
+	UINT64 *m_worker_stats;
     };
 
     /*
@@ -93,7 +94,7 @@ namespace parallel_query
     {
       public:
 	split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-		    HASHJOIN_SHARED_SPLIT_INFO *shared_info);
+		    HASHJOIN_SHARED_SPLIT_INFO *shared_info, UINT64 *worker_stats);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:
@@ -110,11 +111,15 @@ namespace parallel_query
     class join_task: public base_task
     {
       public:
-	join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager,HASHJOIN_CONTEXT *context);
+	join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager,HASHJOIN_CONTEXT *contexts,
+		   HASHJOIN_SHARED_JOIN_INFO *shared_info, UINT64 *worker_stats);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:
-	HASHJOIN_CONTEXT *m_context;
+	HASHJOIN_CONTEXT *m_contexts;
+	HASHJOIN_SHARED_JOIN_INFO *m_shared_info;
+
+	HASHJOIN_CONTEXT *get_next_context ();
     };
   } /* namespace hash_join */
 } /* namespace parallel_query */
