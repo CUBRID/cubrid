@@ -1622,6 +1622,7 @@ is_invalidating_alter (PT_ALTER_CODE alter_code)
 {
   switch (alter_code)
     {
+    case PT_ADD_ATTR_MTHD:
     case PT_DROP_ATTR_MTHD:
     case PT_MODIFY_ATTR_MTHD:
     case PT_RENAME_ATTR_MTHD:
