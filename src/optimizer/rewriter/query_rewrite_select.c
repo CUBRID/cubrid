@@ -3718,10 +3718,16 @@ qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
   bool is_rewrite_to_count_star_available = false;
   PT_NODE *select_list = select->info.query.q.select.list;
   PT_NODE *from = select->info.query.q.select.from;
+  PT_NODE *spec;
   SM_ATTRIBUTE *attrp;
   int i;
   int continue_walk = PT_LEAF_WALK;
-
-
+  for (spec = from; spec; spec = spec->next)
+    {
+      if (spec->info.spec.join_type != PT_JOIN_NONE && spec->info.spec.join_type != PT_JOIN_INNER)
+	{
+	  return;
+	}
+    }
   parser_walk_tree (parser, select_list, qo_rewrite_nonnull_count, (void *) from, NULL, NULL);
 }
