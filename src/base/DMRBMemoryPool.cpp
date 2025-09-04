@@ -109,6 +109,16 @@ namespace cubbase
     return (addr >= base && addr < base + m_size * 2);
   }
 
+  bool DMRBMemoryPool::is_in (std::byte *ptr)
+  {
+    std::uintptr_t base, addr;
+
+    base = reinterpret_cast<std::uintptr_t> (m_base);
+    addr = reinterpret_cast<std::uintptr_t> (ptr);
+
+    return (addr >= base && addr < base + m_size * 2);
+  }
+
   cubbase::span<std::byte> DMRBMemoryPool::reserve (std::size_t length)
   {
     assert_release (false);

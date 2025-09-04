@@ -47,10 +47,12 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/*
 #ifdef _er_log_debug
 #undef _er_log_debug
 #endif
 #define _er_log_debug(x, ...) do { } while (0)
+*/
 
 #define NEXT_STATE(c, x) do { \
     er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
@@ -139,7 +141,39 @@ namespace cubconn
 
   void master_connector::stop () noexcept
   {
+    std::uint64_t u;
+    ssize_t bytes;
+
+    /* stop */
     m_stop = true;
+
+    /* and wakeup */
+    u = 1;
+    while (true)
+      {
+	bytes = ::write (m_eventfd, &u, sizeof (u));
+	if (bytes == sizeof (u))
+	  {
+	    break;
+	  }
+
+	if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
+	  {
+	    assert_release (false);
+	  }
+
+	assert (bytes < 0);
+
+	if (errno == EINTR)
+	  {
+	    continue;
+	  }
+	if (errno == EAGAIN)
+	  {
+	    break;
+	  }
+	assert_release (false);
+      }
   }
 
   bool master_connector::attach (connection_pool &pool) noexcept

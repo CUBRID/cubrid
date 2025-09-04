@@ -54,7 +54,7 @@ namespace cubconn
       void reset ();
 
       result drain (int fd);
-      void release (cubbase::span<std::byte> &mem);
+      void release (std::byte *ptr);
 
       std::vector<cubbase::span<std::byte>> *get_result ();
 
@@ -69,6 +69,7 @@ namespace cubconn
 
       int m_tmpsize;
 
+      /* allocated from heap */
       std::vector<std::byte *> m_allocated;
 
       /* output */

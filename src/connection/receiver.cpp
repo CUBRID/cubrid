@@ -34,10 +34,12 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/*
 #ifdef _er_log_debug
 #undef _er_log_debug
 #endif
 #define _er_log_debug(x, ...) do { } while (0)
+*/
 
 #define NEXT_STATE(x) do { \
     _er_log_debug (__FILE__, __LINE__, "receiver (%p) state %d -> state = %d\n", this, m_state, state::x); \
@@ -416,28 +418,28 @@ namespace cubconn
     return result::Error;
   }
 
-  void receiver::release (cubbase::span<std::byte> &mem)
+  void receiver::release (std::byte *ptr)
   {
     cubbase::span<std::byte> source;
-    int padding;
+    int size;
 
-    if (m_buf.is_in (mem))
+    if (m_buf.is_in (ptr))
       {
-	padding = *reinterpret_cast<int *> (mem.data () - SIZE_HEADER_PADDING);
-	source = cubbase::span<std::byte> (mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING), mem.size () + SIZE_HEADER + SIZE_HEADER_PADDING + padding);
+	size = ntohl (*reinterpret_cast<int *> (ptr - (SIZE_HEADER + SIZE_HEADER_PADDING)));
+	source = cubbase::span<std::byte> (ptr - (SIZE_HEADER + SIZE_HEADER_PADDING), size + SIZE_HEADER);
 	m_buf.restore (source);
       }
     else
       {
-	auto it = std::find (m_allocated.begin (), m_allocated.end (), mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING));
+	auto it = std::find (m_allocated.begin (), m_allocated.end (), ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
 	if (it == m_allocated.end ())
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "receiver: memory = %p does not belong to this receiver\n", mem.data () - SIZE_HEADER);
+	    _er_log_debug (ARG_FILE_LINE, "receiver: memory = %p does not belong to this receiver\n", ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
 	    assert_release (false);
 	    return;
 	  }
 	m_allocated.erase (it);
-	delete[] (mem.data () - (SIZE_HEADER + SIZE_HEADER_PADDING));
+	delete[] (ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
       }
   }
 

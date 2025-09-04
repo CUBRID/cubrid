@@ -74,7 +74,7 @@ int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &fun
 	}
     }
 
-  thread_p->release_packet (buffer.ptr, buffer.dim);
+  thread_p->release_packet (buffer.ptr);
   return error;
 }
 #else

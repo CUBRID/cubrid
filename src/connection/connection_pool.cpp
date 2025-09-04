@@ -53,7 +53,7 @@ namespace cubconn
 
     /* topology setting */
     cubbase::topology.load_cpu (connection_threads);
-    cubbase::topology.map_nic_to_core ();
+    //cubbase::topology.map_nic_to_core ();
     cores = &cubbase::topology.get_cores ();
 
     /* TODO: consider dynamic increses */

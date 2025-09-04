@@ -38,10 +38,12 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/*
 #ifdef _er_log_debug
 #undef _er_log_debug
 #endif
 #define _er_log_debug(x, ...) do { } while (0)
+*/
 
 #define NEXT_STATE(ctx, sel, x) do { \
     er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", ctx->m_conn ? ctx->m_conn->fd : -1, state::x); \
@@ -301,9 +303,9 @@ namespace cubconn
     assert (item.packet.size () > 0);
 
     ctx = reinterpret_cast<context *> (item.conn->context);
-    for (auto &packet : item.packet)
+    for (cubbase::span<std::byte> &packet : item.packet)
       {
-	ctx->m_recv.m_receiver.release (packet);
+	ctx->m_recv.m_receiver.release (packet.data ());
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
       }
@@ -398,7 +400,7 @@ namespace cubconn
     css_conn_entry *conn;
     css_error_code error;
     NET_HEADER *header;
-    int size, aligned;
+    int size;
 
     assert (ctx->m_recv.m_header.size () == sizeof (NET_HEADER));
 
@@ -420,13 +422,13 @@ namespace cubconn
 				     packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	if (error != NO_ERRORS)
 	  {
-	    ctx->m_recv.m_receiver.release (packet);
+	    ctx->m_recv.m_receiver.release (packet.data ());
 	    return result::Error;
 	  }
       }
     else
       {
-	ctx->m_recv.m_receiver.release (packet);
+	ctx->m_recv.m_receiver.release (packet.data ());
       }
     ctx->m_recv.m_command = false;
     NEXT_STATE (ctx, m_recv, HEADER);
@@ -482,7 +484,7 @@ namespace cubconn
 					 packet.size (), NO_ERRORS, conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
 	    if (error != NO_ERRORS)
 	      {
-		ctx->m_recv.m_receiver.release (packet);
+		ctx->m_recv.m_receiver.release (packet.data ());
 		return result::Error;
 	      }
 	  }
@@ -536,7 +538,7 @@ namespace cubconn
 
     if (css_is_request_aborted (ctx->m_conn, ctx->m_recv.m_request_id))
       {
-	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header);
+	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header.data ());
 	return result::Aborted;
       }
 
@@ -550,7 +552,7 @@ namespace cubconn
 				 conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     if (error != NO_ERRORS)
       {
-	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header);
+	ctx->m_recv.m_receiver.release (ctx->m_recv.m_header.data ());
 	return result::Error;
       }
 
@@ -617,30 +619,30 @@ namespace cubconn
 	break;
 
       case DATA_TYPE:
-	ctx->m_recv.m_receiver.release (packet);
+	ctx->m_recv.m_receiver.release (packet.data ());
 	NEXT_STATE (ctx, m_recv, DATA);
 	break;
 
       case ABORT_TYPE:
 	/* no more packets are requested */
-	ctx->m_recv.m_receiver.release (packet);
+	ctx->m_recv.m_receiver.release (packet.data ());
 	ctx->m_recv.m_command = false;
 	css_process_abort_packet (ctx->m_conn, ctx->m_recv.m_request_id);
 	break;
 
       case CLOSE_TYPE:
-	ctx->m_recv.m_receiver.release (packet);
+	ctx->m_recv.m_receiver.release (packet.data ());
 	/* no more packets are requested */
 	status = result::ClosedConnection;
 	break;
 
       case ERROR_TYPE:
-	ctx->m_recv.m_receiver.release (packet);
+	ctx->m_recv.m_receiver.release (packet.data ());
 	NEXT_STATE (ctx, m_recv, ERROR);
 	break;
 
       default:
-	ctx->m_recv.m_receiver.release (packet);
+	ctx->m_recv.m_receiver.release (packet.data ());
 	_er_log_debug (ARG_FILE_LINE,
 		       "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
 	status = result::Skewed;

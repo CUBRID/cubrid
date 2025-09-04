@@ -3096,10 +3096,10 @@ css_conn_entry::init_pending_request ()
 }
 
 void
-css_conn_entry::release_packet (void *buffer, int size)
+css_conn_entry::release_packet (void *buffer)
 {
 #if defined(SERVER_MODE)
-  css_release_packet (this, buffer, size);
+  css_release_packet (this, buffer);
 #endif
 }
 

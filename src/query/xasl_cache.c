@@ -556,7 +556,8 @@ xcache_entry_uninit (void *entry)
 	}
       if (xcache_entry->stream.buffer != NULL)
 	{
-	  free_and_init (xcache_entry->stream.buffer);
+	  /* is this a buffered address ? */
+	  /* thread_p->release_packet (xcache_entry->stream.buffer); */
 	}
     }
   else
