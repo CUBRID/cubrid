@@ -3911,7 +3911,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
   put_fn = (ordbynum_val) ? &qexec_ordby_put_next : NULL;
   has_rollup = (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_with_rollup) ? true : false;
 
-  if (has_rollup && ordbynum_val == NULL && orderby_list
+  if (!has_rollup && ordbynum_val == NULL && orderby_list
       && qfile_is_sort_list_covered (list_id->sort_list, orderby_list) == true && option != Q_DISTINCT)
     {
       /* no need to sort here */
