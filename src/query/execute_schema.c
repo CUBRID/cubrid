@@ -15054,7 +15054,6 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
   if (*stmt != NULL && !pt_has_error (parser))
     {
-      sc_info.donot_fold = true;
       *stmt = pt_semantic_type (parser, *stmt, &sc_info);
     }
   else
@@ -15067,6 +15066,12 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
     {
       error = ER_FAILED;
       goto error;
+    }
+
+  if (pt_check_path_eq (parser, where_predicate, (*stmt)->info.query.q.select.where))
+    {
+      /* inside pt_semantic_type(), the WHERE clause may have been changed or removed due to constant folding */
+      where_predicate = (*stmt)->info.query.q.select.where;
     }
 
   /* make sure paren_type is 0 so parenthesis are not printed */
