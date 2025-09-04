@@ -362,9 +362,9 @@ namespace cubthread
   }
 
   void
-  entry::release_packet (void *buffer, int size)
+  entry::release_packet (void *buffer)
   {
-    conn_entry->release_packet (buffer, size);
+    conn_entry->release_packet (buffer);
   }
 
   void
