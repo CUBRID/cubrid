@@ -20,10 +20,10 @@
  * px_hash_join_task_manager.cpp
  */
 
+#include "px_hash_join_spawn_manager.hpp"
 #include "px_hash_join_task_manager.hpp"
 
 #include "object_representation.h"	/* QFILE_GET_TUPLE_COUNT, QFILE_GET_NEXT_VPID */
-#include "px_hash_join_spawn_manager.hpp"
 #include "query_manager.h"	/* qmgr_get_old_page, qfile_has_next_page, qmgr_set_dirty_page, ... */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -465,8 +465,6 @@ namespace parallel_query
 	}
       while (true);	/* next page */
 
-      thread_ref.m_px_stats = nullptr;
-
       if (page != nullptr)
 	{
 	  qmgr_free_old_page_and_init (&thread_ref, page, list_id->tfile_vfid);
@@ -532,6 +530,8 @@ namespace parallel_query
 	{
 	  db_private_free_and_init (&thread_ref, overflow_record.tpl);
 	}
+
+      thread_ref.m_px_stats = nullptr;
     }
 
     PAGE_PTR
@@ -700,9 +700,9 @@ namespace parallel_query
 	}
       while (true);	/* next page */
 
-      thread_ref.m_px_stats = nullptr;
-
       spawn_manager::destroy_instance();
+
+      thread_ref.m_px_stats = nullptr;
     }
 
     HASHJOIN_CONTEXT *

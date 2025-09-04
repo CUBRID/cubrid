@@ -21,11 +21,10 @@
  */
 
 #include "px_hash_join.hpp"
+#include "px_hash_join_task_manager.hpp"
 
 #include "list_file.h"	/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID */
 #include "perf_monitor.h"	/* pstat_Metadata, PSTAT_...*/
-#include "px_hash_join_spawn_manager.hpp"
-#include "px_hash_join_task_manager.hpp"
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager_reserver */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -89,8 +88,6 @@ namespace parallel_query
     worker_pool_manager::worker_pool_manager (cubthread::entry &main_thread_ref)
       : m_entry_manager (main_thread_ref)
       , m_worker_pool (nullptr)
-      , m_worker_stats (nullptr)
-      , m_pool_size (0)
     {
       //
     }
@@ -98,11 +95,6 @@ namespace parallel_query
     worker_pool_manager::~worker_pool_manager ()
     {
       release_workers ();
-
-      if (m_worker_stats != nullptr)
-	{
-	  db_private_free_and_init (nullptr, m_worker_stats);
-	}
     }
 
     bool
@@ -129,8 +121,6 @@ namespace parallel_query
 	  return false;
 	}
 
-      m_pool_size = pool_size;
-
       return true;
     }
 
@@ -149,44 +139,6 @@ namespace parallel_query
       return m_worker_pool;
     }
 
-    int
-    worker_pool_manager::allocate_worker_stats (cubthread::entry &thread_ref)
-    {
-      assert (m_worker_stats == nullptr);
-      assert (m_pool_size > 0);
-      assert (thread_is_on_trace (&thread_ref));
-      assert (&thread_ref == thread_get_thread_entry_info ());
-
-      const int n_stat_values = perfmon_get_number_of_statistic_values ();
-
-      m_worker_stats =  (UINT64 *) db_private_alloc (&thread_ref, m_pool_size * n_stat_values * sizeof (UINT64));
-      if (m_worker_stats == nullptr)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      memset (m_worker_stats, 0, m_pool_size * n_stat_values * sizeof (UINT64));
-
-      return NO_ERROR;
-    }
-
-    UINT64 *
-    worker_pool_manager::get_worker_stats (int worker_index) const noexcept
-    {
-      if (m_worker_stats == nullptr)
-	{
-	  return nullptr;
-	}
-
-      if (worker_index < 0 || worker_index >= m_pool_size)
-	{
-	  assert (false);
-	  return nullptr;
-	}
-
-      return m_worker_stats + worker_index * perfmon_get_number_of_statistic_values ();
-    }
-
     /*
      * build_partitions
      */
@@ -203,6 +155,7 @@ namespace parallel_query
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+      UINT64 *worker_stats = nullptr;
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       outer = &split_info->outer;
@@ -223,25 +176,28 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
-	}
 
-      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      worker_stats = hjoin_trace_get_worker_stats (manager, worker_index);
+	      task = new split_task (task_manager, manager, outer, &shared_info, worker_stats);
+	      task_manager.push_task (task);
+	    }
+	}
+      else
 	{
-	  task = new split_task (task_manager, manager, outer, &shared_info,
-				 manager->px_worker_pool_manager->get_worker_stats (worker_index));
-	  task_manager.push_task (task);
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      task = new split_task (task_manager, manager, outer, &shared_info, nullptr);
+	      task_manager.push_task (task);
+	    }
 	}
 
       task_manager.join ();
 
       if (thread_is_on_trace (&thread_ref))
 	{
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      UINT64 *current_worker_stats = manager->px_worker_pool_manager->get_worker_stats (worker_index);
-	      perfmon_merge_parallel_stats (&thread_ref, current_worker_stats);
-	    }
-	  perfmon_merge_parallel_stats_to_tran_stats (&thread_ref);
+	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
@@ -264,25 +220,30 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
-	}
 
-      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      worker_stats = hjoin_trace_get_worker_stats (manager, worker_index);
+	      task = new split_task (task_manager, manager, inner, &shared_info,
+				     worker_stats);
+	      task_manager.push_task (task);
+	    }
+	}
+      else
 	{
-	  task = new split_task (task_manager, manager, inner, &shared_info,
-				 manager->px_worker_pool_manager->get_worker_stats (worker_index));
-	  task_manager.push_task (task);
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      task = new split_task (task_manager, manager, inner, &shared_info,
+				     NULL);
+	      task_manager.push_task (task);
+	    }
 	}
 
       task_manager.join ();
 
       if (thread_is_on_trace (&thread_ref))
 	{
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      UINT64 *current_worker_stats = manager->px_worker_pool_manager->get_worker_stats (worker_index);
-	      perfmon_merge_parallel_stats (&thread_ref, current_worker_stats);
-	    }
-	  perfmon_merge_parallel_stats_to_tran_stats (&thread_ref);
+	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
@@ -319,6 +280,7 @@ namespace parallel_query
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+      UINT64 *worker_stats = nullptr;
 #if HASHJOIN_PROFILE_TIME
       HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
 #endif /* HASHJOIN_PROFILE_TIME */
@@ -336,25 +298,28 @@ namespace parallel_query
 	  stats->probe.min_elapsed_time = { LONG_MAX, 999999 };
 
 	  hjoin_trace_start (&thread_ref, &start_stats);
-	}
 
-      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      worker_stats = hjoin_trace_get_worker_stats (manager, worker_index);
+	      task = new join_task (task_manager, manager, manager->contexts, &shared_info, worker_stats);
+	      task_manager.push_task (task);
+	    }
+	}
+      else
 	{
-	  task = new join_task (task_manager, manager, manager->contexts, &shared_info,
-				manager->px_worker_pool_manager->get_worker_stats (worker_index));
-	  task_manager.push_task (task);
+	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+	    {
+	      task = new join_task (task_manager, manager, manager->contexts, &shared_info, nullptr);
+	      task_manager.push_task (task);
+	    }
 	}
 
       task_manager.join ();
 
       if (thread_is_on_trace (&thread_ref))
 	{
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      UINT64 *current_worker_stats = manager->px_worker_pool_manager->get_worker_stats (worker_index);
-	      perfmon_merge_parallel_stats (&thread_ref, current_worker_stats);
-	    }
-	  perfmon_merge_parallel_stats_to_tran_stats (&thread_ref);
+	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
 	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
 	}
 

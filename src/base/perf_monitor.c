@@ -1071,9 +1071,18 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p && thread_p->m_px_stats)
+  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p)
     {
-      stats = thread_p->m_px_stats;
+      if (thread_p->m_px_stats != NULL)
+	{
+	  stats = thread_p->m_px_stats;
+	}
+      else
+	{
+	  /* impossible case */
+	  assert (false);
+	  return 0;
+	}
     }
   else
     {

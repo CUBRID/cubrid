@@ -930,9 +930,26 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       db_private_free_and_init (thread_p, manager->px_worker_pool_manager);
     }
 
-  perfmon_destroy_parallel_stats (thread_p);
+  if (manager->px_worker_stats != NULL)
+    {
+      db_private_free_and_init (thread_p, manager->px_worker_stats);
+    }
+
+  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+
+  /* only top-level parent */
+  if (parent_thread_p == NULL || parent_thread_p == thread_p)
+    {
+      if (thread_p->m_px_stats != NULL)
+	{
+	  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
+	  free_and_init (thread_p->m_px_stats);
+	}
+    }
 #else
   assert (manager->px_worker_pool_manager == NULL);
+  assert (manager->px_worker_stats == NULL);
+  assert (thread_p->m_px_stats == NULL);
 #endif /* defined (SERVER_MODE) */
 
 #if defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE
@@ -1918,9 +1935,13 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   THREAD_ENTRY *main_thread_p = NULL;
   void *raw_memory = NULL;
   parallel_query::hash_join::worker_pool_manager * px_worker_pool_manager = NULL;
+  UINT64 *px_worker_stats = NULL;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+
+  /* immutable */
+  static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
   if (manager->max_parallel_workers <= 1)
     {
@@ -1954,10 +1975,31 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
 	if (thread_is_on_trace (thread_p))
 	  {
-	    if (px_worker_pool_manager->allocate_worker_stats (*thread_p) != NO_ERROR)
+	    px_worker_stats = (UINT64 *) db_private_alloc (thread_p, manager->max_parallel_workers * stats_size);
+	    if (px_worker_stats == NULL)
 	      {
-		throw std::runtime_error ("worker_pool_manager::allocate_worker_stats failed");
+		assert_release_error (er_errid () != NO_ERROR);
+		throw std::runtime_error ("db_private_alloc failed");
 	      }
+	    memset (px_worker_stats, 0, manager->max_parallel_workers * stats_size);
+
+	    /* only top-level parent */
+	    if (thread_p->m_px_stats == NULL)
+	      {
+		thread_p->m_px_stats = perfmon_allocate_values ();
+		if (thread_p->m_px_stats == NULL)
+		  {
+		    assert_release_error (er_errid () != NO_ERROR);
+		    throw std::runtime_error ("db_private_alloc failed");
+		  }
+		memset (thread_p->m_px_stats, 0, stats_size);
+	      }
+
+	    manager->px_worker_stats = px_worker_stats;
+	  }
+	else
+	  {
+	    assert (manager->px_worker_stats == NULL);
 	  }
 
 	manager->px_worker_pool_manager = px_worker_pool_manager;
@@ -1971,6 +2013,11 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	    px_worker_pool_manager->~worker_pool_manager ();
 	  }
 	db_private_free_and_init (thread_p, raw_memory);
+
+	if (px_worker_stats != NULL)
+	  {
+	    db_private_free_and_init (thread_p, px_worker_stats);
+	  }
       }
     }
   else
@@ -4157,6 +4204,69 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
   TSC_ADD_TIMEVAL (stats->profile.probe.match, context_stats->profile.probe.match);
   TSC_ADD_TIMEVAL (stats->profile.probe.add, context_stats->profile.probe.add);
 #endif /* HASHJOIN_PROFILE_TIME */
+}
+
+/*
+ * hjoin_trace_get_worker_stats() -
+ *   return: Parallel worker stats at index.
+ *   manager(in): Hash join manager containing shared state.
+ *   index(in): Parallel worker index.
+ */
+UINT64 *
+hjoin_trace_get_worker_stats (HASHJOIN_MANAGER * manager, int index)
+{
+  assert (manager != NULL);
+  assert (manager->max_parallel_workers > 1);
+  assert (manager->px_worker_stats != NULL);
+  assert (index >= 0 && index < manager->max_parallel_workers);
+
+  /* immutable */
+  static const int n_stat_values = perfmon_get_number_of_statistic_values ();
+
+  return manager->px_worker_stats + index * n_stat_values;
+}
+
+/*
+ * hjoin_trace_drain_worker_stats() -
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ */
+void
+hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+{
+  UINT64 *worker_stats;
+  int worker_cnt, worker_index;
+  int stats_cnt, stats_index;
+
+  assert (thread_p->m_px_stats != NULL);
+  assert (manager != NULL);
+  assert (manager->max_parallel_workers > 1);
+  assert (manager->px_worker_stats != NULL);
+
+  /* immutable */
+  static const int offsets[] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
+  };
+
+  worker_cnt = manager->max_parallel_workers;
+  stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+
+  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+    {
+      worker_stats = hjoin_trace_get_worker_stats (manager, worker_index);
+
+      for (stats_index = 0; stats_index < stats_cnt; stats_index++)
+	{
+	  const int offset = offsets[stats_index];
+	  thread_p->m_px_stats[offset] += worker_stats[offset];
+	  worker_stats[offset] = 0;
+	}
+    }
+
+  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
 }
 
 #if HASHJOIN_DUMP_HASH_TABLE

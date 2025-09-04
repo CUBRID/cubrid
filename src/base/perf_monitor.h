@@ -866,8 +866,6 @@ STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, i
 STATIC_INLINE void perfmon_add_at_offset_to_global (int offset, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_merge_parallel_stats (THREAD_ENTRY * thread_p, UINT64 * stats)
-  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
@@ -995,13 +993,21 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      if (parent_thread_p != NULL && parent_thread_p != thread_p && thread_p->m_px_stats != NULL)
+      if (parent_thread_p != NULL && parent_thread_p != thread_p)
 	{
-	  thread_p->m_px_stats[offset] += amount;
+	  if (thread_p->m_px_stats != NULL)
+	    {
+	      thread_p->m_px_stats[offset] += amount;
+	    }
+	  else
+	    {
+	      /* impossible case */
+	      assert (false);
+	    }
 	}
       else
 	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
 	  pstat_Global.tran_stats[tran_index][offset] += amount;
 	}
     }
@@ -1033,13 +1039,21 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      if (parent_thread_p != NULL && parent_thread_p != thread_p && thread_p->m_px_stats != NULL)
+      if (parent_thread_p != NULL && parent_thread_p != thread_p)
 	{
-	  thread_p->m_px_stats[offset] += amount;
+	  if (thread_p->m_px_stats != NULL)
+	    {
+	      thread_p->m_px_stats[offset] += amount;
+	    }
+	  else
+	    {
+	      /* impossible case */
+	      assert (false);
+	    }
 	}
       else
 	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
 	  pstat_Global.tran_stats[tran_index][offset] += amount;
 	}
     }
@@ -1162,35 +1176,6 @@ perfmon_set_at_offset_to_global (int offset, int statval)
 }
 
 STATIC_INLINE void
-perfmon_merge_parallel_stats (THREAD_ENTRY * thread_p, UINT64 * stats)
-{
-#if defined (SERVER_MODE)
-  /*
-   * m_px_stats should be NULL.
-   * perfmon_initialize_parallel_stats is a temporary safeguard.
-   * TODO: replace with assert().
-   */
-  if (thread_p->m_px_stats == NULL)
-    {
-      perfmon_initialize_parallel_stats (thread_p);
-    }
-
-  const int targets[] = {
-    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
-  };
-
-  for (size_t i = 0; i < sizeof (targets) / sizeof (targets[0]); ++i)
-    {
-      const int offset = targets[i];
-      thread_p->m_px_stats[offset] += stats[offset];
-      stats[offset] = 0;
-    }
-#endif /* SERVER_MODE */
-}
-
-STATIC_INLINE void
 perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
@@ -1204,21 +1189,24 @@ perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
 
   THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
 
-  /* Only the top-level parent (parent is NULL or self) may drain parallel stats into tran_stats. */
+  /* Skip if not the top-level parent. */
   if (parent_thread_p != NULL && parent_thread_p != thread_p)
     {
       return;
     }
 
-  const int targets[] = {
+  /* immutable */
+  static const int offsets[] = {
     pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
     pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
     pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
   };
 
-  for (size_t i = 0; i < sizeof (targets) / sizeof (targets[0]); ++i)
+  const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+
+  for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
     {
-      const int offset = targets[i];
+      const int offset = offsets[stats_index];
       perfmon_add_at_offset_to_local (thread_p, offset, thread_p->m_px_stats[offset]);
       thread_p->m_px_stats[offset] = 0;
     }
