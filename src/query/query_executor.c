@@ -131,7 +131,7 @@ struct xasl_state
 
 /* minimum amount of tuples that have to be hashed before deciding if
    selectivity is very high */
-#define HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD   200
+#define HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD   2000
 
 /* maximum selectivity allowed for hash aggregate evaluation */
 #define HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD         0.5f
