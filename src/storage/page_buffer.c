@@ -2187,6 +2187,7 @@ try_again:
  *       This is only for reading temporary file.
  *       if bcb is on buffer, only fcnt++. it is latchless and LRU mutexless.
  *       Even if it is a temporary file, it can be a problem if there is a write operation.
+ *       Cannot be mixed with general FIX(LATCH).
  */
 PAGE_PTR
 pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
@@ -2195,6 +2196,7 @@ pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix)
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
   bool retry;
+  int th_lru_idx;
 
   assert (pgbuf_is_temporary_volume (vpid->volid));
 
@@ -2222,49 +2224,28 @@ retry:
 	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
 	  return NULL;
 	}
-      if (pgbuf_latch_idle_page (thread_p, bufptr, PGBUF_LATCH_READ) != NO_ERROR)
-	{
-	  /* hold bufptr->mutex again */
-	  PGBUF_BCB_LOCK (bufptr);
-
-	  /* bufptr->mutex will be released in the following function. */
-	  pgbuf_put_bcb_into_invalid_list (thread_p, bufptr);
-
-	  /*
-	   * Now, caller is not holding any mutex.
-	   * the last argument of pgbuf_unlock_page () is true that
-	   * means hash_mutex must be held before unlocking page.
-	   */
-	  (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, true);
-	  return NULL;
-	}
       pgbuf_insert_into_hash_chain (thread_p, hash_anchor, bufptr);
-
-      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-      pgbuf_unfix (thread_p, pgptr);
       (void) pgbuf_unlock_page (thread_p, hash_anchor, vpid, false);
 
-      pgptr = pgbuf_simple_fix (thread_p, vpid, true);
-      if (pgptr == NULL)
+      bufptr->fcnt++;
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+
+      /* add lru list. */
+      if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
 	{
-	  /* impossible case */
-	  assert (0);
-	  return NULL;
+	  th_lru_idx = PGBUF_LRU_INDEX_FROM_PRIVATE (PGBUF_PRIVATE_LRU_FROM_THREAD (thread_p));
+	  pgbuf_lru_add_new_bcb_to_top (thread_p, bufptr, th_lru_idx);
 	}
+      else
+	{
+	  pgbuf_lru_add_new_bcb_to_middle (thread_p, bufptr, pgbuf_get_shared_lru_index_for_add ());
+	}
+      PGBUF_BCB_UNLOCK (bufptr);
     }
   else
     {
       if (need_fix)
 	{
-	  /* Cannot be mixed with general FIX(LATCH). Only possible when NO_LATCH. */
-	  if (bufptr->latch_mode != PGBUF_NO_LATCH)
-	    {
-	      /* retry simple_fix until finishing general fix and unfix */
-	      PGBUF_BCB_UNLOCK (bufptr);
-	      thread_sleep (5);
-	      goto retry;
-	    }
-
 	  /* we need to notify the thread that is waiting for this bcb to victimize that it cannot use it. */
 	  if (pgbuf_bcb_is_direct_victim (bufptr))
 	    {
