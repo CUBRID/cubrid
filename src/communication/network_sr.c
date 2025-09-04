@@ -899,7 +899,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 end:
   if (buffer != NULL && size > 0)
     {
-      thread_p->release_packet (buffer, size);
+      thread_p->release_packet (buffer);
     }
   css_wakeup_handler (thread_p->conn_entry);
 
