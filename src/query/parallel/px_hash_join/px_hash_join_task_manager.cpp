@@ -134,10 +134,10 @@ namespace parallel_query
      * base_task
      */
 
-    base_task::base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, UINT64 *worker_stats)
+    base_task::base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, int index)
       : m_task_manager (task_manager)
       , m_manager (manager)
-      , m_worker_stats (worker_stats)
+      , m_index (index)
     {
       assert (m_manager != nullptr);
       assert (m_manager->context_cnt > 1);
@@ -154,8 +154,8 @@ namespace parallel_query
      */
 
     split_task::split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, UINT64 *worker_stats)
-      : base_task (task_manager, manager, worker_stats)
+			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, int index)
+      : base_task (task_manager, manager, index)
       , m_split_info (split_info)
       , m_shared_info (shared_info)
     {
@@ -213,16 +213,22 @@ namespace parallel_query
       temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
       if (temp_key == nullptr)
 	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  m_task_manager.handle_error (thread_ref);
-
 	  /* cleanup */
 	  db_private_free_and_init (&thread_ref, temp_part_list_id);
 
+	  assert_release_error (er_errid () != NO_ERROR);
+	  m_task_manager.handle_error (thread_ref);
 	  return;
 	}
 
-      thread_ref.m_px_stats = m_worker_stats;
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager,m_index);
+	}
+      else
+	{
+	  assert (thread_ref.m_px_stats == nullptr);
+	}
 
       /* next page */
       do
@@ -522,6 +528,7 @@ namespace parallel_query
 	    }
 	}
 
+      /* cleanup */
       db_private_free_and_init (&thread_ref, temp_part_list_id);
 
       qdata_free_hscan_key (&thread_ref, temp_key, m_manager->key_cnt);
@@ -621,8 +628,8 @@ namespace parallel_query
      */
 
     join_task::join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *contexts,
-			  HASHJOIN_SHARED_JOIN_INFO *shared_info, UINT64 *worker_stats)
-      : base_task (task_manager, manager, worker_stats)
+			  HASHJOIN_SHARED_JOIN_INFO *shared_info, int index)
+      : base_task (task_manager, manager, index)
       , m_contexts (contexts)
       , m_shared_info (shared_info)
     {
@@ -640,6 +647,9 @@ namespace parallel_query
       HASHJOIN_CONTEXT *context = nullptr;
       int error = NO_ERROR;
 
+      TSCTIMEVAL total_build_time = { 0, 0 };
+      TSCTIMEVAL total_probe_time = { 0, 0 };
+
       spawn_manager = spawn_manager::get_instance (thread_ref);
       if (spawn_manager == nullptr)
 	{
@@ -648,7 +658,14 @@ namespace parallel_query
 	  return;
 	}
 
-      thread_ref.m_px_stats = m_worker_stats;
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager,m_index);
+	}
+      else
+	{
+	  assert (thread_ref.m_px_stats == nullptr);
+	}
 
       /* next context */
       do
@@ -684,6 +701,12 @@ namespace parallel_query
 
 	  error = hjoin_execute (&thread_ref, m_manager, context);
 
+	  if (thread_is_on_trace (&thread_ref))
+	    {
+	      TSC_ADD_TIMEVAL (total_build_time, context->stats->build.elapsed_time);
+	      TSC_ADD_TIMEVAL (total_probe_time, context->stats->probe.elapsed_time);
+	    }
+
 	  /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
 	  context->val_descr = nullptr;
 	  context->during_join_pred = nullptr;
@@ -700,7 +723,18 @@ namespace parallel_query
 	}
       while (true);	/* next page */
 
+      /* cleanup */
       spawn_manager::destroy_instance();
+
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  std::lock_guard<std::mutex> lock (m_shared_info->stats_mutex);
+
+	  perfmon_update_min_timeval (&m_shared_info->build_range_time.min, &total_build_time);
+	  perfmon_update_max_timeval (&m_shared_info->build_range_time.max, &total_build_time);
+	  perfmon_update_min_timeval (&m_shared_info->probe_range_time.min, &total_probe_time);
+	  perfmon_update_max_timeval (&m_shared_info->probe_range_time.max, &total_probe_time);
+	}
 
       thread_ref.m_px_stats = nullptr;
     }

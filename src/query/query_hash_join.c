@@ -2008,7 +2008,7 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       }
       catch ( ...)
       {
-	if (px_worker_pool_manager != nullptr)
+	if (px_worker_pool_manager != NULL)
 	  {
 	    px_worker_pool_manager->~worker_pool_manager ();
 	  }
@@ -4148,8 +4148,6 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
     }
 
   TSC_ADD_TIMEVAL (stats->build.elapsed_time, context_stats->build.elapsed_time);
-  perfmon_update_min_timeval (&stats->build.min_elapsed_time, &context_stats->build.elapsed_time);
-  perfmon_update_max_timeval (&stats->build.max_elapsed_time, &context_stats->build.elapsed_time);
   stats->build.fetches += context_stats->build.fetches;
   stats->build.ioreads += context_stats->build.ioreads;
   stats->build.read_rows += context_stats->build.read_rows;
@@ -4189,8 +4187,6 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats)
     }
 
   TSC_ADD_TIMEVAL (stats->probe.elapsed_time, context_stats->probe.elapsed_time);
-  perfmon_update_min_timeval (&stats->probe.min_elapsed_time, &context_stats->probe.elapsed_time);
-  perfmon_update_max_timeval (&stats->probe.max_elapsed_time, &context_stats->probe.elapsed_time);
   stats->probe.fetches += context_stats->probe.fetches;
   stats->probe.ioreads += context_stats->probe.ioreads;
   stats->probe.read_rows += context_stats->probe.read_rows;
@@ -4217,8 +4213,13 @@ hjoin_trace_get_worker_stats (HASHJOIN_MANAGER * manager, int index)
 {
   assert (manager != NULL);
   assert (manager->max_parallel_workers > 1);
-  assert (manager->px_worker_stats != NULL);
   assert (index >= 0 && index < manager->max_parallel_workers);
+
+  if (manager->px_worker_stats == NULL)
+    {
+      assert (false);
+      return NULL;
+    }
 
   /* immutable */
   static const int n_stat_values = perfmon_get_number_of_statistic_values ();

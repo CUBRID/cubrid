@@ -24,7 +24,6 @@
 #include "px_hash_join_task_manager.hpp"
 
 #include "list_file.h"	/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID */
-#include "perf_monitor.h"	/* pstat_Metadata, PSTAT_...*/
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager_reserver */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -155,7 +154,6 @@ namespace parallel_query
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-      UINT64 *worker_stats = nullptr;
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       outer = &split_info->outer;
@@ -176,21 +174,12 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
-
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      worker_stats = hjoin_trace_get_worker_stats (manager, worker_index);
-	      task = new split_task (task_manager, manager, outer, &shared_info, worker_stats);
-	      task_manager.push_task (task);
-	    }
 	}
-      else
+
+      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
 	{
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      task = new split_task (task_manager, manager, outer, &shared_info, nullptr);
-	      task_manager.push_task (task);
-	    }
+	  task = new split_task (task_manager, manager, outer, &shared_info, worker_index);
+	  task_manager.push_task (task);
 	}
 
       task_manager.join ();
@@ -203,13 +192,12 @@ namespace parallel_query
 
       if (task_manager.has_error ())
 	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  task_manager.stop_execution();
-	  task_manager.clear_interrupt (thread_ref);
-
 	  /* cleanup */
 	  hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
 
+	  assert_release_error (er_errid () != NO_ERROR);
+	  task_manager.stop_execution();
+	  task_manager.clear_interrupt (thread_ref);
 	  return er_errid ();
 	}
 
@@ -220,23 +208,13 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
-
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      worker_stats = hjoin_trace_get_worker_stats (manager, worker_index);
-	      task = new split_task (task_manager, manager, inner, &shared_info,
-				     worker_stats);
-	      task_manager.push_task (task);
-	    }
 	}
-      else
+
+      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
 	{
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      task = new split_task (task_manager, manager, inner, &shared_info,
-				     NULL);
-	      task_manager.push_task (task);
-	    }
+	  task = new split_task (task_manager, manager, inner, &shared_info,
+				 worker_index);
+	  task_manager.push_task (task);
 	}
 
       task_manager.join ();
@@ -280,7 +258,6 @@ namespace parallel_query
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-      UINT64 *worker_stats = nullptr;
 #if HASHJOIN_PROFILE_TIME
       HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
 #endif /* HASHJOIN_PROFILE_TIME */
@@ -294,25 +271,13 @@ namespace parallel_query
 
       if (thread_is_on_trace (&thread_ref))
 	{
-	  stats->build.min_elapsed_time = { LONG_MAX, 999999 };
-	  stats->probe.min_elapsed_time = { LONG_MAX, 999999 };
-
 	  hjoin_trace_start (&thread_ref, &start_stats);
-
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      worker_stats = hjoin_trace_get_worker_stats (manager, worker_index);
-	      task = new join_task (task_manager, manager, manager->contexts, &shared_info, worker_stats);
-	      task_manager.push_task (task);
-	    }
 	}
-      else
+
+      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
 	{
-	  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
-	    {
-	      task = new join_task (task_manager, manager, manager->contexts, &shared_info, nullptr);
-	      task_manager.push_task (task);
-	    }
+	  task = new join_task (task_manager, manager, manager->contexts, &shared_info, worker_index);
+	  task_manager.push_task (task);
 	}
 
       task_manager.join ();
@@ -321,6 +286,11 @@ namespace parallel_query
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
 	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
+
+	  stats->build.range_time.min = shared_info.build_range_time.min;
+	  stats->build.range_time.max = shared_info.build_range_time.max;
+	  stats->probe.range_time.min = shared_info.probe_range_time.min;
+	  stats->probe.range_time.max = shared_info.probe_range_time.max;
 	}
 
       if (task_manager.has_error ())

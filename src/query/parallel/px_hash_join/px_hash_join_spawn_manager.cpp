@@ -72,7 +72,9 @@ namespace parallel_query
 	    }
 	  catch ( ...)
 	    {
+	      /* cleanup */
 	      db_private_free_and_init (&thread_ref, raw_memory);
+
 	      assert_release_error (er_errid () != NO_ERROR);
 	      return nullptr;
 	    }
@@ -145,7 +147,9 @@ namespace parallel_query
 	    }
 	  catch ( ...)
 	    {
+	      /* cleanup */
 	      db_private_free_and_init (&m_thread_ref, raw_memory);
+
 	      assert_release_error (er_errid () != NO_ERROR);
 	      return nullptr;
 	    }

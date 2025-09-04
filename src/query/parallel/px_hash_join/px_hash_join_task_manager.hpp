@@ -78,13 +78,13 @@ namespace parallel_query
     class base_task: public cubthread::entry_task
     {
       public:
-	base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, UINT64 *worker_stats);
+	base_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, int index);
 	void retire () override;
 
       protected:
 	task_manager &m_task_manager;
 	HASHJOIN_MANAGER *m_manager;
-	UINT64 *m_worker_stats;
+	int m_index;
     };
 
     /*
@@ -95,7 +95,7 @@ namespace parallel_query
     {
       public:
 	split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-		    HASHJOIN_SHARED_SPLIT_INFO *shared_info, UINT64 *worker_stats);
+		    HASHJOIN_SHARED_SPLIT_INFO *shared_info, int index);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:
@@ -113,7 +113,7 @@ namespace parallel_query
     {
       public:
 	join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager,HASHJOIN_CONTEXT *contexts,
-		   HASHJOIN_SHARED_JOIN_INFO *shared_info, UINT64 *worker_stats);
+		   HASHJOIN_SHARED_JOIN_INFO *shared_info, int index);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:

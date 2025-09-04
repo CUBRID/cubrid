@@ -131,11 +131,17 @@ typedef struct hashjoin_domain_info
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
+typedef struct hashjoin_range_time_stats
+{
+  TSCTIMEVAL min;
+  TSCTIMEVAL max;
+} HASHJOIN_RANGE_TIME_STATS;
+#define HASHJOIN_RANGE_TIME_STATS_INITIALIZER { { LONG_MAX, 999999 }, { 0, 0 } }
+
 typedef struct hashjoin_input_stats
 {
   TSCTIMEVAL elapsed_time;
-  TSCTIMEVAL min_elapsed_time;
-  TSCTIMEVAL max_elapsed_time;
+  HASHJOIN_RANGE_TIME_STATS range_time;
   UINT64 fetches;
   UINT64 ioreads;
   UINT64 read_rows;
@@ -271,10 +277,17 @@ typedef struct hashjoin_shared_join_info
   SCAN_POSITION scan_position;
   UINT32 next_index;
 
+  std::mutex stats_mutex;
+  HASHJOIN_RANGE_TIME_STATS build_range_time;
+  HASHJOIN_RANGE_TIME_STATS probe_range_time;
+
   hashjoin_shared_join_info ()
     : scan_mutex ()
     , scan_position (S_BEFORE)
     , next_index (0)
+    , stats_mutex ()
+    , build_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
+    , probe_range_time (HASHJOIN_RANGE_TIME_STATS_INITIALIZER)
   {
     //
   }

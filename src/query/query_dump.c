@@ -3912,7 +3912,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  indent += 2;
 
 	  fprintf (fp, "%*cBUILD (time: %d..%d, fetch: %ld, ioread: %ld, rows: %ld, method: %s",
-		   indent, ' ', TO_MSEC (stats->build.min_elapsed_time), TO_MSEC (stats->build.max_elapsed_time),
+		   indent, ' ', TO_MSEC (stats->build.range_time.min), TO_MSEC (stats->build.range_time.max),
 		   stats->build.fetches, stats->build.ioreads, stats->build.qualified_rows, hash_method_str);
 	}
       else
@@ -3957,7 +3957,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp,
 		   "%*cPROBE (time: %d..%d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
-		   indent, ' ', TO_MSEC (stats->probe.min_elapsed_time), TO_MSEC (stats->probe.max_elapsed_time),
+		   indent, ' ', TO_MSEC (stats->probe.range_time.min), TO_MSEC (stats->probe.range_time.max),
 		   stats->probe.fetches, stats->probe.ioreads, stats->probe.read_rows, stats->probe.read_keys,
 		   stats->probe.qualified_rows);
 	}
@@ -4148,8 +4148,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       if (stats->max_parallel_workers > 0)
 	{
 	  len =
-	    sprintf (time_str, "%d..%d", TO_MSEC (stats->build.min_elapsed_time),
-		     TO_MSEC (stats->build.max_elapsed_time));
+	    sprintf (time_str, "%d..%d", TO_MSEC (stats->build.range_time.min), TO_MSEC (stats->build.range_time.max));
 	  time_str[len] = '\0';
 
 	  json_object_set_new (build, "time", json_string (time_str));
@@ -4198,8 +4197,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       if (stats->max_parallel_workers > 0)
 	{
 	  len =
-	    sprintf (time_str, "%d..%d", TO_MSEC (stats->probe.min_elapsed_time),
-		     TO_MSEC (stats->probe.max_elapsed_time));
+	    sprintf (time_str, "%d..%d", TO_MSEC (stats->probe.range_time.min), TO_MSEC (stats->probe.range_time.max));
 	  time_str[len] = '\0';
 
 	  json_object_set_new (probe, "time", json_string (time_str));
