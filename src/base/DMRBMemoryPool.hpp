@@ -44,6 +44,7 @@ namespace cubbase
       cubbase::span<std::byte> buffer ();
       void restore (cubbase::span<std::byte> &span);
       bool is_in (cubbase::span<std::byte> &span);
+      bool is_in (std::byte *ptr);
 
       cubbase::span<std::byte> reserve (std::size_t length);
       void commit (std::size_t length);

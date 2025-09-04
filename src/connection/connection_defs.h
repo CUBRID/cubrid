@@ -493,7 +493,7 @@ struct css_conn_entry
   bool has_pending_request () const;
   void init_pending_request ();
 
-  void release_packet (void *buffer, int size);
+  void release_packet (void *buffer);
 
 private:
   // note - I want to protect this.
