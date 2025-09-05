@@ -435,6 +435,7 @@ static void linked_list_delete (LINKED_LIST * list, void *data);
 
 char *cci_client_name = "PHP";
 
+/* *INDENT-OFF* */
 ZEND_BEGIN_ARG_INFO (arginfo_cubrid_version, 0)
 ZEND_END_ARG_INFO ()ZEND_BEGIN_ARG_INFO_EX (arginfo_cubrid_connect, 0, 0, 3)
 ZEND_ARG_INFO (0, host)
@@ -804,7 +805,7 @@ ZEND_ARG_INFO (0, req_id) ZEND_ARG_INFO (0, timeout) ZEND_END_ARG_INFO ()
 										     NULL) {
 											    NULL, NULL, NULL}
      };
-
+/* *INDENT-ON* */
 zend_module_entry cubrid_module_entry = {
   STANDARD_MODULE_HEADER,
   "CUBRID",
