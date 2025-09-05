@@ -656,12 +656,6 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	case SM_CONSTRAINT_UNIQUE:
 	  m_buf ("UNIQUE ");
 	  break;
-	case SM_CONSTRAINT_REVERSE_INDEX:
-	  m_buf ("REVERSE INDEX ");
-	  break;
-	case SM_CONSTRAINT_REVERSE_UNIQUE:
-	  m_buf ("REVERSE UNIQUE ");
-	  break;
 	case SM_CONSTRAINT_PRIMARY_KEY:
 	  m_buf ("PRIMARY KEY ");
 	  break;
@@ -674,11 +668,7 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
 	}
 
       m_buf ("%s ON %s (", constraint.name, sm_ch_name ((MOBJ) (&cls)));
-      asc_desc = NULL;		/* init */
-      if (!SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint.type))
-	{
-	  asc_desc = constraint.asc_desc;
-	}
+      asc_desc = constraint.asc_desc;
     }
   else
     {
@@ -686,12 +676,10 @@ void object_printer::describe_constraint (const sm_class &cls, const sm_class_co
       switch (constraint.type)
 	{
 	case SM_CONSTRAINT_INDEX:
-	case SM_CONSTRAINT_REVERSE_INDEX:
 	  m_buf (" INDEX ");
 	  describe_identifier (constraint.name, prt_type);
 	  break;
 	case SM_CONSTRAINT_UNIQUE:
-	case SM_CONSTRAINT_REVERSE_UNIQUE:
 	  m_buf (" CONSTRAINT ");
 	  describe_identifier (constraint.name, prt_type);
 	  m_buf (" UNIQUE KEY ");

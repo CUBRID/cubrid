@@ -23944,12 +23944,10 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  switch (found_index_type)
 	    {
 	    case BTREE_UNIQUE:
-	    case BTREE_REVERSE_UNIQUE:
 	      db_make_string (out_values[idx_val], "UNI");
 	      break;
 
 	    case BTREE_INDEX:
-	    case BTREE_REVERSE_INDEX:
 	    case BTREE_FOREIGN_KEY:
 	      db_make_string (out_values[idx_val], "MUL");
 	      break;

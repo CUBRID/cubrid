@@ -6468,11 +6468,7 @@ btree_scan_clear_key (BTREE_SCAN * btree_scan)
 bool
 btree_is_unique_type (BTREE_TYPE type)
 {
-  if (type == BTREE_UNIQUE || type == BTREE_REVERSE_UNIQUE || type == BTREE_PRIMARY_KEY)
-    {
-      return true;
-    }
-  return false;
+  return (type == BTREE_UNIQUE || type == BTREE_PRIMARY_KEY);
 }
 
 /*

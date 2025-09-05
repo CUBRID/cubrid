@@ -11197,7 +11197,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
   /* check if this is an index with prefix */
   *is_index_w_prefix = qo_is_prefix_index (index_entryp);
 
-  asc_or_desc = (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type) ? PT_DESC : PT_ASC);
+  asc_or_desc = PT_ASC;
 
   key_type = index_entryp->key_type;
   if (key_type == NULL)
@@ -11206,7 +11206,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       goto exit_on_end;		/* nop */
     }
 
-  if (asc_or_desc == PT_DESC || index_entryp->constraints->func_index_info != NULL)
+  if (index_entryp->constraints->func_index_info != NULL)
     {
       col_type = NULL;		/* nop; do not care asc_or_desc anymore */
     }

@@ -70,7 +70,6 @@ EXPORTS
     db_attribute_is_auto_increment
     db_attribute_is_foreign_key
     db_attribute_is_indexed
-    db_attribute_is_reverse_indexed
     db_attribute_is_non_null
     db_attribute_is_primary_key
     db_attribute_is_shared
@@ -598,7 +597,6 @@ EXPORTS
     db_alloc_query_result
     db_alter_trigger_priority
     db_alter_trigger_status
-    db_attribute_is_reverse_unique
     db_attribute_length
     db_attribute_ordered_next
     db_attribute_type

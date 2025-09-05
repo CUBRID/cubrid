@@ -71,18 +71,14 @@ const int SM_MAX_STRING_LENGTH = 1073741823;	/* 0x3fffffff */
 static SM_CONSTRAINT_TYPE Constraint_types[] = {
   SM_CONSTRAINT_PRIMARY_KEY,
   SM_CONSTRAINT_UNIQUE,
-  SM_CONSTRAINT_REVERSE_UNIQUE,
   SM_CONSTRAINT_INDEX,
-  SM_CONSTRAINT_REVERSE_INDEX,
   SM_CONSTRAINT_FOREIGN_KEY,
 };
 
 static const char *Constraint_properties[] = {
   SM_PROPERTY_PRIMARY_KEY,
   SM_PROPERTY_UNIQUE,
-  SM_PROPERTY_REVERSE_UNIQUE,
   SM_PROPERTY_INDEX,
-  SM_PROPERTY_REVERSE_INDEX,
   SM_PROPERTY_FOREIGN_KEY,
 };
 
@@ -512,12 +508,6 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
     case SM_CONSTRAINT_NOT_NULL:
       property_type = SM_PROPERTY_NOT_NULL;
       break;
-    case SM_CONSTRAINT_REVERSE_INDEX:
-      property_type = SM_PROPERTY_REVERSE_INDEX;
-      break;
-    case SM_CONSTRAINT_REVERSE_UNIQUE:
-      property_type = SM_PROPERTY_REVERSE_UNIQUE;
-      break;
     case SM_CONSTRAINT_PRIMARY_KEY:
       property_type = SM_PROPERTY_PRIMARY_KEY;
       break;
@@ -581,8 +571,6 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_UNIQUE);
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_INDEX);
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_NOT_NULL);
-      (void) classobj_drop_prop (*new_properties, SM_PROPERTY_REVERSE_UNIQUE);
-      (void) classobj_drop_prop (*new_properties, SM_PROPERTY_REVERSE_INDEX);
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_PRIMARY_KEY);
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_FOREIGN_KEY);
 
@@ -600,8 +588,8 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
 	      goto error_condition;
 	    }
 
-	  if (c->type == SM_CONSTRAINT_INDEX || c->type == SM_CONSTRAINT_REVERSE_INDEX
-	      || c->type == SM_CONSTRAINT_FOREIGN_KEY || c->attributes[0]->class_mop == filter_class)
+	  if (c->type == SM_CONSTRAINT_INDEX || c->type == SM_CONSTRAINT_FOREIGN_KEY
+	      || c->attributes[0]->class_mop == filter_class)
 	    {
 	      is_global = 0;
 	    }
@@ -2509,8 +2497,7 @@ classobj_cache_constraint_entry (const char *name, DB_SEQ * constraint_seq, SM_C
 	    }
 	  if (att != NULL)
 	    {
-	      if (constraint_type == SM_CONSTRAINT_INDEX || constraint_type == SM_CONSTRAINT_REVERSE_INDEX
-		  || constraint_type == SM_CONSTRAINT_UNIQUE || constraint_type == SM_CONSTRAINT_REVERSE_UNIQUE)
+	      if (constraint_type == SM_CONSTRAINT_INDEX || constraint_type == SM_CONSTRAINT_UNIQUE)
 		{
 		  if (classobj_check_function_constraint_info (constraint_seq, &has_function_constraint) != NO_ERROR)
 		    {
@@ -3438,11 +3425,6 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 		  if (DB_VALUE_TYPE (&avalue) == DB_TYPE_INTEGER)
 		    {
 		      asc_desc[j] = db_get_int (&avalue);
-		      if (Constraint_types[k] == SM_CONSTRAINT_REVERSE_UNIQUE
-			  || Constraint_types[k] == SM_CONSTRAINT_REVERSE_INDEX)
-			{
-			  asc_desc[j] = 1;	/* Desc */
-			}
 		    }
 		  else
 		    {
@@ -4099,10 +4081,6 @@ classobj_is_possible_constraint (SM_CONSTRAINT_TYPE existed, DB_CONSTRAINT_TYPE 
 	  return false;
 	case DB_CONSTRAINT_INDEX:
 	  return false;
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	  return false;
-	case DB_CONSTRAINT_REVERSE_INDEX:
-	  return true;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  return false;
 	default:
@@ -4116,46 +4094,8 @@ classobj_is_possible_constraint (SM_CONSTRAINT_TYPE existed, DB_CONSTRAINT_TYPE 
 	  return false;
 	case DB_CONSTRAINT_INDEX:
 	  return false;
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	  return true;
-	case DB_CONSTRAINT_REVERSE_INDEX:
-	  return true;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  return false;
-	default:
-	  return true;
-	}
-    case SM_CONSTRAINT_REVERSE_UNIQUE:
-      switch (new_)
-	{
-	case DB_CONSTRAINT_UNIQUE:
-	case DB_CONSTRAINT_PRIMARY_KEY:
-	  return false;
-	case DB_CONSTRAINT_INDEX:
-	  return true;
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	  return false;
-	case DB_CONSTRAINT_REVERSE_INDEX:
-	  return false;
-	case DB_CONSTRAINT_FOREIGN_KEY:
-	  return false;
-	default:
-	  return true;
-	}
-    case SM_CONSTRAINT_REVERSE_INDEX:
-      switch (new_)
-	{
-	case DB_CONSTRAINT_UNIQUE:
-	case DB_CONSTRAINT_PRIMARY_KEY:
-	  return true;
-	case DB_CONSTRAINT_INDEX:
-	  return true;
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	  return false;
-	case DB_CONSTRAINT_REVERSE_INDEX:
-	  return false;
-	case DB_CONSTRAINT_FOREIGN_KEY:
-	  return true;
 	default:
 	  return true;
 	}
@@ -4167,10 +4107,6 @@ classobj_is_possible_constraint (SM_CONSTRAINT_TYPE existed, DB_CONSTRAINT_TYPE 
 	  return false;
 	case DB_CONSTRAINT_INDEX:
 	  return false;
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	  return false;
-	case DB_CONSTRAINT_REVERSE_INDEX:
-	  return true;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  return false;
 	default:
@@ -4713,7 +4649,6 @@ classobj_filter_attribute_props (DB_SEQ * props)
   /* these properties aren't inherited, they must be defined locally */
 
   classobj_drop_prop (props, SM_PROPERTY_INDEX);
-  classobj_drop_prop (props, SM_PROPERTY_REVERSE_INDEX);
 }
 
 /*
@@ -6667,8 +6602,7 @@ classobj_make_template_like (const char *name, SM_CLASS * class_)
 	    {
 	      /* NOT NULL have already been copied by classobj_copy_attribute_like. INDEX will be duplicated after the
 	       * class is created. */
-	      assert (c->type == SM_CONSTRAINT_INDEX || c->type == SM_CONSTRAINT_REVERSE_INDEX
-		      || c->type == SM_CONSTRAINT_NOT_NULL);
+	      assert (c->type == SM_CONSTRAINT_INDEX || c->type == SM_CONSTRAINT_NOT_NULL);
 	    }
 	}
     }
@@ -6810,7 +6744,7 @@ classobj_copy_constraint_like (DB_CTMPL * ctemplate, SM_CLASS_CONSTRAINT * const
   assert (constraint_type != DB_CONSTRAINT_NOT_NULL);
 
   /* We are sure this constraint can be processed by dbt_add_constraint (indexes cannot be added to templates). */
-  assert (constraint_type != DB_CONSTRAINT_INDEX && constraint_type != DB_CONSTRAINT_REVERSE_INDEX);
+  assert (constraint_type != DB_CONSTRAINT_INDEX);
 
   att_names = classobj_point_at_att_names (constraint, &count);
   if (att_names == NULL)
@@ -8350,7 +8284,6 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
     {
     case DB_CONSTRAINT_PRIMARY_KEY:
     case DB_CONSTRAINT_UNIQUE:
-    case DB_CONSTRAINT_REVERSE_UNIQUE:
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (existing_con->type))
 	{
 	  return SM_SHARE_INDEX;
@@ -8362,14 +8295,13 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_REVERSE_INDEX)
+      else if (existing_con->type == SM_CONSTRAINT_INDEX)
 	{
 	  return SM_SHARE_INDEX;
 	}
       break;
 
     case DB_CONSTRAINT_INDEX:
-    case DB_CONSTRAINT_REVERSE_INDEX:
       if (existing_con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	{
 	  return SM_SHARE_INDEX;

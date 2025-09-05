@@ -221,9 +221,9 @@ static int prepare_column_list_info_set (DB_SESSION * session, char prepare_flag
 #endif /* CAS_FOR_CGW */
 static void prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset,
 				     const char *col_name, const char *default_value, char auto_increment,
-				     char unique_key, char primary_key, char reverse_index, char reverse_unique,
-				     char foreign_key, char shared, const char *attr_name, const char *class_name,
-				     char nullable, T_BROKER_VERSION client_version);
+				     char unique_key, char primary_key, char foreign_key, char shared,
+				     const char *attr_name, const char *class_name, char nullable,
+				     T_BROKER_VERSION client_version);
 static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset, const char *col_name,
 			     const char *attr_name, const char *class_name, char is_non_null,
 			     T_BROKER_VERSION client_version);
@@ -4118,8 +4118,8 @@ ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle, char *param_mode, int num
 static void
 prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset, const char *col_name,
 			 const char *default_value, char auto_increment, char unique_key, char primary_key,
-			 char reverse_index, char reverse_unique, char foreign_key, char shared, const char *attr_name,
-			 const char *class_name, char is_non_null, T_BROKER_VERSION client_version)
+			 char foreign_key, char shared, const char *attr_name, const char *class_name,
+			 char is_non_null, T_BROKER_VERSION client_version)
 {
   const char *attr_name_p, *class_name_p;
   int attr_name_len, class_name_len;
@@ -4170,8 +4170,6 @@ prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, ch
   net_buf_cp_byte (net_buf, auto_increment);
   net_buf_cp_byte (net_buf, unique_key);
   net_buf_cp_byte (net_buf, primary_key);
-  net_buf_cp_byte (net_buf, reverse_index);
-  net_buf_cp_byte (net_buf, reverse_unique);
   net_buf_cp_byte (net_buf, foreign_key);
   net_buf_cp_byte (net_buf, shared);
 }
@@ -4317,8 +4315,6 @@ set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec, char chars
   char auto_increment = 0;
   char unique_key = 0;
   char primary_key = 0;
-  char reverse_index = 0;
-  char reverse_unique = 0;
   char foreign_key = 0;
   char shared = 0;
   const char *default_value_string = NULL;
@@ -4332,16 +4328,14 @@ set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec, char chars
       auto_increment = db_attribute_is_auto_increment (attr);
       unique_key = db_attribute_is_unique (attr);
       primary_key = db_attribute_is_primary_key (attr);
-      reverse_index = db_attribute_is_reverse_indexed (attr);
-      reverse_unique = db_attribute_is_reverse_unique (attr);
       shared = db_attribute_is_shared (attr);
       foreign_key = db_attribute_is_foreign_key (attr);
       default_value_string = get_column_default_as_string (attr, &alloced_default_value_string);
     }
 
   prepare_column_info_set (net_buf, ut, scale, prec, charset, col_name, default_value_string, auto_increment,
-			   unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared, attr_name,
-			   class_name, is_non_null, client_version);
+			   unique_key, primary_key, foreign_key, shared, attr_name, class_name, is_non_null,
+			   client_version);
 
   if (alloced_default_value_string)
     {
@@ -6680,7 +6674,6 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   short type;
   char *name, *attr_name;
   int bt_total_pages, bt_num_keys, bt_leaf_pages, bt_height;
-  int asc_desc;
   char fetch_end_flag = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
 
@@ -6699,11 +6692,6 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	case DB_CONSTRAINT_UNIQUE:
 	case DB_CONSTRAINT_INDEX:
-	  asc_desc = 0;		/* 'A' */
-	  break;
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	case DB_CONSTRAINT_REVERSE_INDEX:
-	  asc_desc = 1;		/* 'D' */
 	  break;
 	default:
 	  goto const_next;
@@ -6742,7 +6730,7 @@ fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  add_res_data_short (net_buf, j + 1, 0, NULL);
 
 	  /* 8. asc_desc */
-	  add_res_data_string (net_buf, asc_desc ? "D" : "A", 1, 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
+	  add_res_data_string (net_buf, "A", 1, 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 
 	  tuple_num++;
 	  cursor_pos++;
@@ -7806,9 +7794,8 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 	  prepare_column_info_set (net_buf, col_info.data_type, col_info.scale, col_info.precision,
 				   col_info.charset, col_info.col_name, col_info.default_value,
 				   col_info.is_auto_increment, col_info.is_unique_key, col_info.is_primary_key,
-				   col_info.is_reverse_index, col_info.is_reverse_unique, col_info.is_foreign_key,
-				   col_info.is_shared, col_info.attr_name, col_info.class_name, col_info.is_not_null,
-				   client_version);
+				   col_info.is_foreign_key, col_info.is_shared, col_info.attr_name, col_info.class_name,
+				   col_info.is_not_null, client_version);
 	}
 
       net_buf_overwrite_int (net_buf, num_col_offset, (int) num_cols);
@@ -7818,7 +7805,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
       updatable_flag = 0;
       net_buf_cp_byte (net_buf, updatable_flag);
       net_buf_cp_int (net_buf, 1, NULL);
-      prepare_column_info_set (net_buf, 0, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "", "", 0, 0, 0, 0, 0, 0, 0, "", "", 0,
+      prepare_column_info_set (net_buf, 0, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "", "", 0, 0, 0, 0, 0, "", "", 0,
 			       client_version);
     }
   else
@@ -8016,7 +8003,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
       updatable_flag = 0;
       net_buf_cp_byte (net_buf, updatable_flag);
       net_buf_cp_int (net_buf, 1, NULL);
-      prepare_column_info_set (net_buf, 0, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "", "", 0, 0, 0, 0, 0, 0, 0, "", "", 0,
+      prepare_column_info_set (net_buf, 0, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "", "", 0, 0, 0, 0, 0, "", "", 0,
 			       client_version);
     }
   else
@@ -8994,8 +8981,6 @@ sch_constraint (T_NET_BUF * net_buf, char *class_name, void **result)
 	{
 	case DB_CONSTRAINT_UNIQUE:
 	case DB_CONSTRAINT_INDEX:
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	case DB_CONSTRAINT_REVERSE_INDEX:
 	  attr = db_constraint_attributes (tmp_c);
 	  for (i = 0; attr[i]; i++)
 	    {
@@ -9459,7 +9444,7 @@ class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern
       attr_table->shared = 0;
     }
 
-  if (db_attribute_is_unique (attr) || db_attribute_is_reverse_unique (attr))
+  if (db_attribute_is_unique (attr))
     {
       attr_table->unique = 1;
     }
@@ -10189,17 +10174,7 @@ exit_on_error:
 static short
 constraint_dbtype_to_castype (int db_const_type)
 {
-  if (db_const_type == DB_CONSTRAINT_UNIQUE)
-    {
-      return CCI_CONSTRAINT_TYPE_UNIQUE;
-    }
-
-  if (db_const_type == DB_CONSTRAINT_REVERSE_UNIQUE)
-    {
-      return CCI_CONSTRAINT_TYPE_UNIQUE;
-    }
-
-  return CCI_CONSTRAINT_TYPE_INDEX;
+  return (db_const_type == DB_CONSTRAINT_UNIQUE) ? CCI_CONSTRAINT_TYPE_UNIQUE : CCI_CONSTRAINT_TYPE_INDEX;
 }
 
 static T_PREPARE_CALL_INFO *

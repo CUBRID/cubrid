@@ -93,8 +93,7 @@ extern int dk_get_deduplicate_key_position (int n_attrs, int *attr_ids, int func
 // SM_ATTRIBUTE and DB_ATTRIBUTE are the same thing
 extern SM_ATTRIBUTE *dk_find_sm_deduplicate_key_attribute (int att_id, const char *att_name);
 extern void dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
-					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames,
-					  bool is_reverse);
+					  int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames);
 extern char *dk_print_deduplicate_key_info (char *buf, int buf_size, int deduplicate_level);
 extern int dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_INFO * function_index);
 #endif

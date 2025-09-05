@@ -2041,7 +2041,6 @@ struct pt_alter_info
     } collation;
     struct
     {
-      bool reverse;
       bool unique;
     } index;
     struct
@@ -2176,7 +2175,6 @@ struct pt_index_info
   int func_pos;			/* the position of the expression in the function index's column list */
   int func_no_args;		/* number of arguments in the function index expression
 				 * Appears only in function index expressions, excluding constants.  */
-  bool reverse;			/* REVERSE */
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;

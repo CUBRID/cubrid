@@ -1047,8 +1047,6 @@ namespace cubmethod
     char auto_increment = db_attribute_is_auto_increment (attr);
     char unique_key = db_attribute_is_unique (attr);
     char primary_key = db_attribute_is_primary_key (attr);
-    char reverse_index = db_attribute_is_reverse_indexed (attr);
-    char reverse_unique = db_attribute_is_reverse_unique (attr);
     char foreign_key = db_attribute_is_foreign_key (attr);
     char shared = db_attribute_is_shared (attr);
 
@@ -1060,7 +1058,7 @@ namespace cubmethod
 
     column_info info (dbType, setType, scale, prec, charset,
 		      col_name_string, default_value_string,
-		      auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
+		      auto_increment, unique_key, primary_key, foreign_key, shared,
 		      attr_name_string, class_name_string, is_non_null);
 
     if (er_errid () == ER_OBJ_INVALID_ATTRIBUTE || er_errid () == ER_OBJ_INVALID_ARGUMENTS)

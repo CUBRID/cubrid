@@ -97,7 +97,6 @@ struct catcls_property
   DB_SEQ *seq;
   int size;
   int is_unique;
-  int is_reverse;
   int is_primary_key;
   int is_foreign_key;
 };
@@ -135,7 +134,7 @@ static int catcls_get_or_value_from_method_file (THREAD_ENTRY * thread_p, OR_BUF
 static int catcls_get_or_value_from_resolution (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
 static int catcls_get_or_value_from_query_spec (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
 
-static int catcls_get_or_value_from_indexes (DB_SEQ * seq, OR_VALUE * subset, int is_unique, int is_reverse,
+static int catcls_get_or_value_from_indexes (DB_SEQ * seq, OR_VALUE * subset, int is_unique,
 					     int is_primary_key, int is_foreign_key);
 static int catcls_get_subset (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_size, OR_VALUE * value_p,
 			      CREADER reader);
@@ -2266,12 +2265,11 @@ error:
  *   seq(in):
  *   values(in):
  *   is_unique(in):
- *   is_reverse(in):
  *   is_primary_key(in):
  *   is_foreign_key(in):
  */
 static int
-catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_unique, int is_reverse, int is_primary_key,
+catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_unique, int is_primary_key,
 				  int is_foreign_key)
 {
   int seq_size;
@@ -2336,8 +2334,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
       att_cnt = get_class_constraint_att_count (key_size);
 
       error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_STATUS_INDEX),
-			 &attrs[10].value);
+	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_STATUS_INDEX), &attrs[9].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2367,7 +2364,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    }
 	  if (db_value_is_null (&val) == false)
 	    {
-	      db_make_oid (&attrs[11].value, db_get_oid (&val));
+	      db_make_oid (&attrs[10].value, db_get_oid (&val));
 	    }
 
 	  error = set_get_element (seq, SM_FK_INFO_DELETE_ACTION_INDEX, &val);
@@ -2375,14 +2372,14 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[12].value, db_get_int (&val));
+	  db_make_int (&attrs[11].value, db_get_int (&val));
 
 	  error = set_get_element (seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[13].value, db_get_int (&val));
+	  db_make_int (&attrs[12].value, db_get_int (&val));
 
 	  seq = db_get_set (&svalue);
 	  error = set_get_element (seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &val);
@@ -2390,12 +2387,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[14].value, db_get_int (&val));
+	  db_make_int (&attrs[13].value, db_get_int (&val));
 	}
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_INDEX_TYPE_INDEX),
-			 &attrs[15].value);
+			 &attrs[14].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2403,7 +2400,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_OPTIONS_INDEX),
-			 &attrs[16].value);
+			 &attrs[15].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2411,16 +2408,16 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_COMMENT_INDEX),
-			 &attrs[17].value);
+			 &attrs[16].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
-      db_string_truncate (&attrs[17].value, DB_MAX_COMMENT_LENGTH);
+      db_string_truncate (&attrs[16].value, DB_MAX_COMMENT_LENGTH);
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_CREATED_TIME_INDEX),
-			 &attrs[18].value);
+			 &attrs[17].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2428,7 +2425,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_UPDATED_TIME_INDEX),
-			 &attrs[19].value);
+			 &attrs[18].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2528,7 +2525,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		    {
 		    case SM_INDEX_FLAG_FILTER:
 		      pred_seq = db_get_set (&avalue);
-		      attr_val_p = &attrs[8].value;
+		      attr_val_p = &attrs[7].value;
 		      error = set_get_element (pred_seq, 0, attr_val_p);
 		      if (error != NO_ERROR)
 			{
@@ -2762,17 +2759,14 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pvalue = NULL;
 	}
 
-      /* is_reverse */
-      db_make_int (&attrs[5].value, is_reverse);
-
       /* is_primary_key */
-      db_make_int (&attrs[6].value, is_primary_key);
+      db_make_int (&attrs[5].value, is_primary_key);
 
       /* is_foreign_key */
-      db_make_int (&attrs[7].value, is_foreign_key);
+      db_make_int (&attrs[6].value, is_foreign_key);
 
       /* have_function */
-      db_make_int (&attrs[9].value, has_function_index);
+      db_make_int (&attrs[8].value, has_function_index);
     }
 
   return NO_ERROR;
@@ -2908,12 +2902,10 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_s
   DB_SEQ *prop_seq_p = NULL;
   int n_size = 0;
   CATCLS_PROPERTY property_vars[SM_PROPERTY_NUM_INDEX_FAMILY] = {
-    {SM_PROPERTY_PRIMARY_KEY, NULL, 0, true, false, true, false},
-    {SM_PROPERTY_UNIQUE, NULL, 0, true, false, false, false},
-    {SM_PROPERTY_REVERSE_UNIQUE, NULL, 0, true, true, false, false},
-    {SM_PROPERTY_INDEX, NULL, 0, false, false, false, false},
-    {SM_PROPERTY_REVERSE_INDEX, NULL, 0, false, true, false, false},
-    {SM_PROPERTY_FOREIGN_KEY, NULL, 0, false, false, false, true},
+    {SM_PROPERTY_PRIMARY_KEY, NULL, 0, true, true, false},
+    {SM_PROPERTY_UNIQUE, NULL, 0, true, false, false},
+    {SM_PROPERTY_INDEX, NULL, 0, false, false, false},
+    {SM_PROPERTY_FOREIGN_KEY, NULL, 0, false, false, true},
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];
@@ -2979,8 +2971,7 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_s
 	{
 	  error =
 	    catcls_get_or_value_from_indexes (property_vars[i].seq, &subset_p[idx], property_vars[i].is_unique,
-					      property_vars[i].is_reverse, property_vars[i].is_primary_key,
-					      property_vars[i].is_foreign_key);
+					      property_vars[i].is_primary_key, property_vars[i].is_foreign_key);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;

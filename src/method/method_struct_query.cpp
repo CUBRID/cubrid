@@ -58,8 +58,6 @@ namespace cubmethod
     auto_increment = 0;
     unique_key = 0;
     primary_key = 0;
-    reverse_index = 0;
-    reverse_unique = 0;
     foreign_key = 0;
     shared = 0;
   }
@@ -84,17 +82,14 @@ namespace cubmethod
     auto_increment = 0;
     unique_key = 0;
     primary_key = 0;
-    reverse_index = 0;
-    reverse_unique = 0;
     foreign_key = 0;
     shared = 0;
   }
 
   column_info::column_info (int db_type, int set_type, short scale, int prec, char charset,
 			    std::string col_name, std::string default_value, char auto_increment,
-			    char unique_key, char primary_key, char reverse_index, char reverse_unique,
-			    char foreign_key, char shared, std::string attr_name, std::string class_name,
-			    char is_non_null)
+			    char unique_key, char primary_key, char foreign_key, char shared,
+			    std::string attr_name, std::string class_name, char is_non_null)
   {
     this->db_type = db_type;
     this->set_type = set_type;
@@ -122,8 +117,6 @@ namespace cubmethod
     this->auto_increment = auto_increment;
     this->unique_key = unique_key;
     this->primary_key = primary_key;
-    this->reverse_index = reverse_index;
-    this->reverse_unique = reverse_unique;
     this->foreign_key = foreign_key;
     this->shared = shared;
   }
@@ -146,8 +139,6 @@ namespace cubmethod
     serializator.pack_int (auto_increment);
     serializator.pack_int (unique_key);
     serializator.pack_int (primary_key);
-    serializator.pack_int (reverse_index);
-    serializator.pack_int (reverse_unique);
     serializator.pack_int (foreign_key);
     serializator.pack_int (shared);
   }
@@ -174,20 +165,16 @@ namespace cubmethod
     prec = (char) p;
     is_non_null = (char) inn;
 
-    int a, u, pk, ri, ru, f, s;
+    int a, u, pk, f, s;
     deserializator.unpack_int (a);
     deserializator.unpack_int (u);
     deserializator.unpack_int (pk);
-    deserializator.unpack_int (ri);
-    deserializator.unpack_int (ru);
     deserializator.unpack_int (f);
     deserializator.unpack_int (s);
 
     auto_increment = (char) a;
     unique_key = (char) u;
     primary_key = (char) pk;
-    reverse_index = (char) ri;
-    reverse_unique = (char) ru;
     foreign_key = (char) f;
     shared = (char) s;
   }
@@ -211,8 +198,6 @@ namespace cubmethod
     size += serializator.get_packed_int_size (size); // auto_increment
     size += serializator.get_packed_int_size (size); // unique_key
     size += serializator.get_packed_int_size (size); // primary_key
-    size += serializator.get_packed_int_size (size); // reverse_index
-    size += serializator.get_packed_int_size (size); // reverse_unique
     size += serializator.get_packed_int_size (size); // foreign_key
     size += serializator.get_packed_int_size (size); // shared
     return size;
@@ -236,8 +221,6 @@ namespace cubmethod
     fprintf (stdout, "auto_increment: %d\n", auto_increment);
     fprintf (stdout, "unique_key: %d\n", unique_key);
     fprintf (stdout, "primary_key: %d\n", primary_key);
-    fprintf (stdout, "reverse_index: %d\n", reverse_index);
-    fprintf (stdout, "reverse_unique: %d\n", reverse_unique);
     fprintf (stdout, "foreign_key: %d\n", foreign_key);
     fprintf (stdout, "shared: %d\n", shared);
   }

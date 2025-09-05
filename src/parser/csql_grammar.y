@@ -422,9 +422,6 @@ static void parser_push_join_type (int v);
 static int parser_top_join_type (void);
 static int parser_pop_join_type (void);
 
-static void parser_save_is_reverse (bool v);
-static bool parser_get_is_reverse (void);
-
 static void parser_initialize_parser_context (void);
 static PT_NODE *parser_make_date_lang (int arg_cnt, PT_NODE * arg3);
 static PT_NODE *parser_make_number_lang (const int argc);
@@ -593,7 +590,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 
 /* define rule type (number) */
 /*{{{*/
-%type <boolean> opt_reverse
 %type <boolean> opt_unique
 %type <boolean> opt_cascade
 %type <boolean> opt_cascade_constraints
@@ -2792,25 +2788,24 @@ create_stmt
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
 		}
 	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-		{ pop_msg(); }  			/* 7 */
-	  identifier					/* 8 */
-	  ON_						/* 9 */
-	  only_class_name				/* 10 */
-	  index_column_name_list			/* 11 */
-	  opt_where_clause				/* 12 */
-          opt_index_with_clause                         /* 13 */
-	  opt_invisible					/* 14 */
-	  opt_comment_spec				/* 15 */          
+	  opt_unique					/* 4 */
+	  INDEX						/* 5 */
+		{ pop_msg(); }  			/* 6 */
+	  identifier					/* 7 */
+	  ON_						/* 8 */
+	  only_class_name				/* 9 */
+	  index_column_name_list			/* 10 */
+	  opt_where_clause				/* 11 */
+          opt_index_with_clause                         /* 12 */
+	  opt_invisible					/* 13 */
+	  opt_comment_spec				/* 14 */          
 		{{ DBG_TRACE_GRAMMAR(create_stmt,  CREATE ~ INDEX identifier ON_ ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
 			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
-		        if ($5 && $12)
+		        if ($4 && $11)
 			  {
 			    /* Currently, not allowed unique with filter/function index.
 			       However, may be introduced later, if it will be usefull.
@@ -2828,22 +2823,21 @@ create_stmt
 			    PT_NODE *col, *temp;
 			    int arg_count = 0, prefix_col_count = 0;
 
-			    ocs->info.spec.entity_name = $10;
+			    ocs->info.spec.entity_name = $9;
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
 
-			    PARSER_SAVE_ERR_CONTEXT (ocs, @10.buffer_pos)
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
 
 			    node->info.index.indexed_class = ocs;
-			    node->info.index.reverse = $4;
-			    node->info.index.unique = $5;
-			    node->info.index.index_name = $8;
+			    node->info.index.unique = $4;
+			    node->info.index.index_name = $7;
 			    if (node->info.index.index_name)
 			      {
 				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			      }
 
-			    col = $11;
+			    col = $10;
 			    if (node->info.index.unique)
 			      {
 			        for (temp = col; temp != NULL; temp = temp->next)
@@ -2887,8 +2881,7 @@ create_stmt
 					&& (arg_list->next == NULL)
 					&& (arg_list->node_type == PT_VALUE))
 				      {
-					if (node->info.index.reverse
-					    || node->info.index.unique)
+					if (node->info.index.unique)
 					  {
 					    PT_ERRORm (this_parser, node,
 						       MSGCAT_SET_PARSER_SYNTAX,
@@ -2928,21 +2921,21 @@ create_stmt
 				  }
 			      }
                        
-			    node->info.index.where = $12;
+			    node->info.index.where = $11;
 			    node->info.index.column_names = col;
 
-                            node->info.index.deduplicate_level =  TO_NUMBER(CONTAINER_AT_1($13));
-                             if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
+                            node->info.index.deduplicate_level =  TO_NUMBER(CONTAINER_AT_1($12));
+                             if ($4 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
                               {
                                   PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
                               }
 
-			    node->info.index.comment = $15;
+			    node->info.index.comment = $14;
 
-                            int with_online_ret = TO_NUMBER(CONTAINER_AT_0($13));  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = TO_NUMBER(CONTAINER_AT_0($12));  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
-                            bool is_invisible = $14;
+                            bool is_invisible = $13;
 
                             if (is_online && is_invisible)
                               {
@@ -3984,14 +3977,13 @@ alter_stmt
 			parser_push_hint_node(node);
 		}
 	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-	  identifier					/* 7 */
-	  ON_						/* 8 */
-	  only_class_name				/* 9 */	  
-	  opt_comment_spec				/* 10 */
-	  REBUILD					/* 11 */
+	  opt_unique					/* 4 */
+	  INDEX						/* 5 */
+	  identifier					/* 6 */
+	  ON_						/* 7 */
+	  only_class_name				/* 8 */	  
+	  opt_comment_spec				/* 9 */
+	  REBUILD					/* 10 */
 		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER ~ INDEX ~ REBUILD);
 
 		  PT_NODE *node = parser_pop_hint_node ();
@@ -3999,10 +3991,9 @@ alter_stmt
                   if (node)
 		    {
 		      node->info.index.code = PT_REBUILD_INDEX;
-                      node->info.index.reverse = $4;
-		      node->info.index.unique = $5;
-		      node->info.index.index_name = $7;
-		      node->info.index.comment = $10;
+		      node->info.index.unique = $4;
+		      node->info.index.index_name = $6;
+		      node->info.index.comment = $9;
 		      if (node->info.index.index_name)
 		        {
 		          node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
@@ -4011,7 +4002,7 @@ alter_stmt
 		      if ($9 != NULL)
 		        {
 		          PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
-		          ocs->info.spec.entity_name = $9;
+		          ocs->info.spec.entity_name = $8;
 		          ocs->info.spec.only_all = PT_ONLY;
 		          ocs->info.spec.meta_class = PT_CLASS;
 
@@ -4644,13 +4635,12 @@ drop_stmt
 			parser_push_hint_node(node);
 		}
 	  opt_hint_list					/* 3 */
-	  opt_reverse					/* 4 */
-	  opt_unique					/* 5 */
-	  INDEX						/* 6 */
-	  identifier					/* 7 */
-	  ON_						/* 8 */
-	  only_class_name				/* 9 */
-	  opt_index_column_name_list			/* 10 */
+	  opt_unique					/* 4 */
+	  INDEX						/* 5 */
+	  identifier					/* 6 */
+	  ON_						/* 7 */
+	  only_class_name				/* 8 */
+	  opt_index_column_name_list			/* 9 */
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP ~ INDEX ~);
 
 			PT_NODE *node = parser_pop_hint_node ();
@@ -4659,21 +4649,20 @@ drop_stmt
 			if (node && ocs)
 			  {
 			    PT_NODE *col, *temp;
-			    node->info.index.reverse = $4;
-			    node->info.index.unique = $5;
-			    node->info.index.index_name = $7;
+			    node->info.index.unique = $4;
+			    node->info.index.index_name = $6;
 			    if (node->info.index.index_name)
 			      {
 				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 			      }
 
-			    ocs->info.spec.entity_name = $9;
+			    ocs->info.spec.entity_name = $8;
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
-			    PARSER_SAVE_ERR_CONTEXT (ocs, @9.buffer_pos)
+			    PARSER_SAVE_ERR_CONTEXT (ocs, @8.buffer_pos)
 			    node->info.index.indexed_class = ocs;
 
-			    col = $10;
+			    col = $9;
 			    if (node->info.index.unique)
 			      {
 			        for (temp = col; temp != NULL; temp = temp->next)
@@ -4890,23 +4879,6 @@ deallocate_or_drop
 	| DROP
 	;
 
-opt_reverse
-	: /* empty */
-		{{ DBG_TRACE_GRAMMAR(opt_reverse, : );
-
-			parser_save_is_reverse (false);
-			$$ = false;
-
-		DBG_PRINT}}
-	| REVERSE
-		{{ DBG_TRACE_GRAMMAR(opt_reverse, | REVERSE);
-
-			parser_save_is_reverse (true);
-			$$ = true;
-
-		DBG_PRINT}}
-	;
-
 opt_unique
 	: /* empty */
 		{{ DBG_TRACE_GRAMMAR(opt_unique, : );
@@ -4941,14 +4913,6 @@ opt_index_column_name_list
 index_column_name_list
 	: '(' sort_spec_list ')'
 		{{ DBG_TRACE_GRAMMAR(index_column_name_list, '(' sort_spec_list ')');
-			if (parser_get_is_reverse())
-			{
-			  PT_NODE *node;
-			  for (node = $2; node != NULL; node = node->next)
-			  {
-			     node->info.sort_spec.asc_or_desc = PT_DESC;
-			  }
-			}
 
 		      $$ = $2;
 		      PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -6568,17 +6532,16 @@ add_partition_clause
 	;
 
 alter_drop_clause_mysql_specific
-	: opt_reverse opt_unique index_or_key identifier
-		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_mysql_specific, : opt_reverse opt_unique index_or_key identifier );
+	: opt_unique index_or_key identifier
+		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_mysql_specific, : opt_unique index_or_key identifier );
 
 			PT_NODE *node = parser_get_alter_node ();
 
 			if (node)
 			  {
 			    node->info.alter.code = PT_DROP_INDEX_CLAUSE;
-			    node->info.alter.alter_clause.index.reverse = $1;
-			    node->info.alter.alter_clause.index.unique = $2;
-			    node->info.alter.constraint_list = $4;
+			    node->info.alter.alter_clause.index.unique = $1;
+			    node->info.alter.constraint_list = $3;
 			  }
 
 		DBG_PRINT}}
@@ -26117,20 +26080,6 @@ parser_pop_join_type ()
   return parser_join_type_stack[--parser_join_type_sp];
 }
 
-static bool parser_is_reverse_saved;
-
-static void
-parser_save_is_reverse (bool v)
-{
-  parser_is_reverse_saved = v;
-}
-
-static bool
-parser_get_is_reverse ()
-{
-  return parser_is_reverse_saved;
-}
-
 static int
 parser_count_list (PT_NODE * list)
 {
@@ -26191,8 +26140,6 @@ parser_initialize_parser_context (void)
   parser_wjc_sp = 0;
   parser_cannot_cache_sp = 0;
   parser_hint_node_sp = 0;
-
-  parser_save_is_reverse (false);
 }
 
 

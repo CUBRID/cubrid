@@ -1921,12 +1921,6 @@ _op_get_constraint_info (nvplist * out, DB_CONSTRAINT * con)
     case DB_CONSTRAINT_INDEX:
       nv_add_nvp (out, "type", "INDEX");
       break;
-    case DB_CONSTRAINT_REVERSE_UNIQUE:
-      nv_add_nvp (out, "type", "REVERSE UNIQUE");
-      break;
-    case DB_CONSTRAINT_REVERSE_INDEX:
-      nv_add_nvp (out, "type", "REVERSE INDEX");
-      break;
     case DB_CONSTRAINT_PRIMARY_KEY:
       nv_add_nvp (out, "type", "PRIMARY KEY");
       break;

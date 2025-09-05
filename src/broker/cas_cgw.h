@@ -111,8 +111,6 @@ struct t_odbc_col_info
   SQLLEN is_auto_increment;
   char is_unique_key;
   char is_primary_key;
-  char is_reverse_index;
-  char is_reverse_unique;
   char is_foreign_key;
   char is_shared;
   char attr_name[ATTR_NAME_LEN + 1];

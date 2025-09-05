@@ -288,7 +288,7 @@ dk_sm_deduplicate_key_position (int n_attrs, SM_ATTRIBUTE ** attrs, SM_FUNCTION_
 
 void
 dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, int *asc_desc,
-			      int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames, bool is_reverse)
+			      int *attrs_prefix_length, SM_FUNCTION_INFO * func_index_info, int nnames)
 {
   int deduplicate_key_col_pos;
 
@@ -326,7 +326,7 @@ dk_create_index_level_adjust (const PT_INDEX_INFO * idx_info, char **attnames, i
       attrs_prefix_length[deduplicate_key_col_pos] = -1;
     }
   attnames[deduplicate_key_col_pos] = dk_get_deduplicate_key_attr_name (idx_info->deduplicate_level);
-  asc_desc[deduplicate_key_col_pos] = (is_reverse ? 1 : 0);
+  asc_desc[deduplicate_key_col_pos] = 0;
 
   attnames[nnames + 1] = NULL;
 }

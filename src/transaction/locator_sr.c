@@ -7916,7 +7916,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    }
 
 	  unique_pk = 0;
-	  if (index->type == BTREE_UNIQUE || index->type == BTREE_REVERSE_UNIQUE)
+	  if (index->type == BTREE_UNIQUE)
 	    {
 	      unique_pk = BTREE_CONSTRAINT_UNIQUE;
 	    }
@@ -8596,7 +8596,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		}
 
 	      unique_pk = 0;
-	      if (index->type == BTREE_UNIQUE || index->type == BTREE_REVERSE_UNIQUE)
+	      if (index->type == BTREE_UNIQUE)
 		{
 		  unique_pk = BTREE_CONSTRAINT_UNIQUE;
 		}

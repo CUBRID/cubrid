@@ -54,20 +54,13 @@ struct pr_type;
 
 #define SM_IS_ATTFLAG_UNIQUE_FAMILY(c) \
         (((c) == SM_ATTFLAG_UNIQUE             || \
-	  (c) == SM_ATTFLAG_PRIMARY_KEY        || \
-	  (c) == SM_ATTFLAG_REVERSE_UNIQUE)       \
+	  (c) == SM_ATTFLAG_PRIMARY_KEY)          \
           ? true : false)
 
 #define SM_IS_ATTFLAG_INDEX_FAMILY(c) \
         ((SM_IS_ATTFLAG_UNIQUE_FAMILY(c)      || \
 	 (c) == SM_ATTFLAG_FOREIGN_KEY        || \
-         (c) == SM_ATTFLAG_INDEX              || \
-         (c) == SM_ATTFLAG_REVERSE_INDEX)        \
-         ? true : false)
-
-#define SM_IS_ATTFLAG_REVERSE_INDEX_FAMILY(c) \
-        (((c) == SM_ATTFLAG_REVERSE_UNIQUE     || \
-          (c) == SM_ATTFLAG_REVERSE_INDEX)        \
+         (c) == SM_ATTFLAG_INDEX)                \
          ? true : false)
 
 #define SM_IS_ATTFLAG_UNIQUE_FAMILY_OR_FOREIGN_KEY(c) \
@@ -79,16 +72,12 @@ struct pr_type;
 	((c) == SM_ATTFLAG_UNIQUE         ? SM_CONSTRAINT_UNIQUE : \
 	 (c) == SM_ATTFLAG_PRIMARY_KEY    ? SM_CONSTRAINT_PRIMARY_KEY : \
 	 (c) == SM_ATTFLAG_FOREIGN_KEY    ? SM_CONSTRAINT_FOREIGN_KEY : \
-	 (c) == SM_ATTFLAG_INDEX          ? SM_CONSTRAINT_INDEX : \
-	 (c) == SM_ATTFLAG_REVERSE_UNIQUE ? SM_CONSTRAINT_REVERSE_UNIQUE : \
-	                                    SM_CONSTRAINT_REVERSE_INDEX)
+	                                    SM_CONSTRAINT_INDEX)
 
 #define SM_MAP_CONSTRAINT_ATTFLAG_TO_PROPERTY(c) \
 	((c) == SM_ATTFLAG_UNIQUE         ? SM_PROPERTY_UNIQUE: \
 	 (c) == SM_ATTFLAG_PRIMARY_KEY    ? SM_PROPERTY_PRIMARY_KEY: \
-	 (c) == SM_ATTFLAG_FOREIGN_KEY    ? SM_PROPERTY_FOREIGN_KEY: \
-	                                    SM_PROPERTY_REVERSE_UNIQUE)
-
+	                                    SM_PROPERTY_FOREIGN_KEY)
 
 #define SM_MAP_CONSTRAINT_TO_ATTFLAG(c) \
 	((c) == DB_CONSTRAINT_UNIQUE         ? SM_ATTFLAG_UNIQUE: \
@@ -96,22 +85,17 @@ struct pr_type;
 	 (c) == DB_CONSTRAINT_NOT_NULL       ? SM_ATTFLAG_NON_NULL: \
 	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? SM_ATTFLAG_FOREIGN_KEY: \
 	 (c) == DB_CONSTRAINT_INDEX          ? SM_ATTFLAG_INDEX: \
-	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? SM_ATTFLAG_REVERSE_UNIQUE: \
-	 (c) == DB_CONSTRAINT_REVERSE_INDEX  ? SM_ATTFLAG_REVERSE_INDEX: \
 	                                       SM_ATTFLAG_NONE)
 
 #define SM_MAP_DB_INDEX_CONSTRAINT_TO_SM_CONSTRAINT(c) \
 	((c) == DB_CONSTRAINT_UNIQUE         ? SM_CONSTRAINT_UNIQUE: \
 	 (c) == DB_CONSTRAINT_PRIMARY_KEY    ? SM_CONSTRAINT_PRIMARY_KEY: \
 	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? SM_CONSTRAINT_FOREIGN_KEY: \
-	 (c) == DB_CONSTRAINT_INDEX          ? SM_CONSTRAINT_INDEX: \
-	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? SM_CONSTRAINT_REVERSE_UNIQUE: \
-	                                       SM_CONSTRAINT_REVERSE_INDEX)
+	                                        SM_CONSTRAINT_INDEX)
 
 #define SM_IS_CONSTRAINT_UNIQUE_FAMILY(c) \
         (((c) == SM_CONSTRAINT_UNIQUE          || \
-	  (c) == SM_CONSTRAINT_PRIMARY_KEY     || \
-	  (c) == SM_CONSTRAINT_REVERSE_UNIQUE)    \
+	  (c) == SM_CONSTRAINT_PRIMARY_KEY)       \
           ? true : false )
 
 #define SM_IS_CONSTRAINT_NOT_NULL_FAMILY(c) \
@@ -122,14 +106,8 @@ struct pr_type;
 #define SM_IS_CONSTRAINT_INDEX_FAMILY(c) \
         ((SM_IS_CONSTRAINT_UNIQUE_FAMILY(c)    || \
 	 (c) == SM_CONSTRAINT_FOREIGN_KEY      || \
-         (c) == SM_CONSTRAINT_INDEX            || \
-         (c) == SM_CONSTRAINT_REVERSE_INDEX)      \
+         (c) == SM_CONSTRAINT_INDEX)              \
          ? true : false )
-
-#define SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY(c) \
-        (((c) == SM_CONSTRAINT_REVERSE_UNIQUE ||  \
-          (c) == SM_CONSTRAINT_REVERSE_INDEX)     \
-          ? true : false )
 
 #define SM_IS_SHARE_WITH_FOREIGN_KEY(c) \
 	(((c) == SM_CONSTRAINT_FOREIGN_KEY || \
@@ -143,9 +121,7 @@ struct pr_type;
 
 #define SM_IS_INDEX_FAMILY(c) \
         (((c) == SM_CONSTRAINT_UNIQUE          || \
-         (c) == SM_CONSTRAINT_REVERSE_UNIQUE   || \
-         (c) == SM_CONSTRAINT_INDEX            || \
-         (c) == SM_CONSTRAINT_REVERSE_INDEX)      \
+         (c) == SM_CONSTRAINT_INDEX)              \
          ? true : false )
 
 #define SM_FIND_NAME_IN_COMPONENT_LIST(complist, name) \
@@ -161,9 +137,8 @@ struct pr_type;
 #define SM_GET_CONSTRAINT_STRING(c) \
 	((c) == DB_CONSTRAINT_UNIQUE         ? "UNIQUE": \
 	 (c) == DB_CONSTRAINT_PRIMARY_KEY    ? "PRIMARY KEY": \
-	 (c) == DB_CONSTRAINT_FOREIGN_KEY    ? "FOREIGN KEY": \
-	 (c) == DB_CONSTRAINT_REVERSE_UNIQUE ? "REVERSE_UNIQUE": \
-	 					"REVERSE_INDEX")
+	                                       "FOREIGN KEY")
+
 #define SM_GET_FILTER_PRED_STREAM(filter) \
 	((filter) == NULL ? NULL : (filter)->pred_stream)
 
@@ -281,8 +256,6 @@ typedef enum
   SM_CONSTRAINT_UNIQUE,
   SM_CONSTRAINT_INDEX,
   SM_CONSTRAINT_NOT_NULL,
-  SM_CONSTRAINT_REVERSE_UNIQUE,
-  SM_CONSTRAINT_REVERSE_INDEX,
   SM_CONSTRAINT_PRIMARY_KEY,
   SM_CONSTRAINT_FOREIGN_KEY
 } SM_CONSTRAINT_TYPE;

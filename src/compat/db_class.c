@@ -1761,8 +1761,7 @@ db_drop_index (MOP classmop, const char *attname)
 /*
  * db_add_constraint() - This function is used to add constraints to a class.
  *    The types of constraints are defined by DB_CONSTRAINT_TYPE and currently
- *    include UNIQUE, REVERSE_UNIQUE, NOT NULL, INDEX, REVERSE_INDEX,
- *    PRIMARY_KEY.
+ *    include UNIQUE, NOT NULL, INDEX, PRIMARY_KEY.
  * return : error code
  * classmop(in): class (or instance) pointer
  * constraint_type(in): type of constraint to add(refer to DB_CONSTRAINT_TYPE).

@@ -6207,10 +6207,6 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.alter.constraint_list);
 	  q = pt_append_nulstring (parser, q, " drop ");
-	  if (p->info.alter.alter_clause.index.reverse)
-	    {
-	      q = pt_append_nulstring (parser, q, "reverse ");
-	    }
 	  if (p->info.alter.alter_clause.index.unique)
 	    {
 	      q = pt_append_nulstring (parser, q, "unique ");
@@ -6415,10 +6411,6 @@ pt_print_alter_index (PARSER_CONTEXT * parser, PT_NODE * p)
   parser->custom_print = saved_cp;
 
   b = pt_append_nulstring (parser, b, "alter");
-  if (p->info.index.reverse)
-    {
-      b = pt_append_nulstring (parser, b, " reverse");
-    }
   if (p->info.index.unique)
     {
       b = pt_append_nulstring (parser, b, " unique");
@@ -7382,10 +7374,6 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, "create");
     }
 
-  if (p->info.index.reverse)
-    {
-      b = pt_append_nulstring (parser, b, " reverse");
-    }
   if (p->info.index.unique)
     {
       b = pt_append_nulstring (parser, b, " unique");
@@ -9339,10 +9327,6 @@ pt_print_drop_index (PARSER_CONTEXT * parser, PT_NODE * p)
   parser->custom_print = saved_cp;
 
   b = pt_append_nulstring (parser, b, "drop");
-  if (p->info.index.reverse)
-    {
-      b = pt_append_nulstring (parser, b, " reverse");
-    }
   if (p->info.index.unique)
     {
       b = pt_append_nulstring (parser, b, " unique");

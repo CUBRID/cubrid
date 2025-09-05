@@ -350,7 +350,7 @@ static void fixup_attribute_self_domain (SM_ATTRIBUTE * att, MOP self);
 static void fixup_self_reference_domains (MOP classop, SM_TEMPLATE * flat);
 static TP_DOMAIN *construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts, const int *asc_desc,
 					      const int *prefix_lengths, int func_col_id, TP_DOMAIN * func_domain);
-static int collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *constraint_name, int reverse,
+static int collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *constraint_name,
 				    int *n_classes, int n_attrs, OID * oids, int *attr_ids, HFID * hfids);
 static int allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLASS_CONSTRAINT * con);
 static int deallocate_index (SM_CLASS_CONSTRAINT * cons, BTID * index);
@@ -6159,8 +6159,7 @@ sm_att_in_unique_filter_constraint_predicate (MOP classop, const char *name)
 
       for (constr = class_->constraints; constr != NULL; constr = constr->next)
 	{
-	  if ((constr->type == SM_CONSTRAINT_UNIQUE || constr->type == SM_CONSTRAINT_REVERSE_UNIQUE)
-	      && constr->filter_predicate && constr->filter_predicate->att_ids)
+	  if ((constr->type == SM_CONSTRAINT_UNIQUE) && constr->filter_predicate && constr->filter_predicate->att_ids)
 	    {
 	      assert (constr->filter_predicate->num_attrs > 0);
 	      for (i = 0; i < constr->filter_predicate->num_attrs; i++)
@@ -10501,7 +10500,6 @@ mem_error:
  *   subclasses(in): List of subclasses.
  *   constraint_name(in): Name of UNIQUE or FOREIGN KEY constraint to search
  *			  for.
- *   reverse(in):
  *   n_classes(out): Number of subclasses which inherit the constraint.
  *   n_attrs(in): Number of attributes in constraint.
  *   oids(out): Array of class OID's which inherit the constraint.
@@ -10511,7 +10509,7 @@ mem_error:
  */
 
 static int
-collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *constraint_name, int reverse, int *n_classes,
+collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *constraint_name, int *n_classes,
 			 int n_attrs, OID * oids, int *attr_ids, HFID * hfids)
 {
   DB_OBJLIST *sub;
@@ -10537,17 +10535,10 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
 	    {
 	      /* Does this class contain the constraint that we're looking for? Note that we're only interested in
 	       * UNIQUE or FOREIGN KEY constraints at this time. */
-	      if (reverse)
+	      found = classobj_find_class_constraint (constraints, SM_CONSTRAINT_UNIQUE, constraint_name);
+	      if (!found)
 		{
-		  found = classobj_find_class_constraint (constraints, SM_CONSTRAINT_REVERSE_UNIQUE, constraint_name);
-		}
-	      else
-		{
-		  found = classobj_find_class_constraint (constraints, SM_CONSTRAINT_UNIQUE, constraint_name);
-		  if (!found)
-		    {
-		      found = classobj_find_class_constraint (constraints, SM_CONSTRAINT_PRIMARY_KEY, constraint_name);
-		    }
+		  found = classobj_find_class_constraint (constraints, SM_CONSTRAINT_PRIMARY_KEY, constraint_name);
 		}
 
 	      /* If we found a constraint with a matching name, we also need to make sure that the constraint
@@ -10649,11 +10640,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   const int *asc_desc = con->asc_desc;
   int unique_pk = 0;
   int not_null = 0;
-  int reverse = 0;
 
   if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type))
     {
-      reverse = SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (con->type);
       not_null = con->type == SM_CONSTRAINT_PRIMARY_KEY ? true : false;
       unique_pk = BTREE_CONSTRAINT_UNIQUE;
       if (con->type == SM_CONSTRAINT_PRIMARY_KEY)
@@ -10668,10 +10657,6 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
       fk_refcls_oid = &(con->fk_info->ref_class_oid);
       fk_refcls_pk_btid = &(con->fk_info->ref_class_pk_btid);
       fk_name = con->fk_info->name;
-    }
-  else				/* if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX) */
-    {
-      reverse = (con->type == SM_CONSTRAINT_INDEX) ? false : true;
     }
 
   /* Count the attributes */
@@ -10777,7 +10762,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
        * inherit the constraint */
       if (unique_pk || (fk_refcls_oid != NULL && !OID_ISNULL (fk_refcls_oid)))
 	{
-	  error = collect_hier_class_info (classop, subclasses, constraint_name, reverse, &n_classes, n_attrs, oids,
+	  error = collect_hier_class_info (classop, subclasses, constraint_name, &n_classes, n_attrs, oids,
 					   attr_ids, hfids);
 	  if (error != NO_ERROR)
 	    {
@@ -11361,7 +11346,7 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	{
 	  error = allocate_unique_constraint (classop, class_, con, subclasses, template_);
 	}
-      else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
+      else if (con->type == SM_CONSTRAINT_INDEX)
 	{
 	  error = allocate_index (classop, class_, NULL, con);
 	}
@@ -12097,8 +12082,6 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
     {
       classobj_drop_prop (flat->properties, SM_PROPERTY_UNIQUE);
       classobj_drop_prop (flat->properties, SM_PROPERTY_INDEX);
-      classobj_drop_prop (flat->properties, SM_PROPERTY_REVERSE_UNIQUE);
-      classobj_drop_prop (flat->properties, SM_PROPERTY_REVERSE_INDEX);
       classobj_drop_prop (flat->properties, SM_PROPERTY_PRIMARY_KEY);
       classobj_drop_prop (flat->properties, SM_PROPERTY_FOREIGN_KEY);
 
@@ -12130,7 +12113,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		}
 	    }
-	  else if (con->type == SM_CONSTRAINT_INDEX || con->type == SM_CONSTRAINT_REVERSE_INDEX)
+	  else if (con->type == SM_CONSTRAINT_INDEX)
 	    {
 	      error = classobj_put_index (&(flat->properties), con, &(con->index_btid), NULL, NULL, false);
 	      if (error != NO_ERROR)
@@ -12953,14 +12936,11 @@ sm_constraint_belongs_to_class (const SM_CLASS_CONSTRAINT * const con, MOP const
  * update constraints
  *   update_subclasses():
  *          SM_CONSTRAINT_UNIQUE,
- *          SM_CONSTRAINT_REVERSE_UNIQUE,
  *          SM_CONSTRAINT_PRIMARY_KEY,
  *          SM_CONSTRAINT_FOREIGN_KEY
  *          SM_CONSTRAINT_INDEX,
- *          SM_CONSTRAINT_REVERSE_INDEX,
  *   sm_drop_index():
  *          SM_CONSTRAINT_INDEX,
- *          SM_CONSTRAINT_REVERSE_INDEX,
  */
 
 static int
@@ -14042,12 +14022,6 @@ sm_drop_index (MOP classop, const char *constraint_name)
 
   if (found == NULL)
     {
-      ctype = SM_CONSTRAINT_REVERSE_INDEX;
-      found = classobj_find_class_constraint (class_->constraints, ctype, constraint_name);
-    }
-
-  if (found == NULL)
-    {
       ERROR1 (error, ER_SM_NO_INDEX, constraint_name);
     }
   else
@@ -14186,8 +14160,7 @@ sm_get_index (MOP classop, const char *attname, BTID * index)
  *        X_<class>_att1_d_att2_...  --> _d implies that att1 order is 'desc'
  *    where X indicates the constraint type;
  *          i=INDEX,            u=UNIQUE,       pk=PRIMARY KEY,
- *          fk=FOREIGN KEY,     n=NOT NULL,     ru=REVERSE UNIQUE,
- *          ri=REVERSE INDEX
+ *          fk=FOREIGN KEY,     n=NOT NULL
  *          <class> is the class name
  *          attn is the attribute name
  *    (ex)  If we are generating a default name for
@@ -14196,9 +14169,6 @@ sm_get_index (MOP classop, const char *attname, BTID * index)
  *    (ex)  If we are generating a default name for
  *              create index on foo (a desc, b);
  *          It would look like i_foo_a_d_b --> use '_d' for 'desc'
- *    (ex)  If we are generating a default name for
- *              create reverse index on foo (a desc, b);
- *          It would look like ri_foo_a_b --> not use '_d' for reverse type
  *   return: constraint name
  *   class_name(in): class name
  *   type(in): Constraint Type
@@ -14252,12 +14222,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
 	  break;
-	case DB_CONSTRAINT_REVERSE_UNIQUE:
-	  prefix = "ru_";
-	  break;
-	case DB_CONSTRAINT_REVERSE_INDEX:
-	  prefix = "ri_";
-	  break;
 	default:
 	  assert (false);
 	  prefix = "x_";	/* unknown */
@@ -14287,16 +14251,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	    }
 
 	  do_desc = false;	/* init */
-	  if (asc_desc)
+	  if (asc_desc && asc_desc[i] == 1)
 	    {
-	      if (!DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (type))
-		{
-		  /* attr is marked as 'desc' in the non-reverse index */
-		  if (asc_desc[i] == 1)
-		    {
-		      do_desc = true;
-		    }
-		}
+	      do_desc = true;
 	    }
 
 	  ptr_size = intl_identifier_lower_string_size (*ptr);
@@ -14327,7 +14284,7 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  for (ptr = att_names, i = 0; i < n_attrs; ptr++, i++)
 	    {
 	      strcat (name_all, *ptr);
-	      if (asc_desc && !DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (type) && asc_desc[i] == 1)
+	      if (asc_desc && asc_desc[i] == 1)
 		{
 		  strcat (name_all, "d");
 		}
@@ -14394,16 +14351,9 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  for (ptr = att_names; i < n_attrs; ptr++, i++)
 	    {
 	      do_desc = false;	/* init */
-	      if (asc_desc)
+	      if (asc_desc && asc_desc[i] == 1)
 		{
-		  if (!DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (type))
-		    {
-		      /* attr is marked as 'desc' in the non-reverse index */
-		      if (asc_desc[i] == 1)
-			{
-			  do_desc = true;
-			}
-		    }
+		  do_desc = true;
 		}
 
 	      strcat (name, "_");
@@ -14775,9 +14725,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
   switch (constraint_type)
     {
     case DB_CONSTRAINT_INDEX:
-    case DB_CONSTRAINT_REVERSE_INDEX:
     case DB_CONSTRAINT_UNIQUE:
-    case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
       DB_AUTH auth;
       bool is_secondary_index;
@@ -14789,7 +14737,7 @@ sm_add_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char *
 	}
       set_savepoint = true;
 
-      is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX || constraint_type == DB_CONSTRAINT_REVERSE_INDEX);
+      is_secondary_index = (constraint_type == DB_CONSTRAINT_INDEX);
 
       if (is_secondary_index)
 	{
@@ -15059,8 +15007,7 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
 	  const SM_CLASS_CONSTRAINT *const constraint = classobj_find_class_index (smcls, constraint_name);
 
 	  if (constraint != NULL
-	      && (constraint->type == SM_CONSTRAINT_INDEX || constraint->type == SM_CONSTRAINT_REVERSE_INDEX
-		  || constraint->type == SM_CONSTRAINT_UNIQUE || constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE))
+	      && (constraint->type == SM_CONSTRAINT_INDEX || constraint->type == SM_CONSTRAINT_UNIQUE))
 	    {
 	      constraint_type = db_constraint_type (constraint);
 	    }
@@ -15070,12 +15017,10 @@ sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, const char 
   switch (constraint_type)
     {
     case DB_CONSTRAINT_INDEX:
-    case DB_CONSTRAINT_REVERSE_INDEX:
       error = sm_drop_index (classop, constraint_name);
       break;
 
     case DB_CONSTRAINT_UNIQUE:
-    case DB_CONSTRAINT_REVERSE_UNIQUE:
     case DB_CONSTRAINT_PRIMARY_KEY:
       def = smt_edit_class_mop (classop, AU_ALTER);
       if (def == NULL)
@@ -15153,8 +15098,7 @@ sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const cla
       return true;
     }
 
-  if (constraint->type == SM_CONSTRAINT_NOT_NULL || constraint->type == SM_CONSTRAINT_INDEX
-      || constraint->type == SM_CONSTRAINT_REVERSE_INDEX)
+  if (constraint->type == SM_CONSTRAINT_NOT_NULL || constraint->type == SM_CONSTRAINT_INDEX)
     {
       return true;
     }
@@ -15905,7 +15849,7 @@ filter_local_constraints (SM_TEMPLATE * template_, SM_CLASS * super_class)
   for (c = old_constraints; c != NULL; c = c->next)
     {
       if (c->type != SM_CONSTRAINT_FOREIGN_KEY && c->type != SM_CONSTRAINT_UNIQUE
-	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE && c->type != SM_CONSTRAINT_PRIMARY_KEY)
+	  && c->type != SM_CONSTRAINT_PRIMARY_KEY)
 	{
 	  continue;
 	}
@@ -16018,10 +15962,8 @@ sm_free_filter_index_info (SM_PREDICATE_INFO * filter_index_info)
  * constraint (in) : constraint
  * Note:
  *  SM_CONSTRAINT_INDEX		  - always local
- *  SM_CONSTRAINT_REVERSE_INDEX	  - always local
  *  SM_CONSTRAINT_FOREIGN_KEY	  - always local
  *  SM_CONSTRAINT_UNIQUE	  - global unless this is a partitioned class
- *  SM_CONSTRAINT_REVERSE_UNIQUE  - same as SM_CONSTRAINT_UNIQUE
  *  SM_CONSTRAINT_PRIMARY_KEY	  - always global unless this is a partitioned
  *				    class
  */
@@ -16043,11 +15985,9 @@ sm_is_global_only_constraint (MOP classmop, SM_CLASS_CONSTRAINT * constraint, in
   switch (constraint->type)
     {
     case SM_CONSTRAINT_UNIQUE:
-    case SM_CONSTRAINT_REVERSE_UNIQUE:
       /* not enough information yet */
       break;
     case SM_CONSTRAINT_INDEX:
-    case SM_CONSTRAINT_REVERSE_INDEX:
     case SM_CONSTRAINT_FOREIGN_KEY:
     case SM_CONSTRAINT_NOT_NULL:
       /* always local */
@@ -16500,7 +16440,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
       subclass_ = NULL;
     }
 
-  if (con->type == SM_CONSTRAINT_UNIQUE || con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+  if (con->type == SM_CONSTRAINT_UNIQUE)
     {
       unique_pk = BTREE_CONSTRAINT_UNIQUE;
       not_null = 0;

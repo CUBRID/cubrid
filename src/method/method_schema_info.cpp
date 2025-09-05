@@ -516,8 +516,6 @@ namespace cubmethod
 	  {
 	  case DB_CONSTRAINT_UNIQUE:
 	  case DB_CONSTRAINT_INDEX:
-	  case DB_CONSTRAINT_REVERSE_UNIQUE:
-	  case DB_CONSTRAINT_REVERSE_INDEX:
 	  {
 	    DB_ATTRIBUTE **attr = db_constraint_attributes (tmp_c);
 	    for (int i = 0; attr[i]; i++)

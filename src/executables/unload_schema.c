@@ -222,7 +222,6 @@ static void emit_primary_key_def (extract_context & ctxt, print_output & output_
 				  const char *class_type);
 static void emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_,
 					 const char *class_type);
-static void emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
 static int emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_);
 static void emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * domains);
 static int emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute);
@@ -2494,7 +2493,6 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 {
   DB_ATTRIBUTE *attribute_list, *first_attribute, *a;
   int unique_flag = 0;
-  int reverse_unique_flag = 0;
   int index_flag = 0;
   const char *name;
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
@@ -2513,10 +2511,6 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 	    {
 	      unique_flag = 1;
 	    }
-	  else if (db_attribute_is_reverse_unique (a))
-	    {
-	      reverse_unique_flag = 1;
-	    }
 	}
 
       if (db_attribute_is_indexed (a))
@@ -2524,7 +2518,7 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
 	  index_flag = 1;
 	}
 
-      if (unique_flag && reverse_unique_flag && index_flag)
+      if (unique_flag && index_flag)
 	{
 	  /* Since we already found all, no need to go further. */
 	  break;
@@ -2697,14 +2691,6 @@ emit_instance_attributes (extract_context & ctxt, print_output & output_ctx, DB_
       if (split_schema_files == false)
 	{
 	  emit_primary_and_unique_def (ctxt, output_ctx, class_, class_type);
-	}
-    }
-
-  if (reverse_unique_flag)
-    {
-      if (split_schema_files == false)
-	{
-	  emit_reverse_unique_def (ctxt, output_ctx, class_);
 	}
     }
 
@@ -3529,89 +3515,6 @@ emit_primary_and_unique_def (extract_context & ctxt, print_output & output_ctx, 
 }
 
 /*
- * emit_reverse_unique_def - emit a reverse unique index definition query part
- *    return: void
- *    class(in): class object
- */
-static void
-emit_reverse_unique_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * class_)
-{
-  DB_CONSTRAINT *constraint_list, *constraint;
-  DB_ATTRIBUTE **atts, **att;
-  bool has_inherited_atts;
-  const char *name;
-  char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-  char *class_name = NULL;
-  char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-
-  constraint_list = db_get_constraints (class_);
-  if (constraint_list == NULL)
-    {
-      return;
-    }
-
-  for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
-    {
-      if (db_constraint_type (constraint) != DB_CONSTRAINT_REVERSE_UNIQUE)
-	{
-	  continue;
-	}
-
-      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  /* We skip definitions for unique indexes during online loading. */
-	  continue;
-	}
-
-      atts = db_constraint_attributes (constraint);
-      has_inherited_atts = false;
-
-      for (att = atts; *att != NULL; att++)
-	{
-	  if (db_attribute_class (*att) != class_)
-	    {
-	      has_inherited_atts = true;
-	      break;
-	    }
-	}
-
-      if (!has_inherited_atts)
-	{
-	  name = db_get_class_name (class_);
-	  SPLIT_USER_SPECIFIED_NAME (name, owner_name, class_name);
-
-	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-			    sizeof (output_owner));
-
-	  output_ctx ("\nCREATE REVERSE UNIQUE INDEX %s%s%s on %s%s%s%s (", PRINT_IDENTIFIER (constraint->name),
-		      output_owner, PRINT_IDENTIFIER (class_name));
-
-	  for (att = atts; *att != NULL; att++)
-	    {
-	      name = db_attribute_name (*att);
-	      if (att != atts)
-		{
-		  output_ctx (", ");
-		}
-	      output_ctx ("%s%s%s", PRINT_IDENTIFIER (name));
-
-	      // reverse unique does not care for direction of the column.
-	    }
-
-	  output_ctx (")");
-
-	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
-	    {
-	      output_ctx (" ");
-	      help_print_describe_comment (output_ctx, constraint->comment);
-	    }
-	}
-    }
-  output_ctx (";\n");
-}
-
-
-/*
  * emit_index_def - emit the index constraint definitions for this class
  *    return: 
  *    class(in): the class to emit the indexes for
@@ -3672,8 +3575,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
     {
       ctype = db_constraint_type (constraint);
-      if ((constraint->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	  && (ctype != DB_CONSTRAINT_INDEX && ctype != DB_CONSTRAINT_REVERSE_INDEX))
+      if ((constraint->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS) && (ctype != DB_CONSTRAINT_INDEX))
 	{
 	  continue;
 	}
@@ -3690,12 +3592,8 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 			    sizeof (output_owner));
 
 	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s%s (",
-		      (ctype == DB_CONSTRAINT_REVERSE_INDEX
-		       || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
-										     || ctype ==
-										     DB_CONSTRAINT_REVERSE_UNIQUE) ?
-		      "UNIQUE " : "", PRINT_FUNCTION_INDEX_NAME (constraint->name), output_owner,
-		      PRINT_IDENTIFIER (class_name));
+		      (ctype == DB_CONSTRAINT_UNIQUE) ? "UNIQUE " : "", PRINT_FUNCTION_INDEX_NAME (constraint->name),
+		      output_owner, PRINT_IDENTIFIER (class_name));
 	}
       else
 	{
@@ -3703,11 +3601,8 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 			    sizeof (output_owner));
 
 	  output_ctx ("CREATE %s%sINDEX %s%s%s ON %s%s%s%s (",
-		      (ctype == DB_CONSTRAINT_REVERSE_INDEX
-		       || ctype == DB_CONSTRAINT_REVERSE_UNIQUE) ? "REVERSE " : "", (ctype == DB_CONSTRAINT_UNIQUE
-										     || ctype ==
-										     DB_CONSTRAINT_REVERSE_UNIQUE) ?
-		      "UNIQUE " : "", PRINT_IDENTIFIER (constraint->name), output_owner, PRINT_IDENTIFIER (class_name));
+		      (ctype == DB_CONSTRAINT_UNIQUE) ? "UNIQUE " : "", PRINT_IDENTIFIER (constraint->name),
+		      output_owner, PRINT_IDENTIFIER (class_name));
 	}
 
       asc_desc = NULL;		/* init */
@@ -3847,8 +3742,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 
       /* Safeguard. */
       /* If it's unique then it must surely be with online flag. */
-      assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
+      assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS) || ctype != DB_CONSTRAINT_UNIQUE);
 
       if ((reserved_col_buf[0] == '\0') && !DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
 	{
@@ -6082,7 +5976,6 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 {
   DB_OBJLIST *cl = NULL;
   int is_vclass = 0;
-  int reverse_unique_flag = 0;
   const char *class_type = "CLASS";
   const char *name = NULL;
   int is_partitioned = 0;
@@ -6116,13 +6009,9 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 		{
 		  unique_flag = 1;
 		}
-	      else if (db_attribute_is_reverse_unique (a))
-		{
-		  reverse_unique_flag = 1;
-		}
 	    }
 
-	  if (unique_flag && reverse_unique_flag)
+	  if (unique_flag)
 	    {
 	      /* Since we already found all, no need to go further. */
 	      break;
@@ -6134,13 +6023,7 @@ emit_unique_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST *
 	  emit_unique_def (ctxt, output_ctx, cl->op, class_type);
 	}
 
-      if (reverse_unique_flag)
-	{
-	  emit_reverse_unique_def (ctxt, output_ctx, cl->op);
-	}
-
       unique_flag = 0;
-      reverse_unique_flag = 0;
     }
 
   if (er_errid () == ER_OBJ_NO_COMPONENTS)

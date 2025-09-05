@@ -1347,33 +1347,6 @@ db_attribute_is_auto_increment (DB_ATTRIBUTE * attribute)
 }
 
 /*
- * db_attribute_is_reverse_unique() - This function tests the status of the
- *    reverse UNIQUE for an attribute.
- * return : non-zero if reverse unique is defined.
- * attribute(in): attribute descriptor
- */
-int
-db_attribute_is_reverse_unique (DB_ATTRIBUTE * attribute)
-{
-  int status = 0;
-
-  if (attribute != NULL)
-    {
-      SM_CONSTRAINT *con;
-
-      for (con = attribute->constraints; con != NULL && !status; con = con->next)
-	{
-	  if (con->type == SM_CONSTRAINT_REVERSE_UNIQUE)
-	    {
-	      status = 1;
-	    }
-	}
-    }
-
-  return (status);
-}
-
-/*
  * db_attribute_is_non_null() - This function tests the status of the NON_NULL
  *    integrity constraint for an attribute.
  * return : non-zero if non_null is defined.
@@ -1411,33 +1384,6 @@ db_attribute_is_indexed (DB_ATTRIBUTE * attribute)
       for (con = attribute->constraints; con != NULL && !status; con = con->next)
 	{
 	  if (SM_IS_CONSTRAINT_INDEX_FAMILY (con->type))
-	    {
-	      status = 1;
-	    }
-	}
-    }
-
-  return (status);
-}
-
-/*
- * db_attribute_is_reverse_indexed() - This function tests to see if an attribute is
- *    reverse_indexed.
- * return: non-zero if attribute is indexed
- * attributre(in): attribute descriptor
- */
-int
-db_attribute_is_reverse_indexed (DB_ATTRIBUTE * attribute)
-{
-  int status = 0;
-
-  if (attribute != NULL)
-    {
-      SM_CONSTRAINT *con;
-
-      for (con = attribute->constraints; con != NULL && !status; con = con->next)
-	{
-	  if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (con->type))
 	    {
 	      status = 1;
 	    }
@@ -2020,14 +1966,6 @@ db_constraint_type (const DB_CONSTRAINT * constraint)
       else if (constraint->type == SM_CONSTRAINT_NOT_NULL)
 	{
 	  type = DB_CONSTRAINT_NOT_NULL;
-	}
-      else if (constraint->type == SM_CONSTRAINT_REVERSE_UNIQUE)
-	{
-	  type = DB_CONSTRAINT_REVERSE_UNIQUE;
-	}
-      else if (constraint->type == SM_CONSTRAINT_REVERSE_INDEX)
-	{
-	  type = DB_CONSTRAINT_REVERSE_INDEX;
 	}
       else if (constraint->type == SM_CONSTRAINT_PRIMARY_KEY)
 	{

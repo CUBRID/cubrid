@@ -236,10 +236,10 @@ static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * 
 static int do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 
 static int do_rename_internal (const char *const old_name, const char *const new_name);
-static DB_CONSTRAINT_TYPE get_reverse_unique_index_type (const bool is_reverse, const bool is_unique);
+static DB_CONSTRAINT_TYPE get_unique_index_type (const bool is_unique);
 static int create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constraint_name,
-					const bool is_reverse, const bool is_unique,
-					const PT_INDEX_INFO * idx_info, DB_OBJECT * const obj, DO_INDEX do_index);
+					const bool is_unique, const PT_INDEX_INFO * idx_info, DB_OBJECT * const obj,
+					DO_INDEX do_index);
 static int update_locksets_for_multiple_rename (const char *class_name, int *num_mops, MOP * mop_set, int *num_names,
 						char **name_set, bool error_on_misssing_class);
 static int acquire_locks_for_multiple_rename (const PT_NODE * statement);
@@ -371,7 +371,7 @@ static int execute_create_select_query (PARSER_CONTEXT * parser, const char *con
 static int do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name, const char *attr_name);
 static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate, PT_NODE * constraints, bool is_partitioned);
 
-static int get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique, const char *index_name);
+static int get_index_type_qualifiers (MOP obj, bool * is_unique, const char *index_name);
 static SM_PARTITION *pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * entity_name,
 						char *class_name, char *partition_name, DB_VALUE * minval);
 static int do_save_all_indexes (MOP classmop, SM_CONSTRAINT_INFO ** saved_index_info_listpp);
@@ -1500,7 +1500,6 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
   DB_OBJECT *obj = NULL;
   DB_CONSTRAINT_TYPE index_type;
-  bool is_reverse;
   bool is_unique;
 
   assert (alter_code == PT_DROP_INDEX_CLAUSE);
@@ -1508,9 +1507,7 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
   assert (alter->info.alter.constraint_list->next == NULL);
   assert (alter->info.alter.constraint_list->node_type == PT_NAME);
 
-  index_type =
-    get_reverse_unique_index_type (alter->info.alter.alter_clause.index.reverse,
-				   alter->info.alter.alter_clause.index.unique);
+  index_type = get_unique_index_type (alter->info.alter.alter_clause.index.unique);
 
   obj = db_find_class (alter->info.alter.entity_name->info.name.original);
   if (obj == NULL)
@@ -1522,8 +1519,7 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
 
   if (index_type == DB_CONSTRAINT_INDEX)
     {
-      error_code =
-	get_index_type_qualifiers (obj, &is_reverse, &is_unique, alter->info.alter.constraint_list->info.name.original);
+      error_code = get_index_type_qualifiers (obj, &is_unique, alter->info.alter.constraint_list->info.name.original);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -1531,12 +1527,11 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
     }
   else
     {
-      is_reverse = alter->info.alter.alter_clause.index.reverse;
       is_unique = alter->info.alter.alter_clause.index.unique;
     }
 
   error_code =
-    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, is_reverse, is_unique,
+    create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, is_unique,
 				 NULL, obj, DO_INDEX_DROP);
   return error_code;
 }
@@ -2858,16 +2853,9 @@ do_rename_internal (const char *const old_name, const char *const new_name)
  */
 
 static DB_CONSTRAINT_TYPE
-get_reverse_unique_index_type (const bool is_reverse, const bool is_unique)
+get_unique_index_type (const bool is_unique)
 {
-  if (is_unique)
-    {
-      return is_reverse ? DB_CONSTRAINT_REVERSE_UNIQUE : DB_CONSTRAINT_UNIQUE;
-    }
-  else
-    {
-      return is_reverse ? DB_CONSTRAINT_REVERSE_INDEX : DB_CONSTRAINT_INDEX;
-    }
+  return is_unique ? DB_CONSTRAINT_UNIQUE : DB_CONSTRAINT_INDEX;
 }
 
 /*
@@ -2876,14 +2864,13 @@ get_reverse_unique_index_type (const bool is_reverse, const bool is_unique)
  *   parser(in): Parser context
  *   constraint_name(in): If NULL the default constraint name is used;
  *                        column_names must be non-NULL in this case.
- *   is_reverse(in):
  *   is_unique(in):
  *   idx_info(in): NULL if dropping a index
  *   obj(in): Class object
  *   do_index(in) : The operation to be performed (creating or dropping)
  */
 static int
-create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constraint_name, const bool is_reverse,
+create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constraint_name,
 			     const bool is_unique, const PT_INDEX_INFO * idx_info, DB_OBJECT * const obj,
 			     DO_INDEX do_index)
 {
@@ -2912,7 +2899,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       return ER_NOT_ALLOWED_ACCESS_TO_PARTITION;
     }
 
-  ctype = get_reverse_unique_index_type (is_reverse, is_unique);
+  ctype = get_unique_index_type (is_unique);
 
   char *attname_tmp = NULL;
   if (do_index != DO_INDEX_CREATE)
@@ -2944,7 +2931,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 
       // Class or shared attributes are not considered. These are not indexed columns.
       // Also, The prefix index is also not supported.(The prefix index  will be deprecated.)
-      if (ctype == DB_CONSTRAINT_INDEX || ctype == DB_CONSTRAINT_REVERSE_INDEX)
+      if (ctype == DB_CONSTRAINT_INDEX)
 	{
 	  int param_dedup_level = prm_get_integer_value (PRM_ID_DEDUPLICATE_KEY_LEVEL);
 	  if (param_dedup_level == DEDUPLICATE_ABSOLUTE_DISABLE)
@@ -3037,7 +3024,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
       if (has_deduplicate_key_col)
 	{
 	  SM_CLASS *class_ = NULL;
-	  assert ((ctype == DB_CONSTRAINT_INDEX) || (ctype == DB_CONSTRAINT_REVERSE_INDEX));
+	  assert (ctype == DB_CONSTRAINT_INDEX);
 
 	  error = au_fetch_class (obj, &class_, AU_FETCH_READ, AU_INDEX);
 	  if (error != NO_ERROR)
@@ -3048,8 +3035,7 @@ create_or_drop_index_helper (PARSER_CONTEXT * parser, const char *const constrai
 	  if (class_->constraints == NULL
 	      || !classobj_check_attr_in_unique_constraint (class_->constraints, attnames, func_index_info))
 	    {
-	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info,
-					    nnames, DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (ctype));
+	      dk_create_index_level_adjust (idx_info, attnames, asc_desc, attrs_prefix_length, func_index_info, nnames);
 	    }
 	}
     }
@@ -3214,7 +3200,7 @@ do_create_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       ib_thread_count = statement->info.index.ib_threads;
     }
 
-  error = create_or_drop_index_helper (parser, index_name, statement->info.index.reverse, statement->info.index.unique,
+  error = create_or_drop_index_helper (parser, index_name, statement->info.index.unique,
 				       &statement->info.index, obj, DO_INDEX_CREATE);
   return error;
 }
@@ -3234,7 +3220,6 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   int error_code = NO_ERROR;
   const char *class_name = NULL;
   DB_CONSTRAINT_TYPE index_type;
-  bool is_reverse;
   bool is_unique;
 
   CHECK_MODIFICATION_ERROR ();
@@ -3254,7 +3239,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   assert (cls != NULL);
 
-  index_type = get_reverse_unique_index_type (statement->info.index.reverse, statement->info.index.unique);
+  index_type = get_unique_index_type (statement->info.index.unique);
 
   class_name = cls->info.name.resolved;
   obj = db_find_class (class_name);
@@ -3268,7 +3253,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 
   if (index_type == DB_CONSTRAINT_INDEX)
     {
-      error_code = get_index_type_qualifiers (obj, &is_reverse, &is_unique, index_name);
+      error_code = get_index_type_qualifiers (obj, &is_unique, index_name);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -3276,11 +3261,10 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
   else
     {
-      is_reverse = statement->info.index.reverse;
       is_unique = statement->info.index.unique;
     }
 
-  error_code = create_or_drop_index_helper (parser, index_name, is_reverse, is_unique, NULL, obj, DO_INDEX_DROP);
+  error_code = create_or_drop_index_helper (parser, index_name, is_unique, NULL, obj, DO_INDEX_DROP);
 
   return error_code;
 }
@@ -3373,7 +3357,7 @@ do_alter_index_rebuild (PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   /* check the index type */
-  ctype = get_reverse_unique_index_type (statement->info.index.reverse, statement->info.index.unique);
+  ctype = get_unique_index_type (statement->info.index.unique);
   original_ctype = db_constraint_type (idx);
   if (ctype != original_ctype)
     {
@@ -5545,7 +5529,6 @@ exit:
  *
  * Note: At the moment the following constraints are added to partitions:
  *    - SM_CONSTRAINT_INDEX
- *    - SM_CONSTRAINT_REVERSE_INDEX
  */
 static int
 do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTER_INFO * pinfo)
@@ -5568,7 +5551,7 @@ do_create_partition_constraints (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PA
 
   for (cons = smclass->constraints; cons != NULL; cons = cons->next)
     {
-      if (cons->type != SM_CONSTRAINT_INDEX && cons->type != SM_CONSTRAINT_REVERSE_INDEX)
+      if (cons->type != SM_CONSTRAINT_INDEX)
 	{
 	  continue;
 	}
@@ -5657,7 +5640,7 @@ do_create_partition_constraint (PT_NODE * alter, SM_CLASS * root_class, SM_CLASS
       *attrnames = (char *) (*attp)->header.name;
       attrnames++;
       asc_desc[i] = 0;		/* guess as Asc */
-      if (DB_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (constraint->type) || key_type->is_desc)
+      if (key_type->is_desc)
 	{
 	  asc_desc[i] = 1;	/* Desc */
 	}
@@ -7031,7 +7014,6 @@ do_promote_partition (SM_CLASS * class_)
 	  has_pk = true;
 	}
       smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
-      smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
       smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
     }
@@ -7059,7 +7041,6 @@ do_promote_partition (SM_CLASS * class_)
 	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_NOT_NULL);
 	}
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
-      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
     }
 
@@ -7857,11 +7838,6 @@ do_add_constraints (DB_CTMPL * ctemplate, PT_NODE * constraints)
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (n_atts * sizeof (int)));
 		      error = ER_OUT_OF_VIRTUAL_MEMORY;
 		      goto constraint_error;
-		    }
-
-		  if (PT_NAME_INFO_IS_FLAGED (cnstr->info.constraint.un.unique.attrs, PT_NAME_INFO_DESC))
-		    {
-		      constraint_type = DB_CONSTRAINT_REVERSE_UNIQUE;
 		    }
 
 		  i = 0;
@@ -9466,8 +9442,7 @@ do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *co
 
   for (c = class_->constraints; c; c = c->next)
     {
-      if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_REVERSE_INDEX && c->type != SM_CONSTRAINT_UNIQUE
-	  && c->type != SM_CONSTRAINT_REVERSE_UNIQUE)
+      if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_UNIQUE)
 	{
 	  continue;
 	}
@@ -9592,7 +9567,7 @@ do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * src_class)
 
   for (c = src_class->constraints; c; c = c->next)
     {
-      if (c->type != SM_CONSTRAINT_INDEX && c->type != SM_CONSTRAINT_REVERSE_INDEX)
+      if (c->type != SM_CONSTRAINT_INDEX)
 	{
 	  /* These should have been copied already. */
 	  continue;
@@ -11297,7 +11272,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		  save_constr = true;
 		}
 	      /* non-unique index */
-	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX || sm_cls_constr->type == SM_CONSTRAINT_REVERSE_INDEX)
+	      else if (sm_cls_constr->type == SM_CONSTRAINT_INDEX)
 		{
 		  assert (nb_att_in_constr >= 1);
 		  attr_chg_properties->p[P_CONSTR_NON_UNI] |= ATT_CHG_PROPERTY_PRESENT_OLD;
@@ -11310,8 +11285,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		    }
 		}
 	      /* UNIQUE */
-	      else if (sm_cls_constr->type == SM_CONSTRAINT_UNIQUE
-		       || sm_cls_constr->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+	      else if (sm_cls_constr->type == SM_CONSTRAINT_UNIQUE)
 		{
 		  assert (nb_att_in_constr >= 1);
 		  if (nb_att_in_constr >= 2)
@@ -13968,7 +13942,7 @@ do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list)
 	      goto error_exit;
 	    }
 	}
-      else if (constr->constraint_type == DB_CONSTRAINT_INDEX || constr->constraint_type == DB_CONSTRAINT_REVERSE_INDEX)
+      else if (constr->constraint_type == DB_CONSTRAINT_INDEX)
 	{
 	  error = sm_drop_index (class_mop, constr->name);
 	  if (error != NO_ERROR)
@@ -14290,7 +14264,7 @@ sort_constr_info_list (SM_CONSTRAINT_INFO ** orig_list)
 {
   int error = NO_ERROR;
   SM_CONSTRAINT_INFO *sorted, *next, *prev, *ins, *found, *constr;
-  int constr_order[7] = { 0 };
+  int constr_order[5] = { 0 };
 
   assert (orig_list != NULL);
 
@@ -14306,8 +14280,6 @@ sort_constr_info_list (SM_CONSTRAINT_INFO ** orig_list)
   constr_order[DB_CONSTRAINT_UNIQUE] = 2;
   constr_order[DB_CONSTRAINT_INDEX] = 0;
   constr_order[DB_CONSTRAINT_NOT_NULL] = 6;
-  constr_order[DB_CONSTRAINT_REVERSE_UNIQUE] = 2;
-  constr_order[DB_CONSTRAINT_REVERSE_INDEX] = 0;
   constr_order[DB_CONSTRAINT_PRIMARY_KEY] = 4;
   constr_order[DB_CONSTRAINT_FOREIGN_KEY] = 5;
 
@@ -15329,7 +15301,6 @@ pt_replace_names_index_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *void
  *                               matches the index name.
  * return: NO_ERROR or error code
  * obj(in): Memory Object Pointer
- * is_reverse(out): TRUE if the index type has the reverse feature.
  * is_unique(out): TRUE if the index type has the unique feature.
  * index_name(in): the name of index
  *
@@ -15339,7 +15310,7 @@ pt_replace_names_index_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *void
  */
 
 static int
-get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique, const char *index_name)
+get_index_type_qualifiers (MOP obj, bool * is_unique, const char *index_name)
 {
   int error_code = NO_ERROR;
   SM_CLASS_CONSTRAINT *sm_all_constraints = NULL;
@@ -15370,19 +15341,9 @@ get_index_type_qualifiers (MOP obj, bool * is_reverse, bool * is_unique, const c
   switch (sm_constraint->type)
     {
     case SM_CONSTRAINT_INDEX:
-      *is_reverse = false;
       *is_unique = false;
       break;
     case SM_CONSTRAINT_UNIQUE:
-      *is_reverse = false;
-      *is_unique = true;
-      break;
-    case SM_CONSTRAINT_REVERSE_INDEX:
-      *is_reverse = true;
-      *is_unique = false;
-      break;
-    case SM_CONSTRAINT_REVERSE_UNIQUE:
-      *is_reverse = true;
       *is_unique = true;
       break;
     default:

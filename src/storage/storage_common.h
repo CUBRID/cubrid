@@ -662,8 +662,6 @@ typedef enum
 {
   BTREE_UNIQUE,
   BTREE_INDEX,
-  BTREE_REVERSE_UNIQUE,
-  BTREE_REVERSE_INDEX,
   BTREE_PRIMARY_KEY,
   BTREE_FOREIGN_KEY
 } BTREE_TYPE;
@@ -1019,13 +1017,11 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_PROPERTY_UNIQUE "*U"
 #define SM_PROPERTY_INDEX "*I"
 #define SM_PROPERTY_NOT_NULL "*N"
-#define SM_PROPERTY_REVERSE_UNIQUE "*RU"
-#define SM_PROPERTY_REVERSE_INDEX "*RI"
 #define SM_PROPERTY_VID_KEY "*V_KY"
 #define SM_PROPERTY_PRIMARY_KEY "*P"
 #define SM_PROPERTY_FOREIGN_KEY "*FK"
 
-#define SM_PROPERTY_NUM_INDEX_FAMILY         6
+#define SM_PROPERTY_NUM_INDEX_FAMILY         4
 
 #define SM_FILTER_INDEX_ID "*FP*"
 #define SM_FUNCTION_INDEX_ID "*FI*"
@@ -1114,12 +1110,10 @@ typedef enum
   SM_ATTFLAG_NON_NULL = 4,	/* attribute has NON_NULL constraint 0x04 */
   SM_ATTFLAG_VID = 8,		/* attribute is part of virtual object id 0x08 */
   SM_ATTFLAG_NEW = 16,		/* is a new attribute 0x10 */
-  SM_ATTFLAG_REVERSE_INDEX = 32,	/* attribute has a reverse index 0x20 */
-  SM_ATTFLAG_REVERSE_UNIQUE = 64,	/* attribute has a reverse unique 0x40 */
-  SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
-  SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
-  SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
-  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_PRIMARY_KEY = 32,	/* attribute has a primary key 0x20 */
+  SM_ATTFLAG_AUTO_INCREMENT = 64,	/* auto increment attribute 0x40 */
+  SM_ATTFLAG_FOREIGN_KEY = 128,	/* attribute has a foreign key 0x80 */
+  SM_ATTFLAG_PARTITION_KEY = 256	/* attribute is the partitioning key for the class 0x100 */
 } SM_ATTRIBUTE_FLAG;
 
 /* delete or update action type for foreign key */
