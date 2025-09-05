@@ -1001,8 +1001,9 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 	    }
 	  else
 	    {
-	      /* impossible case */
-	      assert (false);
+	      /* Add only to global_stats;  
+	       * need to check later if tran_stats is required in parallel thread */
+	      assert (!thread_p->on_trace);
 	    }
 	}
       else
@@ -1047,8 +1048,9 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
 	    }
 	  else
 	    {
-	      /* impossible case */
-	      assert (false);
+	      /* Add only to global_stats;  
+	       * need to check later if tran_stats is required in parallel thread */
+	      assert (!thread_p->on_trace);
 	    }
 	}
       else

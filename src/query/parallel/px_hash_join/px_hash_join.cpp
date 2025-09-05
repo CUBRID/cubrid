@@ -75,8 +75,8 @@ namespace parallel_query
     entry_manager::emulate_main_thread (cubthread::entry &thread_ref) noexcept
     {
       thread_ref.m_px_orig_thread_entry = &m_main_thread_ref;
-      thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
       thread_ref.conn_entry = m_main_thread_ref.conn_entry;
+      thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&m_main_thread_ref);
       thread_ref.on_trace = m_main_thread_ref.on_trace;
     }
 

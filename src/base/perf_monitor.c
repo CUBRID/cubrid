@@ -3340,9 +3340,17 @@ perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
   if (thread_p->m_px_stats == NULL)
     {
       thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+      if (thread_p->m_px_stats == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+	  return;
+	}
     }
   else
     {
+      /* impossible case */
+      assert (false);
+
       memset (thread_p->m_px_stats, 0, PERFMON_VALUES_MEMSIZE);
     }
 }

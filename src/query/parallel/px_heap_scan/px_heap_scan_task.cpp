@@ -136,6 +136,7 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
+    thread_p->on_trace = m_context->m_orig_thread_p->on_trace;
     if (m_context->m_orig_thread_p->m_px_orig_thread_entry != NULL)
       {
 	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p->m_px_orig_thread_entry;
@@ -151,6 +152,10 @@ namespace parallel_heap_scan
 	if (m_context->m_orig_thread_p->m_px_stats != NULL)
 	  {
 	    thread_p->m_px_stats = m_context->m_orig_thread_p->m_px_stats;
+	  }
+	else
+	  {
+	    perfmon_initialize_parallel_stats (thread_p);
 	  }
       }
 #if PARALLEL_HEAP_SCAN_LOG
