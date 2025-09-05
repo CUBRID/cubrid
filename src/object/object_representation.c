@@ -2556,7 +2556,17 @@ or_decode (const char *buffer, char *dest, int size)
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
-#define OR_DOMAIN_SCALE_MAX		(0xFF)
+
+/* Scale encoding (1 byte):
+ *   0 .. 253 : non-negative scale stored directly
+ *   0xFE     : negative scale follows (actual value stored separately)
+ *   0xFF     : extended scale follows (for scale >= 254 or future use)
+ *
+ * Note: Do not assign values beyond 253 directly.
+ *       Use 0xFE or 0xFF encoding for negative or extended scales.
+ */
+#define OR_DOMAIN_SCALE_NEG_FLAG       (0xFE)	/* negative scale follows */
+#define OR_DOMAIN_SCALE_MAX            (0xFF)	/* extended scale follows */
 
 #define OR_DOMAIN_CODSET_MASK		(0xFF00)
 #define OR_DOMAIN_CODSET_SHIFT		(8)
@@ -2620,10 +2630,6 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  if (precision <= TP_FLOATING_PRECISION_VALUE)
 	    {
 	      precision = DB_MAX_NUMERIC_PRECISION;
-	    }
-	  if (scale < 0)
-	    {
-	      size += OR_INT_SIZE;
 	    }
 	  break;
 
@@ -2694,6 +2700,11 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += OR_INT_SIZE;
 	}
 
+      if (scale < 0)
+	{
+	  size += OR_INT_SIZE;
+	}
+
       if (d->setdomain != NULL)
 	{
 	  size += or_packed_domain_size (d->setdomain, include_classoids);
@@ -2720,7 +2731,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 int
 or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_null)
 {
-  unsigned int carrier, extended_precision, extended_scale;
+  unsigned int carrier, extended_precision, extended_scale, negative_scale;
   int precision, scale;
   int has_oid, has_subdomain, has_enum;
   bool has_schema;
@@ -2779,6 +2790,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
       scale = 0;
       extended_precision = 0;
       extended_scale = 0;
+      negative_scale = 0;
       has_oid = 0;
       has_subdomain = 0;
       has_enum = 0;
@@ -2793,10 +2805,15 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 
 	  /* safe guard for scale */
 	  scale = d->scale;
+	  if (scale <= DB_DEFAULT_SCALE)
+	    {
+	      scale = 0;
+	    }
+
 	  if (scale < 0)
 	    {
-	      carrier |= (OR_DOMAIN_SCALE_MAX - 1) << OR_DOMAIN_SCALE_SHIFT;
-	      extended_scale = -scale;
+	      carrier |= OR_DOMAIN_SCALE_NEG_FLAG << OR_DOMAIN_SCALE_SHIFT;
+	      negative_scale = -scale;
 	    }
 	  else if (scale < OR_DOMAIN_SCALE_MAX)
 	    {
@@ -2976,6 +2993,15 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	}
 
+      if (negative_scale)
+	{
+	  rc = or_put_int (buf, negative_scale);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+
       /* do we require a class OID ? */
       if (has_oid)
 	{
@@ -3033,8 +3059,8 @@ static TP_DOMAIN *
 unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
-  unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
-    collation_storage;
+  unsigned int carrier, precision, codeset, has_classoid, has_setdomain, has_enum, collation_id, collation_storage;
+  int scale;
   bool has_schema;
   bool more, auto_precision, is_desc, has_collation;
   DB_TYPE type;
@@ -3229,6 +3255,11 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	  if (scale == OR_DOMAIN_SCALE_MAX)
 	    {
 	      scale = or_get_int (buf, &rc);
+	    }
+
+	  if (scale == OR_DOMAIN_SCALE_NEG_FLAG)
+	    {
+	      scale = -(or_get_int (buf, &rc));
 	    }
 
 	  if (rc != NO_ERROR)
@@ -3482,7 +3513,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      goto error;
 		    }
 		}
-	      else if (scale == OR_DOMAIN_SCALE_MAX - 1)
+
+	      if (scale == OR_DOMAIN_SCALE_NEG_FLAG)
 		{
 		  scale = -(or_get_int (buf, &rc));
 		  if (rc != NO_ERROR)

@@ -134,6 +134,12 @@ IS_INVALID_PRECISION (int p, int m)
   return (p != DB_DEFAULT_PRECISION) && ((p < 0) || (p > m));
 }
 
+inline bool
+IS_INVALID_NUMERIC_SCALE (int s, int min, int max)
+{
+  return (s != DB_DEFAULT_SCALE) && ((s < min) || (s > max));
+}
+
 /*
  *  db_value_domain_init() - initialize value container with given type
  *                           and precision/scale.
@@ -160,7 +166,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   value->domain.numeric_info.scale = scale;
   value->need_clear = false;
   value->domain.general_info.is_null = 1;
-  value->domain.numeric_info.has_round = false;
 
   switch (type)
     {
@@ -170,6 +175,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	}
 
+      if (scale == DB_DEFAULT_SCALE)
+	{
+	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
+
       if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;
@@ -177,10 +187,11 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
-      else if (scale > (DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION) || scale < DB_MIN_NUMERIC_SCALE)
+      else if (IS_INVALID_NUMERIC_SCALE (scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE))
 	{
 	  error = ER_INVALID_SCALE;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 3, scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 3, scale, DB_GRAMMAR_MIN_NUMERIC_SCALE,
+		  DB_GRAMMAR_MAX_NUMERIC_SCALE);
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
@@ -387,8 +398,7 @@ void
 db_value_domain_init_default (DB_VALUE * value, const DB_TYPE type)
 {
   // default initialization should not fail
-  int scale = type == DB_TYPE_NUMERIC ? 0 : DB_DEFAULT_SCALE;
-  (void) db_value_domain_init (value, type, DB_DEFAULT_PRECISION, scale);
+  (void) db_value_domain_init (value, type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 }
 
 /*
@@ -3058,8 +3068,7 @@ db_value_is_corrupted (const DB_VALUE * value)
     {
     case DB_TYPE_NUMERIC:
       if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION)
-	  && (value->domain.numeric_info.scale > (DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
-	      || value->domain.numeric_info.scale < DB_MIN_NUMERIC_SCALE))
+	  && IS_INVALID_NUMERIC_SCALE (value->domain.numeric_info.scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE))
 	{
 	  return true;
 	}

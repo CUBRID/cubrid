@@ -42,15 +42,21 @@ typedef enum
 
 /*
  * NUMERIC_MAX_STRING_SIZE:
- * The maximum input digits for numeric values is limited to 254 digits including
- * sign, decimal point, etc. NUMERIC_MAX_STRING_SIZE is used for numeric parsing,
- * arithmetic operations, scale adjustment, rounding, etc. It is set to twice
- * the size of TWICE_NUM_MAX_PREC to accommodate digit increase due to scale adjustment.
- * 
- * Maximum string size for NUMERIC output: 175 * 2 = 350
- * = (max fractional digits (38 + 127) + 10 extra digits) * 2
+ * Defines the maximum internal working buffer size for NUMERIC values.
+ * This buffer is widely used in numeric processing, for example:
+ *  - Output representation of NUMERIC results
+ *  - Arithmetic operations and built-in functions
+ *  - Scale adjustment (decimal digit alignment) and rounding
+ *
+ * The size is set to TWICE_NUM_MAX_PREC (256) * 2
+ * to safely absorb digit growth that can occur during scale adjustment.
+ * See the TWICE_NUM_MAX_PREC definition in numeric_opfunc.c
+ * for a detailed explanation.
+ *
+ * Maximum string size for NUMERIC output: 256 * 2 = 512
+ *   = (max digits (43 + 211) + 2 extra digits) * 2
  */
-#define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10) * 2)
+#define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */

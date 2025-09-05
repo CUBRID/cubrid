@@ -66,6 +66,7 @@
 #include "db_json.hpp"
 #include "jsp_cl.h"
 #include "subquery_cache.h"
+#include "dbtype_def.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
 #include "px_heap_scan_checker.hpp"
@@ -7275,7 +7276,7 @@ pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
       return NULL;
     }
 
-  if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_PRECISION || prec < 0 || scale < 0)
+  if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_SCALE || prec < 0 || scale < DB_MIN_NUMERIC_SCALE)
     {
       parser_free_tree (parser, dt);
       dt = NULL;

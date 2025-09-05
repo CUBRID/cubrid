@@ -443,8 +443,7 @@ regu_init (selupd_list &selupd)
 void
 regu_dbval_type_init (db_value *ptr, DB_TYPE type)
 {
-  int scale = type == DB_TYPE_NUMERIC ? DB_DEFAULT_NUMERIC_SCALE : DB_DEFAULT_SCALE;
-  if (db_value_domain_init (ptr, type, DB_DEFAULT_PRECISION, scale) != NO_ERROR)
+  if (db_value_domain_init (ptr, type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
     {
       assert (false);
     }

@@ -8856,13 +8856,19 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	if (prm->id == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
 	  {
 	    /*  
+	     * The maximum allowable range of NUMERIC values is:
+	     *   1) Exponential form
+	     *        1.0 × 10^-252 <= |Value| < 1.0 × 10^254
+	     *   2) Precision/Scale form
+	     *        (prec, scale) in the range: (1,252) <= (prec,scale) <= (43,-211)
+	     *
 	     *  The length of the parameter must be 2
 	     *  Check the valid range
-	     *    precision ( 1 ~ 38 ) and scale (0 ~ 38)
-	     *    precision >= scale
+	     *    precision ( 1 ~ 43 ) and scale (-211 ~ 252)
 	     */
-	    if (val[0] != 2 || val[PRM_PRECISION] < 1 || val[PRM_PRECISION] > DB_MAX_NUMERIC_PRECISION
-		|| val[PRM_SCALE] < 0 || val[PRM_SCALE] > val[PRM_PRECISION])
+	    if (val[0] != 2 || val[PRM_PRECISION] < 1
+		|| val[PRM_PRECISION] < 0 || val[PRM_PRECISION] > DB_MAX_NUMERIC_PRECISION
+		|| val[PRM_SCALE] < DB_MIN_NUMERIC_SCALE || val[PRM_SCALE] > DB_MAX_NUMERIC_SCALE)
 	      {
 		free_and_init (val);
 		return PRM_ERR_BAD_VALUE;

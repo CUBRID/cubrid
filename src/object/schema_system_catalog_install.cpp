@@ -942,19 +942,19 @@ namespace cubschema
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
       {
-	"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
+	"current_val", format_numeric (DB_GRAMMAR_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
 	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
 	}
       },
       {
-	"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
+	"increment_val", format_numeric (DB_GRAMMAR_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
 	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
 	}
       },
-      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"max_val", format_numeric (DB_GRAMMAR_MAX_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_GRAMMAR_MAX_NUMERIC_PRECISION, 0)},
       {
 	"cyclic", "integer", [] (DB_VALUE* val)
 	{

@@ -62,16 +62,24 @@
 #define NUMERIC_ABS(a)		((a) >= 0 ? a : -a)
 /*
  * TWICE_NUM_MAX_PREC:
- * The maximum input digits for numeric values is limited to 254 digits including
- * sign, decimal point, etc. TWICE_NUM_MAX_PREC is used for converting base256
- * to decimal string for arithmetic operations, scale adjustment, rounding, etc.
- * It only needs to accommodate the maximum digits that can actually be output/stored.
- * 
- * TWICE_NUM_MAX_PREC: 175
- * = max fractional digits (38 + 127) = 165 + 10 extra digits
+ * - Defines the maximum number of significant digits that can be stored
+ *   in a NUMERIC value (excluding sign and decimal point).
+ * - Used as the internal buffer size for representing the maximum
+ *   range of NUMERIC values.
+ * - Also used when converting base-256 encoded NUMERIC values
+ *   into their decimal string representation.
+ *
+ * The maximum allowable range of NUMERIC values is:
+ *   1) Exponential form
+ *        1.0 × 10^-252 <= |Value| < 1.0 × 10^254
+ *   2) Precision/Scale form
+ *        (prec, scale) in the range: (1,252) <= (prec,scale) <= (43,-211)
+ *
+ * TWICE_NUM_MAX_PREC: 256
+ * = max digits (43 + 211) = 254 + 2 extra digit
  * Must always be smaller than NUMERIC_MAX_STRING_SIZE.
  */
-#define TWICE_NUM_MAX_PREC      ((DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 10)
+#define TWICE_NUM_MAX_PREC      ((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2)
 #define SECONDS_IN_A_DAY	(int)(24L * 60L * 60L)
 
 #define ROUND(x)                ((x) > 0 ? ((x) + .5) : ((x) - .5))
@@ -160,11 +168,10 @@ static FP_VALUE_TYPE get_fp_value_type (double d);
 static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					 bool is_float);
 static int analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
-				   char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
-				   int *int_last_nz, int *frac_first_nz, int *frac_last_nz);
+				   char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_nz,
+				   int *frac_last_nz, bool * is_zero);
 static void determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
-				  int int_first_nz, int int_last_nz, int frac_first_nz, int frac_last_nz,
-				  char *num_string, int *out_prec, int *out_scale, bool * need_round);
+				  int frac_first_nz, int frac_last_nz, char *num_string, int *out_prec, int *out_scale);
 static void determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len,
 			     int frac_zero_cnt, char next_digit);
 static void numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale,
@@ -1639,7 +1646,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return NO_ERROR;
     }
 
@@ -1689,7 +1696,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -1739,7 +1746,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return NO_ERROR;
     }
 
@@ -1789,7 +1796,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -1841,7 +1848,7 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return NO_ERROR;
     }
 
@@ -1867,7 +1874,7 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -1925,7 +1932,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Check for NULL values */
   if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
     {
-      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return NO_ERROR;
     }
 
@@ -2049,7 +2056,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 
 exit_on_error:
 
-  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+  db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -2683,8 +2690,8 @@ static void
 numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale, const int dst_prec,
 			   DB_C_NUMERIC dest)
 {
-  char dec_str[NUMERIC_MAX_STRING_SIZE + 1];
-  char new_dec_num[(DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 1];
+  char dec_str[NUMERIC_MAX_STRING_SIZE];
+  char new_dec_num[(DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2];
   int i = 0;
 
   /* the number of digits of the result */
@@ -2735,15 +2742,15 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
 static void
 numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const int dst_scale, DB_C_NUMERIC dest)
 {
-  char dec_str[NUMERIC_MAX_STRING_SIZE + 1];
-  char new_dec_num[(DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 1];
+  char dec_str[NUMERIC_MAX_STRING_SIZE];
+  char new_dec_num[(DB_MAX_NUMERIC_SCALE + 4)];
   int i = 0;
 
   assert (src_scale <= dst_scale);
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, (DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE) + 1);
+  memset (new_dec_num, 0, (DB_MAX_NUMERIC_SCALE + 4));
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2781,7 +2788,7 @@ static bool
 numeric_is_fraction_part_zero (const DB_C_NUMERIC num, const int scale)
 {
   int i, len = 0;
-  char dec_str[NUMERIC_MAX_STRING_SIZE + 1];
+  char dec_str[NUMERIC_MAX_STRING_SIZE];
   numeric_coerce_num_to_dec_str (num, dec_str);
   len = strlen (dec_str);
   for (i = 0; i < scale; i++)
@@ -2886,7 +2893,7 @@ get_fp_value_type (double d)
 int
 numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float)
 {
-  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, NUMERIC_MAX_STRING_SIZE + 1)];
+  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, NUMERIC_MAX_STRING_SIZE)];
   int i = 0;
 
   switch (get_fp_value_type (adouble))
@@ -3082,8 +3089,6 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
  *   int_len(out) : Length of integer part
  *   frac_digits(out) : Extracted fractional part digits
  *   frac_len(out) : Length of fractional part
- *   int_first_nz(out) : First non-zero position in integer part
- *   int_last_nz(out) : Last non-zero position in integer part
  *   frac_first_nz(out) : First non-zero position in fractional part
  *   frac_last_nz(out) : Last non-zero position in fractional part
  *
@@ -3091,23 +3096,20 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
  */
 static int
 analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
-			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *int_first_nz,
-			int *int_last_nz, int *frac_first_nz, int *frac_last_nz)
+			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_nz,
+			int *frac_last_nz, bool * is_zero)
 {
   int int_count = 0;
   int frac_count = 0;
   int parse_pos = 0;
   int skip = 1;
   char current_char = '\0';
-  int int_parse_limit = DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE;	/* 38 - (-84) = 122 */
-  int frac_parse_limit = DB_MAX_NUMERIC_PRECISION + DB_MAX_NUMERIC_SCALE;	/* 38 + 127 = 165 */
   bool has_digit = false;
   bool pad_character_zero = false;
   bool sign_found = false;
   bool trailing_spaces = false;
   bool valid_zero = false;
 
-  *int_first_nz = *int_last_nz = -1;
   *frac_first_nz = *frac_last_nz = -1;
   *negate_value = false;
 
@@ -3141,9 +3143,9 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 	      if (astring[parse_pos] == '-')
 		{
 		  *negate_value = true;
-		  parse_pos++;
-		  continue;
 		}
+	      parse_pos++;
+	      continue;
 	    }
 	  else
 	    {			/* Duplicate sign characters */
@@ -3169,23 +3171,8 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 
       if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
 	{
-	  if (int_count < int_parse_limit)
-	    {
-	      if (current_char != '0' && *int_first_nz < 0)
-		{
-		  *int_first_nz = int_count;
-		  pad_character_zero = false;
-		}
-	      if (current_char != '0')
-		{
-		  *int_last_nz = int_count;
-		}
-	      int_digits[int_count++] = current_char;
-	    }
-	  else
-	    {
-	      return ER_IT_DATA_OVERFLOW;	/* Integer part overflow error */
-	    }
+	  pad_character_zero = false;
+	  int_digits[int_count++] = current_char;
 	  parse_pos++;
 	  continue;
 	}
@@ -3225,26 +3212,19 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 
       if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
 	{
-	  if (frac_count < frac_parse_limit)
+	  frac_digits[frac_count] = current_char;
+	  /* Track non-zero digits */
+	  if (current_char != '0' || valid_zero)
 	    {
-	      frac_digits[frac_count] = current_char;
-	      /* Track non-zero digits */
-	      if (current_char != '0' || valid_zero)
+	      if (*frac_first_nz < 0)
 		{
-		  if (*frac_first_nz < 0)
-		    {
-		      *frac_first_nz = frac_count;
-		      pad_character_zero = false;
-		      valid_zero = true;
-		    }
-		  *frac_last_nz = frac_count;
+		  *frac_first_nz = frac_count;
+		  pad_character_zero = false;
+		  valid_zero = true;
 		}
-	      frac_count++;
+	      *frac_last_nz = frac_count;
 	    }
-	  else
-	    {
-	      return ER_IT_DATA_OVERFLOW;	/* Fractional part overflow error */
-	    }
+	  frac_count++;
 	  parse_pos++;
 	  continue;
 	}
@@ -3279,10 +3259,9 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
        */
       int_digits[0] = '\0';
       frac_digits[0] = '\0';
-      *int_first_nz = -1;
-      *int_last_nz = -1;
       *int_len = 1;
       *frac_len = frac_count;
+      *is_zero = true;
     }
   else if (!has_digit && (int_count + frac_count) == 0)
     {
@@ -3315,35 +3294,42 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
  *   int_len(in) : Length of integer part
  *   frac_digits(in) : Fractional part digits
  *   frac_len(in) : Length of fractional part
- *   int_first_nz(in) : First non-zero position in integer part
- *   int_last_nz(in) : Last non-zero position in integer part
  *   frac_first_nz(in) : First non-zero position in fractional part
  *   frac_last_nz(in) : Last non-zero position in fractional part
  *   out_num_string(out) : Output numeric string
  *   out_prec(out) : Calculated precision
  *   out_scale(out) : Calculated scale
- *   need_round(out) : Whether rounding is needed
  *
  * Note: Calculate precision and scale based on numeric string analysis
  */
 static void
-determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len, int int_first_nz,
-		      int int_last_nz, int frac_first_nz, int frac_last_nz, char *out_num_string, int *out_prec,
-		      int *out_scale, bool * need_round)
+determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len, int frac_first_nz,
+		      int frac_last_nz, char *out_num_string, int *out_prec, int *out_scale)
 {
   int total = int_len + frac_len;
-
-  /* Step 1: Calculate temporary precision/scale and determine copy positions for each case */
   const char *temp_int_digits = NULL, *temp_frac_digits = NULL;
   int temp_int_len = 0, temp_frac_len = 0;
   char next_digit = '0';
   int tmp_prec = 0, tmp_scale = 0;
   int frac_zero_cnt = 0;
+  bool need_round = false;
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
 
+  /* Step 1: Calculate temporary precision/scale and determine copy positions for each case */
   if (frac_len == 0)
     {
       /* Case 1: Only integer part exists */
-      if (int_len <= DB_MAX_NUMERIC_PRECISION)
+      if (int_len <= phase_1_tmp_max_prec)
 	{
 	  /* Case 1-A: When length is within 38 digits, use only the integer part */
 	  tmp_prec = int_len;
@@ -3354,36 +3340,25 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
       else
 	{
 	  /* Case 1-B: Apply negative scale based on trailing zero count */
-	  int sig_len = int_last_nz - int_first_nz + 1;
-	  int tz_cnt = int_len - (int_last_nz + 1);
-	  // Future consideration: when F-P NUMERIC is introduced and DB_MAX_NUMERIC_PRECISION increases from 38 to 40
-	  // If enabled now, precision 38 tables with 39+ digits will always round, preventing overflow errors
 	  /*
-	     if (sig_len > DB_MAX_NUMERIC_PRECISION)
-	     {
-	     tmp_prec = DB_MAX_NUMERIC_PRECISION;
-	     tmp_scale = -tz_cnt;
-	     temp_int_digits = int_digits + int_first_nz;
-	     temp_int_len = DB_MAX_NUMERIC_PRECISION;
-	     next_digit = temp_int_digits[int_first_nz + DB_MAX_NUMERIC_PRECISION];
-	     *need_round = true;
-	     }
-	     else
+	   * Phase-2 will expand storage to 18 bytes (43 digits)
+	   * and support rounding at the 44th digit so that up to 43 digits
+	   * can be represented correctly.
 	   */
-	  {
-	    tmp_prec = sig_len;
-	    tmp_scale = -tz_cnt;
-	    temp_int_digits = int_digits + int_first_nz;
-	    temp_int_len = sig_len;
-	    *need_round = false;
-	  }
+	  tmp_prec = phase_1_tmp_max_prec;
+	  tmp_scale = phase_1_tmp_max_prec - int_len;
+	  temp_int_digits = int_digits;
+	  temp_int_len = phase_1_tmp_max_prec;
+	  /* Get the 44th digit for rounding decision (array index 43 since arrays start from 0) */
+	  next_digit = temp_int_digits[phase_1_tmp_max_prec];
+	  need_round = true;
 	}
     }
   else if (int_len == 0)
     {
       /* Case 2: Only fractional part exists */
       int nz_len = frac_last_nz - frac_first_nz + 1;
-      if (frac_len <= DB_MAX_NUMERIC_PRECISION)
+      if (frac_len <= phase_1_tmp_max_prec)
 	{
 	  /* Case 2-A: When length is within 38 digits, use only the fractional part. 
 	     Precision is defined from the left-most nonzero digit to the right-most known digit. */
@@ -3395,15 +3370,14 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
       else
 	{
 	  /* Case 2-B: Skip leading zeros in the fractional part and use up to MAX_PRECISION digits */
-	  if (nz_len > DB_MAX_NUMERIC_PRECISION)
+	  if (nz_len > phase_1_tmp_max_prec)
 	    {
-	      tmp_prec = DB_MAX_NUMERIC_PRECISION;
+	      tmp_prec = phase_1_tmp_max_prec;
 	      tmp_scale = frac_len;
 	      temp_frac_digits = frac_digits + frac_first_nz;
-	      temp_frac_len = DB_MAX_NUMERIC_PRECISION;
-	      next_digit = frac_digits[frac_first_nz + DB_MAX_NUMERIC_PRECISION];
-	      *need_round = true;
-
+	      temp_frac_len = phase_1_tmp_max_prec;
+	      next_digit = frac_digits[frac_first_nz + phase_1_tmp_max_prec];
+	      need_round = true;
 	      frac_zero_cnt = frac_len - nz_len;	/* Count pure zeros */
 	    }
 	  else
@@ -3412,14 +3386,14 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	      tmp_scale = frac_len;
 	      temp_frac_digits = frac_digits + frac_first_nz;
 	      temp_frac_len = nz_len;
-	      *need_round = false;
+	      need_round = false;
 	    }
 	}
     }
   else
     {
       /* Case 3: Both integer and fractional parts exist */
-      if (total <= DB_MAX_NUMERIC_PRECISION)
+      if (total <= phase_1_tmp_max_prec)
 	{
 	  /* Case 3-A: When total length is within 38 digits, use both integer and fractional parts */
 	  tmp_prec = total;
@@ -3433,7 +3407,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	{
 	  /* Case 3-B: When total length exceeds 38 digits, determine whether to round or apply negative scale 
 	     depending on which part (integer vs fractional) has more digits */
-	  int drop_total = total - DB_MAX_NUMERIC_PRECISION;
+	  int drop_total = total - phase_1_tmp_max_prec;
 	  if (drop_total <= frac_len)
 	    {
 	      /* Case 3-B-1: Fractional part is larger – round based on the fractional part */
@@ -3445,41 +3419,25 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	      temp_frac_digits = frac_digits;
 	      temp_frac_len = keep_frac;
 	      next_digit = frac_digits[keep_frac];
-	      *need_round = true;
+	      need_round = true;
 	    }
 	  else
 	    {
 	      /* Case 3-B-2: Integer part is larger – handle by trimming the integer part */
 	      int drop_int = drop_total - frac_len;
-	      int trailing_zeros_count = int_len - (int_last_nz + 1);
-	      if (drop_int <= trailing_zeros_count)
-		{
-		  /* Treat trailing zeros as negative scale */
-		  int sig_len = int_last_nz - int_first_nz + 1;
-		  tmp_prec = sig_len;
-		  tmp_scale = -trailing_zeros_count;
-		  temp_int_digits = int_digits + int_first_nz;
-		  temp_int_len = sig_len;
-		  *need_round = false;
-		}
-	      else
-		{
-		  /* Output only the integer part, remove scale */
-		  int keep_int = int_len - drop_int;
-		  tmp_prec = keep_int;
-		  tmp_scale = 0;
-		  temp_int_digits = int_digits;
-		  temp_int_len = keep_int;
-		  next_digit = int_digits[keep_int];
-		  *need_round = true;
-		}
+	      int keep_int = int_len - drop_int;
+	      tmp_prec = keep_int;
+	      tmp_scale = -drop_int;
+	      temp_int_digits = int_digits;
+	      temp_int_len = keep_int;
+	      next_digit = int_digits[keep_int];
+	      need_round = true;
 	    }
 	}
     }
 
   /* Step 2: Range validation (before memcpy) */
-  if (tmp_prec > DB_MAX_NUMERIC_PRECISION || tmp_scale > (DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
-      || tmp_scale < DB_MIN_NUMERIC_SCALE)
+  if (tmp_prec > phase_1_tmp_max_prec || tmp_scale > DB_MAX_NUMERIC_SCALE || tmp_scale < DB_MIN_NUMERIC_SCALE)
     {
       // Error handling done outside
       *out_prec = tmp_prec;
@@ -3503,7 +3461,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
   *tmp_num_string = '\0';
 
   /* Step 4: Rounding and digit adjustment */
-  if (*need_round)
+  if (need_round)
     {
       (void) determine_round (out_num_string, &tmp_prec, &tmp_scale, temp_int_len, temp_frac_len, frac_zero_cnt,
 			      next_digit);
@@ -3530,9 +3488,10 @@ static void
 determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len, int frac_zero_cnt,
 		 char next_digit)
 {
+  int phase_1_tmp_max_prec = 38;
   int prec = *out_prec;
   int scale = *out_scale;
-  int digit_pos = DB_MAX_NUMERIC_PRECISION - 1;
+  int digit_pos = phase_1_tmp_max_prec - 1;
   bool all_nines_overflow = false;
 
   // Step 1: Perform rounding based on the truncated digit
@@ -3557,19 +3516,19 @@ determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len,
 	    {
 	      // Pure decimal case: 0.9999... -> 1.0
 	      prec = 1;
-	      out_str[DB_MAX_NUMERIC_PRECISION - 1] = '1';
+	      out_str[phase_1_tmp_max_prec - 1] = '1';
 	    }
 	  else
 	    {
 	      // Integer with decimal: 99999.99999... -> 100000.0
-	      memmove (out_str + 1, out_str, DB_MAX_NUMERIC_PRECISION);
+	      memmove (out_str + 1, out_str, phase_1_tmp_max_prec);
 	      out_str[0] = '1';
 	    }
 	}
     }
 
   // Step 2: Add null terminator
-  out_str[DB_MAX_NUMERIC_PRECISION] = '\0';
+  out_str[phase_1_tmp_max_prec] = '\0';
 
   // Step 3: Recalculate scale based on rounding result
   if (all_nines_overflow)
@@ -3612,10 +3571,11 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 {
   char num_string[DB_MAX_NUMERIC_PRECISION + 1];
   unsigned char num[DB_NUMERIC_BUF_SIZE];
-  bool negate_value = false, need_round = false;
+  bool negate_value = false;
+  bool is_zero = false;
   int prec, scale;
   int int_len, frac_len;
-  int int_first_nz, int_last_nz, frac_first_nz, frac_last_nz;
+  int frac_first_nz, frac_last_nz;
   char int_digits[astring_length + 1];	/* Integer part valid digits */
   char frac_digits[astring_length + 1];	/* Fractional part valid digits */
   int ret = NO_ERROR;
@@ -3624,7 +3584,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   /* Parse and compute precision/scale */
   ret =
     analyze_numeric_string (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
-			    &frac_len, &int_first_nz, &int_last_nz, &frac_first_nz, &frac_last_nz);
+			    &frac_len, &frac_first_nz, &frac_last_nz, &is_zero);
   if (ret != NO_ERROR)
     {
       if (ret == ER_IT_DATA_OVERFLOW)
@@ -3642,7 +3602,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       scale = 0;
       num_string[0] = '\0';
     }
-  else if (int_len == 1 && int_first_nz < 0 && int_last_nz < 0)
+  else if (is_zero)
     {
       /* Zero case */
       prec = 1;
@@ -3652,12 +3612,12 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     }
   else
     {
-      (void) determine_prec_scale (int_digits, int_len, frac_digits, frac_len, int_first_nz, int_last_nz, frac_first_nz,
-				   frac_last_nz, num_string, &prec, &scale, &need_round);
+      (void) determine_prec_scale (int_digits, int_len, frac_digits, frac_len, frac_first_nz,
+				   frac_last_nz, num_string, &prec, &scale);
 
       /* If there is no overflow, try to parse the decimal string */
-      if (prec > DB_MAX_NUMERIC_PRECISION || scale > (DB_MAX_NUMERIC_SCALE + DB_MAX_NUMERIC_PRECISION)
-	  || scale < DB_MIN_NUMERIC_SCALE)
+      int phase_1_tmp_max_prec = 38;
+      if (prec > phase_1_tmp_max_prec || scale > DB_MAX_NUMERIC_SCALE || scale < DB_MIN_NUMERIC_SCALE)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -3675,7 +3635,6 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       numeric_negate (num);
     }
   db_make_numeric (result, num, prec, scale);
-  result->domain.numeric_info.has_round = need_round;
 
   return ret;
 
@@ -3918,17 +3877,6 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
       {
 	precision = DB_VALUE_PRECISION (src);
 	scale = DB_VALUE_SCALE (src);
-
-	/*
-	 * When the domain has a negative scale and the input value contains a fractional part
-	 * e.g.) numeric(38, -1), insert (1234567890...6789.0)
-	 * In this case, numeric_coerce_string_to_num already rounds the value from the leftmost 39 digits, resulting in 38 digits.
-	 * Therefore, a flag was added to skip redundant rounding in numeric_coerce_num_to_num.
-	 */
-	if (src->domain.numeric_info.has_round && desired_scale < 0)
-	  {
-	    scale = desired_scale;
-	  }
 	numeric_copy (num, db_locate_numeric (src));
 	break;
       }
