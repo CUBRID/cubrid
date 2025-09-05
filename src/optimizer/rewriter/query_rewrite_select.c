@@ -3667,7 +3667,8 @@ qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	{
 	  name_info = &count_arg->info.name;
 	  spec_node = pt_find_entity (parser, from, name_info->spec_id);
-	  if (spec_node == NULL || spec_node->info.spec.entity_name == NULL)
+	  if (spec_node == NULL || spec_node->info.spec.entity_name == NULL
+	      || spec_node->info.spec.join_type == PT_JOIN_LEFT_OUTER)
 	    {
 	      return node;
 	    }
@@ -3724,7 +3725,7 @@ qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
   int continue_walk = PT_LEAF_WALK;
   for (spec = from; spec; spec = spec->next)
     {
-      if (spec->info.spec.join_type != PT_JOIN_NONE && spec->info.spec.join_type != PT_JOIN_INNER)
+      if (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
 	{
 	  return;
 	}
