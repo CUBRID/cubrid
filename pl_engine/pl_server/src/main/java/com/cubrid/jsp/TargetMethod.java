@@ -205,8 +205,12 @@ public class TargetMethod {
         argClassMap.put("[LTimestamp;", Timestamp[].class);
         argClassMap.put("[LCUBRIDOID;", CUBRIDOID[].class);
 
+        // why not add other array-array types? TODO
         argClassMap.put("[[Ljava.lang.Integer;", Integer[][].class);
         argClassMap.put("[[Ljava.lang.Float;", Float[][].class);
+
+        argClassMap.put("[[LInteger;", Integer[][].class);
+        argClassMap.put("[[LFloat;", Float[][].class);
     }
 
     private static void initdescriptorMap() {
