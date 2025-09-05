@@ -11077,6 +11077,39 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
   return error;
 }
 
+bool
+heap_is_replicable_class (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  int error = NO_ERROR;
+
+  assert (class_oid != NULL);
+
+  if (OID_ISNULL (class_oid))
+    {
+      return false;
+    }
+
+  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      return false;
+    }
+
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+      assert (false);
+      return false;
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return or_class_is_replicable (&recdes);
+}
+
 /*
  * heap_class_get_partition_info () - Get partition information for the class
  *				      identified by class_oid

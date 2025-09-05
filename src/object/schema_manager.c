@@ -3386,6 +3386,26 @@ sm_check_reuse_oid_class (MOP op)
 }
 
 /*
+ */
+bool
+sm_is_replication_class (MOP op)
+{
+  SM_CLASS *class_;
+
+  if (op != NULL)
+    {
+      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
+	{
+	  return !(class_->flags & SM_CLASSFLAG_NO_REPLICATION);
+	}
+    }
+
+  assert (false);
+
+  return false;
+}
+
+/*
  * sm_is_partitioned_class () - test if this class is partitioned
  * return : < 0 if error, > 0 for partitioned classes, 0 otherwise
  * op (in) : class object

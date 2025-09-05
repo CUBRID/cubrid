@@ -9286,6 +9286,30 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+      // TODO: Implement replication option handling
+      /*
+       * Handle the replication option.
+       * If the option is omitted, or if "on|off" is omitted,
+       * the default value is set to "on".
+       */
+      if (tbl_opt_replication)
+	{
+	  replication_node = tbl_opt_replication->info.table_option.val;
+	  if (!replication_node || replication_node->info.value.data_value.i)
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table created. \n", class_name);
+              error = sm_set_class_flag (class_obj, SM_CLASSFLAG_NO_REPLICATION, 0);
+	    }
+	  else
+	    {
+	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created. \n", class_name);
+              error = sm_set_class_flag (class_obj, SM_CLASSFLAG_NO_REPLICATION, 1);
+	    }
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=default) table created. \n", class_name);
+	}
       break;
 
     default:
