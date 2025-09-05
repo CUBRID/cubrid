@@ -313,7 +313,7 @@ jobs:
                       
               test_shell:
                 executor: cubrid-test-shell
-                parallelism: 25
+                parallelism: 50
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
