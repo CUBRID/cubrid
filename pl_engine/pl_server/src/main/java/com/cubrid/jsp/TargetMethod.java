@@ -205,39 +205,8 @@ public class TargetMethod {
         argClassMap.put("[LTimestamp;", Timestamp[].class);
         argClassMap.put("[LCUBRIDOID;", CUBRIDOID[].class);
 
-        argClassMap.put("[[Ljava.lang.Boolean;", Boolean[][].class);
-        argClassMap.put("[[Ljava.lang.Byte;", Byte[][].class);
-        argClassMap.put("[[Ljava.lang.Character;", Character[][].class);
-        argClassMap.put("[[Ljava.lang.Short;", Short[][].class);
         argClassMap.put("[[Ljava.lang.Integer;", Integer[][].class);
-        argClassMap.put("[[Ljava.lang.Long;", Long[][].class);
         argClassMap.put("[[Ljava.lang.Float;", Float[][].class);
-        argClassMap.put("[[Ljava.lang.Double;", Double[][].class);
-        argClassMap.put("[[Ljava.lang.String;", String[][].class);
-        argClassMap.put("[[Ljava.lang.Object;", Object[][].class);
-
-        argClassMap.put("[[LBoolean;", Boolean[][].class);
-        argClassMap.put("[[LByte;", Byte[][].class);
-        argClassMap.put("[[LCharacter;", Character[][].class);
-        argClassMap.put("[[LShort;", Short[][].class);
-        argClassMap.put("[[LInteger;", Integer[][].class);
-        argClassMap.put("[[LLong;", Long[][].class);
-        argClassMap.put("[[LFloat;", Float[][].class);
-        argClassMap.put("[[LDouble;", Double[][].class);
-        argClassMap.put("[[LString;", String[][].class);
-        argClassMap.put("[[LObject;", Object[][].class);
-
-        argClassMap.put("[[Ljava.math.BigDecimal;", BigDecimal[][].class);
-        argClassMap.put("[[Ljava.sql.Date;", Date[][].class);
-        argClassMap.put("[[Ljava.sql.Time;", Time[][].class);
-        argClassMap.put("[[Ljava.sql.Timestamp;", Timestamp[][].class);
-        argClassMap.put("[[Lcubrid.sql.CUBRIDOID;", CUBRIDOID[][].class);
-
-        argClassMap.put("[[LBigDecimal;", BigDecimal[][].class);
-        argClassMap.put("[[LDate;", Date[][].class);
-        argClassMap.put("[[LTime;", Time[][].class);
-        argClassMap.put("[[LTimestamp;", Timestamp[][].class);
-        argClassMap.put("[[LCUBRIDOID;", CUBRIDOID[][].class);
     }
 
     private static void initdescriptorMap() {
