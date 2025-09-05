@@ -2060,7 +2060,7 @@ struct pt_alter_info
     } comment;
     struct
     {
-      PT_NODE *tbl_replication;
+      PT_NODE *tbl_replication; /* Stores the replication option (ON/OFF) parsed from the table definition */
     } replication;
   } alter_clause;
   PT_NODE *constraint_list;	/* constraints from ADD and CHANGE clauses */
