@@ -866,6 +866,7 @@ STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, i
 STATIC_INLINE void perfmon_add_at_offset_to_global (int offset, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
@@ -1177,6 +1178,65 @@ perfmon_set_at_offset_to_global (int offset, int statval)
   ATOMIC_TAS_64 (&(pstat_Global.global_stats[offset]), statval);
 }
 
+/*
+ * perfmon_merge_child_stats_to_parent_stats () - Merge child statistics to parent statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Child thread entry.
+ */
+STATIC_INLINE void
+perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  assert (thread_p != NULL);
+
+  if (thread_p->m_px_stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+
+  if (parent_thread_p == NULL || parent_thread_p == thread_p)
+    {
+      return;
+    }
+
+  /*
+   * m_px_stats should be NULL.
+   * perfmon_initialize_parallel_stats is a temporary safeguard.
+   * TODO: replace with assert().
+   */
+  if (parent_thread_p->m_px_stats == NULL)
+    {
+      perfmon_initialize_parallel_stats (parent_thread_p);
+    }
+
+  /* immutable */
+  static const int offsets[] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
+  };
+
+  const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+
+  for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
+    {
+      const int offset = offsets[stats_index];
+      parent_thread_p->m_px_stats[offset] += thread_p->m_px_stats[offset];
+      thread_p->m_px_stats[offset] = 0;
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * perfmon_merge_parallel_stats_to_tran_stats () - Merge parallel statistics to transaction statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Main thread entry.
+ */
 STATIC_INLINE void
 perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
 {

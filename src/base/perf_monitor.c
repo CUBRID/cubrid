@@ -3348,9 +3348,6 @@ perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
     }
   else
     {
-      /* impossible case */
-      assert (false);
-
       memset (thread_p->m_px_stats, 0, PERFMON_VALUES_MEMSIZE);
     }
 }
