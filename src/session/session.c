@@ -352,6 +352,8 @@ session_state_uninit (void *st)
   if (session->pl_session_p) {
     delete session->pl_session_p;
     session->pl_session_p = NULL;
+  } else {
+    er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is NULL in session_state_uninit()\n", session->id);
   }
 
   /* free session variables */
@@ -705,7 +707,11 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
-  session_p->pl_session_p = new PL_SESSION (session_p->id);
+  if (session_p->pl_session_p) {
+        er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is not NULL in session_state_create()\n", session_p->id);
+  } else {
+        session_p->pl_session_p = new PL_SESSION (session_p->id);
+  }
 
   /* initialize session active time */
   session_p->active_time = time (NULL);
@@ -3258,7 +3264,7 @@ session_is_pl_session_running (THREAD_ENTRY * thread_p)
       return false;
     }
 
-  return state_p->pl_session_p != NULL && state_p->pl_session_p->is_sp_running ();
+  return state_p->pl_session_p->is_sp_running ();
 }
 
 int
@@ -3314,13 +3320,11 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
       session->load_session_p = NULL;
     }
 
-  if (session->pl_session_p != NULL)
+  assert(session->pl_session_p);
+  if (thread_p && thread_p->type == TT_WORKER)
     {
-      if (thread_p && thread_p->type == TT_WORKER)
-	{
-	  session->pl_session_p->set_interrupt (er_errid ());
-	  session->pl_session_p->wait_until_pl_session_done ();
-	}
+      session->pl_session_p->set_interrupt (er_errid ());
+      session->pl_session_p->wait_until_pl_session_done ();
     }
 
 #endif

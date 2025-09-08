@@ -57,7 +57,7 @@ namespace cubpl
 	// session expired or internal error
 	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, thread_p->tran_index);
       }
-    return s;   // s can be null on error cases
+    return s;   // s can be null on error cases, especially, on session expriation
   }
 
 //////////////////////////////////////////////////////////////////////////
@@ -90,6 +90,7 @@ namespace cubpl
 
     std::lock_guard<std::mutex> lock (m_mutex_connection);
     m_session_connections.clear ();
+    // TODO: delete other resources
   }
 
   execution_stack *
