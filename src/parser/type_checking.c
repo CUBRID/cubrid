@@ -291,6 +291,8 @@ static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
 static bool pt_is_dblink_related (PT_NODE * p);
+static PT_NODE *pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static bool pt_check_column_is_not_null (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -4788,6 +4790,11 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       return ER_FAILED;
     }
 
+//   if(node->node_type == PT_VALUE && node->type_enum == PT_TYPE_CHAR && def_type == PT_TYPE_VARCHAR)
+//   {
+//         return NO_ERROR;
+//   }
+
   /* set default scale and precision for parametrized types */
   switch (def_type)
     {
@@ -7810,6 +7817,92 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
   return node;
 }
+
+static PT_NODE *
+pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *foldable = (bool *) arg;
+
+  if (tree->node_type == PT_EXPR)
+    {
+      if (tree->info.expr.op == PT_NULLIF || tree->info.expr.op == PT_COALESCE ||
+	  tree->info.expr.op == PT_NVL || tree->info.expr.op == PT_NVL2 || tree->info.expr.op == PT_DECODE
+	  || tree->info.expr.op == PT_IFNULL)
+	{
+
+	  if (tree->info.expr.op == PT_CAST)	// temporary implementation ...  (should be extended)
+	    {
+	      *foldable = false;
+	      *continue_walk = PT_STOP_WALK;
+	      return tree;
+	    }
+	}
+    }
+  else if (tree->node_type == PT_NAME)
+    {
+      if (!pt_check_column_is_not_null (parser, tree))
+	{
+	  *foldable = false;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return tree;
+}
+
+
+static bool
+pt_check_column_is_not_null (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  MOP cls;
+  SM_CLASS *class_;
+  SM_CLASS_CONSTRAINT *consp;
+  SM_ATTRIBUTE *attr, *attrs;
+
+  if (node->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  cls = sm_find_class (node->info.name.resolved);
+  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
+    {
+      er_clear ();
+      return false;
+    }
+  else
+    {
+      consp = sm_class_constraints (cls);
+
+      au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+      attr = classobj_find_attribute (class_, node->info.name.original, 0);
+      if (attr == NULL)
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
+	  PT_ERRORc (parser, node, er_msg ());
+	  return false;
+	}
+
+      for (; consp != NULL; consp = consp->next)
+	{
+	  SM_ATTRIBUTE **consp_attrs = consp->attributes;
+
+	  for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
+	    {
+	      if (consp_attrs[i]->id == attr->id)
+		{
+		  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+		    {
+		      return true;
+		    }
+		}
+	    }
+	}
+    }
+
+  return false;
+}
+
 
 /*
  * pt_fold_constants_post () - perform constant folding on the specified node
@@ -18132,52 +18225,18 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  break;
 
 	case PT_IS_NOT_NULL:
-	  if (opd1 && opd1->node_type == PT_NAME)
+	  if (pt_check_column_is_not_null (parser, opd1))
 	    {
-	      MOP cls;
-	      SM_CLASS *class_;
-	      SM_CLASS_CONSTRAINT *consp;
-	      SM_ATTRIBUTE *attr, *attrs;
-
-	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
-	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
+	      if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
 		{
-		  er_clear ();
-		  db_make_null (&dummy);
-		  arg1 = &dummy;
-		  type1 = PT_TYPE_NULL;
-		  break;
-		}
-
-	      consp = sm_class_constraints (cls);
-
-	      au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
-	      attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
-	      if (attr == NULL)
-		{
-		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
 		  PT_ERRORc (parser, expr, er_msg ());
 		  has_error = true;
 		  goto end;
 		}
 
-	      for (; consp != NULL; consp = consp->next)
-		{
-		  SM_ATTRIBUTE **consp_attrs = consp->attributes;
-
-		  for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
-		    {
-		      if (consp_attrs[i]->id == attr->id)
-			{
-			  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
-			    {
-			      db_make_int (&dbval_res, 1);
-			      result = pt_dbval_to_value (parser, &dbval_res);
-			      goto end;
-			    }
-			}
-		    }
-		}
+	      db_make_int (&dbval_res, 1);
+	      result = pt_dbval_to_value (parser, &dbval_res);
+	      goto end;
 	    }
 	  [[fallthrough]];
 
@@ -18204,7 +18263,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg2 = pt_value_to_db (parser, opd2);
       type2 = opd2->type_enum;
 
-      if (op == PT_LIKE && opd1 && opd1->node_type == PT_NAME)
+      if (op == PT_LIKE)
 	{
 	  DB_VALUE compressed_pattern;
 	  int num_logical_chars = 0;
@@ -18222,48 +18281,20 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 	  if (num_logical_chars >= 1 && num_logical_chars == num_match_many)
 	    {
-	      MOP cls;
-	      SM_CLASS *class_;
-	      SM_CLASS_CONSTRAINT *consp;
-	      SM_ATTRIBUTE *attr, *attrs;
-
-	      cls = sm_find_class (expr->info.expr.arg1->info.name.resolved);
-
-	      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
+	      bool foldable = true;
+	      parser_walk_tree (parser, opd1, pt_is_expr_foldable, &foldable, NULL, NULL);
+	      if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
 		{
-		  er_clear ();
+		  PT_ERRORc (parser, expr, er_msg ());
+		  has_error = true;
+		  goto end;
 		}
-	      else
+
+	      if (foldable)
 		{
-		  consp = sm_class_constraints (cls);
-
-		  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
-		  attr = classobj_find_attribute (class_, expr->info.expr.arg1->info.name.original, 0);
-		  if (attr == NULL)
-		    {
-		      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
-		      PT_ERRORc (parser, expr, er_msg ());
-		      has_error = true;
-		      goto end;
-		    }
-
-		  for (; consp != NULL; consp = consp->next)
-		    {
-		      SM_ATTRIBUTE **consp_attrs = consp->attributes;
-
-		      for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
-			{
-			  if (consp_attrs[i]->id == attr->id)
-			    {
-			      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
-				{
-				  db_make_int (&dbval_res, 1);
-				  result = pt_dbval_to_value (parser, &dbval_res);
-				  goto end;
-				}
-			    }
-			}
-		    }
+		  db_make_int (&dbval_res, 1);
+		  result = pt_dbval_to_value (parser, &dbval_res);
+		  goto end;
 		}
 	    }
 	}
