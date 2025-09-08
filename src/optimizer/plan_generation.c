@@ -2697,6 +2697,12 @@ cleanup:
   return xasl;
 
 error_exit:
+  if (pt_has_error (QO_ENV_PARSER (env)))
+    {
+      pt_report_to_ersys (QO_ENV_PARSER (env), PT_SEMANTIC);
+      pt_reset_error (QO_ENV_PARSER (env));
+    }
+
   assert_release_error (er_errid () != NO_ERROR);
 
   xasl = NULL;
