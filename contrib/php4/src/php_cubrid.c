@@ -3678,6 +3678,12 @@ PHP_FUNCTION (cubrid_field_flags)
   if (request->col_info[field_offset].is_shared)
     strcat (sz, "shared ");
 
+  if (request->col_info[field_offset].is_reverse_index)
+    strcat (sz, "reverse_index ");
+
+  if (request->col_info[field_offset].is_reverse_unique)
+    strcat (sz, "reverse_unique ");
+
   if (request->col_info[field_offset].type == CCI_U_TYPE_TIMESTAMP)
     {
       strcat (sz, "timestamp ");
