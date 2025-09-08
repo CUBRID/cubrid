@@ -3339,7 +3339,7 @@ sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, 
 bailout:
   if (long_record.data != NULL)
     {
-      db_private_free_and_init (thread_p, long_record.data);
+      free_and_init (long_record.data);
     }
   return (error == SORT_PUT_STOP) ? NO_ERROR : error;
 }
