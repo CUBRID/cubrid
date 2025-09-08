@@ -91,7 +91,7 @@ static int rv;
 
 /* default timeout seconds for infinite wait */
 #define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold. used as indicator for hot pages. */
-static int pgbuf_timeout = 300;			/* timeout seconds */
+static int pgbuf_timeout = 300 * 1000;		/* timeout seconds */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
@@ -1301,7 +1301,7 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
-  pgbuf_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT);
+  pgbuf_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
   pgbuf_Monitor_locks = prm_get_bool_value (PRM_ID_PB_MONITOR_LOCKS);
