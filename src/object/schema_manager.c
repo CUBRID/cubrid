@@ -3392,12 +3392,9 @@ sm_is_replication_class (MOP op)
 {
   SM_CLASS *class_;
 
-  if (op != NULL)
+  if (op != NULL && au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
     {
-      if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
-	{
-	  return !(class_->flags & SM_CLASSFLAG_NO_REPLICATION);
-	}
+	return class_->flags & SM_CLASSFLAG_REPLICATION;
     }
 
   assert (false);
