@@ -970,7 +970,7 @@ void sp_normalize_name (std::string &s)
 void
 sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth)
 {
-  static std::regex RE_SPACES ("\\s+");
+  std::regex RE_SPACES ("\\s+");
 
   auto pos_lparen = s.find_last_of ('(');
   auto pos_rparen = s.find_last_of (')');
@@ -1001,17 +1001,17 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
     {
       // shorten target_mth by erasing package name prefixes in parameter types
 
-      static std::regex RE_COMMA_JAVA_LANG (",java\\.lang\\.");
-      static std::regex RE_PAREN_JAVA_LANG ("\\(java\\.lang\\.");
+      std::regex RE_COMMA_JAVA_LANG (",java\\.lang\\.");
+      std::regex RE_PAREN_JAVA_LANG ("\\(java\\.lang\\.");
 
-      static std::regex RE_COMMA_JAVA_MATH (",java\\.math\\.");
-      static std::regex RE_PAREN_JAVA_MATH ("\\(java\\.math\\.");
+      std::regex RE_COMMA_JAVA_MATH (",java\\.math\\.");
+      std::regex RE_PAREN_JAVA_MATH ("\\(java\\.math\\.");
 
-      static std::regex RE_COMMA_JAVA_SQL (",java\\.sql\\.");
-      static std::regex RE_PAREN_JAVA_SQL ("\\(java\\.sql\\.");
+      std::regex RE_COMMA_JAVA_SQL (",java\\.sql\\.");
+      std::regex RE_PAREN_JAVA_SQL ("\\(java\\.sql\\.");
 
-      static std::regex RE_COMMA_CUBRID_SQL (",cubrid\\.sql\\.");
-      static std::regex RE_PAREN_CUBRID_SQL ("\\(cubrid\\.sql\\.");
+      std::regex RE_COMMA_CUBRID_SQL (",cubrid\\.sql\\.");
+      std::regex RE_PAREN_CUBRID_SQL ("\\(cubrid\\.sql\\.");
 
       // param types: from '(' to ')' : parameter types
       std::string param_types = s.substr (pos_lparen, pos_rparen + 1 - pos_lparen);
@@ -1040,10 +1040,10 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
 	}
       else
 	{
-	  static std::regex RE_PREFIX_JAVA_LANG ("^java\\.lang\\.");
-	  static std::regex RE_PREFIX_JAVA_MATH ("^java\\.math\\.");
-	  static std::regex RE_PREFIX_JAVA_SQL ("^java\\.sql\\.");
-	  static std::regex RE_PREFIX_CUBRID_SQL ("^cubrid\\.sql\\.");
+	  std::regex RE_PREFIX_JAVA_LANG ("^java\\.lang\\.");
+	  std::regex RE_PREFIX_JAVA_MATH ("^java\\.math\\.");
+	  std::regex RE_PREFIX_JAVA_SQL ("^java\\.sql\\.");
+	  std::regex RE_PREFIX_CUBRID_SQL ("^cubrid\\.sql\\.");
 
 	  std::string ret_type = s.substr (pos_return + 6);   // 6: length of "return"
 	  ret_type = std::regex_replace (ret_type, RE_SPACES, "");
