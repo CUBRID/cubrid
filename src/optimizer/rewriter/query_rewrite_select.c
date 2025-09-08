@@ -20,6 +20,7 @@
  * query_select.c
  */
 
+#include "parse_tree.h"
 #ident "$Id$"
 
 #include <assert.h>
@@ -3725,7 +3726,8 @@ qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
   int continue_walk = PT_LEAF_WALK;
   for (spec = from; spec; spec = spec->next)
     {
-      if (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+      if (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER
+	  || spec->info.spec.join_type == PT_JOIN_CROSS)
 	{
 	  return;
 	}
