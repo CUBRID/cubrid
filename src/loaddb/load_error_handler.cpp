@@ -122,9 +122,14 @@ namespace cubload
 	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), lineno));
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
-      }
 
-    m_session.on_error (err_msg);
+	m_session.on_error (err_msg);
+	er_clear ();
+      }
+    else if (fail || is_syntax_error)
+      {
+	m_session.on_error (err_msg);
+      }
 
     if (fail)
       {
@@ -140,7 +145,7 @@ namespace cubload
 	ldr_increment_err_total ();
       }
 
-    fprintf (stderr, "%s", err_msg.c_str ());
+    fprintf (stderr, "%s\n", err_msg.c_str ());
 #endif
   }
 
