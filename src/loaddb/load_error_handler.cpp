@@ -89,8 +89,8 @@ namespace cubload
     if (m_syntax_check)
       {
 	// just log er_msg ()
-	std::string er_msg;
-	log_error_message (er_msg, false, use_scanner_line);
+	std::string empty;
+	log_error_message (empty, false, use_scanner_line);
 	er_clear ();
 	return;
       }
@@ -123,12 +123,13 @@ namespace cubload
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
 
-	m_session.on_error (err_msg);
+	m_session.on_error (err_msg, false);
 	er_clear ();
       }
-    else if (fail || is_syntax_error)
+    else if (!err_msg.empty())
       {
-	m_session.on_error (err_msg);
+	err_msg.append ("\n");
+	m_session.on_error (err_msg, true);
       }
 
     if (fail)

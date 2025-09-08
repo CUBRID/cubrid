@@ -391,11 +391,14 @@ namespace cubload
   }
 
   void
-  session::on_error (std::string &err_msg)
+  session::on_error (std::string &err_msg, bool is_counting)
   {
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    m_stats.rows_failed++;
+    if (is_counting)
+      {
+	m_stats.rows_failed++;
+      }
     m_stats.error_message.append (err_msg);
     collect_stats ();
     ulock.unlock ();

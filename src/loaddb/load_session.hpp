@@ -105,7 +105,7 @@ namespace cubload
       void notify_batch_done_and_register_tran_end (batch_id id, int tran_index);
       void register_tran_start (int tran_index);
 
-      void on_error (std::string &err_msg);
+      void on_error (std::string &err_msg, bool is_counting);
 
       void fail (bool has_lock = false);
       bool is_failed ();
