@@ -10666,28 +10666,89 @@ exit:
 }
 
 static int
-do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter_node)
+do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
+  int error = NO_ERROR;
   const char *entity_name = NULL;
-  PT_NODE *replication_node = alter_node->info.alter.alter_clause.replication.tbl_replication;
+  DB_OBJECT *class_obj = NULL;
+  DB_CTMPL *ctemplate = NULL;
+  MOP class_mop = NULL;
+  bool tran_saved = false;
+  PT_NODE *replication_node;
 
-  entity_name = alter_node->info.alter.entity_name->info.name.original;
-  // TODO: Implement replication option handling
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  tran_saved = true;
+  
+  entity_name = alter->info.alter.entity_name->info.name.original;
+  class_obj = db_find_class (entity_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+
+    error = locator_flush_class (class_obj);
+    if (error != NO_ERROR)
+      {
+        /* don't overwrite error */
+        goto exit;
+      }
+        /* get exclusive lock on class */
+  if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
+  {
+    error = ER_FAILED;
+    goto exit;
+  } 
+
+  ctemplate = dbt_edit_class (class_obj);
+  if (ctemplate == NULL)
+    {
+      /* when dbt_edit_class fails (e.g. because the server unilaterally aborts us), we must record the associated
+       * error message into the parser.  Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
+       * class". */
+      pt_record_error (parser, parser->statement_number - 1, alter->line_number, alter->column_number, er_msg (), NULL);
+      error = er_errid ();
+      goto exit;
+    }
+
   /*
    * Handle the replication option.
    * If the option is omitted, or if "on|off" is omitted,
    * the default value is set to "on".
    */
-  if (IS_REPLICATION_ON_NODE (replication_node))
+  class_mop = ctemplate->op;
+  replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
+  
+  error = sm_set_class_flag(class_mop, SM_CLASSFLAG_REPLICATION, replication_node->info.value.data_value.i ? TRUE : FALSE);
+
+    /* force schema update to server */
+    class_obj = dbt_finish_class (ctemplate);
+    if (class_obj == NULL)
+      {
+        error = er_errid ();
+        goto exit;
+      }
+
+    /* set NULL, avoid 'abort_class' in case of error */
+    ctemplate = NULL;
+
+    exit:
+  if (ctemplate != NULL)
     {
-      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table replication set to on. \n",
-		     entity_name);
+      dbt_abort_class (ctemplate);
+      ctemplate = NULL;
     }
-  else
+
+  if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created set to off. \n", entity_name);
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
     }
-  return NO_ERROR;
+    
+  return error;
 }
 
 /*
