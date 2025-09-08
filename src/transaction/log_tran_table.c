@@ -2783,11 +2783,11 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      // Only TT_WORKER threads use pl_session
 	      if (thread_p && thread_p->type == TT_WORKER)
 		{
-                  cubpl::session * session = cubpl::get_session ();
-                  if (session)
-                    {
-                      session->set_interrupt (ER_INTERRUPTED);
-                    }
+		  cubpl::session * session = cubpl::get_session ();
+		  if (session)
+		    {
+		      session->set_interrupt (ER_INTERRUPTED);
+		    }
 		}
 	    }
 
@@ -2864,9 +2864,9 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 
       cubpl::session * session = cubpl::get_session ();
       if (session)
-        {
-          session->set_interrupt (ER_INTERRUPTED);
-        }
+	{
+	  session->set_interrupt (ER_INTERRUPTED);
+	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
     {

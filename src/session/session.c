@@ -349,12 +349,16 @@ session_state_uninit (void *st)
 
   session_stop_attached_threads (thread_p, session);
 
-  if (session->pl_session_p) {
-    delete session->pl_session_p;
-    session->pl_session_p = NULL;
-  } else {
-    er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is NULL in session_state_uninit()\n", session->id);
-  }
+  if (session->pl_session_p)
+    {
+      delete session->pl_session_p;
+      session->pl_session_p = NULL;
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is NULL in session_state_uninit()\n",
+		    session->id);
+    }
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -707,11 +711,15 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
-  if (session_p->pl_session_p) {
-        er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is not NULL in session_state_create()\n", session_p->id);
-  } else {
-        session_p->pl_session_p = new PL_SESSION (session_p->id);
-  }
+  if (session_p->pl_session_p)
+    {
+      er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is not NULL in session_state_create()\n",
+		    session_p->id);
+    }
+  else
+    {
+      session_p->pl_session_p = new PL_SESSION (session_p->id);
+    }
 
   /* initialize session active time */
   session_p->active_time = time (NULL);
@@ -3120,7 +3128,7 @@ session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
       return ER_FAILED;
     }
 
-  assert(state_p->pl_session_p);
+  assert (state_p->pl_session_p);
   state_p->pl_session_p->mark_session_param_changed (id);
 
   return NO_ERROR;
@@ -3282,10 +3290,10 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
     }
   else
     {
-      assert(state_p->pl_session_p);
+      assert (state_p->pl_session_p);
       if (state_p->pl_session_p->is_sp_running () && state_p->pl_session_p->is_interrupted ())
 	{
-          // TODO: should this be an error?
+	  // TODO: should this be an error?
 	  pl_session_ref_ptr = nullptr;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  error = ER_INTERRUPTED;
@@ -3320,7 +3328,7 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
       session->load_session_p = NULL;
     }
 
-  assert(session->pl_session_p);
+  assert (session->pl_session_p);
   if (thread_p && thread_p->type == TT_WORKER)
     {
       session->pl_session_p->set_interrupt (er_errid ());
