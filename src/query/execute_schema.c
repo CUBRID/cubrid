@@ -66,7 +66,6 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
@@ -89,7 +88,8 @@
 #define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
-#define REPL_IS_ON_OR_DEFAULT(_opt) \
+/* Returns true if replication option is ON or not specified (default ON) */
+#define IS_REPLICATION_ON(_opt) \
   ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
 
 typedef enum
@@ -9231,7 +9231,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
        * If the option is omitted, or if the "on|off" value is omitted,  
        * the default is set to "on".  
        */
-      if (REPL_IS_ON_OR_DEFAULT (tbl_opt_replication))
+      if (IS_REPLICATION_ON (tbl_opt_replication))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table created.\n", class_name);
 	  // TODO: Implement replication option handling. 
