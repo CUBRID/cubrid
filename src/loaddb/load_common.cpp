@@ -752,13 +752,26 @@ namespace cubload
 		batch_start_offset = lineno + 1;
 		continue;
 	      }
+	  }
 
-	    if (class_is_ignored)
+	if (class_is_ignored)
+	  {
+	    assert (single_quote_checker == 0);
+	    // Skip the remaining lines until we find another class.
+	    continue;
+	  }
+
+	// check for matching single quotes
+	for (const char &c: line)
+	  {
+	    if (c == '\'')
 	      {
-		// Skip the remaining lines until we find another class.
-		continue;
+		single_quote_checker ^= 1;
 	      }
+	  }
 
+	if (single_quote_checker == 0)
+	  {
 	    // strip trailing whitespace
 	    rtrim (line);
 
@@ -773,15 +786,6 @@ namespace cubload
 
 	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
 	one_row_buffer.append ("\n");
-
-	// check for matching single quotes
-	for (const char &c: line)
-	  {
-	    if (c == '\'')
-	      {
-		single_quote_checker ^= 1;
-	      }
-	  }
 
 	// it could be that a row is wrapped on the next line,
 	// this means that the row ends on the last line that does not end with '+' (plus) character
