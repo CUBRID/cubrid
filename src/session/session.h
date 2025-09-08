@@ -95,5 +95,5 @@ extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, 
 extern bool session_has_pl_session (THREAD_ENTRY * thread_p);
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
 
-extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_destory);
+extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 #endif /* _SESSION_H_ */
