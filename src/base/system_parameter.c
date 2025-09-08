@@ -633,6 +633,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
 
+#define PRM_NAME_PAGE_LATCH_TIMEOUT "page_latch_timeout"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2105,6 +2107,12 @@ static UINT64 prm_first_log_pageid_default = 0LL;
 static UINT64 prm_first_log_pageid_lower = 0LL;
 static UINT64 prm_first_log_pageid_upper = LOGPAGEID_MAX;
 static unsigned int prm_first_log_pageid_flag = 0;
+
+int PRM_PAGE_LATCH_TIMEOUT = 300;
+static int prm_page_latch_timeout_default = 300;
+static int prm_page_latch_timeout_upper = 3000;
+static int prm_page_latch_timeout_lower = 1;
+static unsigned int prm_page_latch_timeout_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5370,6 +5378,15 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_FIRST_LOG_PAGEID,
    (void *) &prm_first_log_pageid_upper,
    (void *) &prm_first_log_pageid_lower,
+  {PRM_ID_PAGE_LATCH_TIMEOUT,
+   PRM_NAME_PAGE_LATCH_TIMEOUT,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   (void *) &prm_page_latch_timeout_flag,
+   (void *) &prm_page_latch_timeout_default,
+   (void *) &PRM_PAGE_LATCH_TIMEOUT,
+   (void *) &prm_page_latch_timeout_upper,
+   (void *) &prm_page_latch_timeout_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
