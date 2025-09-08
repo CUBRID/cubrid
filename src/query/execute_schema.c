@@ -10684,6 +10684,13 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   tran_saved = true;
   
   entity_name = alter->info.alter.entity_name->info.name.original;
+  if (entity_name == NULL)
+  {
+    error = ER_UNEXPECTED;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Expecting a class or virtual class name.");
+    goto exit;
+  }
+  
   class_obj = db_find_class (entity_name);
   if (class_obj == NULL)
     {
