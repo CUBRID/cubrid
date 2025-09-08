@@ -3248,20 +3248,6 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 }
 
 bool
-session_has_pl_session (THREAD_ENTRY * thread_p)
-{
-  SESSION_STATE *state_p = NULL;
-
-  state_p = session_get_session_state (thread_p);
-  if (state_p == NULL)
-    {
-      return false;
-    }
-
-  return state_p->pl_session_p != NULL;
-}
-
-bool
 session_is_pl_session_running (THREAD_ENTRY * thread_p)
 {
   SESSION_STATE *state_p = NULL;
