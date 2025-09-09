@@ -3278,7 +3278,7 @@ session_is_pl_session_running (THREAD_ENTRY * thread_p)
       return false;
     }
 
-  return state_p->pl_session_p != NULL && state_p->pl_session_p->is_running ();
+  return state_p->pl_session_p != NULL && state_p->pl_session_p->is_sp_running ();
 }
 
 int
@@ -3301,7 +3301,7 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
 	  state_p->pl_session_p = new PL_SESSION (state_p->id);
 	  er_log_debug (ARG_FILE_LINE, "pl_session (create): %d\n", state_p->id);
 	}
-      else if (state_p->pl_session_p->is_running () == true && state_p->pl_session_p->is_interrupted ())
+      else if (state_p->pl_session_p->is_sp_running () && state_p->pl_session_p->is_interrupted ())
 	{
 	  pl_session_ref_ptr = nullptr;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -3320,19 +3320,6 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
 
   return error;
 }
-
-#if defined (SERVER_MODE)
-void
-session_notify_pl_task_completion (const SESSION_STATE * session)
-{
-#if defined (SERVER_MODE)
-  if (session && session->pl_session_p)
-    {
-      session->pl_session_p->notify_waiting_stacks ();
-    }
-#endif
-}
-#endif
 
 /* 
  * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
@@ -3362,7 +3349,7 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg, bool 
       if (thread_p && thread_p->type == TT_WORKER)
 	{
 	  session->pl_session_p->set_interrupt (er_errid ());
-	  session->pl_session_p->wait_for_interrupt ();
+	  session->pl_session_p->wait_until_pl_session_done ();
 	}
 
       if (is_destory)

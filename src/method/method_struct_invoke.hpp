@@ -46,7 +46,7 @@ namespace cubmethod
   {
     header () = delete;
     explicit header (cubpacking::unpacker &unpacker);
-    header (uint64_t id, int command, int req_id);
+    header (uint64_t id, int command);
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
@@ -54,7 +54,6 @@ namespace cubmethod
 
     uint64_t id;
     int command;
-    int req_id;
   };
 
   /*
