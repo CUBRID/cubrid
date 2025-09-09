@@ -131,7 +131,6 @@ namespace cubpl
       execution_stack *create_and_push_stack (cubthread::entry *thread_p);
       void pop_and_destroy_stack (const PL_STACK_ID sid);
       execution_stack *top_stack ();
-      void notify_waiting_stacks ();
 
       /* connection management */
       connection_view claim_connection ();
@@ -149,12 +148,10 @@ namespace cubpl
       std::string get_interrupt_msg ();
       void clear_interrupt ();
 
-      void wait_for_interrupt ();
+      void wait_until_pl_session_done ();
       void set_local_error_for_interrupt (); // set interrupt on thread local error manager
 
-      int get_depth ();
-
-      bool is_running ();
+      bool is_sp_running ();
 
       inline METHOD_REQ_ID get_and_increment_request_id ()
       {
@@ -175,8 +172,11 @@ namespace cubpl
       void destroy_all_cursors ();
       void destroy_pl_context_jvm ();
 
-      std::mutex m_mutex;
-      std::condition_variable m_cond_var;
+      std::mutex m_mutex_stack;
+      std::mutex m_mutex_connection;
+      std::mutex m_mutex_cursor;
+      std::condition_variable m_cond_target_stack_at_top;
+      std::condition_variable m_cond_pl_session_done;
 
       std::unordered_set <QUERY_ID> m_session_cursors;
       std::map <QUERY_ID, int> m_session_handler_map;
@@ -202,11 +202,8 @@ namespace cubpl
       int m_stack_idx;
 
       // interrupt
-      bool m_is_interrupted;
       int m_interrupt_id;
       std::string m_interrupt_msg;
-
-      bool m_is_running;
 
       SESSION_ID m_id;
   };

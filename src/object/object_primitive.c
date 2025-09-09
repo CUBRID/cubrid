@@ -10426,6 +10426,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, db_value_precision (src), 0);
       if (src->data.ch.info.is_max_string)
 	{
+	  dest->data.ch.info.style = MEDIUM_STRING;
 	  dest->data.ch.info.is_max_string = true;
 	  dest->domain.general_info.is_null = 0;
 	  dest->domain.char_info.collation_id = db_get_string_collation (src);
