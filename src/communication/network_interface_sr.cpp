@@ -5031,7 +5031,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
   bool was_recompile_xasl = false;
   bool force_recompile = false;
-  char *buffer;
+  char *buffer = NULL;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
