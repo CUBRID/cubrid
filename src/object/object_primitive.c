@@ -8425,7 +8425,7 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
   disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
 
   //disk_size = OR_NUMERIC_SIZE (domain->precision);
-  or_put_data (buf, (char *) mem, disk_size);
+  or_put_data (buf, (char *) mem + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
 }
 
 static void
@@ -8453,6 +8453,18 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       size = calc_bytes_from_prec (precision);
       size = DB_ALIGN (size, INT_ALIGNMENT);
 
+      if (DB_NUMERIC_BUF_SIZE != size)
+	{
+	  if (numeric_is_negative ((DB_C_NUMERIC) mem))
+	    {
+	      memset (mem, 0xFF, DB_NUMERIC_BUF_SIZE - size);
+	    }
+	  else
+	    {
+	      memset (mem, 0, DB_NUMERIC_BUF_SIZE - size);
+	    }
+	}
+
       // 음수 이면 에러처리를 할까?
 //       if (size != OR_NUMERIC_SIZE (domain->precision))
 //      {
@@ -8462,7 +8474,8 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 //      }
 //       else
       {
-	or_get_data (buf, (char *) mem, size);
+	//or_get_data (buf, (char *) mem, size);
+	or_get_data (buf, (char *) mem + (DB_NUMERIC_BUF_SIZE - size), size);
       }
     }
 }

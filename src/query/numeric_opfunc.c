@@ -5139,7 +5139,7 @@ compute_prec_scale3 (const char *int_digits, int int_len, const char *frac_digit
 		   */
 		  int keep_int = int_len - drop_int;
 		  tmp_prec = keep_int;
-		  tmp_scale = 0;
+		  tmp_scale = -drop_int;
 		  temp_int_digits = int_digits;
 		  temp_int_len = keep_int;
 		  next_digit = int_digits[keep_int];
