@@ -149,14 +149,7 @@ namespace parallel_heap_scan
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
-	if (m_context->m_orig_thread_p->m_px_stats != NULL)
-	  {
-	    thread_p->m_px_stats = m_context->m_orig_thread_p->m_px_stats;
-	  }
-	else
-	  {
-	    perfmon_initialize_parallel_stats (thread_p);
-	  }
+	perfmon_initialize_parallel_stats (thread_p);
       }
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
@@ -321,6 +314,10 @@ namespace parallel_heap_scan
 #endif
 	      }
 	  }
+      }
+    if (on_trace)
+      {
+	perfmon_merge_child_stats_to_parent_stats (thread_p);
       }
     if (is_list_merge)
       {

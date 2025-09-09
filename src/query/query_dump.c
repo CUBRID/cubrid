@@ -3183,13 +3183,13 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       break;
 
     case HASHJOIN_PROC:
-      json_object_set_new (parent, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-      json_object_set_new (parent, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-      json_object_set_new (parent, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-      json_object_set_new (parent, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      json_object_set_new (proc, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      json_object_set_new (proc, "fetch", json_integer (xasl_p->xasl_stats.fetches));
+      json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
+      json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       if (xasl_p->executed_parallelism > 1)
 	{
-	  json_object_set_new (parent, "parallel workers", json_integer (xasl_p->executed_parallelism));
+	  json_object_set_new (proc, "parallel workers", json_integer (xasl_p->executed_parallelism));
 	}
       qdump_print_hashjoin_stats_json (xasl_p, proc);
       break;

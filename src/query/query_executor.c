@@ -8360,7 +8360,21 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
     {
       if (spec->s_id.s.phsid.perf_monitor)
 	{
+	  if (thread_p->m_px_stats != NULL)
+	    {
+	      spec->s_id.scan_stats.num_fetches +=
+		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
+	      spec->s_id.scan_stats.num_ioreads +=
+		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
+
+	      prev_partition_spec->scan_stats.num_fetches +=
+		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
+	      prev_partition_spec->scan_stats.num_ioreads +=
+		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
+	    }
+
 	  spec->s_id.s.phsid.perf_monitor->set_partition_stats (prev_partition_spec);
+	  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
 	}
     }
 #endif

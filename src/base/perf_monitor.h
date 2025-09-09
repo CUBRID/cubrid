@@ -1222,12 +1222,14 @@ perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
 
   const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
 
+  pthread_mutex_lock (&(parent_thread_p->m_px_stats_mutex));
   for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
     {
       const int offset = offsets[stats_index];
       parent_thread_p->m_px_stats[offset] += thread_p->m_px_stats[offset];
       thread_p->m_px_stats[offset] = 0;
     }
+  pthread_mutex_unlock (&(parent_thread_p->m_px_stats_mutex));
 #endif /* SERVER_MODE */
 }
 
