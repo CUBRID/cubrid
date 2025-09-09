@@ -197,6 +197,8 @@ typedef struct hashjoin_stats
   bool use_hash_file;
   bool use_hash_skip;
 
+  bool swap_join_inputs;
+
   double collision_rate;
 
   HASHJOIN_INPUT_STATS split;

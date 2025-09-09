@@ -3869,6 +3869,19 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   if (part_cnt <= 1)
     {
+      XASL_NODE *build_xasl, *probe_xasl;
+
+      if (stats->swap_join_inputs)
+	{
+	  build_xasl = outer_xasl;
+	  probe_xasl = inner_xasl;
+	}
+      else
+	{
+	  build_xasl = inner_xasl;
+	  probe_xasl = outer_xasl;
+	}
+
       fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s", indent, ' ',
 	       TO_MSEC (stats->build.elapsed_time), stats->build.fetches, stats->build.ioreads,
 	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method));
@@ -3886,10 +3899,16 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       fprintf (fp, "\n");
 
+      if (xasl_p->executed_parallelism <= 1)
+	{
+	  qdump_print_stats_text (fp, build_xasl, indent);
+	}
+
       fprintf (fp,
 	       "%*cPROBE (time: %d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)",
 	       indent, ' ', TO_MSEC (stats->probe.elapsed_time), stats->probe.fetches, stats->probe.ioreads,
 	       stats->probe.read_rows, stats->probe.read_keys, stats->probe.qualified_rows);
+
 
 #if HASHJOIN_PROFILE_TIME
       fprintf (fp, ", (F: %d, H: %d, S: %d, M: %d, A: %d)", TO_MSEC (stats->profile.probe.fetch),
@@ -3898,6 +3917,11 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 #endif /* HASHJOIN_PROFILE_TIME */
 
       fprintf (fp, "\n");
+
+      if (xasl_p->executed_parallelism <= 1)
+	{
+	  qdump_print_stats_text (fp, probe_xasl, indent);
+	}
     }
   else
     {
@@ -4009,9 +4033,13 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 #endif /* HASHJOIN_PROFILE_TIME */
     }
 
-  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
-  qdump_print_stats_text (fp, outer_xasl, indent);
-  qdump_print_stats_text (fp, inner_xasl, indent);
+  /* parallel subquery or partitioned hash join */
+  if (xasl_p->executed_parallelism > 1 || part_cnt > 1)
+    {
+      fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
+      qdump_print_stats_text (fp, outer_xasl, indent);
+      qdump_print_stats_text (fp, inner_xasl, indent);
+    }
 }
 
 static void
@@ -4097,6 +4125,19 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 
   if (part_cnt <= 1)
     {
+      XASL_NODE *build_xasl, *probe_xasl;
+
+      if (stats->swap_join_inputs)
+	{
+	  build_xasl = outer_xasl;
+	  probe_xasl = inner_xasl;
+	}
+      else
+	{
+	  build_xasl = inner_xasl;
+	  probe_xasl = outer_xasl;
+	}
+
       build = json_object ();
       json_object_set_new (build, "time", json_integer (TO_MSEC (stats->build.elapsed_time)));
       json_object_set_new (build, "fetch", json_integer (stats->build.fetches));
@@ -4116,6 +4157,13 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 
+      if (xasl_p->executed_parallelism <= 1)
+	{
+	  input = json_object ();
+	  qdump_print_stats_json (build_xasl, input);
+	  json_object_set_new (build, "input", input);
+	}
+
       probe = json_object ();
       json_object_set_new (probe, "time", json_integer (TO_MSEC (stats->probe.elapsed_time)));
       json_object_set_new (probe, "fetch", json_integer (stats->probe.fetches));
@@ -4134,6 +4182,13 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (profile, "A", json_integer (TO_MSEC (stats->profile.probe.add)));
       json_object_set_new (probe, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
+
+      if (xasl_p->executed_parallelism <= 1)
+	{
+	  input = json_object ();
+	  qdump_print_stats_json (probe_xasl, input);
+	  json_object_set_new (probe, "input", input);
+	}
     }
   else
     {
@@ -4269,17 +4324,21 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 #endif /* HASHJOIN_PROFILE_TIME */
     }
 
-  subquery = json_array ();
+  /* parallel subquery or partitioned hash join */
+  if (xasl_p->executed_parallelism > 1 || part_cnt > 1)
+    {
+      subquery = json_array ();
 
-  input = json_object ();
-  qdump_print_stats_json (outer_xasl, input);
-  json_array_append_new (subquery, input);
+      input = json_object ();
+      qdump_print_stats_json (outer_xasl, input);
+      json_array_append_new (subquery, input);
 
-  input = json_object ();
-  qdump_print_stats_json (inner_xasl, input);
-  json_array_append_new (subquery, input);
+      input = json_object ();
+      qdump_print_stats_json (inner_xasl, input);
+      json_array_append_new (subquery, input);
 
-  json_object_set_new (parent, "SUBQUERY (uncorrelated)", subquery);
+      json_object_set_new (parent, "SUBQUERY (uncorrelated)", subquery);
+    }
 }
 
 #endif /* SERVER_MODE */

@@ -2351,6 +2351,7 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   if (thread_is_on_trace (thread_p))
     {
       context->stats->hash_method = context->hash_scan.hash_list_scan_type;
+      context->stats->swap_join_inputs = (context->build == outer) ? true : false;
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
