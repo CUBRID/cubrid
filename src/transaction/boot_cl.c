@@ -1549,16 +1549,9 @@ boot_client_all_finalize (int final_level)
       lang_final ();
       tz_unload ();
 
-      /* adj_arrays & lex buffers in the cnv formatting library. */
-      cnv_cleanup ();
-
 #if defined(WINDOWS)
       pc_final ();
 #endif /* WINDOWS */
-
-      /* Clean up stuff allocated by the utilities library too. Not really necessary but avoids warnings from memory
-       * tracking tools that customers might be using. */
-      co_final ();
 
       memset (&boot_Server_credential, 0, sizeof (boot_Server_credential));
       memset (boot_Server_credential.server_session_key, 0xFF, SERVER_SESSION_KEY_SIZE);

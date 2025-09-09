@@ -5856,7 +5856,7 @@ error:
 static char *
 stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * aggregate)
 {
-  int offset;
+  int offset, flagint = 0;
   int tmp;
   XASL_UNPACK_INFO *xasl_unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
 
@@ -5956,9 +5956,6 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 	}
     }
 
-  /* flag_agg_optimize */
-  ptr = or_unpack_int (ptr, (int *) &aggregate->flag_agg_optimize);
-
   /* btid */
   ptr = or_unpack_btid (ptr, &aggregate->btid);
 
@@ -6007,6 +6004,16 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       /* Other functions need specific variables if any in the future */
       ;
     }
+
+  /* is_min_max_optimized */
+  ptr = or_unpack_int (ptr, &flagint);
+  aggregate->flag.agg_optimized = (flagint & (1 << 0)) != 0;
+  aggregate->flag.min_max_optimized = (flagint & (1 << 1)) != 0;
+  aggregate->flag.part_key_descending = (flagint & (1 << 2)) != 0;
+  aggregate->flag.dummy = (flagint & (1 << 3)) != 0;
+  /* is_ended */
+  ptr = or_unpack_int (ptr, &offset);
+  aggregate->is_ended = false;
 
   /* accumulator_domain */
   aggregate->accumulator_domain.value_dom = NULL;

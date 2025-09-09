@@ -63,6 +63,7 @@ namespace parallel_heap_scan
       std::shared_ptr<list_id_wrapper> m_list_id_wrapper;
       mergable_list_writer *m_mergable_list_writer;
       parallel_query::worker_manager *m_worker_manager;
+      PGBUF_WATCHER m_old_page_watcher;
   };
 }
 #endif /* SERVER_MODE && !WINDOWS */

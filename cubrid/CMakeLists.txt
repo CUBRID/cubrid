@@ -18,7 +18,6 @@
 
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_date.c
   ${COMPAT_DIR}/db_elo.c
   ${COMPAT_DIR}/db_function.cpp
@@ -72,13 +71,11 @@ set(THREAD_HEADERS
   )
 
 set(BASE_SOURCES
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/bit.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c
@@ -425,7 +422,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/double_write_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.cpp
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_posix.c
@@ -446,6 +443,7 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
+  ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
 )

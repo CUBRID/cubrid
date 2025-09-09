@@ -707,9 +707,10 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
       log_path = repl_log_path;
     }
 
-  if (strlen (log_path) + 1 + strlen (path_base_name) >= (size_t) path_buf_size)
+  int n = snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), path_base_name);
+  if (n >= path_buf_size)
     {
-      snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", path_buf);
+      snprintf (er_msg, sizeof (er_msg), "Too long the SQL log path \'%s\'", log_path);
 
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, er_msg);
@@ -717,8 +718,6 @@ sl_create_sql_log_dir (const char *repl_log_path, char *path_buf, int path_buf_s
 
       return ER_FAILED;
     }
-
-  snprintf (path_buf, path_buf_size, "%s%s%s", log_path, FILEIO_PATH_SEPARATOR (log_path), path_base_name);
 
   p = path_buf;
   if (*p == PATH_SEPARATOR)
