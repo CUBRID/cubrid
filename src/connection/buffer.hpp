@@ -23,7 +23,6 @@
 #ifndef _CONNECTION_BUFFER_HPP_
 #define _CONNECTION_BUFFER_HPP_
 
-#include "DMRB_SPSC.hpp"
 #include "packet_buffer.hpp"
 #include "error_manager.h"
 
@@ -132,6 +131,11 @@ namespace cubconn
 	while (msg->msg_iovlen)
 	  {
 	    bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL);
+	    if (bytes < 0 && errno == EINTR)
+	      {
+		/* interrupted by signal, retry */
+		continue;
+	      }
 	    if (bytes > 0)
 	      {
 		advance = static_cast<std::size_t> (bytes);
@@ -172,52 +176,6 @@ namespace cubconn
 	  }
 
 	return true;
-      }
-
-      [[gnu::hot]]
-      static bool send_partial (int fd, buffer &buffer) noexcept
-      {
-	const std::byte *data;
-	std::size_t nbytes;
-	ssize_t n;
-
-	if (!buffer.has_data ())
-	  {
-	    return true;
-	  }
-
-	std::tie (data, nbytes) = buffer.remaining_data ();
-	if (!data || !nbytes)
-	  {
-	    /* already sent all */
-	    return true;
-	  }
-
-	n = ::send (fd, data, nbytes, MSG_NOSIGNAL);
-	if (n > 0)
-	  {
-	    buffer.advance (n);
-	  }
-	else if (n < 0)
-	  {
-	    if (errno == EAGAIN || errno == EWOULDBLOCK)
-	      {
-		return false;
-	      }
-	    else
-	      {
-		_er_log_debug (__FILE__, __LINE__, "socket_io->send_partial: send error: %s", strerror (errno));
-		assert_release (false);
-	      }
-	  }
-	else
-	  {
-	    /* master might be dead */
-	    _er_log_debug (__FILE__, __LINE__, "socket_io->send_partial: send returned 0 - error: %s", strerror (errno));
-	    assert_release (false);
-	  }
-
-	return buffer.is_complete ();
       }
 
       [[gnu::hot]]
@@ -266,59 +224,6 @@ namespace cubconn
 	  }
 
 	return buffer.is_complete () ? result::Ok : result::Pending;
-      }
-
-      [[gnu::hot]]
-      static result recv_drain (int fd, cubbase::DMRB_SPSC<true> &buffer)
-      {
-	cubbase::span<std::byte> available;
-	std::byte *ptr;
-	std::size_t length, total;
-	ssize_t bytes;
-
-	available = buffer.reserve_all ();
-	ptr = available.data ();
-	length = available.size ();
-	assert (ptr && length > 0);
-
-	total = 0;
-	while (true)
-	  {
-	    bytes = ::recv (fd, ptr, length, 0);
-	    if (bytes > 0)
-	      {
-		ptr += static_cast<std::size_t> (bytes);
-		length -= static_cast<std::size_t> (bytes);
-		total += static_cast<std::size_t> (bytes);
-		continue;
-	      }
-
-	    if (__builtin_expect (bytes == 0, 0))
-	      {
-		_er_log_debug (__FILE__, __LINE__, "buffered_socket->recv_drain: reset by peer", strerror (errno));
-		return result::PeerReset;
-	      }
-
-	    switch (errno)
-	      {
-	      case EINTR:
-		continue;
-	      case EAGAIN:
-#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
-	      case EWOULDBLOCK:
-#endif
-		return result::Pending;
-	      case ECONNRESET:
-		_er_log_debug (__FILE__, __LINE__, "buffered_socket->recv_drain: reset by peer", strerror (errno));
-		return result::PeerReset;
-	      default:
-		return result::Error;
-	      }
-	  }
-
-	/* impossible ! */
-	assert_release (false);
-	return result::Error;
       }
 
       /* recv helper */
