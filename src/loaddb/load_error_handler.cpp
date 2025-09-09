@@ -103,7 +103,7 @@ namespace cubload
   }
 
   void
-  error_handler::log_error_message (std::string &err_msg, bool fail, bool is_syntax_error)
+  error_handler::log_error_message (std::string &err_msg, bool fail, bool is_syntax_error, bool is_incr_fail_count)
   {
 #if defined (SERVER_MODE)
     if (er_errid () != NO_ERROR && (er_has_error () || er_get_severity () == ER_WARNING_SEVERITY))
@@ -123,14 +123,14 @@ namespace cubload
 	err_msg.append (std::string (er_msg ()));
 	err_msg.append ("\n");
 
-	m_session.on_error (err_msg, false);
 	er_clear ();
       }
-    else if (!err_msg.empty())
+    else if (!err_msg.empty() && err_msg.back() != '\n')
       {
 	err_msg.append ("\n");
-	m_session.on_error (err_msg, true);
       }
+
+    m_session.on_error (err_msg, is_incr_fail_count);
 
     if (fail)
       {

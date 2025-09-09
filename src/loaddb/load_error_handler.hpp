@@ -99,7 +99,7 @@ namespace cubload
 
       static char *get_message_from_catalog (MSGCAT_LOADDB_MSG msg_id);
 
-      void log_error_message (std::string &err_msg, bool fail, bool is_syntax_error = false);
+      void log_error_message (std::string &err_msg, bool fail, bool is_syntax_error = false, bool is_incr_fail_count = true);
       bool is_last_error_filtered ();
 
       bool m_current_line_has_error;
@@ -126,7 +126,7 @@ namespace cubload
   error_handler::on_error (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
   {
     std::string err_msg = format (get_message_from_catalog (msg_id), std::forward<Args> (args)...);
-    log_error_message (err_msg, false);
+    log_error_message (err_msg, false, false, false);
   }
 
   template<typename... Args>
