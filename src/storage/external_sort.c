@@ -4458,7 +4458,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
       px_sort_param[i].px_parallel_num = parallel_num;
       px_sort_param[i].px_result_file_idx = 0;
       /* Copy the parent's thread_p. */
-      px_sort_param[i].px_orig_thread_p = thread_p;
+      px_sort_param[i].px_orig_thread_p = thread_p->m_px_orig_thread_entry ? thread_p->m_px_orig_thread_entry : thread_p;
       px_sort_param[i].ori_sort_param = sort_param;
       px_sort_param[i].main_error_context = &cuberr::context::get_thread_local_context ();
     }
