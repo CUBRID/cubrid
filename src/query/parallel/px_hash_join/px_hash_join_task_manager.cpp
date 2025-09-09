@@ -90,6 +90,13 @@ namespace parallel_query
       if (logtb_get_check_interrupt (&thread_ref)
 	  && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
 	{
+	  /* logtb_set_tran_index_interrupt sets ER_INTERRUPTING with ER_NOTIFICATION_SEVERITY,
+	   * so er_errid may return NO_ERROR in this case. */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    }
+
 	  handle_error (thread_ref);
 	  return true;
 	}

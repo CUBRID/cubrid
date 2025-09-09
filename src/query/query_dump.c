@@ -3183,6 +3183,14 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       break;
 
     case HASHJOIN_PROC:
+      json_object_set_new (parent, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
+      json_object_set_new (parent, "fetch", json_integer (xasl_p->xasl_stats.fetches));
+      json_object_set_new (parent, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
+      json_object_set_new (parent, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  json_object_set_new (parent, "parallel workers", json_integer (xasl_p->executed_parallelism));
+	}
       qdump_print_hashjoin_stats_json (xasl_p, proc);
       break;
 
@@ -3634,6 +3642,17 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case HASHJOIN_PROC:
+      fprintf (fp, "%s (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld", qdump_xasl_type_string (xasl_p),
+	       TO_MSEC (xasl_p->xasl_stats.elapsed_time), xasl_p->xasl_stats.fetches, xasl_p->xasl_stats.fetch_time,
+	       xasl_p->xasl_stats.ioreads);
+      if (xasl_p->executed_parallelism > 1)
+	{
+	  fprintf (fp, ", parallel workers: %d)\n", xasl_p->executed_parallelism);
+	}
+      else
+	{
+	  fprintf (fp, ")\n");
+	}
       qdump_print_hashjoin_stats_text (fp, xasl_p, indent);
       break;
 
@@ -3853,18 +3872,6 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       hash_method_str[len] = '\0';
     }
 
-  fprintf (fp, "%s (time: %d, fetch: %ld, fetch_time: %ld, ioread: %ld", qdump_xasl_type_string (xasl_p),
-	   TO_MSEC (xasl_p->xasl_stats.elapsed_time), xasl_p->xasl_stats.fetches, xasl_p->xasl_stats.fetch_time,
-	   xasl_p->xasl_stats.ioreads);
-  if (stats->max_parallel_workers > 0)
-    {
-      fprintf (fp, ", parallel: %d)\n", stats->max_parallel_workers);
-    }
-  else
-    {
-      fprintf (fp, ")\n");
-    }
-
   indent += 2;
 
   if (part_cnt <= 1)
@@ -3880,6 +3887,18 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  build_xasl = inner_xasl;
 	  probe_xasl = outer_xasl;
+	}
+
+      /* no parallel subquery */
+      if (xasl_p->px_executor == NULL)
+	{
+	  TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
+	  stats->build.fetches += build_xasl->xasl_stats.fetches;
+	  stats->build.ioreads += build_xasl->xasl_stats.ioreads;
+
+	  TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
+	  stats->probe.fetches += probe_xasl->xasl_stats.fetches;
+	  stats->probe.ioreads += probe_xasl->xasl_stats.ioreads;
 	}
 
       fprintf (fp, "%*cBUILD (time: %d, fetch: %ld, ioread: %ld, rows: %ld, method: %s", indent, ' ',
@@ -3899,7 +3918,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       fprintf (fp, "\n");
 
-      if (xasl_p->executed_parallelism <= 1)
+      /* no parallel subquery */
+      if (xasl_p->px_executor == NULL)
 	{
 	  qdump_print_stats_text (fp, build_xasl, indent);
 	}
@@ -3918,7 +3938,8 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
       fprintf (fp, "\n");
 
-      if (xasl_p->executed_parallelism <= 1)
+      /* no parallel subquery */
+      if (xasl_p->px_executor == NULL)
 	{
 	  qdump_print_stats_text (fp, probe_xasl, indent);
 	}
@@ -4113,16 +4134,6 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       hash_method_str[len] = '\0';
     }
 
-  json_object_set_new (parent, "time", json_integer (TO_MSEC (xasl_p->xasl_stats.elapsed_time)));
-  json_object_set_new (parent, "fetch", json_integer (xasl_p->xasl_stats.fetches));
-  json_object_set_new (parent, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
-  json_object_set_new (parent, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
-
-  if (stats->max_parallel_workers > 0)
-    {
-      json_object_set_new (parent, "parallel", json_integer (stats->max_parallel_workers));
-    }
-
   if (part_cnt <= 1)
     {
       XASL_NODE *build_xasl, *probe_xasl;
@@ -4136,6 +4147,18 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 	{
 	  build_xasl = inner_xasl;
 	  probe_xasl = outer_xasl;
+	}
+
+      /* no parallel subquery */
+      if (xasl_p->px_executor == NULL)
+	{
+	  TSC_ADD_TIMEVAL (stats->build.elapsed_time, build_xasl->xasl_stats.elapsed_time);
+	  stats->build.fetches += build_xasl->xasl_stats.fetches;
+	  stats->build.ioreads += build_xasl->xasl_stats.ioreads;
+
+	  TSC_ADD_TIMEVAL (stats->probe.elapsed_time, probe_xasl->xasl_stats.elapsed_time);
+	  stats->probe.fetches += probe_xasl->xasl_stats.fetches;
+	  stats->probe.ioreads += probe_xasl->xasl_stats.ioreads;
 	}
 
       build = json_object ();
@@ -4157,7 +4180,8 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 
-      if (xasl_p->executed_parallelism <= 1)
+      /* no parallel subquery */
+      if (xasl_p->px_executor == NULL)
 	{
 	  input = json_object ();
 	  qdump_print_stats_json (build_xasl, input);
@@ -4183,7 +4207,8 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (probe, "profile", profile);
 #endif /* HASHJOIN_PROFILE_TIME */
 
-      if (xasl_p->executed_parallelism <= 1)
+      /* no parallel subquery */
+      if (xasl_p->px_executor == NULL)
 	{
 	  input = json_object ();
 	  qdump_print_stats_json (probe_xasl, input);

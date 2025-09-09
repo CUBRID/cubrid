@@ -3003,7 +3003,7 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
       QFILE_COPY_VPID (&base_list_id->last_vpid, &new_vpid);
 
       prev_page = new_page;
-      prev_overflow_page = new_page;
+      assert (prev_overflow_page == NULL);
 
       memcpy (new_page, old_page, DB_PAGESIZE);
 
@@ -3019,6 +3019,12 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 
       while (!VPID_ISNULL (&old_overflow_vpid))
 	{
+	  if (prev_overflow_page == NULL)
+	    {
+	      /* prev_page = new_page = prev_overflow_page */
+	      prev_overflow_page = new_page;
+	    }
+
 	  old_overflow_page = qmgr_get_old_page (thread_p, &old_overflow_vpid, append_list_id->tfile_vfid);
 	  if (old_overflow_page == NULL)
 	    {
@@ -3047,11 +3053,14 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
 	  qmgr_free_old_page_and_init (thread_p, old_overflow_page, append_list_id->tfile_vfid);
 	}
 
-      if (prev_page != prev_overflow_page)
+      if (new_overflow_page != NULL)
 	{
 	  assert (prev_overflow_page == new_overflow_page);
-	  QFILE_PUT_OVERFLOW_VPID_NULL (prev_overflow_page);
-	  qfile_set_dirty_page (thread_p, prev_overflow_page, FREE, base_list_id->tfile_vfid);
+	  prev_overflow_page = NULL;
+
+	  QFILE_PUT_OVERFLOW_VPID_NULL (new_overflow_page);
+	  qfile_set_dirty_page (thread_p, new_overflow_page, FREE, base_list_id->tfile_vfid);
+	  new_overflow_page = NULL;
 	}
 
       /* next page */
@@ -3073,8 +3082,10 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   return NO_ERROR;
 
 error_exit:
-  if (prev_page != NULL && prev_page != new_page)
+  if (prev_page != NULL)
     {
+      new_page = (prev_page != new_page) ? new_page : NULL;
+      prev_overflow_page = (prev_overflow_page != prev_page) ? prev_overflow_page : NULL;
       qmgr_free_old_page_and_init (thread_p, prev_page, base_list_id->tfile_vfid);
     }
 
@@ -3083,8 +3094,9 @@ error_exit:
       qmgr_free_old_page_and_init (thread_p, new_page, base_list_id->tfile_vfid);
     }
 
-  if (prev_overflow_page != NULL && prev_overflow_page != new_overflow_page)
+  if (prev_overflow_page != NULL)
     {
+      new_overflow_page = (prev_overflow_page != new_overflow_page) ? new_overflow_page : NULL;
       qmgr_free_old_page_and_init (thread_p, prev_overflow_page, base_list_id->tfile_vfid);
     }
 

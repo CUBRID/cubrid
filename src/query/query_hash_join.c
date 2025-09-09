@@ -226,6 +226,11 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	  /* monitor */
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_HASHJOINS_PARALLEL);
 
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      xasl->executed_parallelism = manager.max_parallel_workers;
+	    }
+
 	  // *INDENT-OFF*
 	  error = parallel_query::hash_join::execute_partitions (*thread_p, &manager);
 	  // *INDENT-ON*
