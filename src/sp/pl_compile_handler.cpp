@@ -31,11 +31,14 @@ namespace cubpl
   compile_handler::compile_handler ()
   {
     cubpl::session *pl_session = cubpl::get_session ();
-    if (pl_session) {
-        m_stack = pl_session->create_and_push_stack (nullptr);
-    } else {
-        m_stack = nullptr;
-    }
+    if (pl_session)
+      {
+	m_stack = pl_session->create_and_push_stack (nullptr);
+      }
+    else
+      {
+	m_stack = nullptr;
+      }
   }
 
   compile_handler::~compile_handler ()
@@ -89,9 +92,10 @@ namespace cubpl
   compile_handler::compile (const compile_request &req, cubmem::extensible_block &out_blk)
   {
     cubpl::session *pl_session = cubpl::get_session ();
-    if (!pl_session) {
-        return ER_SES_SESSION_EXPIRED;
-    }
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
 
     int error_code = NO_ERROR;
 

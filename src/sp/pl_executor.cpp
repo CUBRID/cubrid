@@ -607,9 +607,10 @@ exit:
   executor::callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
     cubpl::session *pl_session = cubpl::get_session ();
-    if (!pl_session) {
-        return ER_SES_SESSION_EXPIRED;
-    }
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
 
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_GET_DB_PARAMETER;
@@ -1013,9 +1014,10 @@ exit:
   executor::callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
     cubpl::session *pl_session = cubpl::get_session ();
-    if (!pl_session) {
-        return ER_SES_SESSION_EXPIRED;
-    }
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
 
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_SET_PL_SESSION_PARAM;

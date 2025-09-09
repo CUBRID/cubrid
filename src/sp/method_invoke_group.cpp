@@ -95,9 +95,10 @@ namespace cubmethod
     int error = NO_ERROR;
 
     cubpl::session *pl_session = cubpl::get_session ();
-    if (!pl_session) {
-        return ER_SES_SESSION_EXPIRED;
-    }
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
 
     SESSION_ID s_id = pl_session->get_id ();
     TRANID t_id = m_stack->get_tran_id ();
@@ -117,9 +118,10 @@ namespace cubmethod
     TRANID t_id;
 
     cubpl::session *pl_session = cubpl::get_session ();
-    if (!pl_session) {
-        return ER_SES_SESSION_EXPIRED;
-    }
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
 
     m_stack = pl_session->create_and_push_stack (nullptr);
     s_id =  pl_session->get_id ();
