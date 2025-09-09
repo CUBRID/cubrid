@@ -146,7 +146,14 @@ namespace cubload
 	ldr_increment_err_total ();
       }
 
-    fprintf (stderr, "%s\n", err_msg.c_str ());
+    if (!err_msg.empty() && err_msg.back() != '\n')
+      {
+	fprintf (stderr, "%s\n", err_msg.c_str ());
+      }
+    else
+      {
+	fprintf (stderr, "%s", err_msg.c_str ());
+      }
 #endif
   }
 
