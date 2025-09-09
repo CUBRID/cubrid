@@ -47,12 +47,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/*
 #ifdef _er_log_debug
 #undef _er_log_debug
 #endif
 #define _er_log_debug(x, ...) do { } while (0)
-*/
 
 #define NEXT_STATE(c, x) do { \
     er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
@@ -906,10 +904,11 @@ namespace cubconn
 	    assert (events[i].data.ptr);
 
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
-	    if (events[i].events & EPOLLERR)
+	    /* handle hangup/error first to avoid writes on dead sockets */
+	    if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR) && ctx->m_conn->fd != m_eventfd)
 	      {
 		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
-		/* TODO: reestablish the connection */
+		/* TODO: reestablish the connection if fd is cub_master */
 		return false;
 	      }
 	    if (events[i].events & EPOLLIN)
@@ -932,12 +931,6 @@ namespace cubconn
 		    _er_log_debug (__FILE__, __LINE__, "master_connector->execute: handle_master_transmission failed");
 		    return false;
 		  }
-	      }
-	    if (events[i].events & (EPOLLHUP | EPOLLRDHUP))
-	      {
-		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
-		/* TODO: reestablish the connection */
-		return false;
 	      }
 	  }
       }

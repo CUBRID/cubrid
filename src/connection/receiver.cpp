@@ -34,12 +34,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/*
 #ifdef _er_log_debug
 #undef _er_log_debug
 #endif
 #define _er_log_debug(x, ...) do { } while (0)
-*/
 
 #define NEXT_STATE(x) do { \
     _er_log_debug (__FILE__, __LINE__, "receiver (%p) state %d -> state = %d\n", this, m_state, state::x); \
