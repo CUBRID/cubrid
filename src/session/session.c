@@ -3328,11 +3328,13 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
       session->load_session_p = NULL;
     }
 
-  assert (session->pl_session_p);
-  if (thread_p && thread_p->type == TT_WORKER)
+  if (session->pl_session_p)
     {
-      session->pl_session_p->set_interrupt (er_errid ());
-      session->pl_session_p->wait_until_pl_session_done ();
+      if (thread_p && thread_p->type == TT_WORKER)
+	{
+	  session->pl_session_p->set_interrupt (er_errid ());
+	  session->pl_session_p->wait_until_pl_session_done ();
+	}
     }
 
 #endif
