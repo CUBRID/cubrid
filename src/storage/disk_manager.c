@@ -5326,6 +5326,7 @@ disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, VOLID volid, cha
     }
 
   fprintf (log_fp, "%*ctran index: %d\n", indent, ' ', thread_p->tran_index);
+  fprintf (log_fp, "%*cvolid: %d\n", indent, ' ', volid);
   fprintf (log_fp, "%*cvoltype: %s\n", indent, ' ', voltype == DB_PERMANENT_VOLTYPE ? "PERMANENT_VOLUME" : "TEMPORARY_VOLUME");
   if (name)
     {
