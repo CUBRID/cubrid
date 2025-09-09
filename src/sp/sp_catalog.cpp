@@ -1001,37 +1001,16 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
     {
       // shorten target_mth by erasing package name prefixes in parameter types
 
-      std::regex RE_COMMA_JAVA_LANG (",java\\.lang\\.");
-      std::regex RE_PAREN_JAVA_LANG ("\\(java\\.lang\\.");
-
-      std::regex RE_COMMA_JAVA_MATH (",java\\.math\\.");
-      std::regex RE_PAREN_JAVA_MATH ("\\(java\\.math\\.");
-
-      std::regex RE_COMMA_JAVA_SQL (",java\\.sql\\.");
-      std::regex RE_PAREN_JAVA_SQL ("\\(java\\.sql\\.");
-
-      std::regex RE_COMMA_CUBRID_SQL (",cubrid\\.sql\\.");
-      std::regex RE_PAREN_CUBRID_SQL ("\\(cubrid\\.sql\\.");
+      std::regex RE_COMMA_PACKAGE (",(java\\.lang|java\\.math|java\\.sql|cubrid\\.sql)\\.");
+      std::regex RE_PAREN_PACKAGE ("\\((java\\.lang|java\\.math|java\\.sql|cubrid\\.sql)\\.");
 
       // param types: from '(' to ')' : parameter types
       std::string param_types = s.substr (pos_lparen, pos_rparen + 1 - pos_lparen);
+
+      // get shorter target_mth by erasing the package name at the start of type names
       param_types = std::regex_replace (param_types, RE_SPACES, ""); // remove spaces
-
-      // get shorter target_mth by erasing "java.lang." at the start of the type name
-      param_types = std::regex_replace (param_types, RE_COMMA_JAVA_LANG, ",");
-      param_types = std::regex_replace (param_types, RE_PAREN_JAVA_LANG, "(");
-
-      // erasing "java.math." in java.math.BigDecimal
-      param_types = std::regex_replace (param_types, RE_COMMA_JAVA_MATH, ",");
-      param_types = std::regex_replace (param_types, RE_PAREN_JAVA_MATH, "(");
-
-      // erasing "java.sql." in java.sql.{Date, Time, Timestamp}
-      param_types = std::regex_replace (param_types, RE_COMMA_JAVA_SQL, ",");
-      param_types = std::regex_replace (param_types, RE_PAREN_JAVA_SQL, "(");
-
-      // erasing "cubrid.sql." in cubrid.sql.CUBRIDOID
-      param_types = std::regex_replace (param_types, RE_COMMA_CUBRID_SQL, ",");
-      param_types = std::regex_replace (param_types, RE_PAREN_CUBRID_SQL, "(");
+      param_types = std::regex_replace (param_types, RE_COMMA_PACKAGE, ",");
+      param_types = std::regex_replace (param_types, RE_PAREN_PACKAGE, "(");
 
       size_t pos_return = s.find ("return", pos_rparen);
       if (pos_return == std::string::npos)
@@ -1040,18 +1019,11 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
 	}
       else
 	{
-	  std::regex RE_PREFIX_JAVA_LANG ("^java\\.lang\\.");
-	  std::regex RE_PREFIX_JAVA_MATH ("^java\\.math\\.");
-	  std::regex RE_PREFIX_JAVA_SQL ("^java\\.sql\\.");
-	  std::regex RE_PREFIX_CUBRID_SQL ("^cubrid\\.sql\\.");
+	  std::regex RE_PREFIX_PACKAGE ("^(java\\.lang|java\\.math|java\\.sql|cubrid\\.sql)\\.");
 
 	  std::string ret_type = s.substr (pos_return + 6);   // 6: length of "return"
 	  ret_type = std::regex_replace (ret_type, RE_SPACES, "");
-
-	  ret_type = std::regex_replace (ret_type, RE_PREFIX_JAVA_LANG, "");
-	  ret_type = std::regex_replace (ret_type, RE_PREFIX_JAVA_MATH, "");
-	  ret_type = std::regex_replace (ret_type, RE_PREFIX_JAVA_SQL, "");
-	  ret_type = std::regex_replace (ret_type, RE_PREFIX_CUBRID_SQL, "");
+	  ret_type = std::regex_replace (ret_type, RE_PREFIX_PACKAGE, "");
 
 	  target_mth = class_and_mth.substr (pos_dot + 1) + param_types + ret_type;
 	}
