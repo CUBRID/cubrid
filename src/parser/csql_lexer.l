@@ -878,7 +878,7 @@ IDL       [a-zA-Z0-9_]
 [rR][eE][vV][eE][rR][sS][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REVERSE; }
-[dD][iI][sS][kK][_][sS][iI][zZ][Ee]				{ begin_token(yytext);
+[dD][iI][sS][kK][_][sS][iI][zZ][Ee]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return DISK_SIZE; }
 [rR][eE][pP][lL][iI][cC][aA][tT][iI][oO][nN]				{ begin_token(yytext);
