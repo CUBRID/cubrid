@@ -18315,6 +18315,48 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  arg2 = NULL;
 	  break;
 
+	case PT_LIKE:
+	  {
+	    SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
+	    // prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING);
+	    if (opd1 != NULL && prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
+	      {
+		bool foldable = true;
+		parser_walk_tree (parser, opd1, pt_is_expr_foldable, &foldable, NULL, NULL);
+
+		if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
+		  {
+		    PT_ERRORc (parser, expr, er_msg ());
+		    has_error = true;
+		    goto end;
+		  }
+
+		if (foldable)
+		  {
+		    int type_arg[2];
+
+		    type_arg[0] = PT_HOST_VAR;	/* type */
+		    type_arg[1] = 0;	/* found */
+
+		    (void) parser_walk_tree (parser, opd2, pt_find_node_type_pre, type_arg, NULL, NULL);
+
+		    if (type_arg[1])
+		      {
+			if (sc_info && (sc_info->top_node) && (sc_info->top_node->node_type == PT_SELECT))
+			  {
+			    sc_info->top_node->flag.cannot_prepare = 1;
+			    goto end;
+			  }
+		      }
+		  }
+	      }
+
+	    db_make_null (&dummy);
+	    arg2 = &dummy;
+	    type2 = PT_TYPE_NULL;
+	    break;
+	  }
+
 	case PT_LIKE_LOWER_BOUND:
 	case PT_LIKE_UPPER_BOUND:
 	case PT_TIMESTAMP:

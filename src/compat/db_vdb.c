@@ -1970,7 +1970,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
 	  if (!(statement = pt_bind_values_to_hostvars (parser, statement))
 	      || !(statement = pt_resolve_names (parser, statement, &sc_info))
-	      || !(statement = pt_semantic_type (parser, statement, &sc_info)))
+	      || !(statement = pt_semantic_type (parser, statement, &sc_info))
+	      || !(statement->info.query.q.select.where = pt_where_type (parser, statement->info.query.q.select.where)))
 	    {
 	      /* something wrong */
 	      if (er_errid () == NO_ERROR)
