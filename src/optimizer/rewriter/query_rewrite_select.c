@@ -3653,7 +3653,7 @@ qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
   PT_NODE *count_arg;
   PT_NAME_INFO *name_info;
   MOP cls;
-  SM_CLASS_CONSTRAINT *consp;
+  SM_CLASS_CONSTRAINT *consp, *cons_iter;
   SM_ATTRIBUTE *attrp;
   PT_NODE *spec_node;
   int i;
@@ -3688,19 +3688,26 @@ qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 	    {
 	      return node;
 	    }
-	  for (; consp != NULL && !is_rewrite_to_count_star_available; consp = consp->next)
+	  for (cons_iter = consp; cons_iter != NULL && !is_rewrite_to_count_star_available; cons_iter = cons_iter->next)
 	    {
-	      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+	      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (cons_iter->type))
 		{
-		  for (i = 0; consp->attributes[i]; i++)
+		  for (i = 0; cons_iter->attributes[i]; i++)
 		    {
-		      attrp = consp->attributes[i];
+		      attrp = cons_iter->attributes[i];
 		      if (intl_identifier_casecmp (count_arg->info.name.original, attrp->header.name) == 0)
 			{
 			  is_rewrite_to_count_star_available = true;
 			  break;
 			}
 		    }
+		}
+	    }
+	  for (cons_iter = consp; cons_iter != NULL; cons_iter = cons_iter->next)
+	    {
+	      if (cons_iter->filter_predicate)
+		{
+		  is_rewrite_to_count_star_available = false;
 		}
 	    }
 	  if (is_rewrite_to_count_star_available)
