@@ -59,6 +59,7 @@ typedef enum
 typedef enum
 {
   SORT_ORDER_BY,
+  SORT_ORDER_WITH_LIMIT,
   SORT_GROUP_BY,
   SORT_ANALYTIC,
   SORT_INDEX_LEAF
