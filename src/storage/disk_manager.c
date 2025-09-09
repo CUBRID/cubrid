@@ -352,7 +352,7 @@ static bool disk_Logging = false;
 /************************************************************************/
 
 #if defined (SERVER_MODE)
-static void disk_log_expand_elapsed (THREAD_ENTRY * thread_p, int volid, char *str);
+static void disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, char *path, char *name, DB_VOLTYPE voltype, char *log);
 #endif
 
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
@@ -1701,10 +1701,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   disk_log ("disk_extend", "extend %s disk by %d sectors.", disk_type_to_string (extend_info->voltype), nsect_extend);
 
 #if defined (SERVER_MODE)
-  disk_log_expand_elapsed (thread_p, extend_info->volid_extend, "BEGIN VOLUME EXTENSION");
-
   tsc_getticks (&start_tick);
-#endif /* SERVER_MODE */
+#endif
 
   if (total < max)
     {
@@ -1714,6 +1712,10 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       assert (extend_info->volid_extend != NULL_VOLID);
 
       to_expand = MIN (nsect_extend, max - total);
+
+#if defined (SERVER_MODE)
+      disk_log_expand_elapsed (thread_p, "DISK_EXTEND", NULL, NULL, extend_info->voltype, "volume extension started");
+#endif
 
       log_sysop_start (thread_p);
 
@@ -1739,6 +1741,10 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       disk_log ("disk_extend", "expanded volume %d by %d sectors for %s.", extend_info->volid_extend, nsect_free_new,
 		disk_type_to_string (extend_info->voltype));
 
+#if defined (SERVER_MODE)
+      disk_log_expand_elapsed (thread_p, "DISK_EXTEND", NULL, NULL, extend_info->voltype, "volume extension completed");
+#endif
+
       /* subtract from what we need to expand */
       nsect_extend -= nsect_free_new;
 
@@ -1762,7 +1768,6 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	{
 	  /* it is enough */
 #if defined (SERVER_MODE)
-	  disk_log_expand_elapsed (thread_p, extend_info->volid_extend, "END VOLUME EXTENSION");
 	  DISK_EXTEND_REGISTER ();
 #endif /* SERVER_MODE */
 	  return NO_ERROR;
@@ -1853,7 +1858,6 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   /* safe guard: if this was called during sector reservation, the expansion should cover all required sectors. */
   assert (reserve_context == NULL || reserve_context->n_cache_reserve_remaining == 0);
 #if defined (SERVER_MODE)
-  disk_log_expand_elapsed (thread_p, extend_info->volid_extend, "END VOLUME EXTENSION");
   DISK_EXTEND_REGISTER ();
 #endif /* SERVER_MODE */
   return NO_ERROR;
@@ -2140,8 +2144,9 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	    disk_purpose_to_string (extinfo->purpose), extinfo->name ? extinfo->name : "(UNKNOWN)",
 	    extinfo->comments ? extinfo->comments : "(UNKNOWN)", extinfo->path ? extinfo->path : "(UNKNOWN)",
 	    fullname, extinfo->nsect_total, extinfo->nsect_max);
+
 #if defined (SERVER_MODE)
-  disk_log_expand_elapsed (thread_p, -1, "BEGIN ADD VOLUME");
+  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", extinfo->path ? extinfo->path : "(UNKNOWN)", extinfo->name ? extinfo->name : "(UNKNOWN)", extinfo->voltype, "volume creation started");
 #endif
 
 #if !defined (WINDOWS)
@@ -2278,7 +2283,7 @@ exit:
     }
 
 #if defined (SERVER_MODE)
-  disk_log_expand_elapsed (thread_p, -1, "END ADD VOLUME");
+  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", extinfo->path ? extinfo->path : "(UNKNOWN)", extinfo->name ? extinfo->name : "(UNKNOWN)", extinfo->voltype, "volume creation completed");
 #endif
 
   return error_code;
@@ -5309,23 +5314,24 @@ disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
  * str (in)	  : log
  */
 static void
-disk_log_expand_elapsed (THREAD_ENTRY * thread_p, int volid, char *str)
+disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, char *path, char *name, DB_VOLTYPE voltype, char *log)
 {
   FILE *log_fp;
   int indent = 2;
 
-  log_fp = event_log_start (thread_p, "VOLUME_EXPAND_ELAPSED");
+  log_fp = event_log_start (thread_p, event);
   if (log_fp == NULL)
     {
       return;
     }
 
-  fprintf (log_fp, "%*ctran idx: %d\n", indent, ' ', thread_p->tran_index);
-  if (volid >= 0)
+  fprintf (log_fp, "%*ctran index: %d\n", indent, ' ', thread_p->tran_index);
+  fprintf (log_fp, "%*cvoltype: %s\n", indent, ' ', voltype == DB_PERMANENT_VOLTYPE ? "PERMANENT_VOLUME" : "TEMPORARY_VOLUME");
+  if (path && name)
     {
-      fprintf (log_fp, "%*cvolid: %d\n", indent, ' ', volid);
+      fprintf (log_fp, "%*cvolume: %s %s\n", indent, ' ', path, name);
     }
-  fprintf (log_fp, "%*c%s\n", indent, ' ', str);
+  fprintf (log_fp, "%*c%s\n", indent, ' ', log);
 
   event_log_end (thread_p);
 }
