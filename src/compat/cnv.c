@@ -191,4 +191,3 @@ db_bit_string (const DB_VALUE * the_db_bit, const char *bit_format, char *string
 
   return r;
 }
-
