@@ -38,12 +38,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/*
 #ifdef _er_log_debug
 #undef _er_log_debug
 #endif
 #define _er_log_debug(x, ...) do { } while (0)
-*/
 
 #define NEXT_STATE(ctx, sel, x) do { \
     er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", ctx->m_conn ? ctx->m_conn->fd : -1, state::x); \
@@ -864,9 +862,9 @@ namespace cubconn
 	    assert (events[i].data.ptr);
 
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
-	    if ((events[i].events & EPOLLERR) && ctx->m_conn->fd != m_eventfd)
+	    if ((events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) && ctx->m_conn->fd != m_eventfd)
 	      {
-		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: EPOLLERR");
+		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
 		handle_connection_error (ctx);
 		continue;
 	      }
@@ -891,12 +889,6 @@ namespace cubconn
 		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_reception failed");
 		    return false;
 		  }
-	      }
-	    if ((events[i].events & (EPOLLHUP | EPOLLRDHUP)) && ctx->m_conn->fd != m_eventfd)
-	      {
-		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
-		handle_connection_error (ctx);
-		continue;
 	      }
 	    if (events[i].events & EPOLLOUT)
 	      {

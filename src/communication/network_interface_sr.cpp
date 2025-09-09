@@ -5031,6 +5031,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   XASL_STREAM stream = { NULL, NULL, NULL, 0 };
   bool was_recompile_xasl = false;
   bool force_recompile = false;
+  char *buffer;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -5069,17 +5070,21 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   if (stream.buffer_size > 0)
     {
       /* receive XASL stream from the client */
-      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &stream.buffer, &stream.buffer_size);
+      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &buffer, &stream.buffer_size);
       if (csserror)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  if (stream.buffer)
+	  if (buffer)
 	    {
-          thread_p->release_packet (stream.buffer);
+          thread_p->release_packet (buffer);
 	    }
 	  return;
 	}
+      stream.buffer = (char *) malloc (stream.buffer_size);
+      memcpy (stream.buffer, buffer, stream.buffer_size);
+
+      thread_p->release_packet (buffer);
     }
 
   /* call the server routine of query prepare */
@@ -5097,7 +5102,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   error = xqmgr_prepare_query (thread_p, &context, &stream);
   if (stream.buffer)
     {
-      thread_p->release_packet (stream.buffer);
+      free_and_init (stream.buffer);
     }
   if (error != NO_ERROR)
     {
