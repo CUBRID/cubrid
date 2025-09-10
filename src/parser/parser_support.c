@@ -10074,41 +10074,6 @@ pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   return node;
 }
 
-PT_NODE *
-pt_temp_bind_hostvar_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  bool *has_bindvar = (bool *) arg;
-  DB_VALUE *value;
-
-  if (*continue_walk == PT_STOP_WALK || node == NULL)
-    {
-      return node;
-    }
-  if (node->node_type == PT_HOST_VAR)
-    {
-      int save_set_host_var = parser->flag.set_host_var;
-      parser->flag.set_host_var = 1;
-      value = pt_value_to_db (parser, node);
-      if (value)
-	{
-	  PT_NODE *value_node;
-
-	  value_node = pt_dbval_to_value (parser, value);
-	  if (value_node)
-	    {
-	      *has_bindvar = true;
-	      PT_NODE_MOVE_NUMBER_OUTERLINK (value_node, node);
-
-	      parser_free_tree (parser, node);
-
-	      node = value_node;
-	    }
-	}
-      parser->flag.set_host_var = save_set_host_var;
-    }
-  return node;
-}
-
 /*
  * pt_find_op_type_pre () - Use parser_walk_tree to find an operator of a
  *			    specific type.

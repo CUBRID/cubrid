@@ -672,8 +672,6 @@ extern "C"
   extern DB_BIGINT pt_get_query_limit_from_query (PARSER_CONTEXT * parser, PT_NODE * query);
   extern bool pt_check_ordby_num_for_multi_range_opt (PARSER_CONTEXT * parser, PT_NODE * query, bool * mro_candidate,
 						      bool * cannot_eval);
-  extern PT_NODE *pt_temp_bind_hostvar_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-
 
   extern int pt_split_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * delete_stmt);
 
