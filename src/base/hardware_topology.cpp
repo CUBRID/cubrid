@@ -146,6 +146,8 @@ namespace cubbase
     online = hwloc_topology_get_allowed_cpuset (m_topology);
     ncores = hwloc_get_nbobjs_by_type (m_topology, HWLOC_OBJ_CORE);
 
+    m_cores.clear ();
+    m_selected.clear ();
     m_cores.reserve (ncores);
     for (i = 0; i < ncores; i++)
       {
@@ -166,12 +168,24 @@ namespace cubbase
 	      }
 	  }
 	std::sort (pus.begin (), pus.end ());
-	/* TODO: add selection strategy */
-	if (limit > static_cast<int> (m_selected.size ()))
-	  {
-	    m_selected.emplace_back (pus[0]);
-	  }
 	m_cores.push_back (std::move (pus));
+      }
+
+    /* consider up to SMT of 8 */
+    /* TODO: add selection strategy */
+    for (i = 0; i < 8; i++)
+      {
+	for (j = 0; j < ncores; j++)
+	  {
+	    if (m_cores[j].size () < static_cast<size_t> (i + 1))
+	      {
+		continue;
+	      }
+	    if (limit > static_cast<int> (m_selected.size ()))
+	      {
+		m_selected.emplace_back (m_cores[j][i]);
+	      }
+	  }
       }
   }
 
