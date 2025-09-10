@@ -309,7 +309,7 @@ typedef enum
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
   SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16,	/* reserved flag for supplemental log. */
-  SM_CLASSFLAG_REPLICATION = 32
+  SM_CLASSFLAG_REPLICATION = 32	/* class is replicable */
 } SM_CLASS_FLAG;
 
 /*

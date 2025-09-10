@@ -3386,6 +3386,9 @@ sm_check_reuse_oid_class (MOP op)
 }
 
 /*
+ * sm_is_replication_class() - tests the replication class flag of a class object.
+ * return: true if replication is enabled, false otherwise
+ * op(in): class object
  */
 bool
 sm_is_replication_class (MOP op)
@@ -3394,7 +3397,7 @@ sm_is_replication_class (MOP op)
 
   if (op != NULL && au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
     {
-	return class_->flags & SM_CLASSFLAG_REPLICATION;
+      return class_->flags & SM_CLASSFLAG_REPLICATION;
     }
 
   assert (false);
