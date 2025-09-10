@@ -23,8 +23,6 @@
 #ifndef _PX_HEAP_SCAN_MERGABLE_LIST_HPP_
 #define _PX_HEAP_SCAN_MERGABLE_LIST_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include "px_list_merger.hpp"
 #include "query_executor.h"
 namespace parallel_heap_scan
@@ -67,11 +65,9 @@ namespace parallel_heap_scan
       QFILE_TUPLE_RECORD m_tpl_buf;
       QUERY_ID m_query_id;
       VAL_DESCR *m_vd;
-      int m_error_code;
+      bool m_is_list_id_domain_resolved;
 
       QFILE_TUPLE_RECORD *make_tuple_record (THREAD_ENTRY *thread_p);
   };
 }
-
-#endif /* SERVER_MODE && !WINDOWS */
 #endif /* _PX_HEAP_SCAN_MERGABLE_LIST_HPP_ */
