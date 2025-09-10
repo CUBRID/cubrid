@@ -167,7 +167,7 @@ namespace cubconn
   {
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->remove_connection: remove_descriptor failed\n");
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
 	return false;
       }
 
@@ -182,7 +182,7 @@ namespace cubconn
 
     if (m_context.erase (ctx) == 0)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->remove_connection: context not found\n");
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
 	return false;
       }
     delete ctx;
@@ -271,8 +271,11 @@ namespace cubconn
   bool connection_worker::handle_message_queue_send_packet (message &item)
   {
     context *ctx;
+    result status;
 
     assert (item.conn && item.conn->context);
+
+    _er_log_debug (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     ctx = reinterpret_cast<context *> (item.conn->context);
 
@@ -283,12 +286,29 @@ namespace cubconn
     ctx->m_send.m_transmitter.stamp ();
     ctx->m_send.m_transmitter.push_for_deleter (std::move (item.deleter));
 
+    /* first, try to send the packets */
+    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
+    if (status == result::PeerReset || status == result::Error)
+      {
+	/* this connection will be handled by other loop */
+	return true;
+      }
+
+    assert (status == result::Ok || status == result::Pending || status == result::Partial);
+
+    if (status == result::Ok)
+      {
+	ctx->m_send.m_transmitter.clear ();
+	_er_log_debug (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
+	return true;
+      }
+
+    /* if buffer is full, register the fd to epoll loop and wait to send the others */
     if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
 	return false;
       }
-    _er_log_debug (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     return true;
   }
@@ -580,11 +600,11 @@ namespace cubconn
 
     if (packet.size () != sizeof (NET_HEADER))
       {
-	/* 1. the state was wrong or				    */
-	/* 2. the incoming packet was wrong			    */
+	/* 1. the state was wrong or				      */
+	/* 2. the incoming packet was wrong			      */
 	/* in this case, we must reset the context and drain all data */
 	/* from the socket to recover this state machine and handle   */
-	/* the next request properly.				    */
+	/* the next request properly.				      */
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
 	return result::Skewed;
@@ -718,23 +738,9 @@ namespace cubconn
       {
 	status = this->handle_packet (ctx, packet);
 
-	if (status == result::Skewed)
-	  {
-	    /* drain all and reset the context */
-	    status = this->handle_unexpected_packet (ctx);
-	    if (status == result::PeerReset || status == result::Error)
-	      {
-		_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: reset by peer\n");
-		mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
-		if (mtx != NO_ERROR)
-		  {
-		    return result::Error;
-		  }
-		handle_connection_error (ctx);
-		return status;
-	      }
-	  }
-	else if (status == result::ClosedConnection)
+	/* In skewed, the packet must be ignored */
+
+	if (status == result::ClosedConnection)
 	  {
 	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
 	    mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
