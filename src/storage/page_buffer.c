@@ -91,7 +91,7 @@ static int rv;
 
 /* default timeout seconds for infinite wait */
 #define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold. used as indicator for hot pages. */
-static int pgbuf_timeout = 300 * 1000;		/* timeout seconds */
+static int pgbuf_latch_timeout = 300 * 1000;		/* timeout seconds */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
@@ -1301,7 +1301,7 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
-  pgbuf_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
+  pgbuf_latch_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
   pgbuf_Monitor_locks = prm_get_bool_value (PRM_ID_PB_MONITOR_LOCKS);
@@ -6573,7 +6573,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
     }
   else
     {
-      wait_secs = pgbuf_timeout;
+      wait_secs = pgbuf_latch_timeout;
     }
 
 try_again:
@@ -7400,7 +7400,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
-      to.tv_sec = (int) time (NULL) + pgbuf_timeout;
+      to.tv_sec = (int) time (NULL) + pgbuf_latch_timeout;
       to.tv_nsec = 0;
 
       thread_lock_entry (thread_p);

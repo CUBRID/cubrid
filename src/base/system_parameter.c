@@ -2111,7 +2111,7 @@ static unsigned int prm_first_log_pageid_flag = 0;
 int PRM_PAGE_LATCH_TIMEOUT = 300;
 static int prm_page_latch_timeout_default = 300;
 static int prm_page_latch_timeout_upper = 3000;
-static int prm_page_latch_timeout_lower = 1;
+static int prm_page_latch_timeout_lower = 0;
 static unsigned int prm_page_latch_timeout_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);

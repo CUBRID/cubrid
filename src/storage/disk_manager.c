@@ -2146,7 +2146,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	    fullname, extinfo->nsect_total, extinfo->nsect_max);
 
 #if defined (SERVER_MODE)
-  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", extinfo->name ? extinfo->name : NULL, extinfo->voltype, "volume creation started");
+  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", fullname, extinfo->voltype, "volume creation started");
 #endif
 
 #if !defined (WINDOWS)
