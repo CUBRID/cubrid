@@ -294,7 +294,7 @@ namespace cubconn
 	return true;
       }
 
-    assert (status == result::Ok || status == result::Pending || status == result::Partial);
+    assert (status == result::Ok || status == result::Pending);
 
     if (status == result::Ok)
       {
@@ -660,7 +660,6 @@ namespace cubconn
 	break;
 
       default:
-	ctx->m_recv.m_receiver.release (packet.data ());
 	_er_log_debug (ARG_FILE_LINE,
 		       "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
 	status = result::Skewed;
@@ -738,9 +737,12 @@ namespace cubconn
       {
 	status = this->handle_packet (ctx, packet);
 
-	/* In skewed, the packet must be ignored */
-
-	if (status == result::ClosedConnection)
+	if (status == result::Skewed)
+	  {
+	    /* the packet must be ignored */
+	    ctx->m_recv.m_receiver.release (packet.data ());
+	  }
+	else if (status == result::ClosedConnection)
 	  {
 	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
 	    mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
@@ -783,7 +785,7 @@ namespace cubconn
 	return status;
       }
 
-    assert (status == result::Ok || status == result::Pending || status == result::Partial);
+    assert (status == result::Ok || status == result::Pending);
 
     if (status == result::Ok)
       {
