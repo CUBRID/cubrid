@@ -190,50 +190,6 @@ namespace cubconn
     return true;
   }
 
-  result connection_worker::handle_unexpected_packet (context *ctx)
-  {
-    char buffer[4096];
-    ssize_t bytes;
-
-    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_unexpected_packet: fd = %d\n", ctx->m_conn->fd);
-
-    ctx->m_recv.m_state = state::HEADER;
-    ctx->m_recv.m_receiver.reset ();
-    ctx->m_recv.m_command = false;
-    while (true)
-      {
-	bytes = ::recv (ctx->m_conn->fd, buffer, sizeof (buffer), 0);
-	if (bytes > 0)
-	  {
-	    continue;
-	  }
-
-	if (__builtin_expect (bytes == 0, 0))
-	  {
-	    return result::PeerReset;
-	  }
-
-	switch (errno)
-	  {
-	  case EINTR:
-	    continue;
-	  case EAGAIN:
-#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
-	  case EWOULDBLOCK:
-#endif
-	    /* pending (= successfully drained all) */
-	    return result::Ok;
-	  case EPIPE:
-	  case ECONNRESET:
-	    return result::PeerReset;
-	  default:
-	    return result::Error;
-	  }
-      }
-
-    return result::Error;
-  }
-
   bool connection_worker::clear_event ()
   {
     ssize_t bytes;
@@ -845,7 +801,7 @@ namespace cubconn
 
   bool connection_worker::run ()
   {
-    std::array<epoll_event, 128> events;
+    std::array<epoll_event, 256> events;
     result status;
     context *ctx;
     int nfds, i;
