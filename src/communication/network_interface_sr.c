@@ -5094,7 +5094,7 @@ event_log_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  log_fp = event_log_start (thread_p, "EXPAND_VOLUME_INFO");
+  log_fp = event_log_start (thread_p, "EXTEND_VOLUME_INFO");
 
   if (tdes == NULL || log_fp == NULL)
     {
