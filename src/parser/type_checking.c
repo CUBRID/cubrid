@@ -18318,7 +18318,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_LIKE:
 	  {
 	    SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
-	    // prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING);
 	    if (opd1 != NULL && prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
 	      {
 		bool foldable = true;
@@ -18331,23 +18330,10 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		    goto end;
 		  }
 
-		if (foldable)
+		if (foldable && pt_is_const_expr_node (opd2) && sc_info && (sc_info->top_node)
+		    && (sc_info->top_node->node_type == PT_SELECT))
 		  {
-		    int type_arg[2];
-
-		    type_arg[0] = PT_HOST_VAR;	/* type */
-		    type_arg[1] = 0;	/* found */
-
-		    (void) parser_walk_tree (parser, opd2, pt_find_node_type_pre, type_arg, NULL, NULL);
-
-		    if (type_arg[1])
-		      {
-			if (sc_info && (sc_info->top_node) && (sc_info->top_node->node_type == PT_SELECT))
-			  {
-			    sc_info->top_node->flag.cannot_prepare = 1;
-			    goto end;
-			  }
-		      }
+		    sc_info->top_node->flag.cannot_prepare = 1;
 		  }
 	      }
 
