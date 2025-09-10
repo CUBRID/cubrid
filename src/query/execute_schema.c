@@ -9227,15 +9227,15 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       /*  
-       * Set the SM_CLASSFLAG_REPLICATION flag.  
+       * Set the SM_CLASSFLAG_NO_REPLICATION flag.  
        * If the option is omitted, or if the "on|off" value is omitted,  
        * the default is set to "on".  
        */
-      if (IS_REPLICATION_ON (tbl_opt_replication))
+      if (!IS_REPLICATION_ON (tbl_opt_replication))
 	{
-	  _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table created.\n", class_name);
+	  _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created.\n", class_name);
 	  // TODO: Implement replication option handling. 
-	  // error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION, 1);
+	  // error = sm_set_class_flag (class_obj, SM_CLASSFLAG_NO_REPLICATION, 1);
 	}
 
       if (tbl_opt_encrypt)
