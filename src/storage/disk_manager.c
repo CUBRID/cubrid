@@ -352,7 +352,7 @@ static bool disk_Logging = false;
 /************************************************************************/
 
 #if defined (SERVER_MODE)
-static void disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, VOLID volid, char *name, DB_VOLTYPE voltype, char *log);
+static void disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, char *name, DB_VOLTYPE voltype, char *log);
 #endif
 
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
@@ -1714,7 +1714,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       to_expand = MIN (nsect_extend, max - total);
 
 #if defined (SERVER_MODE)
-      disk_log_expand_elapsed (thread_p, "DISK_EXTEND", extend_info->volid_extend, fileio_get_volume_label (volid, PEEK), extend_info->voltype, "volume extension started");
+      disk_log_expand_elapsed (thread_p, "DISK_EXTEND", fileio_get_volume_label (extend_info->volid_extend, PEEK), extend_info->voltype, "volume extension started");
 #endif
 
       log_sysop_start (thread_p);
@@ -1742,7 +1742,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 		disk_type_to_string (extend_info->voltype));
 
 #if defined (SERVER_MODE)
-      disk_log_expand_elapsed (thread_p, "DISK_EXTEND", extend_info->volid_extend, fileio_get_volume_label (volid, PEEK), extend_info->voltype, "volume extension completed");
+      disk_log_expand_elapsed (thread_p, "DISK_EXTEND", fileio_get_volume_label (extend_info->volid_extend, PEEK), extend_info->voltype, "volume extension completed");
 #endif
 
       /* subtract from what we need to expand */
@@ -2146,7 +2146,7 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	    fullname, extinfo->nsect_total, extinfo->nsect_max);
 
 #if defined (SERVER_MODE)
-  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", volid, extinfo->name ? extinfo->name : NULL, extinfo->voltype, "volume creation started");
+  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", extinfo->name ? extinfo->name : NULL, extinfo->voltype, "volume creation started");
 #endif
 
 #if !defined (WINDOWS)
@@ -2283,7 +2283,7 @@ exit:
     }
 
 #if defined (SERVER_MODE)
-  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", volid, extinfo->name ? extinfo->name : NULL, extinfo->voltype, "volume creation completed");
+  disk_log_expand_elapsed (thread_p, "DISK_ADD_VOLUME", extinfo->name ? extinfo->name : NULL, extinfo->voltype, "volume creation completed");
 #endif
 
   return error_code;
