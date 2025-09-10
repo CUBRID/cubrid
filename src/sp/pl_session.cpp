@@ -32,6 +32,9 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define CONN_EPOCH_NEVER    (-2)
+#define CONN_EPOCH_NONE     (-1)
+
 namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
@@ -75,7 +78,7 @@ namespace cubpl
     , m_req_id {0}
     , m_param_info {nullptr}
     , m_all_session_params_required {true}
-    , m_last_conn_epoch (-1)
+    , m_last_conn_epoch (CONN_EPOCH_NEVER)
     , m_stack_idx {-1}
     , m_interrupt_id (NO_ERROR)
     , m_id (id)
@@ -266,19 +269,21 @@ namespace cubpl
   void
   session::destroy_pl_context_jvm ()
   {
-    cubmethod::header header (m_id, SP_CODE_DESTROY);
+    if (m_last_conn_epoch != CONN_EPOCH_NEVER) {
 
-    m_last_conn_epoch = -1;
+        cubmethod::header header (m_id, SP_CODE_DESTROY);
+        m_last_conn_epoch = CONN_EPOCH_NONE;
 
-    connection_view cv = claim_connection ();
-    if (cv)
-      {
-	if (cv->is_valid ())
-	  {
-	    cv->send_buffer_args (header);
-	  }
-	release_connection (cv);
-      }
+        connection_view cv = claim_connection ();
+        if (cv)
+          {
+            if (cv->is_valid ())
+              {
+                cv->send_buffer_args (header);
+              }
+            release_connection (cv);
+          }
+    }
   }
 
   bool
@@ -542,7 +547,7 @@ namespace cubpl
   bool
   session::check_reloading_pl_context_required (const connection_view &conn)
   {
-    return m_last_conn_epoch == -1 || !conn || m_last_conn_epoch != conn->get_epoch () || !conn->is_valid ();
+    return m_last_conn_epoch < 0 || !conn || m_last_conn_epoch != conn->get_epoch () || !conn->is_valid ();
   }
 
   const std::vector <sys_param>
