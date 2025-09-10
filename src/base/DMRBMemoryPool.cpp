@@ -127,12 +127,14 @@ namespace cubbase
 
   void DMRBMemoryPool::commit (std::size_t length)
   {
+    assert (m_tail <= m_head);
     assert ((m_head - m_tail) + length <= m_size);
     this->m_head += length;
   }
 
   void DMRBMemoryPool::consume (std::size_t length)
   {
+    assert (m_tail <= m_head);
     assert (length <= (m_head - m_tail));
     this->m_tail += length;
   }
