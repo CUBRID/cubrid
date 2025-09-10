@@ -508,7 +508,7 @@ externalproject_add(${HWLOC_TARGET}
   TIMEOUT               600
   LOG_BUILD             TRUE
   DOWNLOAD_NO_PROGRESS  1
-  CONFIGURE_COMMAND     ./configure --prefix=${3RDPARTY_LIBS_DIR}/Install/hwloc --enable-static --disable-shared
+  CONFIGURE_COMMAND     ./configure --prefix=${3RDPARTY_LIBS_DIR}/Install/hwloc --disable-libxml2 --enable-plugins=xml_libxml --enable-static --disable-shared
   BUILD_IN_SOURCE       true
   BUILD_COMMAND         make -j CFLAGS=-fPIC
   INSTALL_COMMAND       make -j install
