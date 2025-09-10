@@ -5310,11 +5310,13 @@ disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
  * disk_log_expand_elapsed () - add expasion log for elapsed time to event log
  *
  * thread_p (in)  : thread entry
- * volid (in)	  : volume id
+ * event (in)	  : event
+ * name (in)	  : volume name
+ * voltype (in)	  : volume type
  * str (in)	  : log
  */
 static void
-disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, VOLID volid, char *name, DB_VOLTYPE voltype, char *log)
+disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, char *name, DB_VOLTYPE voltype, char *log)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5326,10 +5328,9 @@ disk_log_expand_elapsed (THREAD_ENTRY * thread_p, char * event, VOLID volid, cha
     }
 
   fprintf (log_fp, "%*ctran index: %d\n", indent, ' ', thread_p->tran_index);
-  fprintf (log_fp, "%*cvolid: %d\n", indent, ' ', volid);
   fprintf (log_fp, "%*cvoltype: %s\n", indent, ' ', voltype == DB_PERMANENT_VOLTYPE ? "PERMANENT_VOLUME" : "TEMPORARY_VOLUME");
-  fprintf (log_fp, "%*cvolume: %s\n", indent, ' ', name ? name : "(UNKNOWN)");
-  fprintf (log_fp, "%*c%s\n", indent, ' ', log);
+  fprintf (log_fp, "%*cvolname: %s\n", indent, ' ', name ? name : "(UNKNOWN)");
+  fprintf (log_fp, "%*cevent: %s\n", indent, ' ', log);
 
   event_log_end (thread_p);
 }
