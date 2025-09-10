@@ -142,7 +142,6 @@ namespace cubconn
       void push_task_into_worker_pool (context *ctx);
 
       bool handle_connection_error (context *ctx);
-      result handle_unexpected_packet (context *ctx);
 
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
