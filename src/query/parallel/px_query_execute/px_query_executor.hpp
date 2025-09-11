@@ -23,8 +23,6 @@
 #ifndef _PX_QUERY_EXECUTOR_HPP_
 #define _PX_QUERY_EXECUTOR_HPP_
 
-#if SERVER_MODE
-
 #include "px_worker_manager.hpp"
 #include "xasl.h"
 #include "px_query_task.hpp"
@@ -78,7 +76,5 @@ namespace parallel_query_execute
       int m_recursion_level;
   };
 }
-
-#endif // SERVER_MODE
 
 #endif /* _PX_QUERY_EXECUTOR_HPP_ */
