@@ -130,11 +130,12 @@ jobs:
                           circleci tests glob "\$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
                             | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
                           echo "[debug] Leave only the directories to be executed"
+                          cat tc.list
                           if [ -s tc.list ]; then
                             awk -F'/cases/' '{print \$1"/cases"}' tc.list | sort -u > tc_dirs.list
                             cat tc_dirs.list
                             echo "[debug] Remove tests that are not in the list"
-                            find "\$base_dir" -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rf
+                            find "\$base_dir" -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rvf
                           fi
                         else
                           echo "[debug] split tests for parallel execution"
