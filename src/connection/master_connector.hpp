@@ -60,6 +60,14 @@ namespace cubconn
 	SendReplyToClient
       };
 
+      enum class master_state
+      {
+	CONNECTED,
+	WAIT_RESPONSE,
+	ESTABLISHED,
+	CLOSED
+      };
+
       struct context
       {
 	css_conn_entry *m_conn;
@@ -109,11 +117,17 @@ namespace cubconn
       std::string m_unixpath;
       SOCKET m_unixsocket;
 
+      /* to reestablish the connection with master */
+      master_state m_master_state;
+      std::string m_server_name;
+      int m_master_port;
+
       /* dispatch */
       connection_pool *m_connection_pool;
 
       inline bool make_nonblocking (int fd) noexcept;
       inline bool update_epoll_events (context *ctx);
+      inline bool dispose_connection (context *ctx);
       inline context *make_context ();
 
       /* --------------------------------------------------------------------------- */
@@ -142,7 +156,6 @@ namespace cubconn
 
       /* request */
       inline result request_new_client (context *ctx) noexcept;
-      inline result request_shutdown (context *ctx) noexcept;
 
       inline result handle_request (context *ctx) noexcept;
 
@@ -153,9 +166,15 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       inline bool switch_to_unix_socket (context *ctx) noexcept;
 
-      inline bool sent_reply_to_client (context *ctx) noexcept;
+      inline void sent_reply_to_client (context *ctx) noexcept;
 
       inline bool handle_master_transmission (context *ctx) noexcept;
+
+      /* --------------------------------------------------------------------------- */
+      /* re-establish								     */
+      /* --------------------------------------------------------------------------- */
+      inline bool dispose_master_connection () noexcept;
+      inline bool reestablish_with_master () noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* main handler								     */
