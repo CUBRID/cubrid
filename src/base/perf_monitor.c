@@ -293,6 +293,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_METHSCANS, "Num_query_methscans"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_NLJOINS, "Num_query_nljoins"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_MJOINS, "Num_query_mjoins"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS, "Num_query_hashjoins"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS_PARTITIONED, "Num_query_hashjoins_partitioned"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS_PARALLEL, "Num_query_hashjoins_parallel"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_OBJFETCHES, "Num_query_objfetches"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_QM_NUM_HOLDABLE_CURSORS, "Num_query_holdable_cursors"),
 
@@ -1068,9 +1071,18 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_stats)
+  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p)
     {
-      stats = thread_p->m_px_stats;
+      if (thread_p->m_px_stats != NULL)
+	{
+	  stats = thread_p->m_px_stats;
+	}
+      else
+	{
+	  /* impossible case */
+	  assert (false);
+	  return 0;
+	}
     }
   else
     {
@@ -3316,17 +3328,37 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 }
 
 void
-perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p)
+perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
 {
-  thread_p->m_px_orig_thread_entry = orig_thread_p;
-  thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+  assert (thread_is_on_trace (thread_p));
+
+  /*
+   * m_px_stats should be NULL.
+   * memset is a temporary safeguard.
+   * TODO: replace with assert().
+   */
+  if (thread_p->m_px_stats == NULL)
+    {
+      thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+      if (thread_p->m_px_stats == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+	  return;
+	}
+    }
+  else
+    {
+      memset (thread_p->m_px_stats, 0, PERFMON_VALUES_MEMSIZE);
+    }
 }
 
 void
 perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
 {
-  free (thread_p->m_px_stats);
-  thread_p->m_px_stats = NULL;
+  if (thread_p->m_px_stats != NULL)
+    {
+      free_and_init (thread_p->m_px_stats);
+    }
 }
 
 #endif /* SERVER_MODE || SA_MODE */
