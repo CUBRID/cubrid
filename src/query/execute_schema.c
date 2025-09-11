@@ -88,10 +88,17 @@
 #define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
-/* Returns true if replication option is ON or not specified (default ON) */
-#define IS_REPLICATION_ON(_opt) \
+/* Returns true if replication option is ON or not specified (default ON).
+ * Use with table option node (tbl_opt_replication).
+ */
+#define IS_REPLICATION_ON_OPT(_opt) \
   ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
 
+/* Returns true if replication node value is ON or not specified (default ON).
+ * Use with replication_node (tbl_opt_replication->info.table_option.val).
+ */
+#define IS_REPLICATION_ON_NODE(_node) \
+  ( !(_node) || (_node)->info.value.data_value.i )
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -9231,7 +9238,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
        * If the option is omitted, or if the "on|off" value is omitted,  
        * the default is set to "on".  
        */
-      if (!IS_REPLICATION_ON (tbl_opt_replication))
+      if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created.\n", class_name);
 	  // TODO: Implement replication option handling. 
@@ -10669,7 +10676,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
    * If the option is omitted, or if "on|off" is omitted,
    * the default value is set to "on".
    */
-  if (!replication_node || replication_node->info.value.data_value.i)
+  if (IS_REPLICATION_ON_NODE (replication_node))
     {
       _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table replication set to on. \n",
 		     entity_name);
