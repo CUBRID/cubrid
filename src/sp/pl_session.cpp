@@ -269,21 +269,22 @@ namespace cubpl
   void
   session::destroy_pl_context_jvm ()
   {
-    if (m_last_conn_epoch != CONN_EPOCH_NEVER) {
+    if (m_last_conn_epoch != CONN_EPOCH_NEVER)
+      {
 
-        cubmethod::header header (m_id, SP_CODE_DESTROY);
-        m_last_conn_epoch = CONN_EPOCH_NONE;
+	cubmethod::header header (m_id, SP_CODE_DESTROY);
+	m_last_conn_epoch = CONN_EPOCH_NONE;
 
-        connection_view cv = claim_connection ();
-        if (cv)
-          {
-            if (cv->is_valid ())
-              {
-                cv->send_buffer_args (header);
-              }
-            release_connection (cv);
-          }
-    }
+	connection_view cv = claim_connection ();
+	if (cv)
+	  {
+	    if (cv->is_valid ())
+	      {
+		cv->send_buffer_args (header);
+	      }
+	    release_connection (cv);
+	  }
+      }
   }
 
   bool
