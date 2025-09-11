@@ -2976,9 +2976,16 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       hjoin_trace_end (thread_p, &stats->build, &start_stats);
       stats->build.read_rows = build->list_id->tuple_cnt;
       assert (stats->build.read_keys == 0);
-      stats->build.qualified_rows = (UINT64) hash_scan->memory.hash_table->nentries;
+      stats->build.qualified_rows = build->list_id->tuple_cnt;
 
-      stats->collision_rate = (double) hash_scan->memory.hash_table->ncollisions / build->list_id->tuple_cnt;
+      if (hash_scan->hash_list_scan_type == HASH_METH_IN_MEM || hash_scan->hash_list_scan_type == HASH_METH_HYBRID)
+	{
+	  stats->collision_rate = (double) hash_scan->memory.hash_table->ncollisions / build->list_id->tuple_cnt;
+	}
+      else
+	{
+	  stats->collision_rate = 0;
+	}
     }
 
   /* qfile_close_scan is called by the caller. */
