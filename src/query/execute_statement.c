@@ -3017,6 +3017,9 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
   error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
@@ -3043,9 +3046,6 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-
-  AU_DISABLE (save);
-  au_disable_flag = true;
 
   error = db_drop (serial_object);
   if (error < 0)
