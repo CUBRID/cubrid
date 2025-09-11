@@ -661,6 +661,9 @@ namespace cubconn
 	return result::Error;
       }
 
+    /* master context goes back to waiting for next request regardless of send path */
+    NEXT_STATE (ctx, RecvRequestType);
+
     /* try to send and register the fd to epoll if fails. */
     if (buffered_socket::send_partial (new_ctx->m_conn->fd, new_ctx->m_sendbuf))
       {
@@ -677,7 +680,6 @@ namespace cubconn
       }
 
     NEXT_STATE (new_ctx, SendReplyToClient);
-    NEXT_STATE (ctx, RecvRequestType);
     return result::Ok;
   }
 
@@ -898,9 +900,10 @@ namespace cubconn
 	  }
       }
 
-    if (m_master_state != master_state::CLOSED)
+    if (m_master_state != master_state::CLOSED && m_context.m_conn)
       {
 	css_free_conn (m_context.m_conn);
+	m_context.m_conn = nullptr;
       }
 
     m_context.reset ();
@@ -911,6 +914,8 @@ namespace cubconn
 
   inline bool master_connector::reestablish_with_master () noexcept
   {
+    fprintf (stderr, "try to re-establish the connection with master...\n");
+
     if (!this->dispose_master_connection ())
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->reestablish_with_master: dispose_master_connection failed");
@@ -928,6 +933,8 @@ namespace cubconn
     if (!this->prepare_handshake (m_server_name))
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->reestablish_with_master: prepare_handshake failed");
+	/* ensure state goes back to CLOSED and new conn is freed */
+	(void) this->dispose_master_connection ();
 	return false;
       }
 
