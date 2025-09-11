@@ -713,13 +713,10 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
   if (session_p->pl_session_p)
     {
-      er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is not NULL in session_state_create()\n",
-		    session_p->id);
+      assert (false);
+      delete session_p->pl_session_p;
     }
-  else
-    {
-      session_p->pl_session_p = new PL_SESSION (session_p->id);
-    }
+  session_p->pl_session_p = new PL_SESSION (session_p->id);
 
   /* initialize session active time */
   session_p->active_time = time (NULL);
