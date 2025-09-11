@@ -386,6 +386,12 @@ namespace parallel_query_execute
 	return;
       }
 
+    if (xasl->upd_del_class_cnt > 0)
+      {
+	m_is_parallel_executable = false;
+	return;
+      }
+
     if (xasl->type == HASHJOIN_PROC || xasl->type == MERGELIST_PROC)
       {
 	for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
