@@ -132,7 +132,7 @@ jobs:
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] total testcases: \$(wc -l tc_dirs.list)"
                           echo "[debug] Remove tests that are not in the list"
-                          find "\$base_dir" -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rf
+                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rf
                         else
                           echo "[debug] split tests for parallel execution"
                           circleci tests glob "\$glob_path" | circleci tests split --split-by=name | tee tc.list
