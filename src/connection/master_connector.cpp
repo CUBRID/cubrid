@@ -53,7 +53,7 @@
 #define _er_log_debug(x, ...) do { } while (0)
 
 #define NEXT_STATE(c, x) do { \
-    er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
+    _er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", c->m_conn ? c->m_conn->fd : -1, state::x); \
     (c->m_state = state::x); \
 } while (0)
 
@@ -70,11 +70,6 @@ namespace cubconn
   {
     m_recvbuf.reset ();
     m_sendbuf.clear ();
-
-    if (m_conn)
-      {
-	/* TODO: this may not be used */
-      }
   }
 
   void master_connector::context::reset ()
@@ -84,11 +79,6 @@ namespace cubconn
 
     m_state = state::SendInHandshake;
     m_has_error = false;
-
-    if (m_conn)
-      {
-	/* TODO: this may not be used */
-      }
   }
 
   bool master_connector::context::has_data_to_send ()
@@ -102,7 +92,8 @@ namespace cubconn
   }
 
   master_connector::master_connector () :
-    m_stop (false)
+    m_stop (false),
+    m_master_state (master_state::CLOSED)
   {
     context *ctx;
 
@@ -182,6 +173,8 @@ namespace cubconn
 
   bool master_connector::run (int port, std::string &server_name) noexcept
   {
+    m_master_port = port;
+    m_server_name = server_name;
     if (!this->connect (port))
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->run: connect failed");
@@ -233,6 +226,21 @@ namespace cubconn
 		       strerror (errno));
 	return false;
       }
+
+    return true;
+  }
+
+  inline bool master_connector::dispose_connection (context *ctx)
+  {
+    /* remove the fd which is reset by peer */
+    if (!m_events.remove_descriptor (ctx->m_conn->fd))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->dispose_connection: m_events->remove_descriptor failed: %s",
+		       strerror (errno));
+	return false;
+      }
+    css_free_conn (ctx->m_conn);
+    delete ctx;
 
     return true;
   }
@@ -306,6 +314,7 @@ namespace cubconn
 	return false;
       }
     m_context.m_conn = conn;
+    m_master_state = master_state::CONNECTED;
 
     return true;
   }
@@ -370,6 +379,7 @@ namespace cubconn
 		       strerror (errno));
 	return false;
       }
+    m_master_state = master_state::WAIT_RESPONSE;
 
     return true;
   }
@@ -436,12 +446,6 @@ namespace cubconn
     /* make the packets to msghdr */
     ctx->m_sendbuf.stamp_msghdr ();
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
-      {
-	_er_log_debug (__FILE__, __LINE__,
-		       "master_connector->prepare_reply_refuse_connection: m_events->add_descriptor failed: %s", strerror (errno));
-	return false;
-      }
     return true;
   }
 
@@ -542,6 +546,7 @@ namespace cubconn
       }
 
     er_log_debug (__FILE__, __LINE__, "successfully switched to unix domain socket\n");
+    m_master_state = master_state::ESTABLISHED;
 
     return true;
   }
@@ -656,6 +661,21 @@ namespace cubconn
 	return result::Error;
       }
 
+    /* try to send and register the fd to epoll if fails. */
+    if (buffered_socket::send_partial (new_ctx->m_conn->fd, new_ctx->m_sendbuf))
+      {
+	this->sent_reply_to_client (new_ctx);
+	return result::Ok;
+      }
+
+    /* pending */
+    if (!m_events.add_descriptor (new_ctx->m_conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, new_ctx))
+      {
+	_er_log_debug (__FILE__, __LINE__,
+		       "master_connector->request_new_client: m_events->add_descriptor failed: %s", strerror (errno));
+	return result::Error;
+      }
+
     NEXT_STATE (new_ctx, SendReplyToClient);
     NEXT_STATE (ctx, RecvRequestType);
     return result::Ok;
@@ -711,8 +731,7 @@ namespace cubconn
 	break;
 
       case SERVER_GET_EOF:
-	/* TODO: SendLogEof (master_fd); */
-	NEXT_STATE (ctx, RecvRequestType);
+	/* TODO: css_process_get_eof_request (master_fd); */
 	break;
 
       default:
@@ -779,16 +798,8 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::sent_reply_to_client (context *ctx) noexcept
+  inline void master_connector::sent_reply_to_client (context *ctx) noexcept
   {
-    _er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: remove fd = %d\n", ctx->m_conn->fd);
-    if (!m_events.remove_descriptor (ctx->m_conn->fd))
-      {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: m_events->remove_descriptor failed: %s",
-		       strerror (errno));
-	return false;
-      }
-
     if (!ctx->m_has_error)
       {
 	css_insert_into_active_conn_list (ctx->m_conn);
@@ -804,8 +815,6 @@ namespace cubconn
 
     ctx->m_conn = nullptr;
     delete ctx;
-
-    return true;
   }
 
   inline bool master_connector::handle_master_transmission (context *ctx) noexcept
@@ -849,11 +858,14 @@ namespace cubconn
 	break;
 
       case state::SendReplyToClient:
-	if (!this->sent_reply_to_client (ctx))
+	_er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: remove fd = %d\n", ctx->m_conn->fd);
+	if (!m_events.remove_descriptor (ctx->m_conn->fd))
 	  {
-	    _er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_transmission: sent_reply_to_client failed");
+	    _er_log_debug (__FILE__, __LINE__, "master_connector->sent_reply_to_client: m_events->remove_descriptor failed: %s",
+			   strerror (errno));
 	    return false;
 	  }
+	this->sent_reply_to_client (ctx);
 	/* return here to avoid segfault */
 	return true;
 
@@ -873,6 +885,55 @@ namespace cubconn
     return true;
   }
 
+  inline bool master_connector::dispose_master_connection () noexcept
+  {
+    if (m_master_state == master_state::WAIT_RESPONSE || m_master_state == master_state::ESTABLISHED)
+      {
+	/* remove the fd which is reset by peer */
+	if (!m_events.remove_descriptor (m_context.m_conn->fd))
+	  {
+	    _er_log_debug (__FILE__, __LINE__, "master_connector->dispose_master_connection: m_events->remove_descriptor failed: %s",
+			   strerror (errno));
+	    return false;
+	  }
+      }
+
+    if (m_master_state != master_state::CLOSED)
+      {
+	css_free_conn (m_context.m_conn);
+      }
+
+    m_context.reset ();
+    m_master_state = master_state::CLOSED;
+
+    return true;
+  }
+
+  inline bool master_connector::reestablish_with_master () noexcept
+  {
+    if (!this->dispose_master_connection ())
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->reestablish_with_master: dispose_master_connection failed");
+	return false;
+      }
+
+    _er_log_debug (__FILE__, __LINE__, "master_connector->reestablish_with_master: reestablish the connection with master");
+
+    if (!this->connect (m_master_port))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->reestablish_with_master: connect failed");
+	return false;
+      }
+
+    if (!this->prepare_handshake (m_server_name))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->reestablish_with_master: prepare_handshake failed");
+	return false;
+      }
+
+    return true;
+  }
+
   inline bool master_connector::execute () noexcept
   {
     std::array<epoll_event, 256> events;
@@ -881,7 +942,7 @@ namespace cubconn
 
     while (!m_stop)
       {
-	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
+	nfds = m_events.wait (events.data (), events.size (), 5 * 1000 /* timeout for re-establish */);
 	if (nfds < 0)
 	  {
 	    if (errno == EINTR)
@@ -892,12 +953,11 @@ namespace cubconn
 	    assert_release (false);
 	  }
 
-	if (nfds == 0)
+	if (__builtin_expect (m_master_state == master_state::CLOSED, 0))
 	  {
-	    /* TODO: maybe heartbeat ? */
+	    /* re-establish the connection with master if it died */
+	    reestablish_with_master ();
 	  }
-
-	assert (nfds > 0);
 
 	for (i = 0; i < nfds; i++)
 	  {
@@ -908,8 +968,16 @@ namespace cubconn
 	    if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR) && ctx->m_conn->fd != m_eventfd)
 	      {
 		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
-		/* TODO: reestablish the connection if fd is cub_master */
-		return false;
+		if (ctx->m_conn->fd == m_context.m_conn->fd)
+		  {
+		    /* WAIT RESPONSE or ESTABLISHED */
+		    reestablish_with_master ();
+		  }
+		else
+		  {
+		    dispose_connection (ctx);
+		  }
+		continue;
 	      }
 	    if (events[i].events & EPOLLIN)
 	      {
