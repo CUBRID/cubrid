@@ -1623,8 +1623,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
     { \
       tsc_getticks (&end_tick); \
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
-      TSC_ADD_TIMEVAL (thread_p->event_stats.expand_time, tv_diff); \
-      thread_p->event_stats.expand_pages += DISK_SECTS_NPAGES (nsect_extended); \
+      TSC_ADD_TIMEVAL (thread_p->event_stats.extend_time, tv_diff); \
+      thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
     } \
   while (0)
 #define DISK_EXTEND_COLLECT(nsects) \

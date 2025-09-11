@@ -261,8 +261,8 @@ struct event_stat
   struct timeval latch_waits;
 
   /* temp volume expand stats */
-  struct timeval expand_time;
-  int expand_pages;
+  struct timeval extend_time;
+  int extend_pages;
 
   /* save PRM_ID_SQL_TRACE_SLOW_MSECS for performance */
   bool trace_slow_query;
