@@ -963,10 +963,15 @@ namespace cubconn
 	    assert_release (false);
 	  }
 
+	if (nfds == 0)
+	  {
+	    m_connection_pool->stats ();
+	  }
+
 	if (__builtin_expect (m_master_state == master_state::CLOSED, 0))
 	  {
 	    /* re-establish the connection with master if it died */
-	    reestablish_with_master ();
+	    this->reestablish_with_master ();
 	  }
 
 	for (i = 0; i < nfds; i++)
@@ -981,11 +986,11 @@ namespace cubconn
 		if (ctx->m_conn->fd == m_context.m_conn->fd)
 		  {
 		    /* WAIT RESPONSE or ESTABLISHED */
-		    reestablish_with_master ();
+		    this->reestablish_with_master ();
 		  }
 		else
 		  {
-		    dispose_connection (ctx);
+		    this->dispose_connection (ctx);
 		  }
 		continue;
 	      }

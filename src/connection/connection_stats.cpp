@@ -17,43 +17,27 @@
  */
 
 /*
- * connection_pool.hpp
+ * connection_stats.cpp
  */
 
-#ifndef _CONNECTION_POOL_HPP_
-#define _CONNECTION_POOL_HPP_
+#include "connection_stats.hpp"
 
-#include "connection_worker.hpp"
-
-#include <cstring>
-#include <cstdint>
-#include <sys/socket.h>
-#include <sys/epoll.h>
-#include <fcntl.h>
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace cubconn
 {
-  class connection_pool
+  connection_stats::connection_stats ()
   {
-    public:
-      connection_pool ();
-      ~connection_pool ();
+    int i;
 
-      void initialize (std::uint32_t max_connections, int connection_threads);
-      void finalize ();
+    for (i = 0; i < stats::STATS_COUNT; i++)
+    {
+      m_values[i] = 0;
+    }
+  }
 
-      void dispatch (css_conn_entry *conn);
-
-      void stats ();
-
-    private:
-      std::uint32_t m_max_connections;
-      std::vector<std::unique_ptr<connection_worker>> m_workers;
-
-      std::size_t m_counter;
-
-      void initialize_worker ();
-  };
+  connection_stats::~connection_stats ()
+  {
+  }
 }
-
-#endif

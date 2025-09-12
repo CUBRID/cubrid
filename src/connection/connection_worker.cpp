@@ -29,6 +29,8 @@
 #include "buffer.hpp"
 #include "error_manager.h"
 
+#include <iostream>
+#include <chrono>
 #include <array>
 #include <thread>
 #include <unistd.h>
@@ -50,14 +52,18 @@
 
 namespace cubconn
 {
-  connection_worker::context::context (std::size_t capacity) :
+  connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
     m_recv
   {
     .m_state = state::HEADER,
-    .m_receiver = receiver (capacity),
+    .m_receiver = receiver (capacity, stats),
     .m_header = { nullptr, 0 },
     .m_request_id = -1,
     .m_command = false
+  },
+    m_send
+  {
+    .m_transmitter = transmitter (stats)
   }
   {
   }
@@ -67,11 +73,11 @@ namespace cubconn
   }
 
   connection_worker::connection_worker (connection_pool *pool, std::size_t core, std::size_t index) :
+    m_parent (pool),
     m_core (core),
     m_stop (false),
-    m_parent (pool),
-    m_index (index),
-    m_entry (nullptr)
+    m_entry (nullptr),
+    m_index (index)
   {
     context *ctx;
 
@@ -81,7 +87,7 @@ namespace cubconn
 	_er_log_debug (__FILE__, __LINE__, "connection_worker: failed to create eventfd\n");
 	assert_release (false);
       }
-    ctx = new context (4 * 1024);
+    ctx = new context (4 * 1024, nullptr);
     if (!ctx)
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker: failed to allocate memory\n");
@@ -157,6 +163,28 @@ namespace cubconn
     return true;
   }
 
+  void connection_worker::stats ()
+  {
+    int i;
+
+    std::cout << "connection worker: " << m_index << std::endl;
+    for (i = 0; i < stats::STATS_COUNT; i++)
+    {
+      std::cout << "  " << stats_name[i] << ": " << m_stats.get (static_cast<enum stats> (i)) << std::endl;
+    }
+    std::cout << "-------------- clients --------------" << std::endl;
+    for (auto &ctx : m_context)
+    {
+      auto &buf = ctx->m_recv.m_receiver.get_buf ();
+      std::cout << "  fd: " << ctx->m_conn->fd << std::endl;
+      std::cout << "  head: " << buf.get_head () << std::endl;
+      std::cout << "  tail: " << buf.get_tail () << std::endl;
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
+    std::cout << std::endl;
+  }
+
   void connection_worker::push_task_into_worker_pool (context *ctx)
   {
     /* push new task into worker pool */
@@ -165,6 +193,8 @@ namespace cubconn
 
   bool connection_worker::handle_connection_error (context *ctx)
   {
+    std::chrono::time_point<std::chrono::steady_clock> start, end;
+
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
@@ -173,12 +203,17 @@ namespace cubconn
 
     ctx->m_send.m_transmitter.clear ();
 
-    /* net_server_conn_down */
     /* TODO: this function makes this thread blocked. epoll threads must not be blocked */
+
+    start = std::chrono::steady_clock::now ();
+
     m_entry->conn_entry = ctx->m_conn;
     pthread_mutex_lock (&m_entry->tran_index_lock);
-    css_Connection_error_handler (m_entry, ctx->m_conn);
+    css_Connection_error_handler (m_entry, ctx->m_conn); /* net_server_conn_down */
     m_entry->conn_entry = NULL;
+
+    end = std::chrono::steady_clock::now ();
+    m_stats.add (stats::BLOCKED_WAIT_WORKER, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     if (m_context.erase (ctx) == 0)
       {
@@ -186,6 +221,8 @@ namespace cubconn
 	return false;
       }
     delete ctx;
+
+    m_stats.sub (stats::NET_CLIENTS, 1);
 
     return true;
   }
@@ -291,7 +328,7 @@ namespace cubconn
   {
     context *ctx;
 
-    ctx = new context (32 * 1024);
+    ctx = new context (32 * 1024, &m_stats);
     if (!ctx)
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: failed to allocate memory\n");
@@ -326,6 +363,8 @@ namespace cubconn
 	return false;
       }
 
+    m_stats.add (stats::MQ_REQUESTED, 1);
+
     while (m_queue.try_pop (request))
       {
 	_er_log_debug (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
@@ -334,10 +373,12 @@ namespace cubconn
 	switch (request.type)
 	  {
 	  case message_type::NEW_CLIENT:
+	    m_stats.add (stats::MQ_NEW_CLIENT, 1);
 	    if (!this->handle_message_queue_new_client (request))
 	      {
 		return false;
 	      }
+	    m_stats.add (stats::NET_CLIENTS, 1);
 	    break;
 
 	  case message_type::SHUTDOWN:
@@ -345,6 +386,7 @@ namespace cubconn
 	    break;
 
 	  case message_type::SEND_PACKET:
+	    m_stats.add (stats::MQ_SEND_PACKET, 1);
 	    if (!this->handle_message_queue_send_packet (request))
 	      {
 		return false;
@@ -352,6 +394,7 @@ namespace cubconn
 	    break;
 
 	  case message_type::RELEASE_PACKET:
+	    m_stats.add (stats::MQ_RELEASE_PACKET, 1);
 	    if (!this->handle_message_queue_release_packet (request))
 	      {
 		return false;
@@ -655,6 +698,7 @@ namespace cubconn
 
   result connection_worker::handle_reception (context *ctx)
   {
+    std::chrono::time_point<std::chrono::steady_clock> start, end;
     std::vector<cubbase::span<std::byte>> *packets;
     result status;
     int mtx;
@@ -680,12 +724,19 @@ namespace cubconn
 	return result::Ok;
       }
 
+    m_stats.add (stats::NET_PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
+
+    start = std::chrono::steady_clock::now ();
+
     /* hold m_conn */
     mtx = rmutex_lock (m_entry, &ctx->m_conn->rmutex);
     if (mtx != NO_ERROR)
       {
 	return result::Error;
       }
+
+    end = std::chrono::steady_clock::now ();
+    m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     /* received at least one packet */
     packets = ctx->m_recv.m_receiver.get_result ();
