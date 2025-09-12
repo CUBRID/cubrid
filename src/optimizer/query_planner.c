@@ -3767,6 +3767,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   tb = bf + ba;
   if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
     {
+      if (qo_is_iscan_from_orderby (a) && qo_plan_is_orderby_skip_candidate (a) && !qo_is_iscan_from_orderby (b))
+	{
+	  return PLAN_COMP_LT;
+	}
+      else if (!qo_is_iscan_from_orderby (a) && qo_is_iscan_from_orderby (b) && qo_plan_is_orderby_skip_candidate (b))
+	{
+	  return PLAN_COMP_GT;
+	}
+
       if (ta * RBO_CHECK_LIMIT_RATIO <= tb)
 	{
 	  return PLAN_COMP_LT;
@@ -5578,12 +5587,14 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
   best_info = info->planner->best_info;
   plan_order = plan->order;
 
+#if 0
   /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't skip the orderby, we release the plan. */
   if (qo_is_iscan_from_orderby (plan) && !plan->plan_un.scan.index->head->orderby_skip)
     {
       qo_plan_release (plan);
       return 0;
     }
+#endif
 
   /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
   if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
@@ -11870,38 +11881,46 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
       env = (plan->info)->env;
       fprintf (fp, " (");
 
+      bool first = true;
+
       for (i = bitset_iterate (&(plan->plan_un.scan.terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
 	  fprintf (fp, "key range: %s", qo_term_string (QO_ENV_TERM (env, i)));
+	  first = false;
 	}
 
       if (bitset_cardinality (&(plan->plan_un.scan.kf_terms)) > 0)
 	{
 	  for (i = bitset_iterate (&(plan->plan_un.scan.kf_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
-	      fprintf (fp, ", key filter: %s", qo_term_string (QO_ENV_TERM (env, i)));
+	      fprintf (fp, "%skey filter: %s", first ? "" : ", ", qo_term_string (QO_ENV_TERM (env, i)));
 	    }
+	  first = false;
 	}
 
       if (qo_is_index_covering_scan (plan))
 	{
-	  fprintf (fp, ", covered: true");
+	  fprintf (fp, "%scovered: true", first ? "" : ", ");
+	  first = false;
 	}
 
       if (plan->plan_un.scan.index && plan->plan_un.scan.index->head->use_descending)
 	{
-	  fprintf (fp, ", desc_index: true");
+	  fprintf (fp, "%sdesc_index: true", first ? "" : ", ");
 	  natural_desc_index = true;
+	  first = false;
 	}
 
       if (!natural_desc_index && (QO_ENV_PT_TREE (plan->info->env)->info.query.q.select.hint & PT_HINT_USE_IDX_DESC))
 	{
-	  fprintf (fp, ", desc_index forced: true");
+	  fprintf (fp, "%sdesc_index forced: true", first ? "" : ", ");
+	  first = false;
 	}
 
       if (qo_is_index_loose_scan (plan))
 	{
-	  fprintf (fp, ", loose: true");
+	  fprintf (fp, "%sloose: true", first ? "" : ", ");
+	  first = false;
 	}
 
       fprintf (fp, ")");
