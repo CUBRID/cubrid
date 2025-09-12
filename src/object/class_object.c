@@ -1380,7 +1380,8 @@ int
 classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_info)
 {
   DB_VALUE prop_val, pk_val, fk_container_val, fk_val;
-  DB_VALUE status, comment, created_time, updated_time;
+  DB_VALUE status, index_type, options, comment;
+  DB_VALUE created_time, updated_time;
   DB_SEQ *pk_property, *pk_seq, *fk_container, *fk_seq;
   int size;
   int fk_container_pos;
@@ -1392,6 +1393,8 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
   PRIM_SET_NULL (&fk_container_val);
   PRIM_SET_NULL (&fk_val);
   PRIM_SET_NULL (&status);
+  PRIM_SET_NULL (&index_type);
+  PRIM_SET_NULL (&options);
   PRIM_SET_NULL (&comment);
   PRIM_SET_NULL (&created_time);
   PRIM_SET_NULL (&updated_time);
@@ -1469,13 +1472,13 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	  goto end;
 	}
 
-      err = set_get_element (pk_seq, get_class_constraint_index (size, SM_CONSTRAINT_INDEX_TYPE_INDEX), &status);
+      err = set_get_element (pk_seq, get_class_constraint_index (size, SM_CONSTRAINT_INDEX_TYPE_INDEX), &index_type);
       if (err != NO_ERROR)
 	{
 	  goto end;
 	}
 
-      err = set_get_element (pk_seq, get_class_constraint_index (size, SM_CONSTRAINT_OPTIONS_INDEX), &status);
+      err = set_get_element (pk_seq, get_class_constraint_index (size, SM_CONSTRAINT_OPTIONS_INDEX), &options);
       if (err != NO_ERROR)
 	{
 	  goto end;
@@ -1515,13 +1518,13 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	  goto end;
 	}
 
-      err = set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_INDEX_TYPE_INDEX), &status);
+      err = set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_INDEX_TYPE_INDEX), &index_type);
       if (err != NO_ERROR)
 	{
 	  goto end;
 	}
 
-      err = set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_OPTIONS_INDEX), &status);
+      err = set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_OPTIONS_INDEX), &options);
       if (err != NO_ERROR)
 	{
 	  goto end;
@@ -1569,6 +1572,8 @@ end:
   pr_clear_value (&fk_container_val);
   pr_clear_value (&fk_val);
   pr_clear_value (&status);
+  pr_clear_value (&index_type);
+  pr_clear_value (&options);
   pr_clear_value (&comment);
   pr_clear_value (&created_time);
   pr_clear_value (&updated_time);
