@@ -1971,10 +1971,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* only can be mergeable in case of rownum only predicate and updatable order by */
       /* query containing distinct, agg cannot add hidden cols, so orderby may be removed during view merging. */
       if (!is_rownum_only || pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery))
-        {
-          /* not pushable */
-          return NON_PUSHABLE;
-        }
+	{
+	  /* not pushable */
+	  return NON_PUSHABLE;
+	}
     }
 
   /*****************************/
