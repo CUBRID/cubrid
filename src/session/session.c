@@ -715,6 +715,7 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
     {
       /* should not happen */
       assert (false);
+      er_log_debug (ARG_FILE_LINE, "(assertion fail) PL session is not NULL for a newly created session\n");
       return ER_FAILED;
     }
   session_p->pl_session_p = new PL_SESSION (session_p->id);
