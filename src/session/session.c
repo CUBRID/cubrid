@@ -713,8 +713,9 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
 
   if (session_p->pl_session_p)
     {
+      /* should not happen */
       assert (false);
-      delete session_p->pl_session_p;
+      return ER_FAILED;
     }
   session_p->pl_session_p = new PL_SESSION (session_p->id);
 
