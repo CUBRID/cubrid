@@ -2197,7 +2197,7 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
       br_info_p->query_timeout = val;
       shm_as_p->query_timeout = val;
     }
-  else if (strcasecmp (conf_name, "MYSQL_READ_TIMEOUT") == 0)
+  else if (strcasecmp (conf_name, "MYSQL_READ_TIMEOUT") == 0)	// check airnet
     {
       int val;
 
@@ -3375,10 +3375,6 @@ as_activate (T_SHM_BROKER * shm_br, T_BROKER_INFO * br_info, T_SHM_APPL_SERVER *
 	{
 	  snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d_%d_%d", shm_appl->broker_name, appl_name,
 		    as_info->proxy_id + 1, as_info->shard_id, as_info->shard_cas_id + 1);
-	}
-      else if (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
-	{
-	  snprintf (process_name, sizeof (process_name) - 1, "%s", appl_name);
 	}
       else
 	{

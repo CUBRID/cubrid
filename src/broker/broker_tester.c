@@ -243,16 +243,6 @@ init_default_conn_info (int appl_server_type)
       user_password = DEFAULT_EMPTY_STRING;
       break;
 
-    case APPL_SERVER_CAS_ORACLE:
-      user_name = DEFAULT_ORACLE_USER_NAME;
-      user_password = DEFAULT_ORACLE_PASSWORD;
-      break;
-
-    case APPL_SERVER_CAS_MYSQL:
-      user_name = DEFAULT_MYSQL_USER_NAME;
-      user_password = DEFAULT_EMPTY_STRING;
-      break;
-
     default:
       user_name = DEFAULT_EMPTY_STRING;
       user_password = DEFAULT_EMPTY_STRING;

@@ -467,7 +467,7 @@ struct t_proxy_info
   int cur_client;
   int max_context;
 
-  char appl_server;		/* APPL_SERVER_CAS | APPL_SERVER_CAS_MYSQL | APPL_SERVER_CAS_ORACLE */
+  char appl_server;
 
   /* MOVE FROM T_APPL_SERVER_INFO */
 #if defined(WINDOWS)

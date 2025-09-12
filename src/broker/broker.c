@@ -1563,21 +1563,14 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
       snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR, as_index);
       putenv (as_id_env_str);
 
-      if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_ORACLE)
+      if (br_shard_flag == ON)
 	{
-	  snprintf (argv0, sizeof (argv0) - 1, "%s", appl_name);
+	  snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d", shm_br->br_info[br_index].name, appl_name,
+		    as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
 	}
       else
 	{
-	  if (br_shard_flag == ON)
-	    {
-	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d", shm_br->br_info[br_index].name, appl_name,
-			as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
-	    }
-	  else
-	    {
-	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name, as_index + 1);
-	    }
+	  snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name, as_index + 1);
 	}
 
 #if defined(WINDOWS)

@@ -129,9 +129,6 @@ static bool is_invalid_buf_size (int size);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
-  {APPL_SERVER_CAS_ORACLE_TYPE_NAME, APPL_SERVER_CAS_ORACLE},
-  {APPL_SERVER_CAS_MYSQL_TYPE_NAME, APPL_SERVER_CAS_MYSQL},
-  {APPL_SERVER_CAS_MYSQL51_TYPE_NAME, APPL_SERVER_CAS_MYSQL51},
   {APPL_SERVER_CAS_CGW_TYPE_NAME, APPL_SERVER_CAS_CGW},
   {NULL, 0}
 };
@@ -1728,12 +1725,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
 
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
-
-      if (br_info[i].appl_server == APPL_SERVER_CAS_MYSQL || br_info[i].appl_server == APPL_SERVER_CAS_MYSQL51)
-	{
-	  fprintf (fp, "MYSQL_READ_TIMEOUT\t=%d\n", br_info[i].mysql_read_timeout);
-	  fprintf (fp, "MYSQL_KEEPALIVE_INTERVAL\t=%d\n", br_info[i].mysql_keepalive_interval);
-	}
 
       tmp_str = get_conf_string (br_info[i].monitor_hang_flag, tbl_on_off);
       if (tmp_str)

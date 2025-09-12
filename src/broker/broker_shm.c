@@ -963,19 +963,7 @@ get_error_log_file_name (char *access_log_file, char *error_log_path, char *brok
 static const char *
 get_appl_server_name (int appl_server_type)
 {
-  if (appl_server_type == APPL_SERVER_CAS_ORACLE)
-    {
-      return APPL_SERVER_CAS_ORACLE_NAME;
-    }
-  else if (appl_server_type == APPL_SERVER_CAS_MYSQL51)
-    {
-      return APPL_SERVER_CAS_MYSQL51_NAME;
-    }
-  else if (appl_server_type == APPL_SERVER_CAS_MYSQL)
-    {
-      return APPL_SERVER_CAS_MYSQL_NAME;
-    }
-  else if (appl_server_type == APPL_SERVER_CAS_CGW)
+  if (appl_server_type == APPL_SERVER_CAS_CGW)
     {
       return APPL_SERVER_CAS_CGW_NAME;
     }

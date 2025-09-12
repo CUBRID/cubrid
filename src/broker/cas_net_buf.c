@@ -275,7 +275,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
   char msg_buf[1024];
 #endif
 
-#if defined(CAS_CUBRID)		// check airnet
+#if defined(CAS_CUBRID)
   T_BROKER_VERSION ver;
 #endif /* CAS_CUBRID */
   size_t err_msg_len = 0;
@@ -285,7 +285,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
 
   net_buf_clear (net_buf);
 
-#if defined(CAS_CUBRID)		// check airnet
+#if defined(CAS_CUBRID)
   ver = as_info->clt_version;
   if (ver >= CAS_MAKE_VER (8, 3, 0))
     {
