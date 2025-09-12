@@ -97,7 +97,7 @@ static int rv;
 
 /* default timeout seconds for infinite wait */
 #define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold. used as indicator for hot pages. */
-static int pgbuf_latch_timeout = 300 * 1000;		/* timeout seconds */
+static int pgbuf_latch_timeout = 300 * 1000;	/* timeout seconds */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
