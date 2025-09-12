@@ -448,7 +448,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
       fp = stdout;
     }
 
-  fprintf (fp, "  LIST_CACHE_ENTRY (%p) - ", data);
+  fprintf (fp, "LIST_CACHE_ENTRY (%p) - ", data);
 
   if (hash_list_scan_type == HASH_METH_IN_MEM)
     {
