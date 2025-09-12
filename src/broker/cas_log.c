@@ -84,8 +84,6 @@ static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigne
 static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap);
 
 static FILE *access_log_open (char *log_file_name);
-static bool cas_log_begin_hang_check_time (void);
-static void cas_log_end_hang_check_time (bool is_prev_time_set);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
 						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr, bool ishidepw);
 
@@ -1283,27 +1281,12 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 
 }
 
-static bool
-cas_log_begin_hang_check_time (void)	// check airnet
-{
-  return false;
-}
-
-static void
-cas_log_end_hang_check_time (bool is_prev_time_set)	// check airnet
-{
-
-}
-
 static size_t
 cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
 {
-  bool is_prev_time_set;
   size_t result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fwrite (ptr, size, nmemb, stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1317,12 +1300,9 @@ cas_ftell (FILE * stream)
 static int
 cas_fseek (FILE * stream, INT64 offset, int whence)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fseek (stream, offset, whence);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1330,12 +1310,9 @@ cas_fseek (FILE * stream, INT64 offset, int whence)
 static FILE *
 cas_fopen (const char *path, const char *mode)
 {
-  bool is_prev_time_set;
   FILE *result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fopen (path, mode);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1346,11 +1323,9 @@ cas_fopen_and_lock (const char *path, const char *mode)
 {
 #define MAX_RETRY_COUNT 100
   int retry_count;
-  bool is_prev_time_set;
   FILE *result;
 
   retry_count = 0;
-  is_prev_time_set = cas_log_begin_hang_check_time ();
 
 retry:
   result = fopen (path, mode);
@@ -1368,7 +1343,6 @@ retry:
 	  result = NULL;
 	}
     }
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1377,12 +1351,9 @@ retry:
 static int
 cas_fclose (FILE * fp)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fclose (fp);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1390,12 +1361,9 @@ cas_fclose (FILE * fp)
 static int
 cas_ftruncate (int fd, off_t length)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = ftruncate (fd, length);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1403,12 +1371,9 @@ cas_ftruncate (int fd, off_t length)
 static int
 cas_fflush (FILE * stream)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fflush (stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 
@@ -1417,12 +1382,9 @@ cas_fflush (FILE * stream)
 static int
 cas_fileno (FILE * stream)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fileno (stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1430,15 +1392,12 @@ cas_fileno (FILE * stream)
 static int
 cas_fprintf (FILE * stream, const char *format, ...)
 {
-  bool is_prev_time_set;
   int result;
   va_list ap;
 
   va_start (ap, format);
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = vfprintf (stream, format, ap);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   va_end (ap);
 
@@ -1448,12 +1407,9 @@ cas_fprintf (FILE * stream, const char *format, ...)
 static int
 cas_fputc (int c, FILE * stream)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fputc (c, stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1461,12 +1417,9 @@ cas_fputc (int c, FILE * stream)
 static int
 cas_unlink (const char *pathname)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = unlink (pathname);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1474,12 +1427,9 @@ cas_unlink (const char *pathname)
 static int
 cas_rename (const char *oldpath, const char *newpath)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = rename (oldpath, newpath);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1487,12 +1437,9 @@ cas_rename (const char *oldpath, const char *newpath)
 static int
 cas_mkdir (const char *pathname, mode_t mode)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = mkdir (pathname, mode);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
