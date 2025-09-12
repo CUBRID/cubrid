@@ -23,6 +23,7 @@
 #ifndef _CONNECTION_TRANSMITTER_HPP_
 #define _CONNECTION_TRANSMITTER_HPP_
 
+#include "connection_stats.hpp"
 #include "buffer.hpp"
 #include "packet_buffer.hpp"
 
@@ -37,7 +38,7 @@ namespace cubconn
   class transmitter
   {
     public:
-      transmitter ();
+      transmitter (connection_stats *stats);
       ~transmitter ();
 
       result fill (int fd);
@@ -52,6 +53,8 @@ namespace cubconn
     private:
       cubbase::packet_buffer m_buf;
       std::vector<std::function<void ()>> m_deleter;
+
+      connection_stats *m_stats;
   };
 
   template <typename... Spans>
