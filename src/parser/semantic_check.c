@@ -11203,6 +11203,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
 	  (void) parser_append_node (hidden_list, select_list);
 	  node->info.query.q.select.with_increment = NULL;
+
+	  /* Click count functions (e.g., INCR, DECR) can be used only in a top-level SELECT statement.
+	   * Setting the is_click_counter flag on both top_node and node may seem redundant,
+	   * but it is necessary in UPDATE statements where top_node and node are not the same. */
+	  top_node->flag.is_click_counter = 1;
+	  node->flag.is_click_counter = 1;
 	}
 
       /* check the group by */

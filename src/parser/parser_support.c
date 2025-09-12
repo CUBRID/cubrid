@@ -1454,6 +1454,30 @@ pt_is_inst_or_inst_num_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 }
 
 /*
+ * pt_is_method_call_node () -
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): true if node is a method call node
+ *   continue_walk(in/out):
+ */
+PT_NODE *
+pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *is_method_call = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (tree != NULL && tree->node_type == PT_METHOD_CALL)
+    {
+      *is_method_call = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * pt_is_ddl_statement () - test PT_NODE statement types,
  * 			    without exposing internals
  *   return:
