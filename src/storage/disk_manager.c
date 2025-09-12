@@ -2462,6 +2462,14 @@ exit:
   return error_code;
 }
 
+/*
+ * disk_volume_is_empty () - Check whether a disk volume is empty.
+ *
+ * return        : true if the volume is empty (no data),
+ *                 false if the volume is in use (contains data)
+ * thread_p (in) : thread entry
+ * volid (in)    : volume identifier
+ */
 static bool
 disk_volume_is_empty (THREAD_ENTRY * thread_p, VOLID volid)
 {
@@ -2469,11 +2477,11 @@ disk_volume_is_empty (THREAD_ENTRY * thread_p, VOLID volid)
   DISK_STAB_CURSOR start_cursor = DISK_STAB_CURSOR_INITIALIZER;
   DISK_STAB_CURSOR end_cursor = DISK_STAB_CURSOR_INITIALIZER;
   PAGE_PTR pgptr = NULL;
-  bool has_used = false;
+  bool has_used = true;
 
   if (xdisk_is_volume_exist (thread_p, volid) == false)
     {
-      return has_used;
+      return true;
     }
 
   (void) disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &volheader);
@@ -3710,6 +3718,15 @@ disk_stab_count_free (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool *
   return NO_ERROR;
 }
 
+/*
+ * disk_stab_has_used () - DISK_STAB_UNIT_FUNC to determine whether at least one sector in the unit is in use
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * cursor (in)   : disk sector table cursor
+ * stop (out)    : output true when at least one sector in the unit is in use
+ * args (out)    : output true when at least one sector in the unit is in use
+ */
 static int
 disk_stab_has_used (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args)
 {
