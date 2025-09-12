@@ -216,8 +216,6 @@ static void css_process_shutdown_request (SOCKET master_fd);
 static void css_send_reply_to_new_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
 static void css_refuse_connection_request (SOCKET new_fd, unsigned short rid, int reason, int error);
 static void css_process_new_client (SOCKET master_fd);
-static void css_process_get_server_ha_mode_request (SOCKET master_fd);
-static void css_process_change_server_ha_mode_request (SOCKET master_fd);
 
 static void css_close_connection_to_master (void);
 static int css_reestablish_connection_to_master (void);
@@ -704,7 +702,7 @@ css_process_new_client (SOCKET master_fd)
  * css_process_get_server_ha_mode_request() -
  *   return:
  */
-static void
+void
 css_process_get_server_ha_mode_request (SOCKET master_fd)
 {
   int r;
@@ -732,7 +730,7 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
  * css_process_get_server_ha_mode_request() -
  *   return:
  */
-static void
+void
 css_process_change_server_ha_mode_request (SOCKET master_fd)
 {
 #if !defined(WINDOWS)
