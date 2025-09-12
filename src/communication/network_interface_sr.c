@@ -129,7 +129,7 @@ static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, in
 			      UINT64 * diff_stats, char *queryinfo_string);
 static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
+static void event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
 
 /*
  * stran_server_commit_internal - commit transaction on server.
@@ -5483,9 +5483,9 @@ null_list:
 	  perfmon_stop_watch (thread_p);
 	}
 
-      if (thread_p->event_stats.temp_expand_pages > 0)
+      if (thread_p->event_stats.extend_pages > 0)
 	{
-	  event_log_temp_expand_pages (thread_p, &info);
+	  event_log_extend_pages (thread_p, &info);
 	}
     }
 
@@ -5734,7 +5734,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
 }
 
 /*
- * event_log_temp_expand_pages - log temp volume expand pages to event log file
+ * event_log_extend_pages - log volume extend pages to event log file
  * return:
  *   thread_p(in):
  *   info(in):
@@ -5742,7 +5742,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
  *   bind_vals(in):
  */
 static void
-event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
+event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5751,7 +5751,7 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  log_fp = event_log_start (thread_p, "TEMP_VOLUME_EXPAND");
+  log_fp = event_log_start (thread_p, "EXTEND_VOLUME_INFO");
 
   if (tdes == NULL || log_fp == NULL)
     {
@@ -5767,8 +5767,8 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
       event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
-  fprintf (log_fp, "%*ctime: %d\n", indent, ' ', TO_MSEC (thread_p->event_stats.temp_expand_time));
-  fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.temp_expand_pages);
+  fprintf (log_fp, "%*ctime: %dms\n", indent, ' ', TO_MSEC (thread_p->event_stats.extend_time));
+  fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.extend_pages);
 
   event_log_end (thread_p);
 }
