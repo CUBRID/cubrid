@@ -4181,6 +4181,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
       json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
       json_object_set_new (build, "method", json_string (qdump_hashjoin_type_string (stats->hash_method)));
+
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)
 	{
@@ -4262,6 +4263,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
       json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
       json_object_set_new (build, "method", json_string (hash_method_str));
+
 #if HASHJOIN_COLLISION_RATE
       if (stats->use_hash_file)
 	{
