@@ -724,16 +724,19 @@ namespace cubconn
 
       case SERVER_GET_HA_MODE:
 	/* TODO: css_process_get_server_ha_mode_request (master_fd); */
+	css_process_get_server_ha_mode_request (m_context.m_conn->fd);
 	NEXT_STATE (ctx, RecvRequestType);
 	break;
 
       case SERVER_CHANGE_HA_MODE:
 	/* TODO: css_process_change_server_ha_mode_request (master_fd); */
+	css_process_change_server_ha_mode_request (m_context.m_conn->fd);
 	NEXT_STATE (ctx, RecvRequestType);
 	break;
 
       case SERVER_GET_EOF:
 	/* TODO: css_process_get_eof_request (master_fd); */
+	css_process_get_eof_request (m_context.m_conn->fd);
 	break;
 
       default:
