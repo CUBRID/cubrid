@@ -291,8 +291,6 @@ static void pt_hv_consistent_data_type_with_domain (PARSER_CONTEXT * parser, PT_
 static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_node);
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
 static bool pt_is_dblink_related (PT_NODE * p);
-static PT_NODE *pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static bool pt_check_column_is_not_null (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
  * pt_get_expression_definition () - get the expression definition for the
@@ -4790,11 +4788,6 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       return ER_FAILED;
     }
 
-//   if(node->node_type == PT_VALUE && node->type_enum == PT_TYPE_CHAR && def_type == PT_TYPE_VARCHAR)
-//   {
-//         return NO_ERROR;
-//   }
-
   /* set default scale and precision for parametrized types */
   switch (def_type)
     {
@@ -7818,7 +7811,7 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   return node;
 }
 
-static PT_NODE *
+PT_NODE *
 pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   bool *foldable = (bool *) arg;
@@ -7851,7 +7844,7 @@ pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
 }
 
 
-static bool
+bool
 pt_check_column_is_not_null (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   MOP cls;
@@ -18212,39 +18205,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
   else
     {
-      switch (op)
+      if (op == PT_EQ && expr->info.expr.qualifier == PT_EQ_TORDER)
 	{
-	case PT_EQ:
-	  if (expr->info.expr.qualifier == PT_EQ_TORDER)
-	    {
-	      goto end;
-	    }
-	  db_make_null (&dummy);
-	  arg1 = &dummy;
-	  type1 = PT_TYPE_NULL;
-	  break;
-
-	case PT_IS_NOT_NULL:
-	  if (pt_check_column_is_not_null (parser, opd1))
-	    {
-	      if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
-		{
-		  PT_ERRORc (parser, expr, er_msg ());
-		  has_error = true;
-		  goto end;
-		}
-
-	      db_make_int (&dbval_res, 1);
-	      result = pt_dbval_to_value (parser, &dbval_res);
-	      goto end;
-	    }
-	  [[fallthrough]];
-
-	default:
-	  db_make_null (&dummy);
-	  arg1 = &dummy;
-	  type1 = PT_TYPE_NULL;
+	  goto end;
 	}
+      db_make_null (&dummy);
+      arg1 = &dummy;
+      type1 = PT_TYPE_NULL;
     }
 
   /* special handling for PT_BETWEEN and PT_NOT_BETWEEN */
@@ -18262,42 +18229,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       arg2 = pt_value_to_db (parser, opd2);
       type2 = opd2->type_enum;
-
-      if (op == PT_LIKE)
-	{
-	  DB_VALUE compressed_pattern;
-	  int num_logical_chars = 0;
-	  int last_safe_logical_pos = 0;
-	  int num_match_many = 0;
-	  int num_match_one = 0;
-
-	  db_make_null (&compressed_pattern);
-
-	  db_compress_like_pattern (arg2, &compressed_pattern, false, NULL);
-
-	  db_get_info_for_like_optimization (arg2, false, NULL,
-					     &num_logical_chars, &last_safe_logical_pos,
-					     &num_match_many, &num_match_one);
-
-	  if (num_logical_chars >= 1 && num_logical_chars == num_match_many)
-	    {
-	      bool foldable = true;
-	      parser_walk_tree (parser, opd1, pt_is_expr_foldable, &foldable, NULL, NULL);
-	      if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
-		{
-		  PT_ERRORc (parser, expr, er_msg ());
-		  has_error = true;
-		  goto end;
-		}
-
-	      if (foldable)
-		{
-		  db_make_int (&dbval_res, 1);
-		  result = pt_dbval_to_value (parser, &dbval_res);
-		  goto end;
-		}
-	    }
-	}
     }
   else
     {
@@ -18314,34 +18245,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	case PT_FROM_UNIXTIME:
 	  arg2 = NULL;
 	  break;
-
-	case PT_LIKE:
-	  {
-	    SEMANTIC_CHK_INFO *sc_info = (SEMANTIC_CHK_INFO *) arg;
-	    if (opd1 != NULL && prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
-	      {
-		bool foldable = true;
-		parser_walk_tree (parser, opd1, pt_is_expr_foldable, &foldable, NULL, NULL);
-
-		if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
-		  {
-		    PT_ERRORc (parser, expr, er_msg ());
-		    has_error = true;
-		    goto end;
-		  }
-
-		if (foldable && pt_is_const_expr_node (opd2) && sc_info && (sc_info->top_node)
-		    && (sc_info->top_node->node_type == PT_SELECT))
-		  {
-		    sc_info->top_node->flag.cannot_prepare = 1;
-		  }
-	      }
-
-	    db_make_null (&dummy);
-	    arg2 = &dummy;
-	    type2 = PT_TYPE_NULL;
-	    break;
-	  }
 
 	case PT_LIKE_LOWER_BOUND:
 	case PT_LIKE_UPPER_BOUND:
@@ -18764,7 +18667,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		   && (opd3->type_enum == PT_TYPE_NA || opd3->type_enum == PT_TYPE_NULL))
 	       /* width_bucket special case */
 	       || (op == PT_WIDTH_BUCKET && pt_is_const_foldable_width_bucket (parser, expr))))
-    //        || (opd1->node_type == PT_NAME && (op == PT_IS_NOT_NULL || op == PT_IS_NULL))))
     {
       PT_MISC_TYPE qualifier = (PT_MISC_TYPE) 0;
       TP_DOMAIN *domain;

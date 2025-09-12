@@ -628,6 +628,8 @@ extern "C"
 					  PT_NODE * arg3);
   extern PT_NODE *parser_keyword_func (const char *name, PT_NODE * args);
 
+  extern PT_NODE *pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern bool pt_check_column_is_not_null (PARSER_CONTEXT * parser, PT_NODE * node);
   extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_parens_inside,
 					      bool use_parens_outside);
   extern bool pt_is_operator_logical (PT_OP_TYPE op);

@@ -1460,7 +1460,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	}
 
       node_prior = pt_get_first_arg_ignore_prior (node);
-      if (!pt_is_attr (node_prior))
+      if (!pt_is_attr (node_prior) && !PT_EXPR_INFO_IS_FLAGED (node_prior, PT_EXPR_INFO_CAST_WRAP))
 	{
 	  /* LHS is not an attribute */
 	  prev = prev ? prev->next : node;
@@ -1531,30 +1531,51 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 
 	  db_make_int (&value, truefalse);
-	  fold = pt_dbval_to_value (parser, &value);
-	  if (fold == NULL)
+	}
+      else
+	{
+	  bool foldable = true;
+	  parser_walk_tree (parser, node_prior, pt_is_expr_foldable, &foldable, NULL, NULL);
+	  if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
 	    {
+	      PT_ERRORc (parser, node_prior, er_msg ());
 	      return;
 	    }
 
-	  fold->type_enum = node->type_enum;
-	  fold->info.value.location = node->info.expr.location;
-	  pr_clear_value (&value);
-	  /* replace IS NULL/IS NOT NULL node with newly created VALUE node */
-	  if (prev)
+	  if (foldable)
 	    {
-	      prev->next = fold;
+	      db_make_int (&value, 1);
 	    }
 	  else
 	    {
-	      *wherep = fold;
+	      prev = prev ? prev->next : node;
+	      continue;
 	    }
-	  fold->next = node->next;
-	  node->next = NULL;
-	  /* node->or_next == NULL */
-	  parser_free_tree (parser, node);
-	  node = fold->next;
 	}
+
+      fold = pt_dbval_to_value (parser, &value);
+      if (fold == NULL)
+	{
+	  return;
+	}
+
+      fold->type_enum = node->type_enum;
+      fold->info.value.location = node->info.expr.location;
+      pr_clear_value (&value);
+      /* replace IS NULL/IS NOT NULL node with newly created VALUE node */
+      if (prev)
+	{
+	  prev->next = fold;
+	}
+      else
+	{
+	  *wherep = fold;
+	}
+      fold->next = node->next;
+      node->next = NULL;
+      /* node->or_next == NULL */
+      parser_free_tree (parser, node);
+      node = fold->next;
 
       prev = prev ? prev->next : node;
     }
@@ -2457,7 +2478,8 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	    }
 
 	  compared_expr = pt_get_first_arg_ignore_prior (crt_expr);
-	  if (!pt_is_attr (compared_expr) && !pt_is_function_index_expr (parser, compared_expr, false))
+	  if (!PT_EXPR_INFO_IS_FLAGED (compared_expr, PT_EXPR_INFO_CAST_WRAP) && !pt_is_attr (compared_expr)
+	      && !pt_is_function_index_expr (parser, compared_expr, false))
 	    {
 	      /* LHS is not an attribute or an expression supported as function index so it cannot currently have an
 	       * index. The transformation could still be useful as it might provide faster execution time in some
