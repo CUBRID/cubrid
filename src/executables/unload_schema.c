@@ -1159,7 +1159,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
-			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [is_system_class] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
+			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [flags] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
 			     "[comment] "
 			  "FROM [_db_synonym]";
 
@@ -1167,7 +1167,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
                              "[owner], "
 			     "[is_public], "
 			     "[target_name], "
-			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [is_system_class] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
+			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [flags] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
 			     "[comment] "
 			   "FROM [_db_synonym]";
                            "WHERE [owner].[name] = '%s'";

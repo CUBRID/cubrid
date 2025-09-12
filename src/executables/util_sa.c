@@ -3173,7 +3173,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
   sprintf (query,
 	"SELECT "
 	  "[c].[class_type] AS [class_type], "
-	  "[c].[is_system_class] AS [is_system_class], "
+	  "[c].[flags] AS [flags], "
 	  "[c].[class_name] AS [class_name], "
 	  "LOWER ([c].[owner].[name]) AS [owner_name] "
 	"FROM "
@@ -3214,7 +3214,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
   do
     {
       int class_type = SM_CLASS_CT;
-      int is_system_class = 0;
+      int flags = 0;
       const char *class_name = NULL;
       const char *owner_name = NULL;
 
@@ -3234,7 +3234,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
 	  continue;
 	}
 
-      /* is_system_class */
+      /* flags */
       error = db_query_get_tuple_value (query_result, 1, &value);
       if (error != NO_ERROR)
 	{
@@ -3242,7 +3242,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
 	  goto exit_on_error;
 	}
       assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
+      flags = db_get_int (&value);
       db_value_clear (&value);
 
       /* class_name */
@@ -3265,7 +3265,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
       assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
       owner_name = db_get_string (&owner_name_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (flags & SM_CLASSFLAG_SYSTEM)
 	{
 	  fprintf (stdout, "%s\n", class_name);
 	  fprintf (f_stmt, "ALTER TABLE [%s] COLLATE utf8_bin;\n", class_name);
@@ -3343,7 +3343,7 @@ synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bo
   // *INDENT-OFF*
   sprintf (query,
 	"SELECT "
-	  "[a].[class_of].[is_system_class] AS [is_system_class], "
+	  "[a].[class_of].[flags] AS [flags], "
 	  "[a].[class_of].[class_name] AS [class_name], "
 	  "LOWER ([a].[class_of].[owner].[name]) AS [owner_name], "
 	  "[i].[index_name] AS [index_name] "
@@ -3393,12 +3393,12 @@ synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bo
 
   do
     {
-      int is_system_class = 0;
+      int flags = 0;
       const char *class_name = NULL;
       const char *owner_name = NULL;
       const char *index_name = NULL;
 
-      /* is_system_class */
+      /* flags */
       error = db_query_get_tuple_value (query_result, 0, &value);
       if (error != NO_ERROR)
 	{
@@ -3406,7 +3406,7 @@ synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bo
 	  goto exit_on_error;
 	}
       assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
+      flags = db_get_int (&value);
       db_value_clear (&value);
 
       /* class_name */
@@ -3439,7 +3439,7 @@ synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bo
       assert (DB_VALUE_TYPE (&index_name_val) == DB_TYPE_STRING);
       index_name = db_get_string (&index_name_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (flags & SM_CLASSFLAG_SYSTEM)
 	{
 	  fprintf (stdout, "%s | %s\n", class_name, index_name);
 	  fprintf (f_stmt, "ALTER TABLE [%s] DROP FOREIGN KEY [%s];\n", class_name, index_name);
@@ -3534,7 +3534,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
   sprintf (query,
 	"SELECT "
 	  "[a].[class_of].[class_type] AS [class_type], "
-	  "[a].[class_of].[is_system_class] AS [is_system_class], "
+	  "[a].[class_of].[flags] AS [flags], "
 	  "[a].[class_of].[unique_name] AS [unique_name], "
 	  "[a].[class_of].[class_name] AS [class_name], "
 	  "LOWER ([a].[class_of].[owner].[name]) AS [owner_name], "
@@ -3607,7 +3607,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
   do
     {
       int class_type = SM_CLASS_CT;
-      int is_system_class = 0;
+      int flags = 0;
       const char *unique_name = NULL;
       const char *class_name = NULL;
       const char *owner_name = NULL;
@@ -3626,7 +3626,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
       class_type = db_get_int (&value);
       db_value_clear (&value);
 
-      /* is_system_class */
+      /* flags */
       error = db_query_get_tuple_value (query_result, 1, &value);
       if (error != NO_ERROR)
 	{
@@ -3634,7 +3634,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	  goto exit_on_error;
 	}
       assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
+      flags = db_get_int (&value);
       db_value_clear (&value);
 
       /* unique_name */
@@ -3714,7 +3714,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 		  goto exit_on_error;
 		}
 
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	      if (flags & SM_CLASSFLAG_SYSTEM)
 		{
 		  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", class_name);
 		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
@@ -3729,7 +3729,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	    }
 	  else
 	    {
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	      if (flags & SM_CLASSFLAG_SYSTEM)
 		{
 		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
 			   attr_data_type);
@@ -3745,7 +3745,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	{
 	  assert (class_type == SM_VCLASS_CT);
 
-	  if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	  if (flags & SM_CLASSFLAG_SYSTEM)
 	    {
 	      fprintf (f_stmt, "DROP VIEW [%s];\n", class_name);
 	    }
@@ -3853,7 +3853,7 @@ synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
   // *INDENT-OFF*
   sprintf (query,
 	"SELECT "
-	  "[q].[class_of].[is_system_class] AS [is_system_class], "
+	  "[q].[class_of].[flags] AS [flags], "
 	  "[q].[class_of].[class_name] AS [view_name], "
 	  "LOWER ([q].[class_of].[owner].[name]) AS [owner_name], "
 	  "[q].[spec] AS [spec], "
@@ -3909,13 +3909,13 @@ synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 
   do
     {
-      int is_system_class = 0;
+      int flags = 0;
       const char *view_name = NULL;
       const char *owner_name = NULL;
       const char *query_spec = NULL;
       int need_check = 0;
 
-      /* is_system_class */
+      /* flags */
       error = db_query_get_tuple_value (query_result, 0, &value);
       if (error != NO_ERROR)
 	{
@@ -3923,7 +3923,7 @@ synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	  goto exit_on_error;
 	}
       assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
+      flags = db_get_int (&value);
       db_value_clear (&value);
 
       /* view_name */
@@ -3967,7 +3967,7 @@ synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
       need_check = db_get_int (&value);
       db_value_clear (&value);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (flags & SM_CLASSFLAG_SYSTEM)
 	{
 	  fprintf (stdout, "%s | %s\n", view_name, query_spec);
 
@@ -4088,7 +4088,7 @@ synccoll_check_triggers (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool *
 
   do
     {
-      int is_system_class = 0;
+      int flags = 0;
       const char *trigger_name = NULL;
       const char *owner_name = NULL;
       const char *trigger_cond = NULL;
@@ -4200,7 +4200,7 @@ synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt
   // *INDENT-OFF*
   sprintf (query,
 	"SELECT "
-	  "[k].[index_of].[class_of].[is_system_class] AS [is_system_class], "
+	  "[k].[index_of].[class_of].[flags] AS [flags], "
 	  "[k].[index_of].[class_of].[class_name] AS [class_name], "
 	  "LOWER ([k].[index_of].[class_of].[owner].[name]) AS [owner_name], "
 	  "[k].[index_of].[index_name] AS [index_name], "
@@ -4243,13 +4243,13 @@ synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt
 
   do
     {
-      int is_system_class = 0;
+      int flags = 0;
       const char *class_name = NULL;
       const char *owner_name = NULL;
       const char *index_name = NULL;
       const char *index_func_expr = NULL;
 
-      /* is_system_class */
+      /* flags */
       error = db_query_get_tuple_value (query_result, 0, &value);
       if (error != NO_ERROR)
 	{
@@ -4257,7 +4257,7 @@ synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt
 	  goto exit_on_error;
 	}
       assert (DB_VALUE_TYPE (&value) == DB_TYPE_INTEGER);
-      is_system_class = db_get_int (&value);
+      flags = db_get_int (&value);
       db_value_clear (&value);
 
       /* class_name */
@@ -4300,7 +4300,7 @@ synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt
       assert (DB_VALUE_TYPE (&index_func_expr_val) == DB_TYPE_STRING);
       index_func_expr = db_get_string (&index_func_expr_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (flags & SM_CLASSFLAG_SYSTEM)
 	{
 	  fprintf (stdout, "%s | %s | %s\n", class_name, index_name, index_func_expr);
 	  fprintf (f_stmt, "ALTER TABLE [%s] DROP INDEX [%s];\n", class_name, index_name);
