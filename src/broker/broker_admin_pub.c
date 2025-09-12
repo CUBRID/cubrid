@@ -77,10 +77,6 @@
 #include "host_lookup.h"
 #include "system_parameter.h"
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#define DB_EMPTY_SESSION        (0)
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
 #define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))

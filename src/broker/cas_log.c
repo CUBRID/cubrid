@@ -50,10 +50,8 @@
 #include "broker_env_def.h"
 #include "broker_filename.h"
 #include "broker_util.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbi.h"
 #include "cas_db_inc.h"
-#endif
 #include "chartype.h"
 #include "hide_password.h"
 
@@ -992,12 +990,10 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
 
   session_id_buf[0] = '\0';
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (!ACCESS_LOG_IS_DENIED_TYPE (log_type))
     {
       sprintf (session_id_buf, "%u", db_get_session_id ());
     }
-#endif
 
   cas_fprintf (fp, print_format, as_index + 1, clt_ip_str, ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
 	       ct1.tm_min, ct1.tm_sec, dbname, dbuser, get_access_log_type_string (log_type), session_id_buf);
@@ -1009,7 +1005,6 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
 void
 cas_log_query_info_init (int id, char is_only_query_plan)
 {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   char *plan_dump_filename;
 
   plan_dump_filename = cas_log_query_plan_file (id);
@@ -1024,7 +1019,6 @@ cas_log_query_info_init (int id, char is_only_query_plan)
     {
       set_optimization_level (513);
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 }
 
 char *
@@ -1290,34 +1284,15 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 }
 
 static bool
-cas_log_begin_hang_check_time (void)
+cas_log_begin_hang_check_time (void)	// check airnet
 {
-  if (cas_shard_flag == OFF)
-    {
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-      bool is_prev_time_set = (as_info->claimed_alive_time > 0);
-      if (!is_prev_time_set)
-	{
-	  set_hang_check_time ();
-	}
-      return is_prev_time_set;
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-    }
   return false;
 }
 
 static void
-cas_log_end_hang_check_time (bool is_prev_time_set)
+cas_log_end_hang_check_time (bool is_prev_time_set)	// check airnet
 {
-  if (cas_shard_flag == OFF)
-    {
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-      if (!is_prev_time_set)
-	{
-	  unset_hang_check_time ();
-	}
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-    }
+
 }
 
 static size_t
@@ -1535,7 +1510,6 @@ access_log_backup (char *access_log_file, struct tm *ct)
 static const char *
 get_access_log_type_string (ACCESS_LOG_TYPE type)
 {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   switch (type)
     {
     case NEW_CONNECTION:
@@ -1548,7 +1522,6 @@ get_access_log_type_string (ACCESS_LOG_TYPE type)
       assert (0);
       break;
     }
-#endif
 
   return "";
 }

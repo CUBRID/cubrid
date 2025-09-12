@@ -26,13 +26,11 @@
 
 #include "config.h"
 #include "cas_protocol.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "porting.h"
 
 #define	APPL_SERVER_CAS           0
-#define	APPL_SERVER_CAS_ORACLE    1
+#define	APPL_SERVER_CAS_ORACLE    1	// check airnet
 #define APPL_SERVER_CAS_MYSQL51   2
 #define APPL_SERVER_CAS_MYSQL     3
 #define APPL_SERVER_CAS_CGW       4
@@ -45,7 +43,7 @@
 #define IS_NOT_APPL_SERVER_TYPE_CAS(x)	!IS_APPL_SERVER_TYPE_CAS(x)
 
 #define APPL_SERVER_CAS_TYPE_NAME               "CAS"
-#define APPL_SERVER_CAS_ORACLE_TYPE_NAME        "CAS_ORACLE"
+#define APPL_SERVER_CAS_ORACLE_TYPE_NAME        "CAS_ORACLE"	// check airnet
 #define APPL_SERVER_CAS_MYSQL_TYPE_NAME         "CAS_MYSQL"
 #define APPL_SERVER_CAS_MYSQL51_TYPE_NAME       "CAS_MYSQL51"
 #define APPL_SERVER_CAS_MYSQL61_TYPE_NAME       "CAS_MYSQL61"
