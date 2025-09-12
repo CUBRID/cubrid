@@ -1518,7 +1518,8 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	  goto end;
 	}
 
-      err = set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_INDEX_TYPE_INDEX), &index_type);
+      err =
+	set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_INDEX_TYPE_INDEX), &index_type);
       if (err != NO_ERROR)
 	{
 	  goto end;
