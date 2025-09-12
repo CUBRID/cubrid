@@ -59,9 +59,6 @@
 
 #define DEFAULT_EMPTY_STRING           "\0"
 #define DEFAULT_CUB_USER_NAME          "PUBLIC"
-#define DEFAULT_ORACLE_USER_NAME       "scott"
-#define DEFAULT_ORACLE_PASSWORD        "tiger"
-#define DEFAULT_MYSQL_USER_NAME        "root"
 
 #define RESULT_FORMAT            "%-15s"
 #define SHARD_ID_FORMAT          "%-10d"
