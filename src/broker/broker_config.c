@@ -60,8 +60,6 @@
 #endif
 #define DEFAULT_SESSION_TIMEOUT		"5min"
 #define DEFAULT_MAX_QUERY_TIMEOUT       "0"
-#define DEFAULT_MYSQL_READ_TIMEOUT      "0"
-#define DEFAULT_MYSQL_KEEPALIVE_INTERVAL	"1800"	/* 30m */
 #define DEFAULT_JOB_QUEUE_SIZE		1024
 #define DEFAULT_APPL_SERVER		"CAS"
 #define DEFAULT_EMPTY_STRING		"\0"
@@ -1043,29 +1041,6 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       else if (br_info[num_brs].query_timeout > MAX_QUERY_TIMEOUT_LIMIT)
 	{
 	  errcode = PARAM_BAD_RANGE;
-	  goto conf_error;
-	}
-
-      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno);
-      strncpy_bufsize (time_str, s);
-      br_info[num_brs].mysql_read_timeout = (int) ut_time_string_to_sec (time_str, "sec");
-      if (br_info[num_brs].mysql_read_timeout < 0)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-      else if (br_info[num_brs].mysql_read_timeout > MAX_QUERY_TIMEOUT_LIMIT)
-	{
-	  errcode = PARAM_BAD_RANGE;
-	  goto conf_error;
-	}
-
-      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_KEEPALIVE_INTERVAL", DEFAULT_MYSQL_KEEPALIVE_INTERVAL, &lineno);
-      strncpy_bufsize (time_str, s);
-      br_info[num_brs].mysql_keepalive_interval = (int) ut_time_string_to_sec (time_str, "sec");
-      if (br_info[num_brs].mysql_keepalive_interval < MIN_MYSQL_KEEPALIVE_INTERVAL)
-	{
-	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
 	}
 

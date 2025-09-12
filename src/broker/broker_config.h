@@ -207,8 +207,6 @@ struct t_broker_info
   int appl_server_hard_limit;
   int session_timeout;
   int query_timeout;
-  int mysql_read_timeout;
-  int mysql_keepalive_interval;
   int job_queue_size;
   int time_to_kill;
   int err_code;
