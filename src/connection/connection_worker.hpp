@@ -24,6 +24,7 @@
 #define _CONNECTION_WORKER_HPP_
 
 #include "connection_defs.h"
+#include "connection_stats.hpp"
 #include "server_support.h"
 #include "receiver.hpp"
 #include "transmitter.hpp"
@@ -101,7 +102,7 @@ namespace cubconn
 	  transmitter m_transmitter;
 	} m_send;
 
-	context (std::size_t capacity);
+	context (std::size_t capacity, connection_stats *stats);
 	~context ();
       };
 
@@ -109,23 +110,30 @@ namespace cubconn
       connection_worker (connection_pool *pool, std::size_t core, std::size_t index);
       ~connection_worker ();
 
-      /* used for control from other threads */
-      void enqueue (const message &item);
-      bool notify ();
-
       void initialize ();
       void finalize ();
       bool run ();
 
       void attach ();
 
+      /* used for control from other threads */
+      void enqueue (const message &item);
+      bool notify ();
+
+      /* statistics */
+      void stats ();
+
     private:
+      /* connection pool */
+      connection_pool *m_parent;
+
       /* thread handle */
       std::thread m_thread;
       std::size_t m_core;
       bool m_stop;
-      /* connection pool */
-      connection_pool *m_parent;
+
+      cubthread::entry *m_entry;
+      std::unordered_set<context *> m_context;
 
       std::size_t m_index;
       cubsocket::epoll m_events;
@@ -136,8 +144,8 @@ namespace cubconn
       /* consumption must happen from only one thread.	    */
       tbb::concurrent_queue<message> m_queue;
 
-      cubthread::entry *m_entry;
-      std::unordered_set<context *> m_context;
+      /* stats */
+      connection_stats m_stats;
 
       void push_task_into_worker_pool (context *ctx);
 

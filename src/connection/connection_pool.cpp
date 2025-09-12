@@ -106,4 +106,12 @@ namespace cubconn
 	m_counter = 0;
       }
   }
+
+  void connection_pool::stats ()
+  {
+    for (auto &conn : m_workers)
+    {
+      conn->stats ();
+    }
+  }
 }

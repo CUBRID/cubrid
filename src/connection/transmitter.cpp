@@ -40,8 +40,9 @@
 
 namespace cubconn
 {
-  transmitter::transmitter () :
-    m_buf (16)
+  transmitter::transmitter (connection_stats *stats) :
+    m_buf (16),
+    m_stats (stats)
   {
     m_deleter.reserve (16);
   }
@@ -62,6 +63,8 @@ namespace cubconn
 	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL);
 	if (bytes > 0)
 	  {
+	    m_stats->add (stats::NET_SEND, bytes);
+
 	    advance = static_cast<std::size_t> (bytes);
 	    while (advance && msg->msg_iovlen)
 	      {

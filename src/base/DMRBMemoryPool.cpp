@@ -144,5 +144,15 @@ namespace cubbase
     assert_release (false);
     return { nullptr, 0 };
   }
+
+  std::uint64_t DMRBMemoryPool::get_head ()
+  {
+    return m_head;
+  }
+
+  std::uint64_t DMRBMemoryPool::get_tail ()
+  {
+    return m_tail;
+  }
 }
 
