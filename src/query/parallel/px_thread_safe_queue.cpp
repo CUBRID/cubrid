@@ -21,6 +21,8 @@
  */
 
 #include "px_thread_safe_queue.hpp"
+// Explicit instantiation for parallel_query_execute::job
+#include "px_query_job.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -338,6 +340,4 @@ namespace parallel_query
   }
 }
 
-// Explicit instantiation for parallel_query_execute::job
-#include "px_query_job.hpp"
 template class parallel_query::thread_safe_queue<parallel_query_execute::job>;
