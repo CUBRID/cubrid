@@ -1970,11 +1970,22 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     {
       /* only can be mergeable in case of rownum only predicate and updatable order by */
       /* query containing distinct, agg cannot add hidden cols, so orderby may be removed during view merging. */
-      if (!is_rownum_only || pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery))
+      if (!is_rownum_only || pt_has_aggregate (parser, mainquery))
 	{
 	  /* not pushable */
 	  return NON_PUSHABLE;
 	}
+      else if (pt_is_distinct (mainquery))
+        {
+          if (pt_length_of_list (select_list) == 1 && PT_IS_INSTNUM (select_list) && !pt_has_inst_or_orderby_num_in_where (parser, mainquery))
+            {
+              /* case of 'select distinct rownum from (subq)' can be view-merged */
+            }
+          else
+            {
+              return NON_PUSHABLE;
+            }
+        }
     }
 
   /*****************************/
