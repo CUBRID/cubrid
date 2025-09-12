@@ -51,6 +51,10 @@ namespace cubbase
       void consume (std::size_t length);
       cubbase::span<const std::byte> peek () const;
 
+      /* TODO: remove this */
+      std::uint64_t get_head ();
+      std::uint64_t get_tail ();
+
     private:
       std::map<std::uint64_t, std::uint64_t> m_free;
   };

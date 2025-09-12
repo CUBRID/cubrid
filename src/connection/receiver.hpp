@@ -23,6 +23,7 @@
 #ifndef _CONNECTION_RECEIVER_HPP_
 #define _CONNECTION_RECEIVER_HPP_
 
+#include "connection_stats.hpp"
 #include "span.hpp"
 #include "buffer.hpp"
 #include "DMRBMemoryPool.hpp"
@@ -48,7 +49,7 @@ namespace cubconn
       };
 
     public:
-      receiver (std::size_t capacity);
+      receiver (std::size_t capacity, connection_stats *stats);
       ~receiver ();
 
       void reset ();
@@ -58,7 +59,12 @@ namespace cubconn
 
       std::vector<cubbase::span<std::byte>> *get_result ();
 
+      /* TODO: remove this */
+      cubbase::DMRBMemoryPool &get_buf (); 
+
     private:
+      connection_stats *m_stats;
+
       state m_state;
       cubbase::DMRBMemoryPool m_buf;
 
