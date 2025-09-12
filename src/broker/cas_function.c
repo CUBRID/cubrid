@@ -512,7 +512,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
       cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_internal srv_h_id %d %s%d",
-		    srv_h_id, "error:", err_info.err_number);
+		     srv_h_id, "error:", err_info.err_number);
 
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
@@ -665,8 +665,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 #endif
 	}
     }
-    cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
-		  forward_only_cursor ? "forward_only_cursor " : "");
+  cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
+		 forward_only_cursor ? "forward_only_cursor " : "");
 
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -715,16 +715,16 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
 #if defined(CAS_FOR_CGW)
-    cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
-		  (ret_code < 0) ? "error:" : "", err_number_execute,
-		  (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle), elapsed_sec,
-		  elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-		  (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
+		 (ret_code < 0) ? "error:" : "", err_number_execute,
+		 (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle), elapsed_sec,
+		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 #else
-    cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
-		  (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
-		  elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-		  (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
+		 (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
+		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
+		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 #endif
 
 #if !defined(CAS_FOR_CGW)
@@ -750,8 +750,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	{
 	  cas_slow_log_write (&query_start_time, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ",
 			      exec_func_name, srv_h_id);
-		if (srv_handle->sql_stmt != NULL)
-		{
+	  if (srv_handle->sql_stmt != NULL)
+	    {
 #if defined(CAS_FOR_CGW)
 	      HIDE_PWD_INFO t_pwd_info;
 	      INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
@@ -762,24 +762,24 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
-					      &psr->hide_pwd_info);
+					       &psr->hide_pwd_info);
 #endif
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
-			     SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
-		}
+			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
+	    }
 #if defined(CAS_FOR_CGW)
-	    cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			       "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
-			       err_number_execute,
-			       (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle),
-			       elapsed_sec, elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-			       (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
+			      err_number_execute,
+			      (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle),
+			      elapsed_sec, elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
+			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 #else
-	    cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			       "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
-			       err_number_execute, get_tuple_count (srv_handle), elapsed_sec, elapsed_msec,
-			       (client_cache_reusable == TRUE) ? " (CC)" : "",
-			       (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
+			      err_number_execute, get_tuple_count (srv_handle), elapsed_sec, elapsed_msec,
+			      (client_cache_reusable == TRUE) ? " (CC)" : "",
+			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 #endif
 
 #if !defined(CAS_FOR_CGW)
@@ -1638,18 +1638,18 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
       cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fn_next_result srv_h_id %d %s%d",
-		    srv_h_id, "error:", err_info.err_number);
+		     srv_h_id, "error:", err_info.err_number);
 
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
 
-    cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "next_result %d %s", srv_h_id,
-		  (srv_handle->use_query_cache == true) ? "(QC)" : "");
+  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "next_result %d %s", srv_h_id,
+		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
 
-    ux_next_result (srv_handle, flag, net_buf, req_info);
+  ux_next_result (srv_handle, flag, net_buf, req_info);
 
-    return FN_KEEP_CONN;
+  return FN_KEEP_CONN;
 }
 
 FN_RETURN
@@ -2467,7 +2467,7 @@ bind_value_print (char type, void *net_value, bool slow_log)
 
 	net_arg_get_cci_object (&pageid, &slotid, &volid, net_value);
 	write2_func ("%d|%d|%d", pageid, slotid, volid);
-      } 
+      }
       break;
     case CCI_U_TYPE_BLOB:
     case CCI_U_TYPE_CLOB:
