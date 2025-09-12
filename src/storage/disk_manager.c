@@ -349,7 +349,8 @@ static bool disk_Logging = false;
 /************************************************************************/
 
 #if defined (SERVER_MODE)
-static void disk_log_extend_elapsed (THREAD_ENTRY * thread_p, const char * event, const char *name, DB_VOLTYPE voltype, const char *log);
+static void disk_log_extend_elapsed (THREAD_ENTRY * thread_p, const char *event, const char *name, DB_VOLTYPE voltype,
+				     const char *log);
 #endif
 
 STATIC_INLINE char *disk_vhdr_get_vol_fullname (const DISK_VOLUME_HEADER * vhdr) __attribute__ ((ALWAYS_INLINE));
@@ -1712,7 +1713,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       to_expand = MIN (nsect_extend, max - total);
 
 #if defined (SERVER_MODE)
-      disk_log_extend_elapsed (thread_p, "DISK_EXTEND", fileio_get_volume_label (extend_info->volid_extend, PEEK), extend_info->voltype, "volume extension started");
+      disk_log_extend_elapsed (thread_p, "DISK_EXTEND", fileio_get_volume_label (extend_info->volid_extend, PEEK),
+			       extend_info->voltype, "volume extension started");
 #endif
 
       log_sysop_start (thread_p);
@@ -1740,7 +1742,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 		disk_type_to_string (extend_info->voltype));
 
 #if defined (SERVER_MODE)
-      disk_log_extend_elapsed (thread_p, "DISK_EXTEND", fileio_get_volume_label (extend_info->volid_extend, PEEK), extend_info->voltype, "volume extension completed");
+      disk_log_extend_elapsed (thread_p, "DISK_EXTEND", fileio_get_volume_label (extend_info->volid_extend, PEEK),
+			       extend_info->voltype, "volume extension completed");
 #endif
 
       /* subtract from what we need to expand */
@@ -2277,7 +2280,8 @@ exit:
     }
 
 #if defined (SERVER_MODE)
-  disk_log_extend_elapsed (thread_p, "DISK_ADD_VOLUME", extinfo->name ? extinfo->name : NULL, extinfo->voltype, "volume creation completed");
+  disk_log_extend_elapsed (thread_p, "DISK_ADD_VOLUME", extinfo->name ? extinfo->name : NULL, extinfo->voltype,
+			   "volume creation completed");
 #endif
 
   return error_code;
@@ -5298,7 +5302,8 @@ disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol_remarks)
  * str (in)	  : log
  */
 static void
-disk_log_extend_elapsed (THREAD_ENTRY * thread_p, const char * event, const char *name, DB_VOLTYPE voltype, const char *log)
+disk_log_extend_elapsed (THREAD_ENTRY * thread_p, const char *event, const char *name, DB_VOLTYPE voltype,
+			 const char *log)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5310,7 +5315,8 @@ disk_log_extend_elapsed (THREAD_ENTRY * thread_p, const char * event, const char
     }
 
   fprintf (log_fp, "%*ctran index: %d\n", indent, ' ', thread_p->tran_index);
-  fprintf (log_fp, "%*cvoltype: %s\n", indent, ' ', voltype == DB_PERMANENT_VOLTYPE ? "PERMANENT_VOLUME" : "TEMPORARY_VOLUME");
+  fprintf (log_fp, "%*cvoltype: %s\n", indent, ' ',
+	   voltype == DB_PERMANENT_VOLTYPE ? "PERMANENT_VOLUME" : "TEMPORARY_VOLUME");
   fprintf (log_fp, "%*cvolname: %s\n", indent, ' ', name ? name : "(UNKNOWN)");
   fprintf (log_fp, "%*cevent: %s\n", indent, ' ', log);
 
