@@ -2465,8 +2465,8 @@ exit:
 /*
  * disk_volume_is_empty () - Check whether a disk volume is empty.
  *
- * return        : true if the volume is empty (no data),
- *                 false if the volume is in use (contains data)
+ * return        : true if the volume does not exist or is empty (no data),
+ *                 false if the volume exists and contains data
  * thread_p (in) : thread entry
  * volid (in)    : volume identifier
  */
