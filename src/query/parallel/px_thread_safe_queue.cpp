@@ -21,6 +21,7 @@
  */
 
 #include "px_thread_safe_queue.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

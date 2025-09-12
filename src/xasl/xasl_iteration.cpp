@@ -21,6 +21,9 @@
 #include <sstream>
 #include "error_manager.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 extern "C" {
   XASL_NODE *xasl_find_by_id (XASL_NODE *xasl, int target_id)
   {
