@@ -1956,14 +1956,25 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* not pushable */
       return NON_PUSHABLE;
     }
-  /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
+  /* subquery has order_by and main query has analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
-      && ((!is_rownum_only && pt_has_inst_in_where_and_select_list (parser, mainquery))
-	  || pt_has_analytic (parser, mainquery) || pt_has_aggregate (parser, mainquery)
+      && (pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
 	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
+    }
+
+  /* subquery has order_by and main query has inst_num */
+  if (subquery->info.query.order_by && pt_has_inst_in_where_and_select_list (parser, mainquery))
+    {
+      /* only can be mergeable in case of rownum only predicate and updatable order by */
+      /* query containing distinct, agg cannot add hidden cols, so orderby may be removed during view merging. */
+      if (!is_rownum_only || pt_is_distinct (mainquery) || pt_has_aggregate (parser, mainquery))
+        {
+          /* not pushable */
+          return NON_PUSHABLE;
+        }
     }
 
   /*****************************/
