@@ -456,8 +456,11 @@ enum param_id
   PRM_ID_STATDUMP_FORCE_ADD_INT_MAX,
   PRM_ID_HA_TCP_PING_HOSTS,
   PRM_ID_HA_PING_TIMEOUT,
+
+  PRM_ID_PAGE_LATCH_TIMEOUT,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HA_PING_TIMEOUT
+  PRM_LAST_ID = PRM_ID_PAGE_LATCH_TIMEOUT
 };
 typedef enum param_id PARAM_ID;
 
