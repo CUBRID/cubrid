@@ -303,6 +303,7 @@ db_parse_one_statement (DB_SESSION * session)
       if (session->type_list)
 	{
 	  db_free_query_format (session->type_list[0]);
+	  session->type_list[0] = NULL;
 	}
       if (session->statements[0])
 	{

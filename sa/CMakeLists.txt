@@ -29,6 +29,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/compactdb.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   )
@@ -483,6 +484,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/compactdb.c
   ${EXECUTABLES_DIR}/unloaddb.c
   ${EXECUTABLES_DIR}/unload_object.c
+  ${EXECUTABLES_DIR}/unload_object_file.c
   ${EXECUTABLES_DIR}/unload_schema.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${COMPAT_SOURCES}
@@ -624,6 +626,7 @@ if(UNIX)
   # find out what this means:
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
   target_link_libraries(cubridsa LINK_PUBLIC ${CURSES_LIBRARIES} ${CMAKE_DL_LIBS})
+  target_link_libraries(cubridsa PUBLIC rt)
 endif(UNIX)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)

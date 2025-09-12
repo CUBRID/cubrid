@@ -5740,22 +5740,9 @@ btree_generate_prefix_domain (BTID_INT * btid)
   dbtype = TP_DOMAIN_TYPE (domain);
 
   /* varying domains did not come into use until btree revision level 1 */
-  if (dbtype == DB_TYPE_CHAR || dbtype == DB_TYPE_NCHAR || dbtype == DB_TYPE_BIT)
+  if (dbtype == DB_TYPE_BIT)
     {
-      switch (dbtype)
-	{
-	case DB_TYPE_CHAR:
-	  vartype = DB_TYPE_VARCHAR;
-	  break;
-	case DB_TYPE_NCHAR:
-	  vartype = DB_TYPE_VARNCHAR;
-	  break;
-	case DB_TYPE_BIT:
-	  vartype = DB_TYPE_VARBIT;
-	  break;
-	default:
-	  return NULL;
-	}
+      vartype = DB_TYPE_VARBIT;
 
       var_domain =
 	tp_domain_resolve (vartype, domain->class_mop, domain->precision, domain->scale, domain->setdomain,

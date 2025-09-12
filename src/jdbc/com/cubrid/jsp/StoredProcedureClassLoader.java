@@ -51,6 +51,9 @@ public class StoredProcedureClassLoader extends URLClassLoader {
 
 	private void init() {
 		root = new File(Server.getSpPath() + "/java");
+                if (!root.exists()) {
+                  root.mkdirs ();
+                }
 		initJars();
 		initClasses();
 	}

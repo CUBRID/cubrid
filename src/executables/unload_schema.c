@@ -42,6 +42,7 @@
 #include "authenticate.h"
 #include "schema_manager.h"
 #include "trigger_description.hpp"
+#include "unload_object_file.h"
 #include "load_object.h"
 #include "object_primitive.h"
 #include "parser.h"
@@ -168,6 +169,7 @@ static int emit_stored_procedure (print_output & output_ctx);
 static int emit_foreign_key (print_output & output_ctx, DB_OBJLIST * classes);
 static int create_filename (const char *output_dirname, const char *output_prefix, const char *suffix,
 			    char *output_filename_p, const size_t filename_size);
+
 /*
  * CLASS DEPENDENCY ORDERING
  *
@@ -719,56 +721,7 @@ export_serial (print_output & output_ctx)
 	    }
 	}
 
-      if (db_get_int (&values[SERIAL_STARTED]) == 1)
-	{
-	  /* Calculate next value of serial */
-	  db_make_null (&diff_value);
-	  error = numeric_db_value_sub (&values[SERIAL_MAX_VAL], &values[SERIAL_CURRENT_VAL], &diff_value);
-	  if (error == ER_IT_DATA_OVERFLOW)
-	    {
-	      // max - curr might be flooded.
-	      diff_value = values[SERIAL_MAX_VAL];
-	      er_clear ();
-	    }
-	  else if (error != NO_ERROR)
-	    {
-	      goto err;
-	    }
 
-	  error = numeric_db_value_compare (&values[SERIAL_INCREMENT_VAL], &diff_value, &answer_value);
-	  if (error != NO_ERROR)
-	    {
-	      goto err;
-	    }
-	  /* increment > diff */
-	  if (db_get_int (&answer_value) > 0)
-	    {
-	      /* no cyclic case */
-	      if (db_get_int (&values[SERIAL_CYCLIC]) == 0)
-		{
-		  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-			  pr_type_name (TP_DOMAIN_TYPE (domain)));
-		  error = ER_IT_DATA_OVERFLOW;
-		  goto err;
-		}
-
-	      db_value_clear (&values[SERIAL_CURRENT_VAL]);
-	      values[SERIAL_CURRENT_VAL] = values[SERIAL_MIN_VAL];
-	    }
-	  /* increment <= diff */
-	  else
-	    {
-	      error = numeric_db_value_add (&values[SERIAL_CURRENT_VAL], &values[SERIAL_INCREMENT_VAL], &answer_value);
-	      if (error != NO_ERROR)
-		{
-		  goto err;
-		}
-
-	      db_value_clear (&values[SERIAL_CURRENT_VAL]);
-	      values[SERIAL_CURRENT_VAL] = answer_value;
-	    }
-	}
 
       output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n",
 		  db_get_string (&values[SERIAL_OWNER_NAME]));
@@ -794,8 +747,15 @@ export_serial (print_output & output_ctx)
 	  desc_value_print (output_ctx, &values[SERIAL_COMMENT]);
 	}
       output_ctx (";\n");
-      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n\n",
+
+      output_ctx ("call [change_serial_owner] ('%s', '%s') on class [db_serial];\n",
 		  db_get_string (&values[SERIAL_NAME]), db_get_string (&values[SERIAL_OWNER_NAME]));
+
+      if (db_get_int (&values[SERIAL_STARTED]) == 1)
+	{
+	  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n", PRINT_IDENTIFIER (db_get_string (&values[SERIAL_NAME])));
+	}
+      output_ctx ("\n");
 
       db_value_clear (&diff_value);
       db_value_clear (&answer_value);
@@ -1161,7 +1121,12 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
 	{
 	  emit_class_meta (output_ctx, cl->op);
 	}
-      output_ctx ("\n");
+
+      if (do_auth)
+	{
+	  emit_class_owner (output_ctx, cl->op);
+	  output_ctx ("\n");
+	}
     }
 
   output_ctx ("\n");
@@ -1209,16 +1174,6 @@ emit_schema (print_output & output_ctx, DB_OBJLIST * classes, int do_auth, DB_OB
       if (is_partitioned)
 	{
 	  emit_partition_info (output_ctx, cl->op);
-	}
-
-      /*
-       * change_owner method should be called after adding all columns.
-       * If some column has auto_increment attribute, change_owner method
-       * will change serial object's owner related to that attribute.
-       */
-      if (do_auth)
-	{
-	  emit_class_owner (output_ctx, cl->op);
 	}
     }
 
@@ -1922,47 +1877,6 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 		  continue;
 		}
 
-	      if (db_get_int (&started_val) == 1)
-		{
-		  DB_VALUE diff_val, answer_val;
-
-		  db_make_null (&diff_val);
-		  sr_error = numeric_db_value_sub (&max_val, &cur_val, &diff_val);
-		  if (sr_error == ER_IT_DATA_OVERFLOW)
-		    {
-		      // max - cur might be flooded.
-		      diff_val = max_val;
-		      er_clear ();
-		    }
-		  else if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-		  sr_error = numeric_db_value_compare (&inc_val, &diff_val, &answer_val);
-		  if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-		  /* auto_increment is always non-cyclic */
-		  if (db_get_int (&answer_val) > 0)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  sr_error = numeric_db_value_add (&cur_val, &inc_val, &answer_val);
-		  if (sr_error != NO_ERROR)
-		    {
-		      pr_clear_value (&sr_name);
-		      continue;
-		    }
-
-		  pr_clear_value (&cur_val);
-		  cur_val = answer_val;
-		}
-
 	      start_with = numeric_db_value_print (&cur_val, str_buf);
 	      if (start_with[0] == '\0')
 		{
@@ -1972,6 +1886,10 @@ emit_instance_attributes (print_output & output_ctx, DB_OBJECT * class_, const c
 	      output_ctx ("ALTER SERIAL %s%s%s START WITH %s;\n",
 			  PRINT_IDENTIFIER (db_get_string (&sr_name)), start_with);
 
+	      if (db_get_int (&started_val) == 1)
+		{
+		  output_ctx ("SELECT %s%s%s.NEXT_VALUE;\n ", PRINT_IDENTIFIER (db_get_string (&sr_name)));
+		}
 	      pr_clear_value (&sr_name);
 	    }
 	}
@@ -2602,7 +2520,15 @@ emit_reverse_unique_def (print_output & output_ctx, DB_OBJECT * class_)
 
 	      // reverse unique does not care for direction of the column.
 	    }
-	  output_ctx (");\n");
+	  output_ctx (")");
+
+	  if (constraint->comment != NULL && constraint->comment[0] != '\0')
+	    {
+	      output_ctx (" ");
+	      help_print_describe_comment (output_ctx, constraint->comment);
+	    }
+
+	  output_ctx (";\n");
 	}
     }
 }
@@ -3476,6 +3402,13 @@ create_filename_indexes (const char *output_dirname, const char *output_prefix,
 			 char *output_filename_p, const size_t filename_size)
 {
   return create_filename (output_dirname, output_prefix, INDEX_SUFFIX, output_filename_p, filename_size);
+}
+
+int
+create_filename_log (const char *output_dirname, const char *output_prefix,
+		     char *output_filename_p, const size_t filename_size)
+{
+  return create_filename (output_dirname, output_prefix, "_unloaddb.log", output_filename_p, filename_size);
 }
 
 static int

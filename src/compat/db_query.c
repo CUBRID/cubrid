@@ -3134,6 +3134,9 @@ db_query_tuple_count (DB_QUERY_RESULT * result)
 int
 db_query_column_count (DB_QUERY_RESULT * result)
 {
+  DB_QUERY_TYPE *t;
+  int num_cols = 0;
+
   CHECK_1ARG_MINUSONE (result);
 
   if (result->status == T_CLOSED)
@@ -3148,7 +3151,12 @@ db_query_column_count (DB_QUERY_RESULT * result)
       return -1;
     }
 
-  return (DB_OID_INCLUDED (result)) ? (result->col_cnt - 1) : result->col_cnt;
+  for (t = result->query_type; t != NULL; t = db_query_format_next (t))
+    {
+      num_cols++;
+    }
+
+  return num_cols;
 }
 
 #if defined(WINDOWS) || defined (ENABLE_UNUSED_FUNCTION)

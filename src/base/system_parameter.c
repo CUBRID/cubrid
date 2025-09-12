@@ -681,6 +681,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PAGE_LATCH_TIMEOUT "page_latch_timeout"
 
+#define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -2304,6 +2306,12 @@ static int prm_page_latch_timeout_default = 300;
 static int prm_page_latch_timeout_upper = 3000;
 static int prm_page_latch_timeout_lower = 0;
 static unsigned int prm_page_latch_timeout_flag = 0;
+
+int PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL = 0;
+static int prm_recovery_progress_logging_interval_default = 0;
+static int prm_recovery_progress_logging_interval_lower = 0;
+static int prm_recovery_progress_logging_interval_upper = 3600;
+static unsigned int prm_recovery_progress_logging_interval_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5928,6 +5936,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_PAGE_LATCH_TIMEOUT,
    (void *) &prm_page_latch_timeout_upper,
    (void *) &prm_page_latch_timeout_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   &prm_recovery_progress_logging_interval_flag,
+   (void *) &prm_recovery_progress_logging_interval_default,
+   (void *) &PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL,
+   (void *) &prm_recovery_progress_logging_interval_upper,
+   (void *) &prm_recovery_progress_logging_interval_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

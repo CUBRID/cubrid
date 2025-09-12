@@ -1194,7 +1194,7 @@ $ LOADDB
 1125 Crear archivo clave de sobreflujo.INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Crear una nueva pagina de sobreflujo.INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1127 Borrar una pagina de sobreflujo vacia. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
-1128 La recuperacion de anotaciones se inicia. El numero de registros de anotacion que se aplicara: %1$lld. Log page: %2$lld ~ %3$lld.
+1128 La recuperacion de anotaciones se inicia.
 1129 La recuperacion de anotaciones ha terminado.
 1130 Transaccion es abortada porque el numero de llaves asociado a la transaccion excede %1$d.
 1131 Error interno: La pagina %1$d del volumen "%2$s" puede ser corrota. \n%3$s
@@ -1315,8 +1315,14 @@ $ LOADDB
 1246 Error al obtener la información de la dirección y del nombre. Código : %1$d, mensaje : %2$s.
 1247 Internal CAS error : %1$d 
 1248 Internal CAS error : %1$d, %2$s
+1296 Registro de registro: se inicia la fase de análisis.
+1297 Registro de registro: se inicia la fase rehacer. Páginas de registro para rehacer: %1$lld, registros de registro para rehacer: %2$lld.
+1298 Registro de registro: se inicia la fase de deshacer. Páginas de registro para deshacer: %1$lld, transacciones para deshacer: %2$d.
+1299 Registro de registro: %1$s fase se está acabando.
+1300 Registro de registro: %1$s fase se termina.
+1301 Registro de registro: %1$s progreso: (%2$lld/%3$lld), %4$.2f por ciento, tiempo transcurrido: %5$.2f (s), tiempo resistente estimado: %6$.2f (s).
 
-1249 Ultimo error
+1302 Ultimo error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error en subsistema de error (linea %1$d):
