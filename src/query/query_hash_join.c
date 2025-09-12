@@ -945,7 +945,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   /* only top-level parent */
   if (parent_thread_p == NULL || parent_thread_p == thread_p)
     {
-      if (thread_p->m_px_stats != NULL)
+      if (thread_p->m_px_stats != NULL && !thread_p->m_uses_px_stats)
 	{
 	  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
 	  free_and_init (thread_p->m_px_stats);
@@ -1995,7 +1995,7 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 		if (thread_p->m_px_stats == NULL)
 		  {
 		    assert_release_error (er_errid () != NO_ERROR);
-		    throw std::runtime_error ("db_private_alloc failed");
+		    throw std::runtime_error ("malloc failed");
 		  }
 		memset (thread_p->m_px_stats, 0, stats_size);
 	      }

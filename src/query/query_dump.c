@@ -33,6 +33,7 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "px_heap_scan_perf_monitor.hpp"
+#include "px_query_executor.hpp"
 #endif // SERVER_MODE
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -3592,18 +3593,10 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case DELETE_PROC:
     case CONNECTBY_PROC:
     case BUILD_SCHEMA_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld",
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
 	       qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
 	       (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
 	       (long long int) xasl_p->xasl_stats.ioreads);
-      if (xasl_p->executed_parallelism > 1)
-	{
-	  fprintf (fp, ", parallel workers: %d)\n", xasl_p->executed_parallelism);
-	}
-      else
-	{
-	  fprintf (fp, ")\n");
-	}
 
       indent += 2;
       if (xasl_p->func_stats.calls > 0)
@@ -3617,18 +3610,21 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld",
+      fprintf (fp, "%s (time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
 	       qdump_xasl_type_string (xasl_p), TO_MSEC (xasl_p->xasl_stats.elapsed_time),
 	       (long long int) xasl_p->xasl_stats.fetches, (long long int) xasl_p->xasl_stats.fetch_time,
 	       (long long int) xasl_p->xasl_stats.ioreads);
-      if (xasl_p->executed_parallelism > 1)
+      if (xasl_p->px_executor)
 	{
-	  fprintf (fp, ", parallel workers: %d)\n", xasl_p->executed_parallelism);
+	  int len = strlen (qdump_xasl_type_string (xasl_p));
+	  fprintf (fp, "%*c (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		   indent + len, ' ', xasl_p->px_executor->get_parallelism () + 1,
+		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
+		   (long long int) xasl_p->px_executor->get_stats ().fetches,
+		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
+		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
 	}
-      else
-	{
-	  fprintf (fp, ")\n");
-	}
+
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
 	  qdump_print_stats_text (fp, xptr, indent);
@@ -3767,6 +3763,16 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       if (HAVE_SUBQUERY_PROC (xasl_p->aptr_list))
 	{
 	  fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
+	  if (xasl_p->px_executor)
+	    {
+	      fprintf (fp,
+		       "%*c         (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		       indent, ' ', xasl_p->px_executor->get_parallelism () + 1,
+		       TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
+		       (long long int) xasl_p->px_executor->get_stats ().fetches,
+		       (long long int) xasl_p->px_executor->get_stats ().fetch_time,
+		       (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	    }
 	}
 
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
@@ -4055,7 +4061,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     }
 
   /* parallel subquery or partitioned hash join */
-  if (xasl_p->executed_parallelism > 1 || part_cnt > 1)
+  if (xasl_p->px_executor != NULL || part_cnt > 1)
     {
       fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
       qdump_print_stats_text (fp, outer_xasl, indent);
@@ -4350,7 +4356,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
     }
 
   /* parallel subquery or partitioned hash join */
-  if (xasl_p->executed_parallelism > 1 || part_cnt > 1)
+  if (xasl_p->px_executor != NULL || part_cnt > 1)
     {
       subquery = json_array ();
 

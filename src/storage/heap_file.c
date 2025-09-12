@@ -6823,28 +6823,36 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	   * levels that release the locks of the class when the class is read.
 	   */
 #if defined(SERVER_MODE)
-	  THREAD_ENTRY *orig_thread_p = NULL;
+	  THREAD_ENTRY *target_thread_p = NULL;
 	  if (thread_p->m_px_orig_thread_entry != NULL)
 	    {
-	      orig_thread_p = thread_p->m_px_orig_thread_entry;
-	      assert (orig_thread_p != NULL);
-	      pthread_mutex_lock (&orig_thread_p->m_px_lock_mutex);
+	      target_thread_p = thread_p;
+	      while (target_thread_p->m_px_orig_thread_entry != NULL)
+		{
+		  if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
+		    {
+		      break;
+		    }
+		  target_thread_p = target_thread_p->m_px_orig_thread_entry;
+		}
+	      assert (target_thread_p != NULL);
+	      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);
 	    }
 #endif
 	  if (lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK) != LK_GRANTED)
 	    {
 #if defined(SERVER_MODE)
-	      if (orig_thread_p != NULL)
+	      if (target_thread_p != NULL)
 		{
-		  pthread_mutex_unlock (&orig_thread_p->m_px_lock_mutex);
+		  pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
 		}
 #endif
 	      goto exit_on_error;
 	    }
 #if defined(SERVER_MODE)
-	  if (orig_thread_p != NULL)
+	  if (target_thread_p != NULL)
 	    {
-	      pthread_mutex_unlock (&orig_thread_p->m_px_lock_mutex);
+	      pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
 	    }
 #endif
 	}

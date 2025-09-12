@@ -1071,7 +1071,7 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_orig_thread_entry != thread_p)
+  if (thread_p->m_px_orig_thread_entry && thread_p->m_uses_px_stats)
     {
       if (thread_p->m_px_stats != NULL)
 	{
@@ -3350,6 +3350,7 @@ perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
     {
       memset (thread_p->m_px_stats, 0, PERFMON_VALUES_MEMSIZE);
     }
+  thread_p->m_uses_px_stats = true;
 }
 
 void
@@ -3358,6 +3359,7 @@ perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
   if (thread_p->m_px_stats != NULL)
     {
       free_and_init (thread_p->m_px_stats);
+      thread_p->m_uses_px_stats = false;
     }
 }
 

@@ -74,44 +74,47 @@ typedef struct xasl_node_header XASL_NODE_HEADER;
 struct xasl_node_header
 {
   int xasl_flag;		/* query flags (e.g, multi range optimization) */
+  int id;			/* id of the xasl */
 };
 
-#define XASL_NODE_HEADER_SIZE OR_INT_SIZE	/* xasl_flag */
+#define XASL_NODE_HEADER_SIZE OR_INT_SIZE + OR_INT_SIZE	/* xasl_flag + id */
 
 #define OR_PACK_XASL_NODE_HEADER(PTR, X) \
-  do \
-    { \
-      if ((PTR) == NULL) \
-        { \
-	  break; \
-        } \
-      ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
-      (PTR) = or_pack_int ((PTR), (X)->xasl_flag); \
-    } \
-  while (0)
+ do \
+   { \
+     if ((PTR) == NULL) \
+       { \
+	 break; \
+       } \
+     ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
+     (PTR) = or_pack_int ((PTR), (X)->xasl_flag); \
+     (PTR) = or_pack_int ((PTR), (X)->id); \
+   } \
+ while (0)
 
 #define OR_UNPACK_XASL_NODE_HEADER(PTR, X) \
-  do \
-    { \
-      if ((PTR) == NULL) \
-        { \
-	  break; \
-        } \
-      ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
-      (PTR) = or_unpack_int ((PTR), &(X)->xasl_flag); \
-    } \
-  while (0)
+ do \
+   { \
+     if ((PTR) == NULL) \
+       { \
+	 break; \
+       } \
+     ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
+     (PTR) = or_unpack_int ((PTR), &(X)->xasl_flag); \
+     (PTR) = or_unpack_int ((PTR), &(X)->id); \
+   } \
+ while (0)
 
 #define INIT_XASL_NODE_HEADER(X) \
-  do \
-    { \
-      if ((X) == NULL) \
-        { \
-	  break; \
-        } \
-      memset ((X), 0x00, XASL_NODE_HEADER_SIZE); \
-    } \
-  while (0)
+ do \
+   { \
+     if ((X) == NULL) \
+       { \
+	 break; \
+       } \
+     memset ((X), 0x00, XASL_NODE_HEADER_SIZE); \
+   } \
+ while (0)
 
 /************************************************************************/
 /* Enumerations                                                         */

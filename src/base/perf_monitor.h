@@ -978,7 +978,7 @@ STATIC_INLINE void
 perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *parent_thread_p = thread_p ? thread_p->m_px_orig_thread_entry : NULL;
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
@@ -994,7 +994,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      if (parent_thread_p != NULL && parent_thread_p != thread_p)
+      if (parent_thread_p != NULL && thread_p->m_uses_px_stats)
 	{
 	  if (thread_p->m_px_stats != NULL)
 	    {
@@ -1028,7 +1028,7 @@ STATIC_INLINE void
 perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *parent_thread_p = thread_p ? thread_p->m_px_orig_thread_entry : NULL;
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
@@ -1041,7 +1041,7 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      if (parent_thread_p != NULL && parent_thread_p != thread_p)
+      if (parent_thread_p != NULL && thread_p->m_uses_px_stats)
 	{
 	  if (thread_p->m_px_stats != NULL)
 	    {
@@ -1248,6 +1248,10 @@ perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
   if (thread_p->m_px_stats == NULL)
     {
       assert (false);
+      return;
+    }
+  if (thread_p->m_uses_px_stats)
+    {
       return;
     }
 
