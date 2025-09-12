@@ -4492,25 +4492,25 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	  else
 	    {
 	      /* floor ((v1-v2)/((v3-v2)/v4)) + 1 */
-	      er_status = numeric_db_value_sub (value1, value2, &n1, &num_op_type);
+	      er_status = numeric_db_value_sub2 (value1, value2, &n1, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_sub (value3, value2, &n2, &num_op_type);
+	      er_status = numeric_db_value_sub2 (value3, value2, &n2, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n2, value4, &n3, &num_op_type);
+	      er_status = numeric_db_value_div3 (&n2, value4, &n3, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n1, &n3, &n4, &num_op_type);
+	      er_status = numeric_db_value_div3 (&n1, &n3, &n4, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
@@ -4557,25 +4557,25 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	  else
 	    {
 	      /* floor ((v2-v1)/((v2-v3)/v4)) + 1 */
-	      er_status = numeric_db_value_sub (value2, value1, &n1, &num_op_type);
+	      er_status = numeric_db_value_sub2 (value2, value1, &n1, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_sub (value2, value3, &n2, &num_op_type);
+	      er_status = numeric_db_value_sub2 (value2, value3, &n2, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n2, value4, &n3, &num_op_type);
+	      er_status = numeric_db_value_div3 (&n2, value4, &n3, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = numeric_db_value_div (&n1, &n3, &n4, &num_op_type);
+	      er_status = numeric_db_value_div3 (&n1, &n3, &n4, &num_op_type);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;

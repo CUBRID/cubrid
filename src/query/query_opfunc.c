@@ -1999,7 +1999,7 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
       return qdata_add_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_add (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (numeric_db_value_add2 (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 	  return ER_QPROC_OVERFLOW_ADDITION;
@@ -3624,7 +3624,7 @@ qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       break;
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_sub (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (numeric_db_value_sub2 (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
 	  return ER_FAILED;
@@ -5085,7 +5085,7 @@ qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       return qdata_multiply_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_mul (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (numeric_db_value_mul2 (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
 	  return ER_FAILED;
@@ -5710,7 +5710,7 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
       break;
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_div (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (numeric_db_value_div3 (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;

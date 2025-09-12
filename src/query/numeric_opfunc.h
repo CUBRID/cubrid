@@ -63,12 +63,23 @@ extern void numeric_init_power_value_string (void);
 /* Arithmetic routines */
 extern int numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
 				 NUMERIC_OPERATION_TYPE * num_op_type);
+extern int numeric_db_value_add2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				  NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
 				 NUMERIC_OPERATION_TYPE * num_op_type);
+extern int numeric_db_value_sub2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				  NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
 				 NUMERIC_OPERATION_TYPE * num_op_type);
+extern int numeric_db_value_mul2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				  NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
 				 NUMERIC_OPERATION_TYPE * num_op_type);
+// 제거 예정
+extern int numeric_db_value_div2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				  NUMERIC_OPERATION_TYPE * num_op_type);
+extern int numeric_db_value_div3 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				  NUMERIC_OPERATION_TYPE * num_op_type);
 extern int numeric_db_value_negate (DB_VALUE * answer);
 extern void numeric_db_value_abs (DB_C_NUMERIC src_num, DB_C_NUMERIC dest_num);
 extern int numeric_db_value_increase (DB_VALUE * arg);
