@@ -6744,6 +6744,8 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
+  bool old_check_interrupt;
+
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
   thread_lock_entry (thrd_entry);
   PGBUF_BCB_UNLOCK (bufptr);
@@ -6771,8 +6773,12 @@ try_again:
       tsc_getticks (&start_tick);
     }
 
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
+
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
   r = pthread_cond_timedwait (&thrd_entry->wakeup_cond, &thrd_entry->th_entry_lock, &to);
+
+  logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (thrd_entry->event_stats.trace_slow_query == true)
     {
@@ -6792,7 +6798,6 @@ try_again:
 
       /* interrupt operation */
       thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
-      thrd_entry->resume_status = THREAD_PGBUF_RESUMED;
       thread_unlock_entry (thrd_entry);
 
       if (pgbuf_timed_sleep_error_handling (thread_p, bufptr, thrd_entry) == NO_ERROR)
