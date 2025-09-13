@@ -111,10 +111,10 @@ extern unsigned int css_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern struct css_conn_entry *css_get_current_conn_entry (void);
 extern int css_check_conn (CSS_CONN_ENTRY * p);
 
-extern void css_process_get_server_ha_mode_request (SOCKET master_fd);
-extern void css_process_change_server_ha_mode_request (SOCKET master_fd);
+extern void css_process_get_server_ha_mode_request (CSS_CONN_ENTRY *conn);
+extern void css_process_change_server_ha_mode_request (CSS_CONN_ENTRY *conn);
 
-extern void css_process_get_eof_request (SOCKET master_fd);
+extern void css_process_get_eof_request (CSS_CONN_ENTRY *conn);
 
 extern int css_check_accessibility (SOCKET new_fd);
 
