@@ -15737,7 +15737,7 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  goto end;
 	}
 
-      if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+      if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL) != NO_ERROR)
 	{
 	  goto end;
 	}
@@ -16667,6 +16667,30 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
     }
 
   return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info);
+}
+
+/*
+ * heap_get_class_info () - get HFID and file type for class.
+ *
+ * return             : error code
+ * thread_p (in)      : thread entry
+ * class_oid (in)     : class OID
+ * hfid_out (out)     : output heap file identifier
+ * ftype_out (out)    : output heap file type
+ */
+int
+heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out)
+{
+  int error_code = NO_ERROR;
+
+  error_code = heap_hfid_cache_get (thread_p, class_oid, hfid_out, ftype_out);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  return error_code;
 }
 
 /*
