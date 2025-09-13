@@ -553,14 +553,14 @@ css_process_master_request (SOCKET master_fd)
     case SERVER_REGISTER_HA_PROCESS:
       break;
     case SERVER_GET_HA_MODE:
-      css_process_get_server_ha_mode_request (master_fd);
+      //css_process_get_server_ha_mode_request (master_fd);
       break;
 #if !defined(WINDOWS)
     case SERVER_CHANGE_HA_MODE:
-      css_process_change_server_ha_mode_request (master_fd);
+      //css_process_change_server_ha_mode_request (master_fd);
       break;
     case SERVER_GET_EOF:
-      css_process_get_eof_request (master_fd);
+      //css_process_get_eof_request (master_fd);
       break;
 #endif
     default:
@@ -699,11 +699,11 @@ css_process_new_client (SOCKET master_fd)
 }
 
 /*
- * css_process_get_server_ha_mode_request() -
- *   return:
+ * css_process_get_server_ha_mode_request () -
+ *   conn (in)	: master connection entry
  */
 void
-css_process_get_server_ha_mode_request (SOCKET master_fd)
+css_process_get_server_ha_mode_request (CSS_CONN_ENTRY *conn)
 {
   int r;
   int response;
@@ -717,7 +717,7 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
       response = htonl (ha_Server_state);
     }
 
-  r = send (master_fd, (char *) &response, sizeof (int), 0);
+  r = send (conn->fd, (char *) &response, sizeof (int), 0);
   if (r < 0)
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 0);
@@ -727,17 +727,16 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
 }
 
 /*
- * css_process_get_server_ha_mode_request() -
- *   return:
+ * css_process_change_server_ha_mode_request () -
+ *   conn (in)	: master connection entry
  */
 void
-css_process_change_server_ha_mode_request (SOCKET master_fd)
+css_process_change_server_ha_mode_request (CSS_CONN_ENTRY *conn)
 {
-#if !defined(WINDOWS)
   HA_SERVER_STATE state;
   THREAD_ENTRY *thread_p;
 
-  state = (HA_SERVER_STATE) css_get_master_request (master_fd);
+  state = (HA_SERVER_STATE) css_get_master_request (conn->fd);
 
   thread_p = thread_get_thread_entry_info ();
   assert (thread_p != NULL);
@@ -756,19 +755,17 @@ css_process_change_server_ha_mode_request (SOCKET master_fd)
 
   state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
-  css_send_heartbeat_request (css_Master_conn, SERVER_CHANGE_HA_MODE);
-  css_send_heartbeat_data (css_Master_conn, (char *) &state, sizeof (state));
-#endif
+  css_send_heartbeat_request (conn, SERVER_CHANGE_HA_MODE);
+  css_send_heartbeat_data (conn, (char *) &state, sizeof (state));
 }
 
 /*
- * css_process_get_eof_request() -
- *   return:
+ * css_process_get_eof_request () -
+ *   conn (in)	: master connection entry
  */
 void
-css_process_get_eof_request (SOCKET master_fd)
+css_process_get_eof_request (CSS_CONN_ENTRY *conn)
 {
-#if !defined(WINDOWS)
   LOG_LSA *eof_lsa;
   static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
@@ -797,9 +794,8 @@ css_process_get_eof_request (SOCKET master_fd)
       LSA_COPY (&prev_eof_lsa, eof_lsa);
     }
 
-  css_send_heartbeat_request (css_Master_conn, SERVER_GET_EOF);
-  css_send_heartbeat_data (css_Master_conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-#endif
+  css_send_heartbeat_request (conn, SERVER_GET_EOF);
+  css_send_heartbeat_data (conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -837,103 +833,6 @@ css_is_shutdown_timeout_expired (void)
 
   return false;
 }
-
-#if defined(WINDOWS)
-/*
- * css_process_new_connection_request () -
- *   return:
- *
- * Note: Called when a connect() is detected on the
- *       css_Server_connection_socket indicating the presence of a new client
- *       attempting to connect. Accept the connection and establish a new FD
- *       for this client. Send him back a little blip so he knows things are
- *       ok.
- */
-static int
-css_process_new_connection_request (void)
-{
-  SOCKET new_fd;
-  int reason, buffer_size, rc;
-  CSS_CONN_ENTRY *conn;
-  unsigned short rid;
-  NET_HEADER header = DEFAULT_HEADER_DATA;
-  int error;
-
-  new_fd = css_server_accept (css_Server_connection_socket);
-
-  if (IS_INVALID_SOCKET (new_fd))
-    {
-      return 1;
-    }
-
-  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      css_refuse_connection_request (new_fd, 0, SERVER_INACCESSIBLE_IP, error);
-      return -1;
-    }
-
-  conn = css_make_conn (new_fd);
-  if (conn == NULL)
-    {
-      error = ER_CSS_CLIENTS_EXCEEDED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
-      css_refuse_connection_request (new_fd, 0, SERVER_CLIENTS_EXCEEDED, error);
-      return -1;
-    }
-
-  buffer_size = sizeof (NET_HEADER);
-  do
-    {
-      /* css_receive_request */
-      if (!conn || conn->status != CONN_OPEN)
-	{
-	  rc = CONNECTION_CLOSED;
-	  break;
-	}
-
-      rc = css_read_header (conn, &header);
-      if (rc == NO_ERRORS)
-	{
-	  rid = (unsigned short) ntohl (header.request_id);
-
-	  if (ntohl (header.type) != COMMAND_TYPE)
-	    {
-	      buffer_size = reason = rid = 0;
-	      rc = WRONG_PACKET_TYPE;
-	    }
-	  else
-	    {
-	      reason = (int) (unsigned short) ntohs (header.function_code);
-	      buffer_size = (int) ntohl (header.buffer_size);
-	    }
-	}
-    }
-  while (rc == WRONG_PACKET_TYPE);
-
-  if (rc == NO_ERRORS)
-    {
-      if (reason == DATA_REQUEST)
-	{
-	  css_send_reply_to_new_client_request (conn, rid, SERVER_CONNECTED);
-
-	  if (css_Connect_handler)
-	    {
-	      (void) (*css_Connect_handler) (conn);
-	    }
-	}
-      else
-	{
-	  css_send_reply_to_new_client_request (conn, rid, SERVER_NOT_FOUND);
-
-	  css_free_conn (conn);
-	}
-    }
-
-  /* can't let problems accepting client requests terminate the loop */
-  return 1;
-}
-#endif /* WINDOWS */
 
 /*
  * css_reestablish_connection_to_master() -
@@ -1326,14 +1225,6 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-#if defined(WINDOWS)
-  if (css_windows_startup () < 0)
-    {
-      fprintf (stderr, "Winsock startup error\n");
-      return ER_FAILED;
-    }
-#endif /* WINDOWS */
-
   // initialize worker pool for server requests
 #define MAX_WORKERS css_get_max_workers ()
 #define MAX_TASK_COUNT css_get_max_task_count ()
@@ -1395,36 +1286,17 @@ shutdown:
   // stop log writers
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
 
-
   if (prm_get_bool_value (PRM_ID_STATS_ON))
     {
       perfmon_er_log_current_stats (thread_p);
     }
   css_Server_request_worker_pool->er_log_stats ();
-  //css_Connection_worker_pool->er_log_stats ();
 
   // destroy thread worker pools
   thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
-  /*
-     thread_get_manager ()->destroy_worker_pool (css_Connection_worker_pool);
-
-     if (!HA_DISABLED ())
-     {
-     css_close_connection_to_master ();
-     }
-   */
-
-  if (css_Master_server_name)
-    {
-      free_and_init (css_Master_server_name);
-    }
 
   /* If this was opened for the new style connection protocol, make sure it gets closed. */
   css_close_server_connection_socket ();
-
-#if defined(WINDOWS)
-  css_windows_shutdown ();
-#endif /* WINDOWS */
 
   return status;
 }
