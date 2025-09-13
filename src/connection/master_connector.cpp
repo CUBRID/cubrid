@@ -723,20 +723,17 @@ namespace cubconn
 	break;
 
       case SERVER_GET_HA_MODE:
-	/* TODO: css_process_get_server_ha_mode_request (master_fd); */
-	css_process_get_server_ha_mode_request (m_context.m_conn->fd);
+	css_process_get_server_ha_mode_request (m_context.m_conn);
 	NEXT_STATE (ctx, RecvRequestType);
 	break;
 
       case SERVER_CHANGE_HA_MODE:
-	/* TODO: css_process_change_server_ha_mode_request (master_fd); */
-	css_process_change_server_ha_mode_request (m_context.m_conn->fd);
+	css_process_change_server_ha_mode_request (m_context.m_conn);
 	NEXT_STATE (ctx, RecvRequestType);
 	break;
 
       case SERVER_GET_EOF:
-	/* TODO: css_process_get_eof_request (master_fd); */
-	css_process_get_eof_request (m_context.m_conn->fd);
+	css_process_get_eof_request (m_context.m_conn);
 	break;
 
       default:
@@ -963,11 +960,6 @@ namespace cubconn
 	    assert_release (false);
 	  }
 
-	if (nfds == 0)
-	  {
-	    m_connection_pool->stats ();
-	  }
-
 	if (__builtin_expect (m_master_state == master_state::CLOSED, 0))
 	  {
 	    /* re-establish the connection with master if it died */
@@ -985,6 +977,11 @@ namespace cubconn
 		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
 		if (ctx->m_conn->fd == m_context.m_conn->fd)
 		  {
+		    if (!HA_DISABLED ())
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+				"Disconnected with the cub_master and will shut itself down", "");
+		      }
 		    /* WAIT RESPONSE or ESTABLISHED */
 		    this->reestablish_with_master ();
 		  }
