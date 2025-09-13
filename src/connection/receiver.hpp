@@ -59,9 +59,6 @@ namespace cubconn
 
       std::vector<cubbase::span<std::byte>> *get_result ();
 
-      /* TODO: remove this */
-      cubbase::DMRBMemoryPool &get_buf (); 
-
     private:
       connection_stats *m_stats;
 
