@@ -21814,18 +21814,18 @@ primitive_type
                               {
                                 if (prec)
                                   {
-                                    if (prec->info.value.data_value.i > DB_GRAMMAR_MAX_NUMERIC_PRECISION)
+                                    if (prec->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_PRECISION)
                                       {
                                         PT_ERRORmf2 (this_parser, dt,
                                                 MSGCAT_SET_PARSER_SEMANTIC,
                                                 MSGCAT_SEMANTIC_PREC_TOO_BIG,
                                                 prec->info.value.data_value.i,
-                                                DB_GRAMMAR_MAX_NUMERIC_PRECISION);
+                                                DB_MAX_FIXED_NUMERIC_PRECISION);
                                       }
                                   }
 				if (scale)
                                   {
-                                    if (scale->info.value.data_value.i > DB_GRAMMAR_MAX_NUMERIC_SCALE || scale->info.value.data_value.i < DB_GRAMMAR_MIN_NUMERIC_SCALE)
+                                    if (scale->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_SCALE || scale->info.value.data_value.i < DB_MIN_FIXED_NUMERIC_SCALE)
                                       {
                                         PT_ERRORm (this_parser, dt,
                                                 MSGCAT_SET_PARSER_SEMANTIC,
@@ -21858,7 +21858,7 @@ primitive_type
                           }
                         else if (prec &&
 			    prec->info.value.data_value.i >= 8 &&
-			    prec->info.value.data_value.i <= DB_GRAMMAR_MAX_NUMERIC_PRECISION)
+			    prec->info.value.data_value.i <= DB_MAX_FIXED_NUMERIC_PRECISION)
 			  {
 			    typ = PT_TYPE_DOUBLE;
 			  }
@@ -21875,13 +21875,13 @@ primitive_type
 				dt->info.data_type.dec_precision = 0;
 
 				if (prec)
-				  if (prec->info.value.data_value.i > DB_GRAMMAR_MAX_NUMERIC_PRECISION)
+				  if (prec->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_PRECISION)
 				    {
 				      PT_ERRORmf2 (this_parser, dt,
 						   MSGCAT_SET_PARSER_SEMANTIC,
 						   MSGCAT_SEMANTIC_PREC_TOO_BIG,
 						   prec->info.value.data_value.i,
-						   DB_GRAMMAR_MAX_NUMERIC_PRECISION);
+						   DB_MAX_FIXED_NUMERIC_PRECISION);
 				    }
 			      }
 

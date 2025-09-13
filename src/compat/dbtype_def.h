@@ -540,11 +540,11 @@ extern "C"
 #define DB_MAX_BIT_LENGTH 0x3fffffff
 
 /* The maximum precision that can be specified for a numeric domain in SQL grammar. */
-#define DB_GRAMMAR_MAX_NUMERIC_PRECISION 38
+#define DB_MAX_FIXED_NUMERIC_PRECISION 38
 
 /* The minimum and maximum scale that can be specified for a numeric domain in SQL grammar. */
-#define DB_GRAMMAR_MIN_NUMERIC_SCALE -84
-#define DB_GRAMMAR_MAX_NUMERIC_SCALE 127
+#define DB_MIN_FIXED_NUMERIC_SCALE -84
+#define DB_MAX_FIXED_NUMERIC_SCALE 127
 
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 43
