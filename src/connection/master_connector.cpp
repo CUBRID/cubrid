@@ -708,7 +708,7 @@ namespace cubconn
 	break;
 
       case SERVER_START_SHUTDOWN:
-	/* nothing here */
+	m_stop = true;
 	NEXT_STATE (ctx, RecvRequestType);
 	break;
 
