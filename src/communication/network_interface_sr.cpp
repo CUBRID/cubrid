@@ -7668,16 +7668,9 @@ xlog_send_log_pages_to_client (THREAD_ENTRY *thread_p, char *logpg_area, int are
   ptr = or_pack_int (reply, (int) GET_NEXT_LOG_PAGES);
   ptr = or_pack_int (ptr, (int) area_size);
 
-  auto deleter = [buffer = logpg_area]() noexcept
-  {
-    if (buffer != NULL)
-      {
-	free (buffer);
-      }
-  };
   rc =
 	  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), logpg_area,
-	      area_size, std::move (deleter));
+	      area_size, nullptr);
   if (rc)
     {
       return ER_FAILED;
