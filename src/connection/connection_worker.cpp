@@ -175,10 +175,8 @@ namespace cubconn
     std::cout << "-------------- clients --------------" << std::endl;
     for (auto &ctx : m_context)
     {
-      auto &buf = ctx->m_recv.m_receiver.get_buf ();
       std::cout << "  fd: " << ctx->m_conn->fd << std::endl;
-      std::cout << "  head: " << buf.get_head () << std::endl;
-      std::cout << "  tail: " << buf.get_tail () << std::endl;
+      /* whenever whenever whenever ... */
       std::cout << std::endl;
     }
     std::cout << std::endl;

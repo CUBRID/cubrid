@@ -462,10 +462,5 @@ namespace cubconn
   {
     return &m_result;
   }
-
-  cubbase::DMRBMemoryPool &receiver::get_buf ()
-  {
-    return m_buf;
-  }
 }
 
