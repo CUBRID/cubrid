@@ -6776,7 +6776,7 @@ try_again:
   old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
 
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
-  r = pthread_cond_timedwait (&thrd_entry->wakeup_cond, &thrd_entry->th_entry_lock, &to);
+  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
   logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
@@ -6787,7 +6787,7 @@ try_again:
       TSC_ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, tv_diff);
     }
 
-  if (r == 0)
+  if (r == NO_ERROR)
     {
       /* someone wakes up me */
       if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
