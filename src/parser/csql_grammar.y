@@ -674,6 +674,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_analytic_from_last
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
+%type <number> opt_replication_option
 %type <number> opt_access_modifier
 %type <number> deduplicate_key_mod_level
 %type <number> opt_index_with_clause_no_online
@@ -1011,6 +1012,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> charset_spec
 %type <node> class_comment_spec
 %type <node> class_encrypt_spec
+%type <node> class_replication_spec
 %type <node> opt_vclass_comment_spec
 %type <node> comment_value
 %type <node> opt_comment_spec
@@ -1691,6 +1693,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> RESPECT
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
+%token <cptr> REPLICATION
 %token <cptr> REVERSE
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
@@ -6192,6 +6195,16 @@ alter_clause_for_alter_list
 				alter_node->info.alter.alter_clause.comment.tbl_comment = $1;
 			  }
 		DBG_PRINT}}
+	| class_replication_spec
+		{{ DBG_TRACE_GRAMMAR(alter_clause_for_alter_list, | class_replication_spec );
+			PT_NODE *alter_node = parser_get_alter_node();
+
+			if (alter_node != NULL && alter_node->info.alter.code != PT_CHANGE_REPLICATION)
+			  {
+				alter_node->info.alter.code = PT_CHANGE_REPLICATION;
+				alter_node->info.alter.alter_clause.replication.tbl_replication = $1;
+			  }
+		DBG_PRINT}}
 	;
 
 alter_clause_cubrid_specific
@@ -9864,6 +9877,13 @@ table_option
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		  DBG_PRINT}}
+        | class_replication_spec
+                {{ DBG_TRACE_GRAMMAR(table_option, | class_replication_spec);
+
+                        $$ = pt_table_option (this_parser, PT_TABLE_OPTION_REPLICATION, $1);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                DBG_PRINT}}
 	| charset_spec
 		{{ DBG_TRACE_GRAMMAR(table_option, | charset_spec);
 
@@ -22180,6 +22200,24 @@ class_encrypt_spec
 		DBG_PRINT}}
 	;
 
+class_replication_spec
+  : REPLICATION opt_equalsign opt_replication_option
+		{{ DBG_TRACE_GRAMMAR(class_replication_spec, : REPLICATION opt_equalsign opt_replication_option);
+			PT_NODE *node = NULL;
+
+      node = parser_new_node (this_parser, PT_VALUE);
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_INTEGER;
+          node->info.value.data_value.i = $3;
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			  }
+
+			$$ = node;
+		DBG_PRINT}}
+	;
+
 class_comment_spec
 	: COMMENT opt_equalsign char_string_literal
 		{{ DBG_TRACE_GRAMMAR(class_comment_spec, : COMMENT opt_equalsign char_string_literal);
@@ -22257,6 +22295,18 @@ opt_encrypt_algorithm
   | ARIA
     { DBG_TRACE_GRAMMAR(opt_encrypt_algorithm, | ARIA ); 
       $$ = 2; }   /* TDE_ALGORITHM_ARIA */
+  ;
+
+opt_replication_option
+  : /* empty */
+    { DBG_TRACE_GRAMMAR(opt_replication_option, : );
+      $$ = 1; }   /* default: REPLICATION = ON */
+  | ON_
+    { DBG_TRACE_GRAMMAR(opt_replication_option, | ON );
+      $$ = 1; }   /* REPLICATION = ON */
+  | OFF_
+    { DBG_TRACE_GRAMMAR(opt_replication_option, | OFF );
+      $$ = 0; }   /* REPLICATION = OFF */
   ;
 
 opt_index_with_clause_no_online

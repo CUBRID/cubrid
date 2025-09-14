@@ -88,6 +88,17 @@
 #define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
+/* Returns true if replication option is ON or not specified (default ON).
+ * Use with table option node (tbl_opt_replication).
+ */
+#define IS_REPLICATION_ON_OPT(_opt) \
+  ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
+
+/* Returns true if replication node value is ON or not specified (default ON).
+ * Use with replication_node (tbl_opt_replication->info.table_option.val).
+ */
+#define IS_REPLICATION_ON_NODE(_node) \
+  ( !(_node) || (_node)->info.value.data_value.i )
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -263,7 +274,7 @@ static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NO
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
-
+static int do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
 				      PT_NODE * old_name_node, PT_NODE * constraints, SM_ATTR_PROP_CHG * attr_chg_prop,
 				      SM_ATTR_CHG_SOL * change_mode);
@@ -1099,7 +1110,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  pr_clear_value (&dest_val);
 	}
       break;
-
       /* If merely renaming resolution, will be done after switch statement */
     case PT_RENAME_RESOLUTION:
       break;
@@ -1690,6 +1700,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  break;
 	case PT_CHANGE_COLUMN_COMMENT:
 	  error_code = do_alter_change_col_comment (parser, crt_clause);
+	  break;
+	case PT_CHANGE_REPLICATION:
+	  error_code = do_alter_change_replication (parser, crt_clause);
 	  break;
 	default:
 	  /* This code might not correctly handle a list of ALTER clauses so we keep crt_clause->next to NULL during
@@ -8869,6 +8882,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *tbl_opt_charset, *tbl_opt_coll, *cs_node, *coll_node;
   PT_NODE *tbl_opt_comment, *comment_node, *super_node;
   PT_NODE *tbl_opt_encrypt, *encrypt_node;
+  PT_NODE *tbl_opt_replication, *replication_node;
   const char *comment_str = NULL;
   MOP super_class = NULL;
   int tde_algo_opt = -1;
@@ -8879,6 +8893,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
   tbl_opt_charset = tbl_opt_coll = cs_node = coll_node = NULL;
   tbl_opt_comment = comment_node = NULL;
   tbl_opt_encrypt = encrypt_node = NULL;
+  tbl_opt_replication = replication_node = NULL;
 
   class_name = node->info.create_entity.entity_name->info.name.original;
 
@@ -9001,6 +9016,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    case PT_TABLE_OPTION_COMMENT:
 	      tbl_opt_comment = tbl_opt;
+	      break;
+	    case PT_TABLE_OPTION_REPLICATION:
+	      tbl_opt_replication = tbl_opt;
 	      break;
 	    default:
 	      break;
@@ -9214,6 +9232,19 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+
+      /*  
+       * Set the SM_CLASSFLAG_NO_REPLICATION flag.  
+       * If the option is omitted, or if the "on|off" value is omitted,  
+       * the default is set to "on".  
+       */
+      if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created.\n", class_name);
+	  // TODO: Implement replication option handling. 
+	  // error = sm_set_class_flag (class_obj, SM_CLASSFLAG_NO_REPLICATION, 1);
+	}
+
       if (tbl_opt_encrypt)
 	{
 	  encrypt_node = tbl_opt_encrypt->info.table_option.val;
@@ -10630,6 +10661,31 @@ exit:
     }
 
   return error;
+}
+
+static int
+do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter_node)
+{
+  const char *entity_name = NULL;
+  PT_NODE *replication_node = alter_node->info.alter.alter_clause.replication.tbl_replication;
+
+  entity_name = alter_node->info.alter.entity_name->info.name.original;
+  // TODO: Implement replication option handling
+  /*
+   * Handle the replication option.
+   * If the option is omitted, or if "on|off" is omitted,
+   * the default value is set to "on".
+   */
+  if (IS_REPLICATION_ON_NODE (replication_node))
+    {
+      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table replication set to on. \n",
+		     entity_name);
+    }
+  else
+    {
+      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created set to off. \n", entity_name);
+    }
+  return NO_ERROR;
 }
 
 /*
