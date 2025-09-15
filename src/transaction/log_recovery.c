@@ -4042,7 +4042,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   if (LSA_ISNULL (&last_parent_lsa))
     {
       /* no run postpones before system op. stop at start postpone. */
-#if 0
+#if 0 // for delvoldb
       assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
 #endif
       last_parent_lsa = *postpone_start_lsa;
