@@ -2484,7 +2484,13 @@ disk_volume_is_empty (THREAD_ENTRY * thread_p, VOLID volid)
       return true;
     }
 
-  (void) disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &volheader);
+  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &volheader) != NO_ERROR)
+    {
+      assert (false);
+      er_clear ();
+
+      return false;
+    }
 
   disk_stab_cursor_set_at_sectid (volheader, SECTOR_FROM_PAGEID (volheader->sys_lastpage) + 1, &start_cursor);
   disk_stab_cursor_set_at_end (volheader, &end_cursor);
