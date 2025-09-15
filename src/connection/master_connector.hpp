@@ -167,7 +167,7 @@ namespace cubconn
       inline bool prepare_send_log_eof (context *ctx) noexcept;
 
       inline bool prepare_send_heartbeat_request (context *ctx, CSS_SERVER_REQUEST command) noexcept;
-      inline bool prepare_send_heartbeat_data (context *ctx, std::byte *data, std::size_t size) noexcept;
+      inline bool prepare_send_heartbeat_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* reception								     */

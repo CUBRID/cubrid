@@ -544,11 +544,7 @@ namespace cubconn
   {
     LOG_LSA *eof_lsa;
     static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
-    std::aligned_storage_t<OR_LOG_LSA_ALIGNED_SIZE, 8> *reply;
-
-    /* clear the packet buffer */
-    ctx->m_sendbuf.clear ();
-    reply = ctx->allocate<std::aligned_storage_t<OR_LOG_LSA_ALIGNED_SIZE, 8>> ();
+    alignas(8) std::byte reply[OR_LOG_LSA_ALIGNED_SIZE];
 
     assert (m_entry != nullptr);
     LOG_CS_ENTER_READ_MODE (m_entry);
@@ -568,11 +564,7 @@ namespace cubconn
 	LSA_COPY (&prev_eof_lsa, eof_lsa);
       }
 
-    if (!this->prepare_send_heartbeat_request (ctx, SERVER_GET_EOF))
-      {
-	return false;
-      }
-    if (!this->prepare_send_heartbeat_data (ctx, reinterpret_cast<std::byte *> (reply), OR_LOG_LSA_ALIGNED_SIZE))
+    if (!this->prepare_send_heartbeat_request_with_data (ctx, SERVER_GET_EOF, reply, OR_LOG_LSA_ALIGNED_SIZE))
       {
 	return false;
       }
@@ -596,25 +588,31 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_ha_mode: update_epoll_events failed: %s", strerror (errno));
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_heartbeat_request: update_epoll_events failed: %s", strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::prepare_send_heartbeat_data (context *ctx, std::byte *data, std::size_t size) noexcept
+  inline bool master_connector::prepare_send_heartbeat_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept
   {
-    std::aligned_storage_t<16, 8> *response;
+    std::aligned_storage_t<16, 8> *body;
+    int *response;
 
     /* clear the packet buffer */
     ctx->m_sendbuf.clear ();
 
-    /* TODO: this must be fixed if you wanna store the data bigger than 16-bytes */
-    assert_release (size <= 16);
-    response = ctx->allocate<std::aligned_storage_t<16, 8>> ();
-    std::memcpy (response, data, size);
+    response = ctx->allocate<int> ();
+    *response = htonl (command);
 
-    ctx->push ({ reinterpret_cast<std::byte *> (response), size });
+    /* TODO: this must be fixed if you wanna store the data bigger than 16-bytes */
+    /* you can generalize size using template */
+    assert_release (size <= 16);
+    body = ctx->allocate<std::aligned_storage_t<16, 8>> ();
+    std::memcpy (body, data, size);
+
+    ctx->push ({ reinterpret_cast<std::byte *> (response), sizeof (int) });
+    ctx->push ({ reinterpret_cast<std::byte *> (body), size });
 
     /* make the packets to msghdr */
     ctx->m_sendbuf.stamp_msghdr ();
@@ -622,7 +620,7 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_ha_mode: update_epoll_events failed: %s", strerror (errno));
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_heartbeat_request_with_data: update_epoll_events failed: %s", strerror (errno));
 	return false;
       }
     return true;
@@ -915,12 +913,7 @@ namespace cubconn
 
     state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
-    if (!this->prepare_send_heartbeat_request (ctx, SERVER_CHANGE_HA_MODE))
-      {
-	return result::Error;
-      }
-    /* css_send_heartbeat_data (ctx->m_conn, (char *) &state, sizeof (state)); */
-    if (!this->prepare_send_heartbeat_data (ctx, reinterpret_cast<std::byte *> (&state), sizeof (state)))
+    if (!this->prepare_send_heartbeat_request_with_data (ctx, SERVER_CHANGE_HA_MODE, reinterpret_cast<std::byte *> (&state), sizeof (state)))
       {
 	return result::Error;
       }
