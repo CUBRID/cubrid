@@ -2503,8 +2503,6 @@ disk_volume_is_empty (THREAD_ENTRY * thread_p, VOLID volid)
       pgbuf_unfix (thread_p, pgptr);
     }
 
-  printf ("volid=%d, is_empty=%d\n", volid, has_used ? 0 : 1);
-
   return has_used ? false : true;
 }
 
@@ -2915,8 +2913,6 @@ disk_volume_header_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** ar
       error = ER_DIAG_VOLID_NOT_EXIST;
       goto exit_on_error;
     }
-
-  (void) disk_volume_is_empty (thread_p, ctx->volume_id);
 
   *ptr = ctx;
   return NO_ERROR;
