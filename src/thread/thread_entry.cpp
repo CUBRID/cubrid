@@ -473,7 +473,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
   // add all usecs to tv_usec
   tv.tv_usec += (long) usec.count ();
   // move seconds from tv_usec to tv_sec
-  tv.tv_sec = tv.tv_usec / ratio;
+  tv.tv_sec += tv.tv_usec / ratio;
   tv.tv_usec = tv.tv_usec % ratio;
 }
 
