@@ -1660,7 +1660,7 @@ sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
     {
       thread_set_sort_stats_active (thread_p, true);
       thread_ref.on_trace = true;
-      perfmon_initialize_parallel_stats (&thread_ref, sort_param->px_orig_thread_p);
+      perfmon_initialize_parallel_stats (&thread_ref);
     }
 
   if (sort_param->px_type == SORT_ORDER_BY)
@@ -4941,7 +4941,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     {
       thread_set_sort_stats_active (thread_p, true);
       thread_ref.on_trace = true;
-      perfmon_initialize_parallel_stats (&thread_ref, sort_param->px_orig_thread_p);
+      perfmon_initialize_parallel_stats (&thread_ref);
       tsc_getticks (&start_tick);
     }
 
@@ -5027,7 +5027,7 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
     {
       thread_set_sort_stats_active (thread_p, true);
       thread_ref.on_trace = true;
-      perfmon_initialize_parallel_stats (&thread_ref, sort_param->px_orig_thread_p);
+      perfmon_initialize_parallel_stats (&thread_ref);
       tsc_getticks (&start_tick);
     }
 
