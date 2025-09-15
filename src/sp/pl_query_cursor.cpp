@@ -229,7 +229,7 @@ namespace cubpl
 	    else
 	      {
 		qfile_close_scan (m_thread, &m_scan_id);
-		return S_ERROR;
+		return S_ERROR; // control reaches here when this method is called after ROLLBACK
 	      }
 	  }
 
