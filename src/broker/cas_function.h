@@ -74,9 +74,7 @@ extern FN_RETURN fn_xa_recover (SOCKET sock_fd, int argc, void **argv, T_NET_BUF
 extern FN_RETURN fn_xa_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern FN_RETURN fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern FN_RETURN fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-#if !defined(CAS_FOR_CGW)
 extern FN_RETURN fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
-#endif /* !CAS_FOR_CGW */
 extern FN_RETURN fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 					T_REQ_INFO * req_info);
 #if !defined(CAS_FOR_CGW)
