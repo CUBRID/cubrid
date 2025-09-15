@@ -6740,10 +6740,6 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
-
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-
   bool old_check_interrupt;
 
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
@@ -6768,24 +6764,12 @@ try_again:
   to.tv_sec = (int) time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
-  if (thrd_entry->event_stats.trace_slow_query == true)
-    {
-      tsc_getticks (&start_tick);
-    }
-
   old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
 
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
   logtb_set_check_interrupt (thread_p, old_check_interrupt);
-
-  if (thrd_entry->event_stats.trace_slow_query == true)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, tv_diff);
-    }
 
   if (r == NO_ERROR)
     {
