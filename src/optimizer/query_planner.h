@@ -88,11 +88,19 @@ typedef enum
 
 typedef enum
 {
+  PLAN_PARALLEL_OPT_USE = 1,
+  PLAN_PARALLEL_OPT_NO = 0,
+  PLAN_PARALLEL_OPT_CANNOT_USE = -1,
+  PLAN_PARALLEL_OPT_CAN_USE = -2,
+} QO_PLAN_PARALLEL_OPT_USE;
+
+typedef enum
+{
   PLAN_MULTI_RANGE_OPT_USE = 1,
   PLAN_MULTI_RANGE_OPT_NO = 0,
   PLAN_MULTI_RANGE_OPT_CANNOT_USE = -1,
   PLAN_MULTI_RANGE_OPT_CAN_USE = -2
-} QO_PLAN_ULTI_RANGE_OPT_USE;
+} QO_PLAN_MULTI_RANGE_OPT_USE;
 
 struct qo_plan
 {
@@ -195,7 +203,8 @@ struct qo_plan
 
   } plan_un;
 
-  QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
+  QO_PLAN_PARALLEL_OPT_USE parallel_opt_use;	/* used to determine if this plan uses parallel opt */
+  QO_PLAN_MULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
   // *INDENT-OFF*
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
@@ -404,4 +413,7 @@ extern bool qo_is_all_unique_index_columns_are_equi_terms (QO_PLAN * plan);
 extern bool qo_has_sort_limit_subplan (QO_PLAN * plan);
 extern PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix,
 						 bool for_min_max_optimize);
+
+extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
+
 #endif /* _QUERY_PLANNER_H_ */
