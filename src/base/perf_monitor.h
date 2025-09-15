@@ -368,6 +368,10 @@ typedef enum
   PSTAT_QM_NUM_METHSCANS,
   PSTAT_QM_NUM_NLJOINS,
   PSTAT_QM_NUM_MJOINS,
+  PSTAT_QM_NUM_HASHJOINS,
+  PSTAT_QM_NUM_HASHJOINS_PARTITIONED,
+  PSTAT_QM_NUM_HASHJOINS_PARALLEL,
+
   PSTAT_QM_NUM_OBJFETCHES,
   PSTAT_QM_NUM_HOLDABLE_CURSORS,
 
@@ -839,7 +843,7 @@ extern void perfmon_copy_values (UINT64 * src, UINT64 * dest);
 extern void perfmon_start_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
-extern void perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p, THREAD_ENTRY * orig_thread_p);
+extern void perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p);
 extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE || SA_MODE */
 
@@ -862,6 +866,8 @@ STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, i
 STATIC_INLINE void perfmon_add_at_offset_to_global (int offset, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff, UINT64 count)
@@ -876,6 +882,8 @@ STATIC_INLINE void perfmon_diff_timeval (struct timeval *elapsed, struct timeval
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeval *end)
   __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_update_min_timeval (struct timeval *min, struct timeval *tv) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_update_max_timeval (struct timeval *max, struct timeval *tv) __attribute__ ((ALWAYS_INLINE));
 
 #ifdef __cplusplus
 /* TODO: it looks ugly now, but it should be fixed with stat tool patch */
@@ -970,6 +978,7 @@ STATIC_INLINE void
 perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
+  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
@@ -985,13 +994,22 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_stats != NULL)
+      if (parent_thread_p != NULL && parent_thread_p != thread_p)
 	{
-	  thread_p->m_px_stats[offset] += amount;
+	  if (thread_p->m_px_stats != NULL)
+	    {
+	      thread_p->m_px_stats[offset] += amount;
+	    }
+	  else
+	    {
+	      /* Add only to global_stats;  
+	       * need to check later if tran_stats is required in parallel thread */
+	      assert (!thread_p->on_trace);
+	    }
 	}
       else
 	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
 	  pstat_Global.tran_stats[tran_index][offset] += amount;
 	}
     }
@@ -1010,6 +1028,7 @@ STATIC_INLINE void
 perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
+  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
   int tran_index;
 #endif /* SERVER_MODE || SA_MODE */
 
@@ -1022,13 +1041,22 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      if (thread_p->m_px_orig_thread_entry != NULL && thread_p->m_px_stats != NULL)
+      if (parent_thread_p != NULL && parent_thread_p != thread_p)
 	{
-	  thread_p->m_px_stats[offset] += amount;
+	  if (thread_p->m_px_stats != NULL)
+	    {
+	      thread_p->m_px_stats[offset] += amount;
+	    }
+	  else
+	    {
+	      /* Add only to global_stats;  
+	       * need to check later if tran_stats is required in parallel thread */
+	      assert (!thread_p->on_trace);
+	    }
 	}
       else
 	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
 	  pstat_Global.tran_stats[tran_index][offset] += amount;
 	}
     }
@@ -1148,6 +1176,105 @@ perfmon_set_at_offset_to_global (int offset, int statval)
 
   /* Update global statistic. */
   ATOMIC_TAS_64 (&(pstat_Global.global_stats[offset]), statval);
+}
+
+/*
+ * perfmon_merge_child_stats_to_parent_stats () - Merge child statistics to parent statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Child thread entry.
+ */
+STATIC_INLINE void
+perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  assert (thread_p != NULL);
+
+  if (thread_p->m_px_stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+
+  if (parent_thread_p == NULL || parent_thread_p == thread_p)
+    {
+      return;
+    }
+
+  /*
+   * m_px_stats should be NULL.
+   * perfmon_initialize_parallel_stats is a temporary safeguard.
+   * TODO: replace with assert().
+   */
+  if (parent_thread_p->m_px_stats == NULL)
+    {
+      perfmon_initialize_parallel_stats (parent_thread_p);
+    }
+
+  /* immutable */
+  static const int offsets[] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
+  };
+
+  const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+
+  pthread_mutex_lock (&(parent_thread_p->m_px_stats_mutex));
+  for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
+    {
+      const int offset = offsets[stats_index];
+      parent_thread_p->m_px_stats[offset] += thread_p->m_px_stats[offset];
+      thread_p->m_px_stats[offset] = 0;
+    }
+  pthread_mutex_unlock (&(parent_thread_p->m_px_stats_mutex));
+#endif /* SERVER_MODE */
+}
+
+/*
+ * perfmon_merge_parallel_stats_to_tran_stats () - Merge parallel statistics to transaction statistics.
+ *
+ * return	 : Void.
+ * thread_p (in) : Main thread entry.
+ */
+STATIC_INLINE void
+perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  assert (thread_p != NULL);
+
+  if (thread_p->m_px_stats == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+
+  /* Skip if not the top-level parent. */
+  if (parent_thread_p != NULL && parent_thread_p != thread_p)
+    {
+      return;
+    }
+
+  /* immutable */
+  static const int offsets[] = {
+    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
+    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
+    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
+  };
+
+  const int stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+
+  for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
+    {
+      const int offset = offsets[stats_index];
+      perfmon_add_at_offset_to_local (thread_p, offset, thread_p->m_px_stats[offset]);
+      thread_p->m_px_stats[offset] = 0;
+    }
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -1422,6 +1549,30 @@ perfmon_add_timeval (struct timeval *total, struct timeval *start, struct timeva
 
   total->tv_sec += total->tv_usec / 1000000;
   total->tv_usec %= 1000000;
+}
+
+STATIC_INLINE void
+perfmon_update_min_timeval (struct timeval *min, struct timeval *tv)
+{
+  assert (min != NULL);
+  assert (tv != NULL);
+
+  if (tv->tv_sec < min->tv_sec || (tv->tv_sec == min->tv_sec && tv->tv_usec < min->tv_usec))
+    {
+      *min = *tv;
+    }
+}
+
+STATIC_INLINE void
+perfmon_update_max_timeval (struct timeval *max, struct timeval *tv)
+{
+  assert (max != NULL);
+  assert (tv != NULL);
+
+  if (tv->tv_sec > max->tv_sec || (tv->tv_sec == max->tv_sec && tv->tv_usec > max->tv_usec))
+    {
+      *max = *tv;
+    }
 }
 
 #define TO_MSEC(elapsed) \
