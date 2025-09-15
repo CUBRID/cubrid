@@ -1976,16 +1976,17 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  return NON_PUSHABLE;
 	}
       else if (pt_is_distinct (mainquery))
-        {
-          if (pt_length_of_list (select_list) == 1 && PT_IS_INSTNUM (select_list) && !pt_has_inst_or_orderby_num_in_where (parser, mainquery))
-            {
-              /* case of 'select distinct rownum from (subq)' can be view-merged */
-            }
-          else
-            {
-              return NON_PUSHABLE;
-            }
-        }
+	{
+	  if (pt_length_of_list (select_list) == 1 && PT_IS_INSTNUM (select_list)
+	      && !pt_has_inst_or_orderby_num_in_where (parser, mainquery))
+	    {
+	      /* case of 'select distinct rownum from (subq)' can be view-merged */
+	    }
+	  else
+	    {
+	      return NON_PUSHABLE;
+	    }
+	}
     }
 
   /*****************************/
