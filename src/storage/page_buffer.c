@@ -6776,11 +6776,11 @@ try_again:
       /* someone wakes up me */
       if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
 	{
-	  thread_unlock_entry (thrd_entry);
 	  return NO_ERROR;
 	}
 
       /* interrupt operation */
+      thread_lock_entry (thrd_entry);
       thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
       thread_unlock_entry (thrd_entry);
 
@@ -6792,7 +6792,7 @@ try_again:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return ER_FAILED;
     }
-  else if (r == ETIMEDOUT)
+  else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
       /* rollback operation, postpone operation, etc. */
       if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
