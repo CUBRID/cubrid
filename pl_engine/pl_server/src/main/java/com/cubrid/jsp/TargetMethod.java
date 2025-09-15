@@ -165,6 +165,12 @@ public class TargetMethod {
         argClassMap.put("java.sql.Timestamp", Timestamp.class);
         argClassMap.put("cubrid.sql.CUBRIDOID", CUBRIDOID.class);
 
+        argClassMap.put("BigDecimal", BigDecimal.class);
+        argClassMap.put("Date", Date.class);
+        argClassMap.put("Time", Time.class);
+        argClassMap.put("Timestamp", Timestamp.class);
+        argClassMap.put("CUBRIDOID", CUBRIDOID.class);
+
         argClassMap.put("[Ljava.lang.Boolean;", Boolean[].class);
         argClassMap.put("[Ljava.lang.Byte;", Byte[].class);
         argClassMap.put("[Ljava.lang.Character;", Character[].class);
@@ -193,8 +199,18 @@ public class TargetMethod {
         argClassMap.put("[Ljava.sql.Timestamp;", Timestamp[].class);
         argClassMap.put("[Lcubrid.sql.CUBRIDOID;", CUBRIDOID[].class);
 
+        argClassMap.put("[LBigDecimal;", BigDecimal[].class);
+        argClassMap.put("[LDate;", Date[].class);
+        argClassMap.put("[LTime;", Time[].class);
+        argClassMap.put("[LTimestamp;", Timestamp[].class);
+        argClassMap.put("[LCUBRIDOID;", CUBRIDOID[].class);
+
+        // why not add other array-array types? TODO
         argClassMap.put("[[Ljava.lang.Integer;", Integer[][].class);
         argClassMap.put("[[Ljava.lang.Float;", Float[][].class);
+
+        argClassMap.put("[[LInteger;", Integer[][].class);
+        argClassMap.put("[[LFloat;", Float[][].class);
     }
 
     private static void initdescriptorMap() {
