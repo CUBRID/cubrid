@@ -56,8 +56,13 @@ namespace cubconn
 
 	RecvNewClient,
 
+	RecvHAMode,
+
 	/* send to clients */
-	SendReplyToClient
+	SendReplyToClient,
+
+	/* send for HA */
+	SendHBToMaster
       };
 
       enum class master_state
@@ -90,6 +95,12 @@ namespace cubconn
 	  m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
 	}
 
+	template <typename... Spans>
+	void push (const cubbase::span<std::byte> &first, const Spans &... rest)
+	{
+	  m_sendbuf.push (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
+	}
+
 	template <typename T>
 	T *allocate ()
 	{
@@ -103,14 +114,17 @@ namespace cubconn
 
       void stop () noexcept;
 
+      bool attach (cubthread::entry &entry) noexcept;
       bool attach (connection_pool &pool) noexcept;
       bool run (int port, std::string &server_name) noexcept;
 
     private:
       bool m_stop;
+
       int m_eventfd;
       cubsocket::epoll m_events;
 
+      cubthread::entry *m_entry;
       context m_context;
 
       /* to open unix domain socket */
@@ -148,6 +162,13 @@ namespace cubconn
       inline bool prepare_reply (context *ctx, int reason) noexcept;
       inline bool prepare_reply_refuse_connection (context *ctx, int reason) noexcept;
 
+      /* HA */
+      inline bool prepare_send_ha_mode (context *ctx) noexcept;
+      inline bool prepare_send_log_eof (context *ctx) noexcept;
+
+      inline bool prepare_send_heartbeat_request (context *ctx, CSS_SERVER_REQUEST command) noexcept;
+      inline bool prepare_send_heartbeat_data (context *ctx, std::byte *data, std::size_t size) noexcept;
+
       /* --------------------------------------------------------------------------- */
       /* reception								     */
       /* --------------------------------------------------------------------------- */
@@ -157,7 +178,11 @@ namespace cubconn
       /* request */
       inline result request_new_client (context *ctx) noexcept;
 
+      /* request handler */
       inline result handle_request (context *ctx) noexcept;
+
+      /* HA */
+      inline result change_ha_mode (context *ctx) noexcept;
 
       inline bool handle_master_reception (context *ctx) noexcept;
 

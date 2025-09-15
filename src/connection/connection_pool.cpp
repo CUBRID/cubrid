@@ -51,6 +51,10 @@ namespace cubconn
     std::vector<int> *cores;
     std::uint32_t i;
 
+    /* signal */
+    (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
+    (void) os_set_signal_handler (SIGFPE, SIG_IGN);
+
     /* topology setting */
     cubbase::topology.load_cpu (connection_threads);
     cubbase::topology.map_nic_to_core ();
