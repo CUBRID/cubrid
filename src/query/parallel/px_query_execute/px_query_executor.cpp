@@ -270,16 +270,21 @@ extern "C" {
       }
     std::function<bool (xasl_node *)> estimated_jobs_iter = [&estimated_jobs] (xasl_node *xasl_p) -> bool
     {
-      if (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
-	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC)
+      int estimated_jobs_local = 0;
+      if (!XASL_IS_FLAGED (xasl_p, XASL_NO_PARALLEL_SUBQUERY) && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
+	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC))
 	{
 	  for (xasl_node *xptr = xasl_p; xptr != NULL; xptr = xptr->scan_ptr)
 	    {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  estimated_jobs++;
+		  estimated_jobs_local++;
 		}
 	    }
+	}
+      if (estimated_jobs_local >= 2)
+	{
+	  estimated_jobs += estimated_jobs_local;
 	}
       return true;
     };
@@ -288,8 +293,8 @@ extern "C" {
     std::function<bool (xasl_node *)> executor_iter = [thread_p, worker_manager_p,
 						parallelism, estimated_jobs, &on_trace, &executor_p] (xasl_node *xasl_p) -> bool
     {
-      if (xasl_p->px_executor == NULL && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
-					  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC))
+      if (xasl_p->px_executor == NULL && !XASL_IS_FLAGED (xasl_p, XASL_NO_PARALLEL_SUBQUERY) && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
+	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC))
 	{
 	  int aptr_cnts = 0;
 	  for (xasl_node *xptr = xasl_p; xptr != NULL; xptr = xptr->scan_ptr)
