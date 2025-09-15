@@ -10436,6 +10436,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  dest->data.ch.info.compressed_need_clear = false;
 	  dest->data.ch.medium.size = 0;
 	  dest->data.ch.medium.length = -1;
+	  dest->data.ch.medium.buf = NULL;
 	}
     }
   else
