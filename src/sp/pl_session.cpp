@@ -49,7 +49,6 @@ namespace cubpl
     // only worker thread can access session
     if (thread_p && thread_p->type != TT_WORKER)
       {
-	assert (false); // it is not reasonable that a non TT_WORKER invokes this function.
 	return nullptr;
       }
 #endif
