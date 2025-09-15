@@ -820,7 +820,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   /* check the defined action attribute */
   if (net_Requests[request].action_attribute & CHECK_DB_MODIFICATION)
     {
-      int client_type;
       bool check = true;
 
       if (request == NET_SERVER_TM_SERVER_COMMIT)
@@ -831,7 +830,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	    }
 	}
       /* check if DB modification is allowed */
-      client_type = logtb_find_client_type (thread_p->tran_index);
       if (check)
 	{
 	  CHECK_MODIFICATION_NO_RETURN (thread_p, error_code);
