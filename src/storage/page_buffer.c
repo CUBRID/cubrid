@@ -6773,14 +6773,15 @@ try_again:
 
   if (r == NO_ERROR)
     {
+      thread_lock_entry (thrd_entry);
       /* someone wakes up me */
       if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
 	{
+	  thread_unlock_entry (thrd_entry);
 	  return NO_ERROR;
 	}
 
       /* interrupt operation */
-      thread_lock_entry (thrd_entry);
       thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
       thread_unlock_entry (thrd_entry);
 
