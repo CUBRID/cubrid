@@ -856,6 +856,8 @@ namespace cubconn
     result status;
     context *ctx;
     int nfds, i;
+    int error;
+    socklen_t length;
 
     while (!m_stop)
       {
@@ -881,9 +883,9 @@ namespace cubconn
 	      {
 		if (events[i].events & EPOLLERR)
 		  {
-		    int error = 0;
-		    socklen_t len = sizeof (error);
-		    if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0)
+		    error = 0;
+		    length = sizeof (error);
+		    if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0)
 		      {
 			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd, strerror (error));
 		      }
@@ -894,7 +896,7 @@ namespace cubconn
 		  }
 		else
 		  {
-		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
+		    _er_log_debug(__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.", ctx->m_conn->fd);
 		  }
 		handle_connection_error (ctx);
 		continue;

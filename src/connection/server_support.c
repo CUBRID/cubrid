@@ -1251,6 +1251,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   /* initialize epoll worker pool */
   connections.initialize (MAX_CONNECTIONS, (int) prm_get_integer_value (PRM_ID_CSS_CONNECTION_THREADS));
 
+  /* attach thread entry */
+  connector.attach (*thread_p);
   /* attach pool */
   connector.attach (connections);
   /* handshake and dispatch connection */

@@ -22,7 +22,10 @@
 
 #include "connection_globals.h"
 #include "system_parameter.h"
+#include "object_representation.h"
 #include "log_common_impl.h"
+#include "log_lsa.hpp"
+#include "log_manager.h"
 #include "error_manager.h"
 #include "master_connector.hpp"
 #include "server_support.h"
@@ -95,7 +98,9 @@ namespace cubconn
 
   master_connector::master_connector () :
     m_stop (false),
-    m_master_state (master_state::CLOSED)
+    m_entry (nullptr),
+    m_master_state (master_state::CLOSED),
+    m_connection_pool (nullptr)
   {
     context *ctx;
 
@@ -165,6 +170,11 @@ namespace cubconn
 	  }
 	assert_release (false);
       }
+  }
+  bool master_connector::attach (cubthread::entry &entry) noexcept
+  {
+    m_entry = &entry;
+    return true;
   }
 
   bool master_connector::attach (connection_pool &pool) noexcept
@@ -499,6 +509,125 @@ namespace cubconn
     return true;
   }
 
+  inline bool master_connector::prepare_send_ha_mode (context *ctx) noexcept
+  {
+    int *response;
+
+    /* clear the packet buffer */
+    ctx->m_sendbuf.clear ();
+    response = ctx->allocate<int> ();
+
+    if (HA_DISABLED ())
+      {
+	*response = htonl (HA_SERVER_STATE_NA);
+      }
+    else
+      {
+	*response = htonl (css_ha_server_state ());
+      }
+
+    ctx->push ({ reinterpret_cast<std::byte *> (response), sizeof (int) });
+
+    /* make the packets to msghdr */
+    ctx->m_sendbuf.stamp_msghdr ();
+
+    /* update the events */
+    if (!this->update_epoll_events (ctx))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_ha_mode: update_epoll_events failed: %s", strerror (errno));
+	return false;
+      }
+    return true;
+  }
+
+  inline bool master_connector::prepare_send_log_eof (context *ctx) noexcept
+  {
+    LOG_LSA *eof_lsa;
+    static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
+    std::aligned_storage_t<OR_LOG_LSA_ALIGNED_SIZE, 8> *reply;
+
+    /* clear the packet buffer */
+    ctx->m_sendbuf.clear ();
+    reply = ctx->allocate<std::aligned_storage_t<OR_LOG_LSA_ALIGNED_SIZE, 8>> ();
+
+    assert (m_entry != nullptr);
+    LOG_CS_ENTER_READ_MODE (m_entry);
+
+    eof_lsa = log_get_eof_lsa ();
+    (void) or_pack_log_lsa (reinterpret_cast<char *> (reply), eof_lsa);
+
+    LOG_CS_EXIT (m_entry);
+
+    if (LSA_EQ (&prev_eof_lsa, eof_lsa))
+      {
+	er_log_debug (ARG_FILE_LINE, "Disk failure has been occurred: prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
+		      LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
+      }
+    else
+      {
+	LSA_COPY (&prev_eof_lsa, eof_lsa);
+      }
+
+    if (!this->prepare_send_heartbeat_request (ctx, SERVER_GET_EOF))
+      {
+	return false;
+      }
+    if (!this->prepare_send_heartbeat_data (ctx, reinterpret_cast<std::byte *> (reply), OR_LOG_LSA_ALIGNED_SIZE))
+      {
+	return false;
+      }
+    return true;
+  }
+
+  inline bool master_connector::prepare_send_heartbeat_request (context *ctx, CSS_SERVER_REQUEST command) noexcept
+  {
+    int *response;
+
+    /* clear the packet buffer */
+    ctx->m_sendbuf.clear ();
+    response = ctx->allocate<int> ();
+    *response = htonl (command);
+
+    ctx->push ({ reinterpret_cast<std::byte *> (response), sizeof (int) });
+
+    /* make the packets to msghdr */
+    ctx->m_sendbuf.stamp_msghdr ();
+
+    /* update the events */
+    if (!this->update_epoll_events (ctx))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_ha_mode: update_epoll_events failed: %s", strerror (errno));
+	return false;
+      }
+    return true;
+  }
+
+  inline bool master_connector::prepare_send_heartbeat_data (context *ctx, std::byte *data, std::size_t size) noexcept
+  {
+    std::aligned_storage_t<16, 8> *response;
+
+    /* clear the packet buffer */
+    ctx->m_sendbuf.clear ();
+
+    /* TODO: this must be fixed if you wanna store the data bigger than 16-bytes */
+    assert_release (size <= 16);
+    response = ctx->allocate<std::aligned_storage_t<16, 8>> ();
+    std::memcpy (response, data, size);
+
+    ctx->push ({ reinterpret_cast<std::byte *> (response), size });
+
+    /* make the packets to msghdr */
+    ctx->m_sendbuf.stamp_msghdr ();
+
+    /* update the events */
+    if (!this->update_epoll_events (ctx))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_ha_mode: update_epoll_events failed: %s", strerror (errno));
+	return false;
+      }
+    return true;
+  }
+
   inline bool master_connector::switch_to_unix_socket (context *ctx) noexcept
   {
     int datagram_fd;
@@ -725,17 +854,23 @@ namespace cubconn
 	break;
 
       case SERVER_GET_HA_MODE:
-	css_process_get_server_ha_mode_request (m_context.m_conn);
-	NEXT_STATE (ctx, RecvRequestType);
+	if (!this->prepare_send_ha_mode (ctx))
+	  {
+	    return result::Error;
+	  }
+	NEXT_STATE (ctx, SendHBToMaster);
 	break;
 
       case SERVER_CHANGE_HA_MODE:
-	css_process_change_server_ha_mode_request (m_context.m_conn);
-	NEXT_STATE (ctx, RecvRequestType);
+	NEXT_STATE (ctx, RecvHAMode);
 	break;
 
       case SERVER_GET_EOF:
-	css_process_get_eof_request (m_context.m_conn);
+	if (!this->prepare_send_log_eof (ctx))
+	  {
+	    return result::Error;
+	  }
+	NEXT_STATE (ctx, SendHBToMaster);
 	break;
 
       default:
@@ -743,6 +878,54 @@ namespace cubconn
 	return result::Error;
       }
 
+    return result::Ok;
+  }
+
+  inline result master_connector::change_ha_mode (context *ctx) noexcept
+  {
+    HA_SERVER_STATE state;
+    const int *buf;
+    result status;
+
+    std::tie (status, buf) = buffered_socket::read_fixed_size<int> (ctx->m_conn->fd, ctx->m_recvbuf);
+    if (status != result::Ok)
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->change_ha_mode: read_fixed_size returned %d", status);
+	return status;
+      }
+
+    state = (HA_SERVER_STATE) ntohl (*buf);
+    ctx->m_recvbuf.mark_consumed ();
+
+    er_log_debug (__FILE__, __LINE__, "cub_server received request to change ha mode = %d\n", state);
+
+    assert (m_entry != nullptr);
+
+    if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
+      {
+	if (css_change_ha_server_state (m_entry, state, false, HA_CHANGE_MODE_IMMEDIATELY, true) != NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
+	  }
+      }
+    else
+      {
+	er_log_debug (ARG_FILE_LINE, "ERROR : unexpected state. (state :%d). \n", state);
+      }
+
+    state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
+
+    if (!this->prepare_send_heartbeat_request (ctx, SERVER_CHANGE_HA_MODE))
+      {
+	return result::Error;
+      }
+    /* css_send_heartbeat_data (ctx->m_conn, (char *) &state, sizeof (state)); */
+    if (!this->prepare_send_heartbeat_data (ctx, reinterpret_cast<std::byte *> (&state), sizeof (state)))
+      {
+	return result::Error;
+      }
+
+    NEXT_STATE (ctx, SendHBToMaster);
     return result::Ok;
   }
 
@@ -765,6 +948,11 @@ namespace cubconn
       case state::RecvNewClient:
 	status = this->request_new_client (ctx);
 	/* next state have already been set in request_new_client. */
+	break;
+
+      case state::RecvHAMode:
+	status = this->change_ha_mode (ctx);
+	/* next state have already been set in change_ha_mode. */
 	break;
 
       case state::SendInHandshake:
@@ -825,7 +1013,8 @@ namespace cubconn
   {
     assert (ctx->m_state != state::RecvInHandshake &&
 	    ctx->m_state != state::RecvRequestType &&
-	    ctx->m_state != state::RecvNewClient);
+	    ctx->m_state != state::RecvNewClient &&
+	    ctx->m_state != state::RecvHAMode);
     assert (ctx && ctx->m_conn);
 
     if (!ctx->has_data_to_send ())
@@ -872,6 +1061,10 @@ namespace cubconn
 	this->sent_reply_to_client (ctx);
 	/* return here to avoid segfault */
 	return true;
+
+      case state::SendHBToMaster:
+	NEXT_STATE (ctx, RecvRequestType);
+	break;
 
       default:
 	/* impossible ! */
@@ -982,7 +1175,8 @@ namespace cubconn
 		    if (!HA_DISABLED ())
 		      {
 			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-				"Disconnected with the cub_master and will shut itself down", "");
+				"disconnected with the cub_master and will shut itself down", "");
+			return true;
 		      }
 		    /* WAIT RESPONSE or ESTABLISHED */
 		    this->reestablish_with_master ();
