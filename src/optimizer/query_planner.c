@@ -1556,6 +1556,23 @@ qo_sscan_cost (QO_PLAN * planp)
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
   planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
+
+#if TEST_DUMP_PLAN_COST
+  fprintf (stdout, "\nSequential Scan Cost: \n");
+  fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
+  fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  -    Total     Cost: %lf\n",
+	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
+  if (planp->vtbl != NULL)
+    {
+      // qo_plan_lite_print (planp, stdout, 0);
+      qo_plan_fprint (planp, stdout, 0, NULL);
+      fprintf (stdout, "\n");
+    }
+  fprintf (stdout, "\n");
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -1895,6 +1912,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
+  double guessed_result_cardinality = DBL_MAX;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -2016,8 +2034,13 @@ qo_iscan_cost (QO_PLAN * planp)
       filter_sel *= QO_TERM_SELECTIVITY (termp);
     }
 
+  if (qo_plan_is_orderby_skip_candidate (planp) && QO_PLAN_HAS_LIMIT (planp))
+    {
+      guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
+    }
+
   /* number of leaf to be selected */
-  leaf_access = sel * (double) QO_NODE_NCARD (nodep);
+  leaf_access = MIN (sel * (double) QO_NODE_NCARD (nodep), guessed_result_cardinality);
   /* height of the B+tree */
   height = (double) cum_statsp->height - 1;
   if (height < 0)
@@ -2055,7 +2078,9 @@ qo_iscan_cost (QO_PLAN * planp)
   else
     {
       object_IO = opages * sel * filter_sel;
-      heap_access = (double) QO_NODE_NCARD (nodep) * sel * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      heap_access =
+	MIN ((double) QO_NODE_NCARD (nodep) * sel * filter_sel,
+	     guessed_result_cardinality) * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
   object_IO = MAX (1.0, object_IO);
 
@@ -2064,6 +2089,23 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
+
+#if TEST_DUMP_PLAN_COST
+  fprintf (stdout, "\nIndex Scan Cost: \n");
+  fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
+  fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  -    Total     Cost: %lf\n",
+	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
+  if (planp->vtbl != NULL)
+    {
+      // qo_plan_lite_print (planp, stdout, 0);
+      qo_plan_fprint (planp, stdout, 0, NULL);
+      fprintf (stdout, "\n");
+    }
+  fprintf (stdout, "\n");
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 
@@ -2588,6 +2630,23 @@ qo_sort_cost (QO_PLAN * planp)
 	  planp->fixed_io_cost += sort_io;
 	}
     }
+
+#if TEST_DUMP_PLAN_COST
+  fprintf (stdout, "\nSort Cost: \n");
+  fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
+  fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
+  fprintf (stdout, "  - Variable CPU Cost: %lf\n", planp->variable_cpu_cost);
+  fprintf (stdout, "  - Variable I/O Cost: %lf\n", planp->variable_io_cost);
+  fprintf (stdout, "  -    Total     Cost: %lf\n",
+	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
+  if (planp->vtbl != NULL)
+    {
+      // qo_plan_lite_print (planp, stdout, 0);
+      qo_plan_fprint (planp, stdout, 0, NULL);
+      fprintf (stdout, "\n");
+    }
+  fprintf (stdout, "\n");
+#endif /* TEST_DUMP_PLAN_COST */
 }
 
 /*
@@ -3093,7 +3152,8 @@ qo_nljoin_cost (QO_PLAN * planp)
 	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
   if (planp->vtbl != NULL)
     {
-      qo_plan_lite_print (planp, stdout, 0);
+      // qo_plan_lite_print (planp, stdout, 0);
+      qo_plan_fprint (planp, stdout, 0, NULL);
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
@@ -3171,7 +3231,8 @@ qo_mjoin_cost (QO_PLAN * planp)
 	   planp->fixed_cpu_cost + planp->fixed_io_cost + planp->variable_cpu_cost + planp->variable_io_cost);
   if (planp->vtbl != NULL)
     {
-      qo_plan_lite_print (planp, stdout, 0);
+      // qo_plan_lite_print (planp, stdout, 0);
+      qo_plan_fprint (planp, stdout, 0, NULL);
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
@@ -3298,7 +3359,8 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 	   plan_p->fixed_cpu_cost + plan_p->fixed_io_cost + plan_p->variable_cpu_cost + plan_p->variable_io_cost);
   if (plan_p->vtbl != NULL)
     {
-      qo_plan_lite_print (plan_p, stdout, 0);
+      // qo_plan_lite_print (plan_p, stdout, 0);
+      qo_plan_fprint (plan_p, stdout, 0, NULL);
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
@@ -3767,14 +3829,18 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   tb = bf + ba;
   if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
     {
-      if (qo_is_iscan_from_orderby (a) && qo_plan_is_orderby_skip_candidate (a) && !qo_is_iscan_from_orderby (b))
+#if 0
+      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a) || qo_is_iscan_from_groupby (a))
+	  && qo_plan_is_orderby_skip_candidate (a) && qo_is_seq_scan (b))
 	{
 	  return PLAN_COMP_LT;
 	}
-      else if (!qo_is_iscan_from_orderby (a) && qo_is_iscan_from_orderby (b) && qo_plan_is_orderby_skip_candidate (b))
+      else if (qo_is_seq_scan (a) && (qo_is_iscan (b) || qo_is_iscan_from_orderby (b) || qo_is_iscan_from_groupby (b))
+	       && qo_plan_is_orderby_skip_candidate (b))
 	{
 	  return PLAN_COMP_GT;
 	}
+#endif
 
       if (ta * RBO_CHECK_LIMIT_RATIO <= tb)
 	{
@@ -4011,12 +4077,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* check index scan */
-      if (qo_is_iscan (a) && qo_is_seq_scan (b))
+      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a) || qo_is_iscan_from_groupby (a)) && qo_is_seq_scan (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if (qo_is_iscan (b) && qo_is_seq_scan (a))
+      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b) || qo_is_iscan_from_groupby (b)) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -8690,7 +8756,7 @@ qo_search_planner (QO_PLANNER * planner)
 	  QO_PLAN *best_plan;
 	  best_plan = qo_find_best_plan_on_info (info, QO_UNORDERED, 1.0);
 	  if (best_plan->plan_type == QO_PLANTYPE_SCAN && !qo_plan_multi_range_opt (best_plan)
-	      && !qo_is_iscan_from_orderby (best_plan) && !qo_is_iscan_from_groupby (best_plan))
+	      && !qo_plan_is_orderby_skip_candidate (best_plan) && !qo_is_iscan_from_groupby (best_plan))
 	    {
 	      qo_generate_sort_limit_plan (planner->env, info, best_plan);
 	    }
@@ -10768,9 +10834,9 @@ qo_order_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_UNK;
     }
 
-  if (a_ent->orderby_skip)
+  if (a_ent->orderby_skip || qo_plan_is_orderby_skip_candidate (a))
     {
-      if (b_ent->orderby_skip)
+      if (b_ent->orderby_skip || qo_plan_is_orderby_skip_candidate (b))
 	{
 	  return qo_plan_iscan_terms_cmp (a, b);
 	}
@@ -10781,7 +10847,7 @@ qo_order_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else
     {
-      if (b_ent->orderby_skip)
+      if (b_ent->orderby_skip || qo_plan_is_orderby_skip_candidate (b))
 	{
 	  return PLAN_COMP_GT;
 	}
