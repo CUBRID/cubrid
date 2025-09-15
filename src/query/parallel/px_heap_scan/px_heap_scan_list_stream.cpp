@@ -20,8 +20,6 @@
  * px_heap_scan_list_stream.cpp - list stream for parallel heap scan
  */
 
-#if SERVER_MODE && !WINDOWS
-
 #include "px_heap_scan_list_stream.hpp"
 #include "px_heap_scan_misc.hpp"
 #include "object_representation.h"
@@ -435,5 +433,3 @@ namespace parallel_heap_scan
   }
 
 } // namespace parallel_heap_scan
-
-#endif /* SERVER_MODE && !WINDOWS */

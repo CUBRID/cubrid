@@ -531,10 +531,6 @@ extern void scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_l
 				  MVCC_SNAPSHOT * mvcc_snapshot);
 extern int scan_initialize (void);
 extern void scan_finalize (void);
-extern void scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
-				   val_list_node * val_list, val_descr * val_descr, OID * class_oid,
-				   int btree_num_attrs, ATTR_ID * btree_attr_ids, int *num_vstr_ptr,
-				   ATTR_ID * vstr_ids);
 
 extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

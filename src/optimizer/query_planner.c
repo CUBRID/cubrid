@@ -506,6 +506,8 @@ qo_plan_malloc (QO_ENV * env)
   bitset_init (&(plan->sarged_terms), env);
   bitset_init (&(plan->subqueries), env);
 
+  plan->parallel_opt_use = PLAN_PARALLEL_OPT_NO;
+
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
 
@@ -2788,6 +2790,8 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
    * in some different order) will yield incorrect results.
    */
   bitset_assign (&(plan->subqueries), pinned_subqueries);
+
+  plan->parallel_opt_use = qo_check_hjoin_for_parallel_opt (plan);
 
   if (qo_check_join_for_multi_range_opt (plan))
     {
@@ -6257,6 +6261,12 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 #else /* TEST_HASH_JOIN_ENABLE */
       goto exit;
 #endif /* TEST_HASH_JOIN_ENABLE */
+    }
+
+  /* Check if a click counter is set. */
+  if (QO_ENV_PT_TREE (info->env)->flag.is_click_counter)
+    {
+      goto exit;		/* give up */
     }
 
   /* Check if a key limit is set. */
@@ -12148,4 +12158,115 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   return;
+}
+
+/*
+ * qo_check_hjoin_for_parallel_opt() -
+ *   return: One of the following QO_PLAN_PARALLEL_OPT_USE values:
+ *           - PLAN_PARALLEL_OPT_USE: Parallel hash join is enabled by hint.
+ *           - PLAN_PARALLEL_OPT_NO: Parallel hash join is disabled by hint.
+ *           - PLAN_PARALLEL_OPT_CANNOT_USE: Parallel hash join not possible.
+ *           - PLAN_PARALLEL_OPT_CAN_USE: Parallel hash join is possible; depends on runtime conditions.
+ *   plan(in): Query plan node to check (must be a hash join plan).
+ */
+QO_PLAN_PARALLEL_OPT_USE
+qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
+{
+  PARSER_CONTEXT *parser = NULL;
+  PT_NODE *tree = NULL, *expr = NULL;
+
+  QO_ENV *env = NULL;
+  QO_TERM *term = NULL;
+  BITSET_ITERATOR bitset_iter;
+  int bitset_index;
+
+  bool is_method_call = false;
+
+  if (plan == NULL || plan->info == NULL || plan->plan_type != QO_PLANTYPE_JOIN
+      || plan->plan_un.join.join_method != QO_JOINMETHOD_HASH_JOIN)
+    {
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  env = plan->info->env;
+  if (env == NULL)
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  parser = QO_ENV_PARSER (env);
+  if (parser == NULL)
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  tree = QO_ENV_PT_TREE (env);
+  if (tree == NULL)
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  if (!PT_IS_SELECT (tree))	// TODO: check merge, update, delete
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      /* TODO: xtran_server_start_topop does not support concurrency. */
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  if (!bitset_is_empty (&plan->plan_un.join.during_join_terms))
+    {
+      for (bitset_index = bitset_iterate (&plan->plan_un.join.during_join_terms, &bitset_iter); bitset_index != -1;
+	   bitset_index = bitset_next_member (&bitset_iter))
+	{
+	  term = QO_ENV_TERM (env, bitset_index);
+	  if (term == NULL)
+	    {
+	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	    }
+
+	  expr = QO_TERM_PT_EXPR (term);
+	  if (expr == NULL)
+	    {
+	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	    }
+
+	  (void) parser_walk_tree (parser, expr, pt_is_method_call_node, &is_method_call, NULL, NULL);
+
+	  if (is_method_call)
+	    {
+	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	    }
+	}
+    }
+
+  if (tree->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+    {
+      return PLAN_PARALLEL_OPT_NO;
+    }
+
+  if (tree->info.query.q.select.hint & PT_HINT_PARALLEL)
+    {
+      if (tree->info.query.q.select.num_parallel_threads == PT_MIN_PARALLEL_THREADS)
+	{
+	  return PLAN_PARALLEL_OPT_NO;
+	}
+      else
+	{
+	  return PLAN_PARALLEL_OPT_USE;
+	}
+    }
+
+  return PLAN_PARALLEL_OPT_CAN_USE;
 }
