@@ -636,7 +636,7 @@ exit:
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("unknown error"),
 					  ARG_FILE_LINE));
       }
 
@@ -743,7 +743,7 @@ exit:
     if (cursor == nullptr)
       {
 	assert (false);
-	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std:string ("no cursor for the query"),
 				     ARG_FILE_LINE));
 	error = m_stack->send_data_to_java (b);
 	return error;
@@ -803,7 +803,7 @@ exit:
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("fetch failed"),
 					  ARG_FILE_LINE));
       }
 
