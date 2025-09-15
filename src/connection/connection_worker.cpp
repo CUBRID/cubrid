@@ -879,7 +879,23 @@ namespace cubconn
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
 	    if ((events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) && ctx->m_conn->fd != m_eventfd)
 	      {
-		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
+		if (events[i].events & EPOLLERR)
+		  {
+		    int error = 0;
+		    socklen_t len = sizeof (error);
+		    if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0)
+		      {
+			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd, strerror (error));
+		      }
+		    else
+		      {
+			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d, but getsockopt failed.", ctx->m_conn->fd);
+		      }
+		  }
+		else
+		  {
+		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed: %s", strerror (errno));
+		  }
 		handle_connection_error (ctx);
 		continue;
 	      }
