@@ -363,6 +363,7 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
     {
       if (csql_Error_code == CSQL_ERR_SQL_ERROR)
 	{
+	  assert (false);
 	  goto error;
 	}
       else
@@ -560,7 +561,8 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
 	      /* UNKNOWN, maybe host variable */
 	      || result_info->attr_types[i] == DB_TYPE_NULL || result_info->attr_types[i] == DB_TYPE_VARIABLE
 	      || value_type == result_info->attr_types[i]
-	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i])));
+	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i]))
+	      || (TP_IS_BIT_TYPE (value_type) && TP_IS_BIT_TYPE (result_info->attr_types[i])));
 
       switch (value_type)
 	{

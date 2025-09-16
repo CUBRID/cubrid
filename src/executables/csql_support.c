@@ -875,7 +875,6 @@ csql_check_server_down (void)
   if (db_error_code () == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-
       fprintf (csql_Error_fp, "Exiting ...\n");
       csql_exit (EXIT_FAILURE);
     }
