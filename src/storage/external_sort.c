@@ -4768,12 +4768,20 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
   /* merge last output file */
   origin_list_id = ((SORT_INFO *) px_sort_param[0].put_arg)->output_file;
 
-  /* If QUERY_CACHE(FILE_QUERY_AREA), Merged list not possible. */
-  if (origin_list_id->tfile_vfid->temp_file_type == FILE_QUERY_AREA)
+  /* merge lists */
+  for (int i = 1; i < parallel_num; i++)
     {
-      for (int i = 1; i < parallel_num; i++)
+      sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+      /* check NULL list id */
+      if (VPID_ISNULL (&sort_info_p->output_file->first_vpid))
 	{
-	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+	  /* skip the empty list */
+	  continue;
+	}
+
+      /* If QUERY_CACHE(FILE_QUERY_AREA), Merged list not possible. */
+      if (origin_list_id->tfile_vfid->temp_file_type == FILE_QUERY_AREA)
+	{
 	  error = qfile_append_list (thread_p, origin_list_id, sort_info_p->output_file);
 	  if (error != NO_ERROR)
 	    {
@@ -4782,12 +4790,8 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 	  qfile_destroy_list (thread_p, sort_info_p->output_file);
 	  QFILE_FREE_AND_INIT_LIST_ID (sort_info_p->output_file);
 	}
-    }
-  else
-    {
-      for (int i = 1; i < parallel_num; i++)
+      else
 	{
-	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
 	  error = qfile_connect_list (thread_p, origin_list_id, sort_info_p->output_file);
 	  if (error != NO_ERROR)
 	    {
