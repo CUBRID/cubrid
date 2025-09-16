@@ -25224,6 +25224,365 @@ db_cfile_length (const DB_VALUE * src_value, DB_VALUE * result_value)
   return error_status;
 }
 
+
+/*
+ * db_bit_to_blob - convert bit string value to blob value
+ *   return: NO_ERROR or error code
+ *   src_value(in): bit string value
+ *   result_value(out): blob value
+ */
+int
+db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  DB_TYPE src_type;
+  DB_CONST_C_BIT bit_data = NULL;
+  int bit_length = 0;
+  int error_status = NO_ERROR;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+  if (src_type == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+  else if (QSTR_IS_BIT (src_type) && !QSTR_IS_LOB (src_type))
+    {
+      // TODO: This part should be revised when the TOAST structure is introduced in the future.
+      bit_data = db_get_bit (src_value, &bit_length);
+      db_make_blob (result_value, DB_MAX_LOB_PRECISION, bit_data, bit_length);
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  return error_status;
+}
+
+/*
+ * db_char_to_blob - convert char string value to blob value
+ *   return: NO_ERROR or error code
+ *   src_value(in): char string value
+ *   result_value(out): blob value
+ */
+int
+db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  DB_TYPE src_type;
+  DB_CONST_C_CHAR char_data = NULL;
+  int char_length = 0;
+  int error_status = NO_ERROR;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+  if (src_type == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  if (QSTR_IS_ANY_CHAR (src_type))
+    {
+      // TODO: This part should be revised when the TOAST structure is introduced in the future.
+      char_data = db_get_char (src_value, &char_length);
+      db_make_blob (result_value, DB_MAX_LOB_PRECISION, char_data, char_length);
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  return error_status;
+}
+
+/*
+ * db_blob_to_bit - convert blob value to bit string value
+ *   return: NO_ERROR or error code
+ *   src_value(in): blob value
+ *   length_value(in): the length to convert
+ *   result_value(out): bit string value
+ */
+int
+db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+  DB_TYPE src_type, length_type;
+  int blob_length = 0;
+  int max_length = 0;
+  DB_CONST_C_BIT blob_data = NULL;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+  if (length_value == NULL || DB_VALUE_TYPE (length_value) == DB_TYPE_NULL)
+    {
+      length_type = DB_TYPE_INTEGER;
+      max_length = -1;
+    }
+  else
+    {
+      length_type = DB_VALUE_DOMAIN_TYPE (length_value);
+      max_length = db_get_int (length_value);
+    }
+  if (src_type == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  if (src_type == DB_TYPE_BLOB && length_type == DB_TYPE_INTEGER)
+    {
+      // TODO: This part should be revised when the TOAST structure is introduced in the future.
+      blob_data = db_get_bit (src_value, &blob_length);
+      db_make_varbit (result_value, max_length, blob_data, blob_length);
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  return error_status;
+}
+
+/*
+ * db_blob_from_file - construct blob value from the file (char string literal)
+ *   return: NO_ERROR or error code
+ *   src_value(in): char string literal (file path)
+ *   result_value(out): blob value
+ */
+int
+db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+  DB_VALUE bfile_value;
+  // TODO: This part should be revised when the TOAST structure is introduced in the future.
+  db_make_null (&bfile_value);
+
+  error_status = db_bfile_from_file (src_value, &bfile_value);
+  if (error_status != NO_ERROR)
+    {
+      assert (false);
+      return error_status;
+    }
+
+  error_status = db_bfile_to_bit (&bfile_value, NULL, result_value);
+  if (error_status != NO_ERROR)
+    {
+      assert (false);
+      return error_status;
+    }
+  assert (false);
+  return error_status;
+}
+
+/*
+ * db_blob_length - get the length of blob value
+ *   return: NO_ERROR or error code
+ *   src_value(in): blob value
+ *   result_value(out): bigint value
+ */
+int
+db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  DB_TYPE src_type;
+  int error_status = NO_ERROR;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+  if (src_type == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  if (src_type == DB_TYPE_BLOB)
+    {
+      // TODO: This part should be revised when the TOAST structure is introduced in the future.
+      db_string_bit_length (src_value, result_value);
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  return error_status;
+}
+
+/*
+ * db_char_to_clob - convert char string value to clob value
+ *   return: NO_ERROR or error code
+ *   src_value(in): char string value
+ *   result_value(out): clob value
+ */
+int
+db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  DB_TYPE src_type;
+  DB_CONST_C_CHAR char_data = NULL;
+  int char_length = 0;
+  int error_status = NO_ERROR;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+  if (src_type == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  if (QSTR_IS_ANY_CHAR (src_type))
+    {
+      char_data = db_get_char (src_value, &char_length);
+      db_make_blob (result_value, DB_MAX_LOB_PRECISION, char_data, char_length);
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  return error_status;
+}
+
+/*
+ * db_clob_to_char - convert clob value to char string value
+ *   return: NO_ERROR or error code
+ *   src_value(in): clob value
+ *   codeset_value(in): the codeset of output string
+ *   result_value(out): char string value
+ */
+int
+db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+  DB_TYPE src_type;
+  int max_length;
+  int cs = LANG_SYS_CODESET;
+  DB_CONST_C_CHAR clob_str = NULL;
+  int clob_len = 0;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  if (codeset_value != NULL)
+    {
+      assert (DB_VALUE_DOMAIN_TYPE (codeset_value) == DB_TYPE_INTEGER);
+
+      cs = db_get_int (codeset_value);
+      if (cs != INTL_CODESET_UTF8 && cs != INTL_CODESET_ISO88591 && cs != INTL_CODESET_KSC5601_EUC)
+	{
+	  error_status = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  return error_status;
+	}
+    }
+  src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+
+  max_length = -1;
+
+  if (src_type == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  if (src_type == DB_TYPE_CLOB)
+    {
+      int byte_size = 0;
+
+      clob_str = db_get_string (src_value);
+      clob_len = db_get_string_length (src_value);
+
+      if (clob_str == NULL)
+	{
+	  db_make_null (result_value);
+	}
+
+      intl_char_size ((unsigned char *) clob_str, clob_len, db_get_string_codeset (src_value), &byte_size);
+
+      db_make_varchar (result_value, clob_len, clob_str, byte_size, cs, db_get_string_collation (src_value));
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  return error_status;
+}
+
+/*
+ * db_clob_from_lob - construct clob value from the lob (char string literal)
+ *   return: NO_ERROR or error code
+ *   src_value(in): char string literal (lob path)
+ *   result_value(out): clob value
+ */
+int
+db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  int error_status = NO_ERROR;
+  DB_VALUE cfile_value;
+  // TODO: This part should be revised when the TOAST structure is introduced in the future.
+  db_make_null (&cfile_value);
+
+  error_status = db_cfile_from_file (src_value, &cfile_value);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  error_status = db_cfile_to_char (&cfile_value, NULL, result_value);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+
+  return error_status;
+}
+
+/*
+ * db_clob_length - get the length of clob value
+ *   return: NO_ERROR or error code
+ *   src_value(in): clob value
+ *   result_value(out): bigint value
+ */
+int
+db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
+{
+  DB_TYPE src_type;
+  int error_status = NO_ERROR;
+
+  assert (src_value != NULL && result_value != NULL);
+
+  src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+  if (src_type == DB_TYPE_NULL)
+    {
+      db_make_null (result_value);
+      return NO_ERROR;
+    }
+
+  if (src_type == DB_TYPE_CLOB)
+    {
+      db_string_char_length (src_value, result_value);
+    }
+  else
+    {
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+    }
+
+  return error_status;
+}
+
+
 /*
  * db_get_datetime_from_dbvalue () - splits a generic DB_VALUE to
  *				     year, month, day, hour, minute, second

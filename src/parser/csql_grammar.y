@@ -27252,10 +27252,15 @@ parser_keyword_func (const char *name, PT_NODE * args)
 				     parser_make_date_lang (c, a3));
 
     case PT_BIT_TO_BFILE:
+    case PT_BIT_TO_BLOB:
     case PT_CHAR_TO_BFILE:
     case PT_CHAR_TO_CFILE:
+    case PT_CHAR_TO_BLOB:
+    case PT_CHAR_TO_CLOB:
     case PT_BFILE_LENGTH:
     case PT_CFILE_LENGTH:
+    case PT_BLOB_LENGTH:
+    case PT_CLOB_LENGTH:
       if (c != 1)
 	{
 	  return NULL;
@@ -27285,6 +27290,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       return parser_make_expression (this_parser, key->op, a1, NULL, NULL);
 
     case PT_BFILE_TO_BIT:
+    case PT_BLOB_TO_BIT:
       if (c != 1)
 	{
 	  return NULL;
@@ -27295,6 +27301,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
     case PT_BFILE_FROM_FILE:
     case PT_CFILE_FROM_FILE:
+    case PT_BLOB_FROM_FILE:
+    case PT_CLOB_FROM_FILE:
       if (c != 1)
 	{
 	  return NULL;
@@ -27315,6 +27323,14 @@ parser_keyword_func (const char *name, PT_NODE * args)
 		{
 		  a2->type_enum = PT_TYPE_CFILE;
 		}
+              else if (key->op == PT_BLOB_FROM_FILE)
+                {
+                  a2->type_enum = PT_TYPE_BLOB;
+                }
+              else if (key->op == PT_CLOB_FROM_FILE)
+                {
+                  a2->type_enum = PT_TYPE_CLOB;
+                }
 	    }
 
 	  /* Those two functions should be evaluated at the compile time */

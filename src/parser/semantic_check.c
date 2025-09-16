@@ -5697,6 +5697,15 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_CFILE_FROM_FILE:
     case PT_CFILE_LENGTH:
     case PT_CFILE_TO_CHAR:
+    case PT_BIT_TO_BLOB:
+    case PT_BLOB_FROM_FILE:
+    case PT_BLOB_LENGTH:
+    case PT_BLOB_TO_BIT:
+    case PT_CHAR_TO_BLOB:
+    case PT_CHAR_TO_CLOB:
+    case PT_CLOB_FROM_FILE:
+    case PT_CLOB_LENGTH:
+    case PT_CLOB_TO_CHAR:
     case PT_TYPEOF:
     case PT_INET_ATON:
     case PT_INET_NTOA:
@@ -16958,6 +16967,10 @@ pt_check_filter_index_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	case PT_BFILE_TO_BIT:
 	case PT_CFILE_LENGTH:
 	case PT_CFILE_TO_CHAR:
+	case PT_BLOB_LENGTH:
+	case PT_BLOB_TO_BIT:
+	case PT_CLOB_LENGTH:
+	case PT_CLOB_TO_CHAR:
 	case PT_RLIKE:
 	case PT_RLIKE_BINARY:
 	case PT_NOT_RLIKE:

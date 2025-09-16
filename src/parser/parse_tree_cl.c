@@ -4036,6 +4036,24 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "bfile_length";
     case PT_CFILE_LENGTH:
       return "cfile_length";
+    case PT_BIT_TO_BLOB:
+      return "bit_to_blob";
+    case PT_CHAR_TO_BLOB:
+      return "char_to_blob";
+    case PT_BLOB_TO_BIT:
+      return "blob_to_bit";
+    case PT_CHAR_TO_CLOB:
+      return "char_to_clob";
+    case PT_CLOB_TO_CHAR:
+      return "clob_to_char";
+    case PT_BLOB_FROM_FILE:
+      return "blob_from_file";
+    case PT_CLOB_FROM_FILE:
+      return "clob_from_file";
+    case PT_BLOB_LENGTH:
+      return "blob_length";
+    case PT_CLOB_LENGTH:
+      return "clob_length";
     case PT_TYPEOF:
       return "typeof ";
     case PT_INDEX_CARDINALITY:
@@ -12120,6 +12138,81 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_CFILE_LENGTH:
       q = pt_append_nulstring (parser, q, " cfile_length(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_BIT_TO_BLOB:
+      q = pt_append_nulstring (parser, q, " bit_to_blob(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_CHAR_TO_BLOB:
+      q = pt_append_nulstring (parser, q, " char_to_blob(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_BLOB_TO_BIT:
+      q = pt_append_nulstring (parser, q, " blob_to_bit(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2)
+	{
+	  r2 = pt_print_bytes (parser, p->info.expr.arg2);
+	  q = pt_append_nulstring (parser, q, ", ");
+	  q = pt_append_varchar (parser, q, r2);
+	}
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_CHAR_TO_CLOB:
+      q = pt_append_nulstring (parser, q, " char_to_clob(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_CLOB_TO_CHAR:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " clob_to_char(");
+      q = pt_append_varchar (parser, q, r1);
+      if (p->info.expr.arg2 != NULL && p->info.expr.arg2->node_type == PT_VALUE
+	  && p->info.expr.arg2->info.value.data_value.i != LANG_SYS_CODESET)
+	{
+	  q = pt_append_nulstring (parser, q, " using ");
+	  q = pt_append_nulstring (parser, q, lang_get_codeset_name (p->info.expr.arg2->info.value.data_value.i));
+	}
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_BLOB_FROM_FILE:
+      q = pt_append_nulstring (parser, q, " blob_from_file(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_CLOB_FROM_FILE:
+      q = pt_append_nulstring (parser, q, " clob_from_file(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_BLOB_LENGTH:
+      q = pt_append_nulstring (parser, q, " blob_length(");
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_CLOB_LENGTH:
+      q = pt_append_nulstring (parser, q, " clob_length(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");

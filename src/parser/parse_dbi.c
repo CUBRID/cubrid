@@ -3715,7 +3715,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	      return (DB_VALUE *) NULL;
 	    }
 
-	  db_make_bit (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length);
+	  db_make_blob (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length);
 	  db_value->need_clear = true;
 	  value->info.value.db_value_is_in_workspace = true;
 	}
@@ -3738,7 +3738,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 			  pt_short_print (parser, value));
 	      return (DB_VALUE *) NULL;
 	    }
-	  db_make_bit (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length * 4);
+	  db_make_blob (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length * 4);
 	  db_value->need_clear = true;
 	  value->info.value.db_value_is_in_workspace = true;
 	}
@@ -3752,14 +3752,41 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       break;
 
     case PT_TYPE_CLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-      db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE,
-		       REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
-		       value->info.value.data_value.str->length, codeset, collation_id);
-      value->info.value.db_value_is_in_workspace = false;
-      *more_type_info_needed = (value->data_type == NULL);
-      break;
+      {
+	const PARSER_VARCHAR *s = value->info.value.data_value.str;
 
+	// (A) typed NULL 안전 처리: str==NULL이면 CLOB 도메인에 NULL 값을 만든다.
+	if (s == NULL)
+	  {
+	    // CLOB 도메인으로 초기화 + NULL 마킹 (typed NULL)
+	    db_value_domain_init (db_value, DB_TYPE_CLOB, DB_MAX_LOB_PRECISION, 0);
+	    db_value->domain.general_info.is_null = 1;
+	    value->info.value.db_value_is_in_workspace = false;
+	    *more_type_info_needed = (value->data_type == NULL);
+	    break;
+	  }
+
+	// (C) 안전 복사(널 종료까지) — db_make_clob 내부가 길이 대신 strlen을 쓸 가능성까지 방어
+	int len = s->length;
+	char *buf = (char *) db_private_alloc (NULL, len + 1);
+	if (buf == NULL)
+	  {
+	    return NULL;
+	  }
+	if (len > 0)
+	  {
+	    memcpy (buf, s->bytes, len);
+	  }
+	buf[len] = '\0';
+
+	db_make_clob (db_value, DB_MAX_LOB_PRECISION, buf, len, db_get_string_codeset (db_value),
+		      db_get_string_collation (db_value));
+
+	db_value->need_clear = true;
+	value->info.value.db_value_is_in_workspace = true;
+	*more_type_info_needed = (value->data_type == NULL);
+	break;
+      }
     case PT_TYPE_COMPOUND:
       PT_ERRORm (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_UNIMPLEMENTED_CONV);
       return (DB_VALUE *) NULL;

@@ -7791,6 +7791,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  || node->info.expr.op == PT_WEEKF || node->info.expr.op == PT_MAKEDATE
 		  || node->info.expr.op == PT_ADDTIME || node->info.expr.op == PT_DEFINE_VARIABLE
 		  || node->info.expr.op == PT_CHR || node->info.expr.op == PT_CFILE_TO_CHAR
+		  || node->info.expr.op == PT_CLOB_TO_CHAR
 		  || node->info.expr.op == PT_INDEX_PREFIX || node->info.expr.op == PT_FROM_TZ)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
@@ -8117,13 +8118,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		}
 	      else if (node->info.expr.op == PT_BIT_TO_BFILE || node->info.expr.op == PT_CHAR_TO_BFILE
 		       || node->info.expr.op == PT_BFILE_LENGTH || node->info.expr.op == PT_CHAR_TO_CFILE
-		       || node->info.expr.op == PT_CFILE_LENGTH)
+		       || node->info.expr.op == PT_CFILE_LENGTH || node->info.expr.op == PT_BIT_TO_BLOB
+		       || node->info.expr.op == PT_CHAR_TO_BLOB || node->info.expr.op == PT_BLOB_LENGTH
+		       || node->info.expr.op == PT_CHAR_TO_CLOB || node->info.expr.op == PT_CLOB_LENGTH)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  r2 = NULL;
 		  r3 = NULL;
 		}
-	      else if (node->info.expr.op == PT_BFILE_TO_BIT)
+	      else if (node->info.expr.op == PT_BFILE_TO_BIT || node->info.expr.op == PT_BLOB_TO_BIT)
 		{
 		  r1 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  if (node->info.expr.arg2 == NULL)
@@ -9356,6 +9359,55 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  domain = pt_xasl_data_type_to_domain (parser, data_type);
 
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOBFILE_LENGTH, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_BIT_TO_BLOB:
+		case PT_CHAR_TO_BLOB:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BLOB);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_BIT_TO_BLOB, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_BLOB_TO_BIT:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_BLOB_TO_BIT, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_CHAR_TO_CLOB:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_CLOB);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_CHAR_TO_CLOB, domain);
+		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_CLOB_TO_CHAR:
+		  if (node->data_type == NULL)
+		    {
+		      data_type = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+		    }
+		  else
+		    {
+		      data_type = node->data_type;
+		    }
+
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_CLOB_TO_CHAR, domain);
+		  break;
+
+		case PT_BLOB_LENGTH:
+		case PT_CLOB_LENGTH:
+		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
+		  domain = pt_xasl_data_type_to_domain (parser, data_type);
+
+		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOB_LENGTH, domain);
 		  parser_free_tree (parser, data_type);
 		  break;
 
