@@ -2558,15 +2558,15 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
 
 /* Scale encoding (1 byte):
- *   0 .. 253 : non-negative scale stored directly
- *   0xFE     : negative scale follows (actual value stored separately)
- *   0xFF     : extended scale follows (for scale >= 254 or future use)
+ *   0x00 .. 0x7F : direct scale (0 ~ 127)
+ *   otherwise    : extended scale follows
+ *              - for scale >= 128
+ *              - for scale in range -211 .. -1
  *
- * Note: Do not assign values beyond 253 directly.
- *       Use 0xFE or 0xFF encoding for negative or extended scales.
+ * Note: 0xFF acts as a flag indicating "read actual scale from extra bytes".
  */
-#define OR_DOMAIN_SCALE_NEG_FLAG       (0xFE)	/* negative scale follows */
-#define OR_DOMAIN_SCALE_MAX            (0xFF)	/* extended scale follows */
+#define OR_DOMAIN_SCALE_EXT_FLAG       (0x80)	/* MSB set => extended encoding */
+#define OR_DOMAIN_SCALE_MAX            (0xFF)	/* extended scale follows in extra bytes */
 
 #define OR_DOMAIN_CODSET_MASK		(0xFF00)
 #define OR_DOMAIN_CODSET_SHIFT		(8)
@@ -2695,12 +2695,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += OR_INT_SIZE;
 	}
 
-      if (scale >= OR_DOMAIN_SCALE_MAX)
-	{
-	  size += OR_INT_SIZE;
-	}
-
-      if (scale < 0)
+      if (scale & OR_DOMAIN_SCALE_EXT_FLAG)
 	{
 	  size += OR_INT_SIZE;
 	}
@@ -2731,7 +2726,8 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 int
 or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_null)
 {
-  unsigned int carrier, extended_precision, extended_scale, negative_scale;
+  unsigned int carrier, extended_precision;
+  int extended_scale;
   int precision, scale;
   int has_oid, has_subdomain, has_enum;
   bool has_schema;
@@ -2790,7 +2786,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
       scale = 0;
       extended_precision = 0;
       extended_scale = 0;
-      negative_scale = 0;
       has_oid = 0;
       has_subdomain = 0;
       has_enum = 0;
@@ -2810,19 +2805,14 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      scale = 0;
 	    }
 
-	  if (scale < 0)
-	    {
-	      carrier |= OR_DOMAIN_SCALE_NEG_FLAG << OR_DOMAIN_SCALE_SHIFT;
-	      negative_scale = -scale;
-	    }
-	  else if (scale < OR_DOMAIN_SCALE_MAX)
-	    {
-	      carrier |= scale << OR_DOMAIN_SCALE_SHIFT;
-	    }
-	  else
+	  if (scale & OR_DOMAIN_SCALE_EXT_FLAG)
 	    {
 	      carrier |= OR_DOMAIN_SCALE_MAX << OR_DOMAIN_SCALE_SHIFT;
 	      extended_scale = d->scale;
+	    }
+	  else
+	    {
+	      carrier |= scale << OR_DOMAIN_SCALE_SHIFT;
 	    }
 	  /* handle all precisions the same way at the end */
 	  precision = d->precision;
@@ -2987,15 +2977,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
       if (extended_scale)
 	{
 	  rc = or_put_int (buf, extended_scale);
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
-	}
-
-      if (negative_scale)
-	{
-	  rc = or_put_int (buf, negative_scale);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
@@ -3251,15 +3232,10 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      goto error;
 	    }
 
-	  /* do we have an extra scale word ? */
+	  /* extra scale now follows new rules (see OR_DOMAIN_SCALE_* defines) */
 	  if (scale == OR_DOMAIN_SCALE_MAX)
 	    {
 	      scale = or_get_int (buf, &rc);
-	    }
-
-	  if (scale == OR_DOMAIN_SCALE_NEG_FLAG)
-	    {
-	      scale = -(or_get_int (buf, &rc));
 	    }
 
 	  if (rc != NO_ERROR)
@@ -3504,19 +3480,10 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      goto error;
 		    }
 		}
-	      /* do we have an extra scale word ? */
+	      /* extra scale now follows new rules (see OR_DOMAIN_SCALE_* defines) */
 	      if (scale == OR_DOMAIN_SCALE_MAX)
 		{
 		  scale = or_get_int (buf, &rc);
-		  if (rc != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-
-	      if (scale == OR_DOMAIN_SCALE_NEG_FLAG)
-		{
-		  scale = -(or_get_int (buf, &rc));
 		  if (rc != NO_ERROR)
 		    {
 		      goto error;

@@ -3068,7 +3068,7 @@ db_value_is_corrupted (const DB_VALUE * value)
     {
     case DB_TYPE_NUMERIC:
       if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION)
-	  && IS_INVALID_NUMERIC_SCALE (value->domain.numeric_info.scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE))
+	  || IS_INVALID_NUMERIC_SCALE (value->domain.numeric_info.scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE))
 	{
 	  return true;
 	}

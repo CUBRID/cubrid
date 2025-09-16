@@ -172,7 +172,7 @@ static int analyze_numeric_string (const char *astring, int astring_length, INTL
 				   int *frac_last_nz, bool * is_zero);
 static void determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
 				  int frac_first_nz, int frac_last_nz, char *num_string, int *out_prec, int *out_scale);
-static void determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len,
+static void determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, int tmp_frac_len,
 			     int frac_zero_cnt, char next_digit);
 static void numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale,
 				       const int dst_prec, DB_C_NUMERIC dest);
@@ -2701,7 +2701,7 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 1);
+  memset (new_dec_num, 0, sizeof (new_dec_num));
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2743,7 +2743,7 @@ static void
 numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const int dst_scale, DB_C_NUMERIC dest)
 {
   char dec_str[NUMERIC_MAX_STRING_SIZE];
-  char new_dec_num[(DB_MAX_NUMERIC_SCALE + 4)];
+  char new_dec_num[(DB_MAX_NUMERIC_SCALE + 4)];	/* 252 + 4 = 256 (power of 2 for memory alignment optimization) */
   int i = 0;
 
   assert (src_scale <= dst_scale);
@@ -3108,7 +3108,6 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
   bool pad_character_zero = false;
   bool sign_found = false;
   bool trailing_spaces = false;
-  bool valid_zero = false;
 
   *frac_first_nz = *frac_last_nz = -1;
   *negate_value = false;
@@ -3116,31 +3115,30 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
   /* Step 1: Handle spaces, signs, and leading zeros */
   while (parse_pos < astring_length)
     {
-      skip = 1;
+      current_char = astring[parse_pos];
 
-      if (astring[parse_pos] >= '1' && astring[parse_pos] <= '9')
+      if (current_char >= '1' && current_char <= '9')
 	{
 	  has_digit = true;
 	  break;
 	}
-      else if (astring[parse_pos] == '0')
+      else if (current_char == '0')
 	{
 	  /* leading pad '0' found */
 	  pad_character_zero = true;
 	  parse_pos++;
 	  continue;
 	}
-      else if (astring[parse_pos] == '.')
+      else if (current_char == '.')
 	{
-	  has_digit = true;	/* Case: "0.0000" */
 	  break;
 	}
-      else if (astring[parse_pos] == '+' || astring[parse_pos] == '-')
+      else if (current_char == '+' || current_char == '-')
 	{
 	  if (!sign_found)
 	    {
 	      sign_found = true;
-	      if (astring[parse_pos] == '-')
+	      if (current_char == '-')
 		{
 		  *negate_value = true;
 		}
@@ -3165,20 +3163,20 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
     }
 
   /* Step 2: Parse integer part */
-  while (parse_pos < astring_length && has_digit)
+  while (parse_pos < astring_length)
     {
       current_char = astring[parse_pos];
 
       if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
 	{
 	  pad_character_zero = false;
+	  has_digit = true;	/* Case: "0.0000" */
 	  int_digits[int_count++] = current_char;
 	  parse_pos++;
 	  continue;
 	}
       else if (current_char == '.')
 	{
-	  has_digit = true;	/* Case: "0.0000" */
 	  parse_pos++;
 	  break;
 	}
@@ -3197,7 +3195,9 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 	}
       else if (current_char == ',')
 	{
-	  return DOMAIN_INCOMPATIBLE;
+	  /* Accept ',' character on integer part. */
+	  parse_pos++;
+	  continue;
 	}
       else
 	{
@@ -3206,21 +3206,21 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
     }
 
   /* Step 3: Parse fractional part */
-  while (parse_pos < astring_length && has_digit)
+  while (parse_pos < astring_length)
     {
       current_char = astring[parse_pos];
 
       if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
 	{
+	  has_digit = true;	/* Case: "0.0000" */
 	  frac_digits[frac_count] = current_char;
 	  /* Track non-zero digits */
-	  if (current_char != '0' || valid_zero)
+	  if (current_char != '0' || *frac_first_nz >= 0)
 	    {
 	      if (*frac_first_nz < 0)
 		{
 		  *frac_first_nz = frac_count;
 		  pad_character_zero = false;
-		  valid_zero = true;
 		}
 	      *frac_last_nz = frac_count;
 	    }
@@ -3241,10 +3241,6 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 	  parse_pos += skip;	/* Skip spaces */
 	  continue;
 	}
-      else if (current_char == ',')
-	{
-	  return DOMAIN_INCOMPATIBLE;
-	}
       else
 	{
 	  return DOMAIN_INCOMPATIBLE;
@@ -3263,12 +3259,12 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
       *frac_len = frac_count;
       *is_zero = true;
     }
-  else if (!has_digit && (int_count + frac_count) == 0)
+  else if (!has_digit && int_count == 0 && frac_count == 0)
     {
       /* NULL case handling (only spaces):
        * '' : has_digit(f), int_count(0), frac_count(0)
        * '   ' : has_digit(f), int_count(0), frac_count(0)
-       * '1  ' : has_digit(t), int_count(1), frac_count(0)
+       * '.  ' : has_digit(f), int_count(0), frac_count(0)
        */
       int_digits[0] = '\0';
       frac_digits[0] = '\0';
@@ -3307,8 +3303,8 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 		      int frac_last_nz, char *out_num_string, int *out_prec, int *out_scale)
 {
   int total = int_len + frac_len;
-  const char *temp_int_digits = NULL, *temp_frac_digits = NULL;
-  int temp_int_len = 0, temp_frac_len = 0;
+  const char *tmp_int_digits = NULL, *tmp_frac_digits = NULL;
+  int tmp_int_len = 0, tmp_frac_len = 0;
   char next_digit = '0';
   int tmp_prec = 0, tmp_scale = 0;
   int frac_zero_cnt = 0;
@@ -3334,8 +3330,8 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	  /* Case 1-A: When length is within 38 digits, use only the integer part */
 	  tmp_prec = int_len;
 	  tmp_scale = 0;
-	  temp_int_digits = int_digits;
-	  temp_int_len = int_len;
+	  tmp_int_digits = int_digits;
+	  tmp_int_len = int_len;
 	}
       else
 	{
@@ -3347,10 +3343,10 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	   */
 	  tmp_prec = phase_1_tmp_max_prec;
 	  tmp_scale = phase_1_tmp_max_prec - int_len;
-	  temp_int_digits = int_digits;
-	  temp_int_len = phase_1_tmp_max_prec;
+	  tmp_int_digits = int_digits;
+	  tmp_int_len = phase_1_tmp_max_prec;
 	  /* Get the 44th digit for rounding decision (array index 43 since arrays start from 0) */
-	  next_digit = temp_int_digits[phase_1_tmp_max_prec];
+	  next_digit = tmp_int_digits[phase_1_tmp_max_prec];
 	  need_round = true;
 	}
     }
@@ -3364,8 +3360,8 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	     Precision is defined from the left-most nonzero digit to the right-most known digit. */
 	  tmp_prec = nz_len;
 	  tmp_scale = frac_len;
-	  temp_frac_digits = frac_digits;
-	  temp_frac_len = frac_len;
+	  tmp_frac_digits = frac_digits;
+	  tmp_frac_len = frac_len;
 	}
       else
 	{
@@ -3374,8 +3370,8 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	    {
 	      tmp_prec = phase_1_tmp_max_prec;
 	      tmp_scale = frac_len;
-	      temp_frac_digits = frac_digits + frac_first_nz;
-	      temp_frac_len = phase_1_tmp_max_prec;
+	      tmp_frac_digits = frac_digits + frac_first_nz;
+	      tmp_frac_len = phase_1_tmp_max_prec;
 	      next_digit = frac_digits[frac_first_nz + phase_1_tmp_max_prec];
 	      need_round = true;
 	      frac_zero_cnt = frac_len - nz_len;	/* Count pure zeros */
@@ -3384,8 +3380,8 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	    {
 	      tmp_prec = nz_len;
 	      tmp_scale = frac_len;
-	      temp_frac_digits = frac_digits + frac_first_nz;
-	      temp_frac_len = nz_len;
+	      tmp_frac_digits = frac_digits + frac_first_nz;
+	      tmp_frac_len = nz_len;
 	      need_round = false;
 	    }
 	}
@@ -3398,10 +3394,10 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	  /* Case 3-A: When total length is within 38 digits, use both integer and fractional parts */
 	  tmp_prec = total;
 	  tmp_scale = frac_len;
-	  temp_int_digits = int_digits;
-	  temp_int_len = int_len;
-	  temp_frac_digits = frac_digits;
-	  temp_frac_len = frac_len;
+	  tmp_int_digits = int_digits;
+	  tmp_int_len = int_len;
+	  tmp_frac_digits = frac_digits;
+	  tmp_frac_len = frac_len;
 	}
       else
 	{
@@ -3414,10 +3410,10 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	      int keep_frac = frac_len - drop_total;
 	      tmp_prec = int_len + keep_frac;
 	      tmp_scale = keep_frac;
-	      temp_int_digits = int_digits;
-	      temp_int_len = int_len;
-	      temp_frac_digits = frac_digits;
-	      temp_frac_len = keep_frac;
+	      tmp_int_digits = int_digits;
+	      tmp_int_len = int_len;
+	      tmp_frac_digits = frac_digits;
+	      tmp_frac_len = keep_frac;
 	      next_digit = frac_digits[keep_frac];
 	      need_round = true;
 	    }
@@ -3428,8 +3424,8 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	      int keep_int = int_len - drop_int;
 	      tmp_prec = keep_int;
 	      tmp_scale = -drop_int;
-	      temp_int_digits = int_digits;
-	      temp_int_len = keep_int;
+	      tmp_int_digits = int_digits;
+	      tmp_int_len = keep_int;
 	      next_digit = int_digits[keep_int];
 	      need_round = true;
 	    }
@@ -3447,23 +3443,23 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 
   /* Step 3: Actual string copy */
   char *tmp_num_string = out_num_string;
-  if (temp_int_len)
+  if (tmp_int_len)
     {
-      memcpy (tmp_num_string, temp_int_digits, temp_int_len);
-      tmp_num_string += temp_int_len;
+      memcpy (tmp_num_string, tmp_int_digits, tmp_int_len);
+      tmp_num_string += tmp_int_len;
     }
 
-  if (temp_frac_len)
+  if (tmp_frac_len)
     {
-      memcpy (tmp_num_string, temp_frac_digits, temp_frac_len);
-      tmp_num_string += temp_frac_len;
+      memcpy (tmp_num_string, tmp_frac_digits, tmp_frac_len);
+      tmp_num_string += tmp_frac_len;
     }
   *tmp_num_string = '\0';
 
   /* Step 4: Rounding and digit adjustment */
   if (need_round)
     {
-      (void) determine_round (out_num_string, &tmp_prec, &tmp_scale, temp_int_len, temp_frac_len, frac_zero_cnt,
+      (void) determine_round (out_num_string, &tmp_prec, &tmp_scale, tmp_int_len, tmp_frac_len, frac_zero_cnt,
 			      next_digit);
     }
 
@@ -3477,22 +3473,21 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
  *   out_str(in/out) : Numeric string to be rounded
  *   out_prec(in/out) : Precision (total significant digits)
  *   out_scale(in/out) : Scale (fractional digits)
- *   temp_int_len(in) : Integer part length
- *   temp_frac_len(in) : Fractional part length
+ *   tmp_int_len(in) : Integer part length
+ *   tmp_frac_len(in) : Fractional part length
  *   frac_zero_cnt(in) : Leading zeros in fractional part
  *   rounding_digit(in) : Next digit for rounding decision
  *
  * Note: Round numeric string and adjust precision/scale
  */
 static void
-determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len, int temp_frac_len, int frac_zero_cnt,
+determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, int tmp_frac_len, int frac_zero_cnt,
 		 char next_digit)
 {
   int phase_1_tmp_max_prec = 38;
   int prec = *out_prec;
   int scale = *out_scale;
   int digit_pos = phase_1_tmp_max_prec - 1;
-  bool all_nines_overflow = false;
 
   // Step 1: Perform rounding based on the truncated digit
   if (next_digit >= '5')
@@ -3511,17 +3506,22 @@ determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len,
       else
 	{
 	  // All digits were '9', overflow occurred - create "1000..." pattern
-	  all_nines_overflow = true;
-	  if (temp_int_len == 0)
+	  if (tmp_int_len == 0)
 	    {
-	      // Pure decimal case: 0.9999... -> 1.0
-	      prec = 1;
-	      out_str[phase_1_tmp_max_prec - 1] = '1';
+	      prec = phase_1_tmp_max_prec;
+	      out_str[0] = '1';
+
+	      if (frac_zero_cnt == 0)
+		{
+		  // Pure decimal case: 0.9999... -> 1.000...
+		  tmp_int_len = 1;
+		  scale = (phase_1_tmp_max_prec - 1);
+		}
 	    }
 	  else
 	    {
 	      // Integer with decimal: 99999.99999... -> 100000.0
-	      memmove (out_str + 1, out_str, phase_1_tmp_max_prec);
+	      memset (out_str + 1, '0', phase_1_tmp_max_prec);
 	      out_str[0] = '1';
 	    }
 	}
@@ -3531,23 +3531,10 @@ determine_round (char *out_str, int *out_prec, int *out_scale, int temp_int_len,
   out_str[phase_1_tmp_max_prec] = '\0';
 
   // Step 3: Recalculate scale based on rounding result
-  if (all_nines_overflow)
+  if (tmp_int_len == 0)
     {
-      if (temp_int_len == 0)
-	{
-	  scale = frac_zero_cnt == 0 ? 0 : frac_zero_cnt;
-	}
-      else if (temp_frac_len != 0)
-	{
-	  scale--;
-	}
-    }
-  else
-    {
-      if (temp_int_len == 0)
-	{
-	  scale = frac_zero_cnt + prec;
-	}
+      // Pure decimal case: 0.8888... -> 0.888...9
+      scale = frac_zero_cnt + prec;
     }
 
   *out_prec = prec;
@@ -3595,7 +3582,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       goto exit_on_error;
     }
 
-  if ((int_len + frac_len) == 0)
+  if (int_len == 0 && frac_len == 0)
     {
       /* NULL case */
       prec = 0;
@@ -4354,7 +4341,6 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
 	{
 	  // If no digit found: output only a single '0'
 	  buf[0] = '0';
-	  buf[1] = '\0';
 	  nbuf = 1;
 	}
       else
