@@ -3839,6 +3839,8 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 			      bool set_participant)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  int conn_handle = -1;
+
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
   DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
 
@@ -3847,19 +3849,16 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
       if (!strcmp (dblink->conn_info.conn_url, conn_url) && !strcmp (dblink->conn_info.user_name, user_name)
 	  && !strcmp (dblink->conn_info.password, password))
 	{
-	  if (set_participant)
-	    {
-	      /* 2pc participant is set only if DML query */
-	      dblink->is_2pc_participant = set_participant;
-	    }
-
-	  return dblink->conn_info.conn_handle;
+	  /* 2pc participant is set only if DML query */
+	  dblink->is_2pc_participant = set_participant;
+	  conn_handle = dblink->conn_info.conn_handle;
+	  break;
 	}
 
       dblink = dblink->next;
     }
 
-  return -1;
+  return conn_handle;
 }
 
 int

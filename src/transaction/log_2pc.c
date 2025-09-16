@@ -70,17 +70,15 @@ struct log_2pc_global_data
   int (*lookup_participant) (void *particp_id, int num_particps, void *block_particps_ids);
   void (*dump_participants) (FILE * fp, int block_length, void *block_particps_id);
     bool (*send_prepare) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
-  void (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
-		       void *block_particps_ids);
-  void (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool * particps_ack,
-		      void *block_particps_ids, bool collect);
+  void (*send_commit) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool is_commit, void *block_particps_ids);
+  void (*send_abort) (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool is_commit, void *block_particps_ids);
 };
 
 #ifdef CCI_XA
 struct log_2pc_global_data log_2pc_Userfun =
   { dblink_2pc_get_participants, NULL, dblink_2pc_dump_participants, dblink_2pc_send_prepare,
-  dblink_2pc_send_commit,
-  dblink_2pc_send_abort
+  dblink_2pc_end_tran,
+  dblink_2pc_end_tran
 };
 #else
 struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL };
@@ -232,13 +230,13 @@ log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids)
  *              so on.
  */
 void
-log_2pc_send_commit_decision (int gtrid, int num_particps, bool * particps_ack, void *block_particps_ids)
+log_2pc_send_commit_decision (int gtrid, int num_particps, void *block_particps_ids)
 {
   if (log_2pc_Userfun.send_commit != NULL)
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, particps_ack, block_particps_ids);
+      (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, true /* commit */, block_particps_ids);
     }
 
   return;
@@ -276,13 +274,13 @@ log_2pc_send_commit_decision (int gtrid, int num_particps, bool * particps_ack, 
  *              so on.
  */
 void
-log_2pc_send_abort_decision (int gtrid, int num_particps, bool * particps_ack, void *block_particps_ids, bool collect)
+log_2pc_send_abort_decision (int gtrid, int num_particps, void *block_particps_ids)
 {
   if (log_2pc_Userfun.send_abort != NULL)
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, particps_ack, block_particps_ids, collect);
+      (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, false /* abort */, block_particps_ids);
     }
 
   return;
@@ -488,23 +486,15 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	   */
 	  lock_unlock_all_shared_get_all_exclusive (thread_p, NULL);
 	}
-
-      /* Initialize the Acknowledgement vector to 0 */
-      i = sizeof (bool) * tdes->coord->num_particps;
-
-      tdes->coord->ack_received = (bool *) malloc (i);
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
+      tdes->coord->ack_received = (int *) calloc (i);
       if (tdes->coord->ack_received == NULL)
 	{
 	  /* Out of memory */
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_commit");
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-
-      for (i = 0; i < tdes->coord->num_particps; i++)
-	{
-	  tdes->coord->ack_received[i] = false;
-	}
-
+#endif 
       *decision = log_2pc_send_prepare (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
     }
   else
@@ -564,8 +554,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
        * and we need to retry sending the decision at another point.
        * We have already decided and log the decision in the log file.
        */
-      (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-					   tdes->coord->block_particps_ids);
+      (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
       /* Check if all the acknowledgments have been received */
       state = log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID);
     }
@@ -585,12 +574,12 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
        * needed, the abort for the distributed transaction was decided
        * without using the 2PC
        */
-
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
       if (tdes->state != TRAN_ACTIVE || tdes->coord->ack_received != NULL)
+#endif
 	{
 	  log_2pc_append_decision (thread_p, tdes, LOG_2PC_ABORT_DECISION);
 	}
-
       /*
        * The transaction has been declared as 2PC abort. We could execute the
        * LOCAL ABORT AND THE REMOTE ABORTS IN PARALLEL, however our
@@ -611,6 +600,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
       /*
        * Execute the abort at participants sites at this time.
        */
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
       if (tdes->coord->ack_received)
 	{
 	  /*
@@ -621,10 +611,10 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	   * and we need to retry sending the decision at another point.
 	   * We have already decided and log the decision in the log file.
 	   */
-	  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-					      tdes->coord->block_particps_ids, true);
+	  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
 	}
       else
+#endif
 	{
 	  /*
 	   * Abort was decided without using the 2PC protocol at this site.
@@ -635,8 +625,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	   * and we need to retry sending the decision at another point.
 	   * We have already decided and log the decision in the log file.
 	   */
-	  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-					      tdes->coord->block_particps_ids, false);
+	  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
 	}
       /* Check if all the acknowledgments have been received */
       state = log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);
@@ -1781,19 +1770,14 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
 
   /* Initialize the Acknowledgement vector to false since we do not know what acknowledgments have already been
    * received. we need to continue reading the log */
-
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
   i = sizeof (bool) * tdes->coord->num_particps;
-  tdes->coord->ack_received = (bool *) malloc (i);
+  tdes->coord->ack_received = (bool *) calloc (i);
   if (tdes->coord->ack_received == NULL)
     {
       log_2pc_free_coord_info (tdes);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_recovery_analysis_info");
       return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  for (i = 0; i < tdes->coord->num_particps; i++)
-    {
-      tdes->coord->ack_received[i] = false;
     }
 
   if (*ack_count > 0 && ack_list != NULL)
@@ -1818,6 +1802,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
       free_and_init (ack_list);
       *ack_count = 0;
     }
+#endif
 
   return NO_ERROR;
 }
@@ -2217,8 +2202,7 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * need to retry sending the decision at another point.
    * We have already decided and log the decision in the log file.
    */
-  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				      tdes->coord->block_particps_ids, true);
+  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
   /* Check if all the acknowledgements have been received */
   (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
 }
@@ -2251,8 +2235,7 @@ log_2pc_recovery_commit_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * We have already decided and log the decision in the log file.
    */
 
-  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				       tdes->coord->block_particps_ids);
+  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
   /* Check if all the acknowledgments have been received */
   (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
 }
@@ -2278,8 +2261,7 @@ log_2pc_recovery_committed_informing_participants (THREAD_ENTRY * thread_p, LOG_
    * point.
    * We have already decided and log the decision in the log file.
    */
-  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				       tdes->coord->block_particps_ids);
+  (void) log_2pc_send_commit_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
   (void) log_complete_for_2pc (thread_p, tdes, LOG_COMMIT, LOG_DONT_NEED_NEWTRID);
 }
 
@@ -2305,8 +2287,7 @@ log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p, LOG_TD
    * We have already decided and log the decision in the log file.
    */
 
-  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->ack_received,
-				      tdes->coord->block_particps_ids, true);
+  (void) log_2pc_send_abort_decision (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
   (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
 }
 

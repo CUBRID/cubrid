@@ -3699,27 +3699,11 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
 			    break;
 			  }
-
-			/* Initialize the acknowledgment vector to 0 since we do not know what acknowledgments have
-			 * already been received. we need to continue reading the log */
-
-			if ((tdes->coord->ack_received =
-			     (bool *) malloc (sizeof (bool) * tdes->coord->num_particps)) == NULL)
-			  {
-			    /* Out of memory */
-			    LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
-			    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
-			    break;
-			  }
-			for (int i = 0; i < tdes->coord->num_particps; i++)
-			  {
-			    tdes->coord->ack_received[i] = false;
-			  }
 		      }
 		  }
 	      }
 	      break;
-
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
 	    case LOG_2PC_RECV_ACK:
 	      {
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
@@ -3763,7 +3747,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  }
 	      }
 	      break;
-
+#endif
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      {
