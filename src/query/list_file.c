@@ -4424,7 +4424,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
     {
       qfile_destroy_list (thread_p, list_id_p);
     }
-  qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_PROHIBIT_DEPENDENT);
+  qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_MOVE_DEPENDENT);
   QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 
   return list_id_p;

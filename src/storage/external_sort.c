@@ -1621,6 +1621,7 @@ cleanup:
 #endif
 
   /* free sort_param */
+#if defined(SERVER_MODE)
   if (sort_param->px_parallel_num > 1)
     {
       for (int i = 0; i < sort_param->px_parallel_num; i++)
@@ -1633,6 +1634,7 @@ cleanup:
       free_and_init (px_sort_param);
     }
   else
+#endif
     {
       sort_return_used_resources (thread_p, sort_param, PX_SINGLE);
     }
@@ -4654,7 +4656,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
       org_sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      sort_info_p->input_file = qfile_clone_list_id (org_sort_info_p->input_file, true);
+      sort_info_p->input_file = qfile_clone_list_id (org_sort_info_p->input_file, true, QFILE_PROHIBIT_DEPENDENT);
       /* tuple_cnt and page_cnt put approximately. */
       /* It can be put precisely from the page header, but not have to be precise for later process. */
       sort_info_p->input_file->tuple_cnt = org_sort_info_p->input_file->tuple_cnt / parallel_num;
@@ -4766,20 +4768,34 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 
   /* merge last output file */
   origin_list_id = ((SORT_INFO *) px_sort_param[0].put_arg)->output_file;
-  for (int i = 1; i < parallel_num; i++)
-    {
-      mergeable_list_id = ((SORT_INFO *) px_sort_param[i].put_arg)->output_file;
-      error = sort_merge_list_id (thread_p, origin_list_id, mergeable_list_id);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-    }
-  /* If QUERY_CACHE(FILE_QUERY_AREA), Merged list not possible.
-   * Here, just change the type and list is duplicated in xqmgr_execute_query. */
+
+  /* If QUERY_CACHE(FILE_QUERY_AREA), Merged list not possible. */
   if (origin_list_id->tfile_vfid->temp_file_type == FILE_QUERY_AREA)
     {
-      origin_list_id->tfile_vfid->temp_file_type = FILE_TEMP;
+      for (int i = 1; i < parallel_num; i++)
+	{
+	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+	  error = qfile_append_list (thread_p, origin_list_id, sort_info_p->output_file);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  qfile_destroy_list (thread_p, sort_info_p->output_file);
+	  QFILE_FREE_AND_INIT_LIST_ID (sort_info_p->output_file);
+	}
+    }
+  else
+    {
+      for (int i = 1; i < parallel_num; i++)
+	{
+	  sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+	  error = qfile_connect_list (thread_p, origin_list_id, sort_info_p->output_file);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  sort_info_p->output_file = NULL;
+	}
     }
 
 cleanup:
