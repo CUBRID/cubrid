@@ -340,6 +340,59 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->data.json.schema_raw = NULL;
       break;
 
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      if (precision == DB_DEFAULT_PRECISION)
+	{
+	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;
+	}
+      else
+	{
+	  value->domain.char_info.length = precision;
+	}
+
+      if (IS_INVALID_PRECISION (precision, DB_MAX_LOB_PRECISION))
+	{
+	  error = ER_INVALID_PRECISION;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_LOB_PRECISION);
+	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;
+	}
+
+      if (precision == 0)
+	{
+	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;
+	}
+
+      value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
+      break;
+
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      if (precision == DB_DEFAULT_PRECISION)
+	{
+	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;
+	}
+      else
+	{
+	  value->domain.char_info.length = precision;
+	}
+
+      if (IS_INVALID_PRECISION (precision, DB_MAX_LOB_PRECISION))
+	{
+	  error = ER_INVALID_PRECISION;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_LOB_PRECISION);
+	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;
+	}
+
+      if (precision == 0)
+	{
+	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;
+	}
+
+      value->data.ch.info.codeset = LANG_SYS_CODESET;
+      value->domain.char_info.collation_id = LANG_SYS_COLLATION;
+      break;
+
     case DB_TYPE_NULL:
     case DB_TYPE_INTEGER:
     case DB_TYPE_BIGINT:
@@ -450,6 +503,33 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_CFILE:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
+      break;
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      value->data.ch.info.style = MEDIUM_STRING;
+      value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
+      value->data.ch.info.is_max_string = false;
+      value->data.ch.info.compressed_need_clear = false;
+      value->data.ch.medium.size = 1;
+      value->data.ch.medium.length = -1;
+      value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      value->data.ch.info.style = MEDIUM_STRING;
+      value->data.ch.info.codeset = codeset;
+      value->data.ch.info.is_max_string = false;
+      value->data.ch.info.compressed_need_clear = false;
+      value->data.ch.medium.size = 1;
+      value->data.ch.medium.length = -1;
+      value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
+      value->domain.general_info.is_null = 0;
+      value->domain.char_info.collation_id = collation_id;
       break;
     case DB_TYPE_TIME:
       value->data.time = DB_TIME_MIN;
@@ -619,6 +699,33 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_CFILE:
       elo_init_structure (&value->data.elo);
       value->domain.general_info.is_null = 1;	/* NULL ELO value */
+      break;
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      value->data.ch.info.style = MEDIUM_STRING;
+      value->data.ch.info.codeset = INTL_CODESET_RAW_BITS;
+      value->data.ch.info.is_max_string = true;
+      value->data.ch.info.compressed_need_clear = false;
+      value->data.ch.medium.size = 0;
+      value->data.ch.medium.length = -1;
+      value->data.ch.medium.buf = NULL;
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
+      value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      value->data.ch.info.style = MEDIUM_STRING;
+      value->data.ch.info.codeset = codeset;
+      value->data.ch.info.is_max_string = true;
+      value->data.ch.info.compressed_need_clear = false;
+      value->data.ch.medium.size = 0;
+      value->data.ch.medium.length = -1;
+      value->data.ch.medium.buf = NULL;
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
+      value->domain.general_info.is_null = 0;
+      value->domain.char_info.collation_id = collation_id;
       break;
     case DB_TYPE_TIME:
       value->data.time = DB_TIME_MAX;
@@ -871,6 +978,24 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
     case DB_TYPE_CFILE:
       value->data.elo.type = ELO_NULL;
       value->domain.general_info.is_null = 0;
+      break;
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      db_make_bit (value, 1, "0", 1);
+      break;
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      value->data.ch.info.style = MEDIUM_STRING;
+      value->data.ch.info.codeset = codeset;
+      value->data.ch.info.is_max_string = false;
+      value->data.ch.info.compressed_need_clear = false;
+      value->data.ch.medium.size = 0;
+      value->data.ch.medium.length = -1;
+      value->data.ch.medium.buf = (char *) "";
+      value->data.ch.medium.compressed_buf = NULL;
+      value->data.ch.medium.compressed_size = 0;
+      value->domain.general_info.is_null = 0;
+      value->domain.char_info.collation_id = collation_id;
       break;
 #if 1				/* TODO - */
     case DB_TYPE_OBJECT:
@@ -1694,6 +1819,8 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_NULL:
     case DB_TYPE_BFILE:
     case DB_TYPE_CFILE:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
     case DB_TYPE_ENUMERATION:
     case DB_TYPE_ELO:
     case DB_TYPE_JSON:
@@ -2487,6 +2614,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
+	case DB_TYPE_BLOB:
 	  buffer_p = valcnv_convert_bit_to_string (buffer_p, value_p);
 	  break;
 
@@ -2494,6 +2622,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
+	case DB_TYPE_CLOB:
 	  src_p = db_get_string (value_p);
 
 	  if (src_p != NULL && db_get_string_size (value_p) == 0)
@@ -2781,6 +2910,8 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	{
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
+	case DB_TYPE_BLOB:
+	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 	  buffer_p = valcnv_append_string (buffer_p, "X'");
 	  if (buffer_p == NULL)
 	    {
@@ -3072,6 +3203,7 @@ db_value_is_corrupted (const DB_VALUE * value)
       break;
 
     case DB_TYPE_VARBIT:
+    case DB_TYPE_BLOB:
       if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARBIT_PRECISION))
 	{
 	  return true;
@@ -3093,6 +3225,7 @@ db_value_is_corrupted (const DB_VALUE * value)
       break;
 
     case DB_TYPE_VARCHAR:
+    case DB_TYPE_CLOB:
       if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARCHAR_PRECISION))
 	{
 	  return true;

@@ -65,7 +65,8 @@
 #define DB_IS_STRING(value)       (db_value_type(value) == DB_TYPE_VARCHAR  || \
                                    db_value_type(value) == DB_TYPE_CHAR     || \
                                    db_value_type(value) == DB_TYPE_VARNCHAR || \
-                                   db_value_type(value) == DB_TYPE_NCHAR)
+                                   db_value_type(value) == DB_TYPE_NCHAR    || \
+                                   db_value_type(value) == DB_TYPE_CLOB)
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
@@ -80,14 +81,16 @@
 
   /* Macros from dbval.h */
 
-#define DB_NEED_CLEAR(v) \
-      ((!DB_IS_NULL(v) \
-	&& ((v)->need_clear == true \
-	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
-		 && (v)->data.ch.info.compressed_need_clear != 0))))
+#define DB_NEED_CLEAR(v)                                                   \
+  ( !DB_IS_NULL(v)                                                         \
+    && ( (v)->need_clear == true                                           \
+         || ( ( (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR)               \
+                || (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR)           \
+                || (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CLOB) )             \
+              && (v)->data.ch.info.compressed_need_clear != 0 ) ) )
 
 #define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
+      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_CLOB)\
 	? NULL : (v)->data.ch.medium.compressed_buf)
 
 
@@ -127,7 +130,9 @@
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT  \
+                   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CLOB \
+                   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BLOB)), \
 	  (v)->data.ch.medium.buf))
 
 #define DB_GET_NUMERIC_PRECISION(val) \

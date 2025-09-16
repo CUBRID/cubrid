@@ -175,6 +175,12 @@ void db_value_printer::describe_type (const db_value *value)
 	case DB_TYPE_CFILE:
 	  m_buf ("CFILE");
 	  break;
+	case DB_TYPE_BLOB:
+	  m_buf ("BLOB");
+	  break;
+	case DB_TYPE_CLOB:
+	  m_buf ("CLOB");
+	  break;
 	case DB_TYPE_TIME:
 	  m_buf ("TIME");
 	  break;
@@ -389,6 +395,21 @@ void db_value_printer::describe_value (const db_value *value)
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
+	case DB_TYPE_BLOB:
+	  m_buf ("BLOB'");
+	  describe_data (value);
+	  m_buf += '\'';
+	  break;
+	case DB_TYPE_CLOB:
+	  codeset = db_get_string_codeset (value);
+	  if (codeset != LANG_SYS_CODESET)
+	    {
+	      m_buf ("%s", lang_charset_introducer (codeset));
+	    }
+	  m_buf += '\'';
+	  describe_data (value);
+	  m_buf += '\'';
+	  break;
 	default:
 	  describe_data (value);
 	  break;
@@ -575,6 +596,34 @@ void db_value_printer::describe_data (const db_value *value)
       else
 	{
 	  m_buf ("NULL");
+	}
+      break;
+
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      describe_bit_string (m_buf, value, m_padding);
+      break;
+
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      src = db_get_string (value);
+      end = src + db_get_string_size (value);
+      while (src < end)
+	{
+	  for (pos = src; pos && pos < end && (*pos) != '\''; pos++)
+	    ;
+
+	  if (pos < end)
+	    {
+	      m_buf.add_bytes (pos - src + 1, src);
+	      m_buf += '\'';
+	    }
+	  else
+	    {
+	      m_buf.add_bytes (end - src, src);
+	    }
+
+	  src = pos + 1;
 	}
       break;
 

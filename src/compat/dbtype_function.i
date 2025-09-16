@@ -132,6 +132,12 @@ STATIC_INLINE int db_make_date (DB_VALUE * value, const int month, const int day
 STATIC_INLINE int db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
   __attribute__ ((ALWAYS_INLINE));
 
+STATIC_INLINE int db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
+				const int char_str_byte_size, const int codeset, const int collation_id)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_make_blob (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
+				const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
+
 STATIC_INLINE int db_get_compressed_size (DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void db_set_compressed_string (DB_VALUE * value, char *compressed_string,
 					     int compressed_size, bool compressed_need_clear)
@@ -678,7 +684,8 @@ db_get_string_size (const DB_VALUE * value)
     }
 
   /* Convert the number of bits to the number of bytes */
-  if (value->domain.general_info.type == DB_TYPE_BIT || value->domain.general_info.type == DB_TYPE_VARBIT)
+  if (value->domain.general_info.type == DB_TYPE_BIT || value->domain.general_info.type == DB_TYPE_VARBIT ||
+      value->domain.general_info.type == DB_TYPE_BLOB)
     {
       size = (size + 7) / 8;
     }
@@ -919,6 +926,8 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       return value->domain.char_info.length;
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:
@@ -2129,6 +2138,61 @@ db_make_json (DB_VALUE * value, JSON_DOC * json_document, bool need_clear)
   return NO_ERROR;
 }
 
+/*
+ * db_make_clob() -
+ * return :
+ * value(out) :
+ * max_char_length(in):
+ * str(in):
+ * char_str_byte_size(in):
+ */
+int
+db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, const int char_str_byte_size,
+	      const int codeset, const int collation_id)
+{
+  int error;
+
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  error = db_value_domain_init (value, DB_TYPE_CLOB, max_char_length, 0);
+  if (error == NO_ERROR)
+    {
+      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
+    }
+
+  return error;
+}
+
+/*
+ * db_make_blob() -
+ * return :
+ * value(out) :
+ * max_bit_length(in):
+ * bit_str(in):
+ * bit_str_bit_size(in):
+ */
+int
+db_make_blob (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size)
+{
+  int error;
+
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ERROR (value);
+#endif
+
+  error = db_value_domain_init (value, DB_TYPE_BLOB, max_bit_length, 0);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = db_make_db_char (value, INTL_CODESET_RAW_BITS, 0, bit_str, bit_str_bit_size);
+
+  return error;
+}
+
 int
 db_get_compressed_size (DB_VALUE * value)
 {
@@ -2142,7 +2206,7 @@ db_get_compressed_size (DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_CLOB);
 
   return value->data.ch.medium.compressed_size;
 }
@@ -2167,7 +2231,7 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_CLOB);
 
   value->data.ch.medium.compressed_buf = compressed_string;
   value->data.ch.medium.compressed_size = compressed_size;
