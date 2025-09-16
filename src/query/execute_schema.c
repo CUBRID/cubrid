@@ -10731,7 +10731,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   class_mop = ctemplate->op;
   replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
 
-  if (!HA_DISABLED () && replication_node->info.value.data_value.i)
+  if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
     {
       error = ER_REPLICATION_CONSTRAINT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Replication setting is not permitted for this table.");
