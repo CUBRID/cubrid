@@ -1722,7 +1722,6 @@ cleanup:
 
   if (px_status == PX_ERR_FAILED)
     {
-      sort_param->main_error_context->push_error_stack ();
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
   if (sort_param->px_orig_thread_p->on_trace)
@@ -5008,7 +5007,6 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 
   if (px_status == PX_ERR_FAILED)
     {
-      sort_param->main_error_context->push_error_stack ();
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
   /* done */
@@ -5072,7 +5070,6 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
 
   if (sort_param->px_status == PX_ERR_FAILED)
     {
-      sort_param->main_error_context->push_error_stack ();
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
   /* done */
