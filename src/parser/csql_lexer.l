@@ -196,6 +196,7 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return BIT_XOR; }
 [bB][fF][iI][lL][eE]							{ begin_token(yytext);	 return BFILE_; }
+[bB][lL][oO][bB]                                                        { begin_token(yytext);   return BLOB_; }
 [bB][oO][oO][lL][eE][aA][nN]						{ begin_token(yytext);   return BOOLEAN_; }
 [bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
@@ -231,6 +232,7 @@ IDL       [a-zA-Z0-9_]
 [cC][lL][aA][sS][sS]							{ begin_token(yytext);   return CLASS; }
 [cC][lL][aA][sS][sS][eE][sS]						{ begin_token(yytext);   return CLASSES; }
 [cC][fF][iI][lL][eE]							{ begin_token(yytext);   return CFILE_; }
+[cC][lL][oO][bB]                                                        { begin_token(yytext);   return CLOB_; }
 [cC][fF][iI][lL][eE]_[tT][oO]_[cC][hH][aA][rR]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CFILE_TO_CHAR; }

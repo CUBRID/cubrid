@@ -931,6 +931,82 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       }
       break;
 
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      {
+	bytes = db_get_string (val);
+	size = db_get_string_size (val);
+	result->info.value.data_value.str = pt_append_bytes (parser, NULL, bytes, size);
+	result->info.value.data_value.str->length = size;
+	result->info.value.string_type = ' ';
+	result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	if (result->data_type == NULL)
+	  {
+	    parser_free_node (parser, result);
+	    result = NULL;
+	  }
+	else
+	  {
+	    result->data_type->type_enum = result->type_enum;
+	    result->data_type->info.data_type.precision = db_value_precision (val);
+	    result->data_type->info.data_type.units = db_get_string_codeset (val);
+	    result->data_type->info.data_type.collation_id = db_get_string_collation (val);
+	    assert (result->data_type->info.data_type.collation_id >= 0);
+	  }
+	break;
+      }
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      {
+	int max_length = 0;
+	char *printed_bit = NULL;
+
+	size = 0;
+	bytes = db_get_bit (val, &size);
+	max_length = ((size + 3) / 4) + 4;
+	printed_bit = (char *) db_private_alloc (NULL, max_length);
+	if (printed_bit == NULL)
+	  {
+	    PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	    parser_free_node (parser, result);
+	    result = NULL;
+	    break;
+	  }
+	if (db_bit_string (val, "%X", printed_bit, max_length) != NO_ERROR)
+	  {
+	    db_private_free_and_init (NULL, printed_bit);
+	    PT_ERRORmf (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DATA_OVERFLOW_ON,
+			pt_show_type_enum (PT_TYPE_BIT));
+	    parser_free_node (parser, result);
+	    result = NULL;
+	    break;
+	  }
+
+	/* get the printed size */
+	size = strlen (printed_bit);
+
+	result->info.value.string_type = 'X';
+	result->info.value.data_value.str = pt_append_bytes (parser, NULL, printed_bit, size);
+
+	db_private_free_and_init (NULL, printed_bit);
+
+	result->info.value.data_value.str->length = size;
+
+	result->data_type = parser_new_node (parser, PT_DATA_TYPE);
+	if (result->data_type == NULL)
+	  {
+	    parser_free_node (parser, result);
+	    result = NULL;
+	  }
+	else
+	  {
+	    result->data_type->type_enum = result->type_enum;
+	    result->data_type->info.data_type.precision = db_value_precision (val);
+	    result->data_type->info.data_type.units = db_get_string_codeset (val);
+	  }
+	break;
+      }
+
     case DB_TYPE_ENUMERATION:
       bytes = db_get_enum_string (val);
       size = db_get_enum_string_size (val);
@@ -942,6 +1018,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       result->data_type = NULL;
       break;
+
 
       /* explicitly treat others as an error condition */
     case DB_TYPE_VARIABLE:
@@ -1529,6 +1606,13 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       name = "cfile";
       break;
 
+    case PT_TYPE_BLOB:
+      name = "blob";
+      break;
+    case PT_TYPE_CLOB:
+      name = "clob";
+      break;
+
     case PT_TYPE_ENUMERATION:
       name = "enum";
       break;
@@ -1621,6 +1705,12 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
     case DB_TYPE_VARBIT:
       /* Note that we assume that some other force is going to come in and repair the precision of the destination of
        * this domain is for the schema manager.  Might be a problem . . . */
+      retval = tp_domain_construct (domain_type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL);
+      break;
+
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       retval = tp_domain_construct (domain_type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL);
       break;
 
@@ -1914,6 +2004,21 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       codeset = dt->info.data_type.units;
       break;
 
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      precision = dt->info.data_type.precision;
+      codeset = dt->info.data_type.units;
+      break;
+
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      precision = dt->info.data_type.precision;
+      codeset = dt->info.data_type.units;
+      collation_id = dt->info.data_type.collation_id;
+      assert (collation_id >= -1);
+      collation_flag = dt->info.data_type.collation_flag;
+      break;
+
     case DB_TYPE_NUMERIC:
       precision = dt->info.data_type.precision;
       scale = dt->info.data_type.dec_precision;
@@ -2129,6 +2234,15 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+      precision = dt->info.data_type.precision;
+      codeset = dt->info.data_type.units;
+      collation_id = dt->info.data_type.collation_id;
+      collation_flag = dt->info.data_type.collation_flag;
+      break;
+
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       precision = dt->info.data_type.precision;
       codeset = dt->info.data_type.units;
       collation_id = dt->info.data_type.collation_id;
@@ -2428,6 +2542,14 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       db_type = DB_TYPE_CFILE;
       break;
 
+    case PT_TYPE_BLOB:
+      db_type = DB_TYPE_BLOB;
+      break;
+
+    case PT_TYPE_CLOB:
+      db_type = DB_TYPE_CLOB;
+      break;
+
     case PT_TYPE_MAYBE:
       db_type = DB_TYPE_VARIABLE;
       break;
@@ -2703,6 +2825,12 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_CFILE:
       pt_type = PT_TYPE_CFILE;
       break;
+    case DB_TYPE_BLOB:
+      pt_type = PT_TYPE_BLOB;
+      break;
+    case DB_TYPE_CLOB:
+      pt_type = PT_TYPE_CLOB;
+      break;
     case DB_TYPE_ENUMERATION:
       pt_type = PT_TYPE_ENUMERATION;
       break;
@@ -2917,6 +3045,20 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
     case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
+      dt = parser_new_node (parser, PT_DATA_TYPE);
+      if (dt)
+	{
+	  dt->type_enum = node->type_enum;
+	  dt->info.data_type.precision = DB_VALUE_PRECISION (val);
+	  dt->info.data_type.units = (int) db_get_string_codeset (val);
+	  dt->info.data_type.collation_id = (int) db_get_string_collation (val);
+	  assert (!TP_IS_CHAR_TYPE (val_type) || dt->info.data_type.collation_id >= 0);
+	}
+      break;
+
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt)
 	{
@@ -3549,6 +3691,73 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
       db_make_elo (db_value, DB_TYPE_CFILE, &value->info.value.data_value.elo);
       db_value->domain.general_info.type = DB_TYPE_CFILE;
       value->info.value.db_value_is_in_workspace = false;
+      break;
+
+    case PT_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      if (value->info.value.string_type == 'B')
+	{
+	  src_length = value->info.value.data_value.str->length;
+	  dst_length = (src_length + 7) / 8;
+	  bits_converted = 0;
+	  bstring = (char *) db_private_alloc (NULL, dst_length + 1);
+	  if (!bstring)
+	    {
+	      return (DB_VALUE *) NULL;
+	    }
+	  bits_converted =
+	    qstr_bit_to_bin (bstring, dst_length, (char *) value->info.value.data_value.str->bytes, src_length);
+	  if (bits_converted != src_length)
+	    {
+	      db_private_free_and_init (NULL, bstring);
+	      PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_BITSTRING,
+			  pt_short_print (parser, value));
+	      return (DB_VALUE *) NULL;
+	    }
+
+	  db_make_bit (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length);
+	  db_value->need_clear = true;
+	  value->info.value.db_value_is_in_workspace = true;
+	}
+      else if (value->info.value.string_type == 'X')
+	{
+	  src_length = value->info.value.data_value.str->length;
+	  dst_length = (src_length + 1) / 2;
+	  bits_converted = 0;
+	  bstring = (char *) db_private_alloc (NULL, dst_length + 1);
+	  if (!bstring)
+	    {
+	      return (DB_VALUE *) NULL;
+	    }
+	  bits_converted =
+	    qstr_hex_to_bin (bstring, dst_length, (char *) value->info.value.data_value.str->bytes, src_length);
+	  if (bits_converted != src_length)
+	    {
+	      db_private_free_and_init (NULL, bstring);
+	      PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_BITSTRING,
+			  pt_short_print (parser, value));
+	      return (DB_VALUE *) NULL;
+	    }
+	  db_make_bit (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length * 4);
+	  db_value->need_clear = true;
+	  value->info.value.db_value_is_in_workspace = true;
+	}
+      else
+	{
+	  PT_ERRORm (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
+	  return (DB_VALUE *) NULL;
+	}
+      db_value_alter_type (db_value, pt_type_enum_to_db (value->type_enum));
+      *more_type_info_needed = (value->data_type == NULL);
+      break;
+
+    case PT_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      db_make_varchar (db_value, TP_FLOATING_PRECISION_VALUE,
+		       REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
+		       value->info.value.data_value.str->length, codeset, collation_id);
+      value->info.value.db_value_is_in_workspace = false;
+      *more_type_info_needed = (value->data_type == NULL);
       break;
 
     case PT_TYPE_COMPOUND:

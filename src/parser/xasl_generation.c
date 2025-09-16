@@ -7370,6 +7370,17 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
       dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
       break;
 
+    case PT_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
+      break;
+
+    case PT_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      dt->info.data_type.precision = DB_MAX_VARBIT_PRECISION;
+      dt->info.data_type.units = INTL_CODESET_RAW_BITS;
+      break;
+
     default:
       /* error handling is required.. */
       parser_free_tree (parser, dt);

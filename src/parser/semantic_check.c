@@ -1080,6 +1080,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
+	case PT_TYPE_BLOB:
 	case PT_TYPE_DATE:
 	  /* allow numeric to TIME and TIMESTAMP conversions */
 	case PT_TYPE_DATETIME:
@@ -1109,6 +1110,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
+	case PT_TYPE_BLOB:
 	case PT_TYPE_TIME:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
@@ -1134,6 +1136,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
+	case PT_TYPE_BLOB:
 	case PT_TYPE_DATE:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
@@ -1169,6 +1172,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
+	case PT_TYPE_BLOB:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1194,6 +1198,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
+	case PT_TYPE_BLOB:
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1208,6 +1213,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+    case PT_TYPE_CLOB:
     case PT_TYPE_NCHAR:
     case PT_TYPE_VARNCHAR:
       if ((PT_IS_NATIONAL_CHAR_STRING_TYPE (arg_type) && PT_IS_SIMPLE_CHAR_STRING_TYPE (cast_type))
@@ -1233,6 +1239,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
+    case PT_TYPE_BLOB:
       switch (cast_type)
 	{
 	case PT_TYPE_INTEGER:
@@ -1284,6 +1291,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_NUMERIC:
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
+	case PT_TYPE_BLOB:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
 	case PT_TYPE_TIMESTAMP:
@@ -1297,6 +1305,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_OBJECT:
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
+	case PT_TYPE_CLOB:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
 	case PT_TYPE_NCHAR:
@@ -1312,6 +1321,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_TYPE_BIT:
 	case PT_TYPE_VARBIT:
+	case PT_TYPE_BLOB:
 	case PT_TYPE_BFILE:
 	case PT_TYPE_ENUMERATION:
 	  break;
@@ -1330,6 +1340,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_VARCHAR:
 	case PT_TYPE_NCHAR:
 	case PT_TYPE_VARNCHAR:
+	case PT_TYPE_CLOB:
 	case PT_TYPE_CFILE:
 	case PT_TYPE_ENUMERATION:
 	  break;
@@ -12757,6 +12768,39 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	  (void) pt_get_collation_info (lhs, &(sci.coll_infer));
 	}
 
+      if (lhs->type_enum == PT_TYPE_CLOB && rhs->type_enum != PT_TYPE_NULL)
+	{
+	  /* Allow only character string family: CHAR/VARCHAR/NCHAR/VARNCHAR/CLOB */
+	  if (PT_IS_CHAR_STRING_TYPE (rhs->type_enum))
+	    {
+	      /* If already CLOB, keep it. Otherwise wrap with CAST to CLOB. */
+	      if (rhs->type_enum != PT_TYPE_CLOB)
+		{
+		  PT_NODE *cast_dt = lhs->data_type;	/* usually NULL */
+		  rhs = pt_wrap_with_cast_op (parser, rhs, PT_TYPE_CLOB, 0, 0, cast_dt);
+		}
+	      return rhs;
+	    }
+	  /* Not compatible with CLOB */
+	  return NULL;
+	}
+
+      if (lhs->type_enum == PT_TYPE_BLOB && rhs->type_enum != PT_TYPE_NULL)
+	{
+	  /* Allow only binary family: BIT/VARBIT/BLOB */
+	  if (rhs->type_enum == PT_TYPE_BIT || rhs->type_enum == PT_TYPE_VARBIT || rhs->type_enum == PT_TYPE_BLOB)
+	    {
+	      if (rhs->type_enum != PT_TYPE_BLOB)
+		{
+		  PT_NODE *cast_dt = lhs->data_type;	/* usually NULL */
+		  rhs = pt_wrap_with_cast_op (parser, rhs, PT_TYPE_BLOB, 0, 0, cast_dt);
+		}
+	      return rhs;
+	    }
+	  /* Not compatible with BLOB */
+	  return NULL;
+	}
+
       if (pt_is_compatible_without_cast (parser, &sci, rhs, &is_cast_allowed))
 	{
 	  return rhs;
@@ -12781,9 +12825,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	      else
 		{
 		  DB_TYPE lhs_dbtype;
-
-		  assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
-				  || lhs->data_type != NULL);
+		  bool a = (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
+			    || lhs->data_type != NULL);
+		  assert_release (a);
 		  lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
 
 		  if (rhs->node_type != PT_HOST_VAR)
@@ -12861,9 +12905,11 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	    {
 	      bool rhs_is_collection_with_str = false;
 	      PT_NODE *cast_dt = NULL;
-
-	      assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
-			      || lhs->data_type != NULL);
+	      if (!PT_IS_LOB_TYPE (lhs->type_enum))
+		{
+		  assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
+				  || lhs->data_type != NULL);
+		}
 
 	      if (PT_IS_COLLECTION_TYPE (rhs->type_enum) && lhs->data_type == NULL && rhs->data_type != NULL)
 		{

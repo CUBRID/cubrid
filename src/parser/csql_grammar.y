@@ -1156,6 +1156,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BITSHIFT_LEFT
 %token BITSHIFT_RIGHT
 %token BFILE_
+%token BLOB_
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
@@ -1172,6 +1173,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CLASS
 %token CLASSES
 %token CFILE_
+%token CLOB_
 %token COALESCE
 %token COLLATE
 %token COLUMN
@@ -21592,6 +21594,63 @@ primitive_type
 			$$ = ctn;
 
 		DBG_PRINT}}
+	| BLOB_
+		{{ DBG_TRACE_GRAMMAR(primitive_type, | BLOB_);
+
+			container_2 ctn;
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
+			  {
+			    dt->type_enum = PT_TYPE_BLOB;
+
+			    dt->info.data_type.precision = DB_MAX_LOB_PRECISION;
+
+			    dt->info.data_type.units = -1;          /* character set is not allowed */
+			    dt->info.data_type.collation_id = LANG_COLL_DEFAULT;   /* collation is not supported */
+			    dt->info.data_type.has_cs_spec = false;
+			    dt->info.data_type.has_coll_spec = false;
+			  }
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), dt);
+			$$ = ctn;
+
+		DBG_PRINT}}
+	| CLOB_ opt_charset
+		{{
+			container_2 ctn;
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			PT_NODE *charset_node = $2;
+			if (dt)
+			  {
+			    int charset, coll_id;
+
+			    dt->type_enum = PT_TYPE_CLOB;
+
+			    dt->info.data_type.precision = DB_MAX_LOB_PRECISION;
+
+			    /* CLOB allows only CHARACTER SET, collation is not supported */
+			    if (pt_check_grammar_charset_collation
+				  (this_parser, charset_node, NULL, &charset, &coll_id) == NO_ERROR)
+			      {
+				dt->info.data_type.units = charset;     /* storage character set */
+			      }
+			    else
+			      {
+				dt->info.data_type.units = -1;         /* no charset specified */
+			      }
+
+			    dt->info.data_type.collation_id = LANG_COLL_DEFAULT;     /* collation is not supported */
+			    dt->info.data_type.has_cs_spec = (charset_node != NULL);
+			    dt->info.data_type.has_coll_spec = false;
+			  }
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), dt);
+			$$ = ctn;
+
+			if (charset_node)
+			  {
+			    parser_free_node (this_parser, charset_node);
+			  }
+
+		}}
 	| class_name opt_identity
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | class_name opt_identity );
 

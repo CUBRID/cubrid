@@ -731,6 +731,7 @@ namespace func_type
 	// todo -
 	return false;
 
+      case PT_GENERIC_TYPE_LOB:
       case PT_GENERIC_TYPE_LOBFILE:
 	// todo -
 	return false;
@@ -2918,6 +2919,13 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 
     case PT_GENERIC_TYPE_LOBFILE:
       if (PT_IS_LOBFILE_TYPE (arg_type))
+	{
+	  return arg_type;
+	}
+      break;
+
+    case PT_GENERIC_TYPE_LOB:
+      if (PT_IS_LOB_TYPE (arg_type))
 	{
 	  return arg_type;
 	}

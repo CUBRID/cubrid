@@ -4226,6 +4226,10 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "bfile";
     case PT_TYPE_CFILE:
       return "cfile";
+    case PT_TYPE_BLOB:
+      return "blob";
+    case PT_TYPE_CLOB:
+      return "clob";
     case PT_TYPE_ELO:
       return "*elo*";
 
@@ -16777,6 +16781,56 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
 	  }
       }
       break;
+
+    case PT_TYPE_BLOB:
+    case PT_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
+	{
+	  if (p->info.value.text && prt_cs == INTL_CODESET_NONE && prt_coll_id == -1)
+	    {
+	      if (parser->flag.dont_prt_long_string && (strlen (p->info.value.text) >= DONT_PRT_LONG_STRING_LENGTH))
+		{
+		  parser->flag.long_string_skipped = 1;
+		  break;
+		}
+
+	      q = pt_append_nulstring (parser, q, p->info.value.text);
+
+	      break;
+	    }
+	}
+      r1 = p->info.value.data_value.str;
+      if (parser->flag.dont_prt_long_string)
+	{
+	  if (r1 && r1->length >= DONT_PRT_LONG_STRING_LENGTH)
+	    {
+	      parser->flag.long_string_skipped = 1;
+	      break;
+	    }
+	}
+
+      q = pt_append_string_prefix (parser, q, p);
+      if (prt_cs != INTL_CODESET_NONE)
+	{
+	  q = pt_append_nulstring (parser, q, lang_charset_introducer (prt_cs));
+	}
+      if (r1)
+	{
+	  q = pt_append_quoted_string (parser, q, (const char *) r1->bytes, r1->length);
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, "''");
+	}
+
+      if (prt_coll_id != -1)
+	{
+	  q = pt_append_nulstring (parser, q, " collate ");
+	  q = pt_append_nulstring (parser, q, lang_get_collation_name (prt_coll_id));
+	}
+      break;
+
     case PT_TYPE_BFILE:
     case PT_TYPE_CFILE:
     case PT_TYPE_NULL:
