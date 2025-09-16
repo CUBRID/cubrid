@@ -253,11 +253,7 @@ extern "C" {
   {
     if (!xcache_uses_clones())
       {
-	return false;
-      }
-    bool reserved = worker_manager_p->try_reserve_workers (parallelism);
-    if (!reserved)
-      {
+	worker_manager_p->release_workers (parallelism);
 	return false;
       }
     using namespace parallel_query_execute;

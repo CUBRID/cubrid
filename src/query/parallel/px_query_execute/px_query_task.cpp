@@ -137,7 +137,11 @@ namespace parallel_query_execute
     if (err_code != NO_ERROR)
       {
 	bool dummy = false;
-	bool is_interrupt = er_errid () == ER_INTERRUPTED;
+	bool is_interrupt = logtb_get_check_interrupt (cur_thread_p)
+			    && logtb_is_interrupted_tran (cur_thread_p, true, &dummy, cur_thread_p->tran_index);
+	is_interrupt |= er_errid () == ER_INTERRUPTED;
+	/* logtb_set_tran_index_interrupt sets ER_INTERRUPTING with ER_NOTIFICATION_SEVERITY,
+	 * so er_errid may return NO_ERROR in this case. */
 	if (is_interrupt)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
