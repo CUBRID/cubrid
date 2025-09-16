@@ -947,6 +947,14 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_CFILE \n");
 	  break;
 
+	case DB_TYPE_BLOB:
+	  fprintf (fpp, "DB_TYPE_BLOB \n");
+	  break;
+
+	case DB_TYPE_CLOB:
+	  fprintf (fpp, "DB_TYPE_CLOB \n");
+	  break;
+
 	case DB_TYPE_VARIABLE:
 	  fprintf (fpp, "DB_TYPE_VARIABLE  \n");
 	  break;
