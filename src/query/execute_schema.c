@@ -9240,7 +9240,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
        */
       if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
 	{
-          _er_log_debug(ARG_FILE_LINE, "no repl class");
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_NO_REPLICATION, TRUE);
           if (error != NO_ERROR){
             break;
