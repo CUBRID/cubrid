@@ -524,9 +524,19 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 {
 #if !defined (NDEBUG)
   /* inject faults to test recovery */
+  int break_pos = -1;
+  {
+    char *env = getenv ("addvol_break");
+    if (env)
+      {
+        break_pos = atoi (env);
+      }
+  }
+#define recovery_check(a) { if (break_pos == a) { printf("test ... %d\n", break_pos); _exit(-1); } }
 #define fault_inject_random_crash() \
   if (vol_purpose == DB_PERMANENT_DATA_PURPOSE) FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_ADD, 0)
 #else /* RELEASE */
+#define recovery_check(a)
 #define fault_inject_random_crash()
 #endif /* RELEASE */
 
@@ -576,10 +586,12 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       log_append_undo_data (thread_p, RVDK_FORMAT, &addr, (int) strlen (vol_fullname) + 1, vol_fullname);
     }
   fault_inject_random_crash ();
+  recovery_check (1);
 
   /* this log must be flushed. */
   logpb_force_flush_pages (thread_p);
   fault_inject_random_crash ();
+  recovery_check (2);
 
   /* create and initialize the volume. recovery information is initialized in every page. */
   vdes = fileio_format (thread_p, dbname, vol_fullname, volid, extend_npages, vol_purpose == DB_PERMANENT_DATA_PURPOSE,
@@ -591,6 +603,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
   /* from now on, if error occurs, we need to go to exit */
   fault_inject_random_crash ();
+  recovery_check (3);
 
   /* initialize the volume header and the sector and page allocation tables */
   vpid.volid = volid;
@@ -680,6 +693,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       log_append_dboutside_redo (thread_p, RVDK_NEWVOL, disk_vhdr_get_vol_header_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
+      recovery_check (4);
 
       /* Even though the volume header page is not completed at this moment, to write REDO log for the header page is
        * crucial for redo recovery since disk_map_init and disk_set_link will write their redo logs. These functions
@@ -695,6 +709,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_vhdr_get_vol_header_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
+      recovery_check (5);
     }
 
   /* Now initialize the sector and page allocator tables and link the volume to previous allocated volume */
@@ -708,6 +723,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       goto exit;
     }
   fault_inject_random_crash ();
+  recovery_check (6);
 
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE && volid != LOG_DBFIRST_VOLID)
     {
@@ -735,6 +751,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	    }
 	}
       fault_inject_random_crash ();
+      recovery_check (7);
     }
 
   if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
@@ -743,6 +760,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
       log_append_redo_data (thread_p, RVDK_FORMAT, &addr, disk_vhdr_get_vol_header_size (vhdr), vhdr);
 
       fault_inject_random_crash ();
+      recovery_check (8);
     }
 
   /* if this is a volume with temporary purposes, we do not log any disk driver related changes any longer.
@@ -800,6 +818,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   pgbuf_set_dirty_and_free (thread_p, addr.pgptr);
 
   fault_inject_random_crash ();
+  recovery_check (9);
 
   /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
    * in case of a system crash. Note that the identification may not be possible during media crashes */
@@ -807,6 +826,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   (void) fileio_synchronize (thread_p, vdes, vol_fullname, FILEIO_SYNC_ALSO_FLUSH_DWB);
 
   fault_inject_random_crash ();
+  recovery_check (10);
 
   /* todo: temporary is not logged because code should avoid it. this complicated system that uses page buffer should
    * not be necessary. with the exception of file manager and disk manager, who already manage to skip logging on
@@ -837,6 +857,7 @@ exit:
 
   return error_code;
 
+#undef recovery_check
 #undef fault_inject_random_crash
 }
 
@@ -1423,13 +1444,13 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    *   3. recovery, and crash occurred after volume was registered in system, but before completing the action. the
    *      volume was loaded in cache during restart. we need to remove it completely from cache. volid is last in cache
    *      in this case.
-   *      condition: LOG_ISRESTARTED () == false AND volid == disk_Cache->nvols_perm - 1
+   *      condition: LOG_ISRESTARTED () == false AND volid <= disk_Cache->nvols_perm - 1
    */
 
 #if 0
   if (!LOG_ISRESTARTED () && volid == disk_Cache->nvols_perm - 1)
 #else
-  if (!LOG_ISRESTARTED () && volid == disk_Cache->last_volid_perm)
+  if (!LOG_ISRESTARTED () && volid <= disk_Cache->last_volid_perm)
 #endif
     {
       VPID vpid_volheader;
@@ -1475,7 +1496,11 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       disk_cache_unlock_reserve_for_purpose (disk_Cache->vols[volid].purpose);
 
       assert (disk_Cache->vols[volid].nsect_free == 0);
-      disk_Cache->nvols_perm--;
+      if (disk_Cache->vols[volid].purpose != DISK_UNKNOWN_PURPOSE)
+        {
+          disk_Cache->nvols_perm--;
+          disk_Cache->last_volid_perm = MAX (disk_Cache->last_volid_perm, volid);
+        }
       disk_Cache->last_volid_perm = xboot_peek_last_permanent (thread_p);
       disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
 
@@ -1494,16 +1519,10 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   else
     {
       /* case 1 or 2. disk cache is not updated here. */
-#if 0
-      assert (disk_Cache->nvols_perm <= volid || (LOG_ISRESTARTED () && (disk_Cache->nvols_perm - 1 == volid)));
-      assert (disk_Cache->vols[volid].nsect_free == 0);
-      assert (disk_Cache->perm_purpose_info.extend_info.volid_extend != volid);
-#else
       assert (disk_Cache->last_volid_perm <= volid
-	      || (LOG_ISRESTARTED () && (disk_Cache->last_volid_perm - 1 <= volid)));
+	      || (LOG_ISRESTARTED () && (disk_Cache->last_volid_perm <= volid)));
       assert (disk_Cache->vols[volid].nsect_free == 0);
       assert (disk_Cache->perm_purpose_info.extend_info.volid_extend != volid);
-#endif
 
       /* make sure purpose is reset */
       disk_Cache->vols[volid].purpose = DISK_UNKNOWN_PURPOSE;
@@ -1563,10 +1582,15 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    * while we are here, the sectors reserved in step #2 are already found in sector table pages, so the assumption that
    * whole volume is empty is wrong. we need to count the sectors to make sure we are not wrong. */
 
-  if (disk_Cache->last_volid_perm == volheader->volid)
+#if 0
+  if (disk_Cache->last_volid_perm + 1 >= volheader->volid && volheader->purpose == DB_PERMANENT_DATA_PURPOSE)
+#else
+  if (volheader->purpose != DISK_UNKNOWN_PURPOSE)
+#endif
     {
       /* add to disk cache */
       disk_Cache->nvols_perm++;
+      disk_Cache->last_volid_perm = MAX (disk_Cache->last_volid_perm, volheader->volid);
       disk_Cache->vols[volheader->volid].purpose = volheader->purpose;
       disk_Cache->vols[volheader->volid].nsect_free = 0;
 

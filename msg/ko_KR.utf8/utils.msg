@@ -103,6 +103,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     backupdb\n\
     restoredb\n\
     addvoldb\n\
+    delvoldb\n\
     spacedb\n\
     lockdb\n\
     tranlist\n\

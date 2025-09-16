@@ -103,6 +103,7 @@ Available admin utility-name:\n\
     backupdb\n\
     restoredb\n\
     addvoldb\n\
+    delvoldb\n\
     spacedb\n\
     lockdb\n\
     tranlist\n\
