@@ -52,7 +52,9 @@ namespace parallel_query_execute
      m_job (),
      m_has_job (false),
      m_on_trace (on_trace)
-  {}
+  {
+    m_stats = {{0, 0}, 0, 0, 0};
+  }
 
   query_executor::query_executor (query_executor *parent_executor_p)
     :m_root_thread_p (parent_executor_p->m_root_thread_p),
@@ -68,7 +70,9 @@ namespace parallel_query_execute
      m_job (),
      m_has_job (false),
      m_on_trace (parent_executor_p->m_on_trace)
-  {}
+  {
+    m_stats = {{0, 0}, 0, 0, 0};
+  }
   query_executor::~query_executor()
   {
     if (m_is_root_executor)

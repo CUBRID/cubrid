@@ -23,12 +23,12 @@
 #ifndef _PX_QUERY_JOB_HPP_
 #define _PX_QUERY_JOB_HPP_
 
-#include "thread_entry.hpp"
 #include <mutex>
 #include <condition_variable>
 #include <sys/stat.h>
 #include <vector>
 #include "system.h"
+#include "xasl.h"
 
 struct xasl_state;
 struct xasl_node;
@@ -41,13 +41,11 @@ namespace parallel_query_execute
       std::mutex m_mutex;
       std::condition_variable m_cv;
       int m_running_jobs;
-      int m_jobs;
     public:
       join_context()
 	:m_mutex (),
 	 m_cv (),
-	 m_running_jobs (0),
-	 m_jobs (0)
+	 m_running_jobs (0)
       {}
       ~join_context() = default;
       inline void add_running_jobs()
@@ -85,44 +83,7 @@ namespace parallel_query_execute
       {
       }
       ~trace_context() = default;
-      struct stat
-      {
-	UINT64 fetches;
-	UINT64 ioreads;
-	UINT64 fetch_time;
-
-	// 기본 생성자
-	stat(): fetches (0), ioreads (0), fetch_time (0)
-	{}
-	stat (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time): fetches (fetches), ioreads (ioreads), fetch_time (fetch_time)
-	{}
-	stat (const stat &other): fetches (other.fetches), ioreads (other.ioreads), fetch_time (other.fetch_time)
-	{}
-	stat (stat &&other) noexcept: fetches (std::move (other.fetches)), ioreads (std::move (other.ioreads)),
-	  fetch_time (std::move (other.fetch_time))
-	{}
-	stat &operator= (const stat &other)
-	{
-	  if (this != &other)
-	    {
-	      fetches = other.fetches;
-	      ioreads = other.ioreads;
-	      fetch_time = other.fetch_time;
-	    }
-	  return *this;
-	}
-	stat &operator= (stat &&other) noexcept
-	{
-	  if (this != &other)
-	    {
-	      fetches = std::move (other.fetches);
-	      ioreads = std::move (other.ioreads);
-	      fetch_time = std::move (other.fetch_time);
-	    }
-	  return *this;
-	}
-	~stat() = default;
-      };
+      using stat = XASL_STATS;
 
       std::mutex m_mutex;
       std::vector<stat> m_stats;

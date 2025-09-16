@@ -64,23 +64,7 @@ namespace parallel_query_execute
       }
   };
 
-  class query_executor_stats
-  {
-    public:
-      query_executor_stats()
-	:elapsed_time ({0, 0}),
-      fetches (0),
-      ioreads (0),
-      fetch_time (0)
-      {}
-      ~query_executor_stats()
-      {}
-
-      struct timeval elapsed_time;
-      UINT64 fetches;
-      UINT64 ioreads;
-      UINT64 fetch_time;
-  };
+  using query_executor_stats = XASL_STATS;
   class query_executor
   {
       using queue = parallel_query::thread_safe_queue<job>;

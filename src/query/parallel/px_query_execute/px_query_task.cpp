@@ -137,9 +137,7 @@ namespace parallel_query_execute
     if (err_code != NO_ERROR)
       {
 	bool dummy = false;
-	bool is_interrupt = logtb_get_check_interrupt (cur_thread_p)
-			    && logtb_is_interrupted_tran (cur_thread_p, true, &dummy, cur_thread_p->tran_index);
-	is_interrupt |= er_errid () == ER_INTERRUPTED;
+	bool is_interrupt = er_errid () == ER_INTERRUPTED;
 	if (is_interrupt)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -197,7 +195,9 @@ namespace parallel_query_execute
 	UINT64 fetches = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
 	UINT64 ioreads = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
 	UINT64 fetch_time = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset];
-	trace_context_p->m_stats.push_back (trace_context::stat (fetches, ioreads, fetch_time));
+	trace_context_p->m_stats.push_back ((trace_context::stat)
+	{ {0, 0}, fetches, ioreads, fetch_time
+	});
 	perfmon_destroy_parallel_stats (cur_thread_p);
 	cur_thread_p->m_px_stats = px_stats;
 	pthread_mutex_unlock (&cur_thread_p->m_px_stats_mutex);
