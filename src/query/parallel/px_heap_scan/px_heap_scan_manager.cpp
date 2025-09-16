@@ -533,6 +533,23 @@ scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 	{
 	  scan_id->s.phsid.perf_monitor->add_statistics (scan_id, parallelism);
 	}
+      if (thread_p->m_px_orig_thread_entry != thread_p)
+	{
+	  assert (thread_p->m_px_orig_thread_entry != nullptr);
+	  /* this is child thread, so we need to use px_stats */
+	  thread_p->m_uses_px_stats = true;
+	  /* parent handle this thread's px_stats */
+	  assert (thread_p->m_px_stats != nullptr);
+	}
+      else
+	{
+	  /* this is main thread, so we have to use tran_stats, instead of px_stats */
+	  if (thread_p->m_px_stats != nullptr)
+	    {
+	      perfmon_destroy_parallel_stats (thread_p);
+	    }
+	  thread_p->m_uses_px_stats = false;
+	}
       /* should be deleted in qdump_print_access_specs_text or json */
     }
   orig_heap_id = db_change_private_heap (thread_p, 0);

@@ -310,6 +310,7 @@ namespace parallel_heap_scan
     if (on_trace)
       {
 	perfmon_merge_child_stats_to_parent_stats (thread_p);
+	perfmon_destroy_parallel_stats (thread_p);
       }
     if (is_list_merge)
       {
