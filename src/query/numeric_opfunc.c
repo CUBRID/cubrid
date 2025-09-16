@@ -168,10 +168,11 @@ static FP_VALUE_TYPE get_fp_value_type (double d);
 static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					 bool is_float);
 static int analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
-				   char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_nz,
-				   int *frac_last_nz, bool * is_zero);
+				   char *int_digits, int *int_len, char *frac_digits, int *frac_len,
+				   int *frac_first_sig_digit, int *frac_last_sig_digit, bool * is_zero);
 static void determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
-				  int frac_first_nz, int frac_last_nz, char *num_string, int *out_prec, int *out_scale);
+				  int frac_first_sig_digit, int frac_last_sig_digit, char *num_string, int *out_prec,
+				  int *out_scale);
 static void determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, int tmp_frac_len,
 			     int frac_zero_cnt, char next_digit);
 static void numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale,
@@ -3089,15 +3090,15 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
  *   int_len(out) : Length of integer part
  *   frac_digits(out) : Extracted fractional part digits
  *   frac_len(out) : Length of fractional part
- *   frac_first_nz(out) : First non-zero position in fractional part
- *   frac_last_nz(out) : Last non-zero position in fractional part
+ *   frac_first_sig_digit(out) : First non-zero position in fractional part
+ *   frac_last_sig_digit(out) : Last non-zero position in fractional part
  *
  * Note: Parse and analyze numeric string to extract integer/fractional components
  */
 static int
 analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
-			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_nz,
-			int *frac_last_nz, bool * is_zero)
+			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_sig_digit,
+			int *frac_last_sig_digit, bool * is_zero)
 {
   int int_count = 0;
   int frac_count = 0;
@@ -3109,7 +3110,7 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
   bool sign_found = false;
   bool trailing_spaces = false;
 
-  *frac_first_nz = *frac_last_nz = -1;
+  *frac_first_sig_digit = *frac_last_sig_digit = -1;
   *negate_value = false;
 
   /* Step 1: Handle spaces, signs, and leading zeros */
@@ -3215,14 +3216,14 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
 	  has_digit = true;	/* Case: "0.0000" */
 	  frac_digits[frac_count] = current_char;
 	  /* Track non-zero digits */
-	  if (current_char != '0' || *frac_first_nz >= 0)
+	  if (current_char != '0' || *frac_first_sig_digit >= 0)
 	    {
-	      if (*frac_first_nz < 0)
+	      if (*frac_first_sig_digit < 0)
 		{
-		  *frac_first_nz = frac_count;
+		  *frac_first_sig_digit = frac_count;
 		  pad_character_zero = false;
 		}
-	      *frac_last_nz = frac_count;
+	      *frac_last_sig_digit = frac_count;
 	    }
 	  frac_count++;
 	  parse_pos++;
@@ -3290,8 +3291,8 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
  *   int_len(in) : Length of integer part
  *   frac_digits(in) : Fractional part digits
  *   frac_len(in) : Length of fractional part
- *   frac_first_nz(in) : First non-zero position in fractional part
- *   frac_last_nz(in) : Last non-zero position in fractional part
+ *   frac_first_sig_digit(in) : First non-zero position in fractional part
+ *   frac_last_sig_digit(in) : Last non-zero position in fractional part
  *   out_num_string(out) : Output numeric string
  *   out_prec(out) : Calculated precision
  *   out_scale(out) : Calculated scale
@@ -3299,8 +3300,9 @@ analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET co
  * Note: Calculate precision and scale based on numeric string analysis
  */
 static void
-determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len, int frac_first_nz,
-		      int frac_last_nz, char *out_num_string, int *out_prec, int *out_scale)
+determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
+		      int frac_first_sig_digit, int frac_last_sig_digit, char *out_num_string, int *out_prec,
+		      int *out_scale)
 {
   int total = int_len + frac_len;
   const char *tmp_int_digits = NULL, *tmp_frac_digits = NULL;
@@ -3353,7 +3355,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
   else if (int_len == 0)
     {
       /* Case 2: Only fractional part exists */
-      int nz_len = frac_last_nz - frac_first_nz + 1;
+      int nz_len = frac_last_sig_digit - frac_first_sig_digit + 1;
       if (frac_len <= phase_1_tmp_max_prec)
 	{
 	  /* Case 2-A: When length is within 38 digits, use only the fractional part. 
@@ -3370,9 +3372,9 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	    {
 	      tmp_prec = phase_1_tmp_max_prec;
 	      tmp_scale = frac_len;
-	      tmp_frac_digits = frac_digits + frac_first_nz;
+	      tmp_frac_digits = frac_digits + frac_first_sig_digit;
 	      tmp_frac_len = phase_1_tmp_max_prec;
-	      next_digit = frac_digits[frac_first_nz + phase_1_tmp_max_prec];
+	      next_digit = frac_digits[frac_first_sig_digit + phase_1_tmp_max_prec];
 	      need_round = true;
 	      frac_zero_cnt = frac_len - nz_len;	/* Count pure zeros */
 	    }
@@ -3380,7 +3382,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	    {
 	      tmp_prec = nz_len;
 	      tmp_scale = frac_len;
-	      tmp_frac_digits = frac_digits + frac_first_nz;
+	      tmp_frac_digits = frac_digits + frac_first_sig_digit;
 	      tmp_frac_len = nz_len;
 	      need_round = false;
 	    }
@@ -3562,7 +3564,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   bool is_zero = false;
   int prec, scale;
   int int_len, frac_len;
-  int frac_first_nz, frac_last_nz;
+  int frac_first_sig_digit, frac_last_sig_digit;
   char int_digits[astring_length + 1];	/* Integer part valid digits */
   char frac_digits[astring_length + 1];	/* Fractional part valid digits */
   int ret = NO_ERROR;
@@ -3571,7 +3573,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   /* Parse and compute precision/scale */
   ret =
     analyze_numeric_string (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
-			    &frac_len, &frac_first_nz, &frac_last_nz, &is_zero);
+			    &frac_len, &frac_first_sig_digit, &frac_last_sig_digit, &is_zero);
   if (ret != NO_ERROR)
     {
       if (ret == ER_IT_DATA_OVERFLOW)
@@ -3599,8 +3601,8 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     }
   else
     {
-      (void) determine_prec_scale (int_digits, int_len, frac_digits, frac_len, frac_first_nz,
-				   frac_last_nz, num_string, &prec, &scale);
+      (void) determine_prec_scale (int_digits, int_len, frac_digits, frac_len, frac_first_sig_digit,
+				   frac_last_sig_digit, num_string, &prec, &scale);
 
       /* If there is no overflow, try to parse the decimal string */
       int phase_1_tmp_max_prec = 38;
