@@ -8095,7 +8095,8 @@ db_get_string_length (const DB_VALUE * value)
     {
       return value->data.ch.medium.length;
     }
-  if (value->domain.general_info.type != DB_TYPE_BIT && value->domain.general_info.type != DB_TYPE_VARBIT)
+  if (value->domain.general_info.type != DB_TYPE_BIT && value->domain.general_info.type != DB_TYPE_VARBIT
+      && value->domain.general_info.type != DB_TYPE_BLOB)
     {
       intl_char_count ((unsigned char *) str, size, codeset, &length);
     }
@@ -8201,6 +8202,7 @@ qstr_get_category (const DB_VALUE * s)
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
+    case DB_TYPE_CLOB:
       code_set = QSTR_CHAR;
       break;
 
@@ -8211,6 +8213,7 @@ qstr_get_category (const DB_VALUE * s)
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+    case DB_TYPE_BLOB:
       code_set = QSTR_BIT;
       break;
 

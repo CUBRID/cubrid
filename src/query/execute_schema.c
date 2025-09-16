@@ -13446,6 +13446,7 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
 
     case PT_TYPE_VARNCHAR:
     case PT_TYPE_NCHAR:
+    case PT_TYPE_CLOB:
       return empty_n_str;
 
     case PT_TYPE_SET:
@@ -13455,6 +13456,7 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
 
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
+    case PT_TYPE_BLOB:
       return empty_bit;
     case PT_TYPE_LOGICAL:
     case PT_TYPE_NONE:

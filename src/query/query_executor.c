@@ -23349,6 +23349,12 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
     case DB_TYPE_CFILE:
       return "CFILE";
 
+    case DB_TYPE_BLOB:
+      return "BLOB";
+
+    case DB_TYPE_CLOB:
+      return "CLOB";
+
     case DB_TYPE_ENUMERATION:
       return "ENUM";
     case DB_TYPE_JSON:

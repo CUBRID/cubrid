@@ -117,6 +117,8 @@ static int type_map[] = {
   /* not support for BFILE, CFILE, and ENUM */
   0,				/* CCI_U_TYPE_BFILE */
   0,				/* CCI_U_TYPE_CFILE */
+  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BLOB */
+  CCI_A_TYPE_STR,		/* CCI_U_TYPE_CLOB */
   0,				/* CCI_U_TYPE_ENUM */
 
   CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
@@ -179,6 +181,10 @@ print_utype_to_string (int type)
       return (char *) "bfile";
     case CCI_U_TYPE_CFILE:
       return (char *) "cfile";
+    case CCI_U_TYPE_BLOB:
+      return (char *) "blob";
+    case CCI_U_TYPE_CLOB:
+      return (char *) "clob";
     case CCI_U_TYPE_JSON:
       return (char *) "json";
     case CCI_U_TYPE_ENUM:
