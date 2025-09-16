@@ -279,6 +279,27 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 	  m_buf ("%s(%d)", ustr_upper (temp_buffer), precision);
 	  break;
 
+	case DB_TYPE_BLOB:
+	  strcpy (temp_buffer, temp_domain->type->name);
+	  if (temp_domain->precision == TP_FLOATING_PRECISION_VALUE)
+	    {
+	      precision = DB_MAX_STRING_LENGTH;
+	    }
+	  else
+	    {
+	      precision = temp_domain->precision;
+	    }
+	  m_buf ("%s(%d)", ustr_upper (temp_buffer), precision);
+	  break;
+	case DB_TYPE_CLOB:
+	  has_collation = 1;
+	  if (temp_domain->precision == TP_FLOATING_PRECISION_VALUE)
+	    {
+	      m_buf ("CLOB");
+	      break;
+	    }
+	  [[fallthrough]];
+
 	case DB_TYPE_JSON:
 	  strcpy (temp_buffer, temp_domain->type->name);
 	  ustr_upper (temp_buffer);

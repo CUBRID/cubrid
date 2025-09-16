@@ -2255,7 +2255,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	{
 	  ERROR0 (error, ER_SM_INVALID_CONSTRAINT);
 	}
-      else if (atts[0]->type->id == DB_TYPE_BFILE || atts[0]->type->id == DB_TYPE_CFILE)
+      else if (atts[0]->type->id == DB_TYPE_BFILE || atts[0]->type->id == DB_TYPE_CFILE ||
+	       atts[0]->type->id == DB_TYPE_BLOB || atts[0]->type->id == DB_TYPE_CLOB)
 	{
 	  ERROR1 (error, ER_SM_NOT_NULL_NOT_ALLOWED, atts[0]->type->name);
 	}

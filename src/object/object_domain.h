@@ -155,6 +155,8 @@ extern TP_DOMAIN tp_Sequence_domain;
 extern TP_DOMAIN tp_Elo_domain;
 extern TP_DOMAIN tp_Bfile_domain;
 extern TP_DOMAIN tp_Cfile_domain;
+extern TP_DOMAIN tp_Blob_domain;
+extern TP_DOMAIN tp_Clob_domain;
 extern TP_DOMAIN tp_Time_domain;
 extern TP_DOMAIN tp_Utime_domain;
 extern TP_DOMAIN tp_Date_domain;
@@ -230,21 +232,26 @@ typedef enum tp_match
  * TP_IS_BIT_TYPE
  *    Tests to see if the type id is one of the binary string types.
  */
-
+// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 #define TP_IS_BIT_TYPE(typeid) \
-  (((typeid) == DB_TYPE_VARBIT) || ((typeid) == DB_TYPE_BIT))
+  (((typeid) == DB_TYPE_VARBIT) || ((typeid) == DB_TYPE_BIT) || ((typeid) == DB_TYPE_BLOB))
 
 /*
  * TP_IS_CHAR_TYPE
  *    Tests to see if a type is any one of the character types.
  */
-
+// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 #define TP_IS_CHAR_TYPE(typeid) \
   (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
-   ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
+   ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR)|| \
+   ((typeid) == DB_TYPE_CLOB))
+
 
 #define TP_IS_LOBFILE_TYPE(typeid) \
   (((typeid) == DB_TYPE_BFILE)  || ((typeid) == DB_TYPE_CFILE))
+
+#define TP_IS_LOB_TYPE(typeid) \
+  (((typeid) == DB_TYPE_BLOB)  || ((typeid) == DB_TYPE_CLOB))
 
 #define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
   (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))
