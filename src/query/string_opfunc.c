@@ -8158,6 +8158,14 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
       error = db_make_varbit (value, precision, src, s_unit);
       break;
 
+    case DB_TYPE_CLOB:
+      error = db_make_clob (value, precision, src, s_unit, codeset, collation_id);
+      break;
+
+    case DB_TYPE_BLOB:
+      error = db_make_blob (value, precision, src, s_unit);
+      break;
+
     default:
       assert (false);
       db_make_null (value);
