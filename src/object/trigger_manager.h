@@ -221,6 +221,8 @@ extern const char *TR_ATT_ACTION;
 extern const char *TR_ATT_ACTION_OLD;
 extern const char *TR_ATT_PROPERTIES;
 extern const char *TR_ATT_COMMENT;
+extern const char *TR_ATT_CREATED_TIME;
+extern const char *TR_ATT_UPDATED_TIME;
 
 extern int tr_Current_depth;
 extern int tr_Maximum_depth;
@@ -255,7 +257,6 @@ extern const char *EVAL_SUFFIX;
 extern void tr_init (void);
 extern void tr_final (void);
 extern void tr_dump (FILE * fpp);	/* debug status */
-extern int tr_install (void);
 
 /* Global trigger firing state : enable/disable functions */
 

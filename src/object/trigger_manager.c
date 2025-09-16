@@ -101,14 +101,6 @@ static const int TR_RETURN_ERROR = -1;
 static const int TR_RETURN_FALSE = 0;
 static const int TR_RETURN_TRUE = 1;
 
-/*
- * tr_init
- *
- * Note: Trigger initialization function.
- *              This function should be called at the beginning of a
- *              transaction.
- */
-
 static const int TR_EST_MAP_SIZE = 1024;
 
 static const char *OBJ_REFERENCE_NAME = "obj";
@@ -247,7 +239,6 @@ static void tr_finish (TR_STATE * state);
 static int its_deleted (DB_OBJECT * object);
 
 static int map_flush_helper (const void *key, void *data, void *args);
-static int define_trigger_classes (void);
 
 static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement);
 static int tr_set_trigger_timestamps (TR_TRIGGER * trigger);
@@ -7386,169 +7377,6 @@ tr_dump (FILE * fpp)
 	    }
 	}
     }
-}
-
-
-/*
- * TRIGGER DATABASE INSTALLATION
- */
-
-/*
- * define_trigger_classes() - This defines the classes necessary for storing triggers.
- *    return: error code
- *
- * Note:
- *    Currently there is only a single trigger object class.
- *    This should only be called during createdb.
- */
-static int
-define_trigger_classes (void)
-{
-  DB_CTMPL *tmp;
-  DB_OBJECT *class_mop;
-  DB_VALUE value;
-
-  tmp = NULL;
-
-  tmp = dbt_create_class (TR_CLASS_NAME);
-  if (tmp == NULL)
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_UNIQUE_NAME, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_OWNER, AU_USER_CLASS_NAME, NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_NAME, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_STATUS_ACTIVE);
-  if (dbt_add_attribute (tmp, TR_ATT_STATUS, "integer", &value))
-    {
-      goto tmp_error;
-    }
-
-  db_make_float (&value, TR_LOWEST_PRIORITY);
-  if (dbt_add_attribute (tmp, TR_ATT_PRIORITY, "double", &value))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_EVENT_NULL);
-  if (dbt_add_attribute (tmp, TR_ATT_EVENT, "integer", &value))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_CLASS, "object", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_ATTRIBUTE, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, 0);
-  if (dbt_add_attribute (tmp, TR_ATT_CLASS_ATTRIBUTE, "integer", &value))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_CONDITION_TYPE, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_CONDITION, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_TIME_AFTER);
-  if (dbt_add_attribute (tmp, TR_ATT_CONDITION_TIME, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_ACTION_TYPE, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_ACTION, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_TIME_AFTER);
-  if (dbt_add_attribute (tmp, TR_ATT_ACTION_TIME, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_COMMENT, "varchar(1024)", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_CREATED_TIME, "datetime", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_UPDATED_TIME, "datetime", NULL))
-    {
-      goto tmp_error;
-    }
-
-  class_mop = dbt_finish_class (tmp);
-  if (class_mop == NULL)
-    {
-      goto tmp_error;
-    }
-
-  sm_mark_system_class (class_mop, 1);
-
-  if (locator_create_heap_if_needed (class_mop, false) == NULL)
-    {
-      goto tmp_error;
-    }
-
-  return NO_ERROR;
-
-tmp_error:
-  if (tmp != NULL)
-    {
-      dbt_abort_class (tmp);
-    }
-
-  ASSERT_ERROR ();
-  return er_errid ();
-}
-
-/*
- * tr_install() - Trigger installation function.
- *    return: error code
- *
- * Note:
- *    A system class called TRIGGER is created, and initialized.
- *    The function should be called exactly once in createdb.
- */
-int
-tr_install (void)
-{
-  return (define_trigger_classes ());
 }
 
 /*
