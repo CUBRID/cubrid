@@ -91,7 +91,7 @@ static int rv;
 
 /* default timeout seconds for infinite wait */
 #define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold. used as indicator for hot pages. */
-static int pgbuf_latch_timeout = 300 * 1000;		/* timeout seconds */
+static int pgbuf_latch_timeout = 300 * 1000;	/* timeout seconds */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
@@ -6554,9 +6554,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   char *client_user_name;	/* Client user name for tran */
   char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
-
-  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
+  bool old_check_interrupt;
 
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
   thread_lock_entry (thrd_entry);
@@ -6580,23 +6578,16 @@ try_again:
   to.tv_sec = (int) time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
-  if (thrd_entry->event_stats.trace_slow_query == true)
-    {
-      tsc_getticks (&start_tick);
-    }
+  old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
 
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
-  r = pthread_cond_timedwait (&thrd_entry->wakeup_cond, &thrd_entry->th_entry_lock, &to);
+  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
-  if (thrd_entry->event_stats.trace_slow_query == true)
-    {
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (thrd_entry->event_stats.latch_waits, tv_diff);
-    }
+  logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
-  if (r == 0)
+  if (r == NO_ERROR)
     {
+      thread_lock_entry (thrd_entry);
       /* someone wakes up me */
       if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
 	{
@@ -6606,7 +6597,6 @@ try_again:
 
       /* interrupt operation */
       thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
-      thrd_entry->resume_status = THREAD_PGBUF_RESUMED;
       thread_unlock_entry (thrd_entry);
 
       if (pgbuf_timed_sleep_error_handling (thread_p, bufptr, thrd_entry) == NO_ERROR)
@@ -6617,7 +6607,7 @@ try_again:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return ER_FAILED;
     }
-  else if (r == ETIMEDOUT)
+  else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
       /* rollback operation, postpone operation, etc. */
       if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)

@@ -1664,6 +1664,8 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, struct 
 {
   int r;
   int old_status;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
   int error = NO_ERROR;
 
   assert (thread_p->status == TS_RUN || thread_p->status == TS_CHECK);
@@ -1672,7 +1674,20 @@ thread_suspend_timeout_wakeup_and_unlock_entry (THREAD_ENTRY * thread_p, struct 
 
   thread_p->resume_status = suspended_reason;
 
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      tsc_getticks (&start_tick);
+    }
+
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
+
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+
+      TSC_ADD_TIMEVAL (thread_p->event_stats.latch_waits, tv_diff);
+    }
 
   if (r != 0 && r != ETIMEDOUT)
     {
