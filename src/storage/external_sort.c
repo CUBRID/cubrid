@@ -3447,17 +3447,6 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       out_half = 0;
     }
 
-  /* for one temporary file, put result from the temp file instead of merging it. */
-  if (!SORT_IS_PARALLEL (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
-    {
-      error = sort_put_result_from_tmpfile (thread_p, sort_param, 0);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto bailout;
-	}
-    }
-
   /* OUTER LOOP */
 
   /* While there are more than one input files with different runs to merge */
