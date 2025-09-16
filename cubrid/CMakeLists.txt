@@ -339,6 +339,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  ${PARALLEL_QUERY_DIR}/px_sort.cpp
   )
 
 set(PARALLEL_QUERY_HEADERS
@@ -346,6 +347,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  ${PARALLEL_QUERY_DIR}/px_sort.h
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES

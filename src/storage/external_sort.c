@@ -55,6 +55,7 @@
 #include "object_representation.h"
 #include "px_worker_manager.hpp"
 #include "px_callable_task.hpp"
+#include "px_sort.h"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -70,7 +71,6 @@
  */
 #define SORT_MAX_HALF_FILES      4
 #define SORT_MAX_TOT_FILES      SORT_MAX_HALF_FILES * 2
-#define SORT_PX_MERGE_FILES      4
 
 /* Lower limit on the half of the total number of the temporary files.
  * The exact lower limit on total number of temp files is twice this number.
@@ -78,8 +78,6 @@
  * or total output files at each stage of the merging process.
  */
 #define SORT_MIN_HALF_FILES      2
-
-#define SORT_MAX_PARALLEL      32
 
 /* Initial size of the dynamic array that keeps the file contents list */
 #define SORT_INITIAL_DYN_ARRAY_SIZE 30
@@ -101,70 +99,6 @@
             dup_num++;            \
         }                         \
     } while (0)
-
-#define SORT_IS_PARALLEL(t) ((t)->px_parallel_num > 1)
-
-// *INDENT-OFF*
-#define SORT_EXECUTE_PARALLEL(num, px_sort_param, function)  \
-    do {                          \
-	for (int i = 0; i < num; i++) {				\
-	    parallel_query::callable_task * task =		\
-	       new parallel_query::callable_task (&parallel_query::worker_manager::get_manager(), std::		\
-	          bind (function, std::placeholders::_1, &px_sort_param[i]));	\
-	    parallel_query::worker_manager::get_manager().push_task(task);	\
-	  }	\
-    } while (0)
-// *INDENT-ON*
-
-#define SORT_WAIT_PARALLEL(parallel_num, sort_param, px_sort_param) \
-    do {                          \
-	  pthread_mutex_lock (sort_param->px_mtx); \
-      while (1) \
-	{ \
-	  int done = true;  \
-	  for (int i = 0; i < parallel_num; i++)  \
-	    {  \
-	      if (px_sort_param[i].px_status == PX_PROGRESS)  \
-		{  \
-		  done = false; \
-		  break; \
-		} \
-	      else if (px_sort_param[i].px_status == PX_ERR_FAILED) \
-		{ \
-		  error = ER_FAILED; \
-		} \
-	    } \
-	  if (done) \
-	    { \
-	      break; \
-	    } \
-	  pthread_cond_wait (sort_param->complete_cond, sort_param->px_mtx); \
-	} \
-      pthread_mutex_unlock (sort_param->px_mtx); \
-    } while (0)
-
-typedef struct result_run RESULT_RUN;
-struct result_run
-{
-  VFID temp_file;
-  int num_pages;
-};
-
-enum parallel_type
-{
-  PX_SINGLE = 0,
-  PX_MAIN_IN_PARALLEL = 1,
-  PX_THREAD_IN_PARALLEL
-};
-typedef enum parallel_type PARALLEL_TYPE;
-
-enum px_status
-{
-  PX_ERR_FAILED = -1,
-  PX_DONE = 0,
-  PX_PROGRESS
-};
-typedef enum px_status PX_STATUS;
 
 typedef struct file_contents FILE_CONTENTS;
 struct file_contents
@@ -310,30 +244,6 @@ typedef void MERGE_RUN_FN (char **, char **, SORT_STACK *, SORT_CMP_FUNC *, void
 #if !defined(NDEBUG)
 static int sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, void *comp_arg);
 #endif
-
-/* start parallel sort */
-#if defined(SERVER_MODE)
-static void sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
-static int sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
-				 int parallel_num);
-static int sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_INFO * src_sort_info);
-static int sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
-				       int parallel_num);
-static int sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param,
-					int parallel_num);
-static int sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
-static int sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
-static int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param);
-static int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param);
-static void sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
-static void sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
-static int sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id);
-static void sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
-				 int parallel_num);
-#endif
-
-static int sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int start_pagenum);
-/* end parallel sort */
 
 static int sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FUNC * get_next,
@@ -1645,7 +1555,7 @@ cleanup:
 }
 
 #if defined(SERVER_MODE)
-static void
+void
 sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   TSC_TICKS start_tick, end_tick;
@@ -2556,18 +2466,6 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     }
 
   /* OUTER LOOP */
-
-  /* for one temporary file, put result from the temp file instead of merging it. */
-  if (!SORT_IS_PARALLEL (sort_param) && sort_get_numpages_of_active_infiles (sort_param) == 1)
-    {
-      error = sort_put_result_from_tmpfile (thread_p, sort_param, 0);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto bailout;
-	}
-    }
-
   /* While there are more than one input files with different runs to merge */
   while ((act_infiles = sort_get_numpages_of_active_infiles (sort_param)) > 1)
     {
@@ -3254,7 +3152,7 @@ bailout:
  *   sort_param(in): sort parameters
  *
  */
-static int
+int
 sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int start_pagenum)
 {
   int tot_pages;
@@ -3353,7 +3251,7 @@ bailout:
  *   src_list_id(in): src_list_id
  *
  */
-static int
+int
 sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id)
 {
   PAGE_PTR last_pgptr, first_pgptr;
@@ -3413,7 +3311,7 @@ sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE
  *   sort_param(in): sort_param
  *
  */
-static void
+void
 sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param, int parallel_num)
 {
   int result_file_idx, total_pages, pages_per_thread, remaining_pages;
@@ -4404,7 +4302,7 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
  *   src_param(in):
  *   parallel_num(in):
  */
-static int
+int
 sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param, int parallel_num)
 {
   int error = NO_ERROR;
@@ -4502,74 +4400,13 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 }
 
 /*
- * sort_copy_sort_info () - copy sort info from src_info to dest_info
- *   return: NO_ERROR
- *   dest_param(in):
- *   src_param(in):
- *   parallel_num(in):
- */
-static int
-sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_INFO * src_sort_info)
-{
-  int error = NO_ERROR;
-  SORT_INFO *sort_info;
-
-  sort_info = *dest_sort_info = (SORT_INFO *) db_private_alloc (thread_p, sizeof (SORT_INFO));
-  if (sort_info == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
-    }
-  memcpy (sort_info, src_sort_info, sizeof (SORT_INFO));
-
-  sort_info->s_id = (QFILE_SORT_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_SORT_SCAN_ID));
-  if (sort_info->s_id == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
-    }
-  memcpy (sort_info->s_id, src_sort_info->s_id, sizeof (QFILE_SORT_SCAN_ID));
-
-  sort_info->s_id->s_id = (QFILE_LIST_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SCAN_ID));
-  if (sort_info->s_id->s_id == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
-    }
-  memcpy (sort_info->s_id->s_id, src_sort_info->s_id->s_id, sizeof (QFILE_LIST_SCAN_ID));
-
-  sort_info->output_file = NULL;
-  sort_info->input_file = NULL;
-
-end:
-  if (error != NO_ERROR)
-    {
-      /* free memory */
-      if (sort_info != NULL)
-	{
-	  if (sort_info->s_id->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info->s_id->s_id);
-	    }
-	  if (sort_info->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info->s_id);
-	    }
-	  db_private_free_and_init (thread_p, sort_info);
-	}
-    }
-
-  return error;
-}
-
-/*
  * sort_split_input_temp_file () - split input temp file
  *   return: NO_ERROR
  *   px_sort_param(in):
  *   sort_param(in):
  *   parallel_num(in):
  */
-static int
+int
 sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			    int parallel_num)
 {
@@ -4675,7 +4512,7 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
  *   sort_param(in):
  *   parallel_num(in):
  */
-static int
+int
 sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			     int parallel_num)
 {
@@ -4835,7 +4672,7 @@ cleanup:
  *   sort_param(in):
  *   parallel_num(in):
  */
-static int
+int
 sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int error = NO_ERROR;
@@ -4887,7 +4724,7 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
  *   sort_parallel_type(in):
  *   sort_param(in):
  */
-static int
+int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   SORT_INFO *sort_info_p;
@@ -4941,7 +4778,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
  *   thread_p(in):
  *   sort_param(in):
  */
-static void
+void
 sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
@@ -5026,7 +4863,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
  *   thread_p(in):
  *   sort_param(in):
  */
-static void
+void
 sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
@@ -5091,7 +4928,7 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
  *   parallel_num(in):
  *   sort_parallel_type(in):
  */
-static int
+int
 sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param)
 {
   int error = NO_ERROR;
@@ -5161,7 +4998,7 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
  *   parallel_num(in):
  *   sort_parallel_type(in):
  */
-static int
+int
 sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param)
 {
   int error = NO_ERROR;
