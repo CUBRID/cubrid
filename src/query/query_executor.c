@@ -14988,8 +14988,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			       * for better performance with many uncorrelated subqueries.*/
 			      n_workers_to_reserve = 1;
 
-			      dpool *px_worker_manager_p = parallel_query::get_manager ();
-			      if (make_parallel_query_executor_recursively
+			      dpool *px_worker_manager_p = dpool::try_reserve_workers (n_workers_to_reserve);
+			      if (px_worker_manager_p == nullptr || make_parallel_query_executor_recursively
 				  (thread_p, xasl, px_worker_manager_p, n_workers_to_reserve) != true)
 				{
 				  xasl->executed_parallelism = 0;

@@ -6808,6 +6808,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 			       MVCC_SNAPSHOT * mvcc_snapshot)
 {
   int ret = NO_ERROR;
+  int granted;
 
   if (class_oid != NULL)
     {
@@ -6839,22 +6840,17 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);
 	    }
 #endif
-	  if (lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK) != LK_GRANTED)
-	    {
-#if defined(SERVER_MODE)
-	      if (target_thread_p != NULL)
-		{
-		  pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
-		}
-#endif
-	      goto exit_on_error;
-	    }
+	  granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
 #if defined(SERVER_MODE)
 	  if (target_thread_p != NULL)
 	    {
 	      pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
 	    }
 #endif
+	  if (granted != LK_GRANTED)
+	    {
+	      goto exit_on_error;
+	    }
 	}
 
       ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, NULL);

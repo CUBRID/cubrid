@@ -353,6 +353,7 @@ namespace parallel_heap_scan
       {
 	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
 	  {
+	    assert (m_thread_p->m_px_orig_thread_entry != nullptr);
 	    /* this is child thread, so we need to use px_stats */
 	    m_thread_p->m_uses_px_stats = true;
 	    /* parent handle this thread's px_stats */
@@ -385,6 +386,7 @@ namespace parallel_heap_scan
       {
 	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
 	  {
+	    assert (m_thread_p->m_px_orig_thread_entry != nullptr);
 	    /* this is child thread, so we need to use px_stats */
 	    m_thread_p->m_uses_px_stats = true;
 	    /* parent handle this thread's px_stats */
@@ -559,7 +561,7 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
   assert (scan_type == S_PARALLEL_HEAP_SCAN);
   scan_id->type = S_HEAP_SCAN;
   using worker_manager = parallel_query::worker_manager;
-  worker_manager *manager = parallel_query::get_manager();
+  worker_manager *manager = nullptr;
   ret = scan_open_heap_scan (thread_p, scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch,
 			     join_dbval,
 			     val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
@@ -575,9 +577,10 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
     }
   if (n_user_pages > PARALLEL_HEAP_SCAN_MIN_USER_PAGES)
     {
-      if (!manager->try_reserve_workers (parallelism))
+      manager = worker_manager::try_reserve_workers (parallelism);
+      if (manager == nullptr)
 	{
-	  return ret;
+	  return NO_ERROR;
 	}
       if (thread_p->m_px_orig_thread_entry == NULL)
 	{
@@ -607,10 +610,6 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 	  && !VPID_ISNULL (&xasl->list_id->first_vpid))
 	{
 	  qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
-	}
-      if (manager != nullptr)
-	{
-	  delete manager;
 	}
     }
   return ret;

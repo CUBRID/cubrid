@@ -34,7 +34,7 @@ namespace parallel_query
   class worker_manager
   {
     public:
-      bool try_reserve_workers (int n_workers);
+      static worker_manager *try_reserve_workers (int n_workers);
       void release_workers (int n_workers);
       void push_task (cubthread::entry_task *task);
       void pop_task ()
@@ -51,8 +51,6 @@ namespace parallel_query
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
   };
-
-  worker_manager *get_manager();
 
 #if !defined (NDEBUG)
   void assertion_all_workers_released();

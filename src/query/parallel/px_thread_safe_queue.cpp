@@ -168,10 +168,6 @@ namespace parallel_query
 
     if (current_size == 0)
       {
-	if (m_push_completed.load (std::memory_order_acquire))
-	  {
-	    return false;
-	  }
 	return false;
       }
 

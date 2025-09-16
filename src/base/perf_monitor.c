@@ -3361,6 +3361,7 @@ perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
       free_and_init (thread_p->m_px_stats);
       thread_p->m_uses_px_stats = false;
     }
+  assert (thread_p->m_uses_px_stats == false);
 }
 
 #endif /* SERVER_MODE || SA_MODE */

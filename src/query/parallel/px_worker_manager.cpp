@@ -56,11 +56,6 @@ namespace parallel_query
 #endif
   }
 
-  worker_manager *get_manager()
-  {
-    return new worker_manager();
-  }
-
 #if !defined (NDEBUG)
   void assertion_all_workers_released()
   {
@@ -68,25 +63,27 @@ namespace parallel_query
   }
 #endif
 
-  bool worker_manager::try_reserve_workers (int n_workers)
+  worker_manager *worker_manager::try_reserve_workers (int n_workers)
   {
     bool result = worker_manager_global::get_manager().try_reserve_workers (n_workers);
-    assert (m_reserved_workers == 0);
+    worker_manager *manager = nullptr;
     if (result)
       {
-	m_reserved_workers = n_workers;
+	manager = new worker_manager();
+	manager->m_reserved_workers = n_workers;
+	return manager;
       }
     else
       {
-	delete this;
+	return nullptr;
       }
-    return result;
   }
 
   void worker_manager::release_workers (int n_workers)
   {
     if (m_reserved_workers == 0)
       {
+	delete this;
 	return;
       }
     while (m_working_workers.load () > m_reserved_workers - n_workers)
