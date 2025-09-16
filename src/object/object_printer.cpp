@@ -1122,8 +1122,8 @@ void object_printer::describe_class (struct db_object *class_op)
     {
       m_buf (", COLLATE %s", class_descr.collation);
     }
-  
-    /* replication */
+
+  /* replication */
   if (sm_is_replication_class (class_op))
     {
       m_buf (" REPLICATION=ON");
