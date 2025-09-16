@@ -1109,10 +1109,12 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info, int bind_
       return -1;
     }
 
+  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
   if ((bind_info[num_bind].type == CCI_U_TYPE_CHAR) || (bind_info[num_bind].type == CCI_U_TYPE_STRING)
       || (bind_info[num_bind].type == CCI_U_TYPE_NCHAR) || (bind_info[num_bind].type == CCI_U_TYPE_VARNCHAR)
       || (bind_info[num_bind].type == CCI_U_TYPE_BIT) || (bind_info[num_bind].type == CCI_U_TYPE_VARBIT)
-      || (bind_info[num_bind].type == CCI_U_TYPE_ENUM) || (bind_info[num_bind].type == CCI_U_TYPE_JSON))
+      || (bind_info[num_bind].type == CCI_U_TYPE_ENUM) || (bind_info[num_bind].type == CCI_U_TYPE_JSON)
+      || (bind_info[num_bind].type == CCI_U_TYPE_BLOB) || (bind_info[num_bind].type == CCI_U_TYPE_CLOB))
     {
       bind_info[num_bind].len = atoi (p + 1);
       p = strchr (p + 1, ' ');

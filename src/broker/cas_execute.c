@@ -379,12 +379,14 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIME,		/* 32 */
   CCI_U_TYPE_BFILE,		/* 33 */
   CCI_U_TYPE_CFILE,		/* 34 */
+  CCI_U_TYPE_BLOB,		/* 35 */
+  CCI_U_TYPE_CLOB,		/* 36 */
   CCI_U_TYPE_ENUM,		/* 35 */
-  CCI_U_TYPE_TIMESTAMPTZ,	/* 36 */
-  CCI_U_TYPE_TIMESTAMPLTZ,	/* 37 */
-  CCI_U_TYPE_DATETIMETZ,	/* 38 */
-  CCI_U_TYPE_DATETIMELTZ,	/* 39 */
-  CCI_U_TYPE_JSON,		/* 40 */
+  CCI_U_TYPE_TIMESTAMPTZ,	/* 37 */
+  CCI_U_TYPE_TIMESTAMPLTZ,	/* 38 */
+  CCI_U_TYPE_DATETIMETZ,	/* 39 */
+  CCI_U_TYPE_DATETIMELTZ,	/* 40 */
+  CCI_U_TYPE_JSON,		/* 41 */
 };
 
 #if defined (CAS_FOR_CGW)
@@ -4264,6 +4266,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
+    case DB_TYPE_CLOB:
       {
 	int def_size = db_get_string_size (def);
 	const char *def_str_p = db_get_string (def);
@@ -4985,6 +4988,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
+    case DB_TYPE_BLOB:
       {
 	int length = 0;
 
@@ -5000,6 +5004,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
+    case DB_TYPE_CLOB:
       {
 	DB_CONST_C_CHAR str;
 	int dummy = 0;
