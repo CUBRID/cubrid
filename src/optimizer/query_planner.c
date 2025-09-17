@@ -979,8 +979,6 @@ qo_top_plan_new (QO_PLAN * plan)
 	}			/* for (t = ...) */
       found_instnum = (t == -1) ? false : true;
 
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
-
       /* GROUP BY */
       /* if we have rollup, we do not skip the group by */
       if (group_by && !group_by->flag.with_rollup)
@@ -1034,6 +1032,12 @@ qo_top_plan_new (QO_PLAN * plan)
 	    }
 	  else
 	    {
+	      if (plan->iscan_sort_list)
+		{
+		  parser_free_tree (parser, plan->iscan_sort_list);
+		  plan->iscan_sort_list = NULL;
+		}
+
 	      /* if the order by is not skipped we drop the plan because it didn't helped us */
 	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
 		{
@@ -1049,7 +1053,11 @@ qo_top_plan_new (QO_PLAN * plan)
       /* DISTINCT, ORDER BY */
       if (all_distinct == PT_DISTINCT || order_by)
 	{
-	  if (plan->iscan_sort_list)
+	  PT_NODE *iscan_sort_list = NULL;
+
+	  iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
+
+	  if (iscan_sort_list)
 	    {			/* need to check */
 	      if (all_distinct == PT_DISTINCT)
 		{
@@ -1088,6 +1096,8 @@ qo_top_plan_new (QO_PLAN * plan)
 			}
 		    }
 		}
+
+	      parser_free_tree (parser, iscan_sort_list);
 	    }
 
 	  if (orderby_skip)
@@ -1130,12 +1140,6 @@ qo_top_plan_new (QO_PLAN * plan)
 	      plan = qo_sort_new (plan, QO_UNORDERED, all_distinct == PT_DISTINCT ? SORT_DISTINCT : SORT_ORDERBY);
 	    }
 	}
-    }
-
-  if (plan->iscan_sort_list)
-    {
-      parser_free_tree (parser, plan->iscan_sort_list);
-      plan->iscan_sort_list = NULL;
     }
 
   return plan;
@@ -2385,8 +2389,6 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
     {
       return NULL;
     }
-
-  assert (subplan->iscan_sort_list == NULL);
 
   plan = qo_plan_malloc ((subplan->info)->env);
   if (plan == NULL)
