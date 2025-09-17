@@ -67,7 +67,7 @@ struct log_2pc_coordinator
   int num_particps;		/* Number of participating sites */
   int particp_id_length;	/* Length of a participant identifier */
   void *block_particps_ids;	/* A block of participants identifiers */
-  bool *ack_received;           /* Acknowledgment received vector */
+  bool *ack_received;		/* Acknowledgment received vector */
 };
 
 void log_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);

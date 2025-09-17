@@ -34,6 +34,7 @@
 
 extern int dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *particp_id_length, void **block_particps_ids);
 extern bool dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_partcps, void *block_particps_ids);
-extern void dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool is_commit, void *block_particps_ids);
+extern void dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool is_commit,
+				 void *block_particps_ids);
 extern void dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);
 #endif

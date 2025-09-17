@@ -115,6 +115,7 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
   T_CCI_ERROR err_buf;
   DBLINK_CONN_INFO *dblink;
   char type;			/* for COMMIT or ABORT */
+  char cas_info[64];		/* for checking invalid connection */
 
   xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
   xid.gtrid_length = sizeof (int);
@@ -132,20 +133,23 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
   dblink = (DBLINK_CONN_INFO *) block_particps_ids;
   for (i = 0; i < num_particps; i++)
     {
+      conn_handle = dblink[i].conn_handle;
+      if (cci_get_cas_info (conn_handle, cas_info, 64, &err_buf) != NO_ERROR)
+	{
+	  /* conn_handle would be invaild by connection error, so it needs retry */
+	  conn_handle = cci_connect_with_url_ex (dblink[i].conn_url, dblink[i].user_name, dblink[i].password, &err_buf);
+	}
+
+      while (ER_IS_SERVER_DOWN_ERROR (conn_handle))
+	{
+	  thread_sleep (1000);	/* wait 1 seconds for retry */
+	  conn_handle = cci_connect_with_url_ex (dblink[i].conn_url, dblink[i].user_name, dblink[i].password, &err_buf);
+	}
+
       memcpy (xid.data, &gtrid, xid.gtrid_length);
       memcpy (xid.data + xid.gtrid_length, &(dblink[i].conn_handle), xid.bqual_length);
-      err = con_handle = cci_xa_end_tran (dblink[i].conn_handle, &xid, type, &err_buf);
-      /* conn_handle would be invaild by connection error, so it needs retry */
-      while (ER_IS_SERVER_DOWN_ERROR (err));
-      {
-	thread_sleep (1000);	/* wait 1 seconds for retry */
-	err = conn_handle =
-	  cci_connect_with_url_ex (dblink[i].conn_url, dblink[i].user_name, dblink[i].password, &err_buf);
-	if (conn_handle > 0)
-	  {
-	    err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
-	  }
-      }
+
+      err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
     }
 
   qmgr_dblink_clear_conn_entry (thread_p);

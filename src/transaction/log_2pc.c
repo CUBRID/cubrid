@@ -236,7 +236,7 @@ log_2pc_send_commit_decision (int gtrid, int num_particps, void *block_particps_
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, true /* commit */, block_particps_ids);
+      (*log_2pc_Userfun.send_commit) (thread_p, gtrid, num_particps, true /* commit */ , block_particps_ids);
     }
 
   return;
@@ -280,7 +280,7 @@ log_2pc_send_abort_decision (int gtrid, int num_particps, void *block_particps_i
     {
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
-      (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, false /* abort */, block_particps_ids);
+      (*log_2pc_Userfun.send_abort) (thread_p, gtrid, num_particps, false /* abort */ , block_particps_ids);
     }
 
   return;
@@ -494,7 +494,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_commit");
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-#endif 
+#endif
       *decision = log_2pc_send_prepare (tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
     }
   else
