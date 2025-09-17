@@ -12073,6 +12073,12 @@ execute_stmt
 			    node->info.execute.using_list = $3;
 			    node->info.execute.into_list = NULL;
 			    node->info.execute.query = NULL;
+
+                            if(prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
+                              {
+                                parser_cannot_prepare = true;
+                                node->flag.cannot_prepare = true;
+                              }
 			  }
 
 			$$ = node;
@@ -19972,6 +19978,22 @@ predicate_expr_sub
  			  }
 			$$ = parser_make_expression (this_parser, $2, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+                        if(prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
+                          {
+                            int arg[2];
+                            arg[0] = PT_HOST_VAR;
+                            arg[1] = 0;
+
+                            PT_NODE *node = $3;
+                            (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
+
+                            if(arg[1] == 1)
+                              {
+                                parser_cannot_prepare = true;
+                                parser_cannot_cache = true; 
+                              }
+                          }
 
 		DBG_PRINT}}
 	| pred_lhs rlike_op normal_expression
