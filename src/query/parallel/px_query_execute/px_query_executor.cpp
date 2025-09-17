@@ -278,7 +278,7 @@ extern "C" {
     {
       int estimated_jobs_local = 0;
       if (!XASL_IS_FLAGED (xasl_p, XASL_NO_PARALLEL_SUBQUERY) && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
-	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC))
+	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC || xasl_p->type == MERGELIST_PROC))
 	{
 	  for (xasl_node *xptr = xasl_p; xptr != NULL; xptr = xptr->scan_ptr)
 	    {
@@ -300,7 +300,7 @@ extern "C" {
 						parallelism, estimated_jobs, &on_trace, &executor_p] (xasl_node *xasl_p) -> bool
     {
       if (xasl_p->px_executor == NULL && !XASL_IS_FLAGED (xasl_p, XASL_NO_PARALLEL_SUBQUERY) && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
-	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC))
+	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC || xasl_p->type == MERGELIST_PROC))
 	{
 	  int aptr_cnts = 0;
 	  for (xasl_node *xptr = xasl_p; xptr != NULL; xptr = xptr->scan_ptr)
