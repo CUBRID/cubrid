@@ -105,6 +105,9 @@ namespace cubthread
     context.resume_status = THREAD_RESUME_NONE;
     context.m_px_orig_thread_entry = NULL;
     context.shutdown = false;
+    context.m_px_orig_thread_entry = NULL;
+    perfmon_destroy_parallel_stats (&context);
+    context.m_uses_px_stats = false;
 #if !defined (NDEBUG)
     parallel_query::assertion_all_workers_released ();
 #endif

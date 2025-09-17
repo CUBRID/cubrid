@@ -243,6 +243,12 @@ namespace parallel_query_execute
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (m_stats.elapsed_time, tv_diff);
       }
+
+    if (m_is_root_executor)
+      {
+	thread_p->m_px_orig_thread_entry = nullptr;
+	thread_p->m_uses_px_stats = false;
+      }
     return err_code;
   }
 }

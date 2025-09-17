@@ -62,6 +62,7 @@ namespace parallel_heap_scan
       bool m_is_start_once;
       bool timeout_occurred;
       worker_manager *m_worker_manager;
+      bool m_px_stats_initialized_by_me;
     protected:
       friend class perf_monitor;
       std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;

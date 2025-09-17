@@ -8408,7 +8408,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    }
 
 	  spec->s_id.s.phsid.perf_monitor->set_partition_stats (prev_partition_spec);
-	  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
 	}
     }
 #endif

@@ -125,6 +125,7 @@ static int qdump_print_inconsistencies (QDUMP_XASL_CHECK_NODE * chk_nodes[HASH_N
 static const char *qdump_hashjoin_type_string (HASH_METHOD hash_method);
 static void qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
 static void qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent);
+static void qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, json_t * parent);
 
 /*
  * qdump_print_xasl_type () -
@@ -3096,6 +3097,19 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
     }
 }
 
+void
+qdump_print_px_subquery_stats_json (parallel_query_execute::query_executor * px_executor, json_t * parent)
+{
+  json_t *input;
+  input = json_object ();
+  json_object_set_new (input, "parallel_workers", json_integer (px_executor->get_parallelism () + 1));
+  json_object_set_new (input, "time", json_integer (TO_MSEC (px_executor->get_stats ().elapsed_time)));
+  json_object_set_new (input, "fetch", json_integer (px_executor->get_stats ().fetches));
+  json_object_set_new (input, "fetch_time", json_integer (px_executor->get_stats ().fetch_time));
+  json_object_set_new (input, "ioread", json_integer (px_executor->get_stats ().ioreads));
+  json_object_set_new (parent, "parallel subquery execution", input);
+}
+
 /*
  * qdump_print_stats_json () -
  *   return:
@@ -3163,6 +3177,10 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (proc, "fetch_time", json_integer (xasl_p->xasl_stats.fetch_time));
       json_object_set_new (proc, "ioread", json_integer (xasl_p->xasl_stats.ioreads));
       subquery = json_array ();
+      if (xasl_p->px_executor)
+	{
+	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
+	}
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
 	  temp = json_object ();
@@ -3178,6 +3196,11 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
       qdump_print_stats_json (xasl_p->proc.mergelist.outer_xasl, outer);
       qdump_print_stats_json (xasl_p->proc.mergelist.inner_xasl, inner);
+
+      if (xasl_p->px_executor)
+	{
+	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, proc);
+	}
 
       json_object_set_new (proc, "outer", outer);
       json_object_set_new (proc, "inner", inner);
@@ -3326,6 +3349,12 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
     {
       subquery = json_array ();
+      if (xasl_p->px_executor)
+	{
+	  temp = json_object ();
+	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, temp);
+	  json_array_append_new (subquery, temp);
+	}
       for (xptr = xasl_p->aptr_list; xptr; xptr = xptr->next)
 	{
 	  temp = json_object ();
@@ -3632,7 +3661,20 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       break;
 
     case MERGELIST_PROC:
-      fprintf (fp, "MERGELIST\n");
+      if (xasl_p->px_executor)
+	{
+	  fprintf (fp,
+		   "MERGELIST (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		   xasl_p->px_executor->get_parallelism () + 1,
+		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
+		   (long long int) xasl_p->px_executor->get_stats ().fetches,
+		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
+		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	}
+      else
+	{
+	  fprintf (fp, "MERGELIST\n");
+	}
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.outer_xasl, indent);
       qdump_print_stats_text (fp, xasl_p->proc.mergelist.inner_xasl, indent);
       break;
@@ -4064,6 +4106,18 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   if (xasl_p->px_executor != NULL || part_cnt > 1)
     {
       fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
+
+      if (xasl_p->px_executor)
+	{
+	  fprintf (fp,
+		   "%*c         (parallel workers: %d, time: %d, fetch: %lld, fetch_time: %lld, ioread: %lld)\n",
+		   indent, ' ', xasl_p->px_executor->get_parallelism () + 1,
+		   TO_MSEC (xasl_p->px_executor->get_stats ().elapsed_time),
+		   (long long int) xasl_p->px_executor->get_stats ().fetches,
+		   (long long int) xasl_p->px_executor->get_stats ().fetch_time,
+		   (long long int) xasl_p->px_executor->get_stats ().ioreads);
+	}
+
       qdump_print_stats_text (fp, outer_xasl, indent);
       qdump_print_stats_text (fp, inner_xasl, indent);
     }
@@ -4359,6 +4413,13 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
   if (xasl_p->px_executor != NULL || part_cnt > 1)
     {
       subquery = json_array ();
+
+      if (xasl_p->px_executor)
+	{
+	  input = json_object ();
+	  qdump_print_px_subquery_stats_json (xasl_p->px_executor, input);
+	  json_array_append_new (subquery, input);
+	}
 
       input = json_object ();
       qdump_print_stats_json (outer_xasl, input);

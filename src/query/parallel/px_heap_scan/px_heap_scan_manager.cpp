@@ -61,6 +61,7 @@ namespace parallel_heap_scan
       {
 	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id, nullptr));
       }
+    m_px_stats_initialized_by_me = false;
   }
 
   manager_merge::manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id,
@@ -93,6 +94,7 @@ namespace parallel_heap_scan
 	m_mergable_list_writers.push_back (new mergable_list_writer (m_mergable_list->get_list_id_p (i), query_id,
 					   m_memory_mappers[i]->get_outptr_list()));
       }
+    m_px_stats_initialized_by_me = false;
   }
 
   manager_page_by_page::~manager_page_by_page()
@@ -362,11 +364,18 @@ namespace parallel_heap_scan
 	else
 	  {
 	    /* this is main thread, so we have to use tran_stats, instead of px_stats */
-	    if (m_thread_p->m_px_stats == nullptr)
+	    if (!m_thread_p->m_uses_px_stats)
 	      {
+		/* this is truly main thread, not aptr */
+		m_px_stats_initialized_by_me = true;
 		perfmon_initialize_parallel_stats (m_thread_p);
+		m_thread_p->m_uses_px_stats = false;
 	      }
-	    m_thread_p->m_uses_px_stats = false;
+	    else
+	      {
+		/* this is aptr child executing main thread */
+		m_px_stats_initialized_by_me = false;
+	      }
 	  }
       }
 
@@ -395,11 +404,18 @@ namespace parallel_heap_scan
 	else
 	  {
 	    /* this is main thread, so we have to use tran_stats, instead of px_stats */
-	    if (m_thread_p->m_px_stats == nullptr)
+	    if (!m_thread_p->m_uses_px_stats)
 	      {
+		/* this is truly main thread, not aptr */
+		m_px_stats_initialized_by_me = true;
 		perfmon_initialize_parallel_stats (m_thread_p);
+		m_thread_p->m_uses_px_stats = false;
 	      }
-	    m_thread_p->m_uses_px_stats = false;
+	    else
+	      {
+		/* this is aptr child executing main thread */
+		m_px_stats_initialized_by_me = false;
+	      }
 	  }
       }
     for (size_t i = 0; i < m_parallelism; i++)
@@ -537,18 +553,21 @@ scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 	{
 	  assert (thread_p->m_px_orig_thread_entry != nullptr);
 	  /* this is child thread, so we need to use px_stats */
-	  thread_p->m_uses_px_stats = true;
 	  /* parent handle this thread's px_stats */
 	  assert (thread_p->m_px_stats != nullptr);
 	}
       else
 	{
-	  /* this is main thread, so we have to use tran_stats, instead of px_stats */
-	  if (thread_p->m_px_stats != nullptr)
+	  if (scan_id->s.phsid.manager->m_px_stats_initialized_by_me)
 	    {
+	      perfmon_merge_parallel_stats_to_tran_stats (thread_p);
 	      perfmon_destroy_parallel_stats (thread_p);
+	      thread_p->m_px_orig_thread_entry = nullptr;
 	    }
-	  thread_p->m_uses_px_stats = false;
+	  else
+	    {
+	      /* some parent parallel query executor will handle this thread's px_stats */
+	    }
 	}
       /* should be deleted in qdump_print_access_specs_text or json */
     }
