@@ -90,7 +90,7 @@ namespace cubpl
       {
 	qfile_close_scan (m_thread, &m_scan_id);
 
-	if (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no)
+	if (m_query_entry && (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no))
 	  {
 	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_thread);
 	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
@@ -230,7 +230,7 @@ namespace cubpl
 	    else
 	      {
 		qfile_close_scan (m_thread, &m_scan_id);
-		return S_ERROR;
+		return S_ERROR; // control reaches here when this method is called after ROLLBACK
 	      }
 	  }
 
