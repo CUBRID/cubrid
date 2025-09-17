@@ -2565,7 +2565,7 @@ or_decode (const char *buffer, char *dest, int size)
  *
  * Note: 0xFF acts as a flag indicating "read actual scale from extra bytes".
  */
-#define OR_DOMAIN_SCALE_EXT_FLAG       (0x80)	/* MSB set => extended encoding */
+#define OR_DOMAIN_SCALE_EXT_FLAG       (128)	/* MSB set => extended encoding */
 #define OR_DOMAIN_SCALE_MAX            (0xFF)	/* extended scale follows in extra bytes */
 
 #define OR_DOMAIN_CODSET_MASK		(0xFF00)
@@ -2695,7 +2695,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += OR_INT_SIZE;
 	}
 
-      if (scale & OR_DOMAIN_SCALE_EXT_FLAG)
+      if (scale >= OR_DOMAIN_SCALE_EXT_FLAG || scale < 0)
 	{
 	  size += OR_INT_SIZE;
 	}
@@ -2805,7 +2805,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      scale = 0;
 	    }
 
-	  if (scale & OR_DOMAIN_SCALE_EXT_FLAG)
+	  if (scale >= OR_DOMAIN_SCALE_EXT_FLAG || scale < 0)
 	    {
 	      carrier |= OR_DOMAIN_SCALE_MAX << OR_DOMAIN_SCALE_SHIFT;
 	      extended_scale = d->scale;
