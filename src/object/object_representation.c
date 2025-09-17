@@ -2558,7 +2558,7 @@ or_decode (const char *buffer, char *dest, int size)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
 
 /* Scale encoding (1 byte):
- *   0x00 .. 0x7F : direct scale (0 ~ 127)
+ *   0 ~ 127      : direct scale
  *   otherwise    : extended scale follows
  *              - for scale >= 128
  *              - for scale in range -211 .. -1
