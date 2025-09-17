@@ -3717,8 +3717,6 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   visid->rest_regu_list = regu_list_rest;
   /* index scan info */
 
-  assert (key_ranges[0].range == K_NN);
-
   visid->hnsw_id = indx_info->btid.root_pageid;
 
   return NO_ERROR;
