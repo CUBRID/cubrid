@@ -1165,7 +1165,6 @@ loop:
 		    case THREAD_CSECT_WRITER_SUSPENDED:
 		    case THREAD_CSECT_PROMOTER_SUSPENDED:
 		    case THREAD_LOCK_SUSPENDED:
-		    case THREAD_PGBUF_SUSPENDED:
 		    case THREAD_JOB_QUEUE_SUSPENDED:
 		      /* never try to wake thread up while the thread is waiting for a critical section or a lock. */
 		      wakeup_now = false;
@@ -1174,6 +1173,7 @@ loop:
 		    case THREAD_HEAP_CLSREPR_SUSPENDED:
 		    case THREAD_LOGWR_SUSPENDED:
 		    case THREAD_ALLOC_BCB_SUSPENDED:
+		    case THREAD_PGBUF_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 
