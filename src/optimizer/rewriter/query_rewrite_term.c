@@ -31,6 +31,7 @@ static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep);
+static PT_NODE *qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -54,6 +55,50 @@ qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms)
       qo_apply_range_intersection (parser, terms);
       qo_fold_is_and_not_null (parser, terms);
     }
+}
+
+void
+qo_rewrite_terms_wrapped (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** terms)
+{
+  if (*terms)
+    {
+      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, from, NULL, NULL);
+      qo_rewrite_terms (parser, terms);
+      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, from, NULL, NULL);
+    }
+}
+
+static PT_NODE *
+qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE *from = (PT_NODE *) arg;
+  PT_NODE *entity;
+  const char *entity_name = NULL, *range_var = NULL;
+
+  if (tree == NULL || tree->node_type != PT_NAME)
+    {
+      return tree;
+    }
+
+  entity = pt_find_entity (parser, from, tree->info.name.spec_id);
+  if (entity == NULL)
+    {
+      return tree;
+    }
+
+  entity_name = pt_get_name (entity->info.spec.entity_name);
+  range_var = pt_get_name (entity->info.spec.range_var);
+
+  if (entity_name && (pt_str_compare (tree->info.name.resolved, entity_name, CASE_INSENSITIVE) == 0))
+    {
+      tree->info.name.resolved = range_var;
+    }
+  else if (range_var && (pt_str_compare (tree->info.name.resolved, range_var, CASE_INSENSITIVE) == 0))
+    {
+      tree->info.name.resolved = entity_name;
+    }
+
+  return tree;
 }
 
 /*

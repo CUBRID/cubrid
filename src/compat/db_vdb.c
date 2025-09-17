@@ -1990,6 +1990,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      return er_errid ();
 	    }
 	}
+
       err = do_statement (parser, statement);
     }
 

@@ -7818,17 +7818,15 @@ pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
 
   if (tree->node_type == PT_EXPR)
     {
-      if (tree->info.expr.op == PT_NULLIF || tree->info.expr.op == PT_COALESCE ||
-	  tree->info.expr.op == PT_NVL || tree->info.expr.op == PT_NVL2 || tree->info.expr.op == PT_DECODE
-	  || tree->info.expr.op == PT_IFNULL)
+      if (tree->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (tree, PT_EXPR_INFO_CAST_WRAP))
 	{
-
-	  if (tree->info.expr.op == PT_CAST)	// temporary implementation ...  (should be extended)
-	    {
-	      *foldable = false;
-	      *continue_walk = PT_STOP_WALK;
-	      return tree;
-	    }
+	  *continue_walk = PT_CONTINUE_WALK;
+	}
+      else
+	{
+	  *foldable = false;
+	  *continue_walk = PT_STOP_WALK;
+	  return tree;
 	}
     }
   else if (tree->node_type == PT_NAME)
