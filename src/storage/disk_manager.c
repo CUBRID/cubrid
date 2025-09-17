@@ -406,6 +406,7 @@ static int disk_stab_iterate_units_all (THREAD_ENTRY * thread_p, const DISK_VOLU
 					PGBUF_LATCH_MODE mode, DISK_STAB_UNIT_FUNC f_unit, void *f_unit_args);
 static int disk_stab_dump_unit (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
 static int disk_stab_count_free (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
+static int disk_stab_has_used (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
 static int disk_stab_set_bits_contiguous (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args);
 
 /************************************************************************/
@@ -2461,6 +2462,50 @@ exit:
   return error_code;
 }
 
+/*
+ * disk_volume_is_empty () - Check whether a disk volume is empty.
+ *
+ * return        : true if the volume does not exist or is empty (no data),
+ *                 false if the volume exists and contains data
+ * thread_p (in) : thread entry
+ * volid (in)    : volume identifier
+ */
+static bool
+disk_volume_is_empty (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  DISK_VOLUME_HEADER *volheader = NULL;
+  DISK_STAB_CURSOR start_cursor = DISK_STAB_CURSOR_INITIALIZER;
+  DISK_STAB_CURSOR end_cursor = DISK_STAB_CURSOR_INITIALIZER;
+  PAGE_PTR pgptr = NULL;
+  bool has_used = true;
+
+  if (xdisk_is_volume_exist (thread_p, volid) == false)
+    {
+      return true;
+    }
+
+  if (disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &volheader) != NO_ERROR)
+    {
+      assert (false);
+      er_clear ();
+
+      return false;
+    }
+
+  disk_stab_cursor_set_at_sectid (volheader, SECTOR_FROM_PAGEID (volheader->sys_lastpage) + 1, &start_cursor);
+  disk_stab_cursor_set_at_end (volheader, &end_cursor);
+
+  (void) disk_stab_iterate_units (thread_p, volheader, PGBUF_LATCH_READ, &start_cursor, &end_cursor, disk_stab_has_used,
+				  &has_used);
+
+  if (pgptr != NULL)
+    {
+      pgbuf_unfix (thread_p, pgptr);
+    }
+
+  return has_used ? false : true;
+}
+
 /************************************************************************/
 /* Disk cache section                                                   */
 /************************************************************************/
@@ -3582,8 +3627,8 @@ disk_stab_iterate_units (THREAD_ENTRY * thread_p, const DISK_VOLUME_HEADER * vol
   int error_code = NO_ERROR;
 
   assert (volheader != NULL);
-  assert (start->offset_to_bit == 0);
-  assert (end->offset_to_bit == 0);
+  assert (start->offset_to_bit >= 0);
+  assert (end->offset_to_bit >= 0);
   assert (disk_stab_cursor_compare (start, end) < 0);
 
   /* iterate through pages */
@@ -3676,6 +3721,35 @@ disk_stab_count_free (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool *
 }
 
 /*
+ * disk_stab_has_used () - DISK_STAB_UNIT_FUNC to determine whether at least one sector in the unit is in use
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * cursor (in)   : disk sector table cursor
+ * stop (out)    : output true when at least one sector in the unit is in use
+ * args (out)    : output true when at least one sector in the unit is in use
+ */
+static int
+disk_stab_has_used (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args)
+{
+  bool *has_used = (bool *) args;
+
+  *has_used = false;
+
+  for (; cursor->offset_to_bit < DISK_STAB_UNIT_BIT_COUNT; cursor->offset_to_bit++, cursor->sectid++)
+    {
+      if (disk_stab_cursor_is_bit_set (cursor))
+	{
+	  *has_used = *stop = true;
+
+	  break;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * disk_stab_set_bits_contiguous () - set first bits
  *
  * return        : NO_ERROR
@@ -3717,16 +3791,18 @@ static int
 disk_stab_dump_unit (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, bool * stop, void *args)
 {
   FILE *fp = (FILE *) args;
-  int bit;
+
+  assert (cursor->offset_to_bit == 0);
 
   fprintf (fp, "\n%10d", cursor->sectid);
 
-  for (bit = 0; bit < DISK_STAB_UNIT_BIT_COUNT; bit++)
+  for (; cursor->offset_to_bit < DISK_STAB_UNIT_BIT_COUNT; cursor->offset_to_bit++, cursor->sectid++)
     {
-      if (bit % CHAR_BIT == 0)
+      if (cursor->offset_to_bit % CHAR_BIT == 0)
 	{
 	  fprintf (fp, " ");
 	}
+
       fprintf (fp, "%d", disk_stab_cursor_is_bit_set (cursor) ? 1 : 0);
     }
 
