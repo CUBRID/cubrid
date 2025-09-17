@@ -209,6 +209,7 @@ struct qo_plan
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
+  bool is_orderby_skip_candidate;	/* true if this plan is a candidate for orderby skip */
   bool use_iscan_descending;
 };
 

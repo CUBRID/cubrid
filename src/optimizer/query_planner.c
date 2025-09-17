@@ -1132,6 +1132,12 @@ qo_top_plan_new (QO_PLAN * plan)
 	}
     }
 
+  if (plan->iscan_sort_list)
+    {
+      parser_free_tree (parser, plan->iscan_sort_list);
+      plan->iscan_sort_list = NULL;
+    }
+
   return plan;
 }
 
@@ -2379,6 +2385,8 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
     {
       return NULL;
     }
+
+  assert (subplan->iscan_sort_list == NULL);
 
   plan = qo_plan_malloc ((subplan->info)->env);
   if (plan == NULL)
@@ -4059,18 +4067,6 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_LT;
 	}
       if (qo_is_index_covering_scan (b) && qo_is_seq_scan (a))
-	{
-	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
-	  return PLAN_COMP_GT;
-	}
-
-      /* check index scan */
-      if (qo_is_iscan (a) && qo_is_seq_scan (b))
-	{
-	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	  return PLAN_COMP_LT;
-	}
-      if (qo_is_iscan (b) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -11499,6 +11495,11 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
       return false;
     }
 
+  if (plan->is_orderby_skip_candidate)
+    {
+      return true;
+    }
+
   env = plan->info->env;
   parser = QO_ENV_PARSER (env);
   statement = QO_ENV_PT_TREE (env);
@@ -11525,6 +11526,9 @@ cleanup:
       parser_free_tree (parser, plan->iscan_sort_list);
       plan->iscan_sort_list = NULL;
     }
+
+  plan->is_orderby_skip_candidate = is_orderby_skip;
+
   return is_orderby_skip;
 }
 
