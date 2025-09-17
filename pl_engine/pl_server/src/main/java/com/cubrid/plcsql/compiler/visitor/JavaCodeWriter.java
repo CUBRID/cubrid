@@ -1639,13 +1639,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtCursorOpenWithHostExprs =
             new String[] {
-                "try { // cursor open",
+                "{ // cursor open",
                 "  %'+DUPLICATE-CURSOR-ARG'%",
                 "  %'CURSOR'%.open(conn, null, new Object[] {",
                 "    %'+HOST-EXPRS'%});",
-                "} catch (SQLException e) {",
-                "  Server.log(e);",
-                "  throw new SQL_ERROR(e.getMessage());",
                 "}"
             };
 
