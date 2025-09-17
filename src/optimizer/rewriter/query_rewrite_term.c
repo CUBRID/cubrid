@@ -58,13 +58,13 @@ qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms)
 }
 
 void
-qo_rewrite_terms_wrapped (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** terms)
+qo_rewrite_terms_wrapped (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** terms)
 {
   if (*terms)
     {
-      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, from, NULL, NULL);
+      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, *from, NULL, NULL);
       qo_rewrite_terms (parser, terms);
-      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, from, NULL, NULL);
+      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, *from, NULL, NULL);
     }
 }
 
@@ -75,7 +75,7 @@ qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
   PT_NODE *entity;
   const char *entity_name = NULL, *range_var = NULL;
 
-  if (tree == NULL || tree->node_type != PT_NAME)
+  if (tree == NULL || tree->node_type != PT_NAME || from == NULL)
     {
       return tree;
     }
