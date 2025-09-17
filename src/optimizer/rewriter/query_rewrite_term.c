@@ -75,7 +75,13 @@ qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
   PT_NODE *entity;
   const char *entity_name = NULL, *range_var = NULL;
 
-  if (tree == NULL || tree->node_type != PT_NAME || from == NULL)
+  if (tree == NULL || from == NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return tree;
+    }
+
+  if (tree->node_type != PT_NAME)
     {
       return tree;
     }
@@ -89,11 +95,11 @@ qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *cont
   entity_name = pt_get_name (entity->info.spec.entity_name);
   range_var = pt_get_name (entity->info.spec.range_var);
 
-  if (entity_name && (pt_str_compare (tree->info.name.resolved, entity_name, CASE_INSENSITIVE) == 0))
+  if (PT_SPEC_IS_DERIVED (entity) || (pt_str_compare (tree->info.name.resolved, entity_name, CASE_INSENSITIVE) == 0))
     {
       tree->info.name.resolved = range_var;
     }
-  else if (range_var && (pt_str_compare (tree->info.name.resolved, range_var, CASE_INSENSITIVE) == 0))
+  else if (pt_str_compare (tree->info.name.resolved, range_var, CASE_INSENSITIVE) == 0)
     {
       tree->info.name.resolved = entity_name;
     }
