@@ -30,8 +30,7 @@ static void qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** where
 static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
-static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep);
-static PT_NODE *qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** wherep);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -44,7 +43,7 @@ static PT_NODE *qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void
  *   Verify correctness before modifying previous steps
  */
 void
-qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms)
+qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** nodes, PT_NODE ** terms)
 {
   if (*terms)
     {
@@ -53,59 +52,10 @@ qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms)
       qo_rewrite_like_terms (parser, terms);
       qo_convert_to_range (parser, terms);
       qo_apply_range_intersection (parser, terms);
-      qo_fold_is_and_not_null (parser, terms);
+      qo_fold_is_and_not_null (parser, nodes, terms);
     }
 }
 
-void
-qo_rewrite_terms_wrapped (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** terms)
-{
-  if (*terms)
-    {
-      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, *from, NULL, NULL);
-      qo_rewrite_terms (parser, terms);
-      (void) parser_walk_tree (parser, *terms, qo_swap_table_ref, *from, NULL, NULL);
-    }
-}
-
-static PT_NODE *
-qo_swap_table_ref (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  PT_NODE *from = (PT_NODE *) arg;
-  PT_NODE *entity;
-  const char *entity_name = NULL, *range_var = NULL;
-
-  if (tree == NULL || from == NULL)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return tree;
-    }
-
-  if (tree->node_type != PT_NAME)
-    {
-      return tree;
-    }
-
-  entity = pt_find_entity (parser, from, tree->info.name.spec_id);
-  if (entity == NULL)
-    {
-      return tree;
-    }
-
-  entity_name = pt_get_name (entity->info.spec.entity_name);
-  range_var = pt_get_name (entity->info.spec.range_var);
-
-  if (PT_SPEC_IS_DERIVED (entity) || (pt_str_compare (tree->info.name.resolved, entity_name, CASE_INSENSITIVE) == 0))
-    {
-      tree->info.name.resolved = range_var;
-    }
-  else if (pt_str_compare (tree->info.name.resolved, range_var, CASE_INSENSITIVE) == 0)
-    {
-      tree->info.name.resolved = entity_name;
-    }
-
-  return tree;
-}
 
 /*
  * qo_collect_name_spec () -
@@ -1491,7 +1441,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
  *   wherep(in): pointer to WHERE list
  */
 static void
-qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
+qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** wherep)
 {
   PT_NODE *node, *sibling, *prev, *fold;
   DB_VALUE value;
@@ -1585,15 +1535,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	}
       else
 	{
-	  bool foldable = true;
-	  parser_walk_tree (parser, node_prior, pt_is_expr_foldable, &foldable, NULL, NULL);
-	  if (er_errid () == ER_SM_ATTRIBUTE_NOT_FOUND)
-	    {
-	      PT_ERRORc (parser, node_prior, er_msg ());
-	      return;
-	    }
-
-	  if (foldable && node->info.expr.op == PT_IS_NOT_NULL)
+	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_is_expr_foldable (parser, *from, node_prior))
 	    {
 	      // PT_NOT_NULL cannot be removed because even columns with not null constraints can have null values when outer joined.
 	      db_make_int (&value, 1);

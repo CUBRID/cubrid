@@ -7811,80 +7811,66 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   return node;
 }
 
-PT_NODE *
-pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  bool *foldable = (bool *) arg;
-
-  if (tree->node_type == PT_EXPR)
-    {
-      if (tree->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (tree, PT_EXPR_INFO_CAST_WRAP))
-	{
-	  *continue_walk = PT_CONTINUE_WALK;
-	}
-      else
-	{
-	  *foldable = false;
-	  *continue_walk = PT_STOP_WALK;
-	  return tree;
-	}
-    }
-  else if (tree->node_type == PT_NAME)
-    {
-      if (!pt_check_column_is_not_null (parser, tree))
-	{
-	  *foldable = false;
-	  *continue_walk = PT_STOP_WALK;
-	}
-    }
-
-  return tree;
-}
-
-
 bool
-pt_check_column_is_not_null (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * node)
 {
   MOP cls;
   SM_CLASS *class_;
   SM_CLASS_CONSTRAINT *consp;
-  SM_ATTRIBUTE *attr, *attrs;
+  SM_ATTRIBUTE *attr, **consp_attrs;
+  PT_NODE *entity = NULL;
+  const char *entity_name = NULL;
 
-  if (node->node_type != PT_NAME)
+  if (node == NULL || from == NULL)
     {
       return false;
     }
 
-  cls = sm_find_class (node->info.name.resolved);
-  if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
+  if (node->node_type == PT_EXPR)
     {
-      er_clear ();
-      return false;
-    }
-  else
-    {
-      consp = sm_class_constraints (cls);
-
-      au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
-      attr = classobj_find_attribute (class_, node->info.name.original, 0);
-      if (attr == NULL)
+      if (node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 0);
-	  PT_ERRORc (parser, node, er_msg ());
+	  return pt_is_expr_foldable (parser, from, node->info.expr.arg1);
+	}
+    }
+  else if (node->node_type == PT_NAME)
+    {
+      entity = pt_find_entity (parser, from, node->info.name.spec_id);
+      if (entity == NULL)
+	{
 	  return false;
 	}
 
-      for (; consp != NULL; consp = consp->next)
+      entity_name = pt_get_name (entity->info.spec.entity_name);
+      cls = sm_find_class (entity_name);
+      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
 	{
-	  SM_ATTRIBUTE **consp_attrs = consp->attributes;
+	  er_clear ();
+	  return false;
+	}
+      else
+	{
+	  consp = sm_class_constraints (cls);
 
-	  for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
+	  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+	  attr = classobj_find_attribute (class_, node->info.name.original, 0);
+	  if (attr == NULL)
 	    {
-	      if (consp_attrs[i]->id == attr->id)
+	      return false;
+	    }
+
+	  for (; consp != NULL; consp = consp->next)
+	    {
+	      consp_attrs = consp->attributes;
+
+	      for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
 		{
-		  if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+		  if (consp_attrs[i]->id == attr->id)
 		    {
-		      return true;
+		      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+			{
+			  return true;
+			}
 		    }
 		}
 	    }
@@ -7893,7 +7879,6 @@ pt_check_column_is_not_null (PARSER_CONTEXT * parser, PT_NODE * node)
 
   return false;
 }
-
 
 /*
  * pt_fold_constants_post () - perform constant folding on the specified node
