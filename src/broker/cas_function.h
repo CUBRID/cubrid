@@ -104,4 +104,21 @@ extern FN_RETURN fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF
 extern FN_RETURN fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 					 T_REQ_INFO * req_info);
 #endif /* !CAS_FOR_CGW */
+
+#if defined(CAS_FOR_CGW)
+FN_RETURN fn_cgw_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_get_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+FN_RETURN fn_cgw_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+
+#endif /* CAS_FOR_CGW */
+
+
+
 #endif /* _CAS_FUNCTION_H_ */

@@ -183,8 +183,15 @@ extern int ux_lob_write (DB_VALUE * lob_dbval, int64_t offset, int size, char *d
 extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
+
 #if defined(CAS_FOR_CGW)
+extern int ux_cgw_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
+extern int ux_cgw_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf);
+
+
+extern int ux_cgw_check_connection (void);
+extern void ux_cgw_cursor_close (T_SRV_HANDLE * srv_handle);
 extern void ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle);
-#endif
+#endif	/* CAS_FOR_CGW */
 
 #endif /* _CAS_EXECUTE_H_ */
