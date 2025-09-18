@@ -23,8 +23,6 @@
 #ifndef _PX_HEAP_SCAN_TASK_HPP_
 #define _PX_HEAP_SCAN_TASK_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include "thread_entry_task.hpp"
 #include "scan_manager.h"
 #include "px_heap_scan_context.hpp"
@@ -66,5 +64,4 @@ namespace parallel_heap_scan
       PGBUF_WATCHER m_old_page_watcher;
   };
 }
-#endif /* SERVER_MODE && !WINDOWS */
 #endif /*_PX_HEAP_SCAN_TASK_HPP_ */

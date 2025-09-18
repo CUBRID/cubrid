@@ -94,13 +94,20 @@ namespace cubmethod
   {
     int error = NO_ERROR;
 
-    SESSION_ID s_id = cubpl::get_session ()->get_id ();
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
+
+    SESSION_ID s_id = pl_session->get_id ();
     TRANID t_id = m_stack->get_tran_id ();
 
     cubmethod::header header (s_id, METHOD_REQUEST_ARG_PREPARE);
     cubmethod::prepare_args arg (m_id, t_id, METHOD_TYPE_CLASS_METHOD, arg_base); // TOD
 
     error = xs_callback_send_args (m_stack->get_thread_entry (), header, arg);
+
     return error;
   }
 
@@ -110,8 +117,14 @@ namespace cubmethod
     SESSION_ID s_id;
     TRANID t_id;
 
-    m_stack = cubpl::get_session ()->create_and_push_stack (nullptr);
-    s_id =  cubpl::get_session ()->get_id ();
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
+
+    m_stack = pl_session->create_and_push_stack (nullptr);
+    s_id =  pl_session->get_id ();
     t_id = m_stack->get_tran_id ();
 
     // prepare args

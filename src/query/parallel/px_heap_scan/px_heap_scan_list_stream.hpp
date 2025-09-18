@@ -23,8 +23,6 @@
 #ifndef _PX_HEAP_SCAN_LIST_STREAM_HPP_
 #define _PX_HEAP_SCAN_LIST_STREAM_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include "list_file.h"
 #include "query_list.h"
 #include "scan_manager.h"
@@ -162,5 +160,4 @@ namespace parallel_heap_scan
   };
 }
 
-#endif /* SERVER_MODE && !WINDOWS */
 #endif /* _PX_HEAP_SCAN_LIST_STREAM_HPP_ */

@@ -82,6 +82,27 @@ namespace parallel_query
       worker_manager_with_dedicated_pool (const worker_manager_with_dedicated_pool &) = delete;
       worker_manager_with_dedicated_pool &operator= (const worker_manager_with_dedicated_pool &) = delete;
   };
+
+  class worker_manager_reserver
+  {
+    public:
+      static worker_manager_reserver &get_manager()
+      {
+	thread_local static worker_manager_reserver instance;
+	return instance;
+      }
+
+      bool try_reserve_workers (int parallelism);
+      void release_workers ();
+
+    private:
+      int m_reserved_workers;
+
+      worker_manager_reserver();
+      ~worker_manager_reserver();
+      worker_manager_reserver (const worker_manager_reserver &) = delete;
+      worker_manager_reserver &operator= (const worker_manager_reserver &) = delete;
+  };
 }
 
 #endif /*_PX_WORKER_MANAGER_HPP_ */
