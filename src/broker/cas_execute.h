@@ -192,6 +192,6 @@ extern int ux_cgw_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_
 extern int ux_cgw_check_connection (void);
 extern void ux_cgw_cursor_close (T_SRV_HANDLE * srv_handle);
 extern void ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle);
-#endif	/* CAS_FOR_CGW */
+#endif /* CAS_FOR_CGW */
 
 #endif /* _CAS_EXECUTE_H_ */

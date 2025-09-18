@@ -90,11 +90,11 @@ static void logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle);
 #endif
 
 #if defined(CAS_FOR_CGW)
-static FN_RETURN fn_cgw_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-				      int *ret_srv_h_id);
-static FN_RETURN fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-				      int *prepared_srv_h_id);
-#endif	/* CAS_FOR_CGW */
+static FN_RETURN fn_cgw_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+					  T_REQ_INFO * req_info, int *ret_srv_h_id);
+static FN_RETURN fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+					  T_REQ_INFO * req_info, int *prepared_srv_h_id);
+#endif /* CAS_FOR_CGW */
 
 static const char *schema_type_str[] = {
   "CLASS",
@@ -2783,7 +2783,7 @@ fn_cgw_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 
 static FN_RETURN
 fn_cgw_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-		     int *ret_srv_h_id)
+			 int *ret_srv_h_id)
 {
   char *sql_stmt;
   char flag;
@@ -2898,7 +2898,7 @@ fn_cgw_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 
 static FN_RETURN
 fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-		     int *prepared_srv_h_id)
+			 int *prepared_srv_h_id)
 {
   int srv_h_id;
   char flag;
