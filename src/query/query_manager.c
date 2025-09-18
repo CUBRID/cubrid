@@ -2321,14 +2321,14 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 
       if (query_p->is_holdable)
 	{
-	  if (is_abort || is_tran_died)
+	  if (is_tran_died)
 	    {
 	      /* Make sure query entry info is not leaked in session. */
 	      xsession_clear_query_entry_info (thread_p, query_p->query_id);
 	    }
 	  else
 	    {
-	      /* this is a commit and we have to add the result to the holdable queries list. */
+	      /* this is a commit or abort and we have to add the result to the holdable queries list. */
 	      if (query_p->query_status != QUERY_COMPLETED)
 		{
 		  er_log_debug (ARG_FILE_LINE, "query %d not completed !\n", query_p->query_id);
