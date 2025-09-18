@@ -2398,6 +2398,7 @@ thread_get_sort_stats_active (THREAD_ENTRY * thread_p)
 bool
 thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 {
+#if defined (SERVER_MODE)
   bool old_val = true;
 
   if (BO_IS_SERVER_RESTARTED ())
@@ -2414,6 +2415,9 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
     }
 
   return old_val;
+#else // not SERVER_MODE = SA_MODE
+  return tran_set_check_interrupt (flag);
+#endif // not SERVER_MODE = SA_MODE
 }
 
 /*
@@ -2423,6 +2427,7 @@ thread_set_check_interrupt (THREAD_ENTRY * thread_p, bool flag)
 bool
 thread_get_check_interrupt (THREAD_ENTRY * thread_p)
 {
+#if defined (SERVER_MODE)
   bool ret_val = true;
 
   if (BO_IS_SERVER_RESTARTED ())
@@ -2436,6 +2441,9 @@ thread_get_check_interrupt (THREAD_ENTRY * thread_p)
     }
 
   return ret_val;
+#else // not SERVER_MODE = SA_MODE
+  return tran_get_check_interrupt ();
+#endif // not SERVER_MODE = SA_MODE
 }
 
 /*
