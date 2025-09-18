@@ -32,6 +32,9 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define CONN_EPOCH_NEVER    (-2)
+#define CONN_EPOCH_NONE     (-1)
+
 namespace cubpl
 {
 //////////////////////////////////////////////////////////////////////////
@@ -56,7 +59,7 @@ namespace cubpl
 	// session expired or internal error
 	er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, thread_p->tran_index);
       }
-    return s;
+    return s;   // s can be null on error cases, especially, on session expriation
   }
 
 //////////////////////////////////////////////////////////////////////////
@@ -74,7 +77,7 @@ namespace cubpl
     , m_req_id {0}
     , m_param_info {nullptr}
     , m_all_session_params_required {true}
-    , m_last_conn_epoch (-1)
+    , m_last_conn_epoch (CONN_EPOCH_NEVER)
     , m_stack_idx {-1}
     , m_interrupt_id (NO_ERROR)
     , m_id (id)
@@ -89,6 +92,7 @@ namespace cubpl
 
     std::lock_guard<std::mutex> lock (m_mutex_connection);
     m_session_connections.clear ();
+    // TODO: delete other resources
   }
 
   execution_stack *
@@ -264,18 +268,21 @@ namespace cubpl
   void
   session::destroy_pl_context_jvm ()
   {
-    cubmethod::header header (m_id, SP_CODE_DESTROY);
-
-    m_last_conn_epoch = -1;
-
-    connection_view cv = claim_connection ();
-    if (cv)
+    if (m_last_conn_epoch != CONN_EPOCH_NEVER)
       {
-	if (cv->is_valid ())
+
+	cubmethod::header header (m_id, SP_CODE_DESTROY);
+	m_last_conn_epoch = CONN_EPOCH_NONE;
+
+	connection_view cv = claim_connection ();
+	if (cv)
 	  {
-	    cv->send_buffer_args (header);
+	    if (cv->is_valid ())
+	      {
+		cv->send_buffer_args (header);
+	      }
+	    release_connection (cv);
 	  }
-	release_connection (cv);
       }
   }
 
@@ -540,7 +547,7 @@ namespace cubpl
   bool
   session::check_reloading_pl_context_required (const connection_view &conn)
   {
-    return m_last_conn_epoch == -1 || !conn || m_last_conn_epoch != conn->get_epoch () || !conn->is_valid ();
+    return m_last_conn_epoch < 0 || !conn || m_last_conn_epoch != conn->get_epoch () || !conn->is_valid ();
   }
 
   const std::vector <sys_param>

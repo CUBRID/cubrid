@@ -2783,13 +2783,10 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	      // Only TT_WORKER threads use pl_session
 	      if (thread_p && thread_p->type == TT_WORKER)
 		{
-		  if (session_has_pl_session (thread_p))
+		  cubpl::session * session = cubpl::get_session ();
+		  if (session)
 		    {
-		      cubpl::session * session = cubpl::get_session ();
-		      if (session)
-			{
-			  session->set_interrupt (ER_INTERRUPTED);
-			}
+		      session->set_interrupt (ER_INTERRUPTED);
 		    }
 		}
 	    }
@@ -2865,13 +2862,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      if (session_has_pl_session (thread_p))
+      cubpl::session * session = cubpl::get_session ();
+      if (session)
 	{
-	  cubpl::session * session = cubpl::get_session ();
-	  if (session)
-	    {
-	      session->set_interrupt (ER_INTERRUPTED);
-	    }
+	  session->set_interrupt (ER_INTERRUPTED);
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
@@ -6111,10 +6105,10 @@ log_tdes::lock_topop ()
 // TODO [PL/CSQL]: It will be fixed at CBRD-25641.
 // The following code inside of #if block is a workaround for the issue.
 #if 1
-      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
+      if (rmutex_topop.owner != thread_id_t ())
       {
         cubpl::session *session = cubpl::get_session();
-      if (session 
+      if (session
         && session->is_thread_involved (rmutex_topop.owner))
         {
         thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
@@ -6135,10 +6129,10 @@ log_tdes::unlock_topop ()
 // TODO [PL/CSQL]: It will be fixed at CBRD-25641.
 // The following code inside of #if block is a workaround for the issue.
 #if 1
-      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
+      if (rmutex_topop.owner != thread_id_t ())
       {
         cubpl::session *session = cubpl::get_session();
-      if (session 
+      if (session
         && session->is_thread_involved (rmutex_topop.owner))
         {
         thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
