@@ -296,7 +296,7 @@ fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
   ux_get_last_insert_id (net_buf);
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
+
 
 FN_RETURN
 fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -728,7 +728,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
