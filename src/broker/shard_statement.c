@@ -245,19 +245,9 @@ shard_stmt_find_by_sql (char *sql_stmt, const char *db_user, T_BROKER_VERSION cl
 	  continue;
 	}
 
-      if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+      if (strcasecmp (db_user, stmt_p->database_user))
 	{
-	  if (strcmp (db_user, stmt_p->database_user))
-	    {
-	      continue;
-	    }
-	}
-      else
-	{
-	  if (strcasecmp (db_user, stmt_p->database_user))
-	    {
-	      continue;
-	    }
+	  continue;
 	}
 
       assert (strcmp (sp_get_sql_stmt (stmt_p->parser), sql_stmt) == 0);
