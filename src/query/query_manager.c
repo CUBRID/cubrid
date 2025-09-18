@@ -314,13 +314,13 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 
   /* assign query id */
   hint_query_id = 0;
-  for (i = 0; i < (SHORT_MAX - 2); i++)
+  for (i = 0; i < (SHRT_MAX - 2); i++)
     {
       if (tran_entry_p->query_id_generator >= SHRT_MAX - 2)	/* overflow happened */
 	{
 	  tran_entry_p->query_id_generator = 0;
 	}
-      query_p->query_id = ++tran_entry_p->query_id_generator;	// possible values: 1 ~ (SHORT_MAX - 2)
+      query_p->query_id = ++tran_entry_p->query_id_generator;	// possible values: 1 ~ (SHRT_MAX - 2)
 
       usable = session_is_queryid_idle (thread_p, query_p->query_id, &hint_query_id);
       if (usable == true)
