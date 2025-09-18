@@ -6578,12 +6578,18 @@ try_again:
   to.tv_sec = (int) time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
-  old_check_interrupt = thread_set_check_interrupt (thread_p, true);
+  if (!VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      old_check_interrupt = thread_set_check_interrupt (thread_p, true);
+    }
 
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
-  thread_set_check_interrupt (thread_p, old_check_interrupt);
+  if (!VACUUM_IS_THREAD_VACUUM (thread_p))
+    {
+      thread_set_check_interrupt (thread_p, old_check_interrupt);
+    }
 
   if (r == NO_ERROR)
     {
