@@ -2328,7 +2328,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
 	    }
 	  else
 	    {
-	      /* this is a commit or abort (rollback) and we have to add the result to the holdable queries list. */
+	      /* this is a commit or abort and we have to add the result to the holdable queries list. */
 	      if (query_p->query_status != QUERY_COMPLETED)
 		{
 		  er_log_debug (ARG_FILE_LINE, "query %d not completed !\n", query_p->query_id);
