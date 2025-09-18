@@ -4481,7 +4481,11 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
       sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
       org_sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      sort_info_p->input_file = qfile_clone_list_id (org_sort_info_p->input_file, true, QFILE_PROHIBIT_DEPENDENT);
+      sort_info_p->input_file = qfile_clone_list_id (org_sort_info_p->input_file, true, QFILE_SKIP_DEPENDENT);
+      if (sort_info_p->input_file == NULL)
+	{
+	  return ER_FAILED;
+	}
       /* tuple_cnt and page_cnt put approximately. */
       /* It can be put precisely from the page header, but not have to be precise for later process. */
       sort_info_p->input_file->tuple_cnt = org_sort_info_p->input_file->tuple_cnt / parallel_num;
