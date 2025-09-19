@@ -85,10 +85,6 @@ static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ER
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
 
-#if !defined (CAS_FOR_CGW)
-static void logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle);
-#endif
-
 #if defined(CAS_FOR_CGW)
 static FN_RETURN fn_cgw_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 					  T_REQ_INFO * req_info, int *ret_srv_h_id);
@@ -3222,7 +3218,7 @@ fn_cgw_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   net_arg_get_int (&offset, argv[1]);
   net_arg_get_char (origin, argv[2]);
 
-  ux_cursor (srv_h_id, offset, origin, net_buf);
+  ux_cgw_cursor (srv_h_id, offset, origin, net_buf);
 
   return FN_KEEP_CONN;
 }

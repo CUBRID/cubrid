@@ -456,10 +456,6 @@ static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
 int
 ux_check_connection (void)
 {
-#if defined(CAS_FOR_CGW)
-  return cgw_is_database_connected ();
-#endif
-
   if (ux_is_database_connected ())
     {
       if (db_ping_server (0, NULL) < 0)
@@ -1047,9 +1043,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 	}
     }
 
-
-
-#if !defined (CAS_FOR_CGW)
   if (tran_type == CCI_TRAN_COMMIT)
     {
       err_code = db_commit_transaction ();
@@ -1096,19 +1089,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     {
       as_info->reset_flag = TRUE;
     }
-
-
-#endif /* CAS_FOR_CGW */
-
-#if defined(CAS_FOR_CGW)
-  T_CGW_HANDLE *cgw_handle = NULL;
-  cgw_get_handle (&cgw_handle);
-  if (cgw_handle)
-    {
-      cgw_endtran (cgw_handle->hdbc, tran_type);
-    }
-  err_code = 0;
-#endif
 
   if (ddl_audit_log && tran_type != CCI_TRAN_COMMIT)
     {
@@ -1470,14 +1450,12 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
-#if !defined(CAS_FOR_CGW)
   err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
   if (err_code != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
-#endif /* !CAS_FOR_CGW */
 
   hm_set_current_srv_handle (srv_handle->id);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
@@ -1794,14 +1772,12 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
-#if !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
-#endif /* !CAS_FOR_CGW */
 
       hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
@@ -2328,13 +2304,11 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
-#if !defined(CAS_FOR_CGW)
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-#endif /* !CAS_FOR_CGW */
 
       res_count = db_execute_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
@@ -2576,14 +2550,12 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-#if !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto exec_db_error;
 	}
-#endif /* !CAS_FOR_CGW */
 
       hm_set_current_srv_handle (srv_handle->id);
 
@@ -2963,9 +2935,8 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
   int err_code;
   int count;
   char *err_str = NULL;
-#if !defined(CAS_FOR_CGW)
   T_QUERY_RESULT *cur_result;
-#endif /* CAS_FOR_CGW */
+
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -2976,9 +2947,7 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 
       goto cursor_error;
     }
-#if defined(CAS_FOR_CGW)
-  count = srv_handle->total_tuple_count;
-#else
+
   cur_result = (T_QUERY_RESULT *) srv_handle->cur_result;
   if (cur_result == NULL)
     {
@@ -2991,7 +2960,6 @@ ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
     }
 
   count = cur_result->tuple_count;
-#endif /* CAS_FOR_CGW */
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
   net_buf_cp_int (net_buf, (int) count, NULL);	/* result msg */
@@ -3124,9 +3092,7 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
     {
       return;
     }
-#if defined(CAS_FOR_CGW)
-  cgw_cursor_close (srv_handle);
-#else
+
   ux_free_result (srv_handle->q_result[idx].result);
   srv_handle->q_result[idx].result = NULL;
 
@@ -3135,7 +3101,6 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       srv_handle->q_result[idx].is_holdable = false;
       as_info->num_holdable_results--;
     }
-#endif /* CAS_FOR_CGW */
 }
 
 int
@@ -6990,7 +6955,6 @@ fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, 
 
   return 0;
 }
-
 
 #if defined(CAS_FOR_CGW)
 static int
@@ -11974,4 +11938,4 @@ ux_cgw_get_stmt_type (char *stmt)
     }
   return stmt_type;
 }
-#endif
+#endif /* CAS_FOR_CGW */

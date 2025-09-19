@@ -131,7 +131,7 @@ struct t_srv_handle
   int total_tuple_count;
   int stmt_type;
   bool is_cursor_open;
-#endif				/* CAS_FOR_CGW */
+#endif /* CAS_FOR_CGW */
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
