@@ -20,6 +20,7 @@
  * px_worker_manager.cpp - module that manages parallel worker threads.
  */
 
+#include <chrono>
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
@@ -86,9 +87,14 @@ namespace parallel_query
 	delete this;
 	return;
       }
-    while (m_working_workers.load () > m_reserved_workers - n_workers)
+    while (true)
       {
-	thread_sleep (1);
+	std::unique_lock<std::mutex> lock (m_mutex);
+	if (m_working_workers.load (std::memory_order_acquire) <= 0)
+	  {
+	    break;
+	  }
+	m_condition_variable.wait_for (lock, std::chrono::microseconds (100));
       }
     worker_manager_global::get_manager().release_workers (n_workers);
     m_reserved_workers -= n_workers;
@@ -98,7 +104,7 @@ namespace parallel_query
 
   void worker_manager::push_task (cubthread::entry_task *task)
   {
-    m_working_workers.fetch_add (1);
+    m_working_workers.fetch_add (1, std::memory_order_release);
     worker_manager_global::get_manager().push_task (task);
     assert (m_working_workers.load () <= m_reserved_workers);
   }

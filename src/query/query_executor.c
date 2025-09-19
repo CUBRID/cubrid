@@ -84,8 +84,8 @@
 #include "query_hash_join.h"
 
 #if SERVER_MODE && !WINDOWS
-#include "px_heap_scan_manager.hpp"
-#include "px_heap_scan_perf_monitor.hpp"
+#include "px_heap_scan_trace_handler.hpp"
+#include "px_heap_scan.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
@@ -1926,6 +1926,21 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		}
 	      hsidp->caches_inited = false;
 	    }
+#if SERVER_MODE
+	  if (p->s_id.type == S_PARALLEL_HEAP_SCAN)
+	    {
+	      if (p->s_id.s.phsid.manager)
+		{
+		  p->s_id.s.phsid.manager->close ();
+		  p->s_id.s.phsid.manager = nullptr;
+		}
+	      if (p->s_id.s.phsid.trace_storage)
+		{
+		  db_private_free (thread_p, p->s_id.s.phsid.trace_storage);
+		  p->s_id.s.phsid.trace_storage = nullptr;
+		}
+	    }
+#endif
 	  break;
 	case S_HEAP_PAGE_SCAN:
 	  hpsidp = &p->s_id.s.hpsid;
@@ -7189,14 +7204,14 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 #if SERVER_MODE && !WINDOWS
       else if (scan_type == S_PARALLEL_HEAP_SCAN)
 	{
-	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE;	/* should check LIST_MERGE in checker */
+	  parallel_heap_scan::RESULT_TYPE result_get_method = parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT;	/* should check LIST_MERGE in checker */
 	  if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
 	    {
 	      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
 	    }
 	  else if (curr_spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
 	    {
-	      result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;
+	      result_get_method = parallel_heap_scan::RESULT_TYPE::BATCH;
 	    }
 	  error_code =
 	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
@@ -8392,7 +8407,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 #if SERVER_MODE && !WINDOWS
   if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
     {
-      if (spec->s_id.s.phsid.perf_monitor)
+      if (spec->s_id.s.phsid.trace_storage)
 	{
 	  if (thread_p->m_px_stats != NULL)
 	    {
@@ -8406,8 +8421,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      prev_partition_spec->scan_stats.num_ioreads +=
 		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
 	    }
-
-	  spec->s_id.s.phsid.perf_monitor->set_partition_stats (prev_partition_spec);
 	}
     }
 #endif
@@ -8492,11 +8505,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       else
 	{
 	  assert (scan_type == S_PARALLEL_HEAP_SCAN);
-	  parallel_heap_scan::RESULT_GET_METHOD result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE;
+	  parallel_heap_scan::RESULT_TYPE result_get_method = parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT;
 	  query_id = spec->s_id.vd->xasl_state->query_id;
 	  if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
 	    {
-	      result_get_method = parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE;
+	      result_get_method = parallel_heap_scan::RESULT_TYPE::BATCH;
 	    }
 	  error =
 	    scan_open_parallel_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed,

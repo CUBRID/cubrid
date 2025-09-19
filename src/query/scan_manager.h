@@ -123,7 +123,7 @@ struct heap_scan_id
 namespace parallel_heap_scan
 {
   class manager;		// forward declaration
-  class perf_monitor;		// forward declaration
+  class accumulative_trace_storage;	// forward declaration
 }
 
 typedef struct parallel_heap_scan_id PARALLEL_HEAP_SCAN_ID;
@@ -147,7 +147,7 @@ struct parallel_heap_scan_id
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_heap_scan::manager * manager;
-  parallel_heap_scan::perf_monitor * perf_monitor;
+  parallel_heap_scan::accumulative_trace_storage * trace_storage;
   #endif
   // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */
