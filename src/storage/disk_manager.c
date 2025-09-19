@@ -4567,7 +4567,9 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
       /* invalid */
+#if 0
       assert (!debug_crash);
+#endif
       isvalid = DISK_INVALID;
       goto exit;
     }

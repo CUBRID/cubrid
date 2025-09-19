@@ -3473,6 +3473,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
     (thread_p, redo_context, record_info, parallel_recovery_redo, reusable_jobs, rcv_redo_perf_stat)
 // *INDENT-ON*
 
+printf ("redo log type : %s\n", log_to_string (log_rtype));
 	  switch (log_rtype)
 	    {
 	    case LOG_MVCC_UNDOREDO_DATA:

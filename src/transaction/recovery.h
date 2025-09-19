@@ -258,18 +258,12 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVPGBUF_DEALLOC \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVFL_TRACKER_UNREGISTER)
-#if 0
+
 #define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
   ((idx) == RVFL_DEALLOC \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE \
    || (idx) == RVDK_DELVOL)
-#else
-#define RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL(idx) \
-  ((idx) == RVFL_DEALLOC \
-   || (idx) == RVHF_MARK_DELETED \
-   || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
-#endif
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   (((vpid)->volid == NULL_VOLID) \

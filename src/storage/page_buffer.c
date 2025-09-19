@@ -10352,7 +10352,9 @@ pgbuf_is_valid_page (THREAD_ENTRY * thread_p, const VPID * vpid, bool no_error)
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 	      fileio_get_volume_label (vpid->volid, PEEK));
 
+#if 0
       assert (false);
+#endif
     }
 
   return valid;

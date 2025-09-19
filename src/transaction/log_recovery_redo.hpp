@@ -599,6 +599,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (record_info.m_logrec);
 
   LOG_RCV rcv;
+printf ("log_rv_redo_recod_sync : %d, volid : %d\n", log_data.rcvindex, rcv_vpid.volid);
   if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, log_data.rcvindex, record_info.m_start_lsa,
       redo_context.m_end_redo_lsa))
     {
