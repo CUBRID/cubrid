@@ -767,6 +767,30 @@ or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
   *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ALGORITHM);
 }
 
+void
+or_class_flags (RECDES * record, int *flags)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  *(int *) flags = OR_GET_INT (ptr + ORC_CLASS_FLAGS);
+}
+
+bool
+or_class_is_replicable (RECDES * record)
+{
+  int flags = 0;
+  int no_replication_flag = 32;	/* SM_CLASSFLAG_NO_REPLICATION = 32 */
+
+  /* TODO:
+   * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation. */
+  or_class_flags (record, &flags);
+
+  return !(flags & no_replication_flag);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_class_statistics () - extracts the OID of the statistics instance for

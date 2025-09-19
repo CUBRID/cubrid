@@ -8039,7 +8039,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        * Generates the replication log info. for data insert/delete
        * for the update cases, refer to locator_update_force()
        */
-      if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
+      if (need_replication && heap_is_replicable_class(thread_p, class_oid) && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  error_code =
