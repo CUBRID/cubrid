@@ -10667,6 +10667,15 @@ exit:
   return error;
 }
 
+/*
+ * handle_replication_option() - handle the replication option
+ *   return: Error code
+ *   class_mop(in/out): Class MOP to apply the option
+ *   replication_node(in): Parse tree node containing replication option
+ *
+ * Note: If the option is omitted, or if "on|off" is omitted,
+ *       the default value is set to "on".
+ */
 static int
 do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
@@ -10676,13 +10685,23 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   DB_CTMPL *ctemplate = NULL;
   MOP class_mop = NULL;
   bool tran_saved = false;
-  PT_NODE *replication_node;
+  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;;
+
+  if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
+    {
+      error = ER_REPLICATION_CONSTRAINT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
+	      "Changing the replication option of a class is not allowed in HA mode.");
+
+      return error;
+    }
 
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
   if (error != NO_ERROR)
     {
       goto exit;
     }
+
   tran_saved = true;
 
   entity_name = alter->info.alter.entity_name->info.name.original;
@@ -10724,23 +10743,13 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
       goto exit;
     }
 
-  /*
-   * Handle the replication option.
-   * If the option is omitted, or if "on|off" is omitted,
-   * the default value is set to "on".
-   */
   class_mop = ctemplate->op;
-  replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
-
-  if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
+  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_OFF, !IS_REPLICATION_ON_NODE (replication_node));
+  if (error != NO_ERROR)
     {
-      error = ER_REPLICATION_CONSTRAINT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Replication setting is not permitted for this table.");
-
+      error = er_errid ();
       goto exit;
     }
-
-  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_NO_REPLICATION, !IS_REPLICATION_ON_NODE (replication_node));
 
   /* force schema update to server */
   class_obj = dbt_finish_class (ctemplate);
