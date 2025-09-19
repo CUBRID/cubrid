@@ -81,6 +81,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &
   hnsw_index *index = backend_instance->create_index (thread_p, &btid_out, "", params);
   if (index == nullptr)
     {
+      // failed to create index
       assert (false);
       return ER_FAILED;
     }
@@ -88,19 +89,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &
   int error = index_manager->add_index (&btid_out, index);
   if (error != NO_ERROR)
     {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  hnsw_index_meta meta =
-  {
-    .backend_id = backend_instance->get_id(),
-    .build_params = params
-  };
-
-  error = index_manager->save_index_meta (thread_p, &btid_out, meta);
-  if (error != NO_ERROR)
-    {
+      // failed to add index
       assert (false);
       return ER_FAILED;
     }
@@ -108,7 +97,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &
 #if !defined(NDEBUG)
   _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", btid_out.root_pageid);
 
-  hnsw_print_index_info (&btid_out);
+  index_manager->print_index_info (&btid_out);
 #endif
 
   return error;
@@ -253,7 +242,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
 
 	case S_END:
 	{
-	  hnsw_add_element (&new_btid, oids, vectors, count);
+	  hnsw_add_element (thread_p, &new_btid, oids, vectors, count);
 
 	  if (oids)
 	    {
@@ -292,7 +281,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
 }
 
 int
-hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
+hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
 {
   assert (oid);
   assert (vector);
@@ -307,8 +296,12 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
   auto *index = index_manager->get_index (btid);
   if (index == nullptr)
     {
-      // load index
-
+      if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
+        {
+          // failed to load index
+          assert (false);
+          return ER_FAILED;
+        }
     }
 
   if (index->prepare_to_add (n_vectors, oid, vector) != NO_ERROR)
@@ -321,7 +314,7 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
 }
 
 int
-hnsw_search_element (BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
+hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
 {
   assert (btid);
   assert (key_dbvalue);
@@ -332,7 +325,12 @@ hnsw_search_element (BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, fl
   hnsw_index *index = index_manager->get_index (btid);
   if (index == nullptr)
     {
-      // load index
+      if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
+        {
+          // failed to load index
+          assert (false);
+          return ER_FAILED;
+        }
     }
 
   const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);

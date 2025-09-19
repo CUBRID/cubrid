@@ -6391,7 +6391,7 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    .root_pageid = visid->hnsw_id
 	  };
 
-	  if (hnsw_search_element (&btid, visid->query_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
+	  if (hnsw_search_element (thread_p, &btid, visid->query_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
