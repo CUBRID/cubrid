@@ -509,6 +509,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->parallel_opt_use = PLAN_PARALLEL_OPT_NO;
 
   plan->has_sort_limit = false;
+  plan->is_orderby_skip_candidate = false;
   plan->use_iscan_descending = false;
 
   return plan;
@@ -1032,12 +1033,6 @@ qo_top_plan_new (QO_PLAN * plan)
 	    }
 	  else
 	    {
-	      if (plan->iscan_sort_list)
-		{
-		  parser_free_tree (parser, plan->iscan_sort_list);
-		  plan->iscan_sort_list = NULL;
-		}
-
 	      /* if the order by is not skipped we drop the plan because it didn't helped us */
 	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
 		{
@@ -1053,11 +1048,8 @@ qo_top_plan_new (QO_PLAN * plan)
       /* DISTINCT, ORDER BY */
       if (all_distinct == PT_DISTINCT || order_by)
 	{
-	  PT_NODE *iscan_sort_list = NULL;
-
-	  iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
-
-	  if (iscan_sort_list)
+	  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
+	  if (plan->iscan_sort_list)
 	    {			/* need to check */
 	      if (all_distinct == PT_DISTINCT)
 		{
@@ -1097,7 +1089,11 @@ qo_top_plan_new (QO_PLAN * plan)
 		    }
 		}
 
-	      parser_free_tree (parser, iscan_sort_list);
+	      if (plan->iscan_sort_list)
+		{
+		  parser_free_tree (parser, plan->iscan_sort_list);
+		  plan->iscan_sort_list = NULL;
+		}
 	    }
 
 	  if (orderby_skip)
