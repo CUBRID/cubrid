@@ -386,7 +386,7 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 static int
 dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
-  int i, n, ret;
+  int i, n, ret, num_size = 0;
   T_CCI_A_TYPE a_type;
   T_CCI_U_TYPE u_type;
   void *value;
@@ -399,7 +399,9 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
   DB_DATE date;
   DB_TIME time;
   T_CCI_DATE cci_date;
-  char num_str[40];
+  T_CCI_BIT cci_bit;
+  char num_str[NUMERIC_MAX_STRING_SIZE];
+
   unsigned char type;
 
   for (n = 0; n < host_vars->count; n++)
@@ -411,16 +413,11 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	{
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  {
-	    int num_size = 0;
-	    T_CCI_BIT cci_bit;
-
-	    a_type = CCI_A_TYPE_BIT;
-	    u_type = (type == DB_TYPE_BIT) ? CCI_U_TYPE_BIT : CCI_U_TYPE_VARBIT;
-	    value = (void *) &cci_bit;
-	    cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
-	    cci_bit.size = QSTR_NUM_BYTES (num_size);
-	  }
+	  a_type = CCI_A_TYPE_BIT;
+	  u_type = (type == DB_TYPE_BIT) ? CCI_U_TYPE_BIT : CCI_U_TYPE_VARBIT;
+	  value = (void *) &cci_bit;
+	  cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
+	  cci_bit.size = QSTR_NUM_BYTES (num_size);
 	  break;
 	case DB_TYPE_JSON:
 	  a_type = CCI_A_TYPE_STR;
