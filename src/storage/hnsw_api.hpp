@@ -33,6 +33,7 @@
 #include "vector_distance_enum.h"
 #include "thread_compat.hpp"
 #include "query_evaluator.h"
+#include "btid_hash.hpp"
 
 // forward declarations
 class hnsw_index_backend;
@@ -186,19 +187,22 @@ class hnsw_index_manager
     BTID create_btid (const hnsw_index_backend *backend);
 
     // index management on memory
-    bool is_index_loaded (const std::string &prefix, const BTID *btid) const;
+    bool is_index_loaded (const BTID *btid) const;
     int add_index (const BTID *btid, hnsw_index *index);
     hnsw_index *get_index (const BTID *btid) const;
     int delete_index (const BTID *btid);
 
+    void print_index_info (const BTID *btid);
+
     // index management on disk
     int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
-    int load_index (THREAD_ENTRY *thread_p, const BTID *btid);
+    int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
     int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
     int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
     int save_all_indices (THREAD_ENTRY *thread_p);
     int delete_index_on_disk (const std::string &prefix, const BTID *btid);
 
+    // backend management
     void register_backend (std::unique_ptr<hnsw_index_backend> backend);
     const hnsw_index_backend *get_backend () const;
     hnsw_index_backend *get_backend ();
@@ -220,7 +224,7 @@ class hnsw_index_manager
     fs::path m_root_path;
     int m_last_index_id;
 
-    std::unordered_map<const BTID *, std::unique_ptr<hnsw_index>> m_index_map;
+    std::unordered_map<BTID, std::unique_ptr<hnsw_index>> m_index_map;
     std::unique_ptr<hnsw_index_backend> m_backend;
 };
 
