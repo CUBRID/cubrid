@@ -2051,7 +2051,7 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.cls_node.cls_regu_list_key, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.cls_node.cls_regu_list_pred, is_final);
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, p->s.cls_node.cls_regu_list_rest, is_final);
-	  if (p->access == ACCESS_METHOD_INDEX)
+	  if (p->access == ACCESS_METHOD_INDEX || p->access == ACCESS_METHOD_VECTOR_INDEX_SCAN)
 	    {
 	      INDX_INFO *indx_info;
 
