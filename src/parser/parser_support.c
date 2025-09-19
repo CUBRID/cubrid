@@ -155,6 +155,7 @@ static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
 					  bool add_offset);
+static int pt_get_query_where_from_where (PARSER_CONTEXT * parser, PT_NODE * where, DB_VALUE * where_val);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
@@ -9733,6 +9734,47 @@ cleanup:
   return error;
 }
 
+static int
+pt_get_query_where_from_where (PARSER_CONTEXT * parser, PT_NODE * where, DB_VALUE * where_val)
+{
+  int save_set_host_var;
+  int error = NO_ERROR;
+
+  db_make_null (where_val);
+
+  if (where == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  save_set_host_var = parser->flag.set_host_var;
+  parser->flag.set_host_var = 1;
+
+//   assert (where->node_type == PT_VALUE || where->node_type == PT_HOST_VAR || where->node_type == PT_EXPR);
+
+  pt_evaluate_tree (parser, where, where_val, 1);
+  if (pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (DB_IS_NULL (where_val))
+    {
+      goto cleanup;
+    }
+
+cleanup:
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (where_val);
+      db_make_null (where_val);
+    }
+
+  parser->flag.set_host_var = save_set_host_var;
+  return error;
+}
+
 /*
  * pt_get_query_limit_value () - get the limit value from a query
  * return : error code or NO_ERROR
@@ -10305,6 +10347,76 @@ end:
     }
 
   return err;
+}
+
+bool
+pt_recompile_for_where_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *where;
+  DB_VALUE where_val, compressed_pattern;
+  int num_logical_chars = 0, last_safe_logical_pos = 0;
+  int num_match_many = 0, num_match_one = 0;
+  bool need_recompile = false;
+
+  if (statement->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  if (statement->info.query.q.select.where == NULL)
+    {
+      return false;
+    }
+
+  if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
+    {
+      return false;
+    }
+
+  for (where = statement->info.query.q.select.where; where != NULL; where = where->next)
+    {
+      if (where->node_type == PT_HOST_VAR)
+	{
+	  /* where ? */
+	  continue;
+	}
+      if (where->node_type == PT_EXPR && where->info.expr.op == PT_LIKE)
+	{
+	  if (!pt_is_expr_foldable (parser, statement->info.query.q.select.from, where->info.expr.arg1))
+	    {
+	      continue;
+	    }
+
+	  int type_arg[2];
+
+	  type_arg[0] = PT_HOST_VAR;	/* type */
+	  type_arg[1] = 0;	/* found */
+
+	  (void) parser_walk_tree (parser, where->info.expr.arg2, pt_find_node_type_pre, type_arg, NULL, NULL);
+
+	  if (type_arg[1] != 0 && pt_get_query_where_from_where (parser, where->info.expr.arg2, &where_val) == NO_ERROR)
+	    {
+	      if (!DB_IS_NULL (&where_val))
+		{
+		  db_make_null (&compressed_pattern);
+
+		  db_compress_like_pattern (&where_val, &compressed_pattern, false, NULL);
+
+		  db_get_info_for_like_optimization (&where_val, false, NULL,
+						     &num_logical_chars, &last_safe_logical_pos,
+						     &num_match_many, &num_match_one);
+
+		  if (num_logical_chars == 1 && num_match_many == 1)
+		    {
+		      need_recompile = true;
+		      break;
+		    }
+		}
+	    }
+	}
+    }
+
+  return need_recompile;
 }
 
 /*
