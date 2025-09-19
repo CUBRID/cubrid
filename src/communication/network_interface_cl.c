@@ -11603,13 +11603,14 @@ tdes_reset_query_start_info (PT_NODE * node)
 #endif
 }
 
-/* manager_lob_dir -
+/* manage_lob_dir - create or delete lob dir
  *
  * return:
  *
- *   hfid(in):
- *   class_oid(in):
- *   reuse_oid(in):
+ *   hfid(in): separate lob dir by table
+ *   attrid_arr(in): separate lob dir by column
+ *   lob_arr_length(in): number of LOB-type columns
+ *   mode(in): separate create or delete mode
  *
  * NOTE:
  * manage_lob_dir - request to server to create or delete lob dir
@@ -11644,15 +11645,10 @@ manage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAG
 
   return error;
 #else /* CS_MODE */
-  int success = 0;
-
   THREAD_ENTRY *thread_p = enter_server ();
 
-  xmanage_lob_dir (hfid, attrid_arr, lob_arr_length, mode); // xmanage_lob_dir() 반환타입 int로 바꾸고 success에 반환해야 함(todo구현)
+  xmanage_lob_dir (hfid, attrid_arr, lob_arr_length, mode);
 
   exit_server (*thread_p);
-
-  return success;
 #endif /* !CS_MODE */
 }
-
