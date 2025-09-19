@@ -297,11 +297,11 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
   if (index == nullptr)
     {
       if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
-        {
-          // failed to load index
-          assert (false);
-          return ER_FAILED;
-        }
+	{
+	  // failed to load index
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
 
   if (index->prepare_to_add (n_vectors, oid, vector) != NO_ERROR)
@@ -326,11 +326,11 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   if (index == nullptr)
     {
       if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
-        {
-          // failed to load index
-          assert (false);
-          return ER_FAILED;
-        }
+	{
+	  // failed to load index
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
 
   const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);

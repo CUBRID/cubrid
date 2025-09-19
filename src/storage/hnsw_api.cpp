@@ -21,6 +21,9 @@
 #include "boot_sr.h"
 #include "hnsw_api.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace hnsw_backend_registry
 {
   static std::unordered_map<std::string, hnsw_backend_factory_fn> &map_ref()
