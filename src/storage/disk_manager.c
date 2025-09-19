@@ -740,6 +740,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
+      recovery_check (71);
 
       if (next_volid != NULL_VOLID)
 	{
@@ -1447,6 +1448,7 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
    *      condition: LOG_ISRESTARTED () == false AND volid <= disk_Cache->nvols_perm - 1
    */
 
+printf ("disk_rv_undo_format .. start\n");
 #if 0
   if (!LOG_ISRESTARTED () && volid == disk_Cache->nvols_perm - 1)
 #else
@@ -1535,6 +1537,7 @@ disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   (void) logpb_recreate_volume_info (thread_p);
   log_append_dboutside_redo (thread_p, RVLOG_OUTSIDE_LOGICAL_REDO_NOOP, 0, NULL);
 
+printf ("disk_rv_undo_format .. end\n");
   return ret;
 }
 
@@ -1552,6 +1555,7 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   DKNSECTS nsect_free = 0;
   DKNSECTS nsect_diff;
 
+printf ("disk_rv_redo_format .. start\n");
   rcv->offset = 0;
   (void) pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_VOLHEADER);
   error_code = log_rv_copy_char (thread_p, rcv);
@@ -1562,13 +1566,17 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   if (is_first_call)
     {
+printf ("disk_rv_redo_format .. first call\n");
       /* don't update disk cache. if the volume is successfully created, another disk_rv_redo_format call will follow,
        * and we can update disk cache then. */
 
       disk_log ("disk_rv_redo_format", "first call for volume %d at lsa %lld|%d", volheader->volid,
 		PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr));
+      printf ("disk_rv_redo_format : first call for volume %d at lsa %lld|%d", volheader->volid,
+		PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr));
       return NO_ERROR;
     }
+printf ("disk_rv_redo_format .. second call\n");
 
   /* this is the second call of disk_rv_redo_format. we need to update disk cache too.
    * you may be tempted to think that this is a new volume and that all of it must be empty. oh well, even though you
@@ -1618,6 +1626,8 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   disk_log ("disk_rv_redo_format", "second call for volume %d at lsa %lld|%d, free = %d, total = %d, max = %d",
 	    volheader->volid, PGBUF_PAGE_LSA_AS_ARGS (rcv->pgptr), nsect_free, volheader->nsect_total,
 	    volheader->nsect_max);
+
+printf ("disk_rv_redo_format .. end\n");
 
   return error_code;
 }
@@ -1735,6 +1745,7 @@ disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   DISK_RECV_LINK_PERM_VOLUME *link;
   int ret = NO_ERROR;
 
+printf ("disk_rv_undoredo_link .. start\n");
   vhdr = (DISK_VOLUME_HEADER *) rcv->pgptr;
   link = (DISK_RECV_LINK_PERM_VOLUME *) rcv->data;
 
@@ -1742,6 +1753,7 @@ disk_rv_undoredo_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   ret = disk_vhdr_set_next_vol_fullname (vhdr, link->next_vol_fullname);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
+printf ("disk_rv_undoredo_link .. stop\n");
   return NO_ERROR;
 }
 
@@ -2668,14 +2680,6 @@ disk_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
       return ER_BO_DELVOL_CANNOT_DELETE_VOLID;
     }
 
-#if 0
-  if (disk_get_volheader (thread_p, prev_volid, PGBUF_LATCH_READ, &addr.pgptr, &vhdr) != NO_ERROR)
-    {
-      return ER_BO_DELVOL_CANNOT_DELETE_VOLID;
-    }
-  pgbuf_unfix_and_init (thread_p, addr.pgptr);
-#endif
-
   /* find next volume and get info */
   if (xboot_find_last_permanent (thread_p) == volid)
     {
@@ -2711,7 +2715,11 @@ disk_del_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
   addr.pgptr = NULL;
   addr.vfid = NULL;
 
+  log_sysop_start (thread_p);
+
   log_append_postpone (thread_p, RVDK_DELVOL, &addr, redo_size, redo_recv);
+
+  log_sysop_commit (thread_p);
 
   free_and_init (redo_recv);
 

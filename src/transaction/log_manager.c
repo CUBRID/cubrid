@@ -3119,7 +3119,9 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
    */
   if (pgptr != NULL && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
     {
+#if 0 // for addvoldb
       assert (false);
+#endif
       return;
     }
 

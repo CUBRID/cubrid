@@ -865,6 +865,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
 	  log_cnt_pages_containing_lsa (&start_redolsa, &end_redo_lsa), num_redo_log_records);
 
+printf ("log_recovery_redo\n");
   log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
@@ -878,6 +879,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   /* ER_LOG_RECOVERY_REDO_STARTED logging is inside log_recovery_undo() */
 
+printf ("log_recovery_undo\n");
   log_recovery_undo (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "UNDO");
@@ -890,6 +892,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   if (did_incom_recovery == true)
     {
+printf ("log_recovery_notpartof_volumes\n");
       log_recovery_notpartof_volumes (thread_p);
     }
 
@@ -4042,9 +4045,7 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   if (LSA_ISNULL (&last_parent_lsa))
     {
       /* no run postpones before system op. stop at start postpone. */
-#if 0 // for delvoldb
       assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
-#endif
       last_parent_lsa = *postpone_start_lsa;
     }
 

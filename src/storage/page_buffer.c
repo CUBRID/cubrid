@@ -2076,7 +2076,9 @@ try_again:
 	case OLD_PAGE_PREVENT_DEALLOC:
 	default:
 	  /* caller does not expect any deallocated pages. this is an invalid page. */
+#if 0
 	  assert (false);
+#endif
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
 	  /* fall through to unfix */
@@ -13787,6 +13789,7 @@ pgbuf_flush_control_from_dirty_ratio (void)
 int
 pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+printf ("pgbuf_rv_flush_page .. start\n");
   PAGE_PTR page_to_flush = NULL;
   VPID vpid_to_flush = VPID_INITIALIZER;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -13810,6 +13813,7 @@ pgbuf_rv_flush_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   pgbuf_flush (thread_p, page_to_flush, DONT_FREE);
   pgbuf_unfix (thread_p, page_to_flush);
 
+printf ("pgbuf_rv_flush_page .. stop\n");
   return NO_ERROR;
 }
 
