@@ -2358,7 +2358,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   int error = NO_ERROR;
   int save;
-  bool au_disable_flag = false;
 
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
@@ -2382,6 +2381,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
 
+  AU_DISABLE (save);
   /*
    * find _db_serial class
    */
@@ -2783,9 +2783,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-  /* now update serial object in _db_serial */
-  AU_DISABLE (save);
-  au_disable_flag = true;
 
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
@@ -2957,10 +2954,7 @@ end:
       (void) serial_decache ((OID *) (&serial_obj_id));
     }
 
-  if (au_disable_flag == true)
-    {
-      AU_ENABLE (save);
-    }
+   AU_ENABLE (save);
 
   if (obj_tmpl != NULL)
     {
