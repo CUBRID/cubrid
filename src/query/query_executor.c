@@ -15966,7 +15966,14 @@ end:
   if (list_id && list_id->type_list.type_cnt != 0)
     {
       // one new list file
-      assert (thread_p->m_qlist_count.load () == qlist_enter_count + 1);
+#if !defined (NDEBUG)
+      int dependent_cnt = 0;
+      for (QFILE_LIST_ID * list_id_p = list_id; list_id_p != NULL; list_id_p = list_id_p->dependent_list_id)
+	{
+	  dependent_cnt++;
+	}
+      assert (thread_p->m_qlist_count.load () == qlist_enter_count + dependent_cnt);
+#endif
     }
   else
     {
