@@ -17,10 +17,12 @@
  */
 
 //
-// hnsw_usearch.cpp - implementation of HNSW index using USearch
+// hnsw_usearch.cpp - implementation of HNSW index using usearch
 //
 
+#include "hnsw_api.hpp"
 #include "hnsw.hpp"
+
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "vector_opfunc.hpp"
@@ -43,720 +45,255 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-
-// TODO : When cub_server terminates, hnsw_index_id will be reset to 0.
-//        This is not a problem in current implementation, but it may be a problem in the future,
-//        such as duplicate hnsw_index_id when cub_server restarts.
-//        We need to consider a better way to identify the hnsw index.
-
-
 using namespace unum;
 
-int hnsw_index_id = 0;
-std::unordered_map<int, std::unique_ptr<usearch::index_dense_t>> hnsw_index_map;
-char hnsw_index_directory[PATH_MAX] = {0};
-bool hnsw_index_directory_created = false;
-static std::mutex hnsw_elem_mutex;
+static hnsw_oid_encoder_default default_oid_encoder;
 
-static int dump_hnsw_index (int hnsw_id, const std::unique_ptr<usearch::index_dense_t> &index);
-static int get_hnsw_index_file_path (int hnsw_id, char *out_path);
-static int create_hnsw_index_directory ();
-static bool is_hnsw_index_file_exists (int hnsw_id);
-static int load_hnsw_index_from_file (int hnsw_id);
-static int hnsw_check_and_load_index (int hnsw_id);
-static void get_new_hnsw_index_id ();
-static int64_t encode_oid (const OID &oid);
-static OID decode_oid (int64_t encoded_oid);
-
-BTID *
-xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 16, int hnsw_efConstruction = 64,
-		 int metric = DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN)
+class hnsw_usearch_backend final : public hnsw_index_backend
 {
-  usearch::metric_kind_t metric_kind = usearch::metric_kind_t::unknown_k;
-  switch (metric)
+  public:
+    hnsw_usearch_backend (hnsw_index_manager &mgr, const std::string &id) : hnsw_index_backend (mgr, "usearch") {}
+    ~hnsw_usearch_backend() override = default;
+
+    virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const override;
+
+    virtual hnsw_index *create_index (THREAD_ENTRY *thread_p, const BTID *btid, const std::string &name,
+				      const hnsw_build_params &build_params) override;
+    virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) override;
+
+  private:
+    usearch::metric_kind_t to_usearch_metric_kind (const DB_VECTOR_DISTANCE_METRIC &metric) const;
+};
+
+class hnsw_index_usearch final: public hnsw_index
+{
+  public:
+
+    hnsw_index_usearch (hnsw_index_backend &backend, const BTID *btid, const std::string &name,
+			const hnsw_build_params &build_params, std::unique_ptr<usearch::index_dense_t> index);
+    ~hnsw_index_usearch() = default;
+
+    virtual int prepare_to_add (int n_vectors, const OID *oid, const float *vector) override;
+    virtual int add (int n_vectors, const OID *oid, const float *vector) override;
+
+    virtual int search (const float *query, const int k, const int ef_search, OID *rec_oids, float *distances) override;
+    virtual int remove (const OID *oid) override;
+    virtual int update (const OID *oid, const float *vector) override;
+
+    // SCAN_PRED from query_evaluator.h
+    virtual int filtered_search (const float *query, const int k, const SCAN_PRED &filter, OID *rec_oids,
+				 float *distances) override;
+    virtual int dump (FILE *fp) override;
+
+    virtual int save (const std::string &path) override;
+    virtual int load (const std::string &path) override;
+
+  private:
+    std::mutex m_index_mutex;
+    std::unique_ptr<usearch::index_dense_t> m_index;
+};
+
+// ===========================
+// hnsw_index_backend_usearch
+// ===========================
+
+hnsw_index_usearch::hnsw_index_usearch (hnsw_index_backend &backend, const BTID *btid, const std::string &name,
+					const hnsw_build_params &build_params, std::unique_ptr<usearch::index_dense_t> index) : hnsw_index (backend, btid, name,
+					      build_params)
+{
+  if (index == nullptr)
     {
-    case METRIC_UNKNOWN:
-      ASSERT_CUBVEC (false);
-    case METRIC_COSINE:
-      metric_kind = usearch::metric_kind_t::cos_k;
-      break;
-
-    case METRIC_DOT:
-      metric_kind = usearch::metric_kind_t::ip_k;
-      break;
-
-    case METRIC_EUCLIDEAN:
-      metric_kind = usearch::metric_kind_t::l2sq_k;
-      break;
-
-    case METRIC_MANHATTAN:
-      // unsupported metric
-      ASSERT_CUBVEC (false);
-      break;
-
-    default:
-      ASSERT_CUBVEC (false);
+      m_index = std::make_unique<usearch::index_dense_t> ();
     }
+  else
+    {
+      m_index = std::move (index);
+    }
+}
 
-  get_new_hnsw_index_id ();
-
-  usearch::metric_punned_t metric_punned (static_cast <std::size_t> (dimension), metric_kind,
+hnsw_index *
+hnsw_usearch_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid, const std::string &name,
+				    const hnsw_build_params &build_params)
+{
+  usearch::metric_kind_t metric_kind = to_usearch_metric_kind (build_params.metric);
+  usearch::metric_punned_t metric_punned (static_cast <std::size_t> (build_params.dimension), metric_kind,
 					  usearch::scalar_kind_t::f32_k);
 
   usearch::index_dense_config_t config;
-  config.connectivity = hnsw_M;
-  config.expansion_add = hnsw_efConstruction;
+  config.connectivity = build_params.m;
+  config.expansion_add = build_params.ef_construction;
 
-  auto index_ptr = std::make_unique<usearch::index_dense_t> (
-			   usearch::index_dense_t::make (metric_punned, config)
-		   );
+  auto make_result = usearch::index_dense_t::make (metric_punned, config);
+  if (!make_result)
+    {
+      return nullptr;
+    }
+  std::unique_ptr<usearch::index_dense_t> usearch_index = std::make_unique<usearch::index_dense_t> (std::move (
+	      make_result));
 
-  index_ptr->reserve (10000);
-
-  hnsw_index_map[hnsw_index_id] = std::move (index_ptr);
-
-  btid->vfid.volid = -1;
-  btid->vfid.fileid = -1;
-  btid->root_pageid = hnsw_index_id;
-
-  _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
-  hnsw_print_index_info (btid);
-
-  return btid;
+  const int initial_size = 1024;
+  usearch_index->reserve (initial_size);
+  hnsw_index *index = new hnsw_index_usearch (*this, btid, name, build_params, std::move (usearch_index));
+  return index;
 }
 
-int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
+usearch::metric_kind_t
+hnsw_usearch_backend::to_usearch_metric_kind (const DB_VECTOR_DISTANCE_METRIC &metric) const
 {
-  char filepath[PATH_MAX];
-
-  if (!btid)
+  switch (metric)
     {
+    case METRIC_COSINE:
+      return usearch::metric_kind_t::cos_k;
+    case METRIC_DOT:
+      return usearch::metric_kind_t::ip_k;
+    case METRIC_EUCLIDEAN:
+      return usearch::metric_kind_t::l2sq_k;
+    default:
       assert (false);
-      return ER_FAILED;
-    }
-
-  int hnsw_id = btid->root_pageid;
-  auto it = hnsw_index_map.find (hnsw_id);
-
-  if (it != hnsw_index_map.end())
-    {
-      er_log_debug (ARG_FILE_LINE, "HNSW Index deleted with ID %d", hnsw_id);
-      hnsw_print_index_info (btid);
-
-      hnsw_index_map.erase (it);
-    }
-
-  if (hnsw_index_directory_created)
-    {
-      if (get_hnsw_index_file_path (hnsw_id, filepath) != NO_ERROR)
-	{
-	  _er_log_debug (ARG_FILE_LINE, "Failed to get HNSW Index file path for ID %d", hnsw_id);
-	  return ER_FAILED;
-	}
-
-      std::filesystem::remove (filepath);
-    }
-
-  return NO_ERROR;
-}
-
-BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
-			HFID *hfids, int dimension, int m, int ef_construction, int metric)
-{
-  HEAP_SCANCACHE scan_cache;
-  SCAN_CODE scan_result;
-  RECDES in_recdes;
-  DB_VALUE *key_dbvalue;
-  HEAP_CACHE_ATTRINFO attr_info;
-  OID cur_oid;
-  int cur_class = 0;
-  int attr_offset = 0;
-  OID_SET_NULL (&cur_oid);
-  const DB_VECTOR_FLOAT *vf = NULL;
-
-  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
-
-  while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
-    {
-      cur_class++;
-    }
-
-  if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &oid[cur_class], true, NULL) != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  attr_offset = cur_class * n_attrs;
-
-  if (heap_attrinfo_start (thread_p, &oid[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  do
-    {
-      scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
-			       &in_recdes, &scan_cache,
-			       scan_cache.cache_last_fix_page ? PEEK : COPY);
-
-      switch (scan_result)
-	{
-	case S_SUCCESS:
-	  heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &in_recdes, &attr_info);
-
-	  key_dbvalue = &attr_info.values[0].dbvalue;
-	  assert (db_value_type (key_dbvalue) == DB_TYPE_VECTOR);
-
-	  vf = db_get_vector_float (key_dbvalue);
-	  hnsw_add_element (new_btid, &cur_oid, vf->float_array, 1);
-	  continue;
-	case S_END:
-	  heap_attrinfo_end (thread_p, &attr_info);
-	  (void) heap_scancache_end (thread_p, &scan_cache);
-	  return new_btid;
-	  break;
-	default:
-	  assert (false);
-	  return NULL;
-	}
-    }
-  while (true);
-
-  return new_btid;
-}
-
-BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
-			      HFID *hfids, int dimension, int m, int ef_construction, int metric)
-{
-  HEAP_SCANCACHE scan_cache;
-  SCAN_CODE scan_result;
-  RECDES in_recdes;
-  DB_VALUE *key_dbvalue;
-  HEAP_CACHE_ATTRINFO attr_info;
-  OID cur_oid;
-  int cur_class = 0;
-  int attr_offset = 0;
-  OID_SET_NULL (&cur_oid);
-
-  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
-  if (new_btid == NULL)
-    {
-      return NULL;
-    }
-
-  while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
-    {
-      cur_class++;
-    }
-
-  if (heap_scancache_start (thread_p, &scan_cache, &hfids[cur_class], &oid[cur_class], true, NULL) != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  attr_offset = cur_class * n_attrs;
-
-  if (heap_attrinfo_start (thread_p, &oid[cur_class], n_attrs, &attr_ids[attr_offset], &attr_info) != NO_ERROR)
-    {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-      return NULL;
-    }
-
-  /* -------- Batch buffers --------
-     - oids:    growable array of OID (count elements)
-     - vectors: contiguous float buffer of size (capacity * dimension)
-  */
-  int capacity = 1024;
-  int count = 0;
-  OID *oids = (OID *) malloc ((size_t) capacity * sizeof (OID));
-  float *vectors = (float *) malloc ((size_t) capacity * (size_t) dimension * sizeof (float));
-  if (oids == NULL || vectors == NULL)
-    {
-      if (oids)
-	{
-	  free (oids);
-	}
-      if (vectors)
-	{
-	  free (vectors);
-	}
-      heap_attrinfo_end (thread_p, &attr_info);
-      (void) heap_scancache_end (thread_p, &scan_cache);
-      return NULL;
-    }
-
-  auto ensure_capacity = [&] (void) -> bool
-  {
-    if (count < capacity)
-      {
-	return true;
-      }
-    int new_cap = capacity * 2;
-    OID *new_oids = (OID *) realloc (oids, (size_t) new_cap * sizeof (OID));
-    float *new_vectors = (float *) realloc (vectors, (size_t) new_cap * (size_t) dimension * sizeof (float));
-    if (new_oids == NULL || new_vectors == NULL)
-      {
-	if (new_oids)
-	  {
-	    oids = new_oids;
-	  }
-	if (new_vectors)
-	  {
-	    vectors = new_vectors;
-	  }
-	return false;
-      }
-    oids = new_oids;
-    vectors = new_vectors;
-    capacity = new_cap;
-    return true;
-  };
-
-  do
-    {
-      scan_result = heap_next (thread_p, &hfids[cur_class], &oid[cur_class], &cur_oid,
-			       &in_recdes, &scan_cache,
-			       scan_cache.cache_last_fix_page ? PEEK : COPY);
-
-      switch (scan_result)
-	{
-	case S_SUCCESS:
-	  heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &in_recdes, &attr_info);
-
-	  key_dbvalue = &attr_info.values[0].dbvalue;
-	  assert (db_value_type (key_dbvalue) == DB_TYPE_VECTOR);
-
-	  {
-	    const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
-	    assert (vf != NULL && vf->dim == dimension);
-
-	    if (!ensure_capacity ())
-	      {
-		if (oids)
-		  {
-		    free (oids);
-		  }
-		if (vectors)
-		  {
-		    free (vectors);
-		  }
-		heap_attrinfo_end (thread_p, &attr_info);
-		(void) heap_scancache_end (thread_p, &scan_cache);
-		return NULL;
-	      }
-
-	    oids[count] = cur_oid;
-	    float *dst = vectors + ((size_t) count * (size_t) dimension);
-	    memcpy (dst, vf->float_array, (size_t) dimension * sizeof (float));
-
-	    count++;
-	  }
-	  continue;
-
-	case S_END:
-	{
-	  hnsw_add_element (new_btid, oids, vectors, count);
-
-	  if (oids)
-	    {
-	      free (oids);
-	    }
-	  if (vectors)
-	    {
-	      free (vectors);
-	    }
-
-	  heap_attrinfo_end (thread_p, &attr_info);
-	  (void) heap_scancache_end (thread_p, &scan_cache);
-
-	  return new_btid;
-	}
-
-	default:
-	  if (oids)
-	    {
-	      free (oids);
-	    }
-	  if (vectors)
-	    {
-	      free (vectors);
-	    }
-	  heap_attrinfo_end (thread_p, &attr_info);
-	  (void) heap_scancache_end (thread_p, &scan_cache);
-	  assert (false);
-	  return NULL;
-	}
-    }
-  while (true);
-
-  return new_btid;
-}
-
-int hnsw_print_index_info (BTID *btid)
-{
-  if (!btid)
-    {
-      return ER_FAILED;
-    }
-
-  int hnsw_id = btid->root_pageid;
-
-  if (hnsw_check_and_load_index (hnsw_id) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  auto it = hnsw_index_map.find (hnsw_id);
-  if (it == hnsw_index_map.end() || it->second == nullptr)
-    {
-      return ER_FAILED;
-    }
-
-  std::unique_ptr<usearch::index_dense_t> &index = it->second;
-
-  std::ostringstream oss;
-
-  oss << "HNSW Index Information for ID: " << hnsw_id << "\n";
-  oss << "  - Dimension: " << index->dimensions() << "\n";
-  oss << "  - Metric Type: " << metric_kind_name (index->metric_kind()) << "\n";
-  oss << "  - Total Elements: " << index->size() << "\n";
-  oss << "  - HNSW efConstruction: " << index->expansion_add() << "\n";
-  oss << "  - HNSW efSearch: " << index->expansion_search() << "\n";
-
-  er_log_debug (ARG_FILE_LINE, "%s", oss.str().c_str());
-
-  return NO_ERROR;
-}
-
-void dump_all_hnsw_indices_to_files ()
-{
-  if (!hnsw_index_directory_created)
-    {
-      if (create_hnsw_index_directory () != NO_ERROR)
-	{
-	  assert (false);
-	  _er_log_debug (ARG_FILE_LINE, "Failed to create HNSW Index directory");
-	  return;
-	}
-    }
-
-  for (const auto &pair : hnsw_index_map)
-    {
-      int hnsw_id = pair.first;
-      auto &index = pair.second;
-
-      if (dump_hnsw_index (hnsw_id, index) != NO_ERROR)
-	{
-	  assert (false);
-	  _er_log_debug (ARG_FILE_LINE, "Failed to dump HNSW Index with ID %d", hnsw_id);
-	}
+      return usearch::metric_kind_t::unknown_k;
     }
 }
 
-void init_hnsw_index_path ()
+bool
+hnsw_usearch_backend::is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const
 {
-  char db_path[PATH_MAX];
-  fileio_get_directory_path (db_path, boot_db_full_name());
-  int written = snprintf (hnsw_index_directory, PATH_MAX, "%s%cvindex", db_path, PATH_SEPARATOR);
-  if (written < 0 || written >= PATH_MAX)
+  switch (metric)
     {
-      assert (false);
-      _er_log_debug (ARG_FILE_LINE, "Failed to create path for HNSW Index directory since path is too long");
-      return;
-    }
-
-  if (std::filesystem::exists (hnsw_index_directory))
-    {
-      hnsw_index_directory_created = true;
-    }
-  else
-    {
-      hnsw_index_directory_created = false;
-    }
-}
-
-static int dump_hnsw_index (int hnsw_id, const std::unique_ptr<usearch::index_dense_t> &index)
-{
-  char filepath[PATH_MAX];
-
-  if (!index)
-    {
-      return ER_FAILED;
-    }
-
-  if (get_hnsw_index_file_path (hnsw_id, filepath) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  index->save (filepath);
-
-  return NO_ERROR;
-}
-
-static int get_hnsw_index_file_path (int hnsw_id, char *out_path)
-{
-  int written = snprintf (out_path, PATH_MAX, "%s%c%s_hnsw_%d.bin", hnsw_index_directory, PATH_SEPARATOR, boot_db_name(),
-			  hnsw_id);
-  if (written < 0 || written >= PATH_MAX)
-    {
-      er_log_debug (ARG_FILE_LINE, "Failed to create path for dumping HNSW Index %d since path is too long", hnsw_id);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-static int create_hnsw_index_directory ()
-{
-  char db_path[PATH_MAX];
-
-  if (hnsw_index_directory_created)
-    {
-      return NO_ERROR;
-    }
-  else
-    {
-      fileio_get_directory_path (db_path, boot_db_full_name());
-      int written = snprintf (hnsw_index_directory, PATH_MAX, "%s%cvindex", db_path, PATH_SEPARATOR);
-      if (written < 0 || written >= PATH_MAX)
-	{
-	  er_log_debug (ARG_FILE_LINE, "Failed to create path for HNSW Index directory since path is too long");
-	  return ER_FAILED;
-	}
-
-      if (std::filesystem::exists (hnsw_index_directory))
-	{
-	  hnsw_index_directory_created = true;
-	  return NO_ERROR;
-	}
-
-      if (std::filesystem::create_directory (hnsw_index_directory))
-	{
-	  hnsw_index_directory_created = true;
-	  return NO_ERROR;
-	}
-      else
-	{
-	  assert (false);
-	  _er_log_debug (ARG_FILE_LINE, "Failed to create HNSW Index directory");
-	  return ER_FAILED;
-	}
-    }
-}
-
-static bool is_hnsw_index_file_exists (int hnsw_id)
-{
-  char filepath[PATH_MAX];
-
-  if (get_hnsw_index_file_path (hnsw_id, filepath) != NO_ERROR)
-    {
+    case METRIC_COSINE:
+    case METRIC_DOT:
+    case METRIC_EUCLIDEAN:
+      return true;
+    case METRIC_UNKNOWN:
+    case METRIC_MANHATTAN:
+    default:
       return false;
     }
-
-  return std::filesystem::exists (filepath);
 }
 
-static int load_hnsw_index_from_file (int hnsw_id)
+int
+hnsw_usearch_backend::drop_index (THREAD_ENTRY *thread_p, const BTID *btid)
 {
-  char filepath[PATH_MAX];
+  // it is memory only index, so no need to drop
+  return NO_ERROR;
+}
 
-  if (!hnsw_index_directory_created)
-    {
-      if (create_hnsw_index_directory () != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
+// ====================
+// hnsw_index_usearch
+// ====================
 
-  if (get_hnsw_index_file_path (hnsw_id, filepath) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if (!std::filesystem::exists (filepath))
-    {
-      assert (false);
-      _er_log_debug (ARG_FILE_LINE, "HNSW Index file does not exist for ID %d in %s", hnsw_id, filepath);
-      return ER_FAILED;
-    }
-
-  try
-    {
-      auto index = std::make_unique<usearch::index_dense_t> ();
-      index->load (filepath);
-      // index->view (filepath);
-
-      hnsw_index_map[hnsw_id] = std::move (index);
-      er_log_debug (ARG_FILE_LINE, "HNSW Index loaded from file for ID %d in %s", hnsw_id, filepath);
-
-      return NO_ERROR;
-    }
-  catch (const std::runtime_error &e)
-    {
-      er_log_debug (ARG_FILE_LINE, "Failed to load/create HNSW Index %d: %s", hnsw_id, e.what());
-      return ER_FAILED;
-    }
-
+int
+hnsw_index_usearch::prepare_to_add (int n_vectors, const OID *oid, const float *vector)
+{
+  std::lock_guard<std::mutex> lock (m_index_mutex);
+  size_t need = m_index->size () + static_cast<size_t> (n_vectors);
+  m_index->reserve (need + 1024);
   return NO_ERROR;
 }
 
 int
-hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
+hnsw_index_usearch::add (int n_vectors, const OID *oid, const float *vector)
 {
-  int hnsw_id;
-  int64_t encoded_oid;
-
-  if (!btid)
-    {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  hnsw_id = btid->root_pageid;
-
-  if (hnsw_check_and_load_index (hnsw_id) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  auto it = hnsw_index_map.find (hnsw_id);
-  if (it == hnsw_index_map.end() || it->second == nullptr)
-    {
-      return ER_FAILED;
-    }
-
   try
     {
-      std::unique_ptr<usearch::index_dense_t> &index = it->second;
-
-      {
-	std::lock_guard<std::mutex> lock (hnsw_elem_mutex);
-	size_t need = index->size () + static_cast<size_t> (n_vectors);
-	index->reserve (need + 1024);
-      }
-
-      size_t dimension = index->dimensions ();
-
-#ifdef _OPENMP
-      # pragma omp parallel for schedule(static)
-#endif
+      int64_t encoded_oid;
+      int dimension = m_index->dimensions();
       for (int i = 0; i < n_vectors; ++i)
 	{
-	  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vector + i * dimension, dimension))
+	  if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
+	      && db_vector_is_all_zeros (vector + i * dimension, dimension))
 	    {
 	      er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	      continue;
 	    }
-	  encoded_oid = encode_oid (oid[i]);
-	  index->add (encoded_oid, vector + i * dimension);
+	  encoded_oid = default_oid_encoder.encode_oid (oid[i]);
+	  m_index->add (encoded_oid, vector + i * dimension);
 	  er_log_debug (ARG_FILE_LINE, "Added element with OID %lld to HNSW Index ID %d.",
-			static_cast<long long> (encoded_oid), hnsw_id);
+			static_cast<long long> (encoded_oid), m_btid->root_pageid);
 	}
     }
   catch (const std::runtime_error &e)
     {
-      er_log_debug (ARG_FILE_LINE, "USearch exception during add_with_ids: %s", e.what());
+      er_log_debug (ARG_FILE_LINE, "USearch exception during add: %s", e.what());
       return ER_FAILED;
     }
-
   return NO_ERROR;
 }
 
-static int hnsw_check_and_load_index (int hnsw_id)
+int
+hnsw_index_usearch::search (const float *query, const int k, const int ef_search, OID *rec_oids, float *distances)
 {
-  if (hnsw_index_map.find (hnsw_id) == hnsw_index_map.end())
-    {
-      assert (hnsw_index_directory_created);
-      if (load_hnsw_index_from_file (hnsw_id) != NO_ERROR)
-	{
-	  assert (false);
-	  _er_log_debug (ARG_FILE_LINE, "Failed to load HNSW Index with ID %d", hnsw_id);
-	  return ER_FAILED;
-	}
-    }
-
-  return NO_ERROR;
-}
-
-int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
-{
-  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
-
-  assert (hnsw_id >= 0);
-
-  if (hnsw_check_and_load_index (hnsw_id) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
-      assert (false);
-      return ER_FAILED;
-    }
-
-  auto it = hnsw_index_map.find (hnsw_id);
-  if (it == hnsw_index_map.end())
-    {
-      er_log_debug (ARG_FILE_LINE, "HNSW Index not found with ID %d", hnsw_id);
-      assert (false);
-      return ER_FAILED;
-    }
-
-  std::unique_ptr<usearch::index_dense_t> &index = it->second;
-
-  if (index->metric_kind() == usearch::metric_kind_t::cos_k && db_vector_is_all_zeros (vf->float_array, vf->dim))
+  if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
+      && db_vector_is_all_zeros (query, m_build_params.dimension))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;
     }
 
-  index->change_expansion_search (prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH));
-
-  auto results = index->search (vf->float_array, k);
+  m_index->change_expansion_search (ef_search);
+  auto results = m_index->search (query, k);
   for (std::size_t i = 0; i != results.size(); ++i)
     {
-      rec_oids[i] = decode_oid (results[i].member.key);
+      rec_oids[i] = default_oid_encoder.decode_oid (results[i].member.key);
       distances[i] = results[i].distance;
     }
+  return NO_ERROR;
+}
+
+int
+hnsw_index_usearch::remove (const OID *oid)
+{
+  assert (false);
+  return ER_FAILED;
+}
+
+int
+hnsw_index_usearch::update (const OID *oid, const float *vector)
+{
+  assert (false);
+  return ER_FAILED;
+}
+
+int
+hnsw_index_usearch::filtered_search (const float *query, const int k, const SCAN_PRED &filter, OID *rec_oids,
+				     float *distances)
+{
+  assert (false);
+  return ER_FAILED;
+}
+
+int
+hnsw_index_usearch::dump (FILE *fp)
+{
+  std::ostringstream oss;
+  oss << "HNSW Index Information for ID: " << m_btid->root_pageid << "\n";
+  oss << "  - Dimension: " << m_index->dimensions() << "\n";
+  oss << "  - Metric Type: " << metric_kind_name (m_index->metric_kind()) << "\n";
+  oss << "  - Total Elements: " << m_index->size() << "\n";
+  oss << "  - HNSW M: " << m_index->connectivity() << "\n";
+  oss << "  - HNSW efConstruction: " << m_index->expansion_add() << "\n";
+  oss << "  - HNSW efSearch: " << m_index->expansion_search() << "\n";
+
+  fprintf (fp, "%s", oss.str().c_str());
 
   return NO_ERROR;
 }
 
-static void get_new_hnsw_index_id ()
+int
+hnsw_index_usearch::save (const std::string &path)
 {
-  while (true)
-    {
-      if (is_hnsw_index_file_exists (hnsw_index_id))
-	{
-	  hnsw_index_id++;
-	  continue;
-	}
-      else
-	{
-	  if (hnsw_index_map.find (hnsw_index_id) == hnsw_index_map.end())
-	    {
-	      break;
-	    }
-	  else
-	    {
-	      hnsw_index_id++;
-	      continue;
-	    }
-	}
-    }
+  m_index->save (path.c_str());
+  return NO_ERROR;
 }
 
-static int64_t encode_oid (const OID &oid)
+int
+hnsw_index_usearch::load (const std::string &path)
 {
-  return (static_cast<int64_t> (oid.pageid) << 32) |
-	 (static_cast<uint32_t> (oid.slotid) << 16) |
-	 (static_cast<uint16_t> (oid.volid));
+  m_index->load (path.c_str());
+  return NO_ERROR;
 }
 
-static OID decode_oid (int64_t encoded_oid)
+HNSW_REGISTER_BACKEND ("usearch",
+		       [] (hnsw_index_manager &mgr) -> std::unique_ptr<hnsw_index_backend>
 {
-  OID oid;
-  oid.pageid = static_cast<int32_t> (encoded_oid >> 32);
-  oid.slotid = static_cast<int16_t> ((encoded_oid >> 16) & 0xFFFF);
-  oid.volid = static_cast<int16_t> (encoded_oid & 0xFFFF);
-
-  return oid;
-}
+  return std::make_unique<hnsw_usearch_backend> (mgr, std::string ("usearch"));
+});
