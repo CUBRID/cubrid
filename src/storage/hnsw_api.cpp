@@ -177,42 +177,50 @@ hnsw_index_manager::save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, c
     }
 
   // Write meta to file in text mode (with newline) and check for errors
-  std::ofstream meta_file (get_index_meta_file_path (meta.backend_id, btid), std::ios::out);
-  if (!meta_file.is_open())
+  const auto meta_path = get_index_meta_file_path (meta.backend_id, btid);
+  std::ofstream meta_file (meta_path, std::ios::out | std::ios::trunc);
+  if (!meta_file)
     {
       // Could not open file for writing
       return ER_FAILED;
     }
-  meta_file << meta;
+  meta_file << meta << std::endl;
   if (!meta_file)
     {
       // Write failed
-      meta_file.close();
       return ER_FAILED;
     }
-  meta_file.close();
   return NO_ERROR;
 }
 
 int
 hnsw_index_manager::load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta)
 {
-  // read meta from file
-  std::ifstream meta_file (get_index_meta_file_path (meta.backend_id, btid), std::ios::in);
-  if (!meta_file.is_open())
+  // The backend_id is not known before reading the file, so we must try all possible meta files.
+  // For now, try all registered backends.
+  for (const auto &pair : hnsw_backend_registry::factories())
     {
-      // Could not open file
-      return ER_FAILED;
-    }
-  meta_file >> meta;
-  if (!meta_file)
-    {
-      // Read failed
+      const std::string &backend_id = pair.first;
+      const auto meta_path = get_index_meta_file_path (backend_id, btid);
+      std::ifstream meta_file (meta_path, std::ios::in);
+      if (!meta_file.is_open())
+	{
+	  continue;
+	}
+      hnsw_index_meta temp_meta;
+      meta_file >> temp_meta;
+      if (!meta_file)
+	{
+	  meta_file.close();
+	  continue;
+	}
       meta_file.close();
-      return ER_FAILED;
+      // Found and successfully read meta
+      meta = temp_meta;
+      return NO_ERROR;
     }
-  meta_file.close();
-  return NO_ERROR;
+  // Could not find or read any meta file
+  return ER_FAILED;
 }
 
 int
@@ -235,8 +243,8 @@ hnsw_index_manager::save_all_indices (THREAD_ENTRY *thread_p)
 int hnsw_index_manager::save_index (THREAD_ENTRY *thread_p, hnsw_index *index)
 {
   std::string prefix = index->get_backend().get_id();
-  const BTID *btid = index->get_id();
-  index->save (get_index_file_path (prefix, btid).string());
+  const BTID &btid = index->get_id();
+  index->save (get_index_file_path (prefix, &btid).string());
   return NO_ERROR;
 }
 
@@ -332,13 +340,13 @@ hnsw_index_backend::get_id() const
 // hnsw_index
 // ====================
 
-hnsw_index::hnsw_index (hnsw_index_backend &backend, const BTID *btid, const std::string &name,
+hnsw_index::hnsw_index (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
 			const hnsw_build_params &build_params)
   : m_backend (backend), m_btid (btid), m_name (name), m_build_params (build_params)
 
 {}
 
-const BTID *
+const BTID &
 hnsw_index::get_id() const
 {
   return m_btid;

@@ -128,7 +128,7 @@ class hnsw_index
   public:
     virtual ~hnsw_index() = default;
 
-    virtual const BTID *get_id() const;
+    virtual const BTID &get_id() const;
     virtual const std::string get_name() const;
     virtual DB_VECTOR_DISTANCE_METRIC get_metric() const;
     virtual int get_dimension() const;
@@ -155,11 +155,11 @@ class hnsw_index
     virtual int load (const std::string &path)=0;
 
   protected:
-    hnsw_index (hnsw_index_backend &backend, const BTID *btid, const std::string &name,
+    hnsw_index (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
 		const hnsw_build_params &build_params);
 
     const hnsw_index_backend &m_backend;
-    const BTID *m_btid;
+    const BTID m_btid;
     const std::string m_name;
     const hnsw_build_params m_build_params;
 };

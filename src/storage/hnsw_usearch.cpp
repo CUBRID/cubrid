@@ -69,7 +69,7 @@ class hnsw_index_usearch final: public hnsw_index
 {
   public:
 
-    hnsw_index_usearch (hnsw_index_backend &backend, const BTID *btid, const std::string &name,
+    hnsw_index_usearch (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
 			const hnsw_build_params &build_params, std::unique_ptr<usearch::index_dense_t> index);
     ~hnsw_index_usearch() = default;
 
@@ -97,7 +97,7 @@ class hnsw_index_usearch final: public hnsw_index
 // hnsw_index_backend_usearch
 // ===========================
 
-hnsw_index_usearch::hnsw_index_usearch (hnsw_index_backend &backend, const BTID *btid, const std::string &name,
+hnsw_index_usearch::hnsw_index_usearch (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
 					const hnsw_build_params &build_params, std::unique_ptr<usearch::index_dense_t> index) : hnsw_index (backend, btid, name,
 					      build_params)
 {
@@ -133,7 +133,7 @@ hnsw_usearch_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid, co
 
   const int initial_size = 1024;
   usearch_index->reserve (initial_size);
-  hnsw_index *index = new hnsw_index_usearch (*this, btid, name, build_params, std::move (usearch_index));
+  hnsw_index *index = new hnsw_index_usearch (*this, *btid, name, build_params, std::move (usearch_index));
   return index;
 }
 
@@ -208,7 +208,7 @@ hnsw_index_usearch::add (int n_vectors, const OID *oid, const float *vector)
 	  encoded_oid = default_oid_encoder.encode_oid (oid[i]);
 	  m_index->add (encoded_oid, vector + i * dimension);
 	  er_log_debug (ARG_FILE_LINE, "Added element with OID %lld to HNSW Index ID %d.",
-			static_cast<long long> (encoded_oid), m_btid->root_pageid);
+			static_cast<long long> (encoded_oid), m_btid.root_pageid);
 	}
     }
   catch (const std::runtime_error &e)
@@ -265,7 +265,7 @@ int
 hnsw_index_usearch::dump (FILE *fp)
 {
   std::ostringstream oss;
-  oss << "HNSW Index Information for ID: " << m_btid->root_pageid << "\n";
+  oss << "HNSW Index Information for ID: " << m_btid.root_pageid << "\n";
   oss << "  - Dimension: " << m_index->dimensions() << "\n";
   oss << "  - Metric Type: " << metric_kind_name (m_index->metric_kind()) << "\n";
   oss << "  - Total Elements: " << m_index->size() << "\n";
