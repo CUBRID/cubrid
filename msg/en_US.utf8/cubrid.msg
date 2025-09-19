@@ -1461,7 +1461,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1367 DBLINK Transaction ABORTED: %1$s
 
-1368 Replication setting is not permitted for this table.
+1368 Changing the replication option of a class is not allowed in HA mode.
 
 1369 Last Error
 
