@@ -52,8 +52,8 @@ jobs:
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
                         
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
-            echo "sha value from tc repository.(only from develop branch)"
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git feature/system-catalog | cut -f1)
+            echo "sha value from tc repository.(only from feature/system-catalog branch)"
             echo "TC_SHA: $TC_SHA"
 
             # Generate dynamic configuration file (continue.yml)
