@@ -686,7 +686,6 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
-  DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
   char *uppercase_user = NULL;
   size_t uppercase_user_size = 0;
@@ -695,6 +694,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *serial_name = NULL;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  int save;
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -741,13 +741,13 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
+  AU_DISABLE (save);
+
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
     {
       goto err;
     }
-
-
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
@@ -879,6 +879,8 @@ err:
     {
       free_and_init (uppercase_user);
     }
+
+  AU_ENABLE (save);
   return error;
 }
 
@@ -1176,6 +1178,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
+  // TODO: it should be moved to before db_compile_and_execute_local(). It can be returned without AU_ENABLE().
   AU_DISABLE (save);
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
