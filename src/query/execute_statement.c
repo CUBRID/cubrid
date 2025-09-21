@@ -2954,7 +2954,7 @@ end:
       (void) serial_decache ((OID *) (&serial_obj_id));
     }
 
-   AU_ENABLE (save);
+  AU_ENABLE (save);
 
   if (obj_tmpl != NULL)
     {
