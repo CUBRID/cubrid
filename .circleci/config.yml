@@ -92,6 +92,8 @@ jobs:
                   - run:
                       name: Test
                       shell: /bin/bash
+                      environment:
+                        BRANCH_TESTCASES: feature/system-catalog
                       no_output_timeout: 45m
                       command: |
                         # Limit core files
