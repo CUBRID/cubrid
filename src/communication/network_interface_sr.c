@@ -11573,15 +11573,9 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0);
 }
 
- /* smanage_lob_dir - create or delete lob dir
- *
- * return:
- *
- *  rid(in):
- *  request(in):
- *  reqlen(in):
- */
-void
+ /* smanage_lob_dir - create or delete lob dir */
+
+ void
 smanage_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
