@@ -1051,8 +1051,8 @@ STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __a
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
 
 #if defined(SERVER_MODE)
-static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
-static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry);
+static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr);
+static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
@@ -6395,7 +6395,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
       PGBUF_BCB_UNLOCK (bufptr);
       if (rv == 0)
 	{
-	  rv = thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
+	  rv = thread_suspend_wakeup_and_unlock_entry (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
 	}
       else
 	{
@@ -6444,7 +6444,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
        * some time interval, the request will be waken up by timeout.
        * When the request is waken up, the request is treated as a victim.
        */
-      if (pgbuf_timed_sleep (thread_p, bufptr, cur_thrd_entry) != NO_ERROR)
+      if (pgbuf_timed_sleep (cur_thrd_entry, bufptr) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -6463,11 +6463,11 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 /*
  * pgbuf_timed_sleep_error_handling () -
  *   return:
- *   bufptr(in):
  *   thrd_entry(in):
+ *   bufptr(in):
  */
 static int
-pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry)
+pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 {
   THREAD_ENTRY *prev_thrd_entry;
   THREAD_ENTRY *curr_thrd_entry;
@@ -6539,11 +6539,11 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, T
 /*
  * pgbuf_timed_sleep () -
  *   return: NO_ERROR, or ER_code
+ *   thread_p(in):
  *   bufptr(in):
- *   thrd_entry(in):
  */
 static int
-pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * thrd_entry)
+pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   int r;
   struct timespec to;
@@ -6554,10 +6554,10 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, THREAD_ENTRY * t
   char *client_user_name;	/* Client user name for tran */
   char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
-  bool old_check_interrupt;
+  bool old_check_interrupt = false;
 
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
-  thread_lock_entry (thrd_entry);
+  thread_lock_entry (thread_p);
   PGBUF_BCB_UNLOCK (bufptr);
 
   old_wait_msecs = wait_secs = logtb_find_current_wait_msecs (thread_p);
@@ -6578,34 +6578,34 @@ try_again:
   to.tv_sec = (int) time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
-  if (!VACUUM_IS_THREAD_VACUUM (thread_p))
+  if (thread_p->type == TT_WORKER)
     {
       old_check_interrupt = thread_set_check_interrupt (thread_p, true);
     }
 
-  thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
+  thread_p->resume_status = THREAD_PGBUF_SUSPENDED;
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
-  if (!VACUUM_IS_THREAD_VACUUM (thread_p))
+  if (thread_p->type == TT_WORKER)
     {
       thread_set_check_interrupt (thread_p, old_check_interrupt);
     }
 
   if (r == NO_ERROR)
     {
-      thread_lock_entry (thrd_entry);
+      thread_lock_entry (thread_p);
       /* someone wakes up me */
-      if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
+      if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
-	  thread_unlock_entry (thrd_entry);
+	  thread_unlock_entry (thread_p);
 	  return NO_ERROR;
 	}
 
       /* interrupt operation */
-      thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
-      thread_unlock_entry (thrd_entry);
+      thread_p->request_latch_mode = PGBUF_NO_LATCH;
+      thread_unlock_entry (thread_p);
 
-      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr, thrd_entry) == NO_ERROR)
+      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr) == NO_ERROR)
 	{
 	  PGBUF_BCB_UNLOCK (bufptr);
 	}
@@ -6616,9 +6616,9 @@ try_again:
   else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
       /* rollback operation, postpone operation, etc. */
-      if (thrd_entry->resume_status == THREAD_PGBUF_RESUMED)
+      if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
-	  thread_unlock_entry (thrd_entry);
+	  thread_unlock_entry (thread_p);
 	  return NO_ERROR;
 	}
 
@@ -6631,11 +6631,11 @@ try_again:
       /* following order of execution is important. */
       /* request_latch_mode == PGBUF_NO_LATCH means that the thread has waken up by timeout. This value must be set
        * before release the mutex. */
-      save_request_latch_mode = thrd_entry->request_latch_mode;
-      thrd_entry->request_latch_mode = PGBUF_NO_LATCH;
-      thread_unlock_entry (thrd_entry);
+      save_request_latch_mode = thread_p->request_latch_mode;
+      thread_p->request_latch_mode = PGBUF_NO_LATCH;
+      thread_unlock_entry (thread_p);
 
-      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr, thrd_entry) == NO_ERROR)
+      if (pgbuf_timed_sleep_error_handling (thread_p, bufptr) == NO_ERROR)
 	{
 	  goto er_set_return;
 	}
@@ -6644,7 +6644,7 @@ try_again:
     }
   else
     {
-      thread_unlock_entry (thrd_entry);
+      thread_unlock_entry (thread_p);
       /* error setting */
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
       return ER_FAILED;
@@ -6692,10 +6692,10 @@ er_set_return:
 
       PGBUF_BCB_UNLOCK (bufptr);
 
-      (void) logtb_find_client_name_host_pid (thrd_entry->tran_index, &client_prog_name, &client_user_name,
+      (void) logtb_find_client_name_host_pid (thread_p->tran_index, &client_prog_name, &client_user_name,
 					      &client_host_name, &client_pid);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_PAGE_TIMEOUT, 8, thrd_entry->tran_index, client_user_name,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_PAGE_TIMEOUT, 8, thread_p->tran_index, client_user_name,
 	      client_host_name, client_pid, (save_request_latch_mode == PGBUF_LATCH_READ ? "READ" : "WRITE"),
 	      bufptr->vpid.volid, bufptr->vpid.pageid, NULL);
     }
