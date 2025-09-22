@@ -11849,6 +11849,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
+      pcontext->vd = &xasl_state->vd;
     }
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
