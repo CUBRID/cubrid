@@ -180,14 +180,14 @@ namespace parallel_query
     std::size_t current_head = m_head.load (std::memory_order_acquire);
     std::size_t new_head = (current_head + 1) % m_capacity;
 
+    value = m_data[current_head];
+
     if (!m_head.compare_exchange_weak (current_head, new_head,
 				       std::memory_order_acq_rel, std::memory_order_acquire))
       {
 	m_size.fetch_add (1, std::memory_order_acq_rel);
 	return false;
       }
-
-    value = m_data[current_head];
 
     m_not_full.notify_one();
 
@@ -217,14 +217,14 @@ namespace parallel_query
     std::size_t current_tail = m_tail.load (std::memory_order_acquire);
     std::size_t new_tail = (current_tail - 1 + m_capacity) % m_capacity;
 
+    value = m_data[new_tail];
+
     if (!m_tail.compare_exchange_weak (current_tail, new_tail,
 				       std::memory_order_acq_rel, std::memory_order_acquire))
       {
 	m_size.fetch_add (1, std::memory_order_acq_rel);
 	return false;
       }
-
-    value = m_data[new_tail];
 
     m_not_full.notify_one();
 
