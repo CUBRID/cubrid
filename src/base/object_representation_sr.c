@@ -779,16 +779,16 @@ or_class_flags (RECDES * record, int *flags)
 }
 
 bool
-or_class_is_replicable (RECDES * record)
+or_class_is_replication_on(RECDES * record)
 {
   int flags = 0;
-  int no_replication_flag = 32;	/* SM_CLASSFLAG_NO_REPLICATION = 32 */
+  int replication_off_flag = 32;	/* SM_CLASSFLAG_NO_REPLICATION = 32 */
 
   /* TODO:
    * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation. */
   or_class_flags (record, &flags);
 
-  return !(flags & no_replication_flag);
+  return !(flags & replication_off_flag);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)

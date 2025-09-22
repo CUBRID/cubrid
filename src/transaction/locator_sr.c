@@ -6849,7 +6849,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 
   if (LC_IS_FLUSH_INSERT (obj->operation) == false)
     {
-      error_code = btree_get_pkey_btid (thread_p, &obj->class_oid, &btid);
+      error_code = btree_get_rkey_btid (thread_p, &obj->class_oid, &btid);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -7785,7 +7785,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
   MVCCID mvccid;
   MVCC_REC_HEADER *p_mvcc_rec_header = NULL;
   bool classname_was_alloced = false;
-  bool replication = false;
+  bool replicated = false;
 
 /* temporary disable standalone optimization (non-mvcc insert/delete style).
  * Must be activated when dynamic heap is introduced */
@@ -8040,7 +8040,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        * Generates the replication log info. for data insert/delete
        * for the update cases, refer to locator_update_force()
        */
-      if (need_replication && heap_is_replicable_class (thread_p, class_oid) && !replication
+      if (need_replication && heap_is_replication_class (thread_p, class_oid) && !replicated
 	  && (index->type == BTREE_PRIMARY_KEY || index->type == BTREE_UNIQUE) && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
@@ -8048,7 +8048,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
 			     REPL_INFO_TYPE_RBR_NORMAL);
-	  replication = true;
+          replicated = true;
 	}
       if (error_code != NO_ERROR)
 	{

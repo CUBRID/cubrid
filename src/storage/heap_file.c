@@ -11078,7 +11078,7 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
 }
 
 bool
-heap_is_replicable_class (THREAD_ENTRY * thread_p, const OID * class_oid)
+heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
@@ -11107,7 +11107,7 @@ heap_is_replicable_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 
   heap_scancache_end (thread_p, &scan_cache);
 
-  return or_class_is_replicable (&recdes);
+  return or_class_is_replication_on (&recdes);
 }
 
 /*
