@@ -575,28 +575,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
             vclass = dbt_finish_class (ctemplate);
 
-            new_attr_count = class_->att_count;
-            lob_attrid_arr = (int*) malloc (sizeof (int) * (new_attr_count - old_attr_count));
-
-            for (int i = old_attr_count; i < new_attr_count; i++)
-              {
-                attr = &class_->attributes[i];
-                type_id = attr->type->id;
-
-                if (type_id == DB_TYPE_CLOB || type_id == DB_TYPE_BLOB)
-                  {
-                    lob_attrid_arr[arr_length++] = attr->id;
-                  }
-              }
-
-            if (arr_length)
-              {
-                HFID lob_hfid = class_->header.ch_heap;
-                manage_lob_dir (&lob_hfid, lob_attrid_arr, arr_length, LOB_COLUMN_ADD);
-              }
-
-            free (lob_attrid_arr);
-
             if (vclass == NULL)
               {
                 assert (er_errid () != NO_ERROR);
@@ -654,7 +632,29 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
               }
 
             assert (alter->info.alter.create_index == NULL);
+
+            new_attr_count = class_->att_count;
+            lob_attrid_arr = (int*) malloc (sizeof (int) * (new_attr_count - old_attr_count));
+
+            for (int i = old_attr_count; i < new_attr_count; i++)
+              {
+                attr = &class_->attributes[i];
+                type_id = attr->type->id;
+
+                if (type_id == DB_TYPE_CLOB || type_id == DB_TYPE_BLOB)
+                  {
+                    lob_attrid_arr[arr_length++] = attr->id;
+                  }
+              }
+
+            if (arr_length)
+              {
+                HFID lob_hfid = class_->header.ch_heap;
+                manage_lob_dir (&lob_hfid, lob_attrid_arr, arr_length, LOB_COLUMN_ADD);
+              }
+            free (lob_attrid_arr);
           }
+
         break;
       }
 
@@ -719,88 +719,90 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       break;
 
     case PT_DROP_ATTR_MTHD:
-      p = alter->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
-      for (; p && p->node_type == PT_NAME; p = p->next)
-	{
-	  attr_mthd_name = p->info.name.original;
-	  if (p->info.name.meta_class == PT_META_ATTR)
-	    {
-	      found_attr = db_get_class_attribute (vclass, attr_mthd_name);
-	      if (found_attr)
-		{
-		  error = dbt_drop_class_attribute (ctemplate, attr_mthd_name);
-		}
-	      else
-		{
-		  found_mthd = db_get_class_method (vclass, attr_mthd_name);
-		  if (found_mthd)
-		    {
-		      error = dbt_drop_class_method (ctemplate, attr_mthd_name);
-		    }
-		}
-	    }
-	  else
-	    {
-	      found_attr = db_get_attribute (vclass, attr_mthd_name);
-	      if (found_attr)
-		{
-		  error = dbt_drop_attribute (ctemplate, attr_mthd_name);
+      {
+        p = alter->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
+        for (; p && p->node_type == PT_NAME; p = p->next)
+          {
+            attr_mthd_name = p->info.name.original;
+            if (p->info.name.meta_class == PT_META_ATTR)
+              {
+                found_attr = db_get_class_attribute (vclass, attr_mthd_name);
+                if (found_attr)
+                  {
+                    error = dbt_drop_class_attribute (ctemplate, attr_mthd_name);
+                  }
+                else
+                  {
+                    found_mthd = db_get_class_method (vclass, attr_mthd_name);
+                    if (found_mthd)
+                      {
+                        error = dbt_drop_class_method (ctemplate, attr_mthd_name);
+                      }
+                  }
+              }
+            else
+              {
+                found_attr = db_get_attribute (vclass, attr_mthd_name);
+                if (found_attr)
+                  {
+                    error = dbt_drop_attribute (ctemplate, attr_mthd_name);
+                  }
+                else
+                  {
+                    found_mthd = db_get_method (vclass, attr_mthd_name);
+                    if (found_mthd)
+                      {
+                        error = dbt_drop_method (ctemplate, attr_mthd_name);
+                      }
+                  }
+              }
 
-                  SM_CLASS *class_ = ctemplate->current;
-                  int *lob_attrid_arr;
+            if (error != NO_ERROR)
+              {
+                dbt_abort_class (ctemplate);
+                return error;
+              }
+          }
 
-                  for (int i = 0; i < class_->att_count; i++)
-                    {
-                      SM_ATTRIBUTE attr = class_->attributes[i];
+        p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
+        for (;
+            p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
+            && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
+                || path->type_enum == PT_TYPE_VARNCHAR); p = p->next)
+          {
+            mthd_file = (char *) path->info.value.data_value.str->bytes;
+            error = dbt_drop_method_file (ctemplate, mthd_file);
+            if (error != NO_ERROR)
+              {
+                dbt_abort_class (ctemplate);
+                return error;
+              }
+          }
 
-                      if (strcmp(attr.header.name, attr_mthd_name) == 0)
-                        {
-                          if (attr.type->id == DB_TYPE_CLOB || attr.type->id == DB_TYPE_BLOB)
-                            {
-                              HFID lob_hfid = class_->header.ch_heap;
-                              lob_attrid_arr = (int*) malloc (sizeof(int));
+        SM_CLASS *class_ = ctemplate->current;
+        int *lob_attrid_arr;
 
-                              lob_attrid_arr[0] = attr.id;
+        for (int i = 0; i < class_->att_count; i++)
+          {
+            SM_ATTRIBUTE attr = class_->attributes[i];
 
-                              manage_lob_dir (&lob_hfid, lob_attrid_arr, 1, LOB_COLUMN_DROP);
-                            }
-                        }
-                    }
-                  free (lob_attrid_arr);
-		}
-	      else
-		{
-		  found_mthd = db_get_method (vclass, attr_mthd_name);
-		  if (found_mthd)
-		    {
-		      error = dbt_drop_method (ctemplate, attr_mthd_name);
-		    }
-		}
-	    }
+            if (strcmp(attr.header.name, attr_mthd_name) == 0)
+              {
+                if (attr.type->id == DB_TYPE_CLOB || attr.type->id == DB_TYPE_BLOB)
+                  {
+                    HFID lob_hfid = class_->header.ch_heap;
+                    lob_attrid_arr = (int*) malloc (sizeof(int));
 
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      return error;
-	    }
-	}
+                    lob_attrid_arr[0] = attr.id;
 
-      p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
-      for (;
-	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
-	       || path->type_enum == PT_TYPE_VARNCHAR); p = p->next)
-	{
-	  mthd_file = (char *) path->info.value.data_value.str->bytes;
-	  error = dbt_drop_method_file (ctemplate, mthd_file);
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      return error;
-	    }
-	}
+                    manage_lob_dir (&lob_hfid, lob_attrid_arr, 1, LOB_COLUMN_DROP);
+                    free (lob_attrid_arr);
+                  }
+              }
+          }
 
-      break;
+        break;
+      }
 
     case PT_MODIFY_ATTR_MTHD:
       p = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
