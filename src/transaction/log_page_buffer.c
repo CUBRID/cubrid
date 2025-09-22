@@ -74,7 +74,7 @@
 #endif
 #include "critical_section.h"
 #include "page_buffer.h"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "file_io.h"
 #include "disk_manager.h"
 #include "error_manager.h"

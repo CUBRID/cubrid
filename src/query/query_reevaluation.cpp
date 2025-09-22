@@ -53,21 +53,72 @@ namespace cubquery
 	// no range & key
 	range_filter = filter_info ();
 	key_filter = filter_info ();
-	scan_init_filter_info (&data_filter, &sid.s.hsid.scan_pred, &sid.s.hsid.pred_attrs, sid.val_list, sid.vd,
-			       &sid.s.hsid.cls_oid, 0, NULL, NULL, NULL);
+	data_filter =
+	{
+	  &sid.s.hsid.scan_pred,
+	  &sid.s.hsid.pred_attrs,
+	  NULL,
+	  NULL,
+	  sid.val_list,
+	  sid.vd,
+	  &sid.s.hsid.cls_oid,
+	  NULL,
+	  NULL,
+	  NULL,
+	  0,
+	  -1,
+	};
 	rest_attrs = &sid.s.hsid.rest_attrs;
 	rest_regu_list = sid.s.hsid.rest_regu_list;
 	qualification = sid.qualification;
 	break;
 
       case S_INDX_SCAN:
-	scan_init_filter_info (&range_filter, &sid.s.isid.range_pred, &sid.s.isid.range_attrs, sid.val_list,
-			       sid.vd, &sid.s.isid.cls_oid, 0, NULL, &sid.s.isid.num_vstr, sid.s.isid.vstr_ids);
-	scan_init_filter_info (&key_filter, &sid.s.isid.key_pred, &sid.s.isid.key_attrs, sid.val_list, sid.vd,
-			       &sid.s.isid.cls_oid, sid.s.isid.bt_num_attrs, sid.s.isid.bt_attr_ids,
-			       &sid.s.isid.num_vstr, sid.s.isid.vstr_ids);
-	scan_init_filter_info (&data_filter, &sid.s.isid.scan_pred, &sid.s.isid.pred_attrs, sid.val_list, sid.vd,
-			       &sid.s.isid.cls_oid, 0, NULL, NULL, NULL);
+	range_filter =
+	{
+	  &sid.s.isid.range_pred,
+	  &sid.s.isid.range_attrs,
+	  NULL,
+	  NULL,
+	  sid.val_list,
+	  sid.vd,
+	  &sid.s.isid.cls_oid,
+	  NULL,
+	  &sid.s.isid.num_vstr,
+	  sid.s.isid.vstr_ids,
+	  0,
+	  -1,
+	};
+	key_filter =
+	{
+	  &sid.s.isid.key_pred,
+	  &sid.s.isid.key_attrs,
+	  NULL,
+	  NULL,
+	  sid.val_list,
+	  sid.vd,
+	  &sid.s.isid.cls_oid,
+	  sid.s.isid.bt_attr_ids,
+	  &sid.s.isid.num_vstr,
+	  sid.s.isid.vstr_ids,
+	  sid.s.isid.bt_num_attrs,
+	  -1,
+	};
+	data_filter =
+	{
+	  &sid.s.isid.scan_pred,
+	  &sid.s.isid.pred_attrs,
+	  NULL,
+	  NULL,
+	  sid.val_list,
+	  sid.vd,
+	  &sid.s.isid.cls_oid,
+	  NULL,
+	  NULL,
+	  NULL,
+	  0,
+	  -1
+	};
 	rest_attrs = &sid.s.isid.rest_attrs;
 	rest_regu_list = sid.s.isid.rest_regu_list;
 	qualification = sid.qualification;
