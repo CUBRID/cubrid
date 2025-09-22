@@ -1934,11 +1934,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		  p->s_id.s.phsid.manager->close ();
 		  p->s_id.s.phsid.manager = nullptr;
 		}
-	      if (p->s_id.s.phsid.trace_storage)
-		{
-		  db_private_free (thread_p, p->s_id.s.phsid.trace_storage);
-		  p->s_id.s.phsid.trace_storage = nullptr;
-		}
 	    }
 #endif
 	  break;
@@ -8415,12 +8410,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
 	      spec->s_id.scan_stats.num_ioreads +=
 		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-
-	      prev_partition_spec->scan_stats.num_fetches +=
-		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-	      prev_partition_spec->scan_stats.num_ioreads +=
-		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
 	    }
+	  spec->s_id.s.phsid.trace_storage->set_last_partition_stats (&prev_partition_spec->scan_stats);
 	}
     }
 #endif

@@ -95,7 +95,7 @@ namespace parallel_heap_scan
       thread_local static QFILE_TUPLE_RECORD *m_tl_tpl_buf;
 
       /* for both */
-      int m_parallelism;
+      std::atomic_int m_parallelism;
       std::mutex m_result_list_ids_mutex;
       std::condition_variable m_result_list_ids_condition_variable;
       int m_result_list_ids_count;

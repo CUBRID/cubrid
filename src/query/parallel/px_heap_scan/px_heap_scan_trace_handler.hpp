@@ -51,6 +51,7 @@ namespace parallel_heap_scan
 		      struct timeval elapsed_time);
       void merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats);
       std::vector<child_stats> m_stats;
+      std::mutex m_stats_mutex;
   };
 
   class accumulative_trace_storage
@@ -65,8 +66,10 @@ namespace parallel_heap_scan
       void add_stats (trace_handler &trace_handler);
       void dump_stats_text (FILE *fp, int indent, char *class_name);
       void dump_stats_json (json_t *scan, char *class_name);
+      void set_last_partition_stats (SCAN_STATS *partition_stats);
     private:
       std::vector<child_stats> m_stats;
+      child_stats m_stats_last;
       bool m_is_list_merge;
       bool m_is_initialized;
   };

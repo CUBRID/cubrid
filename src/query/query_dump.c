@@ -3074,7 +3074,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		{
 		  spec->s_id.s.phsid.trace_storage->dump_stats_json (scan, class_name);
 		}
-	      delete spec->s_id.s.phsid.trace_storage;
+	      spec->s_id.s.phsid.trace_storage->~accumulative_trace_storage ();
+	      free (spec->s_id.s.phsid.trace_storage);
 	      spec->s_id.s.phsid.trace_storage = NULL;
 	    }
 	}
@@ -3457,6 +3458,9 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		    {
 		      spec->s_id.s.phsid.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
 		    }
+		  spec->s_id.s.phsid.trace_storage->~accumulative_trace_storage ();
+		  free (spec->s_id.s.phsid.trace_storage);
+		  spec->s_id.s.phsid.trace_storage = NULL;
 		}
 	    }
 #endif

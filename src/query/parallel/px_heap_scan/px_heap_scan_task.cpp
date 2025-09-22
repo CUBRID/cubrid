@@ -27,6 +27,8 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "query_executor.h"
+#include "stream_to_xasl.h"
+#include "xasl_unpack_info.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -94,7 +96,7 @@ namespace parallel_heap_scan
 
     scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
 			 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
-			 m_xasl->val_list, m_vd, &ACCESS_SPEC_CLS_OID (spec), &ACCESS_SPEC_HFID (spec),
+			 m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
 			 cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
 			 cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
 			 cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
@@ -138,7 +140,22 @@ namespace parallel_heap_scan
   int task::finalize (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = m_parent_thread_p;
-
+    if (thread_ref.on_trace)
+      {
+	TSC_TICKS end_tick;
+	TSCTIMEVAL tv_diff;
+	struct timeval elapsed_time = {0, 0};
+	tsc_getticks (&end_tick);
+	tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
+	TSC_ADD_TIMEVAL (elapsed_time, tv_diff);
+	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
+				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
+				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
+				    m_scan_id->scan_stats.read_rows,
+				    m_scan_id->scan_stats.qualified_rows,
+				    elapsed_time);
+	perfmon_destroy_parallel_stats (&thread_ref);
+      }
     switch (m_result_type)
       {
       case RESULT_TYPE::BATCH:
@@ -168,22 +185,7 @@ namespace parallel_heap_scan
     m_slot_iterator.finalize (&thread_ref);
     scan_end_scan (&thread_ref, m_scan_id);
     scan_close_scan (&thread_ref, m_scan_id);
-    if (thread_ref.on_trace)
-      {
-	TSC_TICKS end_tick;
-	TSCTIMEVAL tv_diff;
-	struct timeval elapsed_time = {0, 0};
-	tsc_getticks (&end_tick);
-	tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
-	TSC_ADD_TIMEVAL (elapsed_time, tv_diff);
-	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
-				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
-				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
-				    m_scan_id->scan_stats.read_rows,
-				    m_scan_id->scan_stats.qualified_rows,
-				    elapsed_time);
-	perfmon_destroy_parallel_stats (&thread_ref);
-      }
+
     db_private_free (&thread_ref, m_vd->dbval_ptr);
     db_private_free (&thread_ref, m_vd);
     qexec_clear_xasl (&thread_ref, m_xasl, true);
@@ -194,8 +196,19 @@ namespace parallel_heap_scan
       }
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
-    xcache_retire_clone (&thread_ref, m_xasl_cache_entry, &m_xasl_clone);
-    xcache_unfix (&thread_ref, m_xasl_cache_entry);
+    if (m_uses_xasl_clone)
+      {
+	xcache_retire_clone (&thread_ref, m_xasl_cache_entry, &m_xasl_clone);
+	xcache_unfix (&thread_ref, m_xasl_cache_entry);
+      }
+    else
+      {
+	if (m_xasl_unpack_info)
+	  {
+	    /* free the XASL tree */
+	    free_xasl_unpack_info (&thread_ref, m_xasl_unpack_info);
+	  }
+      }
     pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 
 
@@ -211,20 +224,45 @@ namespace parallel_heap_scan
       {
 	main_thread_p = main_thread_p->m_px_orig_thread_entry;
       }
-    pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
-    err_code = xcache_find_xasl_id_for_execute (&thread_ref, &m_query_entry->xasl_id, &m_xasl_cache_entry, &m_xasl_clone);
-    if (err_code != NO_ERROR)
+
+    if (m_uses_xasl_clone)
       {
+	pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	err_code = xcache_find_xasl_id_for_execute (&thread_ref, &m_query_entry->xasl_id, &m_xasl_cache_entry, &m_xasl_clone);
+	if (err_code != NO_ERROR)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    return err_code;
+	  }
+	m_xasl = xasl_find_by_id (m_xasl_clone.xasl, m_xasl_id);
+	if (m_xasl == nullptr)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return ER_FAILED;
+	  }
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
-	return err_code;
       }
-    m_xasl = xasl_find_by_id (m_xasl_clone.xasl, m_xasl_id);
-    if (m_xasl == nullptr)
+    else
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-	return ER_FAILED;
+	pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	err_code = stx_map_stream_to_xasl (&thread_ref, &m_xasl_tree, false, main_thread_p->xasl_unpack_info_ptr->packed_xasl,
+					   main_thread_p->xasl_unpack_info_ptr->packed_size, &m_xasl_unpack_info);
+	if (err_code != NO_ERROR)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    return err_code;
+	  }
+	m_xasl = xasl_find_by_id (m_xasl_tree, m_xasl_id);
+	if (m_xasl == nullptr)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return ER_FAILED;
+	  }
+	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
-    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+
     m_scan_id = &m_xasl->spec_list->s_id;
     m_vd = (val_descr *) db_private_alloc (&thread_ref, sizeof (val_descr));
     memcpy (m_vd, m_orig_vd, sizeof (val_descr));

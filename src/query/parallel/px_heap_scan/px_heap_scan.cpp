@@ -66,8 +66,8 @@ extern "C"
       {
 	if (scan_id->s.phsid.trace_storage == nullptr)
 	  {
-	    scan_id->s.phsid.trace_storage = (parallel_heap_scan::accumulative_trace_storage *) db_private_alloc (thread_p,
-					     sizeof (parallel_heap_scan::accumulative_trace_storage));
+	    scan_id->s.phsid.trace_storage = (parallel_heap_scan::accumulative_trace_storage *) malloc (sizeof (
+		parallel_heap_scan::accumulative_trace_storage));
 	    scan_id->s.phsid.trace_storage = placement_new ((parallel_heap_scan::accumulative_trace_storage *)
 					     scan_id->s.phsid.trace_storage, scan_id->s.phsid.manager->get_result_type() == parallel_heap_scan::RESULT_TYPE::BATCH);
 	  }
@@ -121,7 +121,7 @@ extern "C"
 	    return ER_FAILED;
 	  }
 	scan_id->s.phsid.manager = placement_new ((parallel_heap_scan::manager *) scan_id->s.phsid.manager, thread_p, query_id,
-				   scan_id, xasl, parallelism, vd, result_type, (bool)fixed, (bool)grouped, manager);
+				   scan_id, xasl, parallelism, *hfid, *cls_oid, vd, result_type, (bool)fixed, (bool)grouped, manager);
 	scan_id->s.phsid.manager->open();
       }
     else
@@ -220,8 +220,11 @@ namespace parallel_heap_scan
     h = m_query_entry->xasl_id.sha1.h[0]|m_query_entry->xasl_id.sha1.h[1]|m_query_entry->xasl_id.sha1.h[2]|m_query_entry->xasl_id.sha1.h[3]|m_query_entry->xasl_id.sha1.h[4];
     if (h == 0)
       {
-	assert (false);
-	return ER_FAILED;
+	m_uses_xasl_clone = false;
+      }
+    else
+      {
+	m_uses_xasl_clone = true;
       }
     m_input_handler = (input_handler_single_table *) db_private_alloc (m_thread_p, sizeof (input_handler_single_table));
     m_input_handler = placement_new ((input_handler_single_table *) m_input_handler, &m_interrupt, &m_err_messages);
@@ -305,6 +308,7 @@ namespace parallel_heap_scan
 	      {
 		/* not initialized */
 		perfmon_initialize_parallel_stats (m_thread_p);
+		m_thread_p->m_uses_px_stats = false;
 		m_px_stats_initialized_by_me = true;
 	      }
 	  }
@@ -326,8 +330,9 @@ namespace parallel_heap_scan
 	  }
 	trace_handler *trace_handler_p = m_on_trace ? &m_trace_handler : nullptr;
 	task_p = placement_new ((task *) task_p, m_thread_p, m_query_entry, m_result_handler, m_result_type,
-				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_is_fixed,
-				m_is_grouped);
+				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_hfid,
+				m_cls_oid, m_is_fixed,
+				m_is_grouped, m_uses_xasl_clone);
 	m_worker_manager->push_task (task_p);
       }
     m_task_started = true;

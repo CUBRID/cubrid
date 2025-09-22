@@ -58,13 +58,6 @@ namespace parallel_heap_scan
       {
 	list_scan_id.curr_pgptr = nullptr;
       }
-    {
-      std::unique_lock<std::mutex> lock (m_result_list_ids_mutex);
-      m_result_list_ids_condition_variable.wait (lock, [this]()
-      {
-	return m_result_list_ids_count > 0;
-      });
-    }
     m_reader_tpl_buf.size = 0;
     m_reader_tpl_buf.tpl = nullptr;
   }
@@ -87,7 +80,7 @@ namespace parallel_heap_scan
 	  {
 	    while (!found)
 	      {
-		if (ended_cnt >= m_parallelism)
+		if (ended_cnt >= m_parallelism.load (std::memory_order_acquire))
 		  {
 		    return S_END;
 		  }
@@ -123,7 +116,7 @@ namespace parallel_heap_scan
 		}
 		if (!found)
 		  {
-		    if (ended_cnt >= m_parallelism)
+		    if (ended_cnt >= m_parallelism.load (std::memory_order_acquire))
 		      {
 			return S_END;
 		      }
@@ -276,7 +269,6 @@ namespace parallel_heap_scan
 	  m_result_list_ids_atomic_vpid.push_back (list_id_atomic_vpid());
 	  tl_list_id_index = m_result_list_ids_count;
 	  m_result_list_ids_count++;
-	  m_result_list_ids_condition_variable.notify_all();
 	}
       }
 
@@ -334,21 +326,36 @@ namespace parallel_heap_scan
 
   void result_handler_xasl_snapshot::write_finalize (THREAD_ENTRY *thread_p)
   {
+    if (m_tl_writer_result_list_id)
+      {
 #if !defined (NDEBUG)
-    er_log_debug (ARG_FILE_LINE, "writer: %ld, index: %d, vpid: %d, %d ended", syscall (SYS_gettid), tl_list_id_index,
-		  m_tl_writer_result_list_id->last_vpid.pageid, m_tl_writer_result_list_id->last_vpid.volid);
+	er_log_debug (ARG_FILE_LINE, "writer: %ld, index: %d, vpid: %d, %d ended", syscall (SYS_gettid), tl_list_id_index,
+		      m_tl_writer_result_list_id->last_vpid.pageid, m_tl_writer_result_list_id->last_vpid.volid);
 #endif
-    qfile_close_list (thread_p, m_tl_writer_result_list_id);
-    m_result_list_ids_atomic_vpid[tl_list_id_index].last_vpid.store (m_tl_writer_result_list_id->last_vpid,
-	std::memory_order_release);
-    m_result_list_ids_atomic_vpid[tl_list_id_index].last_pgptr_released.store (true, std::memory_order_release);
-    {
-      std::lock_guard<std::mutex> lock (m_result_list_ids_atomic_vpid_mutex);
-      if (m_is_waiting_atomic_vpid)
+	qfile_close_list (thread_p, m_tl_writer_result_list_id);
+	m_result_list_ids_atomic_vpid[tl_list_id_index].last_vpid.store (m_tl_writer_result_list_id->last_vpid,
+	    std::memory_order_release);
+	m_result_list_ids_atomic_vpid[tl_list_id_index].last_pgptr_released.store (true, std::memory_order_release);
 	{
-	  m_result_list_ids_atomic_vpid_condition_variable.notify_all();
+	  std::lock_guard<std::mutex> lock (m_result_list_ids_atomic_vpid_mutex);
+	  if (m_is_waiting_atomic_vpid)
+	    {
+	      m_result_list_ids_atomic_vpid_condition_variable.notify_all();
+	    }
 	}
-    }
+      }
+    else
+      {
+	m_parallelism.fetch_sub (1, std::memory_order_release);
+	{
+	  std::lock_guard<std::mutex> lock (m_result_list_ids_atomic_vpid_mutex);
+	  if (m_is_waiting_atomic_vpid)
+	    {
+	      m_result_list_ids_atomic_vpid_condition_variable.notify_all();
+	    }
+	}
+      }
+
     m_writer_thread_p = nullptr;
     m_tl_writer_result_list_id = nullptr;
     db_private_free (thread_p, m_tl_tpl_buf->tpl);

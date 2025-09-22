@@ -50,10 +50,13 @@ namespace parallel_heap_scan
 	    RESULT_TYPE result_type,
 	    input_handler *input_handler,
 	    interrupt *interrupt, err_messages_with_lock *err_messages, val_descr *vd, trace_handler *trace_handler,
-	    worker_manager *worker_manager, int xasl_id, bool is_fixed, bool is_grouped)
+	    worker_manager *worker_manager, int xasl_id, HFID hfid, OID cls_oid, bool is_fixed, bool is_grouped,
+	    bool uses_xasl_clone)
 	: m_parent_thread_p (parent_thread_p),
 	  m_query_entry (query_entry),
 	  m_xasl_id (xasl_id),
+	  m_hfid (hfid),
+	  m_cls_oid (cls_oid),
 	  m_slot_iterator (),
 	  m_result_handler (result_handler),
 	  m_result_type (result_type),
@@ -64,6 +67,7 @@ namespace parallel_heap_scan
 	  m_orig_vd (vd),
 	  m_is_fixed (is_fixed),
 	  m_is_grouped (is_grouped),
+	  m_uses_xasl_clone (uses_xasl_clone),
 	  m_worker_manager (worker_manager)
       {
 	m_xasl_cache_entry = nullptr;
@@ -82,7 +86,11 @@ namespace parallel_heap_scan
       QMGR_QUERY_ENTRY *m_query_entry;
       XASL_CACHE_ENTRY *m_xasl_cache_entry;
       XASL_CLONE m_xasl_clone;
+      XASL_NODE *m_xasl_tree;
+      XASL_UNPACK_INFO *m_xasl_unpack_info;
       int m_xasl_id;
+      HFID m_hfid;
+      OID m_cls_oid;
       XASL_NODE *m_xasl;
       SCAN_ID *m_scan_id;
       /* execution info */
@@ -97,6 +105,7 @@ namespace parallel_heap_scan
       val_descr *m_vd;
       bool m_is_fixed;
       bool m_is_grouped;
+      bool m_uses_xasl_clone;
       /* for trace */
       TSC_TICKS m_start_tick;
 

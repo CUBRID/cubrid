@@ -34,6 +34,7 @@ namespace parallel_heap_scan
 				 UINT64 qualified_rows,
 				 struct timeval elapsed_time)
   {
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.push_back ({fetches, ioreads, fetch_time, read_rows, qualified_rows, elapsed_time});
   }
 
@@ -58,14 +59,18 @@ namespace parallel_heap_scan
     if (!m_is_initialized)
       {
 	m_stats.resize (trace_handler.m_stats.size());
+	m_stats_last = {0,0,0,0,0,{0,0}};
 	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
 	  {
 	    m_stats[i] = trace_handler.m_stats[i];
+	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
+	    m_stats_last.ioreads+=trace_handler.m_stats[i].ioreads;
 	  }
 	m_is_initialized = true;
       }
     else
       {
+	m_stats_last = {0,0,0,0,0,{0,0}};
 	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
 	  {
 	    m_stats[i].fetches += trace_handler.m_stats[i].fetches;
@@ -74,8 +79,16 @@ namespace parallel_heap_scan
 	    m_stats[i].read_rows += trace_handler.m_stats[i].read_rows;
 	    m_stats[i].qualified_rows += trace_handler.m_stats[i].qualified_rows;
 	    TSC_ADD_TIMEVAL (m_stats[i].elapsed_time, trace_handler.m_stats[i].elapsed_time);
+	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
+	    m_stats_last.ioreads+=trace_handler.m_stats[i].ioreads;
 	  }
       }
+  }
+
+  void accumulative_trace_storage::set_last_partition_stats (SCAN_STATS *partition_stats)
+  {
+    partition_stats->num_fetches = m_stats_last.fetches;
+    partition_stats->num_ioreads = m_stats_last.ioreads;
   }
 
   void accumulative_trace_storage::dump_stats_text (FILE *fp, int indent, char *class_name)
@@ -87,7 +100,7 @@ namespace parallel_heap_scan
     UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_qualified_rows = 0;
     int parallel_workers = m_stats.size();
-    const char *scan_method = m_is_list_merge ? "batch" : "row by row";
+    const char *scan_gather = m_is_list_merge ? "mergeable list" : "row by row";
 
     for (size_t i = 0; i < m_stats.size(); i++)
       {
@@ -102,7 +115,7 @@ namespace parallel_heap_scan
     fprintf (fp, ", heap time: %lu..%lu", min_elapsed_scan, max_elapsed_scan);
     fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
     fprintf (fp, ", rows: %lu..%lu", min_qualified_rows, max_qualified_rows);
-    fprintf (fp, ", method: %s", scan_method);
+    fprintf (fp, ", gather: %s", scan_gather);
     fprintf (fp, ")");
   }
 
@@ -135,7 +148,7 @@ namespace parallel_heap_scan
 				      "time", time_buf,
 				      "readrows", readrows_buf,
 				      "rows", rows_buf,
-				      "method", m_is_list_merge ? "batch" : "row by row");
+				      "gather", m_is_list_merge ? "mergeable list" : "row by row");
     json_object_set_new (scan, "parallel heap", parallel_obj);
   }
 }

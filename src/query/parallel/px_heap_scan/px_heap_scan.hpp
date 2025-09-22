@@ -48,7 +48,9 @@ namespace parallel_heap_scan
       using atomic_instnum = parallel_query::atomic_instnum;
       using worker_manager = parallel_query::worker_manager;
     public:
-      manager (THREAD_ENTRY *thread_p, QUERY_ID query_id, SCAN_ID *scan_id, xasl_node *xasl, int parallelism, val_descr *vd,
+      manager (THREAD_ENTRY *thread_p, QUERY_ID query_id, SCAN_ID *scan_id, xasl_node *xasl, int parallelism, HFID hfid,
+	       OID cls_oid,
+	       val_descr *vd,
 	       RESULT_TYPE result_type, bool is_fixed, bool is_grouped,
 	       worker_manager *worker_manager)
 	: m_thread_p (thread_p),
@@ -56,6 +58,8 @@ namespace parallel_heap_scan
 	  m_scan_id (scan_id),
 	  m_xasl (xasl),
 	  m_parallelism (parallelism),
+	  m_hfid (hfid),
+	  m_cls_oid (cls_oid),
 	  m_vd (vd),
 	  m_result_type (result_type),
 	  m_trace_handler (),
@@ -89,6 +93,8 @@ namespace parallel_heap_scan
       QMGR_QUERY_ENTRY *m_query_entry;
       xasl_node *m_xasl;
       int m_parallelism;
+      HFID m_hfid;
+      OID m_cls_oid;
       val_descr *m_vd;
       input_handler *m_input_handler;
       result_handler_variant m_result_handler;
@@ -104,6 +110,7 @@ namespace parallel_heap_scan
       worker_manager *m_worker_manager;
       bool m_is_fixed;
       bool m_is_grouped;
+      bool m_uses_xasl_clone;
   };
 }
 
