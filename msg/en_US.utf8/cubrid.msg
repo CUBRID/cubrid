@@ -1461,7 +1461,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1367 DBLINK Transaction ABORTED: %1$s
 
-1368 Last Error
+1368 Changing the replication option of a class is not allowed in HA mode.
+
+1369 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

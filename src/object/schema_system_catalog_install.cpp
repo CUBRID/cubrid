@@ -1274,6 +1274,7 @@ namespace cubschema
       {"owner_name", format_varchar (255)},
       {"class_type", "varchar(6)"},
       {"is_system_class", "varchar(3)"},
+      {"is_replication_class", "varchar(3)"},
       {"tde_algorithm", "varchar(32)"},
       {"partitioned", "varchar(3)"},
       {"is_reuse_oid_class", "varchar(3)"},
