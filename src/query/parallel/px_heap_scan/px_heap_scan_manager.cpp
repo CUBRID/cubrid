@@ -20,8 +20,6 @@
  * px_heap_scan_manager.cpp - manager for parallel heap scans executed within a single XASL
  */
 
-#if SERVER_MODE && !WINDOWS
-
 #include "px_heap_scan_manager.hpp"
 #include "px_heap_scan_perf_monitor.hpp"
 #include "px_heap_scan_task.hpp"
@@ -564,5 +562,3 @@ scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   scan_id->s.phsid.manager->start();
   return 0;
 }
-
-#endif /* SERVER_MODE && !WINDOWS */
