@@ -2904,6 +2904,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
   bool need_free_old_name = false;
   bool need_free_new_name = false;
   int error = NO_ERROR;
+  int save;
+  bool is_au_disabled = false;
 
   er_clear ();
 
@@ -2978,6 +2980,9 @@ sm_rename_class (MOP class_mop, const char *new_name)
     }
 
   /* rename related auto_increment serial obj name */
+  AU_DISABLE (save);
+  is_au_disabled = true;
+
   for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
     {
       if (att->auto_increment != NULL)
@@ -3012,6 +3017,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  db_value_clear (&value);
 	}
     }
+  AU_ENABLE (save);
+  is_au_disabled = false;
 
   if (is_partition == DB_PARTITIONED_CLASS)
     {
@@ -3038,6 +3045,11 @@ end:
   if (need_free_new_name && class_new_name != NULL)
     {
       db_private_free_and_init (NULL, class_new_name);
+    }
+
+  if (is_au_disabled)
+    {
+      AU_ENABLE (save);
     }
 
   return error;
@@ -13575,6 +13587,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   char *fk_name = NULL;
   const char *table_name;
   MOP save_user, owner;
+  int save;
+  bool is_au_disabled = false;
 
   if (op == NULL)
     {
@@ -13676,6 +13690,9 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
     }
 
   /* remove auto_increment serial object if exist */
+  AU_DISABLE (save);
+  is_au_disabled = true;
+
   for (att = class_->ordered_attributes; att; att = att->order_link)
     {
       if (att->auto_increment != NULL)
@@ -13714,6 +13731,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	    }
 	}
     }
+  AU_ENABLE (save);
+  is_au_disabled = false;
 
   /* we don't really need this but some of the support routines use it */
   template_ = classobj_make_template (NULL, op, class_);
@@ -13903,6 +13922,11 @@ end:
 	{
 	  tran_abort_upto_system_savepoint (SM_DROP_CLASS_MOP_SAVEPOINT_NAME);
 	}
+    }
+
+  if (is_au_disabled)
+    {
+      AU_ENABLE (save);
     }
 
   return error;

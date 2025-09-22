@@ -1166,6 +1166,7 @@ typedef enum
 #define SM_MAX_USER_LENGTH          DB_MAX_USER_LENGTH
 
 // TODO: move to serial.c with related with serial
+// TODO: refactoring serial authorization check
 #define SERIAL_ATTR_UNIQUE_NAME     "unique_name"
 #define SERIAL_ATTR_NAME            "name"
 #define SERIAL_ATTR_OWNER           "owner"
