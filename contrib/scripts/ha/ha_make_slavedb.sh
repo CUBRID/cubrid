@@ -292,6 +292,48 @@ function check_args()
 	fi
 }
 
+function check_db_name() {
+    # This function parses the global 'db_name' variable.
+    # It handles comma-separated values, extra whitespace, and quotes.
+    # It updates the global 'db_name' to be only the first valid database name found.
+    local original_input="$db_name"
+    local first_db_found=""
+
+    # Use echo to resolve any quotes in the input string
+    # e.g., db_name='"db1, db2"' becomes `db1, db2`
+    original_input="$(echo "$original_input")"
+
+    # To handle the last item correctly, append a comma
+    local temp_input="${original_input},"
+    local db_count=0
+    while [[ -n "$temp_input" ]]; do
+        # Extract part before the first comma
+        local part="${temp_input%%,*}"
+        # Remove the extracted part from the beginning
+        temp_input="${temp_input#*,}"
+
+        # Trim leading and trailing whitespace (pure bash)
+        part="${part#"${part%%[![:space:]]*}"}" # leading
+        part="${part%"${part##*[![:space:]]}"}" # trailing
+
+        if [[ -n "$part" ]]; then
+            ((db_count++))
+            # 찾은 첫 번째 유효한 이름을 저장합니다.
+            [ -z "$first_db_found" ] && first_db_found="$part"
+        fi
+    done
+
+    # Update the global db_name variable
+    db_name="$first_db_found"
+
+    # If multiple DBs were in the original input, issue a warning.
+    # The check is only performed if the original string was not empty.
+    if [[ -n "$original_input" && "$db_count" -gt 1 ]]; then
+        echo "WARNING: Multiple DBs were specified: '$original_input'."
+        echo "         Only the first valid DB ('$db_name') will be used. Others are ignored."
+    fi
+}
+
 function init_conf()
 {
 	# init path
@@ -326,16 +368,20 @@ function init_conf()
 				"ha_replica_list") replica_hosts=$(echo ${conf[1]} | cut -d '@' -f 2);;
 				"ha_db_list")
 					if [ -z $db_name ]; then
-						db_name=${conf[1]}
-						db_name=$(echo $db_name | cut -d ',' -f 1)
+						local list_from_conf=${conf[1]}
+						echo "INFO: 'db_name' is not specified. Using DB list from ha_db_list in cubrid_ha.conf: '$list_from_conf'"
+						# The value from conf might also be a list, so we must parse it
+						# to get only the first valid DB name.
+						db_name=$list_from_conf
+						check_db_name
 					fi
 					;;
 			esac
 		fi
 	done < $CUBRID/conf/cubrid_ha.conf
-
+echo
 	if [ -z $db_name ]; then
-		error "The db_name is null."
+		error "The db_name is null. Please specify 'db_name' variable or set 'ha_db_list' in cubrid_ha.conf."
 	fi
 	
 	# check the master and slave host is valid
@@ -380,6 +426,7 @@ function init_conf()
 			esac;;
 		"replica")
 			case $target_state in
+				"master") step_func=(${step_func_slave_from_master[@]});;
 				"slave") step_func=(${step_func_replica_from_slave[@]});;
 				"replica") step_func=(${step_func_replica_from_replica[@]});;
 				*) error "Invalid target server state.";;
@@ -860,6 +907,7 @@ function show_complete()
 clear
 check_version
 check_args
+check_db_name
 init_conf
 
 echo -ne "\n\n###### START $now ######\n" >> time.output
