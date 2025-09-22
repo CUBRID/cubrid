@@ -752,6 +752,15 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_MMON_DISABLE_FORCE];
   req_p->processing_function = smmon_disable_force;
+
+  /* tdes */
+  req_p = &net_Requests[NET_SERVER_TDES_SET_QUERY_START_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = stdes_set_query_start_info;
+
+  req_p = &net_Requests[NET_SERVER_TDES_RESET_QUERY_START_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = stdes_reset_query_start_info;
 }
 
 /*
@@ -942,7 +951,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
   if (conn_p->session_p != NULL)
     {
-      ssession_stop_attached_threads (thread_p, conn_p->session_p, false);
+      ssession_stop_attached_threads (thread_p, conn_p->session_p);
     }
 
 loop:

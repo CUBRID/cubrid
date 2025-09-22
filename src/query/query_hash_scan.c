@@ -417,7 +417,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
   HASH_METHOD hash_list_scan_type;
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
   DB_VALUE dbval;
-  PR_TYPE *pr_type_p;
+  const PR_TYPE *pr_type_p;
   int i;
   char *tuple_p;
   OR_BUF buf;
@@ -448,7 +448,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
       fp = stdout;
     }
 
-  fprintf (fp, "  LIST_CACHE_ENTRY (%p) - ", data);
+  fprintf (fp, "LIST_CACHE_ENTRY (%p) - ", data);
 
   if (hash_list_scan_type == HASH_METH_IN_MEM)
     {

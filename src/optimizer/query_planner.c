@@ -251,7 +251,6 @@ static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
 static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
-static PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix);
 
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
@@ -506,6 +505,8 @@ qo_plan_malloc (QO_ENV * env)
 
   bitset_init (&(plan->sarged_terms), env);
   bitset_init (&(plan->subqueries), env);
+
+  plan->parallel_opt_use = PLAN_PARALLEL_OPT_NO;
 
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
@@ -978,7 +979,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	}			/* for (t = ...) */
       found_instnum = (t == -1) ? false : true;
 
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
 
       /* GROUP BY */
       /* if we have rollup, we do not skip the group by */
@@ -986,7 +987,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	{
 	  PT_NODE *group_sort_list = NULL;
 
-	  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_index_w_prefix);
+	  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_index_w_prefix, false);
 
 	  if (group_sort_list)
 	    {
@@ -1869,7 +1870,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       bool dummy;
 
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy, false);
     }
 
   assert (plan->plan_un.scan.index != NULL);
@@ -2790,12 +2791,14 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
    */
   bitset_assign (&(plan->subqueries), pinned_subqueries);
 
+  plan->parallel_opt_use = qo_check_hjoin_for_parallel_opt (plan);
+
   if (qo_check_join_for_multi_range_opt (plan))
     {
       bool dummy;
 
       plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_USE;
-      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy);
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &dummy, false);
     }
 
   qo_plan_compute_cost (plan);
@@ -4249,7 +4252,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       {
 	if (qo_is_index_iss_scan (a))
 	  {
-	    b_keys = b_cum->pkeys[a_range];
+	    a_keys = a_cum->pkeys[a_range];
 	  }
 	else
 	  {
@@ -6258,6 +6261,12 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 #else /* TEST_HASH_JOIN_ENABLE */
       goto exit;
 #endif /* TEST_HASH_JOIN_ENABLE */
+    }
+
+  /* Check if a click counter is set. */
+  if (QO_ENV_PT_TREE (info->env)->flag.is_click_counter)
+    {
+      goto exit;		/* give up */
     }
 
   /* Check if a key limit is set. */
@@ -9854,77 +9863,80 @@ static double
 qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
   PRED_CLASS pc_lhs, pc_rhs;
-  double list_card = 0, icard;
+  double list_card = 0.0, icard = 0.0;
+  double equal_selectivity = 1.0;
   PT_NODE *lhs;
-  double equal_selectivity, in_selectivity, selectivity;
+  PT_NODE *arg1, *arg2;
+
+  /* To avoid repeated dereferencing */
+  arg1 = pt_expr->info.expr.arg1;
+  arg2 = pt_expr->info.expr.arg2;
 
   /* determine the class of each side of the range */
-  pc_lhs = qo_classify (pt_expr->info.expr.arg1);
-  pc_rhs = qo_classify (pt_expr->info.expr.arg2);
+  pc_lhs = qo_classify (arg1);
+  pc_rhs = qo_classify (arg2);
 
   /* The only interesting cases are: attr IN set or (attr,attr) IN set or attr IN subquery */
   if ((pc_lhs == PC_MULTI_ATTR || pc_lhs == PC_ATTR) && (pc_rhs == PC_SET || pc_rhs == PC_SUBQUERY))
     {
       if (pc_lhs == PC_MULTI_ATTR)
 	{
-	  lhs = pt_expr->info.expr.arg1->info.function.arg_list;
-	  equal_selectivity = 1;
-	  for ( /* none */ ; lhs; lhs = lhs->next)
+	  for (lhs = arg1->info.function.arg_list; lhs; lhs = lhs->next)
 	    {
 	      /* get index cardinality */
 	      icard = qo_index_cardinality (env, lhs);
-	      if (icard != 0)
+	      if (icard > 0.0)
 		{
-		  selectivity = (1.0 / icard);
+		  equal_selectivity *= (1.0 / icard);
 		}
 	      else
 		{
-		  selectivity = DEFAULT_EQUAL_SELECTIVITY;
+		  /* If no index, multiply by default selectivity for each attribute */
+		  equal_selectivity *= DEFAULT_EQUAL_SELECTIVITY;
 		}
-	      equal_selectivity *= selectivity;
 	    }
 	}
       else if (pc_lhs == PC_ATTR)
 	{
 	  /* check for index on the attribute.  */
-	  icard = qo_index_cardinality (env, pt_expr->info.expr.arg1);
-
-	  if (icard != 0)
+	  icard = qo_index_cardinality (env, arg1);
+	  if (icard > 0.0)
 	    {
-	      equal_selectivity = (1.0 / icard);
+	      equal_selectivity *= (1.0 / icard);
 	    }
 	  else
 	    {
 	      equal_selectivity = DEFAULT_EQUAL_SELECTIVITY;
 	    }
 	}
+
       /* determine cardinality of set or subquery */
       if (pc_rhs == PC_SET)
 	{
-	  if (pt_is_function (pt_expr->info.expr.arg2))
+	  if (pt_is_function (arg2))
 	    {
-	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.function.arg_list);
+	      list_card = pt_length_of_list (arg2->info.function.arg_list);
 	    }
 	  else
 	    {
-	      list_card = pt_length_of_list (pt_expr->info.expr.arg2->info.value.data_value.set);
+	      list_card = pt_length_of_list (arg2->info.value.data_value.set);
 	    }
 	}
       else if (pc_rhs == PC_SUBQUERY)
 	{
-	  if (pt_expr->info.expr.arg2->info.query.xasl)
+	  if (arg2->info.query.xasl)
 	    {
-	      list_card = ((XASL_NODE *) pt_expr->info.expr.arg2->info.query.xasl)->cardinality;
+	      list_card = ((XASL_NODE *) arg2->info.query.xasl)->cardinality;
 	    }
 	  else
 	    {
 	      /* legacy default list_card is 1000. Maybe it won't come in here */
-	      list_card = 1000;
+	      list_card = 1000.0;
 	    }
 	}
 
       /* compute selectivity--cap at 0.5 */
-      in_selectivity = list_card * equal_selectivity;
+      double in_selectivity = list_card * equal_selectivity;
       return in_selectivity > 0.5 ? 0.5 : in_selectivity;
     }
 
@@ -10001,7 +10013,7 @@ qo_classify (PT_NODE * attr)
 	{
 	  return PC_ATTR;
 	}
-      /* fall through */
+      [[fallthrough]];
     default:
       return PC_OTHER;
     }
@@ -11069,8 +11081,9 @@ qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list)
  *   is_index_w_prefix(out):
  *
  */
-static PT_NODE *
-qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix)
+PT_NODE *
+qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix,
+				 bool for_min_max_optimize)
 {
   QO_PLAN *plan;
   QO_ENV *env;
@@ -11298,7 +11311,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       /* is for order_by skip */
 
       /* check for constant col's order node */
-      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL);
+      pt_to_pos_descr (parser, &pos_descr, node, tree, NULL, for_min_max_optimize);
       if (pos_descr.pos_no > 0)
 	{
 	  col = tree->info.query.q.select.list;
@@ -11414,7 +11427,7 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   statement = QO_ENV_PT_TREE (env);
   order_by = statement->info.query.order_by;
 
-  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix);
+  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix, false);
 
   if (plan->iscan_sort_list == NULL || is_prefix)
     {
@@ -12145,4 +12158,115 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   return;
+}
+
+/*
+ * qo_check_hjoin_for_parallel_opt() -
+ *   return: One of the following QO_PLAN_PARALLEL_OPT_USE values:
+ *           - PLAN_PARALLEL_OPT_USE: Parallel hash join is enabled by hint.
+ *           - PLAN_PARALLEL_OPT_NO: Parallel hash join is disabled by hint.
+ *           - PLAN_PARALLEL_OPT_CANNOT_USE: Parallel hash join not possible.
+ *           - PLAN_PARALLEL_OPT_CAN_USE: Parallel hash join is possible; depends on runtime conditions.
+ *   plan(in): Query plan node to check (must be a hash join plan).
+ */
+QO_PLAN_PARALLEL_OPT_USE
+qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
+{
+  PARSER_CONTEXT *parser = NULL;
+  PT_NODE *tree = NULL, *expr = NULL;
+
+  QO_ENV *env = NULL;
+  QO_TERM *term = NULL;
+  BITSET_ITERATOR bitset_iter;
+  int bitset_index;
+
+  bool is_method_call = false;
+
+  if (plan == NULL || plan->info == NULL || plan->plan_type != QO_PLANTYPE_JOIN
+      || plan->plan_un.join.join_method != QO_JOINMETHOD_HASH_JOIN)
+    {
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  env = plan->info->env;
+  if (env == NULL)
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  parser = QO_ENV_PARSER (env);
+  if (parser == NULL)
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  tree = QO_ENV_PT_TREE (env);
+  if (tree == NULL)
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  if (!PT_IS_SELECT (tree))	// TODO: check merge, update, delete
+    {
+      /* impossible case */
+      assert (false);
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      /* TODO: xtran_server_start_topop does not support concurrency. */
+      return PLAN_PARALLEL_OPT_CANNOT_USE;
+    }
+
+  if (!bitset_is_empty (&plan->plan_un.join.during_join_terms))
+    {
+      for (bitset_index = bitset_iterate (&plan->plan_un.join.during_join_terms, &bitset_iter); bitset_index != -1;
+	   bitset_index = bitset_next_member (&bitset_iter))
+	{
+	  term = QO_ENV_TERM (env, bitset_index);
+	  if (term == NULL)
+	    {
+	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	    }
+
+	  expr = QO_TERM_PT_EXPR (term);
+	  if (expr == NULL)
+	    {
+	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	    }
+
+	  (void) parser_walk_tree (parser, expr, pt_is_method_call_node, &is_method_call, NULL, NULL);
+
+	  if (is_method_call)
+	    {
+	      return PLAN_PARALLEL_OPT_CANNOT_USE;
+	    }
+	}
+    }
+
+  if (tree->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+    {
+      return PLAN_PARALLEL_OPT_NO;
+    }
+
+  if (tree->info.query.q.select.hint & PT_HINT_PARALLEL)
+    {
+      if (tree->info.query.q.select.num_parallel_threads == PT_MIN_PARALLEL_THREADS)
+	{
+	  return PLAN_PARALLEL_OPT_NO;
+	}
+      else
+	{
+	  return PLAN_PARALLEL_OPT_USE;
+	}
+    }
+
+  return PLAN_PARALLEL_OPT_CAN_USE;
 }

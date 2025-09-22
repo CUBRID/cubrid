@@ -239,9 +239,9 @@ namespace cubmethod
     query_handler *handler = get_query_handler_by_id (request.handler_id);
     if (handler == nullptr)
       {
-	// TODO: proper error code
-	m_error_ctx.set_error (METHOD_CALLBACK_ER_INTERNAL, NULL, __FILE__, __LINE__);
-	assert (false); // the error should have been handled in prepare function
+	// CUATION: do not change the error message below because
+	//   it is used in PL server to identify this error.
+	m_error_ctx.set_error (METHOD_CALLBACK_ER_NO_QUERY_HANDLER, "no query handler", __FILE__, __LINE__);
       }
     else
       {
@@ -527,7 +527,7 @@ namespace cubmethod
     int error = NO_ERROR;
 
     std::vector<sql_semantics> semantics_vec;
-    for (const std::string s : request.sqls)
+    for (const std::string &s : request.sqls)
       {
 	i++;
 	query_handler *handler = new_query_handler ();

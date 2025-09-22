@@ -221,7 +221,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	case PT_NE:
 	case PT_NULLSAFE_EQ:
 	  node->info.expr.arg1 = qo_rewrite_hidden_col_as_derived (parser, node->info.expr.arg1, node);
-	  /* fall through */
+	  [[fallthrough]];
 
 	  /* keep out hidden column subquery from UPDATE assignment */
 	case PT_ASSIGN:
@@ -275,6 +275,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       node->info.query.q.select.from =
 	parser_walk_tree (parser, node->info.query.q.select.from, qo_analyze_path_join_pre, NULL, qo_analyze_path_join,
 			  node->info.query.q.select.where);
+      qo_rewrite_nonnull_count_select_list (parser, node);
     }
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);

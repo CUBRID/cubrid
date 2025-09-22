@@ -365,6 +365,7 @@ struct scan_stats
   bool index_skip_scan;
   bool loose_index_scan;
   bool noscan;			/* aggregate optimize is not scan */
+  bool min_max_only_scan;
   SCAN_AGL *agl;		/* for multiple aggregate optimize */
 
   /* hash list scan */
@@ -461,7 +462,8 @@ extern int scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				 HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 				 HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 				 HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
-				 HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id);
+				 HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
+				 bool min_max_optimzied_scan);
 extern int scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 					  /* fields of SCAN_ID */
 					  val_list_node * val_list, val_descr * vd,
@@ -529,16 +531,11 @@ extern void scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_l
 				  MVCC_SNAPSHOT * mvcc_snapshot);
 extern int scan_initialize (void);
 extern void scan_finalize (void);
-extern void scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
-				   val_list_node * val_list, val_descr * val_descr, OID * class_oid,
-				   int btree_num_attrs, ATTR_ID * btree_attr_ids, int *num_vstr_ptr,
-				   ATTR_ID * vstr_ids);
 
 extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
-
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);

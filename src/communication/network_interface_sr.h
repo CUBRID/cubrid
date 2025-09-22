@@ -240,7 +240,7 @@ extern void sloaddb_fetch_status (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_destory);
+extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 
 /* For CDC */
 extern void slog_supplement_statement (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -261,4 +261,8 @@ extern void spl_call (THREAD_ENTRY * thread_p, unsigned int rid, char *request, 
 /* memmon */
 extern void smmon_get_server_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void smmon_disable_force (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+
+/* tdes */
+extern void stdes_set_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #endif /* _NETWORK_INTERFACE_SR_H_ */

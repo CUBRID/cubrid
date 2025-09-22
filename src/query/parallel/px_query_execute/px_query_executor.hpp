@@ -23,12 +23,11 @@
 #ifndef _PX_QUERY_EXECUTOR_HPP_
 #define _PX_QUERY_EXECUTOR_HPP_
 
-#if SERVER_MODE
-
 #include "px_worker_manager.hpp"
 #include "xasl.h"
 #include "px_query_task.hpp"
 #include "error_context.hpp"
+#include "xasl_predicate.hpp"
 
 //forward definition
 struct xasl_state;
@@ -38,6 +37,9 @@ namespace parallel_query_execute
   using pool = parallel_query::worker_manager_with_dedicated_pool;
 
   using err_desc_t = std::pair<int, cuberr::er_message *>;
+
+  const int max_parallelism = 2;
+
   class query_executor
   {
     public:
@@ -47,7 +49,7 @@ namespace parallel_query_execute
 		      int parallelism);
       query_executor (query_executor *);
       ~query_executor ();
-      void add_task (XASL_NODE *xasl, xasl_state *xasl_state);
+      bool add_task (XASL_NODE *xasl, xasl_state *xasl_state);
       int run_tasks (THREAD_ENTRY *thread_p);
       inline int get_recursion_level() const
       {
@@ -73,24 +75,6 @@ namespace parallel_query_execute
       int m_parallelism;
       int m_recursion_level;
   };
-  class xasl_checker
-  {
-    public:
-      xasl_checker()=default;
-      ~xasl_checker()=default;
-      bool is_parallel_executable (XASL_NODE *xasl);
-    private:
-      void add_xasl_recursive (XASL_NODE *xasl);
-      void check_xasl_recursive (XASL_NODE *xasl);
-      std::set<XASL_NODE *> get_child_xasl_set_recursive (XASL_NODE *xasl);
-      std::multimap<XASL_NODE *, XASL_NODE *> m_xasl_map;
-      std::multimap<XASL_NODE *, XASL_NODE *> m_list_scan_map;
-      std::set<XASL_NODE *> m_aptr_head_set;
-      std::set<XASL_NODE *> m_aptr_set;
-      bool m_is_parallel_executable=true;
-  };
 }
-
-#endif // SERVER_MODE
 
 #endif /* _PX_QUERY_EXECUTOR_HPP_ */

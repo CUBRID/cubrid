@@ -67,22 +67,18 @@
 	  }			\
 	} while (0)
 
-#define ALLOC_N_COPY(PTR, STR, SIZE)		\
+#define ALLOC_COPY_STRLEN(PTR, STR)		\
 	do {					\
-	  if (STR == NULL)			\
+          if ((STR) == NULL)			\
 	    PTR = NULL;				\
 	  else {				\
-	    PTR = (char *) MALLOC(SIZE);			\
+            int sz = strlen(STR);               \
+	    PTR = (char *) MALLOC(sz + 1);	\
 	    if (PTR) {				\
-	      strncpy(PTR, STR, SIZE);		\
-	      PTR[SIZE - 1] = '\0';		\
+	      memcpy(PTR, (STR), sz);		\
+	      PTR[sz] = '\0';		        \
 	    }					\
-	  }					\
-	} while (0)
-
-#define ALLOC_COPY_STRLEN(PTR, STR)			\
-	do {					\
-	  ALLOC_N_COPY(PTR, STR, strlen(STR) + 1); \
+           }                                    \
 	} while (0)
 
 #if defined(WINDOWS)
@@ -163,12 +159,7 @@ enum
 };
 
 /* default charset for JDBC : ISO8859-1 */
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset ())
-#else
-#define CAS_SCHEMA_DEFAULT_CHARSET 0
-#endif
-
+#define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset())
 
 extern int uts_key_check_local_host (void);
 

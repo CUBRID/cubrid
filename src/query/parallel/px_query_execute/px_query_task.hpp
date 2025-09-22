@@ -23,7 +23,6 @@
 #ifndef _PX_QUERY_TASK_HPP_
 #define _PX_QUERY_TASK_HPP_
 
-#if SERVER_MODE
 #include "thread_entry_task.hpp"
 #include "xasl.h"
 #include "px_worker_manager.hpp"
@@ -36,6 +35,8 @@ namespace parallel_query_execute
   using pool = parallel_query::worker_manager_with_dedicated_pool;
 
   using err_desc_t = std::pair<int, cuberr::er_message *>;
+
+  const int TASK_QUEUE_RESERVE_SIZE = 64;
 
   struct WORKER_STATS
   {
@@ -135,6 +136,4 @@ namespace parallel_query_execute
       std::vector<task_tuple *> m_tasks;
   };
 }
-#endif
-
 #endif

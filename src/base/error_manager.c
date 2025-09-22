@@ -1690,8 +1690,16 @@ er_log (int err_id)
   else
     {
       gettimeofday (&tv, NULL);
-      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255, ".%03ld",
-		tv.tv_usec / 1000);
+
+      size_t bufsize = sizeof (time_array);
+      size_t len = strftime (time_array, bufsize, "%m/%d/%y %H:%M:%S", er_tm_p);
+
+      if (len > 0 && len < bufsize)
+	{
+	  // space left includes the null terminator, snprintf will overwrite it safely
+	  int remaining = (int) (bufsize - len);
+	  snprintf (time_array + len, remaining, ".%03ld", tv.tv_usec / 1000);
+	}
     }
 
   more_info_p = (char *) "";
@@ -2050,8 +2058,16 @@ _er_log_debug_internal (const char *file_name, const int line_no, const char *fm
   else
     {
       gettimeofday (&tv, NULL);
-      snprintf (time_array + strftime (time_array, 128, "%m/%d/%y %H:%M:%S", er_tm_p), 255, ".%03ld",
-		tv.tv_usec / 1000);
+
+      size_t bufsize = sizeof (time_array);
+      size_t len = strftime (time_array, bufsize, "%m/%d/%y %H:%M:%S", er_tm_p);
+
+      if (len > 0 && len < bufsize)
+	{
+	  // space left includes the null terminator, snprintf will overwrite it safely
+	  int remaining = (int) (bufsize - len);
+	  snprintf (time_array + len, remaining, ".%03ld", tv.tv_usec / 1000);
+	}
     }
 
   fprintf (out, er_Cached_msg[ER_LOG_DEBUG_NOTIFY], time_array, file_name, line_no);
@@ -3335,16 +3351,20 @@ er_print_crash_callstack (int sig)
   /* make coredump filename : processname_YYYYMMDDHHSSMM.min.coredump */
   struct timeval tv;
   struct tm *tm_info;
-  char filename[PATH_MAX + 256];
+  char filename[PATH_MAX];
   char *args = buffer;
 
   gettimeofday (&tv, NULL);
   tm_info = localtime (&tv.tv_sec);
 
-  sprintf (filename, "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
-	   tm_info->tm_year + 1900,
-	   tm_info->tm_mon + 1,
-	   tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000);
+  if (snprintf (filename, PATH_MAX, "%s/%s_%04d%02d%02d%02d%02d%02d.%03ld.coredump", logdir, args,	// process name
+		tm_info->tm_year + 1900,
+		tm_info->tm_mon + 1,
+		tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec, tv.tv_usec / 1000) >= PATH_MAX)
+    {
+      assert_release (0);
+      filename[PATH_MAX - 1] = '\0';
+    }
 
   /* print process information and callstack into coredump file */
   fp = fopen (filename, "w+");

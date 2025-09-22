@@ -619,7 +619,7 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
 //
 // thread_p (in) : thread entry
 // bts (in)      : b-tree scan
-static void
+void
 bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   /* Reset bts->is_scan_started. */
@@ -2026,7 +2026,7 @@ btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * k
   VFID overflow_file_vfid;
   int ret = NO_ERROR;
   TP_DOMAIN *tp_domain;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   DB_TYPE src_type, dst_type;
   DB_VALUE new_key;
   DB_VALUE *key_ptr = key;
@@ -2133,7 +2133,7 @@ btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * first_
 {
   RECDES rec;
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int ret = NO_ERROR;
 
   if (node_type == BTREE_LEAF_NODE)
@@ -4165,7 +4165,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
   /* write the key */
   if (key_type == BTREE_NORMAL_KEY)
     {				/* key fits in page */
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
 
       if (node_type == BTREE_LEAF_NODE)
 	{
@@ -4628,7 +4628,7 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
   if (key_type == BTREE_NORMAL_KEY)
     {				/* key is within page */
       TP_DOMAIN *key_domain;
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
       char *old_ptr;
 
       if (node_type == BTREE_LEAF_NODE)
@@ -6458,6 +6458,7 @@ btree_scan_clear_key (BTREE_SCAN * btree_scan)
   btree_scan->is_cur_key_compressed = false;
   btree_reset_common_prefix_page_info (btree_scan);
 }
+
 
 /*
  * btree_is_unique_type () -
@@ -12677,7 +12678,7 @@ btree_find_split_point (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   if (*mid_slot == (slot_id - 1) && is_key_added_to_left && !found)
     {
       /* the new key is the split key */
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
 
       /* Safe guard. */
       assert (*mid_slot != key_cnt);
@@ -13430,7 +13431,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
     {
-      PR_TYPE *pr_type = btid->key_type->type;
+      const PR_TYPE *pr_type = btid->key_type->type;
       sep_key_len = pr_type->get_index_size_of_value (sep_key);
 
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= qheader->max_key_len)
@@ -14032,7 +14033,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
 
       if (node_type == BTREE_LEAF_NODE)
 	{
-	  PR_TYPE *pr_type;
+	  const PR_TYPE *pr_type;
 
 	  pr_type = btid->key_type->type;
 	  sep_key_len = pr_type->get_index_size_of_value (sep_key);
@@ -14296,7 +14297,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
   /* make fence record */
   if (node_type == BTREE_LEAF_NODE)
     {
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
 
       pr_type = btid->key_type->type;
 
@@ -17319,7 +17320,7 @@ btree_rv_save_keyval_for_undo (BTID_INT * btid, DB_VALUE * key, OID * cls_oid, O
   char *datap;
   int key_len;
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int ret = NO_ERROR;
   int size;
   OID oid_and_flags;
@@ -17531,7 +17532,7 @@ btree_rv_save_keyval_for_undo_two_objects (BTID_INT * btid, DB_VALUE * key, BTRE
   int error_code = NO_ERROR;
   char *datap = NULL;
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OID oid_and_flags;
 
   key_len = (int) btree_get_disk_size_of_key (key);
@@ -17733,7 +17734,7 @@ int
 btree_rv_update_tran_stats (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  long long num_nulls = 0, num_oids = 0, num_keys = 0;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -18300,7 +18301,7 @@ btree_rv_read_keyval_info_nocopy (THREAD_ENTRY * thread_p, char *datap, int data
 				  OID * oid, BTREE_MVCC_INFO * mvcc_info, DB_VALUE * key)
 {
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   VPID root_vpid;
   PAGE_PTR root = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
@@ -19313,7 +19314,7 @@ static void
 btree_set_unknown_key_error (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, const char *debug_msg)
 {
   int severity;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   char *err_key;
 
   assert (btid != NULL);
@@ -22603,7 +22604,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 	      /* Get key value */
 	      DB_VALUE rec_key_value;
 	      TP_DOMAIN *key_domain = NULL;
-	      PR_TYPE *pr_type = NULL;
+	      const PR_TYPE *pr_type = NULL;
 
 	      db_make_null (&rec_key_value);
 	      key_domain = btid->key_type;
@@ -23120,7 +23121,7 @@ int
 btree_rv_redo_global_unique_stats_commit (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 {
   char *datap;
-  long long num_nulls, num_oids, num_keys;
+  long long num_nulls = 0, num_oids = 0, num_keys = 0;
   BTID btid;
 
   assert (recv->length >= (3 * OR_BIGINT_SIZE) + OR_BTID_ALIGNED_SIZE);
@@ -23788,7 +23789,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
-	  /* Fall through. */
+	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
 	  /* Must lock object. */
@@ -24100,7 +24101,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
-	  /* Fall through. */
+	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
 	  /* Must lock object. */
@@ -25389,6 +25390,9 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
+
+	  bts->read_keys++;
+
 	  error_code =
 	    btree_apply_key_range_and_filter (thread_p, bts, BTS_IS_INDEX_ISS (bts), &is_range_satisfied,
 					      &is_filter_satisfied);
@@ -25409,7 +25413,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	  if (is_filter_satisfied)
 	    {
 	      /* Filter is satisfied, which means key can be used. */
-	      bts->read_keys++;
+	      bts->qualified_keys++;
 	      bts->key_status = BTS_KEY_IS_VERIFIED;
 	      return NO_ERROR;
 	    }
@@ -27015,7 +27019,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
       /* Set undo_nxlsa. */
       assert (undo_nxlsa != NULL);
       LSA_COPY (&insert_helper.compensate_undo_nxlsa, undo_nxlsa);
-      /* Fall through. */
+      [[fallthrough]];
     case BTREE_OP_INSERT_NEW_OBJECT:
       key_insert_func = btree_key_insert_new_object;
       break;
@@ -30551,7 +30555,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       /* Set ref_lsa. */
       assert (ref_lsa != NULL);
       LSA_COPY (&delete_helper.reference_lsa, ref_lsa);
-      /* Fall through. */
+      [[fallthrough]];
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
       key_func = btree_key_delete_remove_object;
@@ -30731,7 +30735,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
   if (delete_helper->buffered_key != NULL)
     {
       /* Unpack key from buffer. */
-      PR_TYPE *pr_type;
+      const PR_TYPE *pr_type;
       int key_size = -1;
 
       /* Assert key is initialized. */

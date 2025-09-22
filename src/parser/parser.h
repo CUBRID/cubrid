@@ -462,6 +462,8 @@ extern "C"
   extern PT_NODE *pt_add_table_name_to_from_list (PARSER_CONTEXT * parser, PT_NODE * select, const char *table_name,
 						  const char *table_alias, const DB_AUTH auth_bypass);
 
+  extern PT_NODE *pt_is_method_call_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+
   extern int pt_is_ddl_statement (const PT_NODE * node);
   extern int pt_is_method_call (PT_NODE * node);
   extern int pt_is_attr (PT_NODE * node);
@@ -580,6 +582,8 @@ extern "C"
 				   PT_NODE * const escape);
 
   extern bool pt_sort_spec_cover (PT_NODE * cur_list, PT_NODE * new_list);
+  extern bool pt_sort_spec_cover_for_min_max (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * cur_list,
+					      PT_NODE * new_list);
   extern bool pt_sort_spec_cover_groupby (PARSER_CONTEXT * parser, PT_NODE * sort_list, PT_NODE * group_list,
 					  PT_NODE * tree);
 

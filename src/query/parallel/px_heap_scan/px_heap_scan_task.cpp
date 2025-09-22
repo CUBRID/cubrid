@@ -20,7 +20,6 @@
  * px_heap_scan_task.cpp - derived from cubthread::entry_task
  */
 
-#if SERVER_MODE && !WINDOWS
 
 #include "px_heap_scan_task.hpp"
 #include "px_heap_scan_misc.hpp"
@@ -28,6 +27,7 @@
 #include <memory>
 #include "thread_entry.hpp"
 #include "perf_monitor.h"
+#include "page_buffer.h"
 
 #define PARALLEL_HEAP_SCAN_LOG 0
 #if PARALLEL_HEAP_SCAN_LOG
@@ -63,8 +63,13 @@ namespace parallel_heap_scan
   {
     std::unique_lock<std::mutex> lock (m_context->m_locked_vpid.mutex);
     HEAP_SCANCACHE *scan_cache = &scan_id->s.hsid.scan_cache;
+    SCAN_CODE page_scan_code;
     if (m_context->m_locked_vpid.is_ended)
       {
+	if (m_old_page_watcher.pgptr != NULL)
+	  {
+	    pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
+	  }
 	return S_END;
       }
     if (VPID_ISNULL (&m_context->m_locked_vpid.vpid))
@@ -74,7 +79,16 @@ namespace parallel_heap_scan
 	m_context->m_locked_vpid.vpid.volid = hfid->vfid.volid;
       }
     VPID_COPY (vpid, &m_context->m_locked_vpid.vpid);
-    SCAN_CODE page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
+    if (scan_cache->page_watcher.pgptr != NULL)
+      {
+	pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &m_old_page_watcher);
+      }
+    page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
+    if (m_old_page_watcher.pgptr != NULL)
+      {
+	pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
+      }
+
     if (page_scan_code == S_END)
       {
 	m_context->m_locked_vpid.is_ended = true;
@@ -121,22 +135,20 @@ namespace parallel_heap_scan
     HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
-    if (m_context->m_orig_thread_p->emulate_tid != thread_id_t())
+    thread_p->on_trace = m_context->m_orig_thread_p->on_trace;
+    if (m_context->m_orig_thread_p->m_px_orig_thread_entry != NULL)
       {
-	thread_p->emulate_tid = m_context->m_orig_thread_p->emulate_tid;
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p->m_px_orig_thread_entry;
       }
     else
       {
-	thread_p->emulate_tid = m_context->m_orig_thread_p->get_id();
+	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p;
       }
 
     if (on_trace)
       {
 	tsc_getticks (&start_tick);
-	if (m_context->m_orig_thread_p->m_parallel_stats != NULL)
-	  {
-	    thread_p->m_parallel_stats = m_context->m_orig_thread_p->m_parallel_stats;
-	  }
+	perfmon_initialize_parallel_stats (thread_p);
       }
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
@@ -177,6 +189,7 @@ namespace parallel_heap_scan
     ret = scan_start_scan (thread_p, scan_id);
     /* lock because of mvcc_snapshot */
     lock.unlock();
+    PGBUF_INIT_WATCHER (&m_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
     hfid = phsidp->hfid;
     OID_SET_NULL (&hsidp->curr_oid);
     VPID_SET_NULL (&vpid);
@@ -186,18 +199,21 @@ namespace parallel_heap_scan
 	  {
 	    break;
 	  }
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t2);
 	  }
+#endif
 	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	if (on_trace)
 	  {
 	    tsc_getticks (&t1);
 	    tsc_elapsed_time_usec (&tv_diff, t1, t2);
 	    TSC_ADD_TIMEVAL (stats->elapsed_page_lock, tv_diff);
 	  }
-
+#endif
 	if (page_scan_code == S_END)
 	  {
 	    m_context->is_scan_internal_ended = true;
@@ -221,17 +237,21 @@ namespace parallel_heap_scan
 	      {
 		break;
 	      }
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t2);
 	      }
+#endif
 	    rec_scan_code = scan_next_heap_scan_1page_internal (thread_p, scan_id, &vpid);
+#if WITH_PARALLEL_DETAIL_INFO
 	    if (on_trace)
 	      {
 		tsc_getticks (&t1);
 		tsc_elapsed_time_usec (&tv_diff, t1, t2);
 		TSC_ADD_TIMEVAL (stats->elapsed_scan, tv_diff);
 	      }
+#endif
 	    if (rec_scan_code == S_ERROR)
 	      {
 		if (m_context->has_error())
@@ -248,10 +268,12 @@ namespace parallel_heap_scan
 	      }
 	    else if (rec_scan_code == S_SUCCESS)
 	      {
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t1);
 		  }
+#endif
 		if (is_list_merge)
 		  {
 		    if (m_context->has_error() || m_context->is_scan_external_ended)
@@ -281,14 +303,20 @@ namespace parallel_heap_scan
 			break;
 		      }
 		  }
+#if WITH_PARALLEL_DETAIL_INFO
 		if (on_trace)
 		  {
 		    tsc_getticks (&t2);
 		    tsc_elapsed_time_usec (&tv_diff, t2, t1);
 		    TSC_ADD_TIMEVAL (stats->elapsed_enqueue, tv_diff);
 		  }
+#endif
 	      }
 	  }
+      }
+    if (on_trace)
+      {
+	perfmon_merge_child_stats_to_parent_stats (thread_p);
       }
     if (is_list_merge)
       {
@@ -313,9 +341,8 @@ namespace parallel_heap_scan
     scan_end_scan (thread_p, scan_id);
     scan_close_scan (thread_p, scan_id);
     db_change_private_heap (thread_p, orig_heap_id);
-    thread_p->tran_index = orig_tran_index;
     thread_p->conn_entry = orig_conn_entry;
-    thread_p->m_parallel_stats = NULL;
+    thread_p->m_px_stats = NULL;
 #if PARALLEL_HEAP_SCAN_LOG
     er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
 #endif
@@ -330,4 +357,3 @@ namespace parallel_heap_scan
     worker_manager_p->pop_task();
   }
 }
-#endif /* SERVER_MODE && !WINDOWS */

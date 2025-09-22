@@ -2437,38 +2437,35 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
   if (rep->n_attributes > 0)
     {
-      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
       if (rep->attributes == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_attributes);
 	  goto error_cleanup;
 	}
-      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
     }
 
   if (rep->n_shared_attrs > 0)
     {
-      rep->shared_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
+      rep->shared_attrs = (OR_ATTRIBUTE *) calloc (rep->n_shared_attrs, sizeof (OR_ATTRIBUTE));
       if (rep->shared_attrs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
 	  goto error_cleanup;
 	}
-      memset (rep->shared_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_shared_attrs);
     }
 
   if (rep->n_class_attrs > 0)
     {
-      rep->class_attrs = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
+      rep->class_attrs = (OR_ATTRIBUTE *) calloc (rep->n_class_attrs, sizeof (OR_ATTRIBUTE));
       if (rep->class_attrs == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
 	  goto error_cleanup;
 	}
-      memset (rep->class_attrs, 0, sizeof (OR_ATTRIBUTE) * rep->n_class_attrs);
     }
 
 
@@ -3009,14 +3006,12 @@ or_get_old_representation (RECDES * record, int repid, int do_indexes)
       return rep;
     }
 
-  rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+  rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
   if (rep->attributes == NULL)
     {
       free_and_init (rep);
       return NULL;
     }
-  memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
-
   /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of the
    * disk_rep points directly at the the substructure's variable offset table (which it does) and use
    * OR_VAR_TABLE_ELEMENT_OFFSET. */
@@ -3207,15 +3202,13 @@ or_get_all_representation (RECDES * record, bool do_indexes, int *count)
 	  continue;
 	}
 
-      rep->attributes = (OR_ATTRIBUTE *) malloc (sizeof (OR_ATTRIBUTE) * rep->n_attributes);
+      rep->attributes = (OR_ATTRIBUTE *) calloc (rep->n_attributes, sizeof (OR_ATTRIBUTE));
       if (rep->attributes == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  (sizeof (OR_ATTRIBUTE) * rep->n_attributes));
 	  goto error;
 	}
-      memset (rep->attributes, 0, sizeof (OR_ATTRIBUTE) * rep->n_attributes);
-
       /* Calculate the beginning of the set_of(rep_attribute) in the representation object. Assume that the start of
        * the disk_rep points directly at the the substructure's variable offset table (which it does) and use
        * OR_VAR_TABLE_ELEMENT_OFFSET. */

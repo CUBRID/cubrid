@@ -7568,7 +7568,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       old_recdes = &copy_recdes;
 
-      /* Fall through */
+      [[fallthrough]];
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
@@ -8274,7 +8274,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   DB_VALUE *repl_old_key = NULL;
   DB_VALUE new_dbvalue, old_dbvalue;
   bool new_isnull, old_isnull;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
