@@ -52,7 +52,11 @@
 #include "dbtype.h"
 #include "regu_var.hpp"
 
-#define TEST_DUMP_PLAN_COST 0
+#define TEST_DUMP_PLAN_SCAN_COST 0
+#define TEST_DUMP_PLAN_SORT_COST 0
+#define TEST_DUMP_PLAN_JOIN_COST 0
+#define TEST_DUMP_PLAN_FOLLOW_COST 0
+
 #define TEST_HASH_JOIN_ENABLE 0
 #define TEST_HASH_JOIN_FORCE_ENABLE 0
 
@@ -980,6 +984,8 @@ qo_top_plan_new (QO_PLAN * plan)
 	}			/* for (t = ...) */
       found_instnum = (t == -1) ? false : true;
 
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
+
       /* GROUP BY */
       /* if we have rollup, we do not skip the group by */
       if (group_by && !group_by->flag.with_rollup)
@@ -1033,6 +1039,12 @@ qo_top_plan_new (QO_PLAN * plan)
 	    }
 	  else
 	    {
+	      if (plan->iscan_sort_list)
+		{
+		  parser_free_tree (parser, plan->iscan_sort_list);
+		  plan->iscan_sort_list = NULL;
+		}
+
 	      /* if the order by is not skipped we drop the plan because it didn't helped us */
 	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
 		{
@@ -1048,7 +1060,6 @@ qo_top_plan_new (QO_PLAN * plan)
       /* DISTINCT, ORDER BY */
       if (all_distinct == PT_DISTINCT || order_by)
 	{
-	  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
 	  if (plan->iscan_sort_list)
 	    {			/* need to check */
 	      if (all_distinct == PT_DISTINCT)
@@ -1088,12 +1099,6 @@ qo_top_plan_new (QO_PLAN * plan)
 			}
 		    }
 		}
-
-	      if (plan->iscan_sort_list)
-		{
-		  parser_free_tree (parser, plan->iscan_sort_list);
-		  plan->iscan_sort_list = NULL;
-		}
 	    }
 
 	  if (orderby_skip)
@@ -1126,6 +1131,12 @@ qo_top_plan_new (QO_PLAN * plan)
 	    }
 	  else
 	    {
+	      if (plan->iscan_sort_list)
+		{
+		  parser_free_tree (parser, plan->iscan_sort_list);
+		  plan->iscan_sort_list = NULL;
+		}
+
 	      /* if the order by is not skipped we drop the plan because it didn't helped us */
 	      if (qo_is_iscan_from_orderby (plan))
 		{
@@ -1563,7 +1574,7 @@ qo_sscan_cost (QO_PLAN * planp)
     }
   planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
 
-#if TEST_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nSequential Scan Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -1578,7 +1589,7 @@ qo_sscan_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif /* TEST_DUMP_PLAN_COST */
+#endif /* TEST_DUMP_PLAN_SCAN_COST */
 }
 
 /*
@@ -2096,7 +2107,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
 
-#if TEST_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -2111,7 +2122,7 @@ qo_iscan_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif /* TEST_DUMP_PLAN_COST */
+#endif /* TEST_DUMP_PLAN_SCAN_COST */
 }
 
 
@@ -2637,7 +2648,7 @@ qo_sort_cost (QO_PLAN * planp)
 	}
     }
 
-#if TEST_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_SORT_COST
   fprintf (stdout, "\nSort Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -2652,7 +2663,7 @@ qo_sort_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif /* TEST_DUMP_PLAN_COST */
+#endif /* TEST_DUMP_PLAN_SORT_COST */
 }
 
 /*
@@ -3148,7 +3159,7 @@ qo_nljoin_cost (QO_PLAN * planp)
     planp->variable_io_cost += MAX (0.0, outer->variable_io_cost - 1.0) * subq_io_cost;	/* assume IO as # blocks */
   }
 
-#if TEST_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_JOIN_COST
   fprintf (stdout, "\nNested Loop Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -3163,7 +3174,7 @@ qo_nljoin_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif /* TEST_DUMP_PLAN_COST */
+#endif /* TEST_DUMP_PLAN_JOIN_COST */
 }
 
 /*
@@ -3227,7 +3238,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
 
-#if TEST_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_JOIN_COST
   fprintf (stdout, "\nSort Merge Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -3242,7 +3253,7 @@ qo_mjoin_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif /* TEST_DUMP_PLAN_COST */
+#endif /* TEST_DUMP_PLAN_JOIN_COST */
 }
 
 /*
@@ -3355,7 +3366,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       assert (false);
     }
 
-#if TEST_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_JOIN_COST
   fprintf (stdout, "\nHash Join Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", plan_p->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", plan_p->fixed_io_cost);
@@ -3370,7 +3381,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif /* TEST_DUMP_PLAN_COST */
+#endif /* TEST_DUMP_PLAN_JOIN_COST */
 }
 
 /*
@@ -3583,7 +3594,7 @@ qo_follow_cost (QO_PLAN * planp)
   planp->variable_cpu_cost = head->variable_cpu_cost + (cardinality * (double) QO_CPU_WEIGHT);
   planp->variable_io_cost = head->variable_io_cost + fetch_ios;
 
-#if TEST_DUMP_PLAN_COST
+#if TEST_DUMP_PLAN_FOLLOW_COST
   fprintf (stdout, "\nFollow Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
   fprintf (stdout, "  -    Fixed I/O Cost: %lf\n", planp->fixed_io_cost);
@@ -3597,7 +3608,7 @@ qo_follow_cost (QO_PLAN * planp)
       fprintf (stdout, "\n");
     }
   fprintf (stdout, "\n");
-#endif /* TEST_DUMP_PLAN_COST */
+#endif /* TEST_DUMP_PLAN_FOLLOW_COST */
 }
 
 
@@ -3835,19 +3846,6 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   tb = bf + ba;
   if (ta > 0 && tb > 0 && QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
     {
-#if 0
-      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a) || qo_is_iscan_from_groupby (a))
-	  && qo_plan_is_orderby_skip_candidate (a) && qo_is_seq_scan (b))
-	{
-	  return PLAN_COMP_LT;
-	}
-      else if (qo_is_seq_scan (a) && (qo_is_iscan (b) || qo_is_iscan_from_orderby (b) || qo_is_iscan_from_groupby (b))
-	       && qo_plan_is_orderby_skip_candidate (b))
-	{
-	  return PLAN_COMP_GT;
-	}
-#endif
-
       if (ta * RBO_CHECK_LIMIT_RATIO <= tb)
 	{
 	  return PLAN_COMP_LT;
@@ -5647,20 +5645,21 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
   best_info = info->planner->best_info;
   plan_order = plan->order;
 
-#if 0
-  /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't skip the orderby, we release the plan. */
-  if (qo_is_iscan_from_orderby (plan) && !plan->plan_un.scan.index->head->orderby_skip)
+  if (plan->top_rooted)
     {
-      qo_plan_release (plan);
-      return 0;
-    }
-#endif
+      /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't skip the orderby, we release the plan. */
+      if (qo_is_iscan_from_orderby (plan) && !plan->plan_un.scan.index->head->orderby_skip)
+	{
+	  qo_plan_release (plan);
+	  return 0;
+	}
 
-  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
-  if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
-    {
-      qo_plan_release (plan);
-      return 0;
+      /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
+      if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
+	{
+	  qo_plan_release (plan);
+	  return 0;
+	}
     }
 
   /*
@@ -11486,6 +11485,7 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   PT_NODE *order_by, *statement;
   QO_ENV *env;
   bool is_prefix = false, is_orderby_skip = false;
+  bool need_cleanup = false;
 
   if (plan == NULL || plan->info == NULL)
     {
@@ -11503,7 +11503,11 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   statement = QO_ENV_PT_TREE (env);
   order_by = statement->info.query.order_by;
 
-  plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix, false);
+  if (plan->iscan_sort_list == NULL)
+    {
+      plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_prefix, false);
+      need_cleanup = true;
+    }
 
   if (plan->iscan_sort_list == NULL || is_prefix)
     {
@@ -11519,7 +11523,7 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
     }
 
 cleanup:
-  if (plan->iscan_sort_list)
+  if (need_cleanup && plan->iscan_sort_list != NULL)
     {
       parser_free_tree (parser, plan->iscan_sort_list);
       plan->iscan_sort_list = NULL;
