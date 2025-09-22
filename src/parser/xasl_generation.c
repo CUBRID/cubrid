@@ -8477,7 +8477,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_WEEK, domain);
 		  break;
 
-		case PT_SCHEMA:
 		case PT_DATABASE:
 		  {
 		    PT_NODE *dbname_val;
@@ -9004,12 +9003,21 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		    return NULL;
 		  }
+		case PT_SCHEMA:
 		case PT_USER:
 		  {
 		    char *user = NULL;
 		    PT_NODE *current_user_val = NULL;
 
-		    user = db_get_user_and_host_name ();
+		    if (node->info.expr.op == PT_USER)
+		      {
+			user = db_get_user_and_host_name ();
+		      }
+		    else
+		      {
+			user = db_get_user_name ();
+		      }
+
 		    if (user == NULL)
 		      {
 			assert (er_errid () != NO_ERROR);
@@ -14898,10 +14906,7 @@ pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
   if (xasl == NULL)
     {
-      if (er_errid () == NO_ERROR)
-	{
-	  assert_release (false);
-	}
+      assert_release_error (er_errid () != NO_ERROR);
       return NULL;
     }
 
@@ -19971,7 +19976,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   PT_HINT_ENUM hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
-    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH;
+    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_HEAP_SCAN |
+    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
@@ -20133,6 +20139,21 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	    }
 	}
       select_stmt->info.query.q.select.use_hash = arg;
+    }
+
+  if (hint_flags & PT_HINT_PARALLEL)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  select_stmt->info.query.q.select.num_parallel_threads = node->info.delete_.num_parallel_threads;
+	  break;
+	case PT_UPDATE:
+	  select_stmt->info.query.q.select.num_parallel_threads = node->info.update.num_parallel_threads;
+	  break;
+	default:
+	  break;
+	}
     }
 
   return NO_ERROR;
@@ -25743,7 +25764,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 PT_NODE *
 pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
-  PT_NODE *statement, *where, *group_by, *oid, *save_next;
+  PT_NODE *statement, *where, *group_by, *oid, *save_next, *arg = NULL;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -25874,7 +25895,51 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   /* set index hint */
   if (info->hint & PT_HINT_USE_UPDATE_IDX)
     {
-      statement->info.query.q.select.using_index = parser_copy_tree_list (parser, info->update.index_hint);
+      arg = info->update.index_hint;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.using_index = arg;
+    }
+
+  if (info->hint & PT_HINT_NO_USE_HASH)
+    {
+      statement->info.query.q.select.hint |= PT_HINT_NO_USE_HASH;
+
+      arg = info->no_use_hash;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.no_use_hash = arg;
+    }
+
+  if (info->hint & PT_HINT_USE_HASH)
+    {
+      statement->info.query.q.select.hint |= PT_HINT_USE_HASH;
+
+      arg = info->use_hash;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.use_hash = arg;
     }
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
@@ -28377,7 +28442,23 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 
       for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
 	{
-	  char *str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	  char *str_group = NULL;
+
+	  if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
+	    {
+	      /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
+	      int tmp_paren_type = -1;
+	      tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
+	      groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
+
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	      groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
+	    }
+	  else
+	    {
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	    }
 
 	  /* brute method, compare printed trees */
 	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)

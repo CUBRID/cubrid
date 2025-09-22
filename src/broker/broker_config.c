@@ -60,8 +60,6 @@
 #endif
 #define DEFAULT_SESSION_TIMEOUT		"5min"
 #define DEFAULT_MAX_QUERY_TIMEOUT       "0"
-#define DEFAULT_MYSQL_READ_TIMEOUT      "0"
-#define DEFAULT_MYSQL_KEEPALIVE_INTERVAL	"1800"	/* 30m */
 #define DEFAULT_JOB_QUEUE_SIZE		1024
 #define DEFAULT_APPL_SERVER		"CAS"
 #define DEFAULT_EMPTY_STRING		"\0"
@@ -129,9 +127,6 @@ static bool is_invalid_buf_size (int size);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
-  {APPL_SERVER_CAS_ORACLE_TYPE_NAME, APPL_SERVER_CAS_ORACLE},
-  {APPL_SERVER_CAS_MYSQL_TYPE_NAME, APPL_SERVER_CAS_MYSQL},
-  {APPL_SERVER_CAS_MYSQL51_TYPE_NAME, APPL_SERVER_CAS_MYSQL51},
   {APPL_SERVER_CAS_CGW_TYPE_NAME, APPL_SERVER_CAS_CGW},
   {NULL, 0}
 };
@@ -1049,29 +1044,6 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno);
-      strncpy_bufsize (time_str, s);
-      br_info[num_brs].mysql_read_timeout = (int) ut_time_string_to_sec (time_str, "sec");
-      if (br_info[num_brs].mysql_read_timeout < 0)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-      else if (br_info[num_brs].mysql_read_timeout > MAX_QUERY_TIMEOUT_LIMIT)
-	{
-	  errcode = PARAM_BAD_RANGE;
-	  goto conf_error;
-	}
-
-      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_KEEPALIVE_INTERVAL", DEFAULT_MYSQL_KEEPALIVE_INTERVAL, &lineno);
-      strncpy_bufsize (time_str, s);
-      br_info[num_brs].mysql_keepalive_interval = (int) ut_time_string_to_sec (time_str, "sec");
-      if (br_info[num_brs].mysql_keepalive_interval < MIN_MYSQL_KEEPALIVE_INTERVAL)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-
       /* parameters related to checking hanging cas */
       br_info[num_brs].reject_client_flag = false;
       INI_GETSTR_CHK (s, ini, sec_name, "ENABLE_MONITOR_HANG", "OFF", &lineno);
@@ -1728,12 +1700,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
 
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
-
-      if (br_info[i].appl_server == APPL_SERVER_CAS_MYSQL || br_info[i].appl_server == APPL_SERVER_CAS_MYSQL51)
-	{
-	  fprintf (fp, "MYSQL_READ_TIMEOUT\t=%d\n", br_info[i].mysql_read_timeout);
-	  fprintf (fp, "MYSQL_KEEPALIVE_INTERVAL\t=%d\n", br_info[i].mysql_keepalive_interval);
-	}
 
       tmp_str = get_conf_string (br_info[i].monitor_hang_flag, tbl_on_off);
       if (tmp_str)
