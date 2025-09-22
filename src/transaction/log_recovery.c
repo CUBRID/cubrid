@@ -2386,6 +2386,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 			LOG_LSA * start_redo_lsa, bool is_media_crash, time_t * stop_at, bool * did_incom_recovery,
 			bool * may_use_checkpoint, bool * may_need_synch_checkpoint_2pc)
 {
+printf ("analysis_record : %s\n", log_to_string (log_type));
   switch (log_type)
     {
     case LOG_UNDOREDO_DATA:
