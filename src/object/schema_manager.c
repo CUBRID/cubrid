@@ -15786,17 +15786,18 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   /* Create a new heap */
   error = heap_create (insts_hfid, oid, reuse_oid);
+  /* Create the lob dir if need */
   if (lob_arr_length)
     {
       HFID lob_hfid = *insts_hfid;
       error = manage_lob_dir(&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_DIR_CREATE);
     }
+  free (lob_attrid_arr);
+
   if (error != NO_ERROR)
     {
       return error;
     }
-
-    free (lob_attrid_arr);
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
