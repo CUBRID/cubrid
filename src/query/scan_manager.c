@@ -3717,7 +3717,7 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   visid->rest_regu_list = regu_list_rest;
   /* index scan info */
 
-  visid->hnsw_id = indx_info->btid.root_pageid;
+  visid->btid = indx_info->btid;
 
   return NO_ERROR;
 }
@@ -6386,12 +6386,7 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  visid->distp = (float *) db_private_alloc (thread_p, k * sizeof (float));
 	  visid->oid_cnt = k;
 
-	  BTID btid = {
-	    .vfid = VFID_INITIALIZER,
-	    .root_pageid = visid->hnsw_id
-	  };
-
-	  if (hnsw_search_element (thread_p, &btid, visid->query_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
+	  if (hnsw_search_element (thread_p, &visid->btid, visid->query_dbvalue, k, visid->oidp, visid->distp) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }

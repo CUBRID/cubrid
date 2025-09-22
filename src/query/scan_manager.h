@@ -294,7 +294,7 @@ struct hnsw_indx_scan_id
   HFID hfid;			/* heap file identifier */
   HEAP_SCANCACHE scan_cache;	/* heap file scan_cache */
   OID *curr_oidp;		/* current oid pointer */
-  INT32 hnsw_id;
+  BTID btid;        /* index identifier */
 
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
   SCAN_ATTRS pred_attrs;	/* attr info from predicates */
