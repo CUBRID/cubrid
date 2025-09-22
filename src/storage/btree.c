@@ -8290,7 +8290,7 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 	  break;
 	}
 
-      if (curr_idx->type == BTREE_PRIMARY_KEY)
+      if (curr_idx->type == BTREE_PRIMARY_KEY || curr_idx->type == BTREE_UNIQUE)
 	{
 	  BTID_COPY (pkey_btid, &curr_idx->btid);
 	  break;
