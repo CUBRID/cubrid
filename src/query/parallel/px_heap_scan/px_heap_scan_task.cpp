@@ -186,6 +186,11 @@ namespace parallel_heap_scan
     scan_end_scan (&thread_ref, m_scan_id);
     scan_close_scan (&thread_ref, m_scan_id);
 
+    for (int i = 0; i < m_vd->dbval_cnt; i++)
+      {
+	pr_clear_value (&m_vd->dbval_ptr[i]);
+      }
+
     db_private_free (&thread_ref, m_vd->dbval_ptr);
     db_private_free (&thread_ref, m_vd);
     qexec_clear_xasl (&thread_ref, m_xasl, true);

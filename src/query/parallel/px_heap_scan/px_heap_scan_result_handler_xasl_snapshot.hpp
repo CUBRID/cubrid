@@ -28,32 +28,21 @@
 
 namespace parallel_heap_scan
 {
-  class list_id_atomic_vpid
+  class list_id_header
   {
     public:
-      std::atomic<VPID> first_vpid;
-      std::atomic<VPID> last_vpid;
-      std::atomic_bool last_pgptr_released;
-      std::atomic_bool ended;
-      list_id_atomic_vpid() : first_vpid ({-1,-1}), last_vpid ({-1,-1}), last_pgptr_released (false), ended (false) {}
-      ~list_id_atomic_vpid() {}
+      VPID m_first_vpid;
+      VPID m_last_vpid;
+      bool m_list_closed;
+      bool m_valid;
+      QFILE_TUPLE_VALUE_TYPE_LIST m_type_list;
+      QFILE_LIST_ID *m_list_id_p;
+      std::mutex m_mutex;
 
-      list_id_atomic_vpid (const list_id_atomic_vpid &other)
-	: first_vpid (other.first_vpid.load()), last_vpid (other.last_vpid.load()),
-	  last_pgptr_released (other.last_pgptr_released.load()), ended (other.ended.load()) {}
-
-      list_id_atomic_vpid &operator= (const list_id_atomic_vpid &other)
-      {
-	if (this != &other)
-	  {
-	    first_vpid.store (other.first_vpid.load());
-	    last_vpid.store (other.last_vpid.load());
-	    last_pgptr_released.store (other.last_pgptr_released.load());
-	    ended.store (other.ended.load());
-	  }
-	return *this;
-      }
+      list_id_header();
+      ~list_id_header();
   };
+
   class result_handler_xasl_snapshot : public result_handler<VAL_LIST, VAL_LIST>
   {
       using interrupt = parallel_query::interrupt;
@@ -61,54 +50,57 @@ namespace parallel_heap_scan
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
       ~result_handler_xasl_snapshot() = default;
-
       void read_initialize (THREAD_ENTRY *thread_p) override;
       SCAN_CODE get_next (THREAD_ENTRY *thread_p, VAL_LIST *result) override;
       void read_finalize (THREAD_ENTRY *thread_p) override;
-
       void write_initialize (THREAD_ENTRY *thread_p) override;
       bool write (THREAD_ENTRY *thread_p, VAL_LIST *input) override;
       void write_finalize (THREAD_ENTRY *thread_p) override;
 
       result_handler_xasl_snapshot (QUERY_ID query_id, interrupt *interrupt_p, atomic_instnum *atomic_instnum_p,
-				    bool should_check_instnum, err_messages_with_lock *err_messages_p, int parallelism)
-	: result_handler (query_id, interrupt_p, atomic_instnum_p, should_check_instnum, err_messages_p,
-			  RESULT_TYPE::XASL_SNAPSHOT)
-      {
-	m_parallelism = parallelism;
-	m_result_list_ids_count = 0;
-	m_is_waiting_atomic_vpid = false;
-	m_current_list_id_index = -1;
-      }
+				    bool should_check_instnum, err_messages_with_lock *err_messages_p, int parallelism);
 
     private:
-
-      /* for reader */
-      std::vector<QFILE_LIST_SCAN_ID> m_reader_result_list_scan_ids;
-      int m_current_list_id_index;
-      QFILE_TUPLE_RECORD m_reader_tpl_buf;
+      struct list_id_header_for_read
+      {
+	list_id_header *m_list_id_header;
+	QFILE_LIST_SCAN_ID m_list_scan_id;
+	bool m_read_ended;
+	bool m_list_scan_id_opened;
+      };
+      /* for both */
+      int m_parallelism;
+      std::mutex m_cv_mutex;
+      std::condition_variable m_readable_list_exists_cv;
+      bool m_reader_wait;
+      int m_reader_list_id_index_hint;
+      std::atomic_int m_writer_ended_cnt;
+      std::atomic_int m_writer_null_list_id_ended_cnt;
 
       /* for writer */
-      std::vector<QFILE_LIST_ID *> m_writer_result_list_ids;
-      std::mutex m_writer_result_list_ids_mutex;
-      thread_local static QFILE_LIST_ID *m_tl_writer_result_list_id;
-      thread_local static QFILE_TUPLE_RECORD *m_tl_tpl_buf;
+      std::vector<list_id_header> m_writer_list_id_headers;
+      std::atomic_int m_writer_list_id_index;
+      thread_local static list_id_header *m_tl_writer_list_id_header;
+      thread_local static QFILE_TUPLE_RECORD m_tl_tpl_buf;
+      thread_local static int m_tl_list_id_index;
 
-      /* for both */
-      std::atomic_int m_parallelism;
-      std::mutex m_result_list_ids_mutex;
-      std::condition_variable m_result_list_ids_condition_variable;
-      int m_result_list_ids_count;
+      /* for reader */
+      std::vector<list_id_header_for_read> m_reader_list_id_headers;
+      QFILE_TUPLE_RECORD m_reader_tpl_buf;
+      list_id_header m_current_list_id_header;
+      list_id_header_for_read *m_current_list_id_header_for_read;
 
-      std::vector<list_id_atomic_vpid> m_result_list_ids_atomic_vpid;
-      std::mutex m_result_list_ids_atomic_vpid_mutex;
-      std::condition_variable m_result_list_ids_atomic_vpid_condition_variable;
-      bool m_is_waiting_atomic_vpid;
+      /* helper functions */
+      bool get_next_available_list_id_header ();
+      void send_prev_vpid_to_reader (VPID prev_vpid);
 
   };
 
-  int update_domains_on_type_list_by_val_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id_p, VAL_LIST *val_list_p);
+  /* helper functions */
+  bool get_list_id_header_if_readable (list_id_header *src_list_id_header, list_id_header *dest_list_id_header);
+  bool is_next_tuple_on_not_readable_page (list_id_header *list_id_header, QFILE_LIST_SCAN_ID *list_scan_id);
 
+  int update_domains_on_type_list_by_val_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id_p, VAL_LIST *val_list_p);
 }
 
 

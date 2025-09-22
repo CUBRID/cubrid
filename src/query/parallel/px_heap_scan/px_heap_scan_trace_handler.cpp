@@ -65,6 +65,8 @@ namespace parallel_heap_scan
 	    m_stats[i] = trace_handler.m_stats[i];
 	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
 	    m_stats_last.ioreads+=trace_handler.m_stats[i].ioreads;
+	    m_stats_last.read_rows+=trace_handler.m_stats[i].read_rows;
+	    m_stats_last.qualified_rows+=trace_handler.m_stats[i].qualified_rows;
 	  }
 	m_is_initialized = true;
       }
@@ -81,6 +83,8 @@ namespace parallel_heap_scan
 	    TSC_ADD_TIMEVAL (m_stats[i].elapsed_time, trace_handler.m_stats[i].elapsed_time);
 	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
 	    m_stats_last.ioreads+=trace_handler.m_stats[i].ioreads;
+	    m_stats_last.read_rows+=trace_handler.m_stats[i].read_rows;
+	    m_stats_last.qualified_rows+=trace_handler.m_stats[i].qualified_rows;
 	  }
       }
   }
@@ -89,6 +93,8 @@ namespace parallel_heap_scan
   {
     partition_stats->num_fetches = m_stats_last.fetches;
     partition_stats->num_ioreads = m_stats_last.ioreads;
+    partition_stats->read_rows = m_stats_last.read_rows;
+    partition_stats->qualified_rows = m_stats_last.qualified_rows;
   }
 
   void accumulative_trace_storage::dump_stats_text (FILE *fp, int indent, char *class_name)
