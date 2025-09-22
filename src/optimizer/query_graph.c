@@ -222,6 +222,7 @@ static void qo_partition_dump (QO_PARTITION *, FILE *);
 static void qo_find_index_terms (QO_ENV * env, BITSET * segsp, QO_INDEX_ENTRY * index_entry);
 static void qo_find_index_seg_terms (QO_ENV * env, QO_INDEX_ENTRY * index_entry, int idx, BITSET * index_segsp);
 static bool qo_find_index_segs (QO_ENV *, SM_CLASS_CONSTRAINT *, QO_NODE *, int *, int, int *, BITSET *);
+static bool qo_is_segment_used_in_query (QO_ENV * env, int seg_idx);
 static bool qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_find_node_indexes (QO_ENV *, QO_NODE *);
 static int is_equivalent_indexes (QO_INDEX_ENTRY * index1, QO_INDEX_ENTRY * index2);
@@ -6860,6 +6861,33 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 }
 
 /*
+ * qo_is_segment_used_in_query () - Check if a segment is actually used in the query
+ *   return: true if segment is used, false otherwise
+ *   env(in): optimizer environment
+ *   seg_idx(in): segment index to check
+ */
+static bool
+qo_is_segment_used_in_query (QO_ENV * env, int seg_idx)
+{
+  int t;
+  QO_TERM *termp;
+
+  /* Check all terms in the environment */
+  for (t = 0; t < env->nterms; t++)
+    {
+      termp = QO_ENV_TERM (env, t);
+
+      /* Check if this term references the segment */
+      if (BITSET_MEMBER (QO_TERM_SEGS (termp), seg_idx))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_is_coverage_index () - check if the index cover all query segments
  *   return: bool
  *   env(in): The environment
@@ -6971,17 +6999,18 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	{
 	  if (index_entry->seg_idxs[j] == QO_SEG_IDX (seg))
 	    {
-	      /* if the segment created in respect to the function index info is covered, we do not use index covering */
-	      if (QO_SEG_FUNC_INDEX (seg))
-		{
-		  return false;
-		}
 	      found = true;
 	      break;
 	    }
 	}
+
       if (!found)
 	{
+	  /* Check if this segment is actually used in the query */
+	  if (!qo_is_segment_used_in_query (env, QO_SEG_IDX (seg)))
+	    {
+	      continue;		/* Skip this segment if it's not used in the query */
+	    }
 	  return false;
 	}
     }
