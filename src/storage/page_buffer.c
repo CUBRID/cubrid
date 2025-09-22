@@ -6764,7 +6764,7 @@ try_again:
   to.tv_sec = (int) time (NULL) + wait_secs;
   to.tv_nsec = 0;
 
-  if (!VACUUM_IS_THREAD_VACUUM (thread_p))
+  if (thread_p->type == TT_WORKER)
     {
       old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
     }
@@ -6772,7 +6772,7 @@ try_again:
   thrd_entry->resume_status = THREAD_PGBUF_SUSPENDED;
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
-  if (!VACUUM_IS_THREAD_VACUUM (thread_p))
+  if (thread_p->type == TT_WORKER)
     {
       logtb_set_check_interrupt (thread_p, old_check_interrupt);
     }
