@@ -6740,7 +6740,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
-  bool old_check_interrupt;
+  bool old_check_interrupt = false;
 
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
   thread_lock_entry (thread_p);
