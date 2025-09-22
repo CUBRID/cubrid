@@ -55,8 +55,6 @@
 #define SP_ATTR_OBJECT_TYPE             "otype"
 #define SP_ATTR_OBJECT_CODE             "ocode"
 
-#define SP_MAX_DEFAULT_VALUE_LEN        255
-
 typedef enum
 {
   SP_TYPE_PROCEDURE = 1,

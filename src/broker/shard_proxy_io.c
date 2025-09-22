@@ -938,19 +938,7 @@ proxy_io_make_client_dbinfo_ok (char *driver_info, char **buffer)
   client_version = CAS_MAKE_PROTO_VER (driver_info);
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
-      if (proxy_info_p->appl_server == APPL_SERVER_CAS_ORACLE)
-	{
-	  dbms_type = CAS_PROXY_DBMS_ORACLE;
-	}
-      else if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL
-	       || proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL51)
-	{
-	  dbms_type = CAS_PROXY_DBMS_MYSQL;
-	}
-      else
-	{
-	  dbms_type = CAS_PROXY_DBMS_CUBRID;
-	}
+      dbms_type = CAS_PROXY_DBMS_CUBRID;
     }
   else
     {
@@ -4594,21 +4582,10 @@ proxy_set_conn_info (int func_code, int ctx_cid, int ctx_uid, int shard_id, int 
       as_info_p->force_reconnect = true;
     }
 
-  if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+  if (strcasecmp (as_info_p->database_user, ctx_p->database_user) == 0
+      && strcmp (as_info_p->database_passwd, ctx_p->database_passwd) == 0)
     {
-      if (strcmp (as_info_p->database_user, ctx_p->database_user) == 0
-	  && strcmp (as_info_p->database_passwd, ctx_p->database_passwd) == 0)
-	{
-	  return;
-	}
-    }
-  else
-    {
-      if (strcasecmp (as_info_p->database_user, ctx_p->database_user) == 0
-	  && strcmp (as_info_p->database_passwd, ctx_p->database_passwd) == 0)
-	{
-	  return;
-	}
+      return;
     }
 
   /* this cas will reconnect to database. */
@@ -4741,21 +4718,10 @@ proxy_find_idle_cas_by_conn_info (int shard_id, int cas_id, int ctx_cid, unsigne
 	  continue;
 	}
 
-      if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+      if (strcasecmp (as_info_p->database_user, ctx_p->database_user)
+	  || strcmp (as_info_p->database_passwd, ctx_p->database_passwd))
 	{
-	  if (strcmp (as_info_p->database_user, ctx_p->database_user)
-	      || strcmp (as_info_p->database_passwd, ctx_p->database_passwd))
-	    {
-	      continue;
-	    }
-	}
-      else
-	{
-	  if (strcasecmp (as_info_p->database_user, ctx_p->database_user)
-	      || strcmp (as_info_p->database_passwd, ctx_p->database_passwd))
-	    {
-	      continue;
-	    }
+	  continue;
 	}
 
       return cas_io_p;
@@ -4840,39 +4806,19 @@ proxy_check_authorization (T_PROXY_CONTEXT * ctx_p, const char *db_name, const c
   user_p = shard_metadata_get_shard_user (shm_user_p);
   assert (user_p);
 
-  if (proxy_info_p->appl_server == APPL_SERVER_CAS_MYSQL)
+  if (strcasecmp (db_name, user_p->db_name))
     {
-      if (strcmp (db_name, user_p->db_name))
-	{
-	  goto authorization_error;
-	}
-
-      if (proxy_info_p->fixed_shard_user == false)
-	{
-	  return 0;
-	}
-
-      if (strcmp (db_user, user_p->db_user) || strcmp (db_passwd, user_p->db_password))
-	{
-	  goto authorization_error;
-	}
+      goto authorization_error;
     }
-  else
+
+  if (proxy_info_p->fixed_shard_user == false)
     {
-      if (strcasecmp (db_name, user_p->db_name))
-	{
-	  goto authorization_error;
-	}
+      return 0;
+    }
 
-      if (proxy_info_p->fixed_shard_user == false)
-	{
-	  return 0;
-	}
-
-      if (strcasecmp (db_user, user_p->db_user) || strcmp (db_passwd, user_p->db_password))
-	{
-	  goto authorization_error;
-	}
+  if (strcasecmp (db_user, user_p->db_user) || strcmp (db_passwd, user_p->db_password))
+    {
+      goto authorization_error;
     }
 
   return 0;

@@ -117,6 +117,20 @@ static void *op_server_shm_open (int shm_key);
 #define SH_MODE 0644
 #define MAX_SERVER_THREAD_COUNT         500
 
+
+#define CUBRID_VERSION(major,minor)     (major*100 + minor)
+#if (MAJOR_VERSION*100+MINOR_VERSION) < 1104
+#define GRANT_ENTRY_LENGTH              (3)
+#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
+#define GRANT_ENTRY_CLASS(index)        (index)
+#define GRANT_ENTRY_TYPE(index)         (index + 2)
+#else
+#define GRANT_ENTRY_LENGTH              (4)
+#define GRANT_ENTRY_OBJECT_TYPE(index)  (index)
+#define GRANT_ENTRY_CLASS(index)        (index + 1)
+#define GRANT_ENTRY_TYPE(index)         (index + 3)
+#endif
+
 static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname);
 static int getservershmid (char *dir, char *dbname);
 
@@ -150,6 +164,8 @@ static void _op_get_db_user_groups (nvplist * res, DB_OBJECT * user);
 static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 
 static T_EMGR_VERSION get_client_version (char *cli_ver_val);
+
+static bool is_class_entry (DB_COLLECTION * col, int index);
 
 #if defined(WINDOWS)
 static void
@@ -2782,34 +2798,34 @@ revoke_all_from_user (DB_OBJECT * user)
 {
   int i;
   DB_VALUE v;
-  DB_OBJECT *obj, **class_obj = NULL;
-  int num_class = 0;
+  DB_OBJECT *obj, **auth_obj = NULL;
+  int num_auth = 0;
   DB_COLLECTION *col;
 
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
+  for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
-      db_seq_get (col, i, &v);
+      db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      if (db_is_system_class (obj))
+      if (is_class_entry (col, i) && db_is_system_class (obj))
 	{
 	  continue;
 	}
-      class_obj = (DB_OBJECT **) (REALLOC (class_obj, sizeof (DB_OBJECT *) * (num_class + 1)));
-      if (class_obj == NULL)
+      auth_obj = (DB_OBJECT **) (REALLOC (auth_obj, sizeof (DB_OBJECT *) * (num_auth + 1)));
+      if (auth_obj == NULL)
 	{
 	  return ERR_MEM_ALLOC;
 	}
-      class_obj[num_class] = obj;
-      num_class++;
+      auth_obj[num_auth] = obj;
+      num_auth++;
     }
 
-  for (i = 0; i < num_class; i++)
+  for (i = 0; i < num_auth; i++)
     {
-      db_revoke (user, class_obj[i], DB_AUTH_ALL);
+      db_revoke (user, auth_obj[i], DB_AUTH_ALL);
     }
-  FREE_MEM (class_obj);
+  FREE_MEM (auth_obj);
   return ERR_NO_ERROR;
 }
 
@@ -2834,14 +2850,38 @@ _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user)
 
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
-  for (i = 0; i < db_seq_size (col); i += 3)
+  for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
     {
-      db_seq_get (col, i, &v);
+      if (!is_class_entry (col, i))
+	{
+	  continue;
+	}
+
+      db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      db_seq_get (col, i + 2, &v);
+      db_seq_get (col, GRANT_ENTRY_TYPE (i), &v);
       snprintf (buf, sizeof (buf) - 1, "%d", db_get_int (&v));
       nv_add_nvp (res, (char *) db_get_class_name (obj), buf);
     }
+}
+
+static bool
+is_class_entry (DB_COLLECTION * col, int index)
+{
+  DB_VALUE v;
+
+  if (CUBRID_VERSION (MAJOR_VERSION, MINOR_VERSION) < 1104)
+    {
+      return true;
+    }
+
+  db_seq_get (col, GRANT_ENTRY_OBJECT_TYPE (index), &v);
+  if (db_get_int (&v) == 0)
+    {
+      return true;
+    }
+
+  return false;
 }
 
 static void

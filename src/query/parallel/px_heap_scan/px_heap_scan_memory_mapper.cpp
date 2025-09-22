@@ -21,8 +21,6 @@
  * heap scan-related information from the XASL structure.
  */
 
-#if SERVER_MODE && !WINDOWS
-
 #include "px_heap_scan_memory_mapper.hpp"
 #include "regu_var.hpp"
 #include "query_executor.h"
@@ -720,5 +718,3 @@ namespace parallel_heap_scan
       }
   }
 }
-
-#endif /* SERVER_MODE && !WINDOWS */
