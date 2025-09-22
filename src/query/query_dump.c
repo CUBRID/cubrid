@@ -3906,7 +3906,14 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	       stats->build.qualified_rows, qdump_hashjoin_type_string (stats->hash_method));
 
 #if HASHJOIN_COLLISION_RATE
-      fprintf (fp, ", collision_rate: %.0f%%)", stats->collision_rate * 100);
+      if (stats->use_hash_file)
+	{
+	  fprintf (fp, ")");
+	}
+      else
+	{
+	  fprintf (fp, ", collision_rate: %.0f%%)", stats->collision_rate * 100);
+	}
 #else
       fprintf (fp, ")");
 #endif /* HASHJOIN_COLLISION_RATE */
@@ -3968,7 +3975,14 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
 
 #if HASHJOIN_COLLISION_RATE
-      fprintf (fp, ", collision_rate: %.0f%%)\n", stats->collision_rate * 100);
+      if (stats->use_hash_file)
+	{
+	  fprintf (fp, ")\n");
+	}
+      else
+	{
+	  fprintf (fp, ", collision_rate: %.0f%%)\n", stats->collision_rate * 100);
+	}
 #else
       fprintf (fp, ")\n");
 #endif /* HASHJOIN_COLLISION_RATE */
@@ -4055,7 +4069,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     }
 
   /* parallel subquery or partitioned hash join */
-  if (xasl_p->executed_parallelism > 1 || part_cnt > 1)
+  if (xasl_p->px_executor != NULL || part_cnt > 1)
     {
       fprintf (fp, "%*cSUBQUERY (uncorrelated)\n", indent, ' ');
       qdump_print_stats_text (fp, outer_xasl, indent);
@@ -4167,8 +4181,16 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
       json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
       json_object_set_new (build, "method", json_string (qdump_hashjoin_type_string (stats->hash_method)));
+
 #if HASHJOIN_COLLISION_RATE
-      json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+      if (stats->use_hash_file)
+	{
+	  /* nothing to do */
+	}
+      else
+	{
+	  json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+	}
 #endif /* HASHJOIN_COLLISION_RATE */
       json_object_set_new (parent, "build", build);
 
@@ -4241,8 +4263,16 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (build, "ioread", json_integer (stats->build.ioreads));
       json_object_set_new (build, "rows", json_integer (stats->build.qualified_rows));
       json_object_set_new (build, "method", json_string (hash_method_str));
+
 #if HASHJOIN_COLLISION_RATE
-      json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+      if (stats->use_hash_file)
+	{
+	  /* nothing to do */
+	}
+      else
+	{
+	  json_object_set_new (build, "collision_rate", json_real (stats->collision_rate * 100));
+	}
 #endif /* HASHJOIN_COLLISION_RATE */
 
 #if HASHJOIN_DUMP_PARTITION
@@ -4350,7 +4380,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
     }
 
   /* parallel subquery or partitioned hash join */
-  if (xasl_p->executed_parallelism > 1 || part_cnt > 1)
+  if (xasl_p->px_executor != NULL || part_cnt > 1)
     {
       subquery = json_array ();
 
