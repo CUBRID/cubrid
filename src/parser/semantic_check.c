@@ -5692,12 +5692,23 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_INET_NTOA:
     case PT_DBTIMEZONE:
     case PT_SESSIONTIMEZONE:
+    case PT_TZ_OFFSET:
     case PT_FROM_TZ:
     case PT_NEW_TIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
     case PT_UTC_TIMESTAMP:
     case PT_CONV_TZ:
+      break;
+
+      /* PT_DRAND and PT_DRANDOM are not supported regardless of whether a seed is given or not. because they produce
+       * random numbers of DOUBLE type. DOUBLE type is not allowed on partition expression. */
+    case PT_RAND:
+    case PT_RANDOM:
+      if (expr->info.expr.arg1 == NULL)
+	{
+	  return -1;
+	}
       break;
 
     default:
