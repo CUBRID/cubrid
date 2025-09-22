@@ -11872,74 +11872,61 @@ int
 file_lob_dir_remove (const char *path)
 {
   struct stat statbuf;
-  DIR *d; // 전달된 path의 dir open 객체
+  DIR *dir_p;
   size_t path_len;
-  int r = 0; // 함수 반환 result
+  int result = 0;
 
   if (stat (path, &statbuf) != 0 || !S_ISDIR (statbuf.st_mode))
     {
-      return 0;
+      return ER_ES_INVALID_PATH;
     }
-  d = opendir (path);
+
+  dir_p = opendir (path);
   path_len = strlen (path);
 
-  if (d)
+  if (dir_p)
     {
-      struct dirent *p;
-      while (!r && (p = readdir (d)))
+      struct dirent *dir_entry;
+
+      while (!result && (dir_entry = readdir (dir_p)))
         {
-          int r2 = 0;
           char *buf;
           size_t len;
 
-          if (!strcmp (p->d_name, ".") || !strcmp (p->d_name, "..")) // .이나 ..은 pass
+          if (!strcmp (dir_entry->d_name, ".") || !strcmp (dir_entry->d_name, ".."))
             {
               continue;
             }
 
-          len = path_len + strlen (p->d_name) + 2;
+          len = path_len + strlen (dir_entry->d_name) + 2;
           buf = (char *) malloc (len);
 
-          if (buf)
-            {
-              if (snprintf (buf, len, "%s/%s", path, p->d_name) >= (int) len)
-                {
-                  // snprintf 실패로 buffer overflow 방지
-                  free (buf);
-                  r = -1;
-                  break;
-                }
+          snprintf (buf, len, "%s/%s", path, dir_entry->d_name);
 
-              if (!stat (buf, &statbuf))
-                {
-                  if (S_ISDIR(statbuf.st_mode))
-                    {
-                      r2 = file_lob_dir_remove (buf);
-                    }
-                  else
-                    {
-                      r2 = unlink (buf);
-                    }
-                }
-              free (buf);
-            }
-          else
+          if (stat (buf, &statbuf) == 0)
             {
-              r = -1;
-              break;
+              if (S_ISDIR(statbuf.st_mode))
+                {
+                  result = file_lob_dir_remove (buf);
+                }
+              else
+                {
+                  result = unlink (buf);
+                }
             }
 
-          r = r2;
+          free (buf);
         }
-      closedir (d);
+
+      closedir (dir_p);
     }
 
-  if (!r)
+  if (!result)
     {
-      r = rmdir (path); // 최종 root directory 삭제
+      result = rmdir (path);
     }
 
-  return r;
+  return result;
 }
 
 void // int로 바꿔주고 에러 결과 반환하는게 맞을듯(todo구현)
