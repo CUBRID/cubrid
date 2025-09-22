@@ -441,6 +441,7 @@ struct qfile_list_id
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
   bool is_domain_resolved;	/* domains for host var is resolved or not */
   bool is_result_cached;	/* for subquery result cache */
+  QFILE_LIST_ID *dependent_list_id;	/* Linked as dependent by qfile_connect_list; cleared together. */
 };
 
 #define QFILE_CLEAR_LIST_ID(list_id) \
@@ -475,6 +476,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.merge_info = NULL; \
       (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
+      (list_id)->dependent_list_id = NULL; \
     } \
   while (0)
 

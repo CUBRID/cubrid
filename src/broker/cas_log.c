@@ -50,10 +50,8 @@
 #include "broker_env_def.h"
 #include "broker_filename.h"
 #include "broker_util.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbi.h"
 #include "cas_db_inc.h"
-#endif
 #include "chartype.h"
 #include "hide_password.h"
 
@@ -86,8 +84,6 @@ static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigne
 static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap);
 
 static FILE *access_log_open (char *log_file_name);
-static bool cas_log_begin_hang_check_time (void);
-static void cas_log_end_hang_check_time (bool is_prev_time_set);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
 						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr, bool ishidepw);
 
@@ -992,12 +988,10 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
 
   session_id_buf[0] = '\0';
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (!ACCESS_LOG_IS_DENIED_TYPE (log_type))
     {
       sprintf (session_id_buf, "%u", db_get_session_id ());
     }
-#endif
 
   cas_fprintf (fp, print_format, as_index + 1, clt_ip_str, ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
 	       ct1.tm_min, ct1.tm_sec, dbname, dbuser, get_access_log_type_string (log_type), session_id_buf);
@@ -1009,7 +1003,6 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
 void
 cas_log_query_info_init (int id, char is_only_query_plan)
 {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   char *plan_dump_filename;
 
   plan_dump_filename = cas_log_query_plan_file (id);
@@ -1024,7 +1017,6 @@ cas_log_query_info_init (int id, char is_only_query_plan)
     {
       set_optimization_level (513);
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 }
 
 char *
@@ -1289,46 +1281,12 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 
 }
 
-static bool
-cas_log_begin_hang_check_time (void)
-{
-  if (cas_shard_flag == OFF)
-    {
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-      bool is_prev_time_set = (as_info->claimed_alive_time > 0);
-      if (!is_prev_time_set)
-	{
-	  set_hang_check_time ();
-	}
-      return is_prev_time_set;
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-    }
-  return false;
-}
-
-static void
-cas_log_end_hang_check_time (bool is_prev_time_set)
-{
-  if (cas_shard_flag == OFF)
-    {
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-      if (!is_prev_time_set)
-	{
-	  unset_hang_check_time ();
-	}
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-    }
-}
-
 static size_t
 cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
 {
-  bool is_prev_time_set;
   size_t result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fwrite (ptr, size, nmemb, stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1342,12 +1300,9 @@ cas_ftell (FILE * stream)
 static int
 cas_fseek (FILE * stream, INT64 offset, int whence)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fseek (stream, offset, whence);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1355,12 +1310,9 @@ cas_fseek (FILE * stream, INT64 offset, int whence)
 static FILE *
 cas_fopen (const char *path, const char *mode)
 {
-  bool is_prev_time_set;
   FILE *result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fopen (path, mode);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1371,11 +1323,9 @@ cas_fopen_and_lock (const char *path, const char *mode)
 {
 #define MAX_RETRY_COUNT 100
   int retry_count;
-  bool is_prev_time_set;
   FILE *result;
 
   retry_count = 0;
-  is_prev_time_set = cas_log_begin_hang_check_time ();
 
 retry:
   result = fopen (path, mode);
@@ -1393,7 +1343,6 @@ retry:
 	  result = NULL;
 	}
     }
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1402,12 +1351,9 @@ retry:
 static int
 cas_fclose (FILE * fp)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fclose (fp);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1415,12 +1361,9 @@ cas_fclose (FILE * fp)
 static int
 cas_ftruncate (int fd, off_t length)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = ftruncate (fd, length);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1428,12 +1371,9 @@ cas_ftruncate (int fd, off_t length)
 static int
 cas_fflush (FILE * stream)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fflush (stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 
@@ -1442,12 +1382,9 @@ cas_fflush (FILE * stream)
 static int
 cas_fileno (FILE * stream)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fileno (stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1455,15 +1392,12 @@ cas_fileno (FILE * stream)
 static int
 cas_fprintf (FILE * stream, const char *format, ...)
 {
-  bool is_prev_time_set;
   int result;
   va_list ap;
 
   va_start (ap, format);
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = vfprintf (stream, format, ap);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   va_end (ap);
 
@@ -1473,12 +1407,9 @@ cas_fprintf (FILE * stream, const char *format, ...)
 static int
 cas_fputc (int c, FILE * stream)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = fputc (c, stream);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1486,12 +1417,9 @@ cas_fputc (int c, FILE * stream)
 static int
 cas_unlink (const char *pathname)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = unlink (pathname);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1499,12 +1427,9 @@ cas_unlink (const char *pathname)
 static int
 cas_rename (const char *oldpath, const char *newpath)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = rename (oldpath, newpath);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1512,12 +1437,9 @@ cas_rename (const char *oldpath, const char *newpath)
 static int
 cas_mkdir (const char *pathname, mode_t mode)
 {
-  bool is_prev_time_set;
   int result;
 
-  is_prev_time_set = cas_log_begin_hang_check_time ();
   result = mkdir (pathname, mode);
-  cas_log_end_hang_check_time (is_prev_time_set);
 
   return result;
 }
@@ -1535,7 +1457,6 @@ access_log_backup (char *access_log_file, struct tm *ct)
 static const char *
 get_access_log_type_string (ACCESS_LOG_TYPE type)
 {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   switch (type)
     {
     case NEW_CONNECTION:
@@ -1548,7 +1469,6 @@ get_access_log_type_string (ACCESS_LOG_TYPE type)
       assert (0);
       break;
     }
-#endif
 
   return "";
 }

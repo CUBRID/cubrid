@@ -28,9 +28,7 @@
 #ident "$Id$"
 
 #include "broker_config.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern int shard_broker_activate (int master_shm_id, T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p);
 void shard_broker_inactivate (T_BROKER_INFO * br_info_p);
