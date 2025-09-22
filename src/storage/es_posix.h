@@ -42,7 +42,6 @@ extern void es_posix_final (void);
 #if !defined PATH_MAX
 #define PATH_MAX	256
 #endif
-
 extern char es_base_dir[PATH_MAX];
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
