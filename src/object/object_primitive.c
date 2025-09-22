@@ -9291,7 +9291,7 @@ pr_midxkey_get_element_internal (const DB_MIDXKEY * midxkey, int index, DB_VALUE
       goto exit_on_error;
     }
 
-  if (index > midxkey->ncolumns)
+  if (index >= midxkey->ncolumns)
     {
       assert (false);
       goto exit_on_error;

@@ -16738,7 +16738,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 			{
 			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
 			   * in attributes */
-			  if (j >= func_index_col_id)
+			  if (j >= func_index_col_id && j + 1 < btree_num_att)
 			    {
 			      j++;
 			    }
