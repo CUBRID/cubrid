@@ -11078,7 +11078,6 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
 }
 
 bool
-
 heap_is_replicable_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_SCANCACHE scan_cache;
@@ -11110,7 +11109,6 @@ heap_is_replicable_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 
   return or_class_is_replicable (&recdes);
 }
-
 /*
  * heap_class_get_partition_info () - Get partition information for the class
  *				      identified by class_oid
