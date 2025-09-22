@@ -892,7 +892,6 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[ALTER_SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
-  DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
   char *uppercase_user = NULL;
   size_t uppercase_user_size = 0;
@@ -904,6 +903,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
   const char *serial_owner_name = NULL;
   const char *serial_class_name = NULL;
+  int save;
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -950,13 +950,13 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
+  AU_DISABLE (save);
+
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
     {
       goto err;
     }
-
-
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
@@ -1118,6 +1118,8 @@ err:
     {
       free_and_init (uppercase_user);
     }
+
+  AU_ENABLE (save);
   return error;
 }
 
@@ -1172,7 +1174,6 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [flags] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
 			     "[comment] "
 			   "FROM [_db_synonym]";
-                           "WHERE [owner].[name] = '%s'";
   // *INDENT-ON*
 
   query_error.err_lineno = 0;
