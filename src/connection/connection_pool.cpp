@@ -115,8 +115,8 @@ namespace cubconn
   void connection_pool::stats ()
   {
     for (auto &conn : m_workers)
-    {
-      conn->stats ();
-    }
+      {
+	conn->stats ();
+      }
   }
 }

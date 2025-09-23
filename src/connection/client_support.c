@@ -230,8 +230,9 @@ css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffe
   entry->conn->invalidate_snapshot = tm_Tran_invalidate_snapshot;
   entry->conn->in_method = tran_is_in_libcas ();
 
-  css_Errno = css_send_request_with_data_buffer_with_padding (entry->conn, request, &rid, arg_buffer, arg_buffer_size, data_buffer,
-						 data_buffer_size);
+  css_Errno =
+    css_send_request_with_data_buffer_with_padding (entry->conn, request, &rid, arg_buffer, arg_buffer_size,
+						    data_buffer, data_buffer_size);
   if (css_Errno != NO_ERRORS)
     {
       css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
