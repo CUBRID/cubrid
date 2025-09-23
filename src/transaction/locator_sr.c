@@ -8048,7 +8048,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
 			     REPL_INFO_TYPE_RBR_NORMAL);
-          replicated = true;
+	  replicated = true;
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8314,6 +8314,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
+  bool replicated = false;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -8422,7 +8423,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       index = &(new_attrinfo->last_classrepr->indexes[i]);
       if (pk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && (index->type == BTREE_PRIMARY_KEY || index->type == BTREE_UNIQUE)
-	  && log_does_allow_replication () == true)
+	  && !replicated && log_does_allow_replication () == true)
 	{
 	  pk_btid_index = i;
 	}
@@ -8811,6 +8812,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  replicated = true;
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -8821,6 +8823,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  replicated = true;
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}

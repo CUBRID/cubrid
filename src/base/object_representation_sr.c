@@ -779,7 +779,7 @@ or_class_flags (RECDES * record, int *flags)
 }
 
 bool
-or_class_is_replication_on(RECDES * record)
+or_class_is_replication_on (RECDES * record)
 {
   int flags = 0;
   int replication_off_flag = 32;	/* SM_CLASSFLAG_NO_REPLICATION = 32 */
