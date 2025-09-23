@@ -162,12 +162,14 @@ namespace cubconn
       inline bool prepare_reply (context *ctx, int reason) noexcept;
       inline bool prepare_reply_refuse_connection (context *ctx, int reason) noexcept;
 
-      /* HA */
-      inline bool prepare_send_ha_mode (context *ctx) noexcept;
-      inline bool prepare_send_log_eof (context *ctx) noexcept;
+      /* HB (communication with master) */
+      inline bool prepare_heartbeat_send_request (context *ctx, CSS_SERVER_REQUEST command) noexcept;
+      inline bool prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept;
 
-      inline bool prepare_send_heartbeat_request (context *ctx, CSS_SERVER_REQUEST command) noexcept;
-      inline bool prepare_send_heartbeat_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept;
+      inline bool prepare_heartbeat_register (context *ctx) noexcept;
+
+      inline bool prepare_heartbeat_ha_mode (context *ctx) noexcept;
+      inline bool prepare_heartbeat_log_eof (context *ctx) noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* reception								     */

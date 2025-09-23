@@ -3431,6 +3431,11 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
 {
   size_t count = 0;
 
+  if (css_Server_request_worker_pool == NULL)
+    {
+      return 0;
+    }
+
   css_Server_request_worker_pool->map_running_contexts (css_count_transaction_worker_threads_mapfunc, thread_p,
                                                         tran_index, client_id, count);
 
