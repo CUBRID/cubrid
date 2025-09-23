@@ -1351,7 +1351,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
   request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
 
   /* deleter */
-  request.deleter =[mem_header, mem_reply] ()noexcept
+  request.deleter =[mem_header, mem_reply] () noexcept
   {
     delete mem_header;
     delete[]mem_reply;
@@ -1438,7 +1438,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
 
   /* deleter */
   request.deleter =[header1 = mem_header[0],
-		    header2 = mem_header[1], body1 = mem_reply, deleter = std::move (deleter)] ()noexcept
+		    header2 = mem_header[1], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
   {
     delete header1;
     delete[]body1;
@@ -1629,7 +1629,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   /* deleter */
   request.deleter =[header1 = mem_header[0],
 		    header2 = mem_header[1],
-		    header3 = mem_header[2], body1 = mem_reply, deleter = std::move (deleter)] ()noexcept
+		    header3 = mem_header[2], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
   {
     delete header1;
     delete[]body1;
@@ -1766,7 +1766,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   request.deleter =[header1 = mem_header[0],
 		    header2 = mem_header[1],
 		    header3 = mem_header[2],
-		    header4 = mem_header[3], body1 = mem_reply, deleter = std::move (deleter)] ()noexcept
+		    header4 = mem_header[3], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
   {
     delete header1;
     delete[]body1;
@@ -1848,7 +1848,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
   request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
 
   /* deleter */
-  request.deleter =[mem_header, mem_reply] ()noexcept
+  request.deleter =[mem_header, mem_reply] () noexcept
   {
     delete mem_header;
     delete[]mem_reply;
@@ -1867,6 +1867,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
  *   return:
  *   eid(in): enquiry id
  */
+#if 0
 unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
@@ -1877,6 +1878,67 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   rc = css_send_abort_request (conn, CSS_RID_FROM_EID (eid));
 
   return (rc == NO_ERRORS) ? 0 : rc;
+}
+#endif
+
+unsigned int
+css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
+{
+  cubconn::connection_worker::message request;
+  NET_HEADER *header;
+  unsigned short flags = 0;
+  int r;
+
+  assert (conn != NULL);
+
+  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.conn = conn;
+  request.packet.clear ();
+
+  /* header */
+  header = new NET_HEADER;
+  header->type = htonl (ABORT_TYPE);
+  header->request_id = htonl (CSS_RID_FROM_EID (eid));
+  header->transaction_id = htonl (conn->get_tran_index ());
+  /**
+   * FIXME!!
+   * make NET_HEADER_FLAG_INVALIDATE_SNAPSHOT be enabled always due to CBRD-24157
+   *
+   * flags was mis-readed at css_read_header() and fixed at CBRD-24118.
+   * But The side effects described in CBRD-24157 occurred.
+   */
+  if (true) /* if (conn->invalidate_snapshot) */
+    {
+      flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
+    }
+  if (conn->in_method)
+    {
+      flags |= NET_HEADER_FLAG_METHOD_MODE;
+    }
+  header->flags = htons (flags);
+  header->db_error = htonl (conn->db_error);
+
+  request.packet.emplace_back ((std::byte *) header, sizeof (NET_HEADER));
+  request.deleter =[header] () noexcept
+  {
+    delete header;
+  };
+  conn->worker->enqueue (std::move (request));
+  if (!conn->worker->notify ())
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+
+  /* remove queued packet */
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  css_remove_unexpected_packets (conn, CSS_RID_FROM_EID (eid));
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  return 0;
 }
 
 /*

@@ -191,7 +191,6 @@ static void css_queue_error_packet (CSS_CONN_ENTRY * conn, unsigned short reques
 static css_error_code css_queue_command_packet (CSS_CONN_ENTRY * conn, unsigned short request_id,
 						const NET_HEADER * header, int size);
 static bool css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id);
-static void css_remove_unexpected_packets (CSS_CONN_ENTRY * conn, unsigned short request_id);
 
 static css_error_code css_queue_packet (CSS_CONN_ENTRY * conn, int type, unsigned short request_id,
 					const NET_HEADER * header, int size);

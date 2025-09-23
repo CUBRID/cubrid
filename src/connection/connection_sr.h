@@ -180,6 +180,8 @@ extern int css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short rid, ch
 extern int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size,
 				    int *rc);
 extern int css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
+
+extern void css_remove_unexpected_packets (CSS_CONN_ENTRY * conn, unsigned short request_id);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
 extern int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer);
 extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
