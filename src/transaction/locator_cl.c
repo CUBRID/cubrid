@@ -5708,11 +5708,6 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 {
   MOBJ class_obj;		/* The class object */
   HFID *hfid;			/* Heap where instance will be placed */
-  OID *oid;
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *attr;
-  int *lob_attrid_arr = NULL;
-  int lob_arr_length = 0;
 
   /*
    * Get the class for the instance.
@@ -5733,6 +5728,12 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
   hfid = sm_ch_heap (class_obj);
   if (HFID_IS_NULL (hfid))
     {
+      OID *oid;
+      SM_CLASS *class_;
+      SM_ATTRIBUTE *attr;
+      int *lob_attrid_arr = NULL;
+      int lob_arr_length = 0;
+
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
       if (class_obj == NULL)
@@ -5773,6 +5774,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
           HFID lob_hfid = *hfid;
           manage_lob_dir(&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_DIR_CREATE);
         }
+      free (lob_attrid_arr);
 
       ws_dirty (class_mop);
 
@@ -5783,8 +5785,6 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
     }
 
   assert (!OID_ISNULL (sm_ch_rep_dir (class_obj)));
-
-  free (lob_attrid_arr);
 
   return class_obj;
 }
