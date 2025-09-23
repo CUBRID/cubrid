@@ -569,6 +569,7 @@ namespace cubconn
 
   inline bool master_connector::prepare_heartbeat_register (context *ctx) noexcept
   {
+
     return false;
   }
 
@@ -979,8 +980,8 @@ namespace cubconn
       }
     else if (status == result::PeerReset)
       {
-	/* TODO */
 	_er_log_debug (__FILE__, __LINE__, "master_connector->handle_master_connection: reset by peer");
+	return false;
       }
     else if (status == result::Error)
       {
@@ -1146,6 +1147,23 @@ namespace cubconn
     return true;
   }
 
+  inline bool master_connector::disconnect (context *ctx) noexcept
+  {
+    if (ctx->m_conn->fd == m_context.m_conn->fd)
+      {
+	if (!HA_DISABLED ())
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		    "disconnected with the cub_master and will shut itself down", "");
+	    return true;
+	  }
+	/* WAIT RESPONSE or ESTABLISHED */
+	return this->reestablish_with_master ();
+      }
+
+    return this->dispose_connection (ctx);
+  }
+
   inline bool master_connector::execute () noexcept
   {
     std::array<epoll_event, 256> events;
@@ -1180,20 +1198,9 @@ namespace cubconn
 	    if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR) && ctx->m_conn->fd != m_eventfd)
 	      {
 		_er_log_debug (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
-		if (ctx->m_conn->fd == m_context.m_conn->fd)
+		if (!this->disconnect (ctx))
 		  {
-		    if (!HA_DISABLED ())
-		      {
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-				"disconnected with the cub_master and will shut itself down", "");
-			return true;
-		      }
-		    /* WAIT RESPONSE or ESTABLISHED */
-		    this->reestablish_with_master ();
-		  }
-		else
-		  {
-		    this->dispose_connection (ctx);
+		    return false;
 		  }
 		continue;
 	      }
@@ -1207,7 +1214,11 @@ namespace cubconn
 		if (!this->handle_master_reception (ctx))
 		  {
 		    _er_log_debug (__FILE__, __LINE__, "master_connector->execute: handle_master_reception failed: %d\n", 0);
-		    return false;
+		    if (!this->disconnect (ctx))
+		      {
+			return false;
+		      }
+		    continue;
 		  }
 	      }
 	    if (events[i].events & EPOLLOUT)
@@ -1215,7 +1226,11 @@ namespace cubconn
 		if (!this->handle_master_transmission (ctx))
 		  {
 		    _er_log_debug (__FILE__, __LINE__, "master_connector->execute: handle_master_transmission failed");
-		    return false;
+		    if (!this->disconnect (ctx))
+		      {
+			return false;
+		      }
+		    continue;
 		  }
 	      }
 	  }
