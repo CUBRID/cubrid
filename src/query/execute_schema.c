@@ -554,10 +554,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       {
         SM_CLASS *class_ = ctemplate->current;
         SM_ATTRIBUTE *attr;
-        int new_attr_count = 0;
-        int old_attr_count = class_->att_count;
+        int new_att_count = 0;
+        int old_att_count = class_->att_count;
         int type_id = 0;
-        int arr_length;
+        int arr_length = 0;
         int *lob_attrid_arr;
 
         error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
@@ -633,10 +633,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
             assert (alter->info.alter.create_index == NULL);
 
-            new_attr_count = class_->att_count;
-            lob_attrid_arr = (int*) malloc (sizeof (int) * (new_attr_count - old_attr_count));
+            new_att_count = class_->att_count;
+            lob_attrid_arr = (int*) malloc (sizeof (int) * (new_att_count - old_att_count));
 
-            for (int i = old_attr_count; i < new_attr_count; i++)
+            for (int i = old_att_count; i < new_att_count; i++)
               {
                 attr = &class_->attributes[i];
                 type_id = attr->type->id;
