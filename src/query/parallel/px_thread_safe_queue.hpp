@@ -24,10 +24,12 @@
 #define _PX_THREAD_SAFE_QUEUE_HPP_
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <limits>
 #include "px_interrupt.hpp"
 
 namespace parallel_query
@@ -51,14 +53,20 @@ namespace parallel_query
       std::size_t capacity() const;
     private:
       std::vector<T> m_data;
-      std::atomic<std::size_t> m_head;
-      std::atomic<std::size_t> m_tail;
-      std::atomic<std::size_t> m_size;
       std::atomic<bool> m_push_completed;
       std::size_t m_capacity;
       mutable std::mutex m_mutex;
       std::condition_variable m_not_empty;
       std::condition_variable m_not_full;
+      struct queue_state
+      {
+	std::uint16_t head;
+	std::uint16_t tail;
+	std::uint16_t size;
+	std::uint16_t version;
+      };
+      static_assert (sizeof (queue_state) == 8, "queue_state must be 8 bytes for atomicity");
+      std::atomic<queue_state> m_state;
 
       bool try_push_fast (const T &value);
       bool try_pop_fast (T &value);
