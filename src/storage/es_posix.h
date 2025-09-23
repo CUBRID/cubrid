@@ -42,9 +42,10 @@ extern void es_posix_final (void);
 #if !defined PATH_MAX
 #define PATH_MAX	256
 #endif
-extern char es_base_dir[PATH_MAX];
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
+extern char es_base_dir[PATH_MAX];
+
 extern int xes_posix_create_file (char *new_path);
 extern ssize_t xes_posix_write_file (const char *path, const void *buf, size_t count, off_t offset);
 extern ssize_t xes_posix_read_file (const char *path, void *buf, size_t count, off_t offset);
