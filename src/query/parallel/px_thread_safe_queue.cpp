@@ -165,6 +165,7 @@ namespace parallel_query
   bool thread_safe_queue<T>::try_pop_fast (T &value)
   {
     std::size_t current_size = m_size.load (std::memory_order_acquire);
+    std::size_t current_tail;
 
     if (current_size == 0)
       {
@@ -179,9 +180,13 @@ namespace parallel_query
 
     std::size_t current_head = m_head.load (std::memory_order_acquire);
     std::size_t new_head = (current_head + 1) % m_capacity;
-
+    current_tail = m_tail.load (std::memory_order_acquire);
     value = m_data[current_head];
-
+    if (current_tail <= current_head)
+      {
+	/* invalid data */
+	return false;
+      }
     if (!m_head.compare_exchange_weak (current_head, new_head,
 				       std::memory_order_acq_rel, std::memory_order_acquire))
       {
@@ -322,8 +327,19 @@ namespace parallel_query
 
     std::size_t current_tail = m_tail.load (std::memory_order_acquire);
     std::size_t new_tail = (current_tail - 1 + m_capacity) % m_capacity;
+    std::size_t current_head = m_head.load (std::memory_order_acquire);
     value = m_data[new_tail];
-    m_tail.store (new_tail, std::memory_order_release);
+    if (current_tail <= current_head)
+      {
+	/* invalid data */
+	return false;
+      }
+    if (!m_tail.compare_exchange_weak (current_tail, new_tail,
+				       std::memory_order_acq_rel, std::memory_order_acquire))
+      {
+	return false;
+      }
+
     m_size.fetch_sub (1, std::memory_order_acq_rel);
 
     m_not_full.notify_one();
