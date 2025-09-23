@@ -1340,7 +1340,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
   request.packet.clear ();
 
   /* header */
-  mem_header = new NET_HEADER;
+  mem_header = new NET_HEADER {};
   css_set_net_header (mem_header, DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
   request.packet.emplace_back ((std::byte *) mem_header, sizeof (NET_HEADER));
@@ -1414,7 +1414,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   request.packet.clear ();
 
   /* header */
-  mem_header[0] = new NET_HEADER;
+  mem_header[0] = new NET_HEADER {};
   css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
   request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
@@ -1427,7 +1427,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   if (buffer && buffer_size > 0)
     {
       /* header */
-      mem_header[1] = new NET_HEADER;
+      mem_header[1] = new NET_HEADER {};
       css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
       request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
@@ -1590,7 +1590,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   request.packet.clear ();
 
   /* header */
-  mem_header[0] = new NET_HEADER;
+  mem_header[0] = new NET_HEADER {};
   css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
   request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
@@ -1603,7 +1603,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   if (buffer1 && buffer1_size > 0)
     {
       /* header */
-      mem_header[1] = new NET_HEADER;
+      mem_header[1] = new NET_HEADER {};
       css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
       request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
@@ -1616,7 +1616,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   if (buffer2 && buffer2_size > 0)
     {
       /* header */
-      mem_header[2] = new NET_HEADER;
+      mem_header[2] = new NET_HEADER {};
       css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
       request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
@@ -1713,7 +1713,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   request.packet.clear ();
 
   /* header */
-  mem_header[0] = new NET_HEADER;
+  mem_header[0] = new NET_HEADER {};
   css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
   request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
@@ -1726,7 +1726,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   if (buffer1 && buffer1_size > 0)
     {
       /* header */
-      mem_header[1] = new NET_HEADER;
+      mem_header[1] = new NET_HEADER {};
       css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
       request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
@@ -1739,7 +1739,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   if (buffer2 && buffer2_size > 0)
     {
       /* header */
-      mem_header[2] = new NET_HEADER;
+      mem_header[2] = new NET_HEADER {};
       css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
       request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
@@ -1752,7 +1752,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   if (buffer3 && buffer3_size > 0)
     {
       /* header */
-      mem_header[3] = new NET_HEADER;
+      mem_header[3] = new NET_HEADER {};
       css_set_net_header (mem_header[3], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer3_size, conn->get_tran_index (),
 			  conn->invalidate_snapshot, conn->db_error);
       request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[3]), sizeof (NET_HEADER));
@@ -1837,7 +1837,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
   request.packet.clear ();
 
   /* header */
-  mem_header = new NET_HEADER;
+  mem_header = new NET_HEADER {};
   css_set_net_header (mem_header, ERROR_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
   request.packet.emplace_back ((std::byte *) mem_header, sizeof (NET_HEADER));
@@ -1896,7 +1896,7 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   request.packet.clear ();
 
   /* header */
-  header = new NET_HEADER;
+  header = new NET_HEADER {};
   header->type = htonl (ABORT_TYPE);
   header->request_id = htonl (CSS_RID_FROM_EID (eid));
   header->transaction_id = htonl (conn->get_tran_index ());
