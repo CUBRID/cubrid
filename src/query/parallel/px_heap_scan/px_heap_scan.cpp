@@ -439,6 +439,7 @@ namespace parallel_heap_scan
 
   int manager::end()
   {
+    m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
     m_worker_manager->release_workers (m_parallelism);
     m_worker_manager = nullptr;
     if (m_on_trace)

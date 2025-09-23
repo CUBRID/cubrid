@@ -67,9 +67,15 @@ namespace parallel_heap_scan
 
   list_id_header::~list_id_header()
   {
-    if (m_type_list.domp)
+    if (m_list_id_p != nullptr)
       {
+	qfile_clear_list_id (m_list_id_p);
+      }
+    if (m_type_list.domp != nullptr)
+      {
+	assert (m_type_list.type_cnt > 0);
 	free (m_type_list.domp);
+	m_type_list.domp = nullptr;
       }
     m_valid = false;
   }
@@ -153,6 +159,7 @@ namespace parallel_heap_scan
 	      {
 		free (dest_list_id_header->m_type_list.domp);
 	      }
+	    assert (src_list_id_header->m_type_list.type_cnt > 0);
 	    dest_list_id_header->m_type_list.domp = (TP_DOMAIN **) malloc (src_list_id_header->m_type_list.type_cnt * sizeof (
 		TP_DOMAIN *));
 	    if (dest_list_id_header->m_type_list.domp == NULL)
@@ -165,6 +172,8 @@ namespace parallel_heap_scan
 	  }
 	for (int i = 0; i < src_list_id_header->m_type_list.type_cnt; i++)
 	  {
+	    assert (i >= 0 && i < dest_list_id_header->m_type_list.type_cnt);
+	    assert (i >= 0 && i < src_list_id_header->m_type_list.type_cnt);
 	    dest_list_id_header->m_type_list.domp[i] = src_list_id_header->m_type_list.domp[i];
 	  }
       }
@@ -295,6 +304,7 @@ namespace parallel_heap_scan
 	  }
 	assert (m_current_list_id_header.m_valid == true);
 	assert (m_current_list_id_header_for_read != nullptr);
+	assert (m_current_list_id_header.m_list_id_p != nullptr);
 	QFILE_LIST_SCAN_ID *list_scan_id = &m_current_list_id_header_for_read->m_list_scan_id;
 	if (unlikely (m_current_list_id_header_for_read->m_list_scan_id_opened == false))
 	  {
@@ -345,6 +355,7 @@ namespace parallel_heap_scan
 	    qfile_close_scan (thread_p, &list_id_header_for_read.m_list_scan_id);
 	  }
       }
+    m_reader_list_id_headers.clear();
     for (list_id_header &list_id_header : m_writer_list_id_headers)
       {
 	if (list_id_header.m_list_id_p != nullptr)
@@ -352,6 +363,19 @@ namespace parallel_heap_scan
 	    qfile_destroy_list (thread_p, list_id_header.m_list_id_p);
 	    list_id_header.m_list_id_p = nullptr;
 	  }
+	if (list_id_header.m_type_list.domp != nullptr)
+	  {
+	    assert (list_id_header.m_type_list.type_cnt > 0);
+	    free (list_id_header.m_type_list.domp);
+	    list_id_header.m_type_list.domp = nullptr;
+	  }
+      }
+    m_writer_list_id_headers.clear();
+    if (m_current_list_id_header.m_type_list.domp != nullptr)
+      {
+	assert (m_current_list_id_header.m_type_list.type_cnt > 0);
+	free (m_current_list_id_header.m_type_list.domp);
+	m_current_list_id_header.m_type_list.domp = nullptr;
       }
     if (m_reader_tpl_buf.size > 0 && m_reader_tpl_buf.tpl != nullptr)
       {
@@ -363,6 +387,8 @@ namespace parallel_heap_scan
 
   void result_handler_xasl_snapshot::write_initialize (THREAD_ENTRY *thread_p)
   {
+    assert (thread_p != nullptr);
+    assert (DB_PAGESIZE > 0);
     m_tl_tpl_buf.tpl = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
     if (m_tl_tpl_buf.tpl == nullptr)
       {
@@ -372,7 +398,9 @@ namespace parallel_heap_scan
       }
     m_tl_tpl_buf.size = DB_PAGESIZE;
     int index = m_writer_list_id_index.fetch_add (1, std::memory_order_acq_rel);
+    assert (index >= 0 && index < m_parallelism);
     m_tl_writer_list_id_header = &m_writer_list_id_headers[index];
+    assert (m_tl_writer_list_id_header != nullptr);
     m_tl_writer_list_id_header->m_valid = false;
     m_tl_writer_list_id_header->m_list_id_p = nullptr;
     m_tl_list_id_index = index;
@@ -380,6 +408,9 @@ namespace parallel_heap_scan
 
   bool result_handler_xasl_snapshot::write (THREAD_ENTRY *thread_p, VAL_LIST *input)
   {
+    assert (thread_p != nullptr);
+    assert (input != nullptr);
+    assert (m_tl_writer_list_id_header != nullptr);
     int err_code = NO_ERROR;
     VPID prev_vpid = {-1,-1};
     if (unlikely (m_tl_writer_list_id_header->m_list_id_p == nullptr))
@@ -454,6 +485,8 @@ namespace parallel_heap_scan
 	    {
 	      free (m_tl_writer_list_id_header->m_type_list.domp);
 	    }
+	  m_tl_writer_list_id_header->m_type_list.type_cnt = m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt;
+	  assert (m_tl_writer_list_id_header->m_type_list.type_cnt > 0);
 	  m_tl_writer_list_id_header->m_type_list.domp = (TP_DOMAIN **) malloc (m_tl_writer_list_id_header->m_type_list.type_cnt *
 	      sizeof (TP_DOMAIN *));
 	  if (m_tl_writer_list_id_header->m_type_list.domp == NULL)
@@ -464,11 +497,11 @@ namespace parallel_heap_scan
 	      m_err_messages_p->move_top_error_message_to_this();
 	      return;
 	    }
-
-	  m_tl_writer_list_id_header->m_type_list.type_cnt = m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt;
 	}
       for (int i = 0; i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt; i++)
 	{
+	  assert (i >= 0 && i < m_tl_writer_list_id_header->m_type_list.type_cnt);
+	  assert (i >= 0 && i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt);
 	  m_tl_writer_list_id_header->m_type_list.domp[i] = m_tl_writer_list_id_header->m_list_id_p->type_list.domp[i];
 	}
 
@@ -486,6 +519,7 @@ namespace parallel_heap_scan
 
   void result_handler_xasl_snapshot::write_finalize (THREAD_ENTRY *thread_p)
   {
+    assert (thread_p != nullptr);
     if (m_tl_writer_list_id_header!= nullptr)
       {
 	if (m_tl_writer_list_id_header->m_list_id_p != nullptr)
@@ -499,6 +533,8 @@ namespace parallel_heap_scan
 		    {
 		      free (m_tl_writer_list_id_header->m_type_list.domp);
 		    }
+		  m_tl_writer_list_id_header->m_type_list.type_cnt = m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt;
+		  assert (m_tl_writer_list_id_header->m_type_list.type_cnt > 0);
 		  m_tl_writer_list_id_header->m_type_list.domp = (TP_DOMAIN **) malloc (m_tl_writer_list_id_header->m_type_list.type_cnt *
 		      sizeof (TP_DOMAIN *));
 		  if (m_tl_writer_list_id_header->m_type_list.domp == NULL)
@@ -509,11 +545,11 @@ namespace parallel_heap_scan
 		      m_err_messages_p->move_top_error_message_to_this();
 		      return;
 		    }
-
-		  m_tl_writer_list_id_header->m_type_list.type_cnt = m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt;
 		}
 	      for (int i = 0; i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt; i++)
 		{
+		  assert (i >= 0 && i < m_tl_writer_list_id_header->m_type_list.type_cnt);
+		  assert (i >= 0 && i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt);
 		  m_tl_writer_list_id_header->m_type_list.domp[i] = m_tl_writer_list_id_header->m_list_id_p->type_list.domp[i];
 		}
 	      if (m_tl_writer_list_id_header->m_list_id_p->tuple_cnt == 0)
@@ -548,17 +584,26 @@ namespace parallel_heap_scan
 	}
       }
     assert (m_tl_writer_list_id_header!= nullptr);
+    assert (m_tl_tpl_buf.tpl != nullptr);
     db_private_free (thread_p, m_tl_tpl_buf.tpl);
+    m_tl_tpl_buf.tpl = nullptr;
   }
 
   int update_domains_on_type_list_by_val_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id_p, VAL_LIST *val_list_p)
   {
+    assert (thread_p != nullptr);
+    assert (list_id_p != nullptr);
+    assert (val_list_p != nullptr);
     int i;
     QPROC_DB_VALUE_LIST valp = val_list_p->valp;
     list_id_p->is_domain_resolved = true;
 
     for (i=0; i<val_list_p->val_cnt; i++, valp = valp->next)
       {
+	assert (i >= 0 && i < val_list_p->val_cnt);
+	assert (valp != nullptr);
+	assert (valp->val != nullptr);
+	assert (i >= 0 && i < list_id_p->type_list.type_cnt);
 	if (valp->val->domain.general_info.is_null)
 	  {
 	    list_id_p->is_domain_resolved = false;

@@ -430,11 +430,6 @@ namespace parallel_heap_scan
 	return result;
       }
     general_checker general_checker (map);
-    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
-      {
-	result = CHECK_RESULT::CANNOT_PARALLEL;
-	return result;
-      }
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_pred));
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_rest));
     result = merge_check_result (result, general_checker.check (spec->where_pred));
@@ -508,16 +503,6 @@ namespace parallel_heap_scan
 	  {
 	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
 	  }
-	if (xasl->proc.buildlist.g_agg_list)
-	  {
-	    for (AGGREGATE_TYPE *aggp = xasl->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
-	      {
-		if (QPROC_IS_INTERPOLATION_FUNC (aggp) || aggp->function == PT_CUME_DIST || aggp->function == PT_PERCENT_RANK)
-		  {
-		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
-		  }
-	      }
-	  }
 	break;
       case BUILDVALUE_PROC:
 	if (xasl->proc.buildvalue.agg_list)
@@ -553,9 +538,9 @@ namespace parallel_heap_scan
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case INSERT_PROC:
+      case MERGELIST_PROC:
 	break;
       case OBJFETCH_PROC:
-      case MERGELIST_PROC:
       case UPDATE_PROC:
       case DELETE_PROC:
       case CONNECTBY_PROC:
