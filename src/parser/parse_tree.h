@@ -484,7 +484,8 @@ struct json_t;
            (n)->info.expr.op == PT_LE || \
            (n)->info.expr.op == PT_GT_INF || \
            (n)->info.expr.op == PT_LT_INF || \
-           (n)->info.expr.op == PT_RANGE ))
+           (n)->info.expr.op == PT_RANGE || \
+           (n)->info.expr.op == PT_BETWEEN))
 
 #define PT_IS_EXPR_NODE_WITH_NON_PUSHABLE(n) \
         ( (PT_IS_EXPR_NODE (n)) && \

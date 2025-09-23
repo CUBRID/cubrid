@@ -39,11 +39,7 @@
 #include "cas_common.h"
 #include "cas_net_buf.h"
 #include "cas_util.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbi.h"
-#else
-#include "cas_dbms_util.h"
-#endif
 #include "error_code.h"
 #include "dbtype.h"
 #include "byte_order.h"
@@ -253,7 +249,6 @@ net_buf_cp_object (T_NET_BUF * net_buf, T_OBJECT * oid)
   return 0;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 int
 net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob)
 {
@@ -271,8 +266,6 @@ net_buf_cp_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob)
 
   return 0;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
 
 /* shard_proxy dose not use this function */
 void
@@ -282,9 +275,9 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
   char msg_buf[1024];
 #endif
 
-#if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
+#if defined(CAS_CUBRID)
   T_BROKER_VERSION ver;
-#endif /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
+#endif /* CAS_CUBRID */
   size_t err_msg_len = 0;
   char err_msg[ERR_MSG_LENGTH];
 
@@ -292,7 +285,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
 
   net_buf_clear (net_buf);
 
-#if defined(CAS_CUBRID) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_ORACLE)
+#if defined(CAS_CUBRID)
   ver = as_info->clt_version;
   if (ver >= CAS_MAKE_VER (8, 3, 0))
     {
@@ -307,7 +300,7 @@ net_buf_error_msg_set (T_NET_BUF * net_buf, int err_indicator, int err_code, cha
 	  err_code = CAS_CONV_ERROR_TO_OLD (err_code);
 	}
     }
-#else /* CAS_CUBRID || CAS_FOR_MYSQL || CAS_FOR_ORACLE */
+#else /* CAS_CUBRID */
   /* shard_proxy do not use net_buf_error_msg_set. it is dummy code. */
   net_buf_cp_int (net_buf, err_indicator, NULL);
 #endif /* FOR SHARD_PROXY */
@@ -454,18 +447,6 @@ net_arg_get_size (int *size, void *arg)
   *size = ntohl (tmp_i);
 }
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-void
-net_arg_get_bigint (int64_t * value, void *arg)
-{
-  int64_t tmp_i;
-  char *cur_p = (char *) arg + NET_SIZE_INT;
-
-  memcpy (&tmp_i, cur_p, NET_SIZE_BIGINT);
-  *value = ntohi64 (tmp_i);
-  cur_p += NET_SIZE_BIGINT;
-}
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 void
 net_arg_get_bigint (DB_BIGINT * value, void *arg)
 {
@@ -476,7 +457,6 @@ net_arg_get_bigint (DB_BIGINT * value, void *arg)
   *value = ntohi64 (tmp_i);
   cur_p += NET_SIZE_BIGINT;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 void
 net_arg_get_int (int *value, void *arg)
@@ -697,7 +677,6 @@ net_arg_get_cache_time (void *ct, void *arg)
   cur_p += NET_SIZE_INT;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 void
 net_arg_get_dbobject (DB_OBJECT ** obj, void *arg)
 {
@@ -770,7 +749,6 @@ net_arg_get_lob_value (DB_VALUE * db_lob, void *arg)
   db_make_elo (db_lob, (DB_TYPE) lob_handle.db_type, &elo);
   db_lob->need_clear = true;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 void
 net_arg_put_int (void *arg, int *value)

@@ -606,10 +606,16 @@ exit:
   int
   executor::callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
+
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_GET_DB_PARAMETER;
 
-    db_parameter_info *parameter_info = get_session()->get_db_parameter_info ();
+    db_parameter_info *parameter_info = pl_session->get_db_parameter_info ();
     if (parameter_info == nullptr)
       {
 	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_stack->get_thread_entry());
@@ -619,7 +625,7 @@ exit:
 	parameter_info->wait_msec = logtb_find_wait_msecs (tran_index);
 	logtb_get_client_ids (tran_index, &parameter_info->client_ids);
 
-	get_session()->set_db_parameter_info (parameter_info);
+	pl_session->set_db_parameter_info (parameter_info);
       }
 
     cubmem::block blk;
@@ -1007,6 +1013,12 @@ exit:
   int
   executor::callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
+
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_SET_PL_SESSION_PARAM;
 
@@ -1021,8 +1033,8 @@ exit:
 	  }
 	else
 	  {
-	    get_session ()->mark_session_param_changed (prm.prm_id);
-	    get_session ()->set_session_param (prm);
+	    pl_session->mark_session_param_changed (prm.prm_id);
+	    pl_session->set_session_param (prm);
 	  }
       }
 
