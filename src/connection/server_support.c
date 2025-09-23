@@ -1328,6 +1328,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
 unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
+  // *INDENT-OFF*
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header;
   std::byte * mem_reply;
@@ -1358,6 +1359,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
   };
 
   conn->worker->enqueue (std::move (request));
+  // *INDENT-ON*
   if (!conn->worker->notify ())
     {
       return INTERNAL_CSS_ERROR;
@@ -1402,6 +1404,7 @@ unsigned int
 css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
 				   int buffer_size, std::function < void () > &&deleter)
 {
+  // *INDENT-OFF*
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header[2] = { nullptr, nullptr };
   std::byte * mem_reply;
@@ -1454,6 +1457,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   };
 
   conn->worker->enqueue (std::move (request));
+  // *INDENT-ON*
   if (!conn->worker->notify ())
     {
       return INTERNAL_CSS_ERROR;
@@ -1578,6 +1582,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size,
 				     std::function < void () > &&deleter)
 {
+  // *INDENT-OFF*
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header[3] = { nullptr, nullptr, nullptr };
   std::byte * mem_reply;
@@ -1649,6 +1654,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   };
 
   conn->worker->enqueue (std::move (request));
+  // *INDENT-ON*
   if (!conn->worker->notify ())
     {
       return INTERNAL_CSS_ERROR;
@@ -1701,6 +1707,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, char *buffer3,
 				     int buffer3_size, std::function < void () > &&deleter)
 {
+  // *INDENT-OFF*
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header[4] = { nullptr, nullptr, nullptr, nullptr };
   std::byte * mem_reply;
@@ -1790,6 +1797,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   };
 
   conn->worker->enqueue (std::move (request));
+  // *INDENT-ON*
   if (!conn->worker->notify ())
     {
       return INTERNAL_CSS_ERROR;
@@ -1825,6 +1833,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 unsigned int
 css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
+  // *INDENT-OFF*
   cubconn::connection_worker::message request;
   NET_HEADER *mem_header;
   std::byte * mem_reply;
@@ -1855,6 +1864,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
   };
 
   conn->worker->enqueue (std::move (request));
+  // *INDENT-ON*
   if (!conn->worker->notify ())
     {
       return INTERNAL_CSS_ERROR;
@@ -1884,6 +1894,7 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
+  // *INDENT-OFF*
   cubconn::connection_worker::message request;
   NET_HEADER *header;
   unsigned short flags = 0;
@@ -1924,6 +1935,7 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
     delete header;
   };
   conn->worker->enqueue (std::move (request));
+  // *INDENT-ON*
   if (!conn->worker->notify ())
     {
       return INTERNAL_CSS_ERROR;
