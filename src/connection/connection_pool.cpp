@@ -24,6 +24,7 @@
 #include "connection_pool.hpp"
 #include "connection_worker.hpp"
 
+#include <csignal>
 #include <cstdint>
 #include <unistd.h>
 #include <stdint.h>
