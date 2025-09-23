@@ -26,17 +26,18 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#define VERSION_MAX std::numeric_limits<std::uint16_t>::max()
-
 namespace parallel_query
 {
   template<typename T>
   thread_safe_queue<T>::thread_safe_queue (std::size_t capacity)
-    : m_data (capacity < VERSION_MAX ? capacity : VERSION_MAX), m_push_completed (false),
-      m_capacity (capacity < VERSION_MAX ? capacity : VERSION_MAX)
+    : m_data (capacity < DB_UINT16_MAX ? capacity : DB_UINT16_MAX), m_push_completed (false),
+      m_capacity (capacity < DB_UINT16_MAX ? capacity : DB_UINT16_MAX)
   {
-    queue_state initial_state = {0, 0, 0, 0};
+    queue_state initial_state;
+    initial_state.fields.head = 0;
+    initial_state.fields.tail = 0;
+    initial_state.fields.size = 0;
+    initial_state.fields.version = 0;
     m_state.store (initial_state, std::memory_order_release);
   }
 
@@ -99,19 +100,19 @@ namespace parallel_query
   template<typename T>
   bool thread_safe_queue<T>::is_empty() const
   {
-    return m_state.load (std::memory_order_acquire).size == 0;
+    return m_state.load (std::memory_order_acquire).fields.size == 0;
   }
 
   template<typename T>
   bool thread_safe_queue<T>::is_full() const
   {
-    return m_state.load (std::memory_order_acquire).size >= m_capacity;
+    return m_state.load (std::memory_order_acquire).fields.size >= m_capacity;
   }
 
   template<typename T>
   std::size_t thread_safe_queue<T>::size() const
   {
-    return m_state.load (std::memory_order_acquire).size;
+    return m_state.load (std::memory_order_acquire).fields.size;
   }
 
   template<typename T>
@@ -139,20 +140,20 @@ namespace parallel_query
     queue_state current_state = m_state.load (std::memory_order_acquire);
     queue_state new_state;
 
-    if (current_state.size >= m_capacity)
+    if (current_state.fields.size >= m_capacity)
       {
 	return false;
       }
     new_state = current_state;
-    new_state.tail = (current_state.tail + 1) % m_capacity;
-    new_state.size = current_state.size + 1;
-    new_state.version = current_state.version + 1 % VERSION_MAX;
+    new_state.fields.tail = (current_state.fields.tail + 1) % m_capacity;
+    new_state.fields.size = current_state.fields.size + 1;
+    new_state.fields.version = (current_state.fields.version + 1) % DB_UINT16_MAX;
     if (!m_state.compare_exchange_weak (current_state, new_state,
 					std::memory_order_acq_rel, std::memory_order_acquire))
       {
 	return false;
       }
-    std::size_t data_index = current_state.tail;
+    std::size_t data_index = current_state.fields.tail;
     m_data[data_index] = value;
 
     m_not_empty.notify_one();
@@ -166,22 +167,22 @@ namespace parallel_query
     queue_state current_state = m_state.load (std::memory_order_acquire);
     queue_state new_state;
 
-    if (current_state.size == 0)
+    if (current_state.fields.size == 0)
       {
 	return false;
       }
 
     new_state = current_state;
-    new_state.head = (current_state.head + 1) % m_capacity;
-    new_state.size = current_state.size - 1;
-    new_state.version = current_state.version + 1 % VERSION_MAX;
+    new_state.fields.head = (current_state.fields.head + 1) % m_capacity;
+    new_state.fields.size = current_state.fields.size - 1;
+    new_state.fields.version = (current_state.fields.version + 1) % DB_UINT16_MAX;
     if (!m_state.compare_exchange_weak (current_state, new_state,
 					std::memory_order_acq_rel, std::memory_order_acquire))
       {
 	return false;
       }
 
-    std::size_t data_index = current_state.head;
+    std::size_t data_index = current_state.fields.head;
     value = m_data[data_index];
 
     m_not_full.notify_one();
@@ -196,22 +197,22 @@ namespace parallel_query
     queue_state current_state = m_state.load (std::memory_order_acquire);
     queue_state new_state;
 
-    if (current_state.size == 0)
+    if (current_state.fields.size == 0)
       {
 	return false;
       }
 
     new_state = current_state;
-    new_state.tail = (current_state.tail - 1 + m_capacity) % m_capacity;
-    new_state.size = current_state.size - 1;
-    new_state.version = current_state.version + 1 % VERSION_MAX;
+    new_state.fields.tail = (current_state.fields.tail - 1 + m_capacity) % m_capacity;
+    new_state.fields.size = current_state.fields.size - 1;
+    new_state.fields.version = (current_state.fields.version + 1) % DB_UINT16_MAX;
     if (!m_state.compare_exchange_weak (current_state, new_state,
 					std::memory_order_acq_rel, std::memory_order_acquire))
       {
 	return false;
       }
 
-    std::size_t data_index = new_state.tail;
+    std::size_t data_index = new_state.fields.tail;
     value = m_data[data_index];
 
     m_not_full.notify_one();
@@ -229,7 +230,7 @@ namespace parallel_query
 	return;
       }
 
-    while (m_state.load (std::memory_order_acquire).size >= m_capacity)
+    while (m_state.load (std::memory_order_acquire).fields.size >= m_capacity)
       {
 	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
 	  {
@@ -246,12 +247,12 @@ namespace parallel_query
 
     queue_state current_state = m_state.load (std::memory_order_acquire);
     queue_state new_state = current_state;
-    new_state.tail = (current_state.tail + 1) % m_capacity;
-    new_state.size = current_state.size + 1;
-    new_state.version = current_state.version + 1 % VERSION_MAX;
+    new_state.fields.tail = (current_state.fields.tail + 1) % m_capacity;
+    new_state.fields.size = current_state.fields.size + 1;
+    new_state.fields.version = (current_state.fields.version + 1) % DB_UINT16_MAX;
 
     m_state.store (new_state, std::memory_order_release);
-    m_data[current_state.tail] = value;
+    m_data[current_state.fields.tail] = value;
 
     m_not_empty.notify_one();
   }
@@ -261,7 +262,7 @@ namespace parallel_query
   {
     std::unique_lock<std::mutex> lock (m_mutex);
 
-    while (m_state.load (std::memory_order_acquire).size == 0)
+    while (m_state.load (std::memory_order_acquire).fields.size == 0)
       {
 	if (m_push_completed.load (std::memory_order_acquire))
 	  {
@@ -283,12 +284,12 @@ namespace parallel_query
 
     queue_state current_state = m_state.load (std::memory_order_acquire);
     queue_state new_state = current_state;
-    new_state.head = (current_state.head + 1) % m_capacity;
-    new_state.size = current_state.size - 1;
-    new_state.version = current_state.version + 1 % VERSION_MAX;
+    new_state.fields.head = (current_state.fields.head + 1) % m_capacity;
+    new_state.fields.size = current_state.fields.size - 1;
+    new_state.fields.version = (current_state.fields.version + 1) % DB_UINT16_MAX;
 
     m_state.store (new_state, std::memory_order_release);
-    value = m_data[current_state.head];
+    value = m_data[current_state.fields.head];
 
     m_not_full.notify_one();
 
@@ -300,7 +301,7 @@ namespace parallel_query
   {
     std::unique_lock<std::mutex> lock (m_mutex);
 
-    while (m_state.load (std::memory_order_acquire).size == 0)
+    while (m_state.load (std::memory_order_acquire).fields.size == 0)
       {
 	if (m_push_completed.load (std::memory_order_acquire))
 	  {
@@ -321,17 +322,17 @@ namespace parallel_query
       }
 
     queue_state current_state = m_state.load (std::memory_order_acquire);
-    std::size_t new_tail = (current_state.tail - 1 + m_capacity) % m_capacity;
+    std::size_t new_tail = (current_state.fields.tail - 1 + m_capacity) % m_capacity;
 
-    if (current_state.tail <= current_state.head)
+    if (current_state.fields.tail <= current_state.fields.head)
       {
 	return false;
       }
 
     queue_state new_state = current_state;
-    new_state.tail = new_tail;
-    new_state.size = current_state.size - 1;
-    new_state.version = current_state.version + 1 % VERSION_MAX;
+    new_state.fields.tail = new_tail;
+    new_state.fields.size = current_state.fields.size - 1;
+    new_state.fields.version = (current_state.fields.version + 1) % DB_UINT16_MAX;
 
     m_state.store (new_state, std::memory_order_release);
     value = m_data[new_tail];

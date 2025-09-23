@@ -29,11 +29,23 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
-#include <limits>
 #include "px_interrupt.hpp"
 
 namespace parallel_query
 {
+  union queue_state
+  {
+    struct
+    {
+      std::uint16_t head;
+      std::uint16_t tail;
+      std::uint16_t size;
+      std::uint16_t version;
+    } fields;
+    std::uint64_t raw;
+  };
+  static_assert (sizeof (queue_state) == 8, "queue_state must be 8 bytes for atomicity");
+
   template<typename T>
   class thread_safe_queue
   {
@@ -58,14 +70,6 @@ namespace parallel_query
       mutable std::mutex m_mutex;
       std::condition_variable m_not_empty;
       std::condition_variable m_not_full;
-      struct queue_state
-      {
-	std::uint16_t head;
-	std::uint16_t tail;
-	std::uint16_t size;
-	std::uint16_t version;
-      };
-      static_assert (sizeof (queue_state) == 8, "queue_state must be 8 bytes for atomicity");
       std::atomic<queue_state> m_state;
 
       bool try_push_fast (const T &value);
