@@ -509,7 +509,72 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::prepare_send_ha_mode (context *ctx) noexcept
+  inline bool master_connector::prepare_heartbeat_send_request (context *ctx, CSS_SERVER_REQUEST command) noexcept
+  {
+    int *response;
+
+    /* clear the packet buffer */
+    ctx->m_sendbuf.clear ();
+    response = ctx->allocate<int> ();
+    *response = htonl (command);
+
+    ctx->push ({ reinterpret_cast<std::byte *> (response), sizeof (int) });
+
+    /* make the packets to msghdr */
+    ctx->m_sendbuf.stamp_msghdr ();
+
+    /* update the events */
+    if (!this->update_epoll_events (ctx))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_send_request: update_epoll_events failed: %s", strerror (errno));
+	return false;
+      }
+    return true;
+  }
+
+  inline bool master_connector::prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept
+  {
+#define BODY_SIZE 16
+    assert_release (BODY_SIZE < size);
+
+    std::aligned_storage_t<BODY_SIZE, 8> *body;
+    int *response;
+
+    /* clear the packet buffer */
+    ctx->m_sendbuf.clear ();
+
+    response = ctx->allocate<int> ();
+    *response = htonl (command);
+
+    /* this must be fixed if you wanna store the data bigger than BODY_SIZE-bytes */
+    /* you can generalize size using template */
+    assert_release (size <= BODY_SIZE);
+    body = ctx->allocate<std::aligned_storage_t<BODY_SIZE, 8>> ();
+    std::memcpy (body, data, size);
+
+    ctx->push ({ reinterpret_cast<std::byte *> (response), sizeof (int) });
+    ctx->push ({ reinterpret_cast<std::byte *> (body), size });
+
+    /* make the packets to msghdr */
+    ctx->m_sendbuf.stamp_msghdr ();
+
+#undef BODY_SIZE
+
+    /* update the events */
+    if (!this->update_epoll_events (ctx))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_send_request_with_data: update_epoll_events failed: %s", strerror (errno));
+	return false;
+      }
+    return true;
+  }
+
+  inline bool master_connector::prepare_heartbeat_register (context *ctx) noexcept
+  {
+    return false;
+  }
+
+  inline bool master_connector::prepare_heartbeat_ha_mode (context *ctx) noexcept
   {
     int *response;
 
@@ -534,13 +599,13 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_ha_mode: update_epoll_events failed: %s", strerror (errno));
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_ha_mode: update_epoll_events failed: %s", strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::prepare_send_log_eof (context *ctx) noexcept
+  inline bool master_connector::prepare_heartbeat_log_eof (context *ctx) noexcept
   {
     LOG_LSA *eof_lsa;
     static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
@@ -564,63 +629,8 @@ namespace cubconn
 	LSA_COPY (&prev_eof_lsa, eof_lsa);
       }
 
-    if (!this->prepare_send_heartbeat_request_with_data (ctx, SERVER_GET_EOF, reply, OR_LOG_LSA_ALIGNED_SIZE))
+    if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_GET_EOF, reply, OR_LOG_LSA_ALIGNED_SIZE))
       {
-	return false;
-      }
-    return true;
-  }
-
-  inline bool master_connector::prepare_send_heartbeat_request (context *ctx, CSS_SERVER_REQUEST command) noexcept
-  {
-    int *response;
-
-    /* clear the packet buffer */
-    ctx->m_sendbuf.clear ();
-    response = ctx->allocate<int> ();
-    *response = htonl (command);
-
-    ctx->push ({ reinterpret_cast<std::byte *> (response), sizeof (int) });
-
-    /* make the packets to msghdr */
-    ctx->m_sendbuf.stamp_msghdr ();
-
-    /* update the events */
-    if (!this->update_epoll_events (ctx))
-      {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_heartbeat_request: update_epoll_events failed: %s", strerror (errno));
-	return false;
-      }
-    return true;
-  }
-
-  inline bool master_connector::prepare_send_heartbeat_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept
-  {
-    std::aligned_storage_t<16, 8> *body;
-    int *response;
-
-    /* clear the packet buffer */
-    ctx->m_sendbuf.clear ();
-
-    response = ctx->allocate<int> ();
-    *response = htonl (command);
-
-    /* TODO: this must be fixed if you wanna store the data bigger than 16-bytes */
-    /* you can generalize size using template */
-    assert_release (size <= 16);
-    body = ctx->allocate<std::aligned_storage_t<16, 8>> ();
-    std::memcpy (body, data, size);
-
-    ctx->push ({ reinterpret_cast<std::byte *> (response), sizeof (int) });
-    ctx->push ({ reinterpret_cast<std::byte *> (body), size });
-
-    /* make the packets to msghdr */
-    ctx->m_sendbuf.stamp_msghdr ();
-
-    /* update the events */
-    if (!this->update_epoll_events (ctx))
-      {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_send_heartbeat_request_with_data: update_epoll_events failed: %s", strerror (errno));
 	return false;
       }
     return true;
@@ -852,7 +862,7 @@ namespace cubconn
 	break;
 
       case SERVER_GET_HA_MODE:
-	if (!this->prepare_send_ha_mode (ctx))
+	if (!this->prepare_heartbeat_ha_mode (ctx))
 	  {
 	    return result::Error;
 	  }
@@ -864,7 +874,7 @@ namespace cubconn
 	break;
 
       case SERVER_GET_EOF:
-	if (!this->prepare_send_log_eof (ctx))
+	if (!this->prepare_heartbeat_log_eof (ctx))
 	  {
 	    return result::Error;
 	  }
@@ -913,7 +923,7 @@ namespace cubconn
 
     state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
-    if (!this->prepare_send_heartbeat_request_with_data (ctx, SERVER_CHANGE_HA_MODE, reinterpret_cast<std::byte *> (&state), sizeof (state)))
+    if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_CHANGE_HA_MODE, reinterpret_cast<std::byte *> (&state), sizeof (state)))
       {
 	return result::Error;
       }
@@ -1033,14 +1043,23 @@ namespace cubconn
 	break;
 
       case state::SwitchToUnixSocket:
-	/* switching */
+	/* switching to unix domain socket */
 	if (!this->switch_to_unix_socket (ctx))
 	  {
 	    _er_log_debug (__FILE__, __LINE__,
 			   "master_connector->handle_master_transmission: master->switch_to_unix_socket failed");
 	    return false;
 	  }
-	NEXT_STATE (ctx, RecvRequestType);
+
+	if (!HA_DISABLED ())
+	  {
+	    /* TODO: hb_register_to_master */
+	    NEXT_STATE (ctx, SendHBToMaster);
+	  }
+	else
+	  {
+	    NEXT_STATE (ctx, RecvRequestType);
+	  }
 	break;
 
       case state::SendReplyToClient:
