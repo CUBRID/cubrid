@@ -14054,25 +14054,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      //       {
-	      //         struct timespec start, end;
-	      //         double time_spent;
+	      //     {
+	      //       struct timespec start, end;
+	      //       double time_spent;
 
-	      //      clock_gettime(CLOCK_REALTIME, &start);
+	      //    clock_gettime(CLOCK_REALTIME, &start);
 
-	      //      int i = 0;
-	      //         int cnt = 1000000;
-	      //         while (i < cnt)
-	      //           {
-	      //             numeric_db_value_add2 (arg1, arg2, result, &num_op_type); 
-	      //             i++;
-	      //           }
-	      //         clock_gettime(CLOCK_REALTIME, &end);
+	      //    int i = 0;
+	      //       int cnt = 1000000;
+	      //       while (i < cnt)
+	      //         {
+	      //           numeric_db_value_add2 (arg1, arg2, result, &num_op_type); 
+	      //           i++;
+	      //         }
+	      //       clock_gettime(CLOCK_REALTIME, &end);
 
-	      //         time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
-	      //         fprintf(stderr, "[DEBUG] %d번 실행 시간: %.6f 초\n", cnt, time_spent);
-	      //         fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
-	      //       }
+	      //       time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+	      //       fprintf(stderr, "[DEBUG] %d번 실행 시간: %.6f 초\n", cnt, time_spent);
+	      //       fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
+	      //     }
 
 	      if (numeric_db_value_add2 (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
@@ -14762,6 +14762,26 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
+	      //     {
+	      //       struct timespec start, end;
+	      //       double time_spent;
+
+	      //    clock_gettime(CLOCK_REALTIME, &start);
+
+	      //    int i = 0;
+	      //       int cnt = 1000000;
+	      //       while (i < cnt)
+	      //         {
+	      //              numeric_db_value_sub2 (arg1, arg2, result, &num_op_type); 
+	      //           i++;
+	      //         }
+	      //       clock_gettime(CLOCK_REALTIME, &end);
+
+	      //       time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+	      //       fprintf(stderr, "[DEBUG] %d번 실행 시간: %.6f 초\n", cnt, time_spent);
+	      //       fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
+	      //     }
+
 	      if (numeric_db_value_sub2 (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
@@ -15168,6 +15188,27 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
+	      //      {
+	      //       struct timespec start, end;
+	      //       double time_spent;
+
+	      //    clock_gettime(CLOCK_REALTIME, &start);
+
+	      //    int i = 0;
+	      //       int cnt = 1000000;
+	      //       while (i < cnt)
+	      //         {
+	      //              numeric_db_value_mul2 (arg1, arg2, result, &num_op_type); 
+	      //           i++;
+	      //         }
+	      //       clock_gettime(CLOCK_REALTIME, &end);
+
+	      //       time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+	      //       fprintf(stderr, "[DEBUG] %d번 실행 시간: %.6f 초\n", cnt, time_spent);
+	      //       fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
+	      //     }
+
+
 	      error = numeric_db_value_mul2 (arg1, arg2, result, &num_op_type);
 	      if (error == ER_IT_DATA_OVERFLOW)
 		{
@@ -15282,25 +15323,25 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_NUMERIC:
 	      if (!numeric_db_value_is_zero (arg2))
 		{
-		  //   {
-		  //     struct timespec start, end;
-		  //     double time_spent;
+		  //     {
+		  //       struct timespec start, end;
+		  //       double time_spent;
 
-		  //     clock_gettime(CLOCK_REALTIME, &start);
+		  //       clock_gettime(CLOCK_REALTIME, &start);
 
-		  //     int i = 0;
-		  //     int cnt = 1000000;
-		  //     while (i < cnt)
-		  //       {
-		  //         numeric_db_value_div2 (arg1, arg2, result, &num_op_type); 
-		  //         i++;
-		  //       }
-		  //     clock_gettime(CLOCK_REALTIME, &end);
+		  //       int i = 0;
+		  //       int cnt = 1000000;
+		  //       while (i < cnt)
+		  //         {
+		  //           numeric_db_value_div3 (arg1, arg2, result, &num_op_type); 
+		  //           i++;
+		  //         }
+		  //       clock_gettime(CLOCK_REALTIME, &end);
 
-		  //     time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
-		  //     fprintf(stderr, "[DEBUG] %d번 실행 시간: %.6f 초\n", cnt, time_spent);
-		  //     fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
-		  //   }
+		  //       time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+		  //       fprintf(stderr, "[DEBUG] %d번 실행 시간: %.6f 초\n", cnt, time_spent);
+		  //       fprintf(stderr, "[DEBUG] 1회당 평균 시간: %.9f 초\n", time_spent / cnt);
+		  //     }
 
 		  error = numeric_db_value_div3 (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)

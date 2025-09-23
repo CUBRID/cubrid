@@ -238,6 +238,7 @@ static void fp_numeric_sub2 (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf,
 static int floating_point_numeric_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
 				       int *result_scale, DB_VALUE * answer);
 static void fp_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes);
+static void fp_numeric_mul2 (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes);
 
 // base-256 나눗셈 (1byte 씩 기존과 동일)
 static int floating_point_numeric_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec,
@@ -2028,9 +2029,9 @@ numeric_db_value_add2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
 
   // 3) 필요한 바이트 수 계산
   calc_bytes = calc_bytes_from_prec (result_prec) + 1;
-  if (calc_bytes < (int) DB_NUMERIC_BUF_SIZE)
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
-      calc_bytes = (int) DB_NUMERIC_BUF_SIZE;
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
     }
 
   // 4) 새로운 계산 버퍼 초기화
@@ -2113,6 +2114,7 @@ numeric_db_value_add2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
   return ret;
 }
 
+// 이제 이거 사용 안함
 static int
 floating_point_numeric_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec, int *result_scale,
 			    DB_VALUE * answer)
@@ -2852,9 +2854,9 @@ numeric_db_value_sub2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
 
   // 3) 필요한 바이트 수 계산
   calc_bytes = calc_bytes_from_prec (result_prec) + 1;
-  if (calc_bytes < (int) DB_NUMERIC_BUF_SIZE)
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
-      calc_bytes = (int) DB_NUMERIC_BUF_SIZE;
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
     }
 
   // 4) 새로운 계산 버퍼 초기화
@@ -2932,6 +2934,7 @@ numeric_db_value_sub2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
   return ret;
 }
 
+// 이제 이거 사용 안함
 static int
 floating_point_numeric_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, int *result_prec, int *result_scale,
 			    DB_VALUE * answer)
@@ -3280,11 +3283,15 @@ numeric_db_value_mul2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
 
   // 3) 필요한 바이트 수 계산
   // 곱셈의 경우 소수부가 크게 커질 수 있음.
-  calc_bytes = calc_bytes_from_prec (result_prec) * 2;
+  //calc_bytes = calc_bytes_from_prec (result_prec) * 2;
+  calc_bytes = calc_bytes_from_prec (result_prec) + 1;
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
-      // 16바이트 이하인 경우, 38자리 까지 보여주기 위해 16바이트로 늘림.
-      calc_bytes = (int) DB_NUMERIC_BUF_SIZE *2;
+      // 지금 여기서 바이트 크기를 늘리면, 오히려 느려짐!!
+      // 16 바이트보다 작은 경우 꼭 *2를 해야하는 이유를 찾고, 아니면 그냥 16바이트로 ㄱㄱ
+
+      //calc_bytes = (int) DB_NUMERIC_BUF_SIZE *2;
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
     }
 
   // 4) 새로운 계산 버퍼 초기화
@@ -3301,7 +3308,12 @@ numeric_db_value_mul2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
   // 곱셈은 scale 보정을 하지 않음
 
   // 6) 곱셈
-  fp_numeric_mul (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+  //fp_numeric_mul (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+  fp_numeric_mul2 (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+  // 기존 함수
+  //bool positive_ans = true;
+  //numeric_mul (dbv1_copy, dbv2_copy, &positive_ans, calc_buf);
+
 
   // 7) 곱셈 이후 prec, scale 재계산
   result_prec = fp_numeric_get_decimal_digit2 (calc_buf, calc_bytes);
@@ -3482,6 +3494,58 @@ fp_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * ca
 	  // carry 전파 연산
 	  carry_sum = (uint32_t) calc_buf[carry_idx] + carry;
 	  calc_buf[carry_idx] = (uint8_t) (carry_sum & 0xFF);
+	}
+    }
+}
+
+// 얘가 fp_numeric_mul 보다 더 빠름
+static void
+fp_numeric_mul2 (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes)
+{
+  int outer_idx = 0, inner_idx = 0, result_idx = 0, carry_idx = 0;
+  int inner_min = 0;
+  uint16_t carry = 0;
+  uint32_t product = 0, sum = 0, carry_sum = 0;
+
+  const int last = calc_bytes - 1;
+
+  for (outer_idx = last; outer_idx >= 0; outer_idx--)
+    {
+      carry = 0;
+      // result_idx = outer_idx + inner_idx - last >= 0 이 되도록 inner 하한을 미리 계산
+      inner_min = last - outer_idx;
+      if (inner_min < 0)
+	{
+	  inner_min = 0;
+	}
+
+      for (inner_idx = last; inner_idx >= inner_min; inner_idx--)
+	{
+	  // 각 자릿수의 위치를 계산
+	  result_idx = outer_idx + inner_idx - last;
+
+	  // 곱셈 + 누적 합계 계산
+	  product = (uint32_t) dbv1_buf[outer_idx] * (uint32_t) dbv2_buf[inner_idx];
+	  sum = (uint32_t) calc_buf[result_idx] + product + carry;
+
+	  // 결과 저장 + carry 계산
+	  calc_buf[result_idx] = (uint8_t) (sum & 0xFF);
+	  carry = (uint16_t) (sum >> 8);
+	}
+
+      // 내부 루프 종료 후 남은 carry를 상위 자리로 연쇄 전파
+      if (carry)
+	{
+	  // 마지막에 쓴 자리의 바로 상위: (outer_idx + inner_min - last) - 1
+	  carry_idx = (outer_idx + inner_min - last) - 1;
+	  while (carry && carry_idx >= 0)
+	    {
+	      carry_sum = (uint32_t) calc_buf[carry_idx] + carry;
+	      calc_buf[carry_idx] = (uint8_t) (carry_sum & 0xFF);
+	      carry = (uint16_t) (carry_sum >> 8);
+	      --carry_idx;
+	    }
+	  // carry가 남아도 상위 overflow는 버림 (calc_bytes 길이만 유지)
 	}
     }
 }
@@ -3830,10 +3894,10 @@ numeric_db_value_div2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
     }
 
   // 기존 numeric_long_div 나눗셈 구현
-  //fp_numeric_div2 (dbv1_buf, dbv2_buf, quo_buf, rem_buf, calc_bytes);
+  fp_numeric_div2 (dbv1_buf, dbv2_buf, quo_buf, rem_buf, calc_bytes);
 
   // knuth 나눗셈 구현
-  knuth_numeric_div (dbv1_buf, dbv2_buf, quo_buf, rem_buf, calc_bytes);
+  //knuth_numeric_div (dbv1_buf, dbv2_buf, quo_buf, rem_buf, calc_bytes);
 
   // 7) 나눗셈 이후 prec 재계산
   // calc_buf는 0으로 초기화 한 상태로 0인지 확인 가능
@@ -3872,10 +3936,10 @@ numeric_db_value_div2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
 
 	  // C) 나머지(소수부) / 제수 연산, 이제 나머지(소수부)의 몫만 필요
 	  // 기존 long_div 나눗셈 구현 (얘는 임시 저장인 decimal_rem_buf 가 필요함)
-	  //fp_numeric_div2 (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
+	  fp_numeric_div2 (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
 
 	  // knuth 나눗셈 구현
-	  knuth_numeric_div (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
+	  //knuth_numeric_div (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
 
 	  // D) 나머지(소수부)의 몫에서 10을 나눠 반올림 확인
 	  round_digits = fp_numeric_div_pow10 (decimal_quo_buf, calc_bytes);
@@ -3910,10 +3974,10 @@ numeric_db_value_div2 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
 
       // C) 나머지(소수부) / 제수 연산, 이제 나머지(소수부)의 몫만 필요
       // 기존 long_div 나눗셈 구현 (얘는 임시 저장인 decimal_rem_buf 가 필요함)
-      //fp_numeric_div2 (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
+      fp_numeric_div2 (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
 
       // knuth 나눗셈 구현
-      knuth_numeric_div (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
+      //knuth_numeric_div (rem_buf, dbv2_buf, decimal_quo_buf, decimal_rem_buf, calc_bytes);
 
       // D) 나머지의 몫 자릿수 확인
       decimal_quo_digits = fp_numeric_get_decimal_digit2 (decimal_quo_buf, calc_bytes);
@@ -4040,7 +4104,7 @@ numeric_db_value_div3 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * 
   calc_bytes = calc_bytes_from_prec (result_prec) * 2;
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
-      // 16바이트 이하인 경우, 38자리 까지 보여주기 위해 16바이트로 늘림.
+      // 나눗셈은 소수부가 커질 수 있음으로 *2가 필요함.
       calc_bytes = (int) DB_NUMERIC_BUF_SIZE *2;
     }
 
@@ -4903,7 +4967,6 @@ estimate_trial_quotient_and_correct (const uint8_t * u_work, const uint8_t * v_w
   trial_quotient = numerator_16 / v_high;	// 0..511
   trial_remainder = numerator_16 % v_high;	// 0..v_high-1
 
-  // D3: 두 번째 자리 보정
   if (divisor_bytes > 1)
     {
       while ((trial_quotient == BASE)
@@ -5128,6 +5191,7 @@ numeric_knuth_div2 (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, u
     }
 }
 
+// knuth 풀어서 작성한 부분으로 knuth_div2 를 쓰도록!
 static void
 numeric_knuth_div3 (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf, int calc_bytes)
 {
