@@ -234,15 +234,12 @@ namespace hnsw_backend_registry
   void register_factory (std::string id, hnsw_backend_factory_fn fn);
 }
 
-#define HNSW_PP_CAT_(A,B) A##B
-#define HNSW_PP_CAT(A,B) HNSW_PP_CAT_(A,B)
+/* do not use the following macro in the header file */
+#define HNSW_REGISTER_BACKEND(ID_STR, FACTORY_LAMBDA)                     \
+  inline const bool hnsw_backend_registered = [] {                        \
+    hnsw_backend_registry::register_factory(                              \
+        std::string(ID_STR), hnsw_backend_factory_fn(FACTORY_LAMBDA));    \
+    return true;                                                          \
+  }()
 
-#define HNSW_REGISTER_BACKEND(ID_STR, FACTORY_LAMBDA)                  \
-  namespace {                                                          \
-    static const bool HNSW_PP_CAT(hnswreg_, __LINE__) = [] {           \
-      hnsw_backend_registry::register_factory(                         \
-          std::string(ID_STR), hnsw_backend_factory_fn(FACTORY_LAMBDA)); \
-      return true;                                                     \
-    }();                                                               \
-  }
 #endif
