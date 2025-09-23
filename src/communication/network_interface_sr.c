@@ -5106,6 +5106,8 @@ event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
   fprintf (log_fp, "%*ctime: %dms\n", indent, ' ', TO_MSEC (thread_p->event_stats.extend_time));
   fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.extend_pages);
 
+  /* printing bind values for placeholders (?) is skipped due to performance issues when logging long column values (e.g. LOB) in event_log_bind_values(). */
+
   event_log_end (thread_p);
 }
 
