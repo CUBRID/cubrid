@@ -316,9 +316,9 @@ function check_db_name() {
         part="${part#"${part%%[![:space:]]*}"}" # leading
         part="${part%"${part##*[![:space:]]}"}" # trailing
 
+        # If the part is not empty after trimming, it's a valid DB name.
         if [[ -n "$part" ]]; then
             ((db_count++))
-            # 찾은 첫 번째 유효한 이름을 저장합니다.
             [ -z "$first_db_found" ] && first_db_found="$part"
         fi
     done
@@ -379,7 +379,7 @@ function init_conf()
 			esac
 		fi
 	done < $CUBRID/conf/cubrid_ha.conf
-echo
+
 	if [ -z $db_name ]; then
 		error "The db_name is null. Please specify 'db_name' variable or set 'ha_db_list' in cubrid_ha.conf."
 	fi
