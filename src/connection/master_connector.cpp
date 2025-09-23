@@ -535,8 +535,6 @@ namespace cubconn
   inline bool master_connector::prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept
   {
 #define BODY_SIZE 16
-    assert_release (BODY_SIZE < size);
-
     std::aligned_storage_t<BODY_SIZE, 8> *body;
     int *response;
 
@@ -621,7 +619,7 @@ namespace cubconn
 
     if (LSA_EQ (&prev_eof_lsa, eof_lsa))
       {
-	er_log_debug (ARG_FILE_LINE, "Disk failure has been occurred: prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
+	er_log_debug (ARG_FILE_LINE, "log eof unchanged (no new log since last heartbeat): prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
 		      LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
       }
     else
