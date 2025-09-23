@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <signal.h>
+#include <dirent.h>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -86,6 +87,7 @@
 #include "log_volids.hpp"
 #include "fault_injection.h"
 #include "thread_worker_pool.hpp"
+#include "es_posix.h"
 
 #if defined (SERVER_MODE)
 #include "vacuum.h"
@@ -121,6 +123,10 @@
 #endif // SERVER_MODE
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
+#endif // SERVER_MODE
+#if defined(SERVER_MODE)
+#include "log_append.hpp"
+#include "log_manager.h"
 #endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -11857,4 +11863,157 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
 
   free_and_init (ref_page);
   return is_formatted;
+}
+
+/*
+ * fileio_lob_dir_remove () - remove lob directory.
+ */
+int
+fileio_lob_dir_remove (const char *path)
+{
+  struct stat statbuf;
+  DIR *dir_p;
+  size_t path_len;
+  int result = 0;
+
+  if (stat (path, &statbuf) != 0 || !S_ISDIR (statbuf.st_mode))
+    {
+      return ER_ES_INVALID_PATH;
+    }
+
+  dir_p = opendir (path);
+  path_len = strlen (path);
+
+  if (dir_p)
+    {
+      struct dirent *dir_entry;
+
+      while (!result && (dir_entry = readdir (dir_p)))
+        {
+          char *buf;
+          size_t len;
+
+          if (!strcmp (dir_entry->d_name, ".") || !strcmp (dir_entry->d_name, ".."))
+            {
+              continue;
+            }
+
+          len = path_len + strlen (dir_entry->d_name) + 2;
+          buf = (char *) malloc (len);
+
+          snprintf (buf, len, "%s/%s", path, dir_entry->d_name);
+
+          if (stat (buf, &statbuf) == 0)
+            {
+              if (S_ISDIR(statbuf.st_mode))
+                {
+                  result = fileio_lob_dir_remove (buf);
+                }
+              else
+                {
+                  result = unlink (buf);
+                }
+            }
+
+          free (buf);
+        }
+
+      closedir (dir_p);
+    }
+
+  if (!result)
+    {
+      result = rmdir (path);
+    }
+
+  return result;
+}
+
+/*
+ * xmanage_lob_dir () - Create or remove a LOB directory.
+ *
+ * hfid (in) : hfid is used to identify the table.
+ * attrid_arr (in)	 : Array containing attr_id values of LOB-type columns.
+ * lob_arr_length (in)	 : Length of the attrid_arr array
+ * mode (in)	 : mode for handling the LOB directory
+ *
+ * NOTE: A LOB directory is created immediately,
+ *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
+ */
+void
+xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
+{
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+  int max_lob_path = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int);
+  char dirbuf[PATH_MAX];
+  char rv_path[max_lob_path + 4];
+
+  switch (mode)
+  {
+    case LOB_DIR_CREATE:
+      sprintf (rv_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      sprintf (dirbuf, "%s/%s", es_base_dir, rv_path);
+      mkdir (dirbuf, 0755);
+      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+    case LOB_COLUMN_ADD:
+      for (int i = 0; i < lob_arr_length; i++)
+        {
+          sprintf (rv_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+          sprintf (dirbuf, "%s/%s", es_base_dir, rv_path);
+          mkdir (dirbuf, 0755);
+          log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+        }
+      break;
+
+    case LOB_TABLE_DROP:
+      sprintf (rv_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
+      break;
+    case LOB_COLUMN_DROP:
+      sprintf (rv_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
+      log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
+      break;
+  }
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * fileio_lob_rv_destroy () - Recovery function for LOB directories.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ *
+ * NOTR: This function is called when creating or deleting a LOB directory.
+ *       If a LOB directory is created and the transaction is rolled back, this
+ *       function will be called to remove the created directory.
+ *       If a LOB directory deletion command is issued and the transaction is
+ *       committed, this function will be called to actually remove the directory.
+ */
+int
+fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  const char *path = rcv->data;
+  int error_code = NO_ERROR;
+
+  char lob_path[PATH_MAX];
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  sprintf(lob_path, "%s/%s", es_base_dir, path);
+#endif /* SERVER_MODE || SA_MODE */
+
+  error_code = fileio_lob_dir_remove (lob_path);
+
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+
+  return NO_ERROR;
 }

@@ -36,6 +36,7 @@
 #include "overflow_file.h"
 #include "replication.h"
 #include "system_catalog.h"
+#include "file_io.h"
 
 #include <stdio.h>
 
@@ -837,8 +838,8 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVFL_LOB_DIR_DESTROY,
    "RVFL_LOB_DIR_DESTROY",
-   file_lob_rv_destroy,
-   file_lob_rv_destroy,
+   fileio_lob_rv_destroy,
+   fileio_lob_rv_destroy,
    NULL,
    NULL},
 };
