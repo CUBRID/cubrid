@@ -282,7 +282,7 @@ hb_thread_master_reader (void *arg)
 *
 *   type(in):
 */
-static HBP_PROC_REGISTER *
+HBP_PROC_REGISTER *
 hb_make_set_hbp_register (int type)
 {
   HBP_PROC_REGISTER *hbp_register;
