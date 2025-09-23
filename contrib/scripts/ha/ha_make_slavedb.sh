@@ -319,6 +319,7 @@ function check_db_name() {
         # If the part is not empty after trimming, it's a valid DB name.
         if [[ -n "$part" ]]; then
             ((db_count++))
+            # Store the first valid DB name found.
             [ -z "$first_db_found" ] && first_db_found="$part"
         fi
     done
@@ -357,29 +358,28 @@ function init_conf()
 			conf=($line)
 			IFS=$OFS
 			case ${conf[0]} in
-				"ha_node_list")
+				"ha_node_list") # ha_node_list=group_id@master:slave1:slave2...
 					hosts=$(echo ${conf[1]} | cut -d '@' -f 2)
 					master_host=$(echo $hosts | cut -d ':' -f 1)
-					slave_host=$(echo $hosts | cut -d ':' -f 2)
-					if [ "$slave_host" == "$target_host" ]; then
+					# In a multi-slave setup, all hosts after the master are slaves.
+					slave_hosts_str=$(echo "$hosts" | cut -d':' -f2-)
+					# For compatibility with functions that expect a single slave, we set slave_host to the first one.
+					slave_host=$(echo "$slave_hosts_str" | cut -d':' -f1)
+					if [ "$slave_host" == "$target_host" ]; then # This logic might need review for multi-slave scenarios
 						node_index=2
 					fi
 					;;
 				"ha_replica_list") replica_hosts=$(echo ${conf[1]} | cut -d '@' -f 2);;
 				"ha_db_list")
-					if [ -z $db_name ]; then
-						local list_from_conf=${conf[1]}
-						echo "INFO: 'db_name' is not specified. Using DB list from ha_db_list in cubrid_ha.conf: '$list_from_conf'"
-						# The value from conf might also be a list, so we must parse it
-						# to get only the first valid DB name.
-						db_name=$list_from_conf
+					if [ -z "$db_name" ]; then
+						db_name=${conf[1]}
+						echo "INFO: 'db_name' is not specified. Using DB list from ha_db_list in cubrid_ha.conf: '$db_name'"
 						check_db_name
 					fi
 					;;
 			esac
 		fi
 	done < $CUBRID/conf/cubrid_ha.conf
-
 	if [ -z $db_name ]; then
 		error "The db_name is null. Please specify 'db_name' variable or set 'ha_db_list' in cubrid_ha.conf."
 	fi
@@ -396,19 +396,34 @@ function init_conf()
 		slave_host=$tmp_host
 	fi
 	
-	# get state of the current server (master / slave / replca)
+	# get state of the current server (master / slave / replica)
+	is_slave=false
+	for h in ${slave_hosts_str//:/ }; do
+		if [ "$current_host" == "$h" ]; then
+			is_slave=true
+			break
+		fi
+	done
+
 	if [ $current_host == "$master_host" ]; then
 		error "This script is supposed not to run on master."
-	elif [ $current_host == "$slave_host" ]; then
+	elif [ "$is_slave" == "true" ]; then
 		current_state="slave"
 	else
-		current_state="replica"
+		current_state="replica" # If not in ha_node_list, it's considered a replica
 	fi
 	
-	# get state of the target server (master / slave / replca)
+	# get state of the target server (master / slave / replica)
+	is_target_slave=false
+	for h in ${slave_hosts_str//:/ }; do
+		if [ "$target_host" == "$h" ]; then
+			is_target_slave=true
+			break
+		fi
+	done
 	if [ "$target_host" == "$master_host" ]; then
 		target_state="master"
-	elif [ "$target_host" == "$slave_host" ]; then
+	elif [ "$is_target_slave" == "true" ]; then
 		target_state="slave"
 	elif [ "$(echo $replica_hosts | grep $target_host)" != "" ]; then
 		target_state="replica"
