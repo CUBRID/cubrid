@@ -5780,13 +5780,10 @@ event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
   event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
 				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
-  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-    {
-      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
-    }
-
   fprintf (log_fp, "%*ctime: %dms\n", indent, ' ', TO_MSEC (thread_p->event_stats.extend_time));
   fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.extend_pages);
+
+  /* printing bind values for placeholders (?) is skipped due to performance issues when logging long column values (e.g. LOB) in event_log_bind_values(). */
 
   event_log_end (thread_p);
 }
