@@ -32,9 +32,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #include "heap_file.h"
 
@@ -12165,7 +12162,7 @@ resize_and_start:
 		  DB_ELO dest_elo, *elo_p;
                   LOB_DIR_ID cur_lob_id;
                   char *save_meta_data, *new_meta_data, *pos;
-                  char rv_path[8]; // ces_xxx
+                  char rv_path[8];
                   int error;
                   LOG_DATA_ADDR addr;
                   addr.offset = -1;
@@ -12207,6 +12204,11 @@ resize_and_start:
                     {
                       strncpy(rv_path, pos + 1, 7);
                       rv_path[7] = '\0';
+                    }
+                  else
+                    {
+                      error = ER_ES_INVALID_PATH;
+                      goto exit_on_error;
                     }
                   log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
                   log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
