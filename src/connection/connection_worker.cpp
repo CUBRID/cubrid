@@ -215,6 +215,14 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_WAIT_WORKER, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
+    /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
+    if (!this->handle_message_queue ())
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
+	return false;
+      }
+
+    /* remove from myself */
     if (m_context.erase (ctx) == 0)
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
