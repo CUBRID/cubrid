@@ -206,6 +206,7 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       /* main handler								     */
       /* --------------------------------------------------------------------------- */
+      inline bool disconnect (context *ctx) noexcept;
       inline bool execute () noexcept;
   };
 }
