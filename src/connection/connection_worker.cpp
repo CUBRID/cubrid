@@ -63,7 +63,7 @@ namespace cubconn
     .m_request_id = -1,
     .m_command = false
   },
-    m_send
+  m_send
   {
     .m_transmitter = transmitter (stats)
   }
@@ -171,16 +171,16 @@ namespace cubconn
 
     std::cout << "connection worker: " << m_index << std::endl;
     for (i = 0; i < stats::STATS_COUNT; i++)
-    {
-      std::cout << "  " << stats_name[i] << ": " << m_stats.get (static_cast<enum stats> (i)) << std::endl;
-    }
+      {
+	std::cout << "  " << stats_name[i] << ": " << m_stats.get (static_cast<enum stats> (i)) << std::endl;
+      }
     std::cout << "-------------- clients --------------" << std::endl;
     for (auto &ctx : m_context)
-    {
-      std::cout << "  fd: " << ctx->m_conn->fd << std::endl;
-      /* whenever whenever whenever ... */
-      std::cout << std::endl;
-    }
+      {
+	std::cout << "  fd: " << ctx->m_conn->fd << std::endl;
+	/* whenever whenever whenever ... */
+	std::cout << std::endl;
+      }
     std::cout << std::endl;
     std::cout << std::endl;
   }
@@ -895,16 +895,19 @@ namespace cubconn
 		    length = sizeof (error);
 		    if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0)
 		      {
-			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd, strerror (error));
+			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd,
+				       strerror (error));
 		      }
 		    else
 		      {
-			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d, but getsockopt failed.", ctx->m_conn->fd);
+			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
+				       ctx->m_conn->fd);
 		      }
 		  }
 		else
 		  {
-		    _er_log_debug(__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.", ctx->m_conn->fd);
+		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.",
+				   ctx->m_conn->fd);
 		  }
 		handle_connection_error (ctx);
 		continue;

@@ -2668,9 +2668,9 @@ clear_wait_queue_entry_and_free_buffer (THREAD_ENTRY * thrdp, CSS_CONN_ENTRY * c
       /* connection_handler_thread may proceed ahead of me right after timeout has happened. If the case, we must free
        * the buffer. */
       if (*bufferp != NULL)
-    {
-      thrdp->conn_entry->release_packet (*bufferp);
-    }
+	{
+	  thrdp->conn_entry->release_packet (*bufferp);
+	}
     }
 
   r = rmutex_unlock (thrdp, &conn->rmutex);
@@ -3183,7 +3183,7 @@ css_release_packet (css_conn_entry * conn, void *buffer)
 
   request.type = cubconn::connection_worker::message_type::RELEASE_PACKET;
   request.conn = conn;
-  request.packet.emplace_back ((std::byte *) buffer, 0 /* idk the size */);
+  request.packet.emplace_back ((std::byte *) buffer, 0 /* idk the size */ );
   conn->worker->enqueue (std::move (request));
 }
 

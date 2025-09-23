@@ -527,13 +527,15 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_send_request: update_epoll_events failed: %s", strerror (errno));
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_send_request: update_epoll_events failed: %s",
+		       strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept
+  inline bool master_connector::prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command,
+      std::byte *data, std::size_t size) noexcept
   {
 #define BODY_SIZE 2048
     std::aligned_storage_t<BODY_SIZE, 8> *body;
@@ -562,7 +564,8 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_send_request_with_data: update_epoll_events failed: %s", strerror (errno));
+	_er_log_debug (__FILE__, __LINE__,
+		       "master_connector->prepare_heartbeat_send_request_with_data: update_epoll_events failed: %s", strerror (errno));
 	return false;
       }
     return true;
@@ -579,7 +582,8 @@ namespace cubconn
 	return false;
       }
 
-    if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_REGISTER_HA_PROCESS, reinterpret_cast<std::byte *> (hbp_register), sizeof (*hbp_register)))
+    if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_REGISTER_HA_PROCESS,
+	reinterpret_cast<std::byte *> (hbp_register), sizeof (*hbp_register)))
       {
 	free_and_init (hbp_register);
 	return false;
@@ -613,7 +617,8 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_ha_mode: update_epoll_events failed: %s", strerror (errno));
+	_er_log_debug (__FILE__, __LINE__, "master_connector->prepare_heartbeat_ha_mode: update_epoll_events failed: %s",
+		       strerror (errno));
 	return false;
       }
     return true;
@@ -623,7 +628,7 @@ namespace cubconn
   {
     LOG_LSA *eof_lsa;
     static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
-    alignas(8) std::byte reply[OR_LOG_LSA_ALIGNED_SIZE];
+    alignas (8) std::byte reply[OR_LOG_LSA_ALIGNED_SIZE];
 
     assert (m_entry != nullptr);
     LOG_CS_ENTER_READ_MODE (m_entry);
@@ -635,7 +640,8 @@ namespace cubconn
 
     if (LSA_EQ (&prev_eof_lsa, eof_lsa))
       {
-	er_log_debug (ARG_FILE_LINE, "log eof unchanged (no new log since last heartbeat): prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
+	er_log_debug (ARG_FILE_LINE,
+		      "log eof unchanged (no new log since last heartbeat): prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
 		      LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
       }
     else
@@ -937,7 +943,8 @@ namespace cubconn
 
     state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
 
-    if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_CHANGE_HA_MODE, reinterpret_cast<std::byte *> (&state), sizeof (state)))
+    if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_CHANGE_HA_MODE, reinterpret_cast<std::byte *> (&state),
+	sizeof (state)))
       {
 	return result::Error;
       }
@@ -1070,7 +1077,7 @@ namespace cubconn
 	    if (!this->prepare_heartbeat_register (ctx))
 	      {
 		_er_log_debug (__FILE__, __LINE__,
-			   "master_connector->handle_master_transmission: prepare_heartbeat_register failed");
+			       "master_connector->handle_master_transmission: prepare_heartbeat_register failed");
 		return false;
 	      }
 	    NEXT_STATE (ctx, SendHBToMaster);
@@ -1120,7 +1127,8 @@ namespace cubconn
 	/* remove the fd which is reset by peer */
 	if (!m_events.remove_descriptor (m_context.m_conn->fd))
 	  {
-	    _er_log_debug (__FILE__, __LINE__, "master_connector->dispose_master_connection: m_events->remove_descriptor failed: %s",
+	    _er_log_debug (__FILE__, __LINE__,
+			   "master_connector->dispose_master_connection: m_events->remove_descriptor failed: %s",
 			   strerror (errno));
 	    return false;
 	  }

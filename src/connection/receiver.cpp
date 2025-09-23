@@ -129,7 +129,7 @@ namespace cubconn
       {
 	_er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: m_bufptr = %p, m_received = %d, m_size = %d, after parse = %d\n",
 		       m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_received, m_size, m_received - SIZE_HEADER - m_size);
-	
+
 	assert ((reinterpret_cast<uintptr_t> (m_bufptr) & 7) == 0);
 
 	std::memcpy (&aligned, m_bufptr + SIZE_HEADER, sizeof (std::uint32_t));
@@ -138,7 +138,8 @@ namespace cubconn
 
 	*reinterpret_cast<int *> (m_bufptr + SIZE_HEADER) = padding;
 
-	_er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: packet size = %d, padding = %d, push size = %d.\n", m_size, SIZE_HEADER_PADDING + padding, m_size - SIZE_HEADER_PADDING - padding);
+	_er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: packet size = %d, padding = %d, push size = %d.\n", m_size,
+		       SIZE_HEADER_PADDING + padding, m_size - SIZE_HEADER_PADDING - padding);
 
 	m_result.emplace_back (m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_size - SIZE_HEADER_PADDING - padding);
 	m_received -= SIZE_HEADER + m_size;
@@ -448,7 +449,8 @@ namespace cubconn
 	auto it = std::find (m_allocated.begin (), m_allocated.end (), ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
 	if (it == m_allocated.end ())
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "receiver: memory = %p does not belong to this receiver\n", ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
+	    _er_log_debug (ARG_FILE_LINE, "receiver: memory = %p does not belong to this receiver\n",
+			   ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
 	    assert_release (false);
 	    return;
 	  }

@@ -32,9 +32,9 @@ namespace cubconn
     int i;
 
     for (i = 0; i < stats::STATS_COUNT; i++)
-    {
-      m_values[i] = 0;
-    }
+      {
+	m_values[i] = 0;
+      }
   }
 
   connection_stats::~connection_stats ()

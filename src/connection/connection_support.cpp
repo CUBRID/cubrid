@@ -1615,7 +1615,7 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY *conn, int request, unsigned s
 
 int
 css_send_request_with_data_buffer_with_padding (CSS_CONN_ENTRY *conn, int request, unsigned short *request_id,
-				   const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size)
+    const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size)
 {
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
   NET_HEADER data_header = DEFAULT_HEADER_DATA;
@@ -1640,7 +1640,7 @@ css_send_request_with_data_buffer_with_padding (CSS_CONN_ENTRY *conn, int reques
 			  conn->invalidate_snapshot, conn->db_error);
 
       return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &data_header,
-			     sizeof (NET_HEADER), arg_buffer, arg_size);
+				   sizeof (NET_HEADER), arg_buffer, arg_size);
     }
   else
     {
@@ -1688,8 +1688,9 @@ css_send_request_no_reply (CSS_CONN_ENTRY *conn, int request, unsigned short *re
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, arg_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return css_net_send_general (conn->fd, -1, (char *) &req_header, sizeof (NET_HEADER), (char *) &data_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size);
+  return css_net_send_general (conn->fd, -1, (char *) &req_header, sizeof (NET_HEADER), (char *) &data_header,
+			       sizeof (NET_HEADER),
+			       arg_buffer, arg_size);
 }
 
 /*
@@ -1740,8 +1741,9 @@ css_send_req_with_2_buffers (CSS_CONN_ENTRY *conn, int request, unsigned short *
   css_set_net_header (&data_header, DATA_TYPE, 0, *request_id, data_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size, (char *) &data_header, sizeof (NET_HEADER), data_buffer, data_size);
+  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header,
+			       sizeof (NET_HEADER),
+			       arg_buffer, arg_size, (char *) &data_header, sizeof (NET_HEADER), data_buffer, data_size);
 }
 
 /*
@@ -1800,9 +1802,10 @@ css_send_req_with_3_buffers (CSS_CONN_ENTRY *conn, int request, unsigned short *
   css_set_net_header (&data2_header, DATA_TYPE, 0, *request_id, data2_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
 
-  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header, sizeof (NET_HEADER),
-			 arg_buffer, arg_size, (char *) &data1_header, sizeof (NET_HEADER), data1_buffer, data1_size,
-			 (char *) &data2_header, sizeof (NET_HEADER), data2_buffer, data2_size);
+  return css_net_send_general (conn->fd, -1, (char *) &local_header, sizeof (NET_HEADER), (char *) &arg_header,
+			       sizeof (NET_HEADER),
+			       arg_buffer, arg_size, (char *) &data1_header, sizeof (NET_HEADER), data1_buffer, data1_size,
+			       (char *) &data2_header, sizeof (NET_HEADER), data2_buffer, data2_size);
 }
 
 #if 0
