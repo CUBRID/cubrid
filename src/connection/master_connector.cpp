@@ -26,6 +26,7 @@
 #include "log_common_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
+#include "heartbeat.h"
 #include "error_manager.h"
 #include "master_connector.hpp"
 #include "server_support.h"
@@ -534,7 +535,7 @@ namespace cubconn
 
   inline bool master_connector::prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept
   {
-#define BODY_SIZE 16
+#define BODY_SIZE 2048
     std::aligned_storage_t<BODY_SIZE, 8> *body;
     int *response;
 
@@ -569,8 +570,22 @@ namespace cubconn
 
   inline bool master_connector::prepare_heartbeat_register (context *ctx) noexcept
   {
+    hbp_proc_register *hbp_register;
 
-    return false;
+    hbp_register = hb_make_set_hbp_register (HB_PTYPE_SERVER);
+    if (hbp_register == NULL)
+      {
+	_er_log_debug (ARG_FILE_LINE, "master_connector->hb_make_set_hbp_register: hbp_register failed. \n");
+	return false;
+      }
+
+    if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_REGISTER_HA_PROCESS, reinterpret_cast<std::byte *> (hbp_register), sizeof (*hbp_register)))
+      {
+	free_and_init (hbp_register);
+	return false;
+      }
+    free_and_init (hbp_register);
+    return true;
   }
 
   inline bool master_connector::prepare_heartbeat_ha_mode (context *ctx) noexcept
@@ -1049,10 +1064,15 @@ namespace cubconn
 			   "master_connector->handle_master_transmission: master->switch_to_unix_socket failed");
 	    return false;
 	  }
-
+	/* register myself to master */
 	if (!HA_DISABLED ())
 	  {
-	    /* TODO: hb_register_to_master */
+	    if (!this->prepare_heartbeat_register (ctx))
+	      {
+		_er_log_debug (__FILE__, __LINE__,
+			   "master_connector->handle_master_transmission: prepare_heartbeat_register failed");
+		return false;
+	      }
 	    NEXT_STATE (ctx, SendHBToMaster);
 	  }
 	else
