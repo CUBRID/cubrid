@@ -31,12 +31,10 @@
 #include "span.hpp"
 #include "porting.h"
 
-#include <cstdint>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
 #include <string>
-#include <type_traits>
 
 namespace cubconn
 {
