@@ -703,7 +703,7 @@ css_process_new_client (SOCKET master_fd)
  *   conn (in)	: master connection entry
  */
 void
-css_process_get_server_ha_mode_request (CSS_CONN_ENTRY *conn)
+css_process_get_server_ha_mode_request (CSS_CONN_ENTRY * conn)
 {
   int r;
   int response;
@@ -731,7 +731,7 @@ css_process_get_server_ha_mode_request (CSS_CONN_ENTRY *conn)
  *   conn (in)	: master connection entry
  */
 void
-css_process_change_server_ha_mode_request (CSS_CONN_ENTRY *conn)
+css_process_change_server_ha_mode_request (CSS_CONN_ENTRY * conn)
 {
   HA_SERVER_STATE state;
   THREAD_ENTRY *thread_p;
@@ -764,7 +764,7 @@ css_process_change_server_ha_mode_request (CSS_CONN_ENTRY *conn)
  *   conn (in)	: master connection entry
  */
 void
-css_process_get_eof_request (CSS_CONN_ENTRY *conn)
+css_process_get_eof_request (CSS_CONN_ENTRY * conn)
 {
   LOG_LSA *eof_lsa;
   static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
