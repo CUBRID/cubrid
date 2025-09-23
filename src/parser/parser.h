@@ -682,7 +682,7 @@ extern "C"
   extern void pt_free_statement_xasl_id (PT_NODE * statement);
   extern int pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt);
   extern bool pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
-  extern bool pt_recompile_for_where_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern bool pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern PT_NODE *pt_make_query_show_trace (PARSER_CONTEXT * parser);
 
   extern void insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser, PT_NODE * insert_statement);

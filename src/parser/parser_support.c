@@ -155,7 +155,7 @@ static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
 					  bool add_offset);
-static int pt_get_query_where_from_where (PARSER_CONTEXT * parser, PT_NODE * where, DB_VALUE * where_val);
+static int pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
@@ -9735,14 +9735,24 @@ cleanup:
 }
 
 static int
-pt_get_query_where_from_where (PARSER_CONTEXT * parser, PT_NODE * where, DB_VALUE * where_val)
+pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val)
 {
   int save_set_host_var;
   int error = NO_ERROR;
+  int type_arg[2];
 
-  db_make_null (where_val);
+  type_arg[0] = PT_HOST_VAR;	/* type */
+  type_arg[1] = 0;		/* found */
 
-  if (where == NULL)
+  db_make_null (expr_val);
+
+  if (expr == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  (void) parser_walk_tree (parser, expr, pt_find_node_type_pre, type_arg, NULL, NULL);
+  if (type_arg[1] == 0)
     {
       return NO_ERROR;
     }
@@ -9750,16 +9760,14 @@ pt_get_query_where_from_where (PARSER_CONTEXT * parser, PT_NODE * where, DB_VALU
   save_set_host_var = parser->flag.set_host_var;
   parser->flag.set_host_var = 1;
 
-//   assert (where->node_type == PT_VALUE || where->node_type == PT_HOST_VAR || where->node_type == PT_EXPR);
-
-  pt_evaluate_tree (parser, where, where_val, 1);
+  pt_evaluate_tree (parser, expr, expr_val, 1);
   if (pt_has_error (parser))
     {
       error = ER_FAILED;
       goto cleanup;
     }
 
-  if (DB_IS_NULL (where_val))
+  if (DB_IS_NULL (expr_val))
     {
       goto cleanup;
     }
@@ -9767,8 +9775,8 @@ pt_get_query_where_from_where (PARSER_CONTEXT * parser, PT_NODE * where, DB_VALU
 cleanup:
   if (error != NO_ERROR)
     {
-      pr_clear_value (where_val);
-      db_make_null (where_val);
+      pr_clear_value (expr_val);
+      db_make_null (expr_val);
     }
 
   parser->flag.set_host_var = save_set_host_var;
@@ -10350,13 +10358,19 @@ end:
 }
 
 bool
-pt_recompile_for_where_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement)
+pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  PT_NODE *where;
+  PT_NODE *where, *arg1, *arg2;
+  PT_NODE *pattern = NULL, *escape = NULL;
   DB_VALUE where_val, compressed_pattern;
-  int num_logical_chars = 0, last_safe_logical_pos = 0;
-  int num_match_many = 0, num_match_one = 0;
+  int num_logical_chars = 0;
+  int last_safe_logical_pos = 0;
+  int num_match_many = 0;
+  int num_match_one = 0;
   bool need_recompile = false;
+  bool has_escape_char = false;
+  const char *escape_str = NULL;
+  INTL_CODESET codeset;
 
   if (statement->node_type != PT_SELECT)
     {
@@ -10380,29 +10394,77 @@ pt_recompile_for_where_optimizations (PARSER_CONTEXT * parser, PT_NODE * stateme
 	  /* where ? */
 	  continue;
 	}
-      if (where->node_type == PT_EXPR && where->info.expr.op == PT_LIKE)
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (where, PT_LIKE))
 	{
-	  if (!pt_is_expr_foldable (parser, statement->info.query.q.select.from, where->info.expr.arg1))
+	  arg1 = PT_EXPR_ARG1 (where);
+	  arg2 = PT_EXPR_ARG2 (where);
+
+	  if (!pt_is_expr_foldable (parser, statement->info.query.q.select.from, arg1))
 	    {
 	      continue;
 	    }
 
-	  int type_arg[2];
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+	    {
+	      pattern = PT_EXPR_ARG1 (arg2);
+	      escape = PT_EXPR_ARG2 (arg2);
+	      assert (escape != NULL);
+	    }
+	  else
+	    {
+	      pattern = arg2;
+	      escape = NULL;
+	    }
 
-	  type_arg[0] = PT_HOST_VAR;	/* type */
-	  type_arg[1] = 0;	/* found */
+	  if (escape != NULL)
+	    {
+	      if (PT_IS_NULL_NODE (escape))
+		{
+		  has_escape_char = true;
+		  escape_str = "\\";
+		}
+	      else
+		{
+		  int esc_char_len = 0;
 
-	  (void) parser_walk_tree (parser, where->info.expr.arg2, pt_find_node_type_pre, type_arg, NULL, NULL);
+		  assert (pt_is_ascii_string_value_node (escape));
 
-	  if (type_arg[1] != 0 && pt_get_query_where_from_where (parser, where->info.expr.arg2, &where_val) == NO_ERROR)
+		  escape_str = (const char *) escape->info.value.data_value.str->bytes;
+		  codeset = db_get_string_codeset (&pattern->info.value.db_value);
+
+		  intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
+				   &esc_char_len);
+		  if (esc_char_len != 1)
+		    {
+		      PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
+		      return false;
+		    }
+		  has_escape_char = true;
+		}
+	    }
+	  else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
+	    {
+	      assert (escape == NULL);
+	      assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+	      has_escape_char = true;
+	      escape_str = "\\";
+	    }
+	  else
+	    {
+	      has_escape_char = false;
+	      escape_str = NULL;
+	    }
+
+	  if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
 	    {
 	      if (!DB_IS_NULL (&where_val))
 		{
 		  db_make_null (&compressed_pattern);
 
-		  db_compress_like_pattern (&where_val, &compressed_pattern, false, NULL);
+		  db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
 
-		  db_get_info_for_like_optimization (&where_val, false, NULL,
+		  db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
 						     &num_logical_chars, &last_safe_logical_pos,
 						     &num_match_many, &num_match_one);
 

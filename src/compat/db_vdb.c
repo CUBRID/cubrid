@@ -2941,7 +2941,7 @@ db_check_where_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   session->parser->auto_param_count = parent_parser->auto_param_count;
   session->parser->flag.set_host_var = 1;
 
-  if (pt_recompile_for_where_optimizations (session->parser, query))
+  if (pt_recompile_for_like_optimizations (session->parser, query))
     {
       /* need recompile */
       do_recompile = true;
