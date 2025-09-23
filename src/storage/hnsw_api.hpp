@@ -230,7 +230,6 @@ class hnsw_index_manager
 
 namespace hnsw_backend_registry
 {
-  // 반환되는 map은 함수-지역 정적 변수(Meyers singleton)라 초기화 순서 이슈 없음.
   std::unordered_map<std::string, hnsw_backend_factory_fn> &factories();
   void register_factory (std::string id, hnsw_backend_factory_fn fn);
 }
@@ -238,16 +237,12 @@ namespace hnsw_backend_registry
 #define HNSW_PP_CAT_(A,B) A##B
 #define HNSW_PP_CAT(A,B) HNSW_PP_CAT_(A,B)
 
-#define HNSW_REGISTER_BACKEND(ID_STR, FACTORY_LAMBDA)             \
-  namespace {                                                     \
-    struct HNSW_PP_CAT(AutoReg_, __LINE__) {                      \
-      HNSW_PP_CAT(AutoReg_, __LINE__)() {                         \
-        hnsw_backend_registry::register_factory(                  \
-            std::string(ID_STR), hnsw_backend_factory_fn(FACTORY_LAMBDA)); \
-      }                                                           \
-    };                                                            \
-    static HNSW_PP_CAT(AutoReg_, __LINE__)                        \
-        HNSW_PP_CAT(g_autoreg_, __LINE__);                        \
+#define HNSW_REGISTER_BACKEND(ID_STR, FACTORY_LAMBDA)                  \
+  namespace {                                                          \
+    static const bool HNSW_PP_CAT(hnswreg_, __LINE__) = [] {           \
+      hnsw_backend_registry::register_factory(                         \
+          std::string(ID_STR), hnsw_backend_factory_fn(FACTORY_LAMBDA)); \
+      return true;                                                     \
+    }();                                                               \
   }
-
 #endif
