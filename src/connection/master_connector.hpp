@@ -162,7 +162,8 @@ namespace cubconn
 
       /* HB (communication with master) */
       inline bool prepare_heartbeat_send_request (context *ctx, CSS_SERVER_REQUEST command) noexcept;
-      inline bool prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data, std::size_t size) noexcept;
+      inline bool prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command, std::byte *data,
+	  std::size_t size) noexcept;
 
       inline bool prepare_heartbeat_register (context *ctx) noexcept;
 
