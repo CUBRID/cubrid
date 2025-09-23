@@ -102,7 +102,6 @@ struct result_run
 typedef struct sort_param SORT_PARAM;
 
 /* start parallel sort */
-#if defined(SERVER_MODE)
 void sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 int sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * dest_param, SORT_PARAM * src_param, int parallel_num);
 int sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_INFO * src_sort_info);
@@ -120,7 +119,6 @@ int sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, Q
 void sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			  int parallel_num);
 int sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int start_pagenum);
-#endif
 /* end parallel sort */
 
 #endif /* _PARALLEL_SORT_H_ */

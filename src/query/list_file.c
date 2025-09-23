@@ -4367,20 +4367,10 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   dup_option = ((option == Q_DISTINCT) ? SORT_ELIM_DUP : SORT_DUP);
 
-/*  TSC_TICKS start_tick, end_tick;
-  TSCTIMEVAL tv_diff;
-  struct timeval orderby_time = { 0, };
-  tsc_getticks (&start_tick);
-*/
   sort_result =
     sort_listfile (thread_p, NULL_VOLID, estimated_pages, get_func, &info, put_func, &info, cmp_func, &info.key_info,
 		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted, parallel_type);
 
-/*  tsc_getticks (&end_tick);
-  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-  TSC_ADD_TIMEVAL (orderby_time, tv_diff);
-  printf ("sort_listfile time: %d\n", TO_MSEC (orderby_time));
-*/
   if (sort_result < 0)
     {
 #if 0				/* SortCache */
