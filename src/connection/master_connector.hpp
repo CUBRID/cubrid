@@ -137,9 +137,17 @@ namespace cubconn
       /* dispatch */
       connection_pool *m_connection_pool;
 
+      /* socket */
       inline bool make_nonblocking (int fd) noexcept;
-      inline bool update_epoll_events (context *ctx);
+      inline bool opt_socket (int fd) noexcept;
+
+      /* connection */
       inline bool dispose_connection (context *ctx);
+
+      /* epoll */
+      inline bool update_epoll_events (context *ctx);
+
+      /* context */
       inline context *make_context ();
 
       /* --------------------------------------------------------------------------- */
