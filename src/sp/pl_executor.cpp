@@ -797,7 +797,7 @@ exit:
       }
 
     cubmem::block blk;
-    if (s_code > S_ERROR)
+    if (s_code != S_ERROR)
       {
 	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, info));
       }
