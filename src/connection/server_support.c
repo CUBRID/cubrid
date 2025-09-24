@@ -1337,8 +1337,8 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
       /* reply */
       mem_reply = new std::byte[buffer_size];
       std::memcpy (mem_reply, buffer, buffer_size);
-      request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
     }
+  request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
 
   /* deleter */
   request.deleter =[mem_header, mem_reply] () noexcept
@@ -1418,8 +1418,8 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
       /* reply */
       mem_reply = new std::byte[reply_size];
       std::memcpy (mem_reply, reply, reply_size);
-      request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
     }
+  request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
 
   if (buffer && buffer_size > 0)
     {
@@ -1795,8 +1795,8 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
       /* reply */
       mem_reply = new std::byte[buffer_size];
       std::memcpy (mem_reply, buffer, buffer_size);
-      request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
     }
+  request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
 
   /* deleter */
   request.deleter =[mem_header, mem_reply] () noexcept
