@@ -235,6 +235,27 @@ namespace cubconn
       return false;
     }
 
+    value = prm_get_integer_value (PRM_ID_TCP_KEEPALIVE_IDLE);
+    if (setsockopt (fd, IPPROTO_TCP, TCP_KEEPIDLE, &value, sizeof (value)) < 0)
+    {
+      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+      return false;
+    }
+
+    value = prm_get_integer_value (PRM_ID_TCP_KEEPALIVE_INTERVAL);
+    if (setsockopt (fd, IPPROTO_TCP, TCP_KEEPINTVL, &value, sizeof (value)) < 0)
+    {
+      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+      return false;
+    }
+
+    value = prm_get_integer_value (PRM_ID_TCP_KEEPALIVE_COUNT);
+    if (setsockopt (fd, IPPROTO_TCP, TCP_KEEPCNT, &value, sizeof (value)) < 0)
+    {
+      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+      return false;
+    }
+
     return true;
   }
 
@@ -337,7 +358,7 @@ namespace cubconn
     conn = css_make_conn (fd);
     if (!conn)
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: malloc failed: CSS_CONN_ENTRY");
+	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: css_make_conn failed: can't recover this");
 	::close (fd);
 	return false;
       }
