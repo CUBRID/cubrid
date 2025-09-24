@@ -342,11 +342,23 @@ session_state_uninit (void *st)
     {
       return NO_ERROR;
     }
+
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
-  session_stop_attached_threads (thread_p, session, true);
+  session_stop_attached_threads (thread_p, session);
+
+  if (session->pl_session_p)
+    {
+      delete session->pl_session_p;
+      session->pl_session_p = NULL;
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is NULL in session_state_uninit()\n",
+		    session->id);
+    }
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -698,6 +710,15 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
   /* inserted key might have been incremented; if last_session_id was not modified in the meantime, store the new value
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
+
+  if (session_p->pl_session_p)
+    {
+      /* should not happen */
+      assert (false);
+      er_log_debug (ARG_FILE_LINE, "(assertion fail) PL session is not NULL for a newly created session\n");
+      return ER_FAILED;
+    }
+  session_p->pl_session_p = new PL_SESSION (session_p->id);
 
   /* initialize session active time */
   session_p->active_time = time (NULL);
@@ -3106,22 +3127,8 @@ session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
       return ER_FAILED;
     }
 
-// *INDENT-OFF*
-  cubpl::session *s = NULL;
-// *INDENT-ON*
-  if (state_p->pl_session_p == NULL)
-    {
-      session_get_pl_session (thread_p, s);
-    }
-  else
-    {
-      s = state_p->pl_session_p;
-    }
-
-  if (s != NULL)
-    {
-      state_p->pl_session_p->mark_session_param_changed (id);
-    }
+  assert (state_p->pl_session_p);
+  state_p->pl_session_p->mark_session_param_changed (id);
 
   return NO_ERROR;
 }
@@ -3254,20 +3261,6 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 }
 
 bool
-session_has_pl_session (THREAD_ENTRY * thread_p)
-{
-  SESSION_STATE *state_p = NULL;
-
-  state_p = session_get_session_state (thread_p);
-  if (state_p == NULL)
-    {
-      return false;
-    }
-
-  return state_p->pl_session_p != NULL;
-}
-
-bool
 session_is_pl_session_running (THREAD_ENTRY * thread_p)
 {
   SESSION_STATE *state_p = NULL;
@@ -3278,7 +3271,7 @@ session_is_pl_session_running (THREAD_ENTRY * thread_p)
       return false;
     }
 
-  return state_p->pl_session_p != NULL && state_p->pl_session_p->is_sp_running ();
+  return state_p->pl_session_p->is_sp_running ();
 }
 
 int
@@ -3296,38 +3289,28 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
     }
   else
     {
-      if (state_p->pl_session_p == NULL)
+      assert (state_p->pl_session_p);
+      if (state_p->pl_session_p->is_sp_running () && state_p->pl_session_p->is_interrupted ())
 	{
-	  state_p->pl_session_p = new PL_SESSION (state_p->id);
-	  er_log_debug (ARG_FILE_LINE, "pl_session (create): %d\n", state_p->id);
-	}
-      else if (state_p->pl_session_p->is_sp_running () && state_p->pl_session_p->is_interrupted ())
-	{
+	  // TODO: should this be an error?
 	  pl_session_ref_ptr = nullptr;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	  error = ER_INTERRUPTED;
 	}
 
-      if (state_p->pl_session_p != NULL)
-	{
-	  pl_session_ref_ptr = state_p->pl_session_p;
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PL_SESSION));
-	}
+      pl_session_ref_ptr = state_p->pl_session_p;
     }
 
   return error;
 }
 
-/* 
+/*
  * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
  *                                 associated with the session
  *
  */
 void
-session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg, bool is_destory)
+session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3344,18 +3327,12 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg, bool 
       session->load_session_p = NULL;
     }
 
-  if (session->pl_session_p != NULL)
+  if (session->pl_session_p)
     {
       if (thread_p && thread_p->type == TT_WORKER)
 	{
 	  session->pl_session_p->set_interrupt (er_errid ());
 	  session->pl_session_p->wait_until_pl_session_done ();
-	}
-
-      if (is_destory)
-	{
-	  delete session->pl_session_p;
-	  session->pl_session_p = NULL;
 	}
     }
 
