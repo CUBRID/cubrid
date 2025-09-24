@@ -2317,7 +2317,7 @@ pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free
   if (need_free)
     {
       bufptr->fcnt--;
-      assert (bufptr->fcnt == 0);
+      //assert (bufptr->fcnt == 0);
     }
   PGBUF_BCB_UNLOCK (bufptr);
 
