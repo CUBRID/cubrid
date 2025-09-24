@@ -212,8 +212,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_QO_DUMP "qo_dump"
 
-#define PRM_NAME_CSS_CONNECTION_THREADS "connection_threads"
-
 #define PRM_NAME_CSS_MAX_CLIENTS "max_clients"
 
 #define PRM_NAME_THREAD_STACKSIZE "thread_stacksize"
@@ -728,7 +726,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
-#define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
 #define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
@@ -775,6 +772,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PARALLELISM "parallelism"
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
+
+#define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
+#define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
+#define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
+
+#define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
+#define PRM_NAME_CSS_CONNECTION_THREAD_COUNT "connection_thread_count"
 
 // #endregion 
 
@@ -5103,6 +5107,42 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TCP_KEEPALIVE_IDLE,
+   PRM_NAME_TCP_KEEPALIVE_IDLE,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 300 /* 5 min */}},
+   {false, {.i = 300 /* 5 min */}},
+   {false, {.i = 60 * 60 * 24 * 365 /* 1 year */}},
+   {false, {.i = 60 /* 1 min */}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TCP_KEEPALIVE_INTERVAL, /* probe interval */
+   PRM_NAME_TCP_KEEPALIVE_INTERVAL,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 300 /* 5 min */}},
+   {false, {.i = 300 /* 5 min */}},
+   {false, {.i = 60 * 60 * 24 * 365 /* 1 year */}},
+   {false, {.i = 60 /* 1 min */}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TCP_KEEPALIVE_COUNT, /* retry count */
+   PRM_NAME_TCP_KEEPALIVE_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 3}},
+   {false, {.i = 3}},
+   {false, {.i = 32}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_THREAD_WORKER_COUNT,
    PRM_NAME_THREAD_WORKER_COUNT,
    (PRM_FOR_SERVER),
@@ -5120,8 +5160,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_CSS_CONNECTION_THREADS,
-   PRM_NAME_CSS_CONNECTION_THREADS,
+  {PRM_ID_CSS_CONNECTION_THREAD_COUNT,
+   PRM_NAME_CSS_CONNECTION_THREAD_COUNT,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
