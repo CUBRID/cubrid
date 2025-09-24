@@ -3187,8 +3187,7 @@ css_release_packet (css_conn_entry * conn, void *buffer)
   if (conn->worker == nullptr || conn->context == nullptr)
     {
       _er_log_debug (__FILE__, __LINE__,
-		     "css_release_packet: worker already cleared for conn = %p, buffer = %p\n",
-		     (void *) conn, buffer);
+		     "css_release_packet: worker already cleared for conn = %p, buffer = %p\n", (void *) conn, buffer);
       return;
     }
 
