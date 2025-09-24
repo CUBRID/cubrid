@@ -132,14 +132,14 @@ STATIC_INLINE int stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, i
 static bool need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid);
 static int server_capabilities (void);
 
-static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_compare,
-				      REL_COMPATIBILITY * compatibility, const char *client_host);
-static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-			      UINT64 * diff_stats, char *queryinfo_string);
-static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
+static int check_client_capabilities (THREAD_ENTRY *thread_p, int client_cap, int rel_compare,
+				      REL_COMPATIBILITY *compatibility, const char *client_host);
+static void sbtree_find_unique_internal (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
+static int er_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time,
+			      UINT64 *diff_stats, char *queryinfo_string);
+static void event_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats);
+static void event_log_many_ioreads (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats);
+static void event_log_temp_expand_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info);
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
 
 /*
@@ -5912,7 +5912,7 @@ event_log_many_ioreads (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, 
  *   bind_vals(in):
  */
 static void
-event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
+event_log_temp_expand_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info)
 {
   FILE *log_fp;
   int indent = 2;
