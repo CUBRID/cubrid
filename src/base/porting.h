@@ -1094,4 +1094,21 @@ extern "C"
 #define REFPTR(T, name) T *& name
 #endif				/* !REFPTR */
 
+#if defined (__GNUC__)
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#define prefetch(x, y, z) __builtin_prefetch((x), (y), (z))
+#else
+#define likely(x)   (x)
+#define unlikely(x) (x)
+#define prefetch(x, y, z) (void) 0
+#endif
+
+#define PREFETCH_READ 0
+#define PREFETCH_WRITE 1
+#define PREFETCH_CACHE_TIME_IMMEDIATELY_DECACHE 0
+#define PREFETCH_CACHE_TIME_SHORT 1
+#define PREFETCH_CACHE_TIME_MEDIUM 2
+#define PREFETCH_CACHE_TIME_LONG 3
+
 #endif				/* _PORTING_H_ */

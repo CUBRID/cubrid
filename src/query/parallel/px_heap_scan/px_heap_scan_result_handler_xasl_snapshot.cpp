@@ -37,16 +37,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-#define prefetch(x, y, z) __builtin_prefetch((x), (y), (z))
-#define PREFETCH_READ 0
-#define PREFETCH_WRITE 1
-#define PREFETCH_CACHE_TIME_IMMEDIATELY_DECACHE 0
-#define PREFETCH_CACHE_TIME_SHORT 1
-#define PREFETCH_CACHE_TIME_MEDIUM 2
-#define PREFETCH_CACHE_TIME_LONG 3
-
 namespace parallel_heap_scan
 {
   thread_local list_id_header *result_handler_xasl_snapshot::m_tl_writer_list_id_header;

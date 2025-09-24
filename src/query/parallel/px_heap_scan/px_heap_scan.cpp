@@ -32,16 +32,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-#define prefetch(x, y, z) __builtin_prefetch((x), (y), (z))
-#define PREFETCH_READ 0
-#define PREFETCH_WRITE 1
-#define PREFETCH_CACHE_TIME_IMMEDIATELY_DECACHE 0
-#define PREFETCH_CACHE_TIME_SHORT 1
-#define PREFETCH_CACHE_TIME_MEDIUM 2
-#define PREFETCH_CACHE_TIME_LONG 3
-
 extern "C"
 {
   SCAN_CODE
@@ -52,11 +42,24 @@ extern "C"
   int
   scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
+    scan_id->single_fetched = false;
+    scan_id->null_fetched = false;
+    scan_id->qualified_block = false;
+    scan_id->position = (scan_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
+    OID_SET_NULL (&scan_id->s.phsid.curr_oid);
     return scan_id->s.phsid.manager->reset();
   }
   void
   scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
+    if (scan_id->direction == S_FORWARD)
+      {
+	scan_id->direction = S_BACKWARD;
+      }
+    else
+      {
+	scan_id->direction = S_FORWARD;
+      }
     scan_id->s.phsid.manager->end();
   }
   void
@@ -120,6 +123,7 @@ extern "C"
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	    return ER_FAILED;
 	  }
+	er_log_debug (ARG_FILE_LINE, "parallel heap scan started.");
 	scan_id->s.phsid.manager = placement_new ((parallel_heap_scan::manager *) scan_id->s.phsid.manager, thread_p, query_id,
 				   scan_id, xasl, parallelism, *hfid, *cls_oid, vd, result_type, (bool)fixed, (bool)grouped, manager);
 	scan_id->s.phsid.manager->open();

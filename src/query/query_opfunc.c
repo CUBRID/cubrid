@@ -68,9 +68,6 @@
 
 #define	SYS_CONNECT_BY_PATH_MEM_STEP	256
 
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 static bool qdata_is_zero_value_date (DB_VALUE * dbval_p);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);

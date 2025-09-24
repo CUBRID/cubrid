@@ -55,7 +55,8 @@ namespace parallel_heap_scan
 	  m_result_p (nullptr),
 	  m_result_mutex(),
 	  m_result_condition_variable(),
-	  m_active_results (parallelism) {}
+	  m_active_results (parallelism),
+	  m_parallelism (parallelism) {}
 
     private:
 
@@ -72,6 +73,7 @@ namespace parallel_heap_scan
       std::mutex m_result_mutex;
       std::condition_variable m_result_condition_variable;
       int m_active_results;
+      int m_parallelism;
 
   };
 }

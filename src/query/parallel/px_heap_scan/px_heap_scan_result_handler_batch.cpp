@@ -21,21 +21,12 @@
  */
 
 #include "px_heap_scan_result_handler_batch.hpp"
+#include "error_manager.h"
 #include "query_opfunc.h"
 #include "list_file.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-#define prefetch(x, y, z) __builtin_prefetch((x), (y), (z))
-#define PREFETCH_READ 0
-#define PREFETCH_WRITE 1
-#define PREFETCH_CACHE_TIME_IMMEDIATELY_DECACHE 0
-#define PREFETCH_CACHE_TIME_SHORT 1
-#define PREFETCH_CACHE_TIME_MEDIUM 2
-#define PREFETCH_CACHE_TIME_LONG 3
 
 namespace parallel_heap_scan
 {
@@ -64,6 +55,7 @@ namespace parallel_heap_scan
     }
     for (QFILE_LIST_ID *list_id : m_writer_results)
       {
+	assert (list_id != nullptr);
 	if (list_id->tuple_cnt > 0)
 	  {
 	    if (m_result_p == nullptr)
@@ -96,7 +88,6 @@ namespace parallel_heap_scan
 	    qfile_clear_list_id (m_result_p);
 	  }
       }
-
     m_result_p = nullptr;
     /* immediately return false to stop the reader */
     return S_END;
@@ -126,6 +117,10 @@ namespace parallel_heap_scan
 	}
       list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF,
 				 NULL);
+#if !defined(NDEBUG)
+      er_log_debug (ARG_FILE_LINE, "opened list_id: %p, qlist_count: %d", list_id,
+		    thread_p->m_px_orig_thread_entry->m_qlist_count.load());
+#endif
       if (!list_id)
 	{
 	  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -135,6 +130,10 @@ namespace parallel_heap_scan
 	}
       m_writer_results.push_back (list_id);
       m_tl_writer_result_p = list_id;
+      if (type_list.domp != nullptr)
+	{
+	  db_private_free (thread_p, type_list.domp);
+	}
     }
     size = m_tl_writer_result_p->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
     m_tl_writer_result_p->tpl_descr.f_valp = (DB_VALUE **) db_private_alloc (thread_p, size);
