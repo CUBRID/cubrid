@@ -228,6 +228,10 @@ namespace cubconn
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
 	return false;
       }
+
+    ctx->m_conn->worker = nullptr;
+    ctx->m_conn->context = nullptr;
+
     delete ctx;
 
     m_stats.sub (stats::NET_CLIENTS, 1);
@@ -322,6 +326,14 @@ namespace cubconn
     assert (item.packet.size () > 0);
 
     ctx = reinterpret_cast<context *> (item.conn->context);
+    if (ctx == nullptr)
+      {
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
+		       static_cast<void *> (item.conn));
+	return true;
+      }
+
     for (cubbase::span<std::byte> &packet : item.packet)
       {
 	ctx->m_recv.m_receiver.release (packet.data ());
@@ -849,6 +861,9 @@ namespace cubconn
 	pthread_mutex_lock (&m_entry->tran_index_lock);
 	css_Connection_error_handler (m_entry, ctx->m_conn);
 	m_entry->conn_entry = NULL;
+
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
 
 	delete ctx;
       }
