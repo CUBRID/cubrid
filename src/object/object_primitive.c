@@ -10639,7 +10639,7 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
   const char *string;
   int size;
 
-  if (value != NULL)
+  if (value != NULL && !db_value_is_null (value))
     {
       str = db_get_string (value);
       src_length = db_get_string_size (value);	/* size in bytes */
