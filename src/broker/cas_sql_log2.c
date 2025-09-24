@@ -34,9 +34,7 @@
 #endif
 
 #include "cas_common.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbi.h"
-#endif
 #include "cas_execute.h"
 #include "cas_sql_log2.h"
 #include "broker_filename.h"
