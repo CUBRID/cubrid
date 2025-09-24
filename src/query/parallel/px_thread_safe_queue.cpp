@@ -147,17 +147,17 @@ namespace parallel_query
     for (std::size_t i = 0; i < m_capacity; ++i)
       {
 	slot<T> &current_slot = m_slots[i];
-	
+
 	if (current_slot.ready.load (std::memory_order_acquire))
 	  {
 	    std::uint64_t current_seq = current_slot.sequence.load (std::memory_order_acquire);
 	    std::uint64_t new_seq = i;
-	    
+
 	    if (current_seq >= m_capacity)
 	      {
 		new_seq = i;
 	      }
-	    
+
 	    current_slot.sequence.store (new_seq, std::memory_order_release);
 	  }
 	else
