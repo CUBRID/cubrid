@@ -253,7 +253,6 @@ static HA_SERVER_STATE css_transit_ha_server_state (THREAD_ENTRY * thread_p, HA_
 static bool css_get_connection_thread_pooling_configuration (void);
 static cubthread::wait_seconds css_get_connection_thread_timeout_configuration (void);
 static bool css_get_server_request_thread_pooling_configuration (void);
-static int css_get_server_request_thread_core_count_configruation (void);
 static cubthread::wait_seconds css_get_server_request_thread_timeout_configuration (void);
 static void css_start_all_threads (void);
 // *INDENT-ON*
@@ -3466,24 +3465,10 @@ css_get_connection_thread_pooling_configuration (void)
   return prm_get_bool_value (PRM_ID_THREAD_CONNECTION_POOLING);
 }
 
-static cubthread::wait_seconds
-css_get_connection_thread_timeout_configuration (void)
-{
-  // todo: need infinite timeout
-  return
-    cubthread::wait_seconds (std::chrono::seconds (prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS)));
-}
-
 static bool
 css_get_server_request_thread_pooling_configuration (void)
 {
   return prm_get_bool_value (PRM_ID_THREAD_WORKER_POOLING);
-}
-
-static int
-css_get_server_request_thread_core_count_configruation (void)
-{
-  return prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
 }
 
 static cubthread::wait_seconds
@@ -3496,7 +3481,7 @@ css_get_server_request_thread_timeout_configuration (void)
 static void
 css_start_all_threads (void)
 {
-  if (/*css_Connection_worker_pool == NULL || */css_Server_request_worker_pool == NULL)
+  if (css_Server_request_worker_pool == NULL)
     {
       // not started yet
       return;
@@ -3509,12 +3494,6 @@ css_start_all_threads (void)
   bool start_connections = css_get_connection_thread_pooling_configuration ();
   bool start_workers = css_get_server_request_thread_pooling_configuration ();
 
-  /*
-  if (start_connections)
-    {
-      css_Connection_worker_pool->start_all_workers ();
-    }
-  */
   if (start_workers)
     {
       css_Server_request_worker_pool->start_all_workers ();
