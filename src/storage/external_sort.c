@@ -1630,10 +1630,6 @@ cleanup:
       px_status = PX_ERR_FAILED;
     }
 
-  if (px_status == PX_ERR_FAILED)
-    {
-      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-    }
   if (sort_param->px_orig_thread_p->on_trace)
     {
       thread_set_sort_stats_active (thread_p, false);
@@ -1645,6 +1641,10 @@ cleanup:
   /* done */
   pthread_mutex_lock (sort_param->px_mtx);
   sort_param->px_status = px_status;
+  if (px_status == PX_ERR_FAILED)
+    {
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 
@@ -3245,66 +3245,6 @@ bailout:
 }
 
 /*
- * sort_merge_list_id () - Simply concatenate the two list files. Each list file must be destroyed separately.
- *   return:
- *   dest_list_id(in): dest_list_id
- *   src_list_id(in): src_list_id
- *
- */
-int
-sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id)
-{
-  PAGE_PTR last_pgptr, first_pgptr;
-  int error = NO_ERROR;
-
-  /* check NULL list id */
-  if (VPID_ISNULL (&src_list_id->first_vpid))
-    {
-      /* the empty list is not linked */
-      return NO_ERROR;
-    }
-
-  /* link last page of dest to first page of src */
-  if (dest_list_id->last_vpid.volid == NULL_VOLID)
-    {
-      /* page from memery buffer */
-      assert (dest_list_id->tfile_vfid != NULL);
-      last_pgptr = dest_list_id->tfile_vfid->membuf[dest_list_id->last_vpid.pageid];
-      QFILE_PUT_NEXT_VPID (last_pgptr, &src_list_id->first_vpid);
-    }
-  else
-    {
-      /* page from page buffer */
-      last_pgptr =
-	pgbuf_fix (thread_p, &dest_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (last_pgptr == NULL)
-	{
-	  return ER_FAILED;
-	}
-      QFILE_PUT_NEXT_VPID (last_pgptr, &src_list_id->first_vpid);
-      pgbuf_set_dirty (thread_p, last_pgptr, FREE);
-    }
-
-  /* link first page of src to last page of dest */
-  first_pgptr = pgbuf_fix (thread_p, &src_list_id->last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (first_pgptr == NULL)
-    {
-      return ER_FAILED;
-    }
-  QFILE_PUT_PREV_VPID (first_pgptr, &dest_list_id->last_vpid);
-  pgbuf_set_dirty (thread_p, first_pgptr, FREE);
-
-  dest_list_id->tuple_cnt += src_list_id->tuple_cnt;
-  dest_list_id->page_cnt += src_list_id->page_cnt;
-  dest_list_id->last_vpid = src_list_id->last_vpid;
-  dest_list_id->last_pgptr = src_list_id->last_pgptr;
-  dest_list_id->last_offset = src_list_id->last_offset;
-  dest_list_id->lasttpl_len = src_list_id->lasttpl_len;
-
-  return error;
-}
-
-/*
  * sort_split_last_run () - split last run for parallel works.
  *   return:
  *   px_sort_param(in): px_sort_param
@@ -4839,13 +4779,13 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
     }
   thread_p->pop_resource_tracks ();
 
+  /* done */
+  pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = px_status;
   if (px_status == PX_ERR_FAILED)
     {
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
-  /* done */
-  pthread_mutex_lock (sort_param->px_mtx);
-  sort_param->px_status = px_status;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 }
@@ -4902,13 +4842,13 @@ sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_para
     }
   thread_p->pop_resource_tracks ();
 
+  /* done */
+  pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = px_status;
   if (sort_param->px_status == PX_ERR_FAILED)
     {
       sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
     }
-  /* done */
-  pthread_mutex_lock (sort_param->px_mtx);
-  sort_param->px_status = px_status;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
 }

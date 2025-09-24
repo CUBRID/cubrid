@@ -115,7 +115,6 @@ int sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 int sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param);
 void sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 void sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
-int sort_merge_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * dest_list_id, QFILE_LIST_ID * src_list_id);
 void sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			  int parallel_num);
 int sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int start_pagenum);
