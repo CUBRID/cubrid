@@ -17,7 +17,7 @@
  */
 
 /*
- * px_thread_safe_queue.hpp - thread safe queue
+ * px_thread_safe_queue.hpp - thread safe queue with slot-based MPMC structure
  */
 
 #ifndef _PX_THREAD_SAFE_QUEUE_HPP_
@@ -33,18 +33,15 @@
 
 namespace parallel_query
 {
-  union queue_state
+  template<typename T>
+  struct slot
   {
-    struct
-    {
-      std::uint16_t head;
-      std::uint16_t tail;
-      std::uint16_t size;
-      std::uint16_t version;
-    } fields;
-    std::uint64_t raw;
+    T data;
+    std::atomic<std::uint64_t> sequence;
+    std::atomic<bool> ready;
+
+    slot() : sequence (0), ready (false) {}
   };
-  static_assert (sizeof (queue_state) == 8, "queue_state must be 8 bytes for atomicity");
 
   template<typename T>
   class thread_safe_queue
@@ -63,14 +60,17 @@ namespace parallel_query
       bool is_full() const;
       std::size_t size() const;
       std::size_t capacity() const;
+      void reset_queue();
     private:
-      std::vector<T> m_data;
+      std::vector<slot<T>> m_slots;
+      std::atomic<std::uint64_t> m_enqueue_pos;
+      std::atomic<std::uint64_t> m_dequeue_pos;
       std::atomic<bool> m_push_completed;
+      std::atomic<bool> m_resetting;
       std::size_t m_capacity;
       mutable std::mutex m_mutex;
       std::condition_variable m_not_empty;
       std::condition_variable m_not_full;
-      std::atomic<queue_state> m_state;
 
       bool try_push_fast (const T &value);
       bool try_pop_fast (T &value);
