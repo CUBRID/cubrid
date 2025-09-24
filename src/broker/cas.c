@@ -51,7 +51,7 @@
 #include "cas_util.h"
 #include "broker_filename.h"
 #include "cas_execute.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "perf_monitor.h"
 
 #if !defined(WINDOWS)
