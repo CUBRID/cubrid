@@ -101,10 +101,6 @@ namespace cubbase
     this->save_index ();
 
     size = first.size () + (rest.size () + ... + 0);
-    if (size == 0)
-      {
-	return ;
-      }
     auto append = [&] (const cubbase::span<std::byte> &s)
     {
       if (s.size () != 0)
