@@ -28,6 +28,7 @@
 #include "list_file.h"
 #include "storage_common.h"
 #include <atomic>
+#include <chrono>
 
 #if !defined(NDEBUG)
 #include <sys/syscall.h>
@@ -231,7 +232,7 @@ namespace parallel_heap_scan
 	      {
 		std::unique_lock<std::mutex> lock (m_cv_mutex);
 		m_reader_wait = true;
-		m_readable_list_exists_cv.wait (lock);
+		m_readable_list_exists_cv.wait_for (lock, std::chrono::milliseconds (50));
 		m_reader_wait = false;
 		index_hint = m_reader_list_id_index_hint;
 	      }
@@ -510,69 +511,67 @@ namespace parallel_heap_scan
   void result_handler_xasl_snapshot::write_finalize (THREAD_ENTRY *thread_p)
   {
     assert (thread_p != nullptr);
-    if (m_tl_writer_list_id_header!= nullptr)
+    if (m_tl_writer_list_id_header->m_list_id_p != nullptr)
       {
-	if (m_tl_writer_list_id_header->m_list_id_p != nullptr)
-	  {
-	    qfile_close_list (thread_p, m_tl_writer_list_id_header->m_list_id_p);
-	    {
-	      std::lock_guard<std::mutex> lock (m_tl_writer_list_id_header->m_mutex);
-	      if (m_tl_writer_list_id_header->m_type_list.type_cnt != m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt)
-		{
-		  if (m_tl_writer_list_id_header->m_type_list.domp)
-		    {
-		      free (m_tl_writer_list_id_header->m_type_list.domp);
-		    }
-		  m_tl_writer_list_id_header->m_type_list.type_cnt = m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt;
-		  assert (m_tl_writer_list_id_header->m_type_list.type_cnt > 0);
-		  m_tl_writer_list_id_header->m_type_list.domp = (TP_DOMAIN **) malloc (m_tl_writer_list_id_header->m_type_list.type_cnt *
-		      sizeof (TP_DOMAIN *));
-		  if (m_tl_writer_list_id_header->m_type_list.domp == NULL)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      m_tl_writer_list_id_header->m_type_list.type_cnt * sizeof (TP_DOMAIN *));
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		      m_err_messages_p->move_top_error_message_to_this();
-		      return;
-		    }
-		}
-	      for (int i = 0; i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt; i++)
-		{
-		  assert (i >= 0 && i < m_tl_writer_list_id_header->m_type_list.type_cnt);
-		  assert (i >= 0 && i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt);
-		  m_tl_writer_list_id_header->m_type_list.domp[i] = m_tl_writer_list_id_header->m_list_id_p->type_list.domp[i];
-		}
-	      if (m_tl_writer_list_id_header->m_list_id_p->tuple_cnt == 0)
-		{
-		  m_writer_null_list_id_ended_cnt.fetch_add (1, std::memory_order_release);
-		  m_tl_writer_list_id_header->m_valid = false;
-		}
-	      else
-		{
-		  m_tl_writer_list_id_header->m_valid = true;
-		}
-	      m_tl_writer_list_id_header->m_last_vpid.pageid = m_tl_writer_list_id_header->m_list_id_p->last_vpid.pageid;
-	      m_tl_writer_list_id_header->m_last_vpid.volid = m_tl_writer_list_id_header->m_list_id_p->last_vpid.volid;
-	      m_tl_writer_list_id_header->m_list_closed = true;
-	    }
-	  }
-	else
-	  {
-	    std::lock_guard<std::mutex> lock (m_tl_writer_list_id_header->m_mutex);
-	    m_writer_null_list_id_ended_cnt.fetch_add (1, std::memory_order_release);
-	  }
-
-
-	m_writer_ended_cnt.fetch_add (1, std::memory_order_release);
+	qfile_close_list (thread_p, m_tl_writer_list_id_header->m_list_id_p);
 	{
-	  std::lock_guard<std::mutex> lock (m_cv_mutex);
-	  if (m_reader_wait)
+	  std::lock_guard<std::mutex> lock (m_tl_writer_list_id_header->m_mutex);
+	  if (m_tl_writer_list_id_header->m_type_list.type_cnt != m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt)
 	    {
-	      m_reader_list_id_index_hint = m_tl_list_id_index;
-	      m_readable_list_exists_cv.notify_all();
+	      if (m_tl_writer_list_id_header->m_type_list.domp)
+		{
+		  free (m_tl_writer_list_id_header->m_type_list.domp);
+		}
+	      m_tl_writer_list_id_header->m_type_list.type_cnt = m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt;
+	      assert (m_tl_writer_list_id_header->m_type_list.type_cnt > 0);
+	      m_tl_writer_list_id_header->m_type_list.domp = (TP_DOMAIN **) malloc (m_tl_writer_list_id_header->m_type_list.type_cnt *
+		  sizeof (TP_DOMAIN *));
+	      if (m_tl_writer_list_id_header->m_type_list.domp == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  m_tl_writer_list_id_header->m_type_list.type_cnt * sizeof (TP_DOMAIN *));
+		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  m_err_messages_p->move_top_error_message_to_this();
+		  return;
+		}
 	    }
+	  for (int i = 0; i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt; i++)
+	    {
+	      assert (i >= 0 && i < m_tl_writer_list_id_header->m_type_list.type_cnt);
+	      assert (i >= 0 && i < m_tl_writer_list_id_header->m_list_id_p->type_list.type_cnt);
+	      m_tl_writer_list_id_header->m_type_list.domp[i] = m_tl_writer_list_id_header->m_list_id_p->type_list.domp[i];
+	    }
+	  if (m_tl_writer_list_id_header->m_list_id_p->tuple_cnt == 0)
+	    {
+	      m_writer_null_list_id_ended_cnt.fetch_add (1, std::memory_order_release);
+	      m_tl_writer_list_id_header->m_valid = false;
+	    }
+	  else
+	    {
+	      m_tl_writer_list_id_header->m_valid = true;
+	    }
+	  m_tl_writer_list_id_header->m_last_vpid.pageid = m_tl_writer_list_id_header->m_list_id_p->last_vpid.pageid;
+	  m_tl_writer_list_id_header->m_last_vpid.volid = m_tl_writer_list_id_header->m_list_id_p->last_vpid.volid;
+	  m_tl_writer_list_id_header->m_list_closed = true;
 	}
       }
+    else
+      {
+	std::lock_guard<std::mutex> lock (m_tl_writer_list_id_header->m_mutex);
+	m_writer_null_list_id_ended_cnt.fetch_add (1, std::memory_order_release);
+      }
+
+
+    m_writer_ended_cnt.fetch_add (1, std::memory_order_release);
+    {
+      std::lock_guard<std::mutex> lock (m_cv_mutex);
+      if (m_reader_wait)
+	{
+	  m_reader_list_id_index_hint = m_tl_list_id_index;
+	  m_readable_list_exists_cv.notify_all();
+	}
+    }
+
     assert (m_tl_writer_list_id_header!= nullptr);
     assert (m_tl_tpl_buf.tpl != nullptr);
     db_private_free (thread_p, m_tl_tpl_buf.tpl);
@@ -600,7 +599,7 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
-	    list_id_p->type_list.domp[i] = tp_domain_resolve_value (valp->val, NULL);
+	    list_id_p->type_list.domp[i] = valp->dom;
 	  }
       }
     return NO_ERROR;

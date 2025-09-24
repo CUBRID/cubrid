@@ -5243,6 +5243,7 @@ xts_process_val_list (char *ptr, const VAL_LIST * val_list)
 	}
 
       ptr = or_pack_int (ptr, offset);
+      ptr = or_pack_domain (ptr, p->dom, 1, 1);
     }
 
   return ptr;
@@ -7172,6 +7173,7 @@ xts_sizeof_val_list (const VAL_LIST * val_list)
   for (p = val_list->valp; p; p = p->next)
     {
       size += PTR_SIZE;		/* p->val */
+      size += or_packed_domain_size (p->dom, true);	/* p->dom */
     }
 
   return size;

@@ -25,12 +25,16 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "error_code.h"
+#include "object_primitive.h"
 #include "perf_monitor.h"
 #include "query_evaluator.h"
 #include "error_context.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+#include "query_executor.h"
+#include "system.h"
+#include "xasl.h"
 
 extern "C"
 {
@@ -126,7 +130,16 @@ extern "C"
 	er_log_debug (ARG_FILE_LINE, "parallel heap scan started.");
 	scan_id->s.phsid.manager = placement_new ((parallel_heap_scan::manager *) scan_id->s.phsid.manager, thread_p, query_id,
 				   scan_id, xasl, parallelism, *hfid, *cls_oid, vd, result_type, (bool)fixed, (bool)grouped, manager);
-	scan_id->s.phsid.manager->open();
+	ret = scan_id->s.phsid.manager->open();
+	if (ret != NO_ERROR)
+	  {
+	    scan_id->s.phsid.manager->~manager();
+	    db_private_free (thread_p, scan_id->s.phsid.manager);
+	    scan_id->s.phsid.manager = nullptr;
+	    manager->release_workers (parallelism);
+	    manager = nullptr;
+	    goto try_single_heap;
+	  }
       }
     else
       {
@@ -148,6 +161,7 @@ try_single_heap:
   int
   scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
+    scan_id->position = S_ON;
     return NO_ERROR;
   }
 }
@@ -225,6 +239,15 @@ namespace parallel_heap_scan
     if (h == 0)
       {
 	m_uses_xasl_clone = false;
+	if (m_thread_p->xasl_unpack_info_ptr)
+	  {
+	    /* use unpack info ptr for execute. */
+	  }
+	else
+	  {
+	    assert (false);
+	    return ER_FAILED;
+	  }
       }
     else
       {
@@ -241,15 +264,21 @@ namespace parallel_heap_scan
       {
       case RESULT_TYPE::BATCH:
       {
+	if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.g_agg_list != NULL &&
+	    !m_xasl->proc.buildlist.g_agg_domains_resolved)
+	  {
+	    m_g_agg_domain_resolve_need = true;
+	  }
 	result_handler_batch *result_handler_batch_p = (result_handler_batch *) db_private_alloc (m_thread_p,
 	    sizeof (result_handler_batch));
 	result_handler_batch_p = placement_new ((result_handler_batch *) result_handler_batch_p, m_query_id, &m_interrupt,
-						&m_atomic_instnum, should_check_instnum, &m_err_messages, m_parallelism);
+						&m_atomic_instnum, should_check_instnum, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl->val_list);
 	m_result_handler = result_handler_batch_p;
       }
       break;
       case RESULT_TYPE::XASL_SNAPSHOT:
       {
+
 	result_handler_xasl_snapshot *result_handler_xasl_snapshot_p = (result_handler_xasl_snapshot *) db_private_alloc (
 		    m_thread_p,
 		    sizeof (result_handler_xasl_snapshot));
@@ -366,6 +395,19 @@ namespace parallel_heap_scan
 	    m_result_handler_read_initialized = true;
 	  }
 	scan_code = result_handler_batch_p->get_next (m_thread_p, m_xasl->list_id);
+	if (m_g_agg_domain_resolve_need)
+	  {
+	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl, &m_vd,
+		&m_xasl->proc.buildlist.g_agg_domains_resolved);
+	    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+	    QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
+	    for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
+	      {
+		pr_clear_value (valp->val);
+		valp = valp->next;
+	      }
+	    db_change_private_heap (m_thread_p, heap_id);
+	  }
 	break;
       }
       case RESULT_TYPE::XASL_SNAPSHOT:

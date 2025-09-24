@@ -46,8 +46,17 @@ namespace parallel_heap_scan
       bool write (THREAD_ENTRY *thread_p, OUTPTR_LIST *input) override;
       void write_finalize (THREAD_ENTRY *thread_p) override;
 
+      inline void set_tl_val_list_for_agg_domain_resolve (VAL_LIST *val_list)
+      {
+	if (m_g_agg_domain_resolve_need)
+	  {
+	    m_tl_val_list_for_agg_domain_resolve = val_list;
+	  }
+      }
+
       result_handler_batch (QUERY_ID query_id, interrupt *interrupt_p, atomic_instnum *atomic_instnum_p,
-			    bool should_check_instnum, err_messages_with_lock *err_messages_p, int parallelism)
+			    bool should_check_instnum, err_messages_with_lock *err_messages_p, int parallelism, bool g_agg_domain_resolve_need,
+			    VAL_LIST *orig_val_list_for_agg_domain_resolve)
 	: result_handler (query_id, interrupt_p, atomic_instnum_p, should_check_instnum, err_messages_p, RESULT_TYPE::BATCH),
 	  m_writer_results (),
 	  m_writer_results_mutex (),
@@ -56,7 +65,9 @@ namespace parallel_heap_scan
 	  m_result_mutex(),
 	  m_result_condition_variable(),
 	  m_active_results (parallelism),
-	  m_parallelism (parallelism) {}
+	  m_parallelism (parallelism),
+	  m_g_agg_domain_resolve_need (g_agg_domain_resolve_need),
+	  m_orig_val_list_for_agg_domain_resolve (orig_val_list_for_agg_domain_resolve) {}
 
     private:
 
@@ -75,6 +86,10 @@ namespace parallel_heap_scan
       int m_active_results;
       int m_parallelism;
 
+      bool m_g_agg_domain_resolve_need;
+      VAL_LIST *m_orig_val_list_for_agg_domain_resolve;
+      thread_local static VAL_LIST *m_tl_val_list_for_agg_domain_resolve;
+      thread_local static std::vector<DB_VALUE> m_tl_dbvals_for_agg_domain_resolve;
   };
 }
 #endif /*_PX_HEAP_SCAN_RESULT_HANDLER_BATCH_HPP_ */

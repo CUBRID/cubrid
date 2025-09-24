@@ -68,7 +68,9 @@ namespace parallel_heap_scan
 	  m_err_messages (),
 	  m_worker_manager (worker_manager),
 	  m_is_fixed (is_fixed),
-	  m_is_grouped (is_grouped)
+	  m_is_grouped (is_grouped),
+	  m_uses_xasl_clone (false),
+	  m_g_agg_domain_resolve_need (false)
       {}
       ~manager();
       int open();
@@ -111,6 +113,7 @@ namespace parallel_heap_scan
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_uses_xasl_clone;
+      bool m_g_agg_domain_resolve_need;
   };
 }
 

@@ -605,15 +605,15 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
        && val_list_index < val_list->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
     {
       qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+
+      pr_clear_value (val_list_iterator->val);
+
       if (flag == V_UNBOUND)
 	{
 	  db_make_null (val_list_iterator->val);
 	  continue;
 	}
-      if (DB_NEED_CLEAR (val_list_iterator->val))
-	{
-	  pr_clear_value (val_list_iterator->val);
-	}
+
       err_code = type_list->domp[val_list_index]->type->data_readval (&buf, val_list_iterator->val,
 								      type_list->domp[val_list_index],
 								      -1, false /* Don't copy */ ,
@@ -6596,7 +6596,7 @@ qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
   for (val_list_iterator = val_list->valp, val_list_index = 0; val_list_iterator != NULL;
        val_list_iterator = val_list_iterator->next, val_list_index++)
     {
-      type_list_p->domp[val_list_index] = tp_domain_resolve_value (val_list_iterator->val, NULL);
+      type_list_p->domp[val_list_index] = val_list_iterator->dom;
     }
 
   return NO_ERROR;

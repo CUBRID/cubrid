@@ -22,11 +22,14 @@
 
 #include "px_heap_scan_result_handler_batch.hpp"
 #include "error_manager.h"
+#include "memory_alloc.h"
+#include "object_primitive.h"
 #include "query_opfunc.h"
 #include "list_file.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+#include "system.h"
 
 namespace parallel_heap_scan
 {
@@ -34,6 +37,8 @@ namespace parallel_heap_scan
   thread_local QFILE_LIST_ID *result_handler_batch::m_tl_writer_result_p = nullptr;
   thread_local QFILE_TUPLE_RECORD *result_handler_batch::m_tl_tpl_buf = nullptr;
   thread_local VAL_DESCR *result_handler_batch::m_tl_vd = nullptr;
+  thread_local std::vector<DB_VALUE> result_handler_batch::m_tl_dbvals_for_agg_domain_resolve;
+  thread_local VAL_LIST *result_handler_batch::m_tl_val_list_for_agg_domain_resolve = nullptr;
 
   void result_handler_batch::read_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_DESCR *vd)
   {
@@ -176,6 +181,14 @@ namespace parallel_heap_scan
 	return;
       }
     m_tl_tpl_buf->size = DB_PAGESIZE;
+    if (m_g_agg_domain_resolve_need)
+      {
+	m_tl_dbvals_for_agg_domain_resolve.resize (m_orig_val_list_for_agg_domain_resolve->val_cnt);
+	for (DB_VALUE &dbval : m_tl_dbvals_for_agg_domain_resolve)
+	  {
+	    dbval.domain.general_info.is_null = 1;
+	  }
+      }
   }
 
   bool result_handler_batch::write (THREAD_ENTRY *thread_p, OUTPTR_LIST *input)
@@ -192,6 +205,18 @@ namespace parallel_heap_scan
       {
 	qfile_update_domains_on_type_list (thread_p, m_tl_writer_result_p, input);
 	m_is_list_id_domain_resolved = m_tl_writer_result_p->is_domain_resolved;
+      }
+    if (m_g_agg_domain_resolve_need)
+      {
+	QPROC_DB_VALUE_LIST valp = m_tl_val_list_for_agg_domain_resolve->valp;
+	for (int i = 0; i < m_tl_val_list_for_agg_domain_resolve->val_cnt; i++)
+	  {
+	    if (m_tl_dbvals_for_agg_domain_resolve[i].domain.general_info.is_null && !valp->val->domain.general_info.is_null)
+	      {
+		pr_clone_value (valp->val, &m_tl_dbvals_for_agg_domain_resolve[i]);
+	      }
+	    valp = valp->next;
+	  }
       }
 
     if (likely (status == QPROC_TPLDESCR_SUCCESS))
@@ -255,6 +280,25 @@ namespace parallel_heap_scan
     m_tl_tpl_buf = nullptr;
     {
       std::lock_guard<std::mutex> lock (m_result_mutex);
+      if (m_g_agg_domain_resolve_need)
+	{
+	  HL_HEAPID heap_id = db_change_private_heap (thread_p, 0);
+	  QPROC_DB_VALUE_LIST orig_valp = m_orig_val_list_for_agg_domain_resolve->valp;
+	  for (int i = 0; i < m_orig_val_list_for_agg_domain_resolve->val_cnt; i++)
+	    {
+	      if (orig_valp->val->domain.general_info.is_null)
+		{
+		  pr_clone_value (&m_tl_dbvals_for_agg_domain_resolve[i], orig_valp->val);
+		}
+	      orig_valp = orig_valp->next;
+	    }
+	  db_change_private_heap (thread_p, heap_id);
+	  for (DB_VALUE &dbval : m_tl_dbvals_for_agg_domain_resolve)
+	    {
+	      pr_clear_value (&dbval);
+	    }
+	  m_tl_dbvals_for_agg_domain_resolve.clear();
+	}
       m_active_results--;
       if (m_active_results == 0)
 	{

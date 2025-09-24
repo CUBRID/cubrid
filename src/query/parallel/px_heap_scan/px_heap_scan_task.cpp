@@ -114,6 +114,7 @@ namespace parallel_heap_scan
       {
 	result_handler_batch *result_handler_batch_p = std::get<result_handler_batch *> (m_result_handler);
 	result_handler_batch_p->write_initialize (&thread_ref, m_xasl->outptr_list, m_vd);
+	result_handler_batch_p->set_tl_val_list_for_agg_domain_resolve (m_xasl->val_list);
       }
       break;
       case RESULT_TYPE::XASL_SNAPSHOT:

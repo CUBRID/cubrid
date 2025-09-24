@@ -19633,11 +19633,12 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 }
 
 int
-qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, int *resolved)
+qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, void *vd,
+							      int *resolved)
 {
   QFILE_TUPLE_RECORD tpl = { NULL, 0 };
-  VAL_DESCR *vd = xasl->spec_list->s_id.vd;
-  return qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildlist.g_agg_list, vd, &tpl,
+  VAL_DESCR *vd_p = (VAL_DESCR *) vd;
+  return qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildlist.g_agg_list, vd_p, &tpl,
 						xasl->proc.buildlist.g_scan_regu_list, resolved);
 }
 
