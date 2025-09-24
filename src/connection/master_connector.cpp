@@ -1026,6 +1026,11 @@ namespace cubconn
     else
       {
 	/* In error context, this conn entry has been temporarily allocated */
+	if (!IS_INVALID_SOCKET (ctx->m_conn->fd))
+	  {
+	    css_shutdown_socket (ctx->m_conn->fd);
+	    ctx->m_conn->fd = INVALID_SOCKET;
+	  }
 	delete ctx->m_conn;
       }
 
