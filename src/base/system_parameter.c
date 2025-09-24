@@ -4724,7 +4724,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 1}},
    {false, {.i = 1}},
 #endif
-   {false, {.i = 1024}},
+   {false, {.i = 2048}},
    {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5107,11 +5107,16 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_THREAD_WORKER_COUNT,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
-   &prm_thread_worker_count_flag,
-   (void *) &prm_thread_worker_count_default,
-   (void *) &PRM_THREAD_WORKER_COUNT,
-   (void *) &prm_thread_worker_count_upper,
-   (void *) &prm_thread_worker_count_lower,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count () * 4}},
+   {false, {.i = (int) cubthread::system_core_count () * 4}},
+#else
+   {false, {.i = 4}},
+   {false, {.i = 4}},
+#endif
+   {false, {.i = 8192}},
+   {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5119,11 +5124,16 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_NAME_CSS_CONNECTION_THREADS,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
-   &prm_css_connection_threads_flag,
-   (void *) &prm_css_connection_threads_default,
-   (void *) &PRM_CSS_CONNECTION_THREADS,
-   (void *) &prm_css_connection_threads_upper,
-   (void *) &prm_css_connection_threads_lower,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count ()}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   {false, {.i = 2}},
+   {false, {.i = 2}},
+#endif
+   {false, {.i = 2048}},
+   {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
