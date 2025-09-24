@@ -11893,7 +11893,7 @@ stdes_set_query_start_info (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 	}
     }
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0, {});
+  css_send_data_to_client (thread_p->conn_entry, rid, NULL, 0);
 }
 
 /*
@@ -11923,5 +11923,5 @@ stdes_reset_query_start_info (THREAD_ENTRY *thread_p, unsigned int rid, char *re
 	}
     }
 
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0, {});
+  css_send_data_to_client (thread_p->conn_entry, rid, NULL, 0);
 }
