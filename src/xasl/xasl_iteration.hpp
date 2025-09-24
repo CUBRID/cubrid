@@ -25,10 +25,10 @@
 namespace cubxasl
 {
   template<typename T>
-  using XASL_iteration_function = std::function<T (XASL_NODE *)>;
+  using xasl_iteration_function = std::function<T (XASL_NODE *)>;
 
   template<typename T>
-  T iterate_xasl_tree (XASL_NODE *xasl, XASL_iteration_function<T> func, T default_value = T{})
+  T iterate_xasl_tree (XASL_NODE *xasl, xasl_iteration_function<T> func, T default_value)
   {
     XASL_NODE *iterator;
     if (xasl == nullptr)
@@ -94,6 +94,18 @@ namespace cubxasl
 	if (result != default_value)
 	  {
 	    return result;
+	  }
+      }
+
+    if (xasl->type == BUILDLIST_PROC)
+      {
+	for (iterator = xasl->proc.buildlist.eptr_list; iterator != nullptr; iterator = iterator->next)
+	  {
+	    result = iterate_xasl_tree (iterator, func, default_value);
+	    if (result != default_value)
+	      {
+		return result;
+	      }
 	  }
       }
 
