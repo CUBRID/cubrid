@@ -89,14 +89,14 @@ namespace cubbase
     ifname = cubbase::ifsys::auto_select_primary_iface ();
     if (ifname.empty ())
       {
-	fprintf (stderr, "warning: cannot auto select iface\n");
+	fprintf (stderr, "warning: no interfaces available for selection. (virtual environment)\n");
 	return ;
       }
 
     /* channel */
     if (!this->set_nic_channels (ifname, m_selected.size ()))
       {
-	fprintf (stderr, "warning: set_nic_channels_combined failed (driver may limit)\n");
+	fprintf (stderr, "warning: NIC channel configuration failed. (driver may limit)\n");
       }
     /* wait until applied */
     usleep (1000 * 1000);
@@ -111,7 +111,7 @@ namespace cubbase
       }
     else
       {
-	fprintf (stderr, "warning: no IRQ lines found for %s in /proc/interrupts\n", ifname.c_str ());
+	fprintf (stderr, "warning: no IRQ lines found for %s in /proc/interrupts.\n", ifname.c_str ());
       }
     free (qs.v);
 
