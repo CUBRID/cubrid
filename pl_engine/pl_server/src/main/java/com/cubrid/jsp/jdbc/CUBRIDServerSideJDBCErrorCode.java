@@ -73,10 +73,15 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_NOT_COLLECTION = -21121;
     public static final int ER_ARGUMENT_ZERO = -21128;
 
+    /* The following codes are not from other module of CUBRID */
+    public static final int ER_SP_INVALID_CURSOR = -40001;
+
     private static HashMap<Integer, String> messageString = null;
 
     public static String codeToMessage(int index) {
-        if (messageString == null) setMessageHash();
+        if (messageString == null) {
+            setMessageHash();
+        }
         return messageString.get(index);
     }
 
@@ -85,7 +90,7 @@ public class CUBRIDServerSideJDBCErrorCode {
             setMessageHash();
         }
 
-        if (index == ER_DBMS && msg != null) {
+        if ((index == ER_SP_INVALID_CURSOR || index == ER_DBMS) && msg != null) {
             // received error message from DB server
             return msg;
         } else {
@@ -146,5 +151,6 @@ public class CUBRIDServerSideJDBCErrorCode {
 
         messageString.put(ER_NOT_COLLECTION, "The type of the column should be a collection type.");
         messageString.put(ER_ARGUMENT_ZERO, "The argument row can not be zero.");
+        messageString.put(ER_SP_INVALID_CURSOR, "Invalid cursor");
     }
 }

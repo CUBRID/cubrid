@@ -743,8 +743,8 @@ exit:
     if (cursor == nullptr)
       {
 	assert (false);
-	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("no cursor for the query"),
-				     ARG_FILE_LINE));
+	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+				     std::string ("no cursor for the query"), ARG_FILE_LINE));
 	error = m_stack->send_data_to_java (b);
 	return error;
       }
@@ -770,12 +770,12 @@ exit:
     while (s_code == S_SUCCESS)
       {
 	s_code = cursor->next_row ();
-	int tuple_index = cursor->get_current_index ();
-	if (s_code == S_END)
+	if (s_code == S_END || s_code <= S_ERROR)
 	  {
 	    break;
 	  }
 
+	int tuple_index = cursor->get_current_index ();
 	std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
 
 	if (cursor->get_is_oid_included())
@@ -797,14 +797,15 @@ exit:
       }
 
     cubmem::block blk;
-    if (s_code != S_ERROR)
+    if (s_code > S_ERROR)
       {
 	blk = std::move (pack_data_block (METHOD_RESPONSE_SUCCESS, info));
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("fetch failed"),
-					  ARG_FILE_LINE));
+	// error of cursor->next_row()
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+					  std::string ("cursor closed"), ARG_FILE_LINE));
       }
 
     error = m_stack->send_data_to_java (blk);
