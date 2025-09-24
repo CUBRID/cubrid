@@ -1186,12 +1186,12 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	    {
 	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &size);
 
-      if (new_content_ptr != NULL)
-        {
-          memcpy (content_ptr, new_content_ptr, size);
-          thread_p->release_packet (new_content_ptr);
-          new_content_ptr = NULL;
-        }
+	      if (new_content_ptr != NULL)
+		{
+		  memcpy (content_ptr, new_content_ptr, size);
+		  thread_p->release_packet (new_content_ptr);
+		  new_content_ptr = NULL;
+		}
 
 	      if (csserror)
 		{
@@ -1344,12 +1344,12 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
 	    {
 	      csserror = css_receive_data_from_client (thread_p->conn_entry, rid, &new_content_ptr, &received_size);
 
-      if (new_content_ptr != NULL)
-        {
-          memcpy (content_ptr, new_content_ptr, received_size);
-          thread_p->release_packet (new_content_ptr);
-          new_content_ptr = NULL;
-        }
+	      if (new_content_ptr != NULL)
+		{
+		  memcpy (content_ptr, new_content_ptr, received_size);
+		  thread_p->release_packet (new_content_ptr);
+		  new_content_ptr = NULL;
+		}
 
 	      if (csserror)
 		{
@@ -1377,13 +1377,13 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
 	      (void) return_error_to_client (thread_p, rid);
 	    }
 
-  auto deleter = [conn = thread_p->conn_entry, packed_desc, packed_size]() noexcept
-  {
-    if (packed_desc)
-      {
-	conn->release_packet (packed_desc);
-      }
-  };
+	  auto deleter = [conn = thread_p->conn_entry, packed_desc, packed_size]() noexcept
+	  {
+	    if (packed_desc)
+	      {
+		conn->release_packet (packed_desc);
+	      }
+	  };
 	  css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
 					       packed_desc, packed_desc_size, NULL, 0, std::move (deleter));
 	}
@@ -1444,9 +1444,9 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       if (packed)
-    {
-      thread_p->release_packet (packed);
-    }
+	{
+	  thread_p->release_packet (packed);
+	}
       return;
     }
 
@@ -5077,7 +5077,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  if (buffer)
 	    {
-          thread_p->release_packet (buffer);
+	      thread_p->release_packet (buffer);
 	    }
 	  return;
 	}
@@ -5435,7 +5435,7 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  if (data)
 	    {
-          thread_p->release_packet (data);
+	      thread_p->release_packet (data);
 	    }
 	  return;		/* error */
 	}
@@ -7130,9 +7130,9 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY *thread_p, unsigned int rid, char 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       if (packed)
-    {
-      thread_p->release_packet (packed);
-    }
+	{
+	  thread_p->release_packet (packed);
+	}
       return;
     }
 
@@ -7700,9 +7700,9 @@ xlog_get_page_request_with_reply (THREAD_ENTRY *thread_p, LOG_PAGEID *fpageid_pt
   if (error != NO_ERROR)
     {
       if (reply)
-    {
-      thread_p->release_packet (reply);
-    }
+	{
+	  thread_p->release_packet (reply);
+	}
 
       return error;
     }
@@ -10792,7 +10792,7 @@ end:
 }
 
 void
-ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session)
+ssession_stop_attached_threads (THREAD_ENTRY *thread_p, void *session)
 {
   session_stop_attached_threads (thread_p, session);
 }
