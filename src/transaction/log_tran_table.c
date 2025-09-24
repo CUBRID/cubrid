@@ -2740,6 +2740,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
       return false;
     }
 
+  /* get thread by tran_index, if thread_p is NULL */
+  if (!thread_p)
+    {
+      thread_p = logtb_find_thread_by_tran_index (tran_index);
+    }
+
   if (log_Gl.trantable.area != NULL)
     {
       tdes = LOG_FIND_TDES (tran_index);
@@ -2778,7 +2784,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
-	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+
+	      /* collect stat, if thread_p is not NULL */
+	      if (thread_p)
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+		}
 
 	      // Only TT_WORKER threads use pl_session
 	      if (thread_p && thread_p->type == TT_WORKER)
