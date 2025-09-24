@@ -511,9 +511,9 @@ qo_plan_malloc (QO_ENV * env)
   bitset_init (&(plan->subqueries), env);
 
   plan->parallel_opt_use = PLAN_PARALLEL_OPT_NO;
+  plan->skip_orderby_opt_use = PLAN_SKIP_ORDERBY_OPT_NO;
 
   plan->has_sort_limit = false;
-  plan->is_orderby_skip_candidate = false;
   plan->use_iscan_descending = false;
 
   return plan;
@@ -862,6 +862,7 @@ qo_set_orderby_skip (QO_PLAN * plan, void *arg)
   if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
     {
       bool yn = *((bool *) arg);
+      plan->skip_orderby_opt_use = (yn) ? PLAN_SKIP_ORDERBY_OPT_USE : plan->skip_orderby_opt_use;
       plan->plan_un.scan.index->head->orderby_skip = yn;
     }
 
@@ -1131,7 +1132,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	    }
 	  else
 	    {
-	      if (plan->iscan_sort_list)
+	      if (!groupby_skip && plan->iscan_sort_list)
 		{
 		  parser_free_tree (parser, plan->iscan_sort_list);
 		  plan->iscan_sort_list = NULL;
@@ -4069,12 +4070,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* check index scan */
-      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a) || qo_is_iscan_from_groupby (a)) && qo_is_seq_scan (b))
+      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a)) && qo_is_seq_scan (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b) || qo_is_iscan_from_groupby (b)) && qo_is_seq_scan (a))
+      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b)) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -5645,21 +5646,20 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
   best_info = info->planner->best_info;
   plan_order = plan->order;
 
-  if (plan->top_rooted)
+  /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't skip the orderby, we release the plan. */
+  if (qo_is_iscan_from_orderby (plan)
+      && ((plan->top_rooted && !plan->plan_un.scan.index->head->orderby_skip)
+	  || (!plan->top_rooted && (!qo_plan_is_orderby_skip_candidate (plan) || !QO_PLAN_HAS_LIMIT (plan)))))
     {
-      /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't skip the orderby, we release the plan. */
-      if (qo_is_iscan_from_orderby (plan) && !plan->plan_un.scan.index->head->orderby_skip)
-	{
-	  qo_plan_release (plan);
-	  return 0;
-	}
+      qo_plan_release (plan);
+      return 0;
+    }
 
-      /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
-      if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
-	{
-	  qo_plan_release (plan);
-	  return 0;
-	}
+  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
+  if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
+    {
+      qo_plan_release (plan);
+      return 0;
     }
 
   /*
@@ -11482,7 +11482,7 @@ static bool
 qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
 {
   PARSER_CONTEXT *parser;
-  PT_NODE *order_by, *statement;
+  PT_NODE *order_by, *statement, *entity;
   QO_ENV *env;
   bool is_prefix = false, is_orderby_skip = false;
   bool need_cleanup = false;
@@ -11493,9 +11493,26 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
       return false;
     }
 
-  if (plan->is_orderby_skip_candidate)
+  switch (plan->skip_orderby_opt_use)
     {
+    case PLAN_SKIP_ORDERBY_OPT_USE:
+      /* may be unused */
+    case PLAN_SKIP_ORDERBY_OPT_CAN_USE:
       return true;
+
+    case PLAN_SKIP_ORDERBY_OPT_CANNOT_USE:
+      return false;
+
+    case PLAN_SKIP_ORDERBY_OPT_NO:
+      /* fall through */
+      break;
+
+    default:
+      /* impossible case */
+      assert (false);
+
+      /* fall through */
+      break;
     }
 
   env = plan->info->env;
@@ -11522,6 +11539,27 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
       is_orderby_skip = qo_check_orderby_skip_descending (plan);
     }
 
+  /*
+   * In RIGHT OUTER JOIN, all leading tables are used as null-supplying,
+   * so skip ORDER BY cannot be applied.
+   * In LEFT OUTER JOIN, trailing tables may also be null-supplying,
+   * but not always, so skip ORDER BY can be applied.
+   * Since trailing tables in LEFT OUTER JOIN usually have join conditions in the ON clause,
+   * a general Index Scan plan is more likely than an Index Scan plan for skip ORDER BY.
+   * Here, we only check RIGHT OUTER JOIN.
+   */
+  if (qo_is_iscan_from_orderby (plan))
+    {
+      entity = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)->next;
+      for (; entity != NULL; entity = entity->next)
+	{
+	  if (entity->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	    {
+	      is_orderby_skip = false;
+	    }
+	}
+    }
+
 cleanup:
   if (need_cleanup && plan->iscan_sort_list != NULL)
     {
@@ -11529,7 +11567,7 @@ cleanup:
       plan->iscan_sort_list = NULL;
     }
 
-  plan->is_orderby_skip_candidate = is_orderby_skip;
+  plan->skip_orderby_opt_use = (is_orderby_skip ? PLAN_SKIP_ORDERBY_OPT_CAN_USE : PLAN_SKIP_ORDERBY_OPT_CANNOT_USE);
 
   return is_orderby_skip;
 }
