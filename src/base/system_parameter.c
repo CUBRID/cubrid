@@ -9720,20 +9720,6 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%d", max_clients);
 	  (void) prm_set (max_clients_prm, newval, false);
 	}
-
-#if defined (SERVER_MODE)
-      /*
-      thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
-      int safe_core_count = (css_get_max_workers () / 3);
-      int system_cpu_count = cubthread::system_core_count ();
-      int core_upper_limit = MIN (safe_core_count, system_cpu_count);
-      if (PRM_GET_INT (thread_core_count_prm->value) > core_upper_limit)
-	{
-	  sprintf (newval, "%d", core_upper_limit);
-	  (void) prm_set (thread_core_count_prm, newval, false);
-	}
-      */
-#endif
     }
 
   /* check Plan Cache and Query Cache parameters */
