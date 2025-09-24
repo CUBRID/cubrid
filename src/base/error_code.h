@@ -1750,7 +1750,7 @@
 
 #define ER_DBLINK_TRAN				    -1367
 
-#define ER_SP_INVALID_CURSOR                        -1368
+#define ER_SP_INVALID_CURSOR                        -1368	// sync with SUConnection.java
 
 #define ER_LAST_ERROR                               -1369
 
