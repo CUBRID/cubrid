@@ -44,6 +44,7 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+#include <netinet/tcp.h>
 #include <fcntl.h>
 #include <string>
 #include <type_traits>
@@ -223,6 +224,35 @@ namespace cubconn
     return true;
   }
 
+  inline bool master_connector::opt_socket (int fd) noexcept
+  {
+    int value;
+    
+    value = static_cast<int> (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE));
+    if (setsockopt (fd, SOL_SOCKET, SO_KEEPALIVE, &value, sizeof (value)) < 0)
+    {
+      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+      return false;
+    }
+
+    return true;
+  }
+
+  inline bool master_connector::dispose_connection (context *ctx)
+  {
+    /* remove the fd which is reset by peer */
+    if (!m_events.remove_descriptor (ctx->m_conn->fd))
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->dispose_connection: m_events->remove_descriptor failed: %s",
+		       strerror (errno));
+	return false;
+      }
+    css_free_conn (ctx->m_conn);
+    delete ctx;
+
+    return true;
+  }
+
   inline bool master_connector::update_epoll_events (context *ctx)
   {
     std::uint32_t flags;
@@ -239,21 +269,6 @@ namespace cubconn
 		       strerror (errno));
 	return false;
       }
-
-    return true;
-  }
-
-  inline bool master_connector::dispose_connection (context *ctx)
-  {
-    /* remove the fd which is reset by peer */
-    if (!m_events.remove_descriptor (ctx->m_conn->fd))
-      {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->dispose_connection: m_events->remove_descriptor failed: %s",
-		       strerror (errno));
-	return false;
-      }
-    css_free_conn (ctx->m_conn);
-    delete ctx;
 
     return true;
   }
@@ -766,7 +781,7 @@ namespace cubconn
 	return result::Reset;
       }
 
-    if (!this->make_nonblocking (new_fd))
+    if (!this->opt_socket (new_fd) || !this->make_nonblocking (new_fd))
       {
 	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: request_new_client failed - error: %s",
 		       strerror (errno));
