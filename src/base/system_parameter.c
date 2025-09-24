@@ -5108,11 +5108,11 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count () * 4}},
-   {false, {.i = (int) cubthread::system_core_count () * 4}},
+   {false, {.i = (int) cubthread::system_core_count () * 3}},
+   {false, {.i = (int) cubthread::system_core_count () * 3}},
 #else
-   {false, {.i = 4}},
-   {false, {.i = 4}},
+   {false, {.i = 3}},
+   {false, {.i = 3}},
 #endif
    {false, {.i = 8192}},
    {false, {.i = 0}},
