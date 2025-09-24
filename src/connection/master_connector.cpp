@@ -227,34 +227,34 @@ namespace cubconn
   inline bool master_connector::opt_socket (int fd) noexcept
   {
     int value;
-    
+
     value = static_cast<int> (prm_get_bool_value (PRM_ID_TCP_KEEPALIVE));
     if (setsockopt (fd, SOL_SOCKET, SO_KEEPALIVE, &value, sizeof (value)) < 0)
-    {
-      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
-      return false;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+	return false;
+      }
 
     value = prm_get_integer_value (PRM_ID_TCP_KEEPALIVE_IDLE);
     if (setsockopt (fd, IPPROTO_TCP, TCP_KEEPIDLE, &value, sizeof (value)) < 0)
-    {
-      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
-      return false;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+	return false;
+      }
 
     value = prm_get_integer_value (PRM_ID_TCP_KEEPALIVE_INTERVAL);
     if (setsockopt (fd, IPPROTO_TCP, TCP_KEEPINTVL, &value, sizeof (value)) < 0)
-    {
-      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
-      return false;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+	return false;
+      }
 
     value = prm_get_integer_value (PRM_ID_TCP_KEEPALIVE_COUNT);
     if (setsockopt (fd, IPPROTO_TCP, TCP_KEEPCNT, &value, sizeof (value)) < 0)
-    {
-      _er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
-      return false;
-    }
+      {
+	_er_log_debug (__FILE__, __LINE__, "master_connector->opt_socket: setsockopt failed");
+	return false;
+      }
 
     return true;
   }
