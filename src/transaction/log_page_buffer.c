@@ -8197,6 +8197,44 @@ loop:
       goto error;
     }
 
+  /*
+   * -------------------------------------------------------------------------
+   * Workaround to prevent transactions executed after backup completion
+   * from being included during "restoredb -d backuptime" recovery.
+   *
+   * Context:
+   *   1. backup start
+   *   2. backup end   → record completion time for restore reference
+   *   3. transaction  → commit log records its timestamp
+   *
+   * Problem:
+   *   - (2) and (3) may have the same second-level timestamp, causing (3)
+   *     to be mistakenly restored.
+   *
+   * Fix:
+   *   - After (2), wait ≥1 second and write a dummy log
+   *     (LOG_DUMMY_HA_SERVER_STATE) with a later timestamp.
+   *   - Ensures all transactions after backup are excluded from recovery.
+   *
+   * TODO:
+   *   - Use millisecond precision in LOG_COMMIT / LOG_ABORT instead.
+   * -------------------------------------------------------------------------
+   */
+  assert (session.bkup.bkuphdr->end_time > 0);
+
+  do
+    {
+      thread_sleep (1000);
+    }
+  while (session.bkup.bkuphdr->end_time >= time (NULL));
+
+  if (HA_DISABLED ())
+    {
+      assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
+
+      log_append_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
+    }
+
 #if defined(SERVER_MODE)
   logpb_destroy_backup_read_worker_pool ();
 #endif
