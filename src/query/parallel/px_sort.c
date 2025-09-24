@@ -77,12 +77,12 @@ end:
       /* free memory */
       if (sort_info != NULL)
 	{
-	  if (sort_info->s_id->s_id != NULL)
-	    {
-	      db_private_free_and_init (thread_p, sort_info->s_id->s_id);
-	    }
 	  if (sort_info->s_id != NULL)
 	    {
+	      if (sort_info->s_id->s_id != NULL)
+		{
+		  db_private_free_and_init (thread_p, sort_info->s_id->s_id);
+		}
 	      db_private_free_and_init (thread_p, sort_info->s_id);
 	    }
 	  db_private_free_and_init (thread_p, sort_info);
