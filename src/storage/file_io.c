@@ -11878,7 +11878,7 @@ fileio_lob_dir_remove (const char *path)
 
   if (stat (path, &statbuf) != 0 || !S_ISDIR (statbuf.st_mode))
     {
-      return ER_ES_INVALID_PATH;
+      return 0;
     }
 
   dir_p = opendir (path);
