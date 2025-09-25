@@ -955,14 +955,18 @@ exit:
     int command; // commit=1 or abort=2
 
     unpacker.unpack_all (command);
-    if (command == 2) {
-        cubpl::session *pl_session = cubpl::get_session ();
-        if (pl_session) {
-            pl_session->destroy_all_cursors();
-        } else {
-            return ER_SES_SESSION_EXPIRED;
-        }
-    }
+    if (command == 2)
+      {
+	cubpl::session *pl_session = cubpl::get_session ();
+	if (pl_session)
+	  {
+	    pl_session->destroy_all_cursors();
+	  }
+	else
+	  {
+	    return ER_SES_SESSION_EXPIRED;
+	  }
+      }
 
     auto java_lambda = [&] (const cubmem::block & b)
     {
