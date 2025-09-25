@@ -506,6 +506,7 @@ namespace cubconn
 			conn->invalidate_snapshot, conn->db_error);
     *reinterpret_cast<int *> (reason_buffer) = htonl (reason);
 
+    conn->db_error = er_errid ();
     er_get_area_error (reinterpret_cast<char *> (error_buffer), &error_length);
     css_set_net_header (header[1], ERROR_TYPE, 0, conn->request_id, error_length, conn->get_tran_index (),
 			conn->invalidate_snapshot, conn->db_error);
