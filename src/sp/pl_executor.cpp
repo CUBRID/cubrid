@@ -770,7 +770,7 @@ exit:
     while (s_code == S_SUCCESS)
       {
 	s_code = cursor->next_row ();
-	if (s_code == S_END || s_code <= S_ERROR)
+	if (s_code == S_END || s_code == S_ERROR)
 	  {
 	    break;
 	  }
