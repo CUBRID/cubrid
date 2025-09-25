@@ -56,6 +56,7 @@
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
+#include "dbtype_def.h"
 
 #include <algorithm>
 #include <string>
@@ -16241,8 +16242,8 @@ adjust_precision (char *data, int precision, int scale)
   int after_dec_point = 0;
   int space_started = false;
 
-  if (data == NULL || precision < 0 || precision > DB_MAX_NUMERIC_PRECISION || scale < 0
-      || scale > DB_MAX_NUMERIC_PRECISION)
+  if (data == NULL || precision < 0 || precision > DB_MAX_NUMERIC_PRECISION || scale < DB_MIN_NUMERIC_SCALE
+      || scale > DB_MAX_NUMERIC_SCALE)
     {
       return DOMAIN_INCOMPATIBLE;
     }

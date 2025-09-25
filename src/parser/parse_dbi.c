@@ -578,7 +578,7 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
   int size;
   DB_OBJECT *mop;
   DB_TYPE db_type;
-  char buf[100];
+  char buf[NUMERIC_MAX_STRING_SIZE];
   char *json_body = NULL;
 
   assert (parser != NULL && val != NULL);

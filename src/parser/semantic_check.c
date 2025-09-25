@@ -381,11 +381,7 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
 
       if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
 	{			/* overflow */
-	  cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
-	  if (cinfo->scale < 0)
-	    {
-	      cinfo->scale = 0;
-	    }
+	  cinfo->scale = (DB_MAX_NUMERIC_PRECISION - cinfo->prec);
 	  cinfo->prec = DB_MAX_NUMERIC_PRECISION;
 	}
       break;
@@ -2293,10 +2289,6 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	    {
 	      data_type->info.data_type.dec_precision =
 		(DB_MAX_NUMERIC_PRECISION - data_type->info.data_type.dec_precision);
-	      if (data_type->info.data_type.dec_precision < 0)
-		{
-		  data_type->info.data_type.dec_precision = 0;
-		}
 	      data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
 	    }
 	}

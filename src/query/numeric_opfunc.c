@@ -60,10 +60,29 @@
 #define CARRYOVER(arg)		((arg) >> 8)
 #define GET_LOWER_BYTE(arg)	((arg) & 0xff)
 #define NUMERIC_ABS(a)		((a) >= 0 ? a : -a)
-#define TWICE_NUM_MAX_PREC	(2*DB_MAX_NUMERIC_PRECISION)
-#define SECONDS_IN_A_DAY	  (int)(24L * 60L * 60L)
+/*
+ * TWICE_NUM_MAX_PREC:
+ * - Defines the maximum number of significant digits that can be stored
+ *   in a NUMERIC value (excluding sign and decimal point).
+ * - Used as the internal buffer size for representing the maximum
+ *   range of NUMERIC values.
+ * - Also used when converting base-256 encoded NUMERIC values
+ *   into their decimal string representation.
+ *
+ * The maximum allowable range of NUMERIC values is:
+ *   1) Exponential form
+ *        1.0 × 10^-252 <= |Value| < 1.0 × 10^254
+ *   2) Precision/Scale form
+ *        (prec, scale) in the range: (1,252) <= (prec,scale) <= (43,-211)
+ *
+ * TWICE_NUM_MAX_PREC: 256
+ * = max digits (43 + 211) = 254 + 2 extra digit
+ * Must always be smaller than NUMERIC_MAX_STRING_SIZE.
+ */
+#define TWICE_NUM_MAX_PREC      ((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2)
+#define SECONDS_IN_A_DAY	(int)(24L * 60L * 60L)
 
-#define ROUND(x)                  ((x) > 0 ? ((x) + .5) : ((x) - .5))
+#define ROUND(x)                ((x) > 0 ? ((x) + .5) : ((x) - .5))
 
 typedef struct dec_string DEC_STRING;
 struct dec_string
@@ -148,6 +167,14 @@ static int numeric_fast_convert (double adouble, int dst_scale, DB_C_NUMERIC num
 static FP_VALUE_TYPE get_fp_value_type (double d);
 static int numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale,
 					 bool is_float);
+static int analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+				   char *int_digits, int *int_len, char *frac_digits, int *frac_len,
+				   int *frac_first_sig_digit, int *frac_last_sig_digit, bool * is_zero);
+static void determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
+				  int frac_first_sig_digit, int frac_last_sig_digit, char *num_string, int *out_prec,
+				  int *out_scale);
+static void determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, int tmp_frac_len,
+			     int frac_zero_cnt, char next_digit);
 static void numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale,
 				       const int dst_prec, DB_C_NUMERIC dest);
 static void numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const int dst_prec,
@@ -2664,8 +2691,8 @@ static void
 numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int src_scale, const int dst_prec,
 			   DB_C_NUMERIC dest)
 {
-  char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
-  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  char dec_str[NUMERIC_MAX_STRING_SIZE];
+  char new_dec_num[(DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2];
   int i = 0;
 
   /* the number of digits of the result */
@@ -2675,7 +2702,7 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+  memset (new_dec_num, 0, sizeof (new_dec_num));
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2716,15 +2743,15 @@ numeric_get_integral_part (const DB_C_NUMERIC num, const int src_prec, const int
 static void
 numeric_get_fractional_part (const DB_C_NUMERIC num, const int src_scale, const int dst_scale, DB_C_NUMERIC dest)
 {
-  char dec_str[DB_MAX_NUMERIC_PRECISION * 4];
-  char new_dec_num[DB_MAX_NUMERIC_PRECISION + 1];
+  char dec_str[NUMERIC_MAX_STRING_SIZE];
+  char new_dec_num[(DB_MAX_NUMERIC_SCALE + 4)];	/* 252 + 4 = 256 (power of 2 for memory alignment optimization) */
   int i = 0;
 
   assert (src_scale <= dst_scale);
   assert (num != dest);
 
   numeric_zero (dest, DB_NUMERIC_BUF_SIZE);
-  memset (new_dec_num, 0, DB_MAX_NUMERIC_PRECISION + 1);
+  memset (new_dec_num, 0, (DB_MAX_NUMERIC_SCALE + 4));
 
   /* 1. get the dec representation of the numeric value */
   numeric_coerce_num_to_dec_str (num, dec_str);
@@ -2762,7 +2789,7 @@ static bool
 numeric_is_fraction_part_zero (const DB_C_NUMERIC num, const int scale)
 {
   int i, len = 0;
-  char dec_str[(2 * DB_MAX_NUMERIC_PRECISION) + 4];
+  char dec_str[NUMERIC_MAX_STRING_SIZE];
   numeric_coerce_num_to_dec_str (num, dec_str);
   len = strlen (dec_str);
   for (i = 0; i < scale; i++)
@@ -2867,7 +2894,7 @@ get_fp_value_type (double d)
 int
 numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, int *prec, int *scale, bool is_float)
 {
-  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, DB_MAX_NUMERIC_PRECISION + 4)];
+  char numeric_str[MAX (TP_DOUBLE_AS_CHAR_LENGTH + 1, NUMERIC_MAX_STRING_SIZE)];
   int i = 0;
 
   switch (get_fp_value_type (adouble))
@@ -3053,6 +3080,470 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
+ * analyze_numeric_string() () -
+ *   return:
+ *   astring(in) : Input numeric string to analyze
+ *   astring_length(in) : Length of input string
+ *   codeset(in) : International codeset for character handling
+ *   negate_value(out) : Whether the value should be negated
+ *   int_digits(out) : Extracted integer part digits
+ *   int_len(out) : Length of integer part
+ *   frac_digits(out) : Extracted fractional part digits
+ *   frac_len(out) : Length of fractional part
+ *   frac_first_sig_digit(out) : First non-zero position in fractional part
+ *   frac_last_sig_digit(out) : Last non-zero position in fractional part
+ *
+ * Note: Parse and analyze numeric string to extract integer/fractional components
+ */
+static int
+analyze_numeric_string (const char *astring, int astring_length, INTL_CODESET codeset, bool * negate_value,
+			char *int_digits, int *int_len, char *frac_digits, int *frac_len, int *frac_first_sig_digit,
+			int *frac_last_sig_digit, bool * is_zero)
+{
+  int int_count = 0;
+  int frac_count = 0;
+  int parse_pos = 0;
+  int skip = 1;
+  char current_char = '\0';
+  bool has_digit = false;
+  bool pad_character_zero = false;
+  bool sign_found = false;
+  bool trailing_spaces = false;
+
+  *frac_first_sig_digit = *frac_last_sig_digit = -1;
+  *negate_value = false;
+
+  /* Step 1: Handle spaces, signs, and leading zeros */
+  while (parse_pos < astring_length)
+    {
+      current_char = astring[parse_pos];
+
+      if (current_char >= '1' && current_char <= '9')
+	{
+	  has_digit = true;
+	  break;
+	}
+      else if (current_char == '0')
+	{
+	  /* leading pad '0' found */
+	  pad_character_zero = true;
+	  parse_pos++;
+	  continue;
+	}
+      else if (current_char == '.')
+	{
+	  break;
+	}
+      else if (current_char == '+' || current_char == '-')
+	{
+	  if (!sign_found)
+	    {
+	      sign_found = true;
+	      if (current_char == '-')
+		{
+		  *negate_value = true;
+		}
+	      parse_pos++;
+	      continue;
+	    }
+	  else
+	    {			/* Duplicate sign characters */
+	      return DOMAIN_INCOMPATIBLE;
+	    }
+	}
+      else if (intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  parse_pos += skip;	/* Skip spaces */
+	  continue;
+	}
+      else
+	{
+	  /* Stray Non-numeric compatible character */
+	  return DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  /* Step 2: Parse integer part */
+  while (parse_pos < astring_length)
+    {
+      current_char = astring[parse_pos];
+
+      if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
+	{
+	  pad_character_zero = false;
+	  has_digit = true;	/* Case: "0.0000" */
+	  int_digits[int_count++] = current_char;
+	  parse_pos++;
+	  continue;
+	}
+      else if (current_char == '.')
+	{
+	  parse_pos++;
+	  break;
+	}
+      else if (trailing_spaces && !intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else if (intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  if (!trailing_spaces)
+	    {
+	      trailing_spaces = true;
+	    }
+	  parse_pos += skip;	/* Skip spaces */
+	  continue;
+	}
+      else if (current_char == ',')
+	{
+	  /* Accept ',' character on integer part. */
+	  parse_pos++;
+	  continue;
+	}
+      else
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  /* Step 3: Parse fractional part */
+  while (parse_pos < astring_length)
+    {
+      current_char = astring[parse_pos];
+
+      if (current_char >= '0' && current_char <= '9' && !trailing_spaces)
+	{
+	  has_digit = true;	/* Case: "0.0000" */
+	  frac_digits[frac_count] = current_char;
+	  /* Track non-zero digits */
+	  if (current_char != '0' || *frac_first_sig_digit >= 0)
+	    {
+	      if (*frac_first_sig_digit < 0)
+		{
+		  *frac_first_sig_digit = frac_count;
+		  pad_character_zero = false;
+		}
+	      *frac_last_sig_digit = frac_count;
+	    }
+	  frac_count++;
+	  parse_pos++;
+	  continue;
+	}
+      else if (trailing_spaces && !intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      else if (intl_is_space (astring + parse_pos, NULL, codeset, &skip))
+	{
+	  if (!trailing_spaces)
+	    {
+	      trailing_spaces = true;
+	    }
+	  parse_pos += skip;	/* Skip spaces */
+	  continue;
+	}
+      else
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+    }
+
+  if (pad_character_zero)
+    {
+      /* Zero padding case examples:
+       * 0 : pad_character_zero(t), has_digit(f), int_count(0), frac_count(0)
+       * 0.0 : pad_character_zero(t), has_digit(t), int_count(0), frac_count(1)
+       */
+      int_digits[0] = '\0';
+      frac_digits[0] = '\0';
+      *int_len = 1;
+      *frac_len = frac_count;
+      *is_zero = true;
+    }
+  else if (!has_digit && int_count == 0 && frac_count == 0)
+    {
+      /* NULL case handling (only spaces):
+       * '' : has_digit(f), int_count(0), frac_count(0)
+       * '   ' : has_digit(f), int_count(0), frac_count(0)
+       * '.  ' : has_digit(f), int_count(0), frac_count(0)
+       */
+      int_digits[0] = '\0';
+      frac_digits[0] = '\0';
+      *int_len = 0;
+      *frac_len = 0;
+    }
+  else
+    {
+      /* Normal case: add null terminators based on filled length */
+      int_digits[int_count] = '\0';
+      frac_digits[frac_count] = '\0';
+      *int_len = int_count;
+      *frac_len = frac_count;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * determine_prec_scale() () -
+ *   return:
+ *   int_digits(in) : Integer part digits
+ *   int_len(in) : Length of integer part
+ *   frac_digits(in) : Fractional part digits
+ *   frac_len(in) : Length of fractional part
+ *   frac_first_sig_digit(in) : First non-zero position in fractional part
+ *   frac_last_sig_digit(in) : Last non-zero position in fractional part
+ *   out_num_string(out) : Output numeric string
+ *   out_prec(out) : Calculated precision
+ *   out_scale(out) : Calculated scale
+ *
+ * Note: Calculate precision and scale based on numeric string analysis
+ */
+static void
+determine_prec_scale (const char *int_digits, int int_len, const char *frac_digits, int frac_len,
+		      int frac_first_sig_digit, int frac_last_sig_digit, char *out_num_string, int *out_prec,
+		      int *out_scale)
+{
+  int total = int_len + frac_len;
+  const char *tmp_int_digits = NULL, *tmp_frac_digits = NULL;
+  int tmp_int_len = 0, tmp_frac_len = 0;
+  char next_digit = '0';
+  int tmp_prec = 0, tmp_scale = 0;
+  int frac_zero_cnt = 0;
+  bool need_round = false;
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
+
+  /* Step 1: Calculate temporary precision/scale and determine copy positions for each case */
+  if (frac_len == 0)
+    {
+      /* Case 1: Only integer part exists */
+      if (int_len <= phase_1_tmp_max_prec)
+	{
+	  /* Case 1-A: When length is within 38 digits, use only the integer part */
+	  tmp_prec = int_len;
+	  tmp_scale = 0;
+	  tmp_int_digits = int_digits;
+	  tmp_int_len = int_len;
+	}
+      else
+	{
+	  /* Case 1-B: Apply negative scale based on trailing zero count */
+	  /*
+	   * Phase-2 will expand storage to 18 bytes (43 digits)
+	   * and support rounding at the 44th digit so that up to 43 digits
+	   * can be represented correctly.
+	   */
+	  tmp_prec = phase_1_tmp_max_prec;
+	  tmp_scale = phase_1_tmp_max_prec - int_len;
+	  tmp_int_digits = int_digits;
+	  tmp_int_len = phase_1_tmp_max_prec;
+	  /* Get the 44th digit for rounding decision (array index 43 since arrays start from 0) */
+	  next_digit = tmp_int_digits[phase_1_tmp_max_prec];
+	  need_round = true;
+	}
+    }
+  else if (int_len == 0)
+    {
+      /* Case 2: Only fractional part exists */
+      int nz_len = frac_last_sig_digit - frac_first_sig_digit + 1;
+      if (frac_len <= phase_1_tmp_max_prec)
+	{
+	  /* Case 2-A: When length is within 38 digits, use only the fractional part. 
+	     Precision is defined from the left-most nonzero digit to the right-most known digit. */
+	  tmp_prec = nz_len;
+	  tmp_scale = frac_len;
+	  tmp_frac_digits = frac_digits;
+	  tmp_frac_len = frac_len;
+	}
+      else
+	{
+	  /* Case 2-B: Skip leading zeros in the fractional part and use up to MAX_PRECISION digits */
+	  if (nz_len > phase_1_tmp_max_prec)
+	    {
+	      tmp_prec = phase_1_tmp_max_prec;
+	      tmp_scale = frac_len;
+	      tmp_frac_digits = frac_digits + frac_first_sig_digit;
+	      tmp_frac_len = phase_1_tmp_max_prec;
+	      next_digit = frac_digits[frac_first_sig_digit + phase_1_tmp_max_prec];
+	      need_round = true;
+	      frac_zero_cnt = frac_len - nz_len;	/* Count pure zeros */
+	    }
+	  else
+	    {
+	      tmp_prec = nz_len;
+	      tmp_scale = frac_len;
+	      tmp_frac_digits = frac_digits + frac_first_sig_digit;
+	      tmp_frac_len = nz_len;
+	      need_round = false;
+	    }
+	}
+    }
+  else
+    {
+      /* Case 3: Both integer and fractional parts exist */
+      if (total <= phase_1_tmp_max_prec)
+	{
+	  /* Case 3-A: When total length is within 38 digits, use both integer and fractional parts */
+	  tmp_prec = total;
+	  tmp_scale = frac_len;
+	  tmp_int_digits = int_digits;
+	  tmp_int_len = int_len;
+	  tmp_frac_digits = frac_digits;
+	  tmp_frac_len = frac_len;
+	}
+      else
+	{
+	  /* Case 3-B: When total length exceeds 38 digits, determine whether to round or apply negative scale 
+	     depending on which part (integer vs fractional) has more digits */
+	  int drop_total = total - phase_1_tmp_max_prec;
+	  if (drop_total <= frac_len)
+	    {
+	      /* Case 3-B-1: Fractional part is larger – round based on the fractional part */
+	      int keep_frac = frac_len - drop_total;
+	      tmp_prec = int_len + keep_frac;
+	      tmp_scale = keep_frac;
+	      tmp_int_digits = int_digits;
+	      tmp_int_len = int_len;
+	      tmp_frac_digits = frac_digits;
+	      tmp_frac_len = keep_frac;
+	      next_digit = frac_digits[keep_frac];
+	      need_round = true;
+	    }
+	  else
+	    {
+	      /* Case 3-B-2: Integer part is larger – handle by trimming the integer part */
+	      int drop_int = drop_total - frac_len;
+	      int keep_int = int_len - drop_int;
+	      tmp_prec = keep_int;
+	      tmp_scale = -drop_int;
+	      tmp_int_digits = int_digits;
+	      tmp_int_len = keep_int;
+	      next_digit = int_digits[keep_int];
+	      need_round = true;
+	    }
+	}
+    }
+
+  /* Step 2: Range validation (before memcpy) */
+  if (tmp_prec > phase_1_tmp_max_prec || tmp_scale > DB_MAX_NUMERIC_SCALE || tmp_scale < DB_MIN_NUMERIC_SCALE)
+    {
+      // Error handling done outside
+      *out_prec = tmp_prec;
+      *out_scale = tmp_scale;
+      return;
+    }
+
+  /* Step 3: Actual string copy */
+  char *tmp_num_string = out_num_string;
+  if (tmp_int_len)
+    {
+      memcpy (tmp_num_string, tmp_int_digits, tmp_int_len);
+      tmp_num_string += tmp_int_len;
+    }
+
+  if (tmp_frac_len)
+    {
+      memcpy (tmp_num_string, tmp_frac_digits, tmp_frac_len);
+      tmp_num_string += tmp_frac_len;
+    }
+  *tmp_num_string = '\0';
+
+  /* Step 4: Rounding and digit adjustment */
+  if (need_round)
+    {
+      (void) determine_round (out_num_string, &tmp_prec, &tmp_scale, tmp_int_len, tmp_frac_len, frac_zero_cnt,
+			      next_digit);
+    }
+
+  *out_prec = tmp_prec;
+  *out_scale = tmp_scale;
+}
+
+/*
+ * determine_round() () -
+ *   return:
+ *   out_str(in/out) : Numeric string to be rounded
+ *   out_prec(in/out) : Precision (total significant digits)
+ *   out_scale(in/out) : Scale (fractional digits)
+ *   tmp_int_len(in) : Integer part length
+ *   tmp_frac_len(in) : Fractional part length
+ *   frac_zero_cnt(in) : Leading zeros in fractional part
+ *   rounding_digit(in) : Next digit for rounding decision
+ *
+ * Note: Round numeric string and adjust precision/scale
+ */
+static void
+determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, int tmp_frac_len, int frac_zero_cnt,
+		 char next_digit)
+{
+  int phase_1_tmp_max_prec = 38;
+  int prec = *out_prec;
+  int scale = *out_scale;
+  int digit_pos = phase_1_tmp_max_prec - 1;
+
+  // Step 1: Perform rounding based on the truncated digit
+  if (next_digit >= '5')
+    {
+      while (digit_pos >= 0 && out_str[digit_pos] == '9')
+	{
+	  out_str[digit_pos] = '0';
+	  digit_pos--;
+	}
+
+      if (digit_pos >= 0)
+	{
+	  // Normal case: 123.456...
+	  out_str[digit_pos] += 1;
+	}
+      else
+	{
+	  // All digits were '9', overflow occurred - create "1000..." pattern
+	  if (tmp_int_len == 0)
+	    {
+	      prec = phase_1_tmp_max_prec;
+	      out_str[0] = '1';
+
+	      if (frac_zero_cnt == 0)
+		{
+		  // Pure decimal case: 0.9999... -> 1.000...
+		  tmp_int_len = 1;
+		  scale = (phase_1_tmp_max_prec - 1);
+		}
+	    }
+	  else
+	    {
+	      // Integer with decimal: 99999.99999... -> 100000.0
+	      memset (out_str + 1, '0', phase_1_tmp_max_prec);
+	      out_str[0] = '1';
+	    }
+	}
+    }
+
+  // Step 2: Add null terminator
+  out_str[phase_1_tmp_max_prec] = '\0';
+
+  // Step 3: Recalculate scale based on rounding result
+  if (tmp_int_len == 0)
+    {
+      // Pure decimal case: 0.8888... -> 0.888...9
+      scale = frac_zero_cnt + prec;
+    }
+
+  *out_prec = prec;
+  *out_scale = scale;
+}
+
+/*
  * numeric_coerce_string_to_num () -
  *   return:
  *   astring(in) : ptr to the input character string
@@ -3067,146 +3558,65 @@ numeric_coerce_double_to_num (double adouble, DB_C_NUMERIC num, int *prec, int *
 int
 numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE * result)
 {
-  char num_string[TWICE_NUM_MAX_PREC + 1];
+  char num_string[DB_MAX_NUMERIC_PRECISION + 1];
   unsigned char num[DB_NUMERIC_BUF_SIZE];
-  int i;
-  int prec = 0;
-  int scale = 0;
-  bool leading_zeroes = true;
-  bool sign_found = false;
   bool negate_value = false;
-  bool pad_character_zero = false;
-  bool trailing_spaces = false;
-  bool decimal_part = false;
+  bool is_zero = false;
+  int prec, scale;
+  int int_len, frac_len;
+  int frac_first_sig_digit, frac_last_sig_digit;
+  char int_digits[astring_length + 1];	/* Integer part valid digits */
+  char frac_digits[astring_length + 1];	/* Fractional part valid digits */
   int ret = NO_ERROR;
-  int skip_size = 1;
   TP_DOMAIN *domain;
 
-  /* Remove the decimal point, track the prec & scale */
-  prec = 0;
-  scale = 0;
-  for (i = 0; i < astring_length && ret == NO_ERROR; i += skip_size)
-    {
-      skip_size = 1;
-      if (astring[i] == '.')
-	{
-	  leading_zeroes = false;
-	  decimal_part = true;
-	  scale = astring_length - (i + 1);
-	}
-      else if (leading_zeroes)
-	{			/* Look for 1st digit between 1 & 9 */
-	  if (astring[i] >= '1' && astring[i] <= '9')
-	    {
-	      leading_zeroes = false;
-	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
-		{
-		  break;
-		}
-	    }
-	  else if (astring[i] == '+' || astring[i] == '-')
-	    {			/* sign found */
-	      if (!sign_found)
-		{
-		  sign_found = true;
-		  if (astring[i] == '-')
-		    {
-		      negate_value = true;
-		    }
-		}
-	      else
-		{		/* Duplicate sign characters */
-		  ret = DOMAIN_INCOMPATIBLE;
-		}
-	    }
-	  else if (astring[i] == '0')
-	    {
-	      /* leading pad '0' found */
-	      pad_character_zero = true;
-	    }
-	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
-	    {
-	      /* Just skip this.  OK to have leading spaces */
-	      ;
-	    }
-	  else
-	    {
-	      /* Stray Non-numeric compatible character */
-	      ret = DOMAIN_INCOMPATIBLE;
-	    }
-	}
-      else
-	{
-	  /* Only space character should be allowed on trailer. If the first space character is shown after digits, we
-	   * consider it as the beginning of trailer. */
-	  if (trailing_spaces && !intl_is_space (astring + i, NULL, codeset, &skip_size))
-	    {
-	      ret = DOMAIN_INCOMPATIBLE;
-	    }
-	  else if (intl_is_space (astring + i, NULL, codeset, &skip_size))
-	    {
-	      if (!trailing_spaces)
-		{
-		  trailing_spaces = true;
-		}
-	      /* Decrease scale if decimal part exists. */
-	      scale -= skip_size;
-	      if (scale < 0)
-		{
-		  scale = 0;
-		}
-	    }
-	  else if (astring[i] == ',')
-	    {
-	      /* Accept ',' character on integer part. */
-	      if (decimal_part)
-		{
-		  ret = DOMAIN_INCOMPATIBLE;
-		}
-	    }
-	  else if (astring[i] >= '0' && astring[i] <= '9')
-	    {
-	      num_string[prec] = astring[i];
-	      if (++prec > DB_MAX_NUMERIC_PRECISION)
-		{
-		  break;
-		}
-	    }
-	  else
-	    {
-	      /* Characters excluding digit, space and comma are not acceptable. */
-	      ret = DOMAIN_INCOMPATIBLE;
-	    }
-	}
-    }
-
+  /* Parse and compute precision/scale */
+  ret =
+    analyze_numeric_string (astring, astring_length, codeset, &negate_value, int_digits, &int_len, frac_digits,
+			    &frac_len, &frac_first_sig_digit, &frac_last_sig_digit, &is_zero);
   if (ret != NO_ERROR)
     {
+      if (ret == ER_IT_DATA_OVERFLOW)
+	{
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+	}
       goto exit_on_error;
     }
 
-  /* If there is no overflow, try to parse the decimal string */
-  if (prec > DB_MAX_NUMERIC_PRECISION)
+  if (int_len == 0 && frac_len == 0)
     {
-      domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
-      ret = ER_IT_DATA_OVERFLOW;
-      goto exit_on_error;
+      /* NULL case */
+      prec = 0;
+      scale = 0;
+      num_string[0] = '\0';
     }
-
-  if (prec == 0 && pad_character_zero)
+  else if (is_zero)
     {
+      /* Zero case */
       prec = 1;
+      scale = frac_len;
       num_string[0] = '0';
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
+      num_string[1] = '\0';
     }
   else
     {
-      num_string[prec] = '\0';
-      numeric_coerce_dec_str_to_num (num_string, num);
+      (void) determine_prec_scale (int_digits, int_len, frac_digits, frac_len, frac_first_sig_digit,
+				   frac_last_sig_digit, num_string, &prec, &scale);
+
+      /* If there is no overflow, try to parse the decimal string */
+      int phase_1_tmp_max_prec = 38;
+      if (prec > phase_1_tmp_max_prec || scale > DB_MAX_NUMERIC_SCALE || scale < DB_MIN_NUMERIC_SCALE)
+	{
+	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+	  ret = ER_IT_DATA_OVERFLOW;
+	  goto exit_on_error;
+	}
     }
+
+  /* Convert decimal string to base-256 binary */
+  numeric_coerce_dec_str_to_num (num_string, num);
 
   /* Make the return value */
   if (negate_value)
@@ -3241,7 +3651,7 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
 			   DB_C_NUMERIC dest_num)
 {
   int ret = NO_ERROR;
-  char num_string[DB_MAX_NUMERIC_PRECISION * 4];
+  char num_string[NUMERIC_MAX_STRING_SIZE];
   int scale_diff;
   int orig_length;
   int i, len;
@@ -3847,7 +4257,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 char *
 numeric_db_value_print (const DB_VALUE * val, char *buf)
 {
-  char temp[80];
+  char temp[NUMERIC_MAX_STRING_SIZE];
   int nbuf;
   int temp_size;
   int i;
@@ -3923,6 +4333,29 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
 
   /* Null terminate */
   buf[nbuf] = '\0';
+
+  /* Handling negative scale: append zeros to the right of the decimal point */
+  if (scale < 0)
+    {
+      int abs_scale = -scale;
+
+      if (!found_first_non_zero)
+	{
+	  // If no digit found: output only a single '0'
+	  buf[0] = '0';
+	  nbuf = 1;
+	}
+      else
+	{
+	  // If digits exist: append '0' abs_scale times
+	  for (i = 0; i < abs_scale; i++)
+	    {
+	      buf[nbuf++] = '0';
+	    }
+	}
+      buf[nbuf] = '\0';
+    }
+
   return buf;
 }
 
