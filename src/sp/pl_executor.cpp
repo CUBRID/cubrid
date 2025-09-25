@@ -741,7 +741,7 @@ exit:
     query_cursor *cursor = m_stack->get_cursor (qid);
     if (cursor == nullptr)
       {
-	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("no cursor for the query"),
+	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("cursor closed"),
 				     ARG_FILE_LINE));
 	error = m_stack->send_data_to_java (b);
 	return error;
@@ -801,7 +801,7 @@ exit:
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("fetch failed"),
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("cursor closed"),
 					  ARG_FILE_LINE));
       }
 
