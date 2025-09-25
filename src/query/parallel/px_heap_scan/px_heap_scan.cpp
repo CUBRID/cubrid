@@ -29,12 +29,12 @@
 #include "perf_monitor.h"
 #include "query_evaluator.h"
 #include "error_context.hpp"
-
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
 #include "query_executor.h"
 #include "system.h"
 #include "xasl.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern "C"
 {
@@ -397,7 +397,7 @@ namespace parallel_heap_scan
 	scan_code = result_handler_batch_p->get_next (m_thread_p, m_xasl->list_id);
 	if (m_g_agg_domain_resolve_need)
 	  {
-	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl, &m_vd,
+	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl, m_vd,
 		&m_xasl->proc.buildlist.g_agg_domains_resolved);
 	    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
 	    QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
