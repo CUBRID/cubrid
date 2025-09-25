@@ -425,6 +425,7 @@ namespace cubthread
     std::size_t max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
     std::size_t max_backup_read_workers = 0; // one per each backup read task
+    std::size_t max_connection_threads = prm_get_integer_value (PRM_ID_CSS_CONNECTION_THREAD_COUNT);
 
 #if defined (SERVER_MODE)
     max_backup_read_workers = cubthread::system_core_count ();
@@ -436,7 +437,7 @@ namespace cubthread
     //       rather unlikely.
 
     m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons + max_backup_read_workers +
-		    max_parallel_workers * 2;
+		    max_parallel_workers * 2 + max_connection_threads;
   }
 
   void
