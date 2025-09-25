@@ -29,7 +29,6 @@
 #if !defined(NDEBUG)
 #include <unistd.h>
 #include <sys/syscall.h>
-#include "xasl_iteration.hpp"
 #endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER

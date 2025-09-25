@@ -277,7 +277,7 @@ extern "C" {
     std::function<bool (xasl_node *)> estimated_jobs_iter = [&estimated_jobs] (xasl_node *xasl_p) -> bool
     {
       int estimated_jobs_local = 0;
-      if (!XASL_IS_FLAGED (xasl_p, XASL_NO_PARALLEL_SUBQUERY) && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
+      if (!XASL_IS_FLAGED (xasl_p, XASL_NO_PARALLEL_SUBQUERY) && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
 	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC || xasl_p->type == MERGELIST_PROC))
 	{
 	  for (xasl_node *xptr = xasl_p; xptr != NULL; xptr = xptr->scan_ptr)
