@@ -61,6 +61,7 @@ namespace parallel_heap_scan
     for (QFILE_LIST_ID *list_id : m_writer_results)
       {
 	assert (list_id != nullptr);
+	assert (list_id->last_pgptr == nullptr);
 	if (list_id->tuple_cnt > 0)
 	  {
 	    if (m_result_p == nullptr)
@@ -81,6 +82,10 @@ namespace parallel_heap_scan
       {
 	if (result->tuple_cnt > 0)
 	  {
+	    if (result->last_pgptr != nullptr)
+	      {
+		qfile_close_list (thread_p, result);
+	      }
 	    qfile_connect_list (thread_p, result, m_result_p);
 	  }
 	else
@@ -269,10 +274,14 @@ namespace parallel_heap_scan
   void result_handler_batch::write_finalize (THREAD_ENTRY *thread_p)
   {
     qfile_close_list (thread_p, m_tl_writer_result_p);
-    db_private_free (thread_p, m_tl_writer_result_p->tpl_descr.f_valp);
-    db_private_free (thread_p, m_tl_writer_result_p->tpl_descr.clear_f_val_at_clone_decache);
-    m_tl_writer_result_p->tpl_descr.f_valp = nullptr;
-    m_tl_writer_result_p->tpl_descr.clear_f_val_at_clone_decache = nullptr;
+    assert (m_tl_writer_result_p->last_pgptr == nullptr);
+    if (m_tl_writer_result_p->tpl_descr.f_valp != nullptr)
+      {
+	db_private_free (thread_p, m_tl_writer_result_p->tpl_descr.f_valp);
+	db_private_free (thread_p, m_tl_writer_result_p->tpl_descr.clear_f_val_at_clone_decache);
+	m_tl_writer_result_p->tpl_descr.f_valp = nullptr;
+	m_tl_writer_result_p->tpl_descr.clear_f_val_at_clone_decache = nullptr;
+      }
     m_tl_writer_result_p = nullptr;
     db_private_free (thread_p, m_tl_tpl_buf->tpl);
     db_private_free (thread_p, m_tl_tpl_buf);
