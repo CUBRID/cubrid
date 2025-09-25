@@ -23,8 +23,6 @@
 #ifndef _PX_HEAP_SCAN_PERF_MONITOR_HPP_
 #define _PX_HEAP_SCAN_PERF_MONITOR_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include <vector>
 #include <stdio.h>
 #include "scan_manager.h"
@@ -49,5 +47,4 @@ namespace parallel_heap_scan
       SCAN_STATS m_prev_scan_stats;
   };
 }
-#endif /* SERVER_MODE && !WINDOWS */
 #endif /*_PX_HEAP_SCAN_PERF_MONITOR_HPP_ */

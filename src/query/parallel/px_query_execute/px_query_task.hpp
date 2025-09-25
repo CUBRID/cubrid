@@ -23,7 +23,6 @@
 #ifndef _PX_QUERY_TASK_HPP_
 #define _PX_QUERY_TASK_HPP_
 
-#if SERVER_MODE
 #include "thread_entry_task.hpp"
 #include "xasl.h"
 #include "px_worker_manager.hpp"
@@ -137,6 +136,4 @@ namespace parallel_query_execute
       std::vector<task_tuple *> m_tasks;
   };
 }
-#endif
-
 #endif

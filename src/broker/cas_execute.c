@@ -195,7 +195,7 @@ T_COL_BINDER *col_binding = NULL;
 T_COL_BINDER *col_binding_buff = NULL;
 #endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 #endif
 
@@ -1601,23 +1601,21 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
   err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
   if (err_code != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
   hm_set_current_srv_handle (srv_handle->id);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
   hm_set_current_srv_handle (-1);
 
-
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
-
 
   if (n < 0)
     {
@@ -1927,23 +1925,22 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_CGW */
+
       hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
       hm_set_current_srv_handle (-1);
 
-
       update_query_execution_count (as_info, stmt_type);
-
 
       if (n < 0)
 	{
@@ -2462,20 +2459,18 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
       res_count = db_execute_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
-
       update_query_execution_count (as_info, stmt_type);
-
 
       if (res_count < 0)
 	{
@@ -2712,14 +2707,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto exec_db_error;
 	}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
       hm_set_current_srv_handle (srv_handle->id);
 
@@ -11045,7 +11040,6 @@ check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
   return false;
 }
 
-#if !(defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL))
 void
 cas_set_db_connect_status (int status)
 {
@@ -11057,7 +11051,6 @@ cas_get_db_connect_status (void)
 {
   return db_get_connect_status ();
 }
-#endif
 
 void
 cas_log_error_handler (unsigned int eid)

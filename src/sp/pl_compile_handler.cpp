@@ -30,7 +30,15 @@ namespace cubpl
 {
   compile_handler::compile_handler ()
   {
-    m_stack = get_session ()->create_and_push_stack (nullptr);
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (pl_session)
+      {
+	m_stack = pl_session->create_and_push_stack (nullptr);
+      }
+    else
+      {
+	m_stack = nullptr;
+      }
   }
 
   compile_handler::~compile_handler ()
@@ -83,6 +91,12 @@ namespace cubpl
   int
   compile_handler::compile (const compile_request &req, cubmem::extensible_block &out_blk)
   {
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
+
     int error_code = NO_ERROR;
 
     if (m_stack == nullptr)
@@ -90,10 +104,10 @@ namespace cubpl
 	return er_errid ();
       }
 
-    SESSION_ID sid = get_session ()->get_id ();
+    SESSION_ID sid = pl_session->get_id ();
 
     // get changed session parameters
-    const std::vector<sys_param> &session_params = get_session ()->obtain_session_parameters (m_stack->get_connection ());
+    const std::vector<sys_param> &session_params = pl_session->obtain_session_parameters (m_stack->get_connection ());
 
     m_stack->set_java_command (SP_CODE_COMPILE);
     error_code = m_stack->send_data_to_java (session_params, req);
