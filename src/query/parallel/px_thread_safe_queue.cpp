@@ -208,7 +208,7 @@ namespace parallel_query
     pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
     if (pos % m_capacity == 0)
       {
-	m_enqueue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+	m_enqueue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
 
     m_not_empty.notify_one();
@@ -260,7 +260,7 @@ namespace parallel_query
     pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
     if (pos % m_capacity == 0)
       {
-	m_dequeue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+	m_dequeue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
 
     m_not_full.notify_one();
@@ -321,7 +321,7 @@ namespace parallel_query
     pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
     if (pos % m_capacity == 0)
       {
-	m_enqueue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+	m_enqueue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
 
     m_not_empty.notify_one();
@@ -387,7 +387,7 @@ namespace parallel_query
     pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
     if (pos % m_capacity == 0)
       {
-	m_dequeue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+	m_dequeue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
 
     m_not_full.notify_one();
