@@ -119,27 +119,28 @@ public class TargetMethod {
     }
 
     private static void initArgClassMap() {
-        argClassMap.put("boolean", boolean.class);
         argClassMap.put("byte", byte.class);
-        argClassMap.put("char", char.class);
         argClassMap.put("short", short.class);
         argClassMap.put("int", int.class);
         argClassMap.put("long", long.class);
         argClassMap.put("float", float.class);
         argClassMap.put("double", double.class);
 
-        argClassMap.put("[Z", boolean[].class);
         argClassMap.put("[B", byte[].class);
-        argClassMap.put("[C", char[].class);
         argClassMap.put("[S", short[].class);
         argClassMap.put("[I", int[].class);
         argClassMap.put("[J", long[].class);
         argClassMap.put("[F", float[].class);
         argClassMap.put("[D", double[].class);
 
-        argClassMap.put("java.lang.Boolean", Boolean.class);
+        argClassMap.put("[[B", byte[][].class);
+        argClassMap.put("[[S", short[][].class);
+        argClassMap.put("[[I", int[][].class);
+        argClassMap.put("[[J", long[][].class);
+        argClassMap.put("[[F", float[][].class);
+        argClassMap.put("[[D", double[][].class);
+
         argClassMap.put("java.lang.Byte", Byte.class);
-        argClassMap.put("java.lang.Character", Character.class);
         argClassMap.put("java.lang.Short", Short.class);
         argClassMap.put("java.lang.Integer", Integer.class);
         argClassMap.put("java.lang.Long", Long.class);
@@ -148,9 +149,7 @@ public class TargetMethod {
         argClassMap.put("java.lang.String", String.class);
         argClassMap.put("java.lang.Object", Object.class);
 
-        argClassMap.put("Boolean", Boolean.class);
         argClassMap.put("Byte", Byte.class);
-        argClassMap.put("Character", Character.class);
         argClassMap.put("Short", Short.class);
         argClassMap.put("Integer", Integer.class);
         argClassMap.put("Long", Long.class);
@@ -171,9 +170,7 @@ public class TargetMethod {
         argClassMap.put("Timestamp", Timestamp.class);
         argClassMap.put("CUBRIDOID", CUBRIDOID.class);
 
-        argClassMap.put("[Ljava.lang.Boolean;", Boolean[].class);
         argClassMap.put("[Ljava.lang.Byte;", Byte[].class);
-        argClassMap.put("[Ljava.lang.Character;", Character[].class);
         argClassMap.put("[Ljava.lang.Short;", Short[].class);
         argClassMap.put("[Ljava.lang.Integer;", Integer[].class);
         argClassMap.put("[Ljava.lang.Long;", Long[].class);
@@ -182,9 +179,7 @@ public class TargetMethod {
         argClassMap.put("[Ljava.lang.String;", String[].class);
         argClassMap.put("[Ljava.lang.Object;", Object[].class);
 
-        argClassMap.put("[LBoolean;", Boolean[].class);
         argClassMap.put("[LByte;", Byte[].class);
-        argClassMap.put("[LCharacter;", Character[].class);
         argClassMap.put("[LShort;", Short[].class);
         argClassMap.put("[LInteger;", Integer[].class);
         argClassMap.put("[LLong;", Long[].class);
@@ -205,18 +200,39 @@ public class TargetMethod {
         argClassMap.put("[LTimestamp;", Timestamp[].class);
         argClassMap.put("[LCUBRIDOID;", CUBRIDOID[].class);
 
-        // why not add other array-array types? TODO
+        argClassMap.put("[[Ljava.lang.Byte;", Byte[][].class);
+        argClassMap.put("[[Ljava.lang.Short;", Short[][].class);
         argClassMap.put("[[Ljava.lang.Integer;", Integer[][].class);
+        argClassMap.put("[[Ljava.lang.Long;", Long[][].class);
         argClassMap.put("[[Ljava.lang.Float;", Float[][].class);
+        argClassMap.put("[[Ljava.lang.Double;", Double[][].class);
+        argClassMap.put("[[Ljava.lang.String;", String[][].class);
+        argClassMap.put("[[Ljava.lang.Object;", Object[][].class);
 
+        argClassMap.put("[[LByte;", Byte[][].class);
+        argClassMap.put("[[LShort;", Short[][].class);
         argClassMap.put("[[LInteger;", Integer[][].class);
+        argClassMap.put("[[LLong;", Long[][].class);
         argClassMap.put("[[LFloat;", Float[][].class);
+        argClassMap.put("[[LDouble;", Double[][].class);
+        argClassMap.put("[[LString;", String[][].class);
+        argClassMap.put("[[LObject;", Object[][].class);
+
+        argClassMap.put("[[Ljava.math.BigDecimal;", BigDecimal[][].class);
+        argClassMap.put("[[Ljava.sql.Date;", Date[][].class);
+        argClassMap.put("[[Ljava.sql.Time;", Time[][].class);
+        argClassMap.put("[[Ljava.sql.Timestamp;", Timestamp[][].class);
+        argClassMap.put("[[Lcubrid.sql.CUBRIDOID;", CUBRIDOID[][].class);
+
+        argClassMap.put("[[LBigDecimal;", BigDecimal[][].class);
+        argClassMap.put("[[LDate;", Date[][].class);
+        argClassMap.put("[[LTime;", Time[][].class);
+        argClassMap.put("[[LTimestamp;", Timestamp[][].class);
+        argClassMap.put("[[LCUBRIDOID;", CUBRIDOID[][].class);
     }
 
     private static void initdescriptorMap() {
-        descriptorMap.put("boolean", "Z");
         descriptorMap.put("byte", "B");
-        descriptorMap.put("char", "C");
         descriptorMap.put("short", "S");
         descriptorMap.put("int", "I");
         descriptorMap.put("long", "J");
