@@ -344,18 +344,29 @@ namespace parallel_query
 
     std::uint64_t pos = m_enqueue_pos.load (std::memory_order_acquire);
     std::size_t slot_index = pos % m_capacity;
-    slot<T> &current_slot = m_slots[slot_index];
+    slot<T> *current_slot = &m_slots[slot_index];
 
     std::uint64_t expected_sequence = pos;
-    while (!current_slot.sequence.compare_exchange_weak (expected_sequence, pos + m_capacity,
+    while (!current_slot->sequence.compare_exchange_weak (expected_sequence, pos + m_capacity,
 	   std::memory_order_acq_rel, std::memory_order_acquire))
       {
+	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
+	  {
+	    return;
+	  }
+	if (m_push_completed.load (std::memory_order_acquire))
+	  {
+	    return;
+	  }
+	pos = m_enqueue_pos.load (std::memory_order_acquire);
+	slot_index = pos % m_capacity;
+	current_slot = &m_slots[slot_index];
 	expected_sequence = pos;
       }
 
-    current_slot.data = value;
+    current_slot->data = value;
     std::atomic_thread_fence (std::memory_order_release);
-    current_slot.ready.store (true, std::memory_order_release);
+    current_slot->ready.store (true, std::memory_order_release);
     m_enqueue_pos.fetch_add (1, std::memory_order_release);
 
     m_not_empty.notify_one();
@@ -388,25 +399,36 @@ namespace parallel_query
 
     std::uint64_t pos = m_dequeue_pos.load (std::memory_order_acquire);
     std::size_t slot_index = pos % m_capacity;
-    slot<T> &current_slot = m_slots[slot_index];
+    slot<T> *current_slot = &m_slots[slot_index];
 
 
-    while (!current_slot.ready.load (std::memory_order_acquire))
+    while (!current_slot->ready.load (std::memory_order_acquire))
       {
 	std::this_thread::yield();
       }
 
     std::uint64_t expected_sequence = pos + m_capacity;
-    while (!current_slot.sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
+    while (!current_slot->sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
 	   std::memory_order_acq_rel, std::memory_order_acquire))
       {
+	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
+	  {
+	    return false;
+	  }
+	if (m_push_completed.load (std::memory_order_acquire))
+	  {
+	    return false;
+	  }
+	pos = m_dequeue_pos.load (std::memory_order_acquire);
+	slot_index = pos % m_capacity;
+	current_slot = &m_slots[slot_index];
 	expected_sequence = pos + m_capacity;
       }
 
     std::atomic_thread_fence (std::memory_order_acquire);
-    value = current_slot.data;
+    value = current_slot->data;
 
-    current_slot.ready.store (false, std::memory_order_release);
+    current_slot->ready.store (false, std::memory_order_release);
 
     m_dequeue_pos.fetch_add (1, std::memory_order_release);
 
@@ -448,24 +470,35 @@ namespace parallel_query
 
     std::uint64_t pos = enqueue_pos - 1;
     std::size_t slot_index = pos % m_capacity;
-    slot<T> &current_slot = m_slots[slot_index];
+    slot<T> *current_slot = &m_slots[slot_index];
 
-    while (!current_slot.ready.load (std::memory_order_acquire))
+    while (!current_slot->ready.load (std::memory_order_acquire))
       {
 	std::this_thread::yield();
       }
 
     std::uint64_t expected_sequence = pos + m_capacity;
-    while (!current_slot.sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
+    while (!current_slot->sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
 	   std::memory_order_acq_rel, std::memory_order_acquire))
       {
+	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
+	  {
+	    return false;
+	  }
+	if (m_push_completed.load (std::memory_order_acquire))
+	  {
+	    return false;
+	  }
+	pos = m_enqueue_pos.load (std::memory_order_acquire);
+	slot_index = pos % m_capacity;
+	current_slot = &m_slots[slot_index];
 	expected_sequence = pos + m_capacity;
       }
 
     std::atomic_thread_fence (std::memory_order_acquire);
-    value = current_slot.data;
+    value = current_slot->data;
 
-    current_slot.ready.store (false, std::memory_order_release);
+    current_slot->ready.store (false, std::memory_order_release);
 
     m_enqueue_pos.fetch_sub (1, std::memory_order_release);
 

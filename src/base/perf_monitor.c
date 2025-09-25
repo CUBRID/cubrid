@@ -1071,6 +1071,9 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
+  assert ((thread_p && thread_p->m_uses_px_stats && thread_p->m_px_orig_thread_entry) || (thread_p == NULL)
+	  || (!thread_p->m_uses_px_stats));
+
   if (thread_p->m_px_orig_thread_entry && thread_p->m_uses_px_stats)
     {
       if (thread_p->m_px_stats != NULL)
