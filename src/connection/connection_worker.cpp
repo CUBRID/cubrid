@@ -833,6 +833,11 @@ namespace cubconn
 
     /* entry */
     m_entry = cubthread::get_manager ()->claim_entry ();
+    if (m_entry == nullptr)
+    {
+      _er_log_debug (__FILE__, __LINE__, "connection_worker->initialize: claim_entry failed\n");
+      assert_release (false);
+    }
     m_entry->register_id ();
     m_entry->index = m_index;
     m_entry->type = TT_SERVER;
