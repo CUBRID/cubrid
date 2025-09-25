@@ -66,7 +66,8 @@ public class SUConnection {
         ctx = t;
     }
 
-    private static final int ER_SP_INVALID_CURSOR = -1368; // sync with base/error_code.h
+    private static final int ER_SP_INVALID_CURSOR =
+            -1368; // CAUTION: sync this value with taht in base/error_code.h
 
     public CUBRIDUnpacker request(ByteBuffer buffer) throws IOException, SQLException {
         Context.getCurrentExecuteThread().sendCommand(buffer);
