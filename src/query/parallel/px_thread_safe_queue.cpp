@@ -180,6 +180,10 @@ namespace parallel_query
       {
 	return false;
       }
+    if (is_full())
+      {
+	return false;
+      }
 
     std::uint64_t pos = m_enqueue_pos.load (std::memory_order_acquire);
 
@@ -201,7 +205,11 @@ namespace parallel_query
     current_slot.data = value;
     std::atomic_thread_fence (std::memory_order_release);
     current_slot.ready.store (true, std::memory_order_release);
-    m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
+      {
+	m_enqueue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+      }
 
     m_not_empty.notify_one();
 
@@ -212,6 +220,11 @@ namespace parallel_query
   bool thread_safe_queue<T>::try_pop_fast (T &value)
   {
     if (m_resetting.load (std::memory_order_acquire))
+      {
+	return false;
+      }
+
+    if (is_empty())
       {
 	return false;
       }
@@ -244,7 +257,11 @@ namespace parallel_query
 
     current_slot.ready.store (false, std::memory_order_release);
 
-    m_dequeue_pos.fetch_add (1, std::memory_order_release);
+    pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
+      {
+	m_dequeue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+      }
 
     m_not_full.notify_one();
 
@@ -301,7 +318,11 @@ namespace parallel_query
     current_slot->data = value;
     std::atomic_thread_fence (std::memory_order_release);
     current_slot->ready.store (true, std::memory_order_release);
-    m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
+      {
+	m_enqueue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+      }
 
     m_not_empty.notify_one();
   }
@@ -363,7 +384,11 @@ namespace parallel_query
 
     current_slot->ready.store (false, std::memory_order_release);
 
-    m_dequeue_pos.fetch_add (1, std::memory_order_release);
+    pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
+      {
+	m_dequeue_pos.fetch_add (2 * m_capacity, std::memory_order_release);
+      }
 
     m_not_full.notify_one();
 
