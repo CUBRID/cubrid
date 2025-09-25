@@ -736,6 +736,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
 %type <node> normal_column_or_class_attribute
+%type <node> numeric_scale_integer
 %type <node> query_number_list
 %type <node> insert_or_replace_stmt
 %type <node> insert_set_stmt
@@ -21806,34 +21807,32 @@ primitive_type
 			      scale ? scale->info.value.data_value.i : 0;
 
                             if(is_in_sp_func_type && prec)
-                            {                                
+                              {                                
                                 PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
-                            }
+                              }
                             else
-                            {
-                                if (scale && prec)
-                                {
-                                    if (scale->info.value.data_value.i > prec->info.value.data_value.i)
-                                      {
-                                        PT_ERRORmf2 (this_parser, dt,
-                                                MSGCAT_SET_PARSER_SEMANTIC,
-                                                MSGCAT_SEMANTIC_INV_PREC_SCALE,
-                                                prec->info.value.data_value.i,
-                                                scale->info.value.data_value.i);
-                                      }
-                                    }
+                              {
                                 if (prec)
-                                {
-                                    if (prec->info.value.data_value.i > DB_MAX_NUMERIC_PRECISION)
+                                  {
+                                    if (prec->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_PRECISION)
                                       {
                                         PT_ERRORmf2 (this_parser, dt,
                                                 MSGCAT_SET_PARSER_SEMANTIC,
                                                 MSGCAT_SEMANTIC_PREC_TOO_BIG,
                                                 prec->info.value.data_value.i,
-                                                DB_MAX_NUMERIC_PRECISION);
+                                                DB_MAX_FIXED_NUMERIC_PRECISION);
                                       }
-                                }
-                            }
+                                  }
+				if (scale)
+                                  {
+                                    if (scale->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_SCALE || scale->info.value.data_value.i < DB_MIN_FIXED_NUMERIC_SCALE)
+                                      {
+                                        PT_ERRORm (this_parser, dt,
+                                                MSGCAT_SET_PARSER_SEMANTIC,
+                                                MSGCAT_SEMANTIC_SCALE_OUT_OF_RANGE);
+                                      }
+                                  }
+                              }
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -21859,7 +21858,7 @@ primitive_type
                           }
                         else if (prec &&
 			    prec->info.value.data_value.i >= 8 &&
-			    prec->info.value.data_value.i <= DB_MAX_NUMERIC_PRECISION)
+			    prec->info.value.data_value.i <= DB_MAX_FIXED_NUMERIC_PRECISION)
 			  {
 			    typ = PT_TYPE_DOUBLE;
 			  }
@@ -21876,13 +21875,13 @@ primitive_type
 				dt->info.data_type.dec_precision = 0;
 
 				if (prec)
-				  if (prec->info.value.data_value.i > DB_MAX_NUMERIC_PRECISION)
+				  if (prec->info.value.data_value.i > DB_MAX_FIXED_NUMERIC_PRECISION)
 				    {
 				      PT_ERRORmf2 (this_parser, dt,
 						   MSGCAT_SET_PARSER_SEMANTIC,
 						   MSGCAT_SEMANTIC_PREC_TOO_BIG,
 						   prec->info.value.data_value.i,
-						   DB_MAX_NUMERIC_PRECISION);
+						   DB_MAX_FIXED_NUMERIC_PRECISION);
 				    }
 			      }
 
@@ -22089,8 +22088,8 @@ opt_prec_2
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| '(' unsigned_integer ',' unsigned_integer ')'
-		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' unsigned_integer ',' unsigned_integer ')' );
+	| '(' unsigned_integer ',' numeric_scale_integer ')'
+		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' unsigned_integer ',' numeric_scale_integer ')' );
 
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, $2, $4);
@@ -23574,6 +23573,44 @@ unsigned_integer
 						       strlen (val->info.
 							       value.text));
 				  }
+			      }
+			  }
+
+			$$ = val;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	;
+
+numeric_scale_integer
+	: unsigned_integer
+		{{ DBG_TRACE_GRAMMAR(numeric_scale_integer, | unsigned_integer);
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| '-' unsigned_integer
+		{{ DBG_TRACE_GRAMMAR(numeric_scale_integer, | '-' unsigned_integer);
+
+		        PT_NODE *val = $2;
+			if (val)
+			  {
+			    if (val->type_enum == PT_TYPE_INTEGER)
+			      {
+			        val->info.value.data_value.i = -(val->info.value.data_value.i);
+			      }
+
+			    if (val->type_enum == PT_TYPE_BIGINT)
+			      {
+			        val->info.value.data_value.bigint = -(val->info.value.data_value.bigint);
+			      }
+
+			    if (val->type_enum == PT_TYPE_NUMERIC)
+			      {
+			        val->info.value.text = pt_append_string (this_parser, (char *) "-", val->info.value.text);
+			        val->info.value.data_value.str =
+				      pt_append_bytes (this_parser, NULL, val->info.value.text, strlen (val->info.value.text));
 			      }
 			  }
 

@@ -905,17 +905,24 @@ numeric_to_string (DB_VALUE * value, bool commas)
 {
   char str_buf[NUMERIC_MAX_STRING_SIZE];
   char *return_string;
-  int prec;
+  int prec, scale;
   int comma_length;
   int max_length;
+  int digits;
 
   /*
    * Allocate string length based on precision plus the commas plus a
    * character for each of the sign, decimal point, and NULL terminator.
    */
   prec = DB_VALUE_PRECISION (value);
-  comma_length = COMMAS_OFFSET (commas, prec);
-  max_length = prec + comma_length + 3;
+  scale = DB_VALUE_SCALE (value);
+  /* 
+   * Guard: if formatted length > max_length-1, return "NUM OVERFLOW".
+   */
+  digits = (scale < 0) ? (prec - scale) : (scale > prec ? scale : prec);
+
+  comma_length = COMMAS_OFFSET (commas, digits);
+  max_length = digits + comma_length + 3;
   return_string = (char *) malloc (max_length);
   if (return_string == NULL)
     {

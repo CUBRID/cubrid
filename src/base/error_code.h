@@ -1750,7 +1750,9 @@
 
 #define ER_DBLINK_TRAN				    -1367
 
-#define ER_LAST_ERROR                               -1368
+#define ER_INVALID_SCALE                            -1368
+
+#define ER_LAST_ERROR                               -1369
 
 
 

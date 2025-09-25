@@ -2288,7 +2288,7 @@ static char *
 _op_get_value_string (DB_VALUE * value)
 {
 #if !defined (NUMERIC_MAX_STRING_SIZE)
-#define NUMERIC_MAX_STRING_SIZE (80 + 1)
+#define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 #endif
   const char *db_varnchar_p = NULL, *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;

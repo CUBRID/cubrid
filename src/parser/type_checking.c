@@ -11963,7 +11963,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
     case PT_LAST_INSERT_ID:
       assert (dt == NULL);
-      /* last insert id returns NUMERIC (38, 0) */
+      /* last insert id returns NUMERIC (43, 0) */
       dt = pt_make_prim_data_type (parser, PT_TYPE_NUMERIC);
       dt->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
       dt->info.data_type.dec_precision = 0;

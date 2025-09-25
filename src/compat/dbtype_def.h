@@ -539,14 +539,25 @@ extern "C"
 /* This constant defines the maximum length of a bit string that can be used as the value of an attribute. */
 #define DB_MAX_BIT_LENGTH 0x3fffffff
 
+/* The maximum precision that can be specified for a numeric domain in SQL grammar. */
+#define DB_MAX_FIXED_NUMERIC_PRECISION 38
+
+/* The minimum and maximum scale that can be specified for a numeric domain in SQL grammar. */
+#define DB_MIN_FIXED_NUMERIC_SCALE -84
+#define DB_MAX_FIXED_NUMERIC_SCALE 127
+
 /* The maximum precision that can be specified for a numeric domain. */
-#define DB_MAX_NUMERIC_PRECISION 38
+#define DB_MAX_NUMERIC_PRECISION 43
+
+/* The minimum and maximum scale that can be specified for a numeric domain. */
+#define DB_MIN_NUMERIC_SCALE -211
+#define DB_MAX_NUMERIC_SCALE 252
 
 /* The upper limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_OVERFLOW_LIMIT 1e38
+#define DB_NUMERIC_OVERFLOW_LIMIT 1e127
 
 /* The lower limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-38
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-127
 
 #define DB_MAX_CHAR_PRECISION 2048
 
@@ -576,7 +587,7 @@ extern "C"
 #define DB_DEFAULT_PRECISION -1
 
 /* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
-#define DB_DEFAULT_SCALE -1
+#define DB_DEFAULT_SCALE -9999
 
 /* This constant indecates that SP function's default NUMERIC domain */
 #define DB_NUMERIC_PRECISION_SP 38
@@ -758,7 +769,7 @@ extern "C"
       unsigned char is_null;
       unsigned char type;
       unsigned char precision;
-      unsigned char scale;
+      int scale;
     } numeric_info;
     struct char_info
     {
