@@ -524,8 +524,7 @@ namespace cubpl
 	query_cursor *cursor = it.second;
 	if (cursor)
 	  {
-	    destroy_cursor (cursor->get_owner (), it.first /* QUERY_ID */);
-	    delete it.second;
+	    delete cursor;
 	  }
       }
     m_cursor_map.clear ();
