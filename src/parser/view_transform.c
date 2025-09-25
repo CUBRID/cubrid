@@ -56,6 +56,13 @@
     || (s)->next->info.spec.join_type == PT_JOIN_RIGHT_OUTER)) \
     )
 
+#define MQ_IS_LEFT_JOIN_SPEC(s)                               \
+    (						               \
+     ((s)->info.spec.join_type == PT_JOIN_LEFT_OUTER) ||     \
+     ((s)->next &&                                             \
+      ((s)->next->info.spec.join_type == PT_JOIN_LEFT_OUTER)) \
+    )
+
 #define MQ_FIX_SPEC_ID(tmp_hint, hint, info)                               \
      tmp_hint = hint;			\
      while (tmp_hint)						\
@@ -182,8 +189,7 @@ enum pushable_type
 {
   HAS_ERROR = 0,
   NON_PUSHABLE = 1,
-  PUSHABLE = 2,
-  PUSHABLE_OUTER_JOIN = 3
+  PUSHABLE = 2
 };
 typedef enum pushable_type PUSHABLE_TYPE;
 
@@ -1948,8 +1954,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   if (!is_only_spec && (mq_is_outer_join_spec (parser, class_spec) || MQ_IS_OUTER_JOIN_SPEC (class_spec)))
     {
-      if (pt_length_of_list (subquery->info.query.q.select.from) != 1
-	  || class_spec->info.spec.join_type != PT_JOIN_LEFT_OUTER)
+      /* view for single table + left outer join can be merged */
+      if (pt_length_of_list (subquery->info.query.q.select.from) != 1 || !MQ_IS_LEFT_JOIN_SPEC (class_spec))
 	{
 	  /* not pushable */
 	  return NON_PUSHABLE;
@@ -2092,16 +2098,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     {
       /* query not pushable */
       return NON_PUSHABLE;
-    }
-
-  if (!is_only_spec && (mq_is_outer_join_spec (parser, class_spec) || MQ_IS_OUTER_JOIN_SPEC (class_spec)))
-    {
-      /* pushable if outer join can be eliminated */
-      if (orderby_for || subquery->info.query.order_by)
-	{
-	  return NON_PUSHABLE;
-	}
-      return PUSHABLE_OUTER_JOIN;
     }
 
   /* if we got this far, query is pushable */
@@ -2703,10 +2699,6 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
 
       is_mergeable = mq_is_pushable_subquery (parser, query_spec, tmp_result, class_spec, true, order_by, class_);
-      if (is_mergeable == PUSHABLE_OUTER_JOIN)
-	{
-	  is_mergeable = NON_PUSHABLE;
-	}
       if (is_mergeable == HAS_ERROR)
 	{
 	  goto exit_on_error;
@@ -11363,7 +11355,6 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
 	      goto exit_on_error;
 	    }
 	}
-
     }
   else
     {
