@@ -401,12 +401,6 @@ namespace parallel_query
     std::size_t slot_index = pos % m_capacity;
     slot<T> *current_slot = &m_slots[slot_index];
 
-
-    while (!current_slot->ready.load (std::memory_order_acquire))
-      {
-	std::this_thread::yield();
-      }
-
     std::uint64_t expected_sequence = pos + m_capacity;
     while (!current_slot->sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
 	   std::memory_order_acq_rel, std::memory_order_acquire))
@@ -423,6 +417,11 @@ namespace parallel_query
 	slot_index = pos % m_capacity;
 	current_slot = &m_slots[slot_index];
 	expected_sequence = pos + m_capacity;
+      }
+
+    while (!current_slot->ready.load (std::memory_order_acquire))
+      {
+	std::this_thread::sleep_for (std::chrono::milliseconds (1));
       }
 
     std::atomic_thread_fence (std::memory_order_acquire);
@@ -472,11 +471,6 @@ namespace parallel_query
     std::size_t slot_index = pos % m_capacity;
     slot<T> *current_slot = &m_slots[slot_index];
 
-    while (!current_slot->ready.load (std::memory_order_acquire))
-      {
-	std::this_thread::yield();
-      }
-
     std::uint64_t expected_sequence = pos + m_capacity;
     while (!current_slot->sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
 	   std::memory_order_acq_rel, std::memory_order_acquire))
@@ -493,6 +487,11 @@ namespace parallel_query
 	slot_index = pos % m_capacity;
 	current_slot = &m_slots[slot_index];
 	expected_sequence = pos + m_capacity;
+      }
+
+    while (!current_slot->ready.load (std::memory_order_acquire))
+      {
+	std::this_thread::sleep_for (std::chrono::milliseconds (1));
       }
 
     std::atomic_thread_fence (std::memory_order_acquire);
