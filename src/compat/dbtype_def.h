@@ -1268,7 +1268,7 @@ extern "C"
 
   typedef enum
   {
-    LOB_DIR_CREATE = 0,
+    LOB_TABLE_CREATE = 0,
     LOB_COLUMN_ADD = 1,
     LOB_TABLE_DROP = 2,
     LOB_COLUMN_DROP = 3

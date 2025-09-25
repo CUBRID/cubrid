@@ -15790,7 +15790,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (lob_arr_length)
     {
       HFID lob_hfid = *insts_hfid;
-      error = manage_lob_dir(&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_DIR_CREATE);
+      error = manage_lob_dir(&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_TABLE_CREATE);
     }
   free (lob_attrid_arr);
 

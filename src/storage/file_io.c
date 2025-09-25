@@ -11955,7 +11955,7 @@ xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANA
 
   switch (mode)
   {
-    case LOB_DIR_CREATE:
+    case LOB_TABLE_CREATE:
       sprintf (rv_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       sprintf (dirbuf, "%s/%s", es_base_dir, rv_path);
       mkdir (dirbuf, 0755);
