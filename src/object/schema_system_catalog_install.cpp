@@ -28,6 +28,7 @@
 #include "dbtype_function.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_constants.hpp"
+#include "trigger_manager.h"
 #include "work_space.h"
 #include "schema_system_catalog_builder.hpp"
 #include "schema_system_catalog_definition.hpp"
@@ -43,6 +44,15 @@ make_int_value_fn (int num)
   return [num] (DB_VALUE* val)
   {
     return db_make_int (val, num);
+  };
+}
+
+static std::function<int (DB_VALUE *)>
+make_double_value_fn (double num)
+{
+  return [num] (DB_VALUE* val)
+  {
+    return db_make_double (val, num);
   };
 }
 
@@ -256,6 +266,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_INDEX_NAME, system_catalog_initializer::get_index ());
   ADD_TABLE_DEFINITION (CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ());
   ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_auth ());
+  ADD_TABLE_DEFINITION (CT_TRIGGER_NAME, system_catalog_initializer::get_trigger ());
   ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition ());
   ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type ());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure ());
@@ -764,6 +775,45 @@ namespace cubschema
       {DB_CONSTRAINT_INDEX, "", {"grantee", nullptr}, false},
       {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}, false}
     },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializers
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_trigger ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_TRIGGER_NAME,
+		   // columns
+    {
+      {TR_ATT_UNIQUE_NAME, "string"},
+      {TR_ATT_OWNER, AU_USER_CLASS_NAME},
+      {TR_ATT_NAME, "string"},
+      {TR_ATT_STATUS, "integer", make_int_value_fn (TR_STATUS_ACTIVE)},
+      {TR_ATT_PRIORITY, "double", make_double_value_fn (TR_LOWEST_PRIORITY)},
+      {TR_ATT_EVENT, "integer", make_int_value_fn (TR_EVENT_NULL)},
+      {TR_ATT_CLASS, "object"},
+      {TR_ATT_ATTRIBUTE, "string"},
+      {TR_ATT_CLASS_ATTRIBUTE, "integer", make_int_value_fn (0)},
+      {TR_ATT_CONDITION_TYPE, "integer"},
+      {TR_ATT_CONDITION, "string"},
+      {TR_ATT_CONDITION_TIME, "integer"},
+      {TR_ATT_ACTION_TYPE, "integer"},
+      {TR_ATT_ACTION, "string"},
+      {TR_ATT_ACTION_TIME, "integer"},
+      {TR_ATT_COMMENT, format_varchar (1024)},
+      {TR_ATT_CREATED_TIME, "datetime"},
+      {TR_ATT_UPDATED_TIME, "datetime"}
+    },
+// constraints
+    {},
 // authorization
     {
       // owner, grants
