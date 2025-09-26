@@ -11191,7 +11191,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
   /* we must have the first index column appear as the first sort column, so we pretend the number of index_equi
    * columns is zero, to force it to match the sort list and the index columns one-for-one.
    */
-  if (qo_is_index_iss_scan (plan) || index_entryp->constraints->func_index_info != NULL)
+  if (qo_is_index_iss_scan (plan))
     {
       equi_nterms = 0;
     }
