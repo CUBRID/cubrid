@@ -14070,44 +14070,46 @@ mq_bump_order_dep_corr_lvl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
     }
 
   /* process node */
-  PT_NODE *item = NULL, *prev = NULL;
-  int corr_diff = 0;
-
-  stack_item = stack_end;
-  while (stack_item != NULL && stack_item->info.expr.arg2 != NULL)
+  if (PT_IS_ORDER_DEPENDENT (node))
     {
-      /* due to the walk_tree function, all items in lists are pushed in the stack before any of them is popped;
-       * here, we skip same-level nodes */
-      stack_prev = stack_item->info.expr.arg2;
-      while (stack_prev && stack_prev->info.expr.arg1->next == stack_prev->next->info.expr.arg1)
+      PT_NODE *item = NULL, *prev = NULL;
+      int corr_diff = 0;
+
+      stack_item = stack_end;
+      while (stack_item != NULL && stack_item->info.expr.arg2 != NULL)
 	{
-	  stack_prev = stack_prev->info.expr.arg2;
+	  /* due to the walk_tree function, all items in lists are pushed in the stack before any of them is popped;
+	   * here, we skip same-level nodes */
+	  stack_prev = stack_item->info.expr.arg2;
+	  while (stack_prev && stack_prev->info.expr.arg1->next == stack_prev->next->info.expr.arg1)
+	    {
+	      stack_prev = stack_prev->info.expr.arg2;
+	    }
+
+	  if (stack_prev == NULL)
+	    {
+	      /* stack_item is in top level list; should never get here ... */
+	      assert (false);
+	      break;
+	    }
+
+	  /* get node and previous node */
+	  item = stack_item->info.expr.arg1;
+	  prev = stack_prev->info.expr.arg1;
+	  corr_diff = item->info.query.correlation_level - prev->info.query.correlation_level;
+
+	  /* check correlation levels */
+	  if (item != NULL && prev != NULL && corr_diff <= 0 && item->info.query.correlation_level != 0)
+	    {
+	      /* same correlation level or parent has greater correlation level; not acceptable */
+	      corr_diff = -corr_diff + 1;
+	      (void) mq_bump_correlation_level (parser, item, corr_diff, item->info.query.correlation_level);
+	    }
+
+	  /* peek back in stack list */
+	  stack_item = stack_prev;
 	}
-
-      if (stack_prev == NULL)
-	{
-	  /* stack_item is in top level list; should never get here ... */
-	  assert (false);
-	  break;
-	}
-
-      /* get node and previous node */
-      item = stack_item->info.expr.arg1;
-      prev = stack_prev->info.expr.arg1;
-      corr_diff = item->info.query.correlation_level - prev->info.query.correlation_level;
-
-      /* check correlation levels */
-      if (item != NULL && prev != NULL && corr_diff <= 0 && item->info.query.correlation_level != 0)
-	{
-	  /* same correlation level or parent has greater correlation level; not acceptable */
-	  corr_diff = -corr_diff + 1;
-	  (void) mq_bump_correlation_level (parser, item, corr_diff, item->info.query.correlation_level);
-	}
-
-      /* peek back in stack list */
-      stack_item = stack_prev;
     }
-
   return node;
 }
 
