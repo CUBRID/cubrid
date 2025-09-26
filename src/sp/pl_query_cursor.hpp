@@ -59,6 +59,7 @@ namespace cubpl
 
       SCAN_CODE cursor (int peek);
 
+      SCAN_CODE prev_row ();
       SCAN_CODE next_row ();
 
       void clear ();
