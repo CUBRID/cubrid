@@ -11510,7 +11510,7 @@ qo_check_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * plan)
 {
   BITSET terms_set, nodes_set;
   int term_idx, node_idx;
-  BITSET_ITERATOR iter, iter2;
+  BITSET_ITERATOR terms_iter, nodes_iter;
   QO_ENV *env;
   QO_TERM *termp;
   PT_NODE *arg1, *arg2, *expr, *spec, *spec_list = NULL;
@@ -11531,18 +11531,21 @@ qo_check_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * plan)
 	bitset_union (&terms_set, &(plan->plan_un.scan.terms));
 	bitset_union (&terms_set, &(plan->plan_un.scan.kf_terms));
 
-	for (term_idx = bitset_iterate (&terms_set, &iter); term_idx != -1; term_idx = bitset_next_member (&iter))
+	for (term_idx = bitset_iterate (&terms_set, &terms_iter); term_idx != -1;
+	     term_idx = bitset_next_member (&terms_iter))
 	  {
+	    spec_list = NULL;
 	    termp = QO_ENV_TERM (env, term_idx);
 	    expr = QO_TERM_PT_EXPR (termp);
 
 	    bitset_init (&nodes_set, env);
 	    bitset_assign (&nodes_set, &QO_TERM_NODES (termp));
 
-	    for (node_idx = bitset_iterate (&nodes_set, &iter2); node_idx != -1; node_idx = bitset_next_member (&iter2))
+	    for (node_idx = bitset_iterate (&nodes_set, &nodes_iter); node_idx != -1;
+		 node_idx = bitset_next_member (&nodes_iter))
 	      {
 		spec = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, node_idx));
-		if (spec && PT_SPEC_IS_ENTITY (spec))
+		if (spec && PT_SPEC_IS_ENTITY (spec) && !pt_find_entity (parser, spec_list, spec->info.spec.id))
 		  {
 		    spec_list = parser_append_node (spec, spec_list);
 		  }
@@ -11568,11 +11571,6 @@ qo_check_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * plan)
 		  {
 		    return true;
 		  }
-	      }
-
-	    if (spec_list)
-	      {
-		parser_free_tree (parser, spec_list);
 	      }
 	  }
 	return false;
