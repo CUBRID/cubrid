@@ -11500,6 +11500,95 @@ qo_has_sort_limit_subplan (QO_PLAN * plan)
 }
 
 /*
+ * qo_check_like_recompile_candidate () - check if the plan is a LIKE recompile candidate
+ * return : true if the plan is a LIKE recompile candidate, false otherwise
+ * parser (in) : parser
+ * plan (in) : plan to check
+ */
+bool
+qo_check_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * plan)
+{
+  BITSET terms_set, nodes_set;
+  int term_idx, node_idx;
+  BITSET_ITERATOR iter, iter2;
+  QO_ENV *env;
+  QO_TERM *termp;
+  PT_NODE *arg1, *arg2, *expr, *spec, *spec_list = NULL;
+
+  if (plan == NULL)
+    {
+      return false;
+    }
+
+  env = (plan->info)->env;
+  bitset_init (&terms_set, env);
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      {
+	bitset_assign (&terms_set, &(plan->sarged_terms));
+	bitset_union (&terms_set, &(plan->plan_un.scan.terms));
+	bitset_union (&terms_set, &(plan->plan_un.scan.kf_terms));
+
+	for (term_idx = bitset_iterate (&terms_set, &iter); term_idx != -1; term_idx = bitset_next_member (&iter))
+	  {
+	    termp = QO_ENV_TERM (env, term_idx);
+	    expr = QO_TERM_PT_EXPR (termp);
+
+	    bitset_init (&nodes_set, env);
+	    bitset_assign (&nodes_set, &QO_TERM_NODES (termp));
+
+	    for (node_idx = bitset_iterate (&nodes_set, &iter2); node_idx != -1; node_idx = bitset_next_member (&iter2))
+	      {
+		spec = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, node_idx));
+		if (spec && PT_SPEC_IS_ENTITY (spec))
+		  {
+		    spec_list = parser_append_node (spec, spec_list);
+		  }
+	      }
+
+	    if (expr && PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_LIKE))
+	      {
+		arg1 = PT_EXPR_ARG1 (expr);
+		arg2 = PT_EXPR_ARG2 (expr);
+
+		if (!pt_is_expr_foldable (parser, spec_list, arg1))
+		  {
+		    return false;
+		  }
+
+		int type_arg[2];
+
+		type_arg[0] = PT_HOST_VAR;
+		type_arg[1] = 0;
+
+		(void) parser_walk_tree (parser, arg2, pt_find_node_type_pre, type_arg, NULL, NULL);
+		if (type_arg[1] != 0)
+		  {
+		    return true;
+		  }
+	      }
+
+	    if (spec_list)
+	      {
+		parser_free_tree (parser, spec_list);
+	      }
+	  }
+	return false;
+      }
+    case QO_PLANTYPE_JOIN:
+      return (qo_check_like_recompile_candidate (parser, plan->plan_un.join.outer)
+	      || qo_check_like_recompile_candidate (parser, plan->plan_un.join.inner));
+
+    default:
+      return false;
+    }
+
+  return false;
+}
+
+/*
  * plan dump for query profile
  */
 

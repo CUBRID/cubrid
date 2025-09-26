@@ -10358,7 +10358,7 @@ end:
 }
 
 bool
-pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement)
+pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
   PT_NODE *where, *arg1, *arg2;
   PT_NODE *pattern = NULL, *escape = NULL;
@@ -10382,7 +10382,7 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
       return false;
     }
 
-  if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
+  if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) || !(xasl_flag & LIKE_RECOMPILE_CANDIDATE))
     {
       return false;
     }

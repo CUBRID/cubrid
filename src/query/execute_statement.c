@@ -14603,7 +14603,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else if (stream.xasl_id != NULL)
 	{
-	  if (pt_recompile_for_like_optimizations (parser, statement))
+	  if (pt_recompile_for_like_optimizations (parser, statement, stream.xasl_header->xasl_flag))
 	    {
 	      contextp->recompile_xasl = true;
 	      if (stream.xasl_id != NULL)

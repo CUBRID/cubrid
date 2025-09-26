@@ -95,7 +95,7 @@ static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statem
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
 static bool db_check_limit_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
-static bool db_check_where_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement);
+static bool db_check_where_need_recompile (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
 
 static DB_CLASS_MODIFICATION_STATUS pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -2741,13 +2741,11 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
       && !statement->info.execute.recompile	/* recompile is already planned */
       && (prepare_info.host_variables.size > prepare_info.auto_param_count))
     {
-      if (prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING))
+      if (db_check_where_need_recompile (parser, statement, xasl_header.xasl_flag))
 	{
-	  if (db_check_where_need_recompile (parser, statement))
-	    {
-	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
-	    }
+	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
 	}
+
       /* query has to be multi range opt candidate */
       if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
 	{
@@ -2891,7 +2889,7 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
  *
  */
 static bool
-db_check_where_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * statement)
+db_check_where_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * statement, int xasl_flag)
 {
   DB_SESSION *session = NULL;
   PT_NODE *query = NULL;
@@ -2941,7 +2939,7 @@ db_check_where_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   session->parser->auto_param_count = parent_parser->auto_param_count;
   session->parser->flag.set_host_var = 1;
 
-  if (pt_recompile_for_like_optimizations (session->parser, query))
+  if (pt_recompile_for_like_optimizations (session->parser, query, xasl_flag))
     {
       /* need recompile */
       do_recompile = true;
