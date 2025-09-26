@@ -10639,11 +10639,16 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
   const char *string;
   int size;
 
-  if (value != NULL && (str = db_get_string (value)) != NULL)
+  if (value != NULL && !db_value_is_null (value))
     {
+      str = db_get_string (value);
       src_length = db_get_string_size (value);	/* size in bytes */
-      if (src_length < 0)
+      if (src_length <= 0)
 	{
+	  if (src_length == 0)
+	    {
+	      return pr_write_uncompressed_string_to_buffer (buf, "", 0, align);
+	    }
 	  src_length = strlen (str);
 	}
 
