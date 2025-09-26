@@ -33,6 +33,10 @@ package com.cubrid.jsp.jdbc;
 import java.util.HashMap;
 
 public class CUBRIDServerSideJDBCErrorCode {
+
+    /* The following codes are from error_code.h */
+    public static final int ER_SP_INVALID_CURSOR = -1368;
+
     /* The following codes are ported from UErrorCode.java */
     public static final int ER_NO_ERROR = 0;
     public static final int ER_NOT_OBJECT = -21001;
@@ -73,9 +77,6 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_NOT_COLLECTION = -21121;
     public static final int ER_ARGUMENT_ZERO = -21128;
 
-    /* The following codes are not from other module of CUBRID */
-    public static final int ER_SP_INVALID_CURSOR = -40001;
-
     private static HashMap<Integer, String> messageString = null;
 
     public static String codeToMessage(int index) {
@@ -101,6 +102,8 @@ public class CUBRIDServerSideJDBCErrorCode {
 
     private static void setMessageHash() {
         messageString = new HashMap<Integer, String>();
+
+        messageString.put(ER_SP_INVALID_CURSOR, "Invalid cursor");
 
         messageString.put(ER_UNKNOWN, "Error");
         messageString.put(ER_NO_ERROR, "No Error");
@@ -151,6 +154,5 @@ public class CUBRIDServerSideJDBCErrorCode {
 
         messageString.put(ER_NOT_COLLECTION, "The type of the column should be a collection type.");
         messageString.put(ER_ARGUMENT_ZERO, "The argument row can not be zero.");
-        messageString.put(ER_SP_INVALID_CURSOR, "Invalid cursor");
     }
 }

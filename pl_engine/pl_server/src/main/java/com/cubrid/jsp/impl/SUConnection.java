@@ -66,9 +66,6 @@ public class SUConnection {
         ctx = t;
     }
 
-    private static final int ER_SP_INVALID_CURSOR =
-            -1368; // CAUTION: sync this value with taht in base/error_code.h
-
     public CUBRIDUnpacker request(ByteBuffer buffer) throws IOException, SQLException {
         Context.getCurrentExecuteThread().sendCommand(buffer);
         buffer.clear();
@@ -88,8 +85,8 @@ public class SUConnection {
             int errCodeLocal;
             ErrorInfo errorInfo = new ErrorInfo(unpacker);
             switch (errorInfo.errorCode) {
-                case ER_SP_INVALID_CURSOR:
-                    errCodeLocal = CUBRIDServerSideJDBCErrorCode.ER_SP_INVALID_CURSOR;
+                case CUBRIDServerSideJDBCErrorCode.ER_SP_INVALID_CURSOR:
+                    errCodeLocal = errorInfo.errorCode;
                     break;
                 default:
                     errCodeLocal = CUBRIDServerSideJDBCErrorCode.ER_DBMS;
