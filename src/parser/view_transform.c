@@ -14012,7 +14012,7 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select, int
 
 /*
  * mq_bump_order_dep_corr_lvl_pre - walk_tree function for bumping correlation
- * levels of order dependent SELECTs
+ *                                  levels of order dependent SELECTs
  *   parser(in): parser context
  *   node(in): node
  *   arg(in/out): parent node stack
