@@ -96,8 +96,8 @@ jobs:
                         BRANCH_TESTCASES: feature/system-catalog
                       no_output_timeout: 45m
                       command: |
-                        # Limit core files
-                        ulimit -c 1
+                        # Limit core files to 10mb
+                        ulimit -c 10485760
 
                         echo "[debug] Check out testcases and testtools"
                         /entrypoint.sh checkout
