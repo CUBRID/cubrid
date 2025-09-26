@@ -14012,6 +14012,7 @@ mq_rewrite_order_dependent_query (PARSER_CONTEXT * parser, PT_NODE * select, int
 
 /*
  * mq_bump_order_dep_corr_lvl_pre - walk_tree function for bumping correlation
+ * levels of order dependent SELECTs
  *   parser(in): parser context
  *   node(in): node
  *   arg(in/out): parent node stack
@@ -14110,12 +14111,14 @@ mq_bump_order_dep_corr_lvl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  stack_item = stack_prev;
 	}
     }
+
   return node;
 }
 
 /*
  * mq_bump_order_dep_corr_lvl_post - walk_tree post function for bumping
- *                                   correlation levels
+ *                                   correlation levels of order dependent
+ *                                   SELECTs
  *   parser(in): parser context
  *   node(in): node
  *   arg(in/out): parent node stack
@@ -14159,7 +14162,8 @@ mq_bump_order_dep_corr_lvl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *
 }
 
 /*
- * mq_bump_order_dep_corr_lvl - bump correlation levels for SELECTs
+ * mq_bump_order_dep_corr_lvl - bump correlation levels for order dependent
+ *                              SELECTs
  *   parser(in): parser context
  *   node(in): root node
  */
@@ -14168,6 +14172,7 @@ mq_bump_order_dep_corr_lvl (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *stack = NULL;
 
+  /* bump order dependent SELECTs */
   (void) parser_walk_tree (parser, node, mq_bump_order_dep_corr_lvl_pre, (void *) &stack,
 			   mq_bump_order_dep_corr_lvl_post, (void *) &stack);
 }
