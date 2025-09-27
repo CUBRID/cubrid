@@ -102,6 +102,7 @@ namespace cubconn
     /* --------------------------------------------------------------------------- */
     "MQ_REQUESTED", /* count */
     "MQ_NEW_CLIENT", /* count */
+    "MQ_SHUTDOWN_CLIENT", /* count */
     "MQ_SEND_PACKET", /* count */
     "MQ_RELEASE_PACKET" /* count */
   };

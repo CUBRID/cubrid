@@ -3164,6 +3164,12 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
 void
 css_wakeup_handler (css_conn_entry * conn)
 {
+  if (conn->worker == nullptr || conn->context == nullptr)
+    {
+      _er_log_debug (__FILE__, __LINE__, "css_wakeup_handler: worker already cleared for conn = %p\n", (void *) conn);
+      return;
+    }
+
   if (!conn->worker->notify ())
     {
       assert_release (false);
