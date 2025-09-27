@@ -1455,6 +1455,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	{
 	  sort_param->tot_tempfiles = i;
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
 	  goto cleanup;
 	}
 
@@ -4274,6 +4275,7 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 	    {
 	      sort_param->tot_tempfiles = j;
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
 	      break;
 	    }
 
