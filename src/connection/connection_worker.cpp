@@ -357,12 +357,17 @@ namespace cubconn
     ctx->m_conn->context = ctx;
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
 	delete ctx;
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
     if (!m_context.insert (ctx).second)
       {
+	m_events.remove_descriptor (ctx->m_conn->fd);
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
 	delete ctx;
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
