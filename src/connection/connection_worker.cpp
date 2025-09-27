@@ -193,6 +193,12 @@ namespace cubconn
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
 
+    if (ctx->m_conn == nullptr || ctx->m_conn->worker == nullptr)
+      {
+	/* already cleared */
+	return true;
+      }
+
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
@@ -377,6 +383,24 @@ namespace cubconn
     return true;
   }
 
+  bool connection_worker::handle_message_queue_shutdown_client (message &item)
+  {
+    context *ctx;
+
+    assert (item.conn && item.conn->context);
+
+    ctx = reinterpret_cast<context *> (item.conn->context);
+    if (ctx == nullptr)
+      {
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
+		       static_cast<void *> (item.conn));
+	return true;
+      }
+    handle_connection_error (ctx);
+    return true;
+  }
+
   bool connection_worker::handle_message_queue ()
   {
     message request;
@@ -404,8 +428,9 @@ namespace cubconn
 	    m_stats.add (stats::NET_CLIENTS, 1);
 	    break;
 
-	  case message_type::SHUTDOWN:
-	    m_stop = true;
+	  case message_type::SHUTDOWN_CLIENT:
+	    m_stats.add (stats::MQ_SHUTDOWN_CLIENT, 1);
+	    this->handle_message_queue_shutdown_client (request);
 	    break;
 
 	  case message_type::SEND_PACKET:
@@ -422,6 +447,10 @@ namespace cubconn
 	      {
 		return false;
 	      }
+	    break;
+
+	  case message_type::SHUTDOWN:
+	    m_stop = true;
 	    break;
 
 	  default:
