@@ -48,10 +48,12 @@ namespace cubconn
       enum class message_type
       {
 	NEW_CLIENT,
-	SHUTDOWN,
+	SHUTDOWN_CLIENT,
 
 	SEND_PACKET,
-	RELEASE_PACKET
+	RELEASE_PACKET,
+
+	SHUTDOWN
       };
 
       struct message
@@ -160,6 +162,7 @@ namespace cubconn
       bool handle_message_queue_release_packet (message &item);
 
       bool handle_message_queue_new_client (message &item);
+      bool handle_message_queue_shutdown_client (message &item);
       bool handle_message_queue ();
 
       /* --------------------------------------------------------------------------- */

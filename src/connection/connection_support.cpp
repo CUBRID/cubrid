@@ -3102,7 +3102,7 @@ void
 css_conn_entry::release_packet (void *buffer)
 {
 #if defined(SERVER_MODE)
-  css_release_packet (this, buffer);
+  css_request_release_packet (this, buffer);
 #endif
 }
 
