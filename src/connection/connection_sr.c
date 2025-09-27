@@ -920,68 +920,6 @@ css_remove_all_unexpected_packets_tmp (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY *
   assert (r == NO_ERROR);
 }
 
-void
-css_shutdown_conn_tmp (void *thread_p, CSS_CONN_ENTRY * conn)
-{
-  int r;
-
-  r = rmutex_lock ((THREAD_ENTRY *) thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
-
-  if (!IS_INVALID_SOCKET (conn->fd))
-    {
-      /* if this is the PC, it also shuts down Winsock */
-      css_shutdown_socket (conn->fd);
-      conn->fd = INVALID_SOCKET;
-    }
-
-  if (conn->status == CONN_OPEN || conn->status == CONN_CLOSING)
-    {
-      conn->status = CONN_CLOSED;
-      conn->stop_talk = false;
-      conn->in_flashback = false;
-      conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
-
-      if (conn->version_string)
-	{
-	  free_and_init (conn->version_string);
-	}
-
-      css_remove_all_unexpected_packets_tmp ((THREAD_ENTRY *) thread_p, conn);
-
-      css_finalize_list (&conn->request_queue);
-      css_finalize_list (&conn->data_queue);
-      css_finalize_list (&conn->data_wait_queue);
-      css_finalize_list (&conn->abort_queue);
-      css_finalize_list (&conn->buffer_queue);
-      css_finalize_list (&conn->error_queue);
-    }
-
-  if (conn->free_queue_list != NULL)
-    {
-      assert (conn->free_queue_count > 0);
-      css_free_queue_entry_list (conn);
-    }
-
-  if (conn->free_wait_queue_list != NULL)
-    {
-      assert (conn->free_wait_queue_count > 0);
-      css_free_wait_queue_list (conn);
-    }
-
-#if defined(SERVER_MODE)
-  if (conn->session_p)
-    {
-      session_state_decrease_ref_count (NULL, conn->session_p);
-      conn->session_p = NULL;
-      conn->session_id = DB_EMPTY_SESSION;
-    }
-#endif
-
-  r = rmutex_unlock ((THREAD_ENTRY *) thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
-}
-
 /*
  * css_print_conn_entry_info() - print connection entry information to stderr
  *   return: void

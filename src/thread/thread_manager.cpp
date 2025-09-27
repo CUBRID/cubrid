@@ -419,13 +419,13 @@ namespace cubthread
   manager::set_max_thread_count_from_config (void)
   {
     // todo: is there a better way to decide on the maximum number of thread entries?
-    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // one per each connection
-    std::size_t max_conn_workers = NUM_NON_SYSTEM_TRANS;    // one per each connection
+    std::size_t max_connection_threads = prm_get_integer_value (PRM_ID_CSS_CONNECTION_THREAD_COUNT);
+    std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // this may be needed in utils
+    std::size_t max_transaction_workers = prm_get_integer_value (PRM_ID_THREAD_WORKER_COUNT);
     std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
     std::size_t max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
     std::size_t max_backup_read_workers = 0; // one per each backup read task
-    std::size_t max_connection_threads = prm_get_integer_value (PRM_ID_CSS_CONNECTION_THREAD_COUNT);
 
 #if defined (SERVER_MODE)
     max_backup_read_workers = cubthread::system_core_count ();
@@ -436,8 +436,8 @@ namespace cubthread
     //       generated at "runtime" (after thread starts its task). however, with current thread entry design, that is
     //       rather unlikely.
 
-    m_max_threads = max_active_workers + max_conn_workers + max_vacuum_workers + max_daemons + max_backup_read_workers +
-		    max_parallel_workers * 2 + max_connection_threads;
+    m_max_threads = max_connection_threads + max_active_workers + max_transaction_workers + max_vacuum_workers + max_daemons
+		    + max_backup_read_workers + max_parallel_workers * 2;
   }
 
   void
