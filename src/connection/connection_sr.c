@@ -1388,6 +1388,10 @@ css_shutdown_conn_by_tran_index (int tran_index)
 	      if (conn->status == CONN_OPEN)
 		{
 		  conn->status = CONN_CLOSING;
+
+		  /* request to connection thread */
+		  css_request_shutdown_conn (conn);
+		  css_wakeup_handler (conn);
 		}
 	      break;
 	    }
@@ -3117,7 +3121,24 @@ css_get_argv (void)
 }
 
 void
-css_release_packet (css_conn_entry * conn, void *buffer)
+css_request_shutdown_conn (css_conn_entry * conn)
+{
+  if (conn->worker == nullptr || conn->context == nullptr)
+    {
+      _er_log_debug (__FILE__, __LINE__,
+		     "css_request_shutdown_conn: worker already cleared for conn = %p\n", (void *) conn);
+      return;
+    }
+
+  cubconn::connection_worker::message request;
+
+  request.type = cubconn::connection_worker::message_type::SHUTDOWN_CLIENT;
+  request.conn = conn;
+  conn->worker->enqueue (std::move (request));
+}
+
+void
+css_request_release_packet (css_conn_entry * conn, void *buffer)
 {
   if (conn == nullptr || buffer == nullptr)
     {
@@ -3127,7 +3148,8 @@ css_release_packet (css_conn_entry * conn, void *buffer)
   if (conn->worker == nullptr || conn->context == nullptr)
     {
       _er_log_debug (__FILE__, __LINE__,
-		     "css_release_packet: worker already cleared for conn = %p, buffer = %p\n", (void *) conn, buffer);
+		     "css_request_release_packet: worker already cleared for conn = %p, buffer = %p\n", (void *) conn,
+		     buffer);
       return;
     }
 

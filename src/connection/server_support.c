@@ -1973,6 +1973,8 @@ css_end_server_request (CSS_CONN_ENTRY * conn)
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
+
+  /* no need to make a request to connection thread */
 }
 
 /*

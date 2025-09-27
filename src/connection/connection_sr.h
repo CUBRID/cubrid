@@ -209,7 +209,8 @@ extern void css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENT
 
 extern char *css_get_exec_path (void);
 extern char **css_get_argv (void);
-extern void css_release_packet (css_conn_entry * conn, void *buffer);
+extern void css_request_shutdown_conn (css_conn_entry * conn);
+extern void css_request_release_packet (css_conn_entry * conn, void *buffer);
 extern void css_wakeup_handler (css_conn_entry * conn);
 
 #endif /* _CONNECTION_SR_H_ */
