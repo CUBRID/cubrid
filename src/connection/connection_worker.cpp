@@ -430,7 +430,10 @@ namespace cubconn
 
 	  case message_type::SHUTDOWN_CLIENT:
 	    m_stats.add (stats::MQ_SHUTDOWN_CLIENT, 1);
-	    this->handle_message_queue_shutdown_client (request);
+	    if (!this->handle_message_queue_shutdown_client (request))
+	      {
+		return false;
+	      }
 	    break;
 
 	  case message_type::SEND_PACKET:
