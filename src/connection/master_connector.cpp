@@ -838,6 +838,8 @@ namespace cubconn
     new_ctx->m_conn->request_id = request_id;
     if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
       {
+	css_free_conn (conn);
+	delete new_ctx;
 	return result::Error;
       }
 
@@ -856,6 +858,8 @@ namespace cubconn
       {
 	_er_log_debug (__FILE__, __LINE__,
 		       "master_connector->request_new_client: m_events->add_descriptor failed: %s", strerror (errno));
+	css_free_conn (conn);
+	delete new_ctx;
 	return result::Error;
       }
 

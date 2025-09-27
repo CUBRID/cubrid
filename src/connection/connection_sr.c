@@ -293,6 +293,8 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
 
   conn->session_id = DB_EMPTY_SESSION;
 #if defined(SERVER_MODE)
+  conn->worker = nullptr;
+  conn->context = nullptr;
   conn->session_p = NULL;
   conn->client_type = DB_CLIENT_TYPE_UNKNOWN;
 #endif
