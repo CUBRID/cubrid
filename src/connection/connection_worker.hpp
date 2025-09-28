@@ -58,14 +58,24 @@ namespace cubconn
 
       struct message
       {
-	message_type type;
+      public:
+        message () = default;
+        ~message () = default;
 
-	css_conn_entry *conn;
+        message (const message &) = delete;
+        message &operator= (const message &) = delete;
 
-	/* send packet/release packet */
-	std::vector<cubbase::span<std::byte>> packet;
-	/* send packet */
-	std::function<void ()> deleter;
+        message (message &&) noexcept = default;
+        message &operator= (message &&) noexcept = default;
+
+        message_type type;
+
+        css_conn_entry *conn;
+
+        /* send packet/release packet */
+        std::vector<cubbase::span<std::byte>> packet;
+        /* send packet */
+        std::function<void ()> deleter;
       };
 
     private:
@@ -119,7 +129,7 @@ namespace cubconn
       void attach ();
 
       /* used for control from other threads */
-      void enqueue (const message &item);
+      void enqueue (message &&item);
       bool notify ();
 
       /* statistics */

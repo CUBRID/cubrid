@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+#include <utility>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -75,12 +76,11 @@ namespace cubconn
 
   void connection_pool::finalize ()
   {
-    connection_worker::message request;
-
-    request.type = connection_worker::message_type::SHUTDOWN;
     for (auto &worker : m_workers)
       {
-	worker->enqueue (request);
+	connection_worker::message request;
+	request.type = connection_worker::message_type::SHUTDOWN;
+	worker->enqueue (std::move (request));
 	if (!worker->notify ())
 	  {
 	    assert_release (false);
@@ -99,7 +99,7 @@ namespace cubconn
 
     request.type = connection_worker::message_type::NEW_CLIENT;
     request.conn = conn;
-    m_workers[m_counter]->enqueue (request);
+    m_workers[m_counter]->enqueue (std::move (request));
     if (!m_workers[m_counter]->notify ())
       {
 	assert_release (false);
