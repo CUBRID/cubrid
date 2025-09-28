@@ -120,7 +120,7 @@ namespace cubconn
     assert (m_context.size () == 0);
   }
 
-  void connection_worker::enqueue (const message &item)
+  void connection_worker::enqueue (message &&item)
   {
     m_queue.push (std::move (item));
 

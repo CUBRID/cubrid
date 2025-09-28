@@ -111,6 +111,11 @@ namespace cubconn
 
   void transmitter::push_for_deleter (std::function<void ()> &&deleter)
   {
+    if (!deleter)
+      {
+	return;
+      }
+
     m_deleter.push_back (std::move (deleter));
   }
 
@@ -123,10 +128,12 @@ namespace cubconn
   {
     for (auto &deleter : m_deleter)
       {
-	deleter ();
+	if (deleter)
+	  {
+	    deleter ();
+	  }
       }
     m_deleter.clear ();
     m_buf.clear ();
   }
 }
-
