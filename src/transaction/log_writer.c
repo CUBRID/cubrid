@@ -2761,6 +2761,8 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	  need_cs_exit_after_send = false;
 	}
 
+      /* the transmission is performed asynchronously, but waits for a response immediately below. */
+      /* so it behaves essentially the same as sync. therefore, memory (allocated by malloc) is not overwritten. */
       error_code = xlog_send_log_pages_to_client (thread_p, logpg_area, logpg_used_size, mode);
       if (error_code != NO_ERROR)
 	{
@@ -2820,6 +2822,8 @@ error:
 
   logwr_cs_exit (thread_p, &check_cs_own);
   logwr_write_end (thread_p, writer_info, entry, status);
+
+  free_and_init (logpg_area);
 
   return error_code;
 }
