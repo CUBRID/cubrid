@@ -6802,7 +6802,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 		  /* If we're handling with a multi-column index, then only equality expressions are allowed except for
 		   * the last matching segment.
 		   */
-		  bitset_delset (&working);
 		  matched = true;
 		  count_matched_index_attributes++;
 		  break;
@@ -8753,8 +8752,6 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  bitset_delset (&order_nodes);
-
   /* In order to create a SORT-LIMIT plan, the query must have a valid limit. All other conditions for creating the
    * plan have been met.
    */
@@ -8789,10 +8786,12 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
     }
 
   env->use_sort_limit = QO_SL_USE;
+  bitset_delset (&order_nodes);
   return;
 
 sort_limit_possible:
   env->use_sort_limit = QO_SL_POSSIBLE;
+  bitset_delset (&order_nodes);
   bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
   return;
 
