@@ -365,6 +365,7 @@ namespace parallel_heap_scan
   {
     int err_code;
     VPID old_last_vpid;
+    QFILE_LIST_ID *list_id_p;
     if (unlikely (tl_list_id_header->m_list_id_p == nullptr))
       {
 	QFILE_TUPLE_VALUE_TYPE_LIST type_list;
@@ -395,8 +396,10 @@ namespace parallel_heap_scan
 	    free (type_list.domp);
 	  }
       }
+    list_id_p = tl_list_id_header->m_list_id_p;
     err_code = qdata_copy_val_list_to_tuple (thread_p, input, &tl_tpl_buf);
-    if (err_code != NO_ERROR)
+    prefetch (list_id_p, PREFETCH_WRITE, PREFETCH_CACHE_TIME_LONG);
+    if (unlikely (err_code != NO_ERROR))
       {
 	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
@@ -404,7 +407,7 @@ namespace parallel_heap_scan
       }
     old_last_vpid = tl_list_id_header->m_list_id_p->last_vpid;
     err_code = qfile_add_tuple_to_list (thread_p, tl_list_id_header->m_list_id_p, tl_tpl_buf.tpl);
-    if (err_code != NO_ERROR)
+    if (unlikely (err_code != NO_ERROR))
       {
 	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
