@@ -28,21 +28,88 @@
 
 namespace parallel_heap_scan
 {
+  union VPID64_t
+  {
+    uint64_t uint64;
+    VPID vpid;
+  };
+
   class list_id_header
   {
     public:
-      VPID m_first_vpid;
-      VPID m_last_vpid;
-      bool m_list_closed;
-      bool m_valid;
-      QFILE_TUPLE_VALUE_TYPE_LIST m_type_list;
+      std::atomic<VPID64_t> m_first_vpid;
+      std::atomic<VPID64_t> m_last_vpid;
+      std::atomic<bool> m_list_closed;
+      std::atomic<bool> m_valid;
       QFILE_LIST_ID *m_list_id_p;
-      std::mutex m_mutex;
+      std::vector<std::atomic<TP_DOMAIN *>*> m_type_list;
+      int m_type_cnt;
 
-      list_id_header();
-      ~list_id_header();
+      list_id_header()
+	: m_first_vpid(), m_last_vpid(), m_list_closed (false), m_valid (false),
+	  m_list_id_p (nullptr), m_type_cnt (0) {}
+      list_id_header (const list_id_header &other)
+	: m_first_vpid (other.m_first_vpid.load()),
+	  m_last_vpid (other.m_last_vpid.load()),
+	  m_list_closed (other.m_list_closed.load()),
+	  m_valid (other.m_valid.load()),
+	  m_list_id_p (other.m_list_id_p),
+	  m_type_list (other.m_type_list),
+	  m_type_cnt (other.m_type_cnt) {}
+      list_id_header (list_id_header &&other) noexcept
+	: m_first_vpid (other.m_first_vpid.load()),
+	  m_last_vpid (other.m_last_vpid.load()),
+	  m_list_closed (other.m_list_closed.load()),
+	  m_valid (other.m_valid.load()),
+	  m_list_id_p (other.m_list_id_p),
+	  m_type_list (std::move (other.m_type_list)),
+	  m_type_cnt (other.m_type_cnt)
+      {
+	other.m_list_id_p = nullptr;
+	other.m_type_cnt = 0;
+	other.m_list_closed.store (false);
+	other.m_valid.store (false);
+      }
+      list_id_header &operator= (const list_id_header &other)
+      {
+	if (this != &other)
+	  {
+	    m_first_vpid.store (other.m_first_vpid.load());
+	    m_last_vpid.store (other.m_last_vpid.load());
+	    m_list_closed.store (other.m_list_closed.load());
+	    m_valid.store (other.m_valid.load());
+	    m_list_id_p = other.m_list_id_p;
+	    m_type_list = other.m_type_list;
+	    m_type_cnt = other.m_type_cnt;
+	  }
+	return *this;
+      }
+      list_id_header &operator= (list_id_header &&other) noexcept
+      {
+	if (this != &other)
+	  {
+	    m_first_vpid.store (other.m_first_vpid.load());
+	    m_last_vpid.store (other.m_last_vpid.load());
+	    m_list_closed.store (other.m_list_closed.load());
+	    m_valid.store (other.m_valid.load());
+	    m_list_id_p = other.m_list_id_p;
+	    m_type_list = std::move (other.m_type_list);
+	    m_type_cnt = other.m_type_cnt;
+	    other.m_list_id_p = nullptr;
+	    other.m_type_cnt = 0;
+	    other.m_list_closed.store (false);
+	    other.m_valid.store (false);
+	  }
+	return *this;
+      }
   };
-
+  struct read_spec
+  {
+    list_id_header *list_id_header_p;
+    bool read_ended;
+    bool list_scan_id_opened;
+    QFILE_LIST_SCAN_ID list_scan_id;
+  };
   class result_handler_xasl_snapshot : public result_handler<VAL_LIST, VAL_LIST>
   {
       using interrupt = parallel_query::interrupt;
@@ -61,44 +128,23 @@ namespace parallel_heap_scan
 				    bool should_check_instnum, err_messages_with_lock *err_messages_p, int parallelism);
 
     private:
-      struct list_id_header_for_read
-      {
-	list_id_header *m_list_id_header;
-	QFILE_LIST_SCAN_ID m_list_scan_id;
-	bool m_read_ended;
-	bool m_list_scan_id_opened;
-      };
-      /* for both */
       int m_parallelism;
+
+      /* reader-writer communication */
       std::mutex m_cv_mutex;
       std::condition_variable m_readable_list_exists_cv;
-      bool m_reader_wait;
-      int m_reader_list_id_index_hint;
-      std::atomic_int m_writer_ended_cnt;
-      std::atomic_int m_writer_null_list_id_ended_cnt;
 
-      /* for writer */
-      std::vector<list_id_header> m_writer_list_id_headers;
-      std::atomic_int m_writer_list_id_index;
-      thread_local static list_id_header *m_tl_writer_list_id_header;
-      thread_local static QFILE_TUPLE_RECORD m_tl_tpl_buf;
-      thread_local static int m_tl_list_id_index;
+      /* storage */
+      std::vector<list_id_header> m_list_id_headers;
+      std::vector<read_spec> m_read_specs;
+      std::atomic_int m_list_id_header_index;
+      thread_local static list_id_header *tl_list_id_header;
+      thread_local static QFILE_TUPLE_RECORD tl_tpl_buf;
 
-      /* for reader */
-      std::vector<list_id_header_for_read> m_reader_list_id_headers;
-      QFILE_TUPLE_RECORD m_reader_tpl_buf;
-      list_id_header m_current_list_id_header;
-      list_id_header_for_read *m_current_list_id_header_for_read;
-
-      /* helper functions */
-      bool get_next_available_list_id_header ();
-      void send_prev_vpid_to_reader (VPID prev_vpid);
-
+      /* for continuable read */
+      read_spec *m_current_read_spec;
+      void get_valid_read_spec ();
   };
-
-  /* helper functions */
-  bool get_list_id_header_if_readable (list_id_header *src_list_id_header, list_id_header *dest_list_id_header);
-  bool is_next_tuple_on_not_readable_page (list_id_header *list_id_header, QFILE_LIST_SCAN_ID *list_scan_id);
 
   int update_domains_on_type_list_by_val_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id_p, VAL_LIST *val_list_p);
 }
