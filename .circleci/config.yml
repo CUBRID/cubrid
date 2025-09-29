@@ -94,8 +94,8 @@ jobs:
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
-                        # Limit core files
-                        ulimit -c 1
+                        # Limit core files to 10mb
+                        ulimit -c 10485760
 
                         echo "[debug] Check out testcases and testtools"
                         /entrypoint.sh checkout
@@ -127,8 +127,10 @@ jobs:
 
                         if [ "\$TEST_SUITE" = "shell" ]; then
                           echo "[debug] split tests for parallel execution"
-                          circleci tests glob "\$glob_path" | sed "s|^\$base_dir/||" | grep -P '/([^/]+)/cases/\1\.sh$' | circleci tests split --split-by=timings --timings-type=testname | tee tc.list
+                          circleci tests glob "\$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
+                            | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
+                          echo "[debug] total testcases: \$(wc -l tc_dirs.list)"
                           echo "[debug] Remove tests that are not in the list"
                           find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rf
                         else
