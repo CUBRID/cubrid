@@ -6789,9 +6789,10 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   /* for each attribute of this constraint */
   for (i = 0; *nseg_idxp < seg_idx_num; i++)
     {
-      matched = false;
+
       if (consp->func_index_info && i == consp->func_index_info->col_id)
 	{
+	  matched = false;
 	  for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
 	    {
 	      segp = QO_ENV_SEG (env, iseg);
@@ -6810,33 +6811,42 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 		  break;
 		}
 	    }
+	  if (!matched)
+	    {
+	      seg_idx[*nseg_idxp] = -1;	/* not found matched segment */
+	      (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
+	    }			/* if (!matched) */
 	}
-      else
-	{
-	  attrp = consp->attributes[i];
 
-	  /* for each indexed segments of this node, compare the name of the segment with the one of the attribute */
-	  for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
+      if (*nseg_idxp == seg_idx_num)
+	{
+	  break;
+	}
+      attrp = consp->attributes[i];
+
+      matched = false;
+      /* for each indexed segments of this node, compare the name of the segment with the one of the attribute */
+      for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
+	{
+
+	  segp = QO_ENV_SEG (env, iseg);
+
+	  if (!intl_identifier_casecmp (QO_SEG_NAME (segp), attrp->header.name))
 	    {
 
-	      segp = QO_ENV_SEG (env, iseg);
+	      bitset_add (segs, iseg);	/* add the segment to the index segment set */
+	      bitset_remove (&working, iseg);	/* remove the segment from the working set */
+	      seg_idx[*nseg_idxp] = iseg;	/* remember the order of the index segments */
+	      (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
+	      /* If we're handling with a multi-column index, then only equality expressions are allowed except for the
+	       * last matching segment.
+	       */
+	      matched = true;
+	      count_matched_index_attributes++;
+	      break;
+	    }			/* if (!intl_identifier_casecmp...) */
 
-	      if (!intl_identifier_casecmp (QO_SEG_NAME (segp), attrp->header.name))
-		{
-
-		  bitset_add (segs, iseg);	/* add the segment to the index segment set */
-		  bitset_remove (&working, iseg);	/* remove the segment from the working set */
-		  seg_idx[*nseg_idxp] = iseg;	/* remember the order of the index segments */
-		  (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
-		  /* If we're handling with a multi-column index, then only equality expressions are allowed except for the
-		   * last matching segment.
-		   */
-		  matched = true;
-		  count_matched_index_attributes++;
-		  break;
-		}		/* if (!intl_identifier_casecmp...) */
-	    }			/* for (iseg = bitset_iterate(&working, &iter); ...) */
-	}
+	}			/* for (iseg = bitset_iterate(&working, &iter); ...) */
 
       if (!matched)
 	{
