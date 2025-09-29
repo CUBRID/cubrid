@@ -1902,7 +1902,7 @@ css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid)
   if (css_return_queued_error (conn, CSS_RID_FROM_EID (eid), &error_buffer, &error_size, &rc))
     {
       errid = er_set_area_error (error_buffer);
-      free_and_init (error_buffer);
+      conn->release_packet (error_buffer);
     }
   return errid;
 }
