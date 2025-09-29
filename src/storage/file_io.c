@@ -12012,6 +12012,7 @@ fileio_lob_dir_remove (const char *path)
   return result;
 }
 
+#define	MAX_INTEGER_DISPLAY_LENGTH	  11
 /*
  * xmanage_lob_dir () - Create or remove a LOB directory.
  *
@@ -12032,48 +12033,60 @@ xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANA
   addr.offset = -1;
   addr.pgptr = NULL;
   addr.vfid = NULL;
-  int max_lob_path = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int) + 4; // volid+fileid+hpgid+/_..
-  char *dirbuf = NULL;
-  char rv_path[max_lob_path];
+  int max_lob_path_len = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int) + 4; // volid+fileid+hpgid+/_..
+  char dirbuf[PATH_MAX];
+  char rv_path[PATH_MAX];
 
   switch (mode)
   {
     case LOB_CREATE_TABLE:
-      snprintf (rv_path, max_lob_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      if (asprintf(&dirbuf, "%s/%s", es_base_dir, rv_path) == -1)
-        {
-          return;
-        }
-      else
-        {
-          mkdir (dirbuf, 0755);
-          log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
-          free (dirbuf);
-        }
-    /* fall through */
-    case LOB_CREATE_COLUMN:
+      snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      rv_path[strlen (rv_path)] = '\0';
+      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
+
+      snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
+      dirbuf[strlen (dirbuf)] = '\0';
+      mkdir (dirbuf, 0755);
+
       for (int i = 0; i < lob_arr_length; i++)
         {
-          snprintf (rv_path, max_lob_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
-          if (asprintf(&dirbuf, "%s/%s", es_base_dir, rv_path) == -1)
+          snprintf(dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1 + MAX_INTEGER_DISPLAY_LENGTH + 1), "%s/%s/%d",
+                   es_base_dir, rv_path, attrid_arr[i]);
+          dirbuf[strlen (dirbuf)] = '\0';
+          mkdir (dirbuf, 0755);
+        }
+
+      break;
+
+    case LOB_CREATE_COLUMN:
+      snprintf (rv_path, PATH_MAX, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
+      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+
+      snprintf (dirbuf, (strlen (es_base_dir) + strlen (rv_path) + 2), "%s/%s", es_base_dir, rv_path);
+      dirbuf[strlen (dirbuf)] = '\0';
+      mkdir (dirbuf, 0755);
+
+      if (lob_arr_length > 1)
+        {
+          for (int i = 1; i < lob_arr_length; i++)
             {
-              return;
-            }
-          else
-            {
-              mkdir (dirbuf, 0755);
+              snprintf (rv_path, max_lob_path_len, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
               log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
-              free (dirbuf); // to many alloc/dealloc
+
+              snprintf (dirbuf, (strlen (es_base_dir) + strlen (rv_path) + 2), "%s/%s", es_base_dir, rv_path);
+              mkdir (dirbuf, 0755);
             }
         }
+
       break;
 
     case LOB_DROP_TABLE:
-      snprintf (rv_path, max_lob_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;
+
     case LOB_DROP_COLUMN:
-      snprintf (rv_path, max_lob_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
+      snprintf (rv_path, PATH_MAX, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;
   }
@@ -12099,18 +12112,13 @@ fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   const char *path = rcv->data;
   int error_code = NO_ERROR;
 
-  char *lob_path = NULL;
+  char lob_path[PATH_MAX];
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-  if (asprintf(&lob_path, "%s/%s", es_base_dir, path) == -1)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      return error_code;
-    }
+  snprintf (lob_path, (strlen (es_base_dir) + 1 + strlen (path) + 1), "%s/%s", es_base_dir, path);
 #endif /* SERVER_MODE || SA_MODE */
 
   error_code = fileio_lob_dir_remove (lob_path);
-  free (lob_path);
 
   if (error_code != NO_ERROR)
     {
