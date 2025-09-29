@@ -1426,15 +1426,13 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   LC_LOCKSET *lockset;
   OR_ALIGNED_BUF (NET_SENDRECV_BUFFSIZE + NET_COPY_AREA_SENDRECV_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *desc_ptr;
-  int desc_size;
-  char *content_ptr;
-  int content_size;
+  char *desc_ptr, *content_ptr;
+  int desc_size, content_size;
+  char *packed = NULL;
+  int packed_size;
   char *ptr;
   bool first_call;
   int num_objs;
-  char *packed = NULL;
-  int packed_size;
   int send_size;
 
   ptr = or_unpack_int (request, &packed_size);
@@ -1515,7 +1513,7 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 	}
       else
 	{
-	  auto deleter = [copy_area, desc_ptr, lockset]() noexcept
+	  auto deleter = [copy_area, desc_ptr]() noexcept
 	  {
 	    if (copy_area)
 	      {
@@ -1524,10 +1522,6 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 	    if (desc_ptr)
 	      {
 		free (desc_ptr);
-	      }
-	    if (lockset)
-	      {
-		locator_free_lockset (lockset);
 	      }
 	  };
 	  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
@@ -1538,6 +1532,10 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   while (copy_area && lockset
 	 && ((lockset->num_classes_of_reqobjs > lockset->num_classes_of_reqobjs_processed)
 	     || (lockset->num_reqobjs > lockset->num_reqobjs_processed)));
+  if (lockset)
+    {
+      locator_free_lockset (lockset);
+    }
 }
 
 /*
@@ -7115,15 +7113,14 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY *thread_p, unsigned int rid, char 
   LC_LOCKHINT *lockhint;
   OR_ALIGNED_BUF (NET_SENDRECV_BUFFSIZE + NET_COPY_AREA_SENDRECV_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *desc_ptr;
-  int desc_size;
-  char *content_ptr;
-  int content_size;
+  char *desc_ptr, *content_ptr;
+  int desc_size, content_size;
+  char *packed = NULL;
+  int packed_size;
   char *ptr;
   bool first_call;
   int num_objs;
-  char *packed = NULL;
-  int packed_size;
+
   int send_size;
 
   ptr = or_unpack_int (request, &packed_size);
