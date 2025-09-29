@@ -11082,7 +11082,6 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
-  int error = NO_ERROR;
 
   assert (class_oid != NULL);
 
@@ -11091,12 +11090,7 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
       return false;
     }
 
-  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
-  if (error != NO_ERROR)
-    {
-      assert (false);
-      return false;
-    }
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {

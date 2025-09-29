@@ -785,7 +785,7 @@ or_class_is_replication_on (RECDES * record)
   int replication_off_flag = 32;	/* SM_CLASSFLAG_NO_REPLICATION = 32 */
 
   /* TODO:
-   * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation. */
+   * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation(EPIC CBRD-26096). */
   or_class_flags (record, &flags);
 
   return !(flags & replication_off_flag);
@@ -4713,4 +4713,40 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
+}
+
+/* 
+ * or_is_replication_key_candidate() -
+ *   return : true if the index is a replication-key candidate
+ *            (PRIMARY KEY, or UNIQUE with all key attributes NOT NULL)
+ *   index(in): OR_INDEX pointer (may be NULL)
+ */
+bool
+or_is_replication_key_candidate (const OR_INDEX * index)
+{
+  if (index == NULL)
+    {
+      return false;
+    }
+
+  if (index->type == BTREE_PRIMARY_KEY)
+    {
+      return true;
+    }
+
+  if (index->type != BTREE_UNIQUE || index->n_atts <= 0 || index->atts == NULL)
+    {
+      return false;
+    }
+
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      OR_ATTRIBUTE *attr = index->atts[i];
+      if (attr == NULL || !attr->is_notnull)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
