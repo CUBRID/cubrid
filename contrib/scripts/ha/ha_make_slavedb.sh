@@ -946,4 +946,4 @@ for ((n= 0, size = ${#step_func[@]}; n < size; n++)) do
 
 	echo -ne "\n\n"
 done
-echo -ne "###### END ######\n\n" >> time.outputfrom-replica-to-slave
+echo -ne "###### END ######\n\n" >> time.output
