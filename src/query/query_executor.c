@@ -664,7 +664,7 @@ static int qexec_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list
 				  int query_classes_count, UPDDEL_CLASS_INFO_INTERNAL * internal_classes);
 static int qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * scan_list);
 static int qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * classes_info, int count,
-					  UPDDEL_CLASS_INFO_INTERNAL ** classes);
+					  UPDDEL_CLASS_INFO_INTERNAL ** classes, VAL_DESCR * vd);
 static int qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p, XASL_NODE * aptr, bool should_delete,
 					       UPDDEL_CLASS_INFO_INTERNAL * classes, int num_classes,
 					       int num_assignments, UPDATE_ASSIGNMENT * assignments,
@@ -9649,7 +9649,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   mvcc_reev_class_cnt = update->num_reev_classes;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes used in update */
-  error = qexec_create_internal_classes (thread_p, update->classes, class_oid_cnt, &internal_classes);
+  error = qexec_create_internal_classes (thread_p, update->classes, class_oid_cnt, &internal_classes, &xasl_state->vd);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -10513,7 +10513,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   mvcc_upddel_reev_data.copyarea = NULL;
 
   /* Allocate memory for oids, hfids and attributes cache info of all classes used in update */
-  error = qexec_create_internal_classes (thread_p, delete_->classes, class_oid_cnt, &internal_classes);
+  error = qexec_create_internal_classes (thread_p, delete_->classes, class_oid_cnt, &internal_classes, &xasl_state->vd);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -24224,7 +24224,7 @@ exit_on_error:
  */
 static int
 qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * query_classes, int count,
-			       UPDDEL_CLASS_INFO_INTERNAL ** internal_classes)
+			       UPDDEL_CLASS_INFO_INTERNAL ** internal_classes, val_descr * vd)
 {
   UPDDEL_CLASS_INFO_INTERNAL *class_ = NULL, *classes = NULL;
   UPDDEL_CLASS_INFO *query_class = NULL;
@@ -24282,6 +24282,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
 	    {
 	      goto exit_on_error;
 	    }
+	  class_->context.vd = vd;
 	}
     }
 
