@@ -83,22 +83,6 @@ namespace parallel_query
   }
 
   template<typename T>
-  bool thread_safe_queue<T>::pop_back (T &value, const interrupt &interrupt_check)
-  {
-    if (try_pop_back_fast (value))
-      {
-	return true;
-      }
-    return pop_back_slow (value, interrupt_check);
-  }
-
-  template<typename T>
-  bool thread_safe_queue<T>::try_pop_back (T &value)
-  {
-    return try_pop_back_fast (value);
-  }
-
-  template<typename T>
   bool thread_safe_queue<T>::is_empty() const
   {
     std::uint64_t dequeue_pos = m_dequeue_pos.load (std::memory_order_acquire);
@@ -196,6 +180,10 @@ namespace parallel_query
       {
 	return false;
       }
+    if (is_full())
+      {
+	return false;
+      }
 
     std::uint64_t pos = m_enqueue_pos.load (std::memory_order_acquire);
 
@@ -217,7 +205,11 @@ namespace parallel_query
     current_slot.data = value;
     std::atomic_thread_fence (std::memory_order_release);
     current_slot.ready.store (true, std::memory_order_release);
-    m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
+      {
+	m_enqueue_pos.fetch_add (m_capacity, std::memory_order_release);
+      }
 
     m_not_empty.notify_one();
 
@@ -228,6 +220,11 @@ namespace parallel_query
   bool thread_safe_queue<T>::try_pop_fast (T &value)
   {
     if (m_resetting.load (std::memory_order_acquire))
+      {
+	return false;
+      }
+
+    if (is_empty())
       {
 	return false;
       }
@@ -260,57 +257,11 @@ namespace parallel_query
 
     current_slot.ready.store (false, std::memory_order_release);
 
-    m_dequeue_pos.fetch_add (1, std::memory_order_release);
-
-    m_not_full.notify_one();
-
-    return true;
-  }
-
-
-  template<typename T>
-  bool thread_safe_queue<T>::try_pop_back_fast (T &value)
-  {
-    if (m_resetting.load (std::memory_order_acquire))
+    pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
       {
-	return false;
+	m_dequeue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
-
-    std::uint64_t enqueue_pos = m_enqueue_pos.load (std::memory_order_acquire);
-    if (enqueue_pos == 0)
-      {
-	return false;
-      }
-
-    std::uint64_t pos = enqueue_pos - 1;
-
-    if (pos > UINT64_MAX - 2 * m_capacity)
-      {
-	reset_queue();
-	return false;
-      }
-
-    std::size_t slot_index = pos % m_capacity;
-    slot<T> &current_slot = m_slots[slot_index];
-
-    if (!current_slot.ready.load (std::memory_order_acquire))
-      {
-	return false;
-      }
-
-    std::uint64_t expected_sequence = pos + m_capacity;
-    if (!current_slot.sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
-	std::memory_order_acq_rel, std::memory_order_acquire))
-      {
-	return false;
-      }
-
-    std::atomic_thread_fence (std::memory_order_acquire);
-    value = current_slot.data;
-
-    current_slot.ready.store (false, std::memory_order_release);
-
-    m_enqueue_pos.fetch_sub (1, std::memory_order_release);
 
     m_not_full.notify_one();
 
@@ -367,7 +318,11 @@ namespace parallel_query
     current_slot->data = value;
     std::atomic_thread_fence (std::memory_order_release);
     current_slot->ready.store (true, std::memory_order_release);
-    m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
+      {
+	m_enqueue_pos.fetch_add (m_capacity, std::memory_order_release);
+      }
 
     m_not_empty.notify_one();
   }
@@ -429,77 +384,11 @@ namespace parallel_query
 
     current_slot->ready.store (false, std::memory_order_release);
 
-    m_dequeue_pos.fetch_add (1, std::memory_order_release);
-
-    m_not_full.notify_one();
-
-    return true;
-  }
-
-  template<typename T>
-  bool thread_safe_queue<T>::pop_back_slow (T &value, const interrupt &interrupt_check)
-  {
-    std::unique_lock<std::mutex> lock (m_mutex);
-
-    while (is_empty())
+    pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
+    if (pos % m_capacity == 0)
       {
-	if (m_push_completed.load (std::memory_order_acquire))
-	  {
-	    return false;
-	  }
-
-	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    return false;
-	  }
-
-	m_not_empty.wait (lock);
+	m_dequeue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
-
-    if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
-      {
-	return false;
-      }
-
-    std::uint64_t enqueue_pos = m_enqueue_pos.load (std::memory_order_acquire);
-    if (enqueue_pos == 0)
-      {
-	return false;
-      }
-
-    std::uint64_t pos = enqueue_pos - 1;
-    std::size_t slot_index = pos % m_capacity;
-    slot<T> *current_slot = &m_slots[slot_index];
-
-    std::uint64_t expected_sequence = pos + m_capacity;
-    while (!current_slot->sequence.compare_exchange_weak (expected_sequence, pos + 2 * m_capacity,
-	   std::memory_order_acq_rel, std::memory_order_acquire))
-      {
-	if (interrupt_check.get_code() != interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    return false;
-	  }
-	if (m_push_completed.load (std::memory_order_acquire))
-	  {
-	    return false;
-	  }
-	pos = m_enqueue_pos.load (std::memory_order_acquire);
-	slot_index = pos % m_capacity;
-	current_slot = &m_slots[slot_index];
-	expected_sequence = pos + m_capacity;
-      }
-
-    while (!current_slot->ready.load (std::memory_order_acquire))
-      {
-	std::this_thread::sleep_for (std::chrono::milliseconds (1));
-      }
-
-    std::atomic_thread_fence (std::memory_order_acquire);
-    value = current_slot->data;
-
-    current_slot->ready.store (false, std::memory_order_release);
-
-    m_enqueue_pos.fetch_sub (1, std::memory_order_release);
 
     m_not_full.notify_one();
 

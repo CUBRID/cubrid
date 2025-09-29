@@ -137,7 +137,7 @@ namespace parallel_query_execute
 	      {
 		break;
 	      }
-	    is_pop_success = m_job_execution_queue->try_pop_back (j);
+	    is_pop_success = m_job_execution_queue->try_pop (j);
 	    if (is_pop_success)
 	      {
 		err_code = execute_job_internal (thread_p, m_root_thread_p, j.m_xasl, j.m_xasl_state, &m_error_messages, &m_interrupt,
