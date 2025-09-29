@@ -186,6 +186,7 @@ static void get_term_rank (QO_ENV * env, QO_TERM * term);
 static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 static void get_local_subqueries (QO_ENV * env, PT_NODE * tree);
+static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void get_rank (QO_ENV * env);
 static PT_NODE *get_referenced_attrs (PT_NODE * entity);
 static bool expr_is_mergable (PT_NODE * pt_expr);
@@ -447,6 +448,9 @@ qo_optimize_helper (QO_ENV * env)
   (void) parser_walk_tree (parser, tree, build_query_graph_function_index, &local_env, NULL, NULL);
   (void) add_hint (env, tree);
   add_using_index (env, tree->info.query.q.select.using_index);
+
+  /* adjust correlation level before analyzing term. TO_DO: add routines to adjust in mq_translate() */
+  parser_walk_leaves (parser, tree, get_local_subqueries_pre, env, NULL, NULL);
 
   /* add dep term */
   {
