@@ -1259,10 +1259,10 @@ extern "C"
 
   typedef enum
   {
-    LOB_TABLE_CREATE = 0,
-    LOB_COLUMN_ADD = 1,
-    LOB_TABLE_DROP = 2,
-    LOB_COLUMN_DROP = 3
+    LOB_CREATE_TABLE = 0,
+    LOB_CREATE_COLUMN = 1,
+    LOB_DROP_TABLE = 2,
+    LOB_DROP_COLUMN = 3
   } LOB_DIR_MANAGE_MODE;
 /********************************************************/
 

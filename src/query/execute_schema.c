@@ -650,7 +650,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
             if (arr_length)
               {
                 HFID lob_hfid = class_->header.ch_heap;
-                manage_lob_dir (&lob_hfid, lob_attrid_arr, arr_length, LOB_COLUMN_ADD);
+                manage_lob_dir (&lob_hfid, lob_attrid_arr, arr_length, LOB_CREATE_COLUMN);
               }
             free (lob_attrid_arr);
           }
