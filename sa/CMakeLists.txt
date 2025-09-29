@@ -40,7 +40,6 @@ set(EXECUTABLE_HEADERS
 
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
@@ -108,9 +107,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/object_representation_sr.c
   ${BASE_DIR}/mprec.c
   ${BASE_DIR}/dtoa.c
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/util_func.c
   ${BASE_DIR}/intl_support.c
   ${BASE_DIR}/environment_variable.c
@@ -179,8 +176,12 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/connection_globals.c
   ${CONNECTION_DIR}/connection_list_cl.c
   ${CONNECTION_DIR}/client_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   )
 
 set(COMMUNICATION_SOURCES
@@ -379,51 +380,19 @@ set(SP_HEADERS
 )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
-  )
-
-set(PARALLEL_QUERY_SOURCES
-  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
-  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
-  )
-
-set(PARALLEL_QUERY_HEADERS
-  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
-  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.cpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_HEADERS
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.hpp
   )
 
 set(METHOD_SOURCES
@@ -523,7 +492,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/catalog_class.c
   ${STORAGE_DIR}/compactdb_sr.c
   ${STORAGE_DIR}/disk_manager.c
-  ${STORAGE_DIR}/double_write_buffer.c
+  ${STORAGE_DIR}/double_write_buffer.cpp
   ${STORAGE_DIR}/es.c
   ${STORAGE_DIR}/es_common.c
   ${STORAGE_DIR}/es_owfs.c
@@ -664,7 +633,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
   ${PARALLEL_HEAP_SCAN_SOURCES}
-  ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
@@ -695,6 +663,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
@@ -704,8 +673,6 @@ add_library(cubridsa SHARED
   ${SP_HEADERS}
   ${PARALLEL_HEAP_SCAN_SOURCES}
   ${PARALLEL_HEAP_SCAN_HEADERS}
-  ${PARALLEL_QUERY_SOURCES}
-  ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   ${METHOD_SOURCES}

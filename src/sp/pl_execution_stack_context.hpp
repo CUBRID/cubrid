@@ -79,7 +79,7 @@ namespace cubpl
 
     public:
       execution_stack () = delete; // Not DefaultConstructible
-      execution_stack (cubthread::entry *thread_p);
+      execution_stack (cubthread::entry *thread_p, session *sess);
 
       execution_stack (execution_stack &&other) = delete; // Not MoveConstructible
       execution_stack (const execution_stack &copy) = delete; // Not CopyConstructible
@@ -137,7 +137,6 @@ namespace cubpl
       template <typename ... Args>
       int send_data_to_java (Args &&... args)
       {
-	m_java_header.req_id = get_and_increment_request_id ();
 	connection_view &conn = get_connection();
 	if (!conn)
 	  {
@@ -176,12 +175,6 @@ namespace cubpl
       set_java_command (int command)
       {
 	m_java_header.command = command;
-      }
-
-      int m_req_id;
-      inline int get_and_increment_request_id ()
-      {
-	return m_req_id++;
       }
 
       std::string m_error_msg;

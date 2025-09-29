@@ -16,36 +16,27 @@
  *
  */
 
-
 /*
- * condition_handler_code.h : condition code definitions
- *
+ * nonblocking.hpp
  */
 
-#ifndef _CONDITION_HANDLER_CODE_H_
-#define _CONDITION_HANDLER_CODE_H_
+#ifndef _CONNECTION_NONBLOCKING_HPP_
+#define _CONNECTION_NONBLOCKING_HPP_
 
-#ident "$Id$"
-
-#if defined(ENABLE_USE_CNVLEX)
-
-/* Constants for encoding and decoding CO_CODE values. */
-#define CO_MAX_CODE         1024	/* Max codes per module */
-#define CO_MAX_MODULE       INT_MAX/CO_MAX_CODE	/* Max module identifier */
-
-#define CO_CODE(MODULE, CODE)           \
-  -((int)MODULE * (int)CO_MAX_CODE + (int)CODE - (int)1)
-
-/* co module names */
-typedef enum
+namespace cubsocket
 {
-  CO_MODULE_CO = 1,
-  CO_MODULE_MTS = 2,
-  CO_MODULE_SYS = 13,
-  CO_MODULE_CNV = 27,
-  CO_MODULE_ARGS = 1000
-} CO_MODULE;
+  class nonblocking
+  {
+    public:
+      nonblocking ();
+      ~nonblocking ();
+
+      virtual int wait (void *events, int maxevents, int timeout) = 0;
+
+      bool is_nonblocking (int fd) noexcept;
+      int get_flags (int fd) noexcept;
+      int set_flags (int fd, int flags) noexcept;
+  };
+}
 
 #endif
-
-#endif /* _CONDITION_HANDLER_CODE_H_ */

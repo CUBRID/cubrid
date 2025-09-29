@@ -64,7 +64,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "connection_defs.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -282,7 +282,7 @@ hb_thread_master_reader (void *arg)
 *
 *   type(in):
 */
-static HBP_PROC_REGISTER *
+HBP_PROC_REGISTER *
 hb_make_set_hbp_register (int type)
 {
   HBP_PROC_REGISTER *hbp_register;

@@ -92,4 +92,6 @@
 #define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
 
+#define SP_ATTR_TARGET_METHOD_LEN       (4096)
+
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */

@@ -104,7 +104,7 @@
 #endif /* SERVER_MODE */
 
 #if !defined (CS_MODE)
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "page_buffer.h"
 #include "xserver_interface.h"
 #endif /* !defined (CS_MODE) */
@@ -9049,7 +9049,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			  /* Probably a tape device, let user mount new one */
 			  if (next_vol_p != NULL)
 			    {
-			      strncpy (session_p->bkup.name, next_vol_p, PATH_MAX - 1);
+			      if (snprintf (session_p->bkup.name, PATH_MAX, "%s", next_vol_p) >= PATH_MAX)
+				{
+				  return ER_FAILED;
+				}
 			    }
 			  if (fileio_find_restore_volume (thread_p, session_p->bkup.bkuphdr->db_fullname,
 							  session_p->bkup.name, session_p->bkup.bkuphdr->unit_num + 1,
@@ -9061,7 +9064,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			}
 		      else
 			{
-			  strncpy (session_p->bkup.name, next_vol_p, PATH_MAX - 1);
+			  if (snprintf (session_p->bkup.name, PATH_MAX, "%s", next_vol_p) >= PATH_MAX)
+			    {
+			      return ER_FAILED;
+			    }
 			}
 
 		      /* Reset session count, etc */
@@ -10969,7 +10975,10 @@ fileio_add_volume_to_backup_info (const char *name_p, FILEIO_BACKUP_LEVEL level,
 	}
     }
 
-  strncpy (node_p->bkvol_name, name_p, PATH_MAX - 1);
+  if (snprintf (node_p->bkvol_name, PATH_MAX, "%s", name_p) >= PATH_MAX)
+    {
+      return ER_FAILED;
+    }
   node_p->unit_num = unit_num;
 
   /* Put it on the queue for that level */
@@ -11310,7 +11319,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
     {
       if (remote_data_p)
 	{
-	  free_and_init (remote_data_p);
+	  thread_p->release_packet (remote_data_p);
 	}
 
       return ER_FAILED;
@@ -11319,7 +11328,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   ptr = or_unpack_int (remote_data_p, &remote_status);
   if (remote_status != NO_ERROR)
     {
-      free_and_init (remote_data_p);
+      thread_p->release_packet (remote_data_p);
       return ER_FAILED;
     }
   data_size -= OR_INT_SIZE;
@@ -11333,7 +11342,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
 	}
     }
 
-  free_and_init (remote_data_p);
+  thread_p->release_packet (remote_data_p);
   return NO_ERROR;
 #else /* SERVER_MODE */
   extern unsigned int db_on_server;

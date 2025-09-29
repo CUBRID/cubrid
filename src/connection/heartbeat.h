@@ -150,6 +150,7 @@ struct hbp_proc_register
 extern const char *hb_process_type_string (int ptype);
 extern void hb_set_exec_path (char *exec_path);
 extern void hb_set_argv (char **argv);
+extern HBP_PROC_REGISTER *hb_make_set_hbp_register (int type);
 extern int css_send_heartbeat_request (CSS_CONN_ENTRY * conn, int command);
 extern int css_send_heartbeat_data (CSS_CONN_ENTRY * conn, const char *data, int size);
 extern int css_receive_heartbeat_request (CSS_CONN_ENTRY * conn, int *command);

@@ -22,7 +22,6 @@
 
 #include "thread_entry.hpp"
 
-#include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
 #include "error_manager.h"
@@ -90,9 +89,6 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
-#if defined(ENABLE_USE_CNVLEX)
-    , cnv_adj_buffer ()
-#endif
     , conn_entry (NULL)
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
@@ -138,7 +134,11 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
-    , m_parallel_stats (NULL)
+    , m_px_lock_mutex ()
+    , m_px_stats_mutex ()
+    , m_px_stats (NULL)
+    , m_px_orig_thread_entry (NULL)
+    , m_skip_end_resource_tracks_in_recycle (false)
       // private:
     , m_id ()
     , m_error ()
@@ -166,14 +166,18 @@ namespace cubthread
 	// cannot recover from this
 	assert (false);
       }
+    if (pthread_mutex_init (&m_px_lock_mutex, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_init (&m_px_stats_mutex, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
 
     private_heap_id = db_create_private_heap ();
-
-#if defined(ENABLE_USE_CNVLEX)
-    cnv_adj_buffer[0] = NULL;
-    cnv_adj_buffer[1] = NULL;
-    cnv_adj_buffer[2] = NULL;
-#endif
 
     struct timeval t;
     gettimeofday (&t, NULL);
@@ -235,15 +239,7 @@ namespace cubthread
       {
 	return;
       }
-#if defined(ENABLE_USE_CNVLEX)
-    for (int i = 0; i < 3; i++)
-      {
-	if (cnv_adj_buffer[i] != NULL)
-	  {
-	    adj_ar_free (cnv_adj_buffer[i]);
-	  }
-      }
-#endif
+
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
 	assert (false);
@@ -254,6 +250,16 @@ namespace cubthread
       }
     if (pthread_cond_destroy (&wakeup_cond) != 0)
       {
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_lock_mutex) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_stats_mutex) != 0)
+      {
+	// cannot recover from this
 	assert (false);
       }
 
@@ -356,6 +362,12 @@ namespace cubthread
   }
 
   void
+  entry::release_packet (void *buffer)
+  {
+    conn_entry->release_packet (buffer);
+  }
+
+  void
   entry::lock (void)
   {
     pthread_mutex_lock (&th_entry_lock);
@@ -379,7 +391,6 @@ namespace cubthread
     m_pgbuf_tracker.clear_all ();
     m_csect_tracker.clear_all ();
     m_qlist_count = 0;
-    emulate_tid = thread_id_t ();
   }
 
   void

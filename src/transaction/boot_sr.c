@@ -76,7 +76,7 @@
 #include "scan_manager.h"
 #include "slotted_page.h"
 #include "thread_manager.hpp"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "xasl_cache.h"
 #include "log_volids.hpp"
 #include "vacuum.h"
@@ -3418,6 +3418,10 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
       if (conn->status == CONN_OPEN)
 	{
 	  conn->status = CONN_CLOSING;
+
+	  /* request to connection thread */
+	  css_request_shutdown_conn (conn);
+	  css_wakeup_handler (conn);
 	}
     }
 }

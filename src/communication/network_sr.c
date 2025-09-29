@@ -820,7 +820,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   /* check the defined action attribute */
   if (net_Requests[request].action_attribute & CHECK_DB_MODIFICATION)
     {
-      int client_type;
       bool check = true;
 
       if (request == NET_SERVER_TM_SERVER_COMMIT)
@@ -831,7 +830,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	    }
 	}
       /* check if DB modification is allowed */
-      client_type = logtb_find_client_type (thread_p->tran_index);
       if (check)
 	{
 	  CHECK_MODIFICATION_NO_RETURN (thread_p, error_code);
@@ -899,8 +897,9 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 end:
   if (buffer != NULL && size > 0)
     {
-      free_and_init (buffer);
+      thread_p->release_packet (buffer);
     }
+  css_wakeup_handler (thread_p->conn_entry);
 
   /* clear memory to be used at request handling */
   db_clear_private_heap (thread_p, 0);
@@ -951,7 +950,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
   if (conn_p->session_p != NULL)
     {
-      ssession_stop_attached_threads (thread_p, conn_p->session_p, false);
+      ssession_stop_attached_threads (thread_p, conn_p->session_p);
     }
 
 loop:

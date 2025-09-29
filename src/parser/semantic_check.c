@@ -877,6 +877,49 @@ end:
 }
 
 /*
+ * pt_check_compatible_node_for min(), max()
+ */
+bool
+pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column)
+{
+  PT_NODE *arg1;
+  PT_TYPE_ENUM type1;
+
+  /* only min(), max() is allowed */
+  if (order == NULL || column == NULL || order->node_type != PT_FUNCTION)
+    {
+      return false;
+    }
+
+  if (order->info.function.function_type != PT_MIN && order->info.function.function_type != PT_MAX)
+    {
+      return false;
+    }
+
+  arg1 = order->info.function.arg_list;
+  if (arg1->node_type != column->node_type || arg1->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  if (pt_check_path_eq (parser, arg1, column) != 0)
+    {
+      return false;
+    }
+
+  /* only numeric, string, date-time type is allowed
+   * Only string type : Do not consider 'CAST (enum_col as VARCHAR)' equal to 'enum_col' */
+  type1 = arg1->type_enum;
+
+  if (PT_IS_NUMERIC_TYPE (type1) || PT_IS_STRING_TYPE (type1) || PT_IS_DATE_TIME_TYPE (type1))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * pt_check_compatible_node_for_orderby ()
  */
 bool
@@ -11160,6 +11203,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
 	  (void) parser_append_node (hidden_list, select_list);
 	  node->info.query.q.select.with_increment = NULL;
+
+	  /* Click count functions (e.g., INCR, DECR) can be used only in a top-level SELECT statement.
+	   * Setting the is_click_counter flag on both top_node and node may seem redundant,
+	   * but it is necessary in UPDATE statements where top_node and node are not the same. */
+	  top_node->flag.is_click_counter = 1;
+	  node->flag.is_click_counter = 1;
 	}
 
       /* check the group by */
@@ -14439,7 +14488,7 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  /* check for after group by position */
-	  pt_to_pos_descr (parser, &pos, r, node, &referred_node);
+	  pt_to_pos_descr (parser, &pos, r, node, &referred_node, false);
 	  if (pos.pos_no > 0)
 	    {
 	      /* set after group by position num, domain info */

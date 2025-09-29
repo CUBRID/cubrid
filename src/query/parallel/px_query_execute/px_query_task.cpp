@@ -19,7 +19,6 @@
 /*
  * px_query_task.cpp
  */
-#if SERVER_MODE
 #include "px_query_task.hpp"
 #include "query_executor.h"
 #include "query_list.h"
@@ -77,11 +76,12 @@ namespace parallel_query_execute
     bool is_list_id_kept = false;
     bool orig_on_trace = thread_ref.on_trace;
     bool is_on_parallel_worker = (thread_ref.get_id() != m_orig_thread_p->get_id());
+
+    thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
     if (is_on_parallel_worker)
       {
 	thread_ref.tran_index = m_orig_thread_p->tran_index;
 	thread_ref.conn_entry = m_orig_thread_p->conn_entry;
-	thread_ref.emulate_tid = m_orig_thread_p->get_id();
 	if (m_orig_thread_p->on_trace)
 	  {
 	    thread_ref.on_trace = true;
@@ -99,7 +99,7 @@ namespace parallel_query_execute
     /* clear XASL tree */
     if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
       {
-	qfile_copy_list_id (&list_id, m_xasl->list_id, true); //+1
+	qfile_copy_list_id (&list_id, m_xasl->list_id, true, QFILE_MOVE_DEPENDENT); //+1
 	qfile_clear_list_id (m_xasl->list_id); //-1
 	is_list_id_kept = true;
       }
@@ -108,7 +108,7 @@ namespace parallel_query_execute
 
     if (is_list_id_kept)
       {
-	qfile_copy_list_id (m_xasl->list_id, &list_id, true);
+	qfile_copy_list_id (m_xasl->list_id, &list_id, true, QFILE_MOVE_DEPENDENT);
 	qfile_clear_list_id (&list_id);
       }
 
@@ -158,11 +158,11 @@ namespace parallel_query_execute
     thread_ref.tran_index = m_orig_thread_p->tran_index;
     thread_ref.conn_entry = m_orig_thread_p->conn_entry;
     thread_ref.on_trace = m_orig_thread_p->on_trace;
-    thread_ref.emulate_tid = m_orig_thread_p->get_id();
+    thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
 
     if (m_orig_thread_p->on_trace)
       {
-	perfmon_initialize_parallel_stats (&thread_ref, m_orig_thread_p);
+	perfmon_initialize_parallel_stats (&thread_ref);
       }
 
     err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
@@ -177,7 +177,7 @@ namespace parallel_query_execute
     /* clear XASL tree */
     if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
       {
-	qfile_copy_list_id (&list_id, m_xasl->list_id, true);
+	qfile_copy_list_id (&list_id, m_xasl->list_id, true, QFILE_MOVE_DEPENDENT);
 	qfile_clear_list_id (m_xasl->list_id);
 	is_list_id_kept = true;
       }
@@ -185,7 +185,7 @@ namespace parallel_query_execute
 
     if (is_list_id_kept)
       {
-	qfile_copy_list_id (m_xasl->list_id, &list_id, true);
+	qfile_copy_list_id (m_xasl->list_id, &list_id, true, QFILE_MOVE_DEPENDENT);
 	qfile_clear_list_id (&list_id);
       }
 
@@ -206,15 +206,6 @@ namespace parallel_query_execute
 
     thread_ref.conn_entry = temp_conn_entry;
     thread_ref.on_trace = temp_on_trace;
-
-    if (m_orig_thread_p->on_trace)
-      {
-	m_worker_stats_p->m_fetches.fetch_add (m_xasl->xasl_stats.fetches);
-	m_worker_stats_p->m_ioreads.fetch_add (m_xasl->xasl_stats.ioreads);
-	m_worker_stats_p->m_fetch_time.fetch_add (m_xasl->xasl_stats.fetch_time);
-	perfmon_destroy_parallel_stats (&thread_ref);
-      }
-
   }
 
 
@@ -249,6 +240,7 @@ namespace parallel_query_execute
 	m_worker_stats.m_ioreads = 0;
 	m_worker_stats.m_fetch_time = 0;
       }
+    m_tasks.reserve (TASK_QUEUE_RESERVE_SIZE);
   }
   task_queue::~task_queue()
   {
@@ -413,10 +405,6 @@ namespace parallel_query_execute
 
     if (thread_p->on_trace)
       {
-	perfmon_add_stat (thread_p, PSTAT_PB_NUM_FETCHES, m_worker_stats.m_fetches.load());
-	perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOREADS, m_worker_stats.m_ioreads.load());
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					m_worker_stats.m_fetch_time.load()*1000);
 	m_worker_stats.m_fetches.store (0);
 	m_worker_stats.m_ioreads.store (0);
 	m_worker_stats.m_fetch_time.store (0);
@@ -430,7 +418,7 @@ namespace parallel_query_execute
 
   task_queue_global::task_queue_global()
   {
-
+    m_tasks.reserve (TASK_QUEUE_RESERVE_SIZE);
   }
 
   task_queue_global::~task_queue_global()
@@ -495,5 +483,3 @@ namespace parallel_query_execute
   }
 
 }
-
-#endif

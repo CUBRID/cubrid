@@ -26,8 +26,9 @@
 
 #ident "$Id$"
 
+#include "connection_support.hpp"
+#include "connection_list_sr.h"
 #include "connection_defs.h"
-#include "connection_support.h"
 #include "critical_section.h"
 #include "error_manager.h"
 #include "porting.h"
@@ -179,6 +180,8 @@ extern int css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short rid, ch
 extern int css_return_queued_error (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size,
 				    int *rc);
 extern int css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
+
+extern void css_remove_unexpected_packets (CSS_CONN_ENTRY * conn, unsigned short request_id);
 extern void css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn);
 extern int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer);
 extern unsigned short css_get_request_id (CSS_CONN_ENTRY * conn);
@@ -194,5 +197,20 @@ extern void css_free_user_access_status (void);
 
 extern void css_set_exec_path (char *exec_path);
 extern void css_set_argv (char **argv);
+
+extern void css_process_abort_packet (CSS_CONN_ENTRY * conn, unsigned short request_id);
+extern bool css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id);
+
+extern css_error_code css_add_queue_entry (CSS_CONN_ENTRY * conn, CSS_LIST * list, unsigned short request_id,
+					   char *buffer, int buffer_size, int rc, int transid, int invalidate_snapshot,
+					   int db_error);
+extern CSS_WAIT_QUEUE_ENTRY *css_find_and_remove_wait_queue_entry (CSS_LIST * list, unsigned int key);
+extern void css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENTRY * entry);
+
+extern char *css_get_exec_path (void);
+extern char **css_get_argv (void);
+extern void css_request_shutdown_conn (css_conn_entry * conn);
+extern void css_request_release_packet (css_conn_entry * conn, void *buffer);
+extern void css_wakeup_handler (css_conn_entry * conn);
 
 #endif /* _CONNECTION_SR_H_ */

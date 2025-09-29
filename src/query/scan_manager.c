@@ -659,32 +659,6 @@ scan_init_scan_attrs (SCAN_ATTRS * scan_attrs_p, int num_attrs, ATTR_ID * attr_i
 }
 
 /*
- * scan_init_filter_info () - initialize FILTER_INFO structure as a data/key filter
- *   return: none
- */
-void
-scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
-		       val_list_node * val_list, VAL_DESCR * val_descr, OID * class_oid, int btree_num_attrs,
-		       ATTR_ID * btree_attr_ids, int *num_vstr_ptr, ATTR_ID * vstr_ids)
-{
-  assert (filter_info_p != NULL);
-
-  filter_info_p->scan_pred = scan_pred;
-  filter_info_p->scan_attrs = scan_attrs;
-  filter_info_p->val_list = val_list;
-  filter_info_p->val_descr = val_descr;
-  filter_info_p->class_oid = class_oid;
-  filter_info_p->btree_num_attrs = btree_num_attrs;
-  filter_info_p->btree_attr_ids = btree_attr_ids;
-  filter_info_p->num_vstr_ptr = num_vstr_ptr;
-  filter_info_p->vstr_ids = vstr_ids;
-  filter_info_p->func_idx_col_id = -1;
-
-  filter_info_p->matched_attid_idx_4_keyflt = NULL;
-  filter_info_p->matched_attid_idx_4_readval = NULL;
-}
-
-/*
  * scan_init_indx_coverage () - initialize INDX_COV structure
  *   return: error code
  *
@@ -2315,11 +2289,16 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
    */
 
   ret = NO_ERROR;
+  key_filter =
+  {
+  &iscan_id->key_pred,
+      &iscan_id->key_attrs,
+      NULL,
+      NULL,
+      s_id->val_list,
+      s_id->vd,
+      &iscan_id->cls_oid, iscan_id->bt_attr_ids, &iscan_id->num_vstr, iscan_id->vstr_ids, iscan_id->bt_num_attrs, -1};
 
-  /* set key filter information */
-  scan_init_filter_info (&key_filter, &iscan_id->key_pred, &iscan_id->key_attrs, s_id->val_list, s_id->vd,
-			 &iscan_id->cls_oid, iscan_id->bt_num_attrs, iscan_id->bt_attr_ids, &iscan_id->num_vstr,
-			 iscan_id->vstr_ids);
   iscan_id->oids_count = 0;
   key_filter.func_idx_col_id = iscan_id->indx_info->func_idx_col_id;
 
@@ -3049,7 +3028,8 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      HEAP_CACHE_ATTRINFO * cache_key, int num_attrs_pred, ATTR_ID * attrids_pred,
 		      HEAP_CACHE_ATTRINFO * cache_pred, int num_attrs_rest, ATTR_ID * attrids_rest,
 		      HEAP_CACHE_ATTRINFO * cache_rest, int num_attrs_range, ATTR_ID * attrids_range,
-		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id)
+		      HEAP_CACHE_ATTRINFO * cache_range, bool iscan_oid_order, QUERY_ID query_id,
+		      bool min_max_optimzied_scan)
 {
   int ret = NO_ERROR;
   INDX_SCAN_ID *isidp;
@@ -3134,6 +3114,11 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   if (scan_init_index_key_limit (thread_p, isidp, &indx_info->key_info, vd) != NO_ERROR)
     {
       goto exit_on_error;
+    }
+
+  if (min_max_optimzied_scan && SCAN_IS_INDEX_COVERED (isidp))
+    {
+      isidp->key_limit_upper = 1;
     }
 
   /* attribute information of the index key */
@@ -5316,24 +5301,15 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     }
 
   /* set data filter information */
-  scan_init_filter_info (&data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
-			 &hsidp->cls_oid, 0, NULL, NULL, NULL);
+  data_filter =
+  {
+  &hsidp->scan_pred,
+      &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL, NULL, 0, -1};
 
   is_peeking = scan_id->fixed;
   if (scan_id->grouped)
     {
       is_peeking = PEEK;
-    }
-
-  if (data_filter.val_list)
-    {
-      for (p = data_filter.scan_pred->regu_list; p; p = p->next)
-	{
-	  if (DB_NEED_CLEAR (p->value.vfetch_to))
-	    {
-	      pr_clear_value (p->value.vfetch_to);
-	    }
-	}
     }
 
   while (1)
@@ -5681,8 +5657,9 @@ scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   hpsidp = &scan_id->s.hpsid;
 
-  scan_init_filter_info (&data_filter, &hpsidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, &hpsidp->cls_oid, 0,
-			 NULL, NULL, NULL);
+  data_filter =
+  {
+  &hpsidp->scan_pred, NULL, NULL, NULL, scan_id->val_list, scan_id->vd, &hpsidp->cls_oid, NULL, NULL, NULL, 0, -1};
 
   while (true)
     {
@@ -5750,9 +5727,10 @@ scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   hsidp = &scan_id->s.hsid;
 
-  /* set data filter information */
-  scan_init_filter_info (&data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
-			 &hsidp->cls_oid, 0, NULL, NULL, NULL);
+  data_filter =
+  {
+  &hsidp->scan_pred,
+      &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL, NULL, 0, -1};
 
   if (scan_id->position == S_BEFORE)
     {
@@ -5864,8 +5842,10 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     }
 
   /* set data filter information */
-  scan_init_filter_info (&data_filter, &isidp->scan_pred, &isidp->pred_attrs, scan_id->val_list, scan_id->vd,
-			 &isidp->cls_oid, 0, NULL, NULL, NULL);
+  data_filter =
+  {
+  &isidp->scan_pred,
+      &isidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &isidp->cls_oid, NULL, NULL, NULL, 0, -1};
 
   /* Due to the length of time that we hold onto the oid list, it is possible at lower isolation levels (UNCOMMITTED
    * INSTANCES) that the index/heap may have changed since the oid list was read from the btree.  In particular, some
@@ -5925,11 +5905,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (scan_id->position == S_BEFORE)
 	    {
 	      SCAN_CODE ret;
-
 	      /* Either we are not using ISS, or we are using it, and in this case, we are supposed to be here for the
 	       * first time */
 	      assert_release (!isidp->iss.use || isidp->iss.current_op == ISS_OP_NONE);
-
 	      ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
 	      if (ret != S_SUCCESS)
 		{
@@ -5958,7 +5936,6 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    {
 		      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
 		      assert (isidp->multi_range_opt.top_n_items[isidp->curr_oidno] != NULL);
-
 		      isidp->curr_oidp = &(isidp->multi_range_opt.top_n_items[isidp->curr_oidno]->inst_oid);
 		    }
 		  else
@@ -5968,6 +5945,24 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		    }
 		  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
 		}
+	    }
+	  else if (scan_id->position == S_GO_BACKWARD)
+	    {
+	      SCAN_CODE ret;
+	      isidp->curr_keyno = -1;
+	      if (SCAN_IS_INDEX_COVERED (isidp))
+		{
+		  isidp->key_limit_upper = 1;
+		  qfile_reopen_list_as_append_mode (thread_p, isidp->indx_cov.list_id);
+		}
+	      ret = call_get_next_index_oidset (thread_p, scan_id, isidp, true);
+	      if (ret != S_SUCCESS)
+		{
+		  return ret;
+		}
+
+	      isidp->curr_oidno = 0;	/* first oid number */
+	      scan_id->position = S_ON;
 	    }
 	  else if (scan_id->position == S_ON)
 	    {
@@ -6449,8 +6444,9 @@ scan_next_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   isidp = &scan_id->s.isid;
 
-  scan_init_filter_info (&data_filter, &isidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, &isidp->cls_oid, 0,
-			 NULL, NULL, NULL);
+  data_filter =
+  {
+  &isidp->scan_pred, NULL, NULL, NULL, scan_id->val_list, scan_id->vd, &isidp->cls_oid, NULL, NULL, NULL, 0, -1};
 
   while (true)
     {
@@ -6504,8 +6500,9 @@ scan_next_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   insidp = &scan_id->s.insid;
 
-  scan_init_filter_info (&data_filter, &insidp->scan_pred, NULL, scan_id->val_list, scan_id->vd, NULL, 0, NULL, NULL,
-			 NULL);
+  data_filter =
+  {
+  &insidp->scan_pred, NULL, NULL, NULL, scan_id->val_list, scan_id->vd, NULL, NULL, NULL, NULL, 0, -1};
 
   while (true)
     {
@@ -8112,6 +8109,11 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       if (scan_id->scan_stats.covered_index == true)
 	{
 	  fprintf (fp, ", covered: true");
+	}
+
+      if (scan_id->scan_stats.min_max_only_scan == true)
+	{
+	  fprintf (fp, ", min_max_only: true");
 	}
 
       if (scan_id->s.isid.need_count_only == true)

@@ -619,7 +619,7 @@ typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * b
 //
 // thread_p (in) : thread entry
 // bts (in)      : b-tree scan
-static void
+void
 bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 {
   /* Reset bts->is_scan_started. */
@@ -6458,6 +6458,7 @@ btree_scan_clear_key (BTREE_SCAN * btree_scan)
   btree_scan->is_cur_key_compressed = false;
   btree_reset_common_prefix_page_info (btree_scan);
 }
+
 
 /*
  * btree_is_unique_type () -
@@ -25389,6 +25390,9 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	      ASSERT_ERROR ();
 	      return error_code;
 	    }
+
+	  bts->read_keys++;
+
 	  error_code =
 	    btree_apply_key_range_and_filter (thread_p, bts, BTS_IS_INDEX_ISS (bts), &is_range_satisfied,
 					      &is_filter_satisfied);
@@ -25409,7 +25413,7 @@ btree_range_scan_advance_over_filtered_keys (THREAD_ENTRY * thread_p, BTREE_SCAN
 	  if (is_filter_satisfied)
 	    {
 	      /* Filter is satisfied, which means key can be used. */
-	      bts->read_keys++;
+	      bts->qualified_keys++;
 	      bts->key_status = BTS_KEY_IS_VERIFIED;
 	      return NO_ERROR;
 	    }
