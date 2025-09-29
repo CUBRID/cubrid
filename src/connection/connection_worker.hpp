@@ -58,24 +58,24 @@ namespace cubconn
 
       struct message
       {
-      public:
-        message () = default;
-        ~message () = default;
+	public:
+	  message () = default;
+	  ~message () = default;
 
-        message (const message &) = delete;
-        message &operator= (const message &) = delete;
+	  message (const message &) = delete;
+	  message &operator= (const message &) = delete;
 
-        message (message &&) noexcept = default;
-        message &operator= (message &&) noexcept = default;
+	  message (message &&) noexcept = default;
+	  message &operator= (message &&) noexcept = default;
 
-        message_type type;
+	  message_type type;
 
-        css_conn_entry *conn;
+	  css_conn_entry *conn;
 
-        /* send packet/release packet */
-        std::vector<cubbase::span<std::byte>> packet;
-        /* send packet */
-        std::function<void ()> deleter;
+	  /* send packet/release packet */
+	  std::vector<cubbase::span<std::byte>> packet;
+	  /* send packet */
+	  std::function<void ()> deleter;
       };
 
     private:
