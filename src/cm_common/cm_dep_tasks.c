@@ -2938,11 +2938,7 @@ get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname)
     {
       return -1;
     }
-#if !defined (DO_NOT_USE_CUBRIDENV)
   envpath = getenv (CUBRID_DATABASES_ENV);
-#else
-  envpath = CUBRID_VARDIR;
-#endif
   if (envpath == NULL || strlen (envpath) == 0)
     {
       return -1;
