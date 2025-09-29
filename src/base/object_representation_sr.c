@@ -4714,3 +4714,39 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
 
   return NO_ERROR;
 }
+
+/* 
+ * or_is_replication_key_candidate() -
+ *   return : true if the index is a replication-key candidate
+ *            (PRIMARY KEY, or UNIQUE with all key attributes NOT NULL)
+ *   index(in): OR_INDEX pointer (may be NULL)
+ */
+bool
+or_is_replication_key_candidate (const OR_INDEX *index)
+{
+  if (index == NULL)
+    {
+      return false;
+    }
+
+  if (index->type == BTREE_PRIMARY_KEY)
+    {
+      return true;
+    }
+
+  if (index->type != BTREE_UNIQUE || index->n_atts <= 0 || index->atts == NULL)
+    {
+      return false;
+    }
+
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      OR_ATTRIBUTE *attr = index->atts[i];
+      if (attr == NULL || !attr->is_notnull)
+        {
+          return false;
+        }
+    }
+
+  return true;
+}
