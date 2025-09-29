@@ -6789,7 +6789,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   /* for each attribute of this constraint */
   for (i = 0; *nseg_idxp < seg_idx_num; i++)
     {
-
       if (consp->func_index_info && i == consp->func_index_info->col_id)
 	{
 	  matched = false;
@@ -6816,19 +6815,19 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 	      seg_idx[*nseg_idxp] = -1;	/* not found matched segment */
 	      (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
 	    }			/* if (!matched) */
+
+	  if (*nseg_idxp == seg_idx_num)
+	    {
+	      break;
+	    }
 	}
 
-      if (*nseg_idxp == seg_idx_num)
-	{
-	  break;
-	}
       attrp = consp->attributes[i];
 
       matched = false;
       /* for each indexed segments of this node, compare the name of the segment with the one of the attribute */
       for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
 	{
-
 	  segp = QO_ENV_SEG (env, iseg);
 
 	  if (!intl_identifier_casecmp (QO_SEG_NAME (segp), attrp->header.name))
