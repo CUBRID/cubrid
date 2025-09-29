@@ -12032,33 +12032,48 @@ xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANA
   addr.offset = -1;
   addr.pgptr = NULL;
   addr.vfid = NULL;
-  int max_lob_path = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int);
-  char dirbuf[PATH_MAX];
-  char rv_path[max_lob_path + 4];
+  int max_lob_path = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int) + 4; // volid+fileid+hpgid+/_..
+  char *dirbuf = NULL;
+  char rv_path[max_lob_path];
 
   switch (mode)
   {
     case LOB_CREATE_TABLE:
-      sprintf (rv_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      sprintf (dirbuf, "%s/%s", es_base_dir, rv_path);
-      mkdir (dirbuf, 0755);
-      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+      snprintf (rv_path, max_lob_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      if (asprintf(&dirbuf, "%s/%s", es_base_dir, rv_path) == -1)
+        {
+          return;
+        }
+      else
+        {
+          mkdir (dirbuf, 0755);
+          log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+          free (dirbuf);
+        }
+    /* fall through */
     case LOB_CREATE_COLUMN:
       for (int i = 0; i < lob_arr_length; i++)
         {
-          sprintf (rv_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
-          sprintf (dirbuf, "%s/%s", es_base_dir, rv_path);
-          mkdir (dirbuf, 0755);
-          log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+          snprintf (rv_path, max_lob_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+          if (asprintf(&dirbuf, "%s/%s", es_base_dir, rv_path) == -1)
+            {
+              return;
+            }
+          else
+            {
+              mkdir (dirbuf, 0755);
+              log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+              free (dirbuf); // to many alloc/dealloc
+            }
         }
       break;
 
     case LOB_DROP_TABLE:
-      sprintf (rv_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      snprintf (rv_path, max_lob_path, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;
     case LOB_DROP_COLUMN:
-      sprintf (rv_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
+      snprintf (rv_path, max_lob_path, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;
   }
@@ -12084,13 +12099,18 @@ fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   const char *path = rcv->data;
   int error_code = NO_ERROR;
 
-  char lob_path[PATH_MAX];
+  char *lob_path = NULL;
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-  sprintf(lob_path, "%s/%s", es_base_dir, path);
+  if (asprintf(&lob_path, "%s/%s", es_base_dir, path) == -1)
+    {
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      return error_code;
+    }
 #endif /* SERVER_MODE || SA_MODE */
 
   error_code = fileio_lob_dir_remove (lob_path);
+  free (lob_path);
 
   if (error_code != NO_ERROR)
     {
