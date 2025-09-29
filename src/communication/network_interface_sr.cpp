@@ -10887,7 +10887,7 @@ spl_call (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
       std::memcpy (mem_reply, reply_data, reply_data_size);
     }
 
-  auto deleter = [buffer = reply_data]() noexcept
+  auto deleter = [buffer = mem_reply]() noexcept
   {
     if (buffer != NULL)
       {
