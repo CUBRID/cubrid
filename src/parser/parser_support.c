@@ -10382,7 +10382,7 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
       return false;
     }
 
-  if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) || !(xasl_flag & LIKE_RECOMPILE_CANDIDATE))
+  if (!(xasl_flag & LIKE_RECOMPILE_CANDIDATE))
     {
       return false;
     }

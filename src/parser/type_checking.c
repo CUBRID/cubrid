@@ -18194,7 +18194,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg1 = pt_value_to_db (parser, opd1);
       if (DB_IS_NULL (arg1))
 	{
-	  /* TODO: */
 	  goto end;
 	}
 
@@ -18234,7 +18233,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg2 = pt_value_to_db (parser, opd2);
       if (DB_IS_NULL (arg2))
 	{
-	  /* TODO: */
 	  goto end;
 	}
 
@@ -18481,7 +18479,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg3 = pt_value_to_db (parser, opd3);
       if (DB_IS_NULL (arg3))
 	{
-	  /* TODO: */
 	  goto end;
 	}
 
