@@ -511,7 +511,7 @@ qo_plan_malloc (QO_ENV * env)
   bitset_init (&(plan->subqueries), env);
 
   plan->parallel_opt_use = PLAN_PARALLEL_OPT_NO;
-  plan->skip_orderby_opt_use = PLAN_SKIP_ORDERBY_OPT_NO;
+  plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_NO;
 
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
@@ -862,8 +862,24 @@ qo_set_orderby_skip (QO_PLAN * plan, void *arg)
   if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
     {
       bool yn = *((bool *) arg);
-      plan->skip_orderby_opt_use = (yn) ? PLAN_SKIP_ORDERBY_OPT_USE : plan->skip_orderby_opt_use;
-      plan->plan_un.scan.index->head->orderby_skip = yn;
+
+      if (yn)
+	{
+	  if (qo_is_index_covering_scan (plan))
+	    {
+	      assert (plan->info->env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_POSSIBLE);
+	      plan->info->env->skip_orderby_opt = QO_ENV_SKIP_ORDERBY_USE;
+	    }
+
+	  assert (plan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE);
+	  plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_USE;
+
+	  plan->plan_un.scan.index->head->orderby_skip = true;
+	}
+      else
+	{
+	  plan->plan_un.scan.index->head->orderby_skip = false;
+	}
     }
 
   return NO_ERROR;
@@ -2052,7 +2068,7 @@ qo_iscan_cost (QO_PLAN * planp)
       filter_sel *= QO_TERM_SELECTIVITY (termp);
     }
 
-  if (qo_plan_is_orderby_skip_candidate (planp) && QO_PLAN_HAS_LIMIT (planp))
+  if (qo_plan_is_orderby_skip_candidate (planp) && (QO_PLAN_HAS_LIMIT (planp)))
     {
       guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
     }
@@ -5648,8 +5664,10 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 
   /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't skip the orderby, we release the plan. */
   if (qo_is_iscan_from_orderby (plan)
-      && ((plan->top_rooted && !plan->plan_un.scan.index->head->orderby_skip)
-	  || (!plan->top_rooted && (!qo_plan_is_orderby_skip_candidate (plan) || !QO_PLAN_HAS_LIMIT (plan)))))
+      && !(plan->top_rooted
+	   ? plan->plan_un.scan.index->head->orderby_skip
+	   : (qo_plan_is_orderby_skip_candidate (plan)
+	      && (qo_is_index_covering_scan (plan) || QO_PLAN_HAS_LIMIT (plan)))))
     {
       qo_plan_release (plan);
       return 0;
@@ -5755,7 +5773,7 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer, QO_INFO * info, JOIN_TY
   temp->well_rooted = false;
   temp->iscan_sort_list = NULL;
   temp->analytic_eval_list = NULL;
-
+  temp->plan_type = QO_PLANTYPE_JOIN;
   temp->plan_un.join.join_type = join_type;	/* set nl-join type */
   temp->plan_un.join.outer = outer;	/* set outer */
 
@@ -11493,17 +11511,21 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
       return false;
     }
 
-  switch (plan->skip_orderby_opt_use)
+  env = plan->info->env;
+
+  switch (plan->skip_orderby_opt)
     {
-    case PLAN_SKIP_ORDERBY_OPT_USE:
+    case QO_PLAN_SKIP_ORDERBY_USE:
       /* may be unused */
-    case PLAN_SKIP_ORDERBY_OPT_CAN_USE:
+    case QO_PLAN_SKIP_ORDERBY_CAN_USE:
+      assert (env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_POSSIBLE);
       return true;
 
-    case PLAN_SKIP_ORDERBY_OPT_CANNOT_USE:
+    case QO_PLAN_SKIP_ORDERBY_CANNOT_USE:
+      assert (env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_INVALID);
       return false;
 
-    case PLAN_SKIP_ORDERBY_OPT_NO:
+    case QO_PLAN_SKIP_ORDERBY_NO:
       /* fall through */
       break;
 
@@ -11515,7 +11537,6 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
       break;
     }
 
-  env = plan->info->env;
   parser = QO_ENV_PARSER (env);
   statement = QO_ENV_PT_TREE (env);
   order_by = statement->info.query.order_by;
@@ -11567,7 +11588,15 @@ cleanup:
       plan->iscan_sort_list = NULL;
     }
 
-  plan->skip_orderby_opt_use = (is_orderby_skip ? PLAN_SKIP_ORDERBY_OPT_CAN_USE : PLAN_SKIP_ORDERBY_OPT_CANNOT_USE);
+  if (is_orderby_skip)
+    {
+      plan->info->env->skip_orderby_opt = QO_ENV_SKIP_ORDERBY_POSSIBLE;
+      plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_CAN_USE;
+    }
+  else
+    {
+      plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_CANNOT_USE;
+    }
 
   return is_orderby_skip;
 }

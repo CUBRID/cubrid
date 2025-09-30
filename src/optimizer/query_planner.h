@@ -104,11 +104,11 @@ typedef enum
 
 typedef enum
 {
-  PLAN_SKIP_ORDERBY_OPT_USE = 1,
-  PLAN_SKIP_ORDERBY_OPT_NO = 0,
-  PLAN_SKIP_ORDERBY_OPT_CANNOT_USE = -1,
-  PLAN_SKIP_ORDERBY_OPT_CAN_USE = -2,
-} QO_PLAN_SKIP_ORDERBY_OPT_USE;
+  QO_PLAN_SKIP_ORDERBY_USE = 1,
+  QO_PLAN_SKIP_ORDERBY_NO = 0,
+  QO_PLAN_SKIP_ORDERBY_CANNOT_USE = -1,
+  QO_PLAN_SKIP_ORDERBY_CAN_USE = -2,
+} QO_PLAN_SKIP_ORDERBY_OPT;
 
 struct qo_plan
 {
@@ -213,7 +213,7 @@ struct qo_plan
 
   QO_PLAN_PARALLEL_OPT_USE parallel_opt_use;	/* used to determine if this plan uses parallel opt */
   QO_PLAN_MULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
-  QO_PLAN_SKIP_ORDERBY_OPT_USE skip_orderby_opt_use;	/* used to determine if this plan uses skip orderby opt */
+  QO_PLAN_SKIP_ORDERBY_OPT skip_orderby_opt;	/* used to determine if this plan uses skip orderby opt */
   // *INDENT-OFF*
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
