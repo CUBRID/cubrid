@@ -15068,12 +15068,6 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
       goto error;
     }
 
-  if (pt_check_path_eq (parser, where_predicate, (*stmt)->info.query.q.select.where))
-    {
-      /* inside pt_semantic_type(), the WHERE clause may have been changed or removed due to constant folding */
-      where_predicate = (*stmt)->info.query.q.select.where;
-    }
-
   /* make sure paren_type is 0 so parenthesis are not printed */
   where_predicate->info.expr.paren_type = 0;
   save_custom = parser->custom_print;
