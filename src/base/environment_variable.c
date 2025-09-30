@@ -98,7 +98,6 @@ envvar_prefix (void)
 {
   if (!envvar_Prefix)
     {
-#if !defined (DO_NOT_USE_CUBRIDENV)
       envvar_Root = getenv (envvar_Prefix_name);
       if (envvar_Root != NULL)
 	{
@@ -120,10 +119,6 @@ envvar_prefix (void)
 	  exit (1);
 	}
       envvar_check_environment ();
-#else
-      envvar_Prefix = envvar_Prefix_name;
-      envvar_Root = CUBRID_PREFIXDIR;
-#endif
     }
 
   return envvar_Prefix;
@@ -365,15 +360,11 @@ envvar_bindir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/bin/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_BINDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -384,15 +375,11 @@ envvar_libdir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/lib/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_LIBDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -403,15 +390,11 @@ envvar_vmdir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/vm/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_VMDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -422,15 +405,11 @@ envvar_localedir_file (char *path, size_t size, const char *langpath, const char
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/msg/%s/%s", envvar_Root, langpath, filename);
-#else
-  snprintf (path, size, "%s/%s/%s", CUBRID_LOCALEDIR, langpath, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -441,15 +420,11 @@ envvar_confdir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/conf/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -460,15 +435,11 @@ envvar_vardir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/var/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_VARDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -479,15 +450,11 @@ envvar_tmpdir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/tmp/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_TMPDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -498,15 +465,11 @@ envvar_logdir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/log/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_LOGDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -544,15 +507,11 @@ envvar_ldmldir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/locales/data/ldml/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -563,15 +522,11 @@ envvar_codepagedir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/locales/data/codepages/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -582,15 +537,11 @@ envvar_localedatadir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/locales/data/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -601,15 +552,11 @@ envvar_loclib_dir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/locales/loclib/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -618,15 +565,11 @@ envvar_loclib_dir_file (char *path, size_t size, const char *filename)
 char *
 envvar_cubrid_dir (char *path, size_t size)
 {
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s", envvar_Root);
-#else
-  snprintf (path, size, "%s", CUBRID_CONFDIR);
-#endif
 
   path[size - 1] = '\0';
   return path;
@@ -637,15 +580,11 @@ envvar_tzdata_dir_file (char *path, size_t size, const char *filename)
 {
   assert (filename != NULL);
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
   if (envvar_Root == NULL)
     {
       envvar_root ();
     }
   snprintf (path, size, "%s/timezones/tzdata/%s", envvar_Root, filename);
-#else
-  snprintf (path, size, "%s/%s", CUBRID_CONFDIR, filename);
-#endif
 
   path[size - 1] = '\0';
   return path;

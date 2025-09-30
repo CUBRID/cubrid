@@ -54,14 +54,14 @@ typedef enum
   XML_INS_POS_BEFORE
 } XML_INS_POS;
 
-static XML_ELEMENT *xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count);
+static XML_ELEMENT *xml_init_schema_tree (const XML_ELEMENT_DEF ** element_array, const int count);
 static void xml_destroy_schema_tree (XML_ELEMENT * pt);
 static XML_ELEMENT *xml_clone_node (XML_ELEMENT * schema_src, XML_ELEMENT * parent, XML_ELEMENT * prev,
 				    bool * has_error);
 static bool xml_copy_schema_tree (XML_ELEMENT * src, XML_ELEMENT ** dest);
 
-static XML_ELEMENT *create_xml_node (XML_ELEMENT_DEF * new_elem);
-static int add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def);
+static XML_ELEMENT *create_xml_node (const XML_ELEMENT_DEF * new_elem);
+static int add_xml_element (XML_ELEMENT * xml_node, const XML_ELEMENT_DEF * new_elem_def);
 
 static XML_ELEMENT *select_xml_branch_node (XML_ELEMENT * xml_node, const char *sel_name);
 static XML_ELEMENT *select_xml_node_for_ins (XML_ELEMENT * xml_node, const char *sel_name, XML_INS_POS * insert_pos);
@@ -80,7 +80,7 @@ static int xml_parse (void *data, FILE * fp, bool * is_finished);
 static bool xml_check_include_loop (XML_PARSER_DATA * pd, char *new_file);
 
 /* XML root element */
-XML_ELEMENT_DEF xml_elem_XML = { "XML", XML_ROOT_DEPTH, NULL, NULL, NULL };
+const XML_ELEMENT_DEF xml_elem_XML = { "XML", XML_ROOT_DEPTH, NULL, NULL, NULL };
 
 
 /*
@@ -91,7 +91,7 @@ XML_ELEMENT_DEF xml_elem_XML = { "XML", XML_ROOT_DEPTH, NULL, NULL, NULL };
  *
  */
 static XML_ELEMENT *
-xml_init_schema_tree (XML_ELEMENT_DEF ** element_array, const int count)
+xml_init_schema_tree (const XML_ELEMENT_DEF ** element_array, const int count)
 {
   int i;
   XML_ELEMENT *xml_parse_tree = NULL;
@@ -224,7 +224,7 @@ xml_copy_schema_tree (XML_ELEMENT * src, XML_ELEMENT ** dest)
  *   el_def(in): element node definition
  */
 static XML_ELEMENT *
-create_xml_node (XML_ELEMENT_DEF * new_elem)
+create_xml_node (const XML_ELEMENT_DEF * new_elem)
 {
   XML_ELEMENT *xml_node = (XML_ELEMENT *) malloc (sizeof (XML_ELEMENT));
 
@@ -253,7 +253,7 @@ create_xml_node (XML_ELEMENT_DEF * new_elem)
  *   new_elem_def(in): element definition
  */
 static int
-add_xml_element (XML_ELEMENT * xml_node, XML_ELEMENT_DEF * new_elem_def)
+add_xml_element (XML_ELEMENT * xml_node, const XML_ELEMENT_DEF * new_elem_def)
 {
   const char *new_elem_short_name;
   char new_elem_branch_name[MAX_ELEMENT_NAME];
@@ -938,7 +938,7 @@ xml_init_parser_common (void *data, const char *xml_file, const char *encoding)
  *   count(in): number of elements in schema definition
  */
 XML_Parser
-xml_init_parser (void *data, const char *xml_file, const char *encoding, XML_ELEMENT_DEF ** element_array,
+xml_init_parser (void *data, const char *xml_file, const char *encoding, const XML_ELEMENT_DEF ** element_array,
 		 const int count)
 {
   XML_PARSER_DATA *pd = (XML_PARSER_DATA *) data;

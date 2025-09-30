@@ -71,7 +71,6 @@ message(STATUS "  CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTOR
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
-option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
@@ -686,108 +685,27 @@ endif(USE_DUMA)
 
 
 # For CUBRID environment variable option
-if(USE_CUBRID_ENV)
-  message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
-  set(CUBRID_PREFIXDIR .)
-  set(CUBRID_3RDPARTYDIR 3rdparty)
-  set(CUBRID_BINDIR bin)
-  set(CUBRID_LIBDIR lib)
-  set(CUBRID_SRCDIR src)
-  set(CUBRID_INCLUDEDIR include)
-  set(CUBRID_VARDIR var)
-  set(CUBRID_DATADIR share)
-  set(CUBRID_CONFDIR conf)
-  set(CUBRID_VMDIR vm)
-  set(CUBRID_LOCALEDIR msg)
-  set(CUBRID_LOGDIR log)
-  set(CUBRID_TMPDIR tmp)
-  set(CUBRID_SHLOCALESDIR locales)
-  set(CUBRID_TZDIR timezones)
-  set(CUBRID_DEMODIR demo)
-  set(CUBRID_COMPATDIR compat)
-  set(CUBRID_CCIDIR cci)
-  set(CUBRID_DATABASES databases)
-  set(CUBRID_SOCK CUBRID_SOCK)
-else(USE_CUBRID_ENV)
-  message(WARNING "This build does not use CUBRID environment variables")
-  list(APPEND COMMON_DEFS DO_NOT_USE_CUBRIDENV)
-
-  set(CUBRID_PREFIXDIR ${CMAKE_INSTALL_PREFIX} CACHE STRING "The prefix directory for CUBRID (default: ${CMAKE_INSTALL_PREFIX}")
-  list(APPEND DIR_DEFS CUBRID_PREFIXDIR="${CUBRID_PREFIXDIR}")
-  set(CUBRID_3RDPARTYDIR 3rdparty CACHE STRING "The directory for license files of 3rd party")
-  list(APPEND DIR_DEFS CUBRID_3RDPARTYDIR="${CUBRID_PREFIXDIR}/${CUBRID_3RDPARTYDIR}")
-  set(CUBRID_BINDIR bin CACHE STRING "The directory for binary files")
-  if(IS_ABSOLUTE ${CUBRID_BINDIR})
-    list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_BINDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_PREFIXDIR}/${CUBRID_BINDIR}")
-  endif()
-  set(CUBRID_LIBDIR lib CACHE STRING "The directory for library files")
-  if(IS_ABSOLUTE ${CUBRID_LIBDIR})
-    list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_LIBDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_PREFIXDIR}/${CUBRID_LIBDIR}")
-  endif()
-  set(CUBRID_SRCDIR src CACHE STRING "The directory for source files")
-  if(IS_ABSOLUTE ${CUBRID_SRCDIR})
-    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_SRCDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_PREFIXDIR}/${CUBRID_SRCDIR}")
-  endif()
-  set(CUBRID_VARDIR var CACHE STRING "The directory for variable data files")
-  if(IS_ABSOLUTE ${CUBRID_VARDIR})
-    list(APPEND DIR_DEFS CUBRID_VARDIR="${CUBRID_VARDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_VARDIR="${CUBRID_PREFIXDIR}/${CUBRID_VARDIR}")
-  endif()
-  set(CUBRID_DATADIR share CACHE STRING "The directory for shared data files")
-  if(IS_ABSOLUTE ${CUBRID_DATADIR})
-    list(APPEND DIR_DEFS CUBRID_DATADIR="${CUBRID_DATADIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_DATADIR="${CUBRID_PREFIXDIR}/${CUBRID_DATADIR}")
-  endif()
-  set(CUBRID_CONFDIR conf CACHE STRING "The directory for configuration files")
-  if(IS_ABSOLUTE ${CUBRID_CONFDIR})
-    list(APPEND DIR_DEFS CUBRID_CONFDIR="${CUBRID_CONFDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_CONFDIR="${CUBRID_PREFIXDIR}/${CUBRID_CONFDIR}")
-  endif()
-  set(CUBRID_VMDIR vm CACHE STRING "The directory for PL file")
-  if(IS_ABSOLUTE ${CUBRID_VMDIR})
-    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_VMDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_PREFIXDIR}/${CUBRID_VMDIR}")
-  endif()
-  set(CUBRID_LOCALEDIR msg CACHE STRING "The directory for message files")
-  if(IS_ABSOLUTE ${CUBRID_LOCALEDIR})
-    list(APPEND DIR_DEFS CUBRID_LOCALEDIR="${CUBRID_LOCALEDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_LOCALEDIR="${CUBRID_PREFIXDIR}/${CUBRID_LOCALEDIR}")
-  endif()
-  set(CUBRID_LOGDIR log CACHE STRING "The directory for log files")
-  if(IS_ABSOLUTE ${CUBRID_LOGDIR})
-    list(APPEND DIR_DEFS CUBRID_LOGDIR="${CUBRID_LOGDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_LOGDIR="${CUBRID_PREFIXDIR}/${CUBRID_LOGDIR}")
-  endif()
-  set(CUBRID_TMPDIR tmp CACHE STRING "The directory for temporary files")
-  if(IS_ABSOLUTE ${CUBRID_TMPDIR})
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_TMPDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_TMPDIR}")
-  endif()
-  if(IS_ABSOLUTE ${CUBRID_CCIDIR})
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_CCIDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_CCIDIR}")
-  endif()
-  # directories for install
-  set(CUBRID_INCLUDEDIR include CACHE STRING "The directory for header files")
-  set(CUBRID_SHLOCALESDIR locales CACHE STRING "The directory for locale files")
-  set(CUBRID_TZDIR timezones CACHE STRING "The directory for timezone files")
-  set(CUBRID_DEMODIR demo CACHE STRING "The directory for demo data files")
-  set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
-endif(USE_CUBRID_ENV)
+message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
+set(CUBRID_PREFIXDIR .)
+set(CUBRID_3RDPARTYDIR 3rdparty)
+set(CUBRID_BINDIR bin)
+set(CUBRID_LIBDIR lib)
+set(CUBRID_SRCDIR src)
+set(CUBRID_INCLUDEDIR include)
+set(CUBRID_VARDIR var)
+set(CUBRID_DATADIR share)
+set(CUBRID_CONFDIR conf)
+set(CUBRID_VMDIR vm)
+set(CUBRID_LOCALEDIR msg)
+set(CUBRID_LOGDIR log)
+set(CUBRID_TMPDIR tmp)
+set(CUBRID_SHLOCALESDIR locales)
+set(CUBRID_TZDIR timezones)
+set(CUBRID_DEMODIR demo)
+set(CUBRID_COMPATDIR compat)
+set(CUBRID_CCIDIR cci)
+set(CUBRID_DATABASES databases)
+set(CUBRID_SOCK CUBRID_SOCK)
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
@@ -796,11 +714,7 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   add_subdirectory(cubrid-jdbc)
 
   # dist JDBC
-  if(USE_CUBRID_ENV)
-    set(CUBRID_JDBCDIR jdbc)
-  else(USE_CUBRID_ENV)
-    set(CUBRID_JDBCDIR jdbc CACHE STRING "The directory for JDBC driver file")
-  endif(USE_CUBRID_ENV)
+  set(CUBRID_JDBCDIR jdbc)
 
   install(DIRECTORY ${JDBC_DIR}/
     DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
@@ -918,29 +832,27 @@ install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
 install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
 install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
-if(USE_CUBRID_ENV)
-  install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
-    DESTINATION ${CUBRID_3RDPARTYDIR}
-    FILES_MATCHING PATTERN "*.txt")
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/COPYING
-    ${CMAKE_SOURCE_DIR}/CREDITS
-    ${CMAKE_SOURCE_DIR}/README.md
-    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
-    DESTINATION ${CUBRID_PREFIXDIR})
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
+  DESTINATION ${CUBRID_3RDPARTYDIR}
+  FILES_MATCHING PATTERN "*.txt")
+install(FILES
+  ${CMAKE_SOURCE_DIR}/COPYING
+  ${CMAKE_SOURCE_DIR}/CREDITS
+  ${CMAKE_SOURCE_DIR}/README.md
+  ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
+  DESTINATION ${CUBRID_PREFIXDIR})
 # on Windows, databases.txt is create from 'make_cubrid_demo.bat' because databases.txt is deleted in MSI file for install.
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt.sample
-    DESTINATION ${CUBRID_DATABASES})
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
-    DESTINATION ${CUBRID_VARDIR}/${CUBRID_SOCK}
-    RENAME README.txt)
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TMP.txt
-    DESTINATION ${CUBRID_TMPDIR}
-    RENAME README.txt)
-endif(USE_CUBRID_ENV)
+install(FILES
+  ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt.sample
+  DESTINATION ${CUBRID_DATABASES})
+install(FILES
+  ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
+  DESTINATION ${CUBRID_VARDIR}/${CUBRID_SOCK}
+  RENAME README.txt)
+install(FILES
+  ${CMAKE_SOURCE_DIR}/contrib/readme/README_TMP.txt
+  DESTINATION ${CUBRID_TMPDIR}
+  RENAME README.txt)
 
 if(WITH_SOURCES)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CUBRID_SRCDIR})
