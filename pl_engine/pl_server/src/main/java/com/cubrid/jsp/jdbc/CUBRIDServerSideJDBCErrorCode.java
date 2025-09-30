@@ -78,6 +78,7 @@ public class CUBRIDServerSideJDBCErrorCode {
     public static final int ER_ARGUMENT_ZERO = -21128;
 
     private static final HashMap<Integer, String> messageString = new HashMap<Integer, String>();
+
     static {
         messageString.put(ER_SP_INVALID_CURSOR, "Invalid cursor");
 
