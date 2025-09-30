@@ -11556,7 +11556,7 @@ qo_check_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * plan)
 		arg1 = PT_EXPR_ARG1 (expr);
 		arg2 = PT_EXPR_ARG2 (expr);
 
-		if (!pt_is_expr_foldable (parser, spec_list, arg1))
+		if (!pt_check_not_null_constraint (parser, spec_list, arg1))
 		  {
 		    return false;
 		  }

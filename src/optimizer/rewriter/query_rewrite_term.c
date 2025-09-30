@@ -1535,9 +1535,8 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** wh
 	}
       else
 	{
-	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_is_expr_foldable (parser, *from, node_prior))
+	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_check_not_null_constraint (parser, *from, node_prior))
 	    {
-	      // PT_NOT_NULL cannot be removed because even columns with not null constraints can have null values when outer joined.
 	      db_make_int (&value, 1);
 	    }
 	  else

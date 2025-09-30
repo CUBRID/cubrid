@@ -7812,7 +7812,7 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 }
 
 bool
-pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * node)
+pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * node)
 {
   MOP cls;
   SM_CLASS *class_;
@@ -7830,7 +7830,7 @@ pt_is_expr_foldable (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * node)
     {
       if (node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
 	{
-	  return pt_is_expr_foldable (parser, from, node->info.expr.arg1);
+	  return pt_check_not_null_constraint (parser, from, node->info.expr.arg1);
 	}
     }
   else if (node->node_type == PT_NAME)

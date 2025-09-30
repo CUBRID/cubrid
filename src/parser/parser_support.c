@@ -10360,7 +10360,7 @@ end:
 bool
 pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
-  PT_NODE *where, *arg1, *arg2;
+  PT_NODE *where, *arg2;
   PT_NODE *pattern = NULL, *escape = NULL;
   DB_VALUE where_val, compressed_pattern;
   int num_logical_chars = 0;
@@ -10397,13 +10397,7 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 
       if (PT_IS_EXPR_NODE_WITH_OPERATOR (where, PT_LIKE))
 	{
-	  arg1 = PT_EXPR_ARG1 (where);
 	  arg2 = PT_EXPR_ARG2 (where);
-
-	  if (!pt_is_expr_foldable (parser, statement->info.query.q.select.from, arg1))
-	    {
-	      continue;
-	    }
 
 	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
 	    {
