@@ -5772,7 +5772,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       if (lob_arr_length)
 	{
 	  HFID lob_hfid = *hfid;
-	  manage_lob_dir (&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_CREATE_TABLE);
+	  manage_lob_dir (&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_CREATE_TABLE_DIR);
 	}
       free (lob_attrid_arr);
 
@@ -5923,7 +5923,7 @@ locator_remove_class (MOP class_mop)
   if (insts_hfid->vfid.fileid != NULL_FILEID)
     {
       error_code = heap_destroy_newly_created (insts_hfid, &class_mop->oid_info.oid);
-      error_code = manage_lob_dir (insts_hfid, NULL, 0, LOB_DROP_TABLE);
+      error_code = manage_lob_dir (insts_hfid, NULL, 0, LOB_DROP_TABLE_DIR);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
