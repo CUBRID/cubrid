@@ -11527,14 +11527,14 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 
  /* smanage_lob_dir - create or delete lob dir */
 
- void
+void
 smanage_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_HFID_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   HFID hfid;
-  int *lob_attrid_arr  = NULL;
+  int *lob_attrid_arr = NULL;
   int arr_length = 0;
   int mode = 0;
   int error = NO_ERROR;
@@ -11547,9 +11547,9 @@ smanage_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   xmanage_lob_dir (&hfid, lob_attrid_arr, arr_length, (LOB_DIR_MANAGE_MODE) mode);
 
   if (error != NO_ERROR)
-  {
-    (void) return_error_to_client (thread_p, rid);
-  }
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
 
   db_private_free (thread_p, lob_attrid_arr);
 

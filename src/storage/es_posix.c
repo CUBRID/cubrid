@@ -54,7 +54,7 @@ typedef int mode_t;
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
 /* es_posix_base_dir - */
-char es_base_dir[PATH_MAX] = {0};
+char es_base_dir[PATH_MAX] = { 0 };
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
@@ -591,7 +591,7 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE];
   char new_dir[PATH_MAX];
-  LOB_DIR_ID cur_lob_id = {{{-1, -1}, -1}, -1};
+  LOB_DIR_ID cur_lob_id = { {{-1, -1}, -1}, -1 };
 #if defined (SERVER_MODE) || defined (SA_MODE)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   cur_lob_id = thread_p->lob_id;
@@ -616,8 +616,7 @@ retry:
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
 #elif defined (SERVER_MODE) || defined (SA_MODE)
-  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d%c%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
-                PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename); // ex) 0_4288_4289/1/ces_xxx/file
+  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d%c%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);	// ex) 0_4288_4289/1/ces_xxx/file
 #else
   /* default */
 #endif
@@ -638,9 +637,8 @@ retry:
     {
       if (errno == ENOENT)
 	{
-          snprintf (new_dir, PATH_MAX -1, "%d_%d_%d%c%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
-                    PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1); // ex) 0_4288_4289/1/ces_xxx
-          ret = es_make_dirs (new_dir, dirname2);
+	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d%c%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1);	// ex) 0_4288_4289/1/ces_xxx
+	  ret = es_make_dirs (new_dir, dirname2);
 	  if (ret != NO_ERROR)
 	    {
 	      close (rd_fd);
