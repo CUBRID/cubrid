@@ -138,12 +138,18 @@ namespace parallel_query_execute
 	bool dummy = false;
 	bool is_interrupt = logtb_get_check_interrupt (cur_thread_p)
 			    && logtb_is_interrupted_tran (cur_thread_p, true, &dummy, cur_thread_p->tran_index);
-	is_interrupt |= er_errid () == ER_INTERRUPTED;
 	/* logtb_set_tran_index_interrupt sets ER_INTERRUPTING with ER_NOTIFICATION_SEVERITY,
 	 * so er_errid may return NO_ERROR in this case. */
 	if (is_interrupt)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    if (er_errid() != NO_ERROR)
+	      {
+		/* other thread set interrupt but error is not ER_INTERRUPTED */
+	      }
+	    else
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      }
 	  }
 	err_code = error_messages_p->move_top_error_message_to_this();
 	if (interrupt_p->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
