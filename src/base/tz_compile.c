@@ -494,24 +494,24 @@ static int xml_start_mapZone (void *data, const char **attr);
 
 static int tzc_load_windows_iana_map (TZ_DATA * tz_data, const char *input_folder);
 
-XML_ELEMENT_DEF windows_zones_elem_supplementalData = { "supplementalData", 1, NULL,
+const XML_ELEMENT_DEF windows_zones_elem_supplementalData = { "supplementalData", 1, NULL,
   NULL, NULL
 };
 
-XML_ELEMENT_DEF windows_zones_elem_windowsZones = { "supplementalData windowsZones", 2, NULL,
+const XML_ELEMENT_DEF windows_zones_elem_windowsZones = { "supplementalData windowsZones", 2, NULL,
   NULL, NULL
 };
 
-XML_ELEMENT_DEF windows_zones_elem_mapTimezones = { "supplementalData windowsZones mapTimezones", 3, NULL,
+const XML_ELEMENT_DEF windows_zones_elem_mapTimezones = { "supplementalData windowsZones mapTimezones", 3, NULL,
   NULL, NULL
 };
 
-XML_ELEMENT_DEF windows_zones_elem_mapZone = { "supplementalData windowsZones mapTimezones mapZone", 4,
+const XML_ELEMENT_DEF windows_zones_elem_mapZone = { "supplementalData windowsZones mapTimezones mapZone", 4,
   (ELEM_START_FUNC) & xml_start_mapZone,
   NULL, NULL
 };
 
-XML_ELEMENT_DEF *windows_zones_elements[] = {
+const XML_ELEMENT_DEF *windows_zones_elements[] = {
   &windows_zones_elem_supplementalData,
   &windows_zones_elem_windowsZones,
   &windows_zones_elem_mapTimezones,

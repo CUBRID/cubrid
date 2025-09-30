@@ -1569,7 +1569,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtCursorFetch =
             new String[] {
-                "{ // cursor fetch",
+                "try { // cursor fetch",
                 "  if (%'CURSOR'% == null) {",
                 "    throw new INVALID_CURSOR(\"the cursor is NULL\");",
                 "  }",
@@ -1577,6 +1577,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  if (%'CURSOR'%.fetch()) {",
                 "    %'+SET-INTO-VARIABLES'%",
                 "  }",
+                "} catch (SQLException e) {",
+                "  Server.log(e);",
+                "  throw new SQL_ERROR(e.getMessage());",
                 "}"
             };
 
