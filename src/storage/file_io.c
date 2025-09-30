@@ -11972,34 +11972,34 @@ fileio_lob_dir_remove (const char *path)
       struct dirent *dir_entry;
 
       while (!result && (dir_entry = readdir (dir_p)))
-        {
-          char *buf;
-          size_t len;
+	{
+	  char *buf;
+	  size_t len;
 
-          if (!strcmp (dir_entry->d_name, ".") || !strcmp (dir_entry->d_name, ".."))
-            {
-              continue;
-            }
+	  if (!strcmp (dir_entry->d_name, ".") || !strcmp (dir_entry->d_name, ".."))
+	    {
+	      continue;
+	    }
 
-          len = path_len + strlen (dir_entry->d_name) + 2;
-          buf = (char *) malloc (len);
+	  len = path_len + strlen (dir_entry->d_name) + 2;
+	  buf = (char *) malloc (len);
 
-          snprintf (buf, len, "%s/%s", path, dir_entry->d_name);
+	  snprintf (buf, len, "%s/%s", path, dir_entry->d_name);
 
-          if (stat (buf, &statbuf) == 0)
-            {
-              if (S_ISDIR(statbuf.st_mode))
-                {
-                  result = fileio_lob_dir_remove (buf);
-                }
-              else
-                {
-                  result = unlink (buf);
-                }
-            }
+	  if (stat (buf, &statbuf) == 0)
+	    {
+	      if (S_ISDIR (statbuf.st_mode))
+		{
+		  result = fileio_lob_dir_remove (buf);
+		}
+	      else
+		{
+		  result = unlink (buf);
+		}
+	    }
 
-          free (buf);
-        }
+	  free (buf);
+	}
 
       closedir (dir_p);
     }
@@ -12025,7 +12025,7 @@ fileio_lob_dir_remove (const char *path)
  *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
  */
 void
-xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
+xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
@@ -12033,12 +12033,12 @@ xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANA
   addr.offset = -1;
   addr.pgptr = NULL;
   addr.vfid = NULL;
-  int max_lob_path_len = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int) + 4; // volid+fileid+hpgid+/_..
+  int max_lob_path_len = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int) + 4;	// volid+fileid+hpgid+/_..
   char dirbuf[PATH_MAX];
   char rv_path[PATH_MAX];
 
   switch (mode)
-  {
+    {
     case LOB_CREATE_TABLE:
       snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       rv_path[strlen (rv_path)] = '\0';
@@ -12049,12 +12049,12 @@ xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANA
       mkdir (dirbuf, 0755);
 
       for (int i = 0; i < lob_arr_length; i++)
-        {
-          snprintf(dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1 + MAX_INTEGER_DISPLAY_LENGTH + 1), "%s/%s/%d",
-                   es_base_dir, rv_path, attrid_arr[i]);
-          dirbuf[strlen (dirbuf)] = '\0';
-          mkdir (dirbuf, 0755);
-        }
+	{
+	  snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1 + MAX_INTEGER_DISPLAY_LENGTH + 1),
+		    "%s/%s/%d", es_base_dir, rv_path, attrid_arr[i]);
+	  dirbuf[strlen (dirbuf)] = '\0';
+	  mkdir (dirbuf, 0755);
+	}
 
       break;
 
@@ -12067,16 +12067,17 @@ xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANA
       mkdir (dirbuf, 0755);
 
       if (lob_arr_length > 1)
-        {
-          for (int i = 1; i < lob_arr_length; i++)
-            {
-              snprintf (rv_path, max_lob_path_len, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
-              log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
+	{
+	  for (int i = 1; i < lob_arr_length; i++)
+	    {
+	      snprintf (rv_path, max_lob_path_len, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid,
+			attrid_arr[i]);
+	      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
 
-              snprintf (dirbuf, (strlen (es_base_dir) + strlen (rv_path) + 2), "%s/%s", es_base_dir, rv_path);
-              mkdir (dirbuf, 0755);
-            }
-        }
+	      snprintf (dirbuf, (strlen (es_base_dir) + strlen (rv_path) + 2), "%s/%s", es_base_dir, rv_path);
+	      mkdir (dirbuf, 0755);
+	    }
+	}
 
       break;
 
@@ -12089,7 +12090,7 @@ xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANA
       snprintf (rv_path, PATH_MAX, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;
-  }
+    }
 #endif /* SERVER_MODE || SA_MODE */
 }
 

@@ -15745,14 +15745,14 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
-  lob_attrid_arr = (int*) malloc (sizeof(int) * class_->att_count);
+  lob_attrid_arr = (int *) malloc (sizeof (int) * class_->att_count);
 
   for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
     {
       if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
-        {
-          lob_attrid_arr[lob_arr_length++] = attr->id;
-        }
+	{
+	  lob_attrid_arr[lob_arr_length++] = attr->id;
+	}
     }
 
   /* Destroy the heap */
@@ -15783,7 +15783,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (lob_arr_length)
     {
       HFID lob_hfid = *insts_hfid;
-      error = manage_lob_dir(&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_CREATE_TABLE);
+      error = manage_lob_dir (&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_CREATE_TABLE);
     }
   free (lob_attrid_arr);
 

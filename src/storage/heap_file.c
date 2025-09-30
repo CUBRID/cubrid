@@ -3370,7 +3370,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
        * set, the interrogation will be corrupted.
        * Make sure an error is not set.
        */
-      int error = er_errid (); // core 발생해서 error 코드 확인용(삭제 예정)
+      int error = er_errid ();	// core 발생해서 error 코드 확인용(삭제 예정)
 
       if (er_errid () != NO_ERROR)
 	{

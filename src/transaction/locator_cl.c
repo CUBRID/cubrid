@@ -5759,21 +5759,21 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      lob_attrid_arr = (int*) malloc (sizeof(int) * class_->att_count);
+      lob_attrid_arr = (int *) malloc (sizeof (int) * class_->att_count);
 
       for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
-        {
-          if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
-            {
-              lob_attrid_arr[lob_arr_length++] = attr->id;
-            }
-        }
+	{
+	  if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+	    {
+	      lob_attrid_arr[lob_arr_length++] = attr->id;
+	    }
+	}
 
       if (lob_arr_length)
-        {
-          HFID lob_hfid = *hfid;
-          manage_lob_dir(&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_CREATE_TABLE);
-        }
+	{
+	  HFID lob_hfid = *hfid;
+	  manage_lob_dir (&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_CREATE_TABLE);
+	}
       free (lob_attrid_arr);
 
       ws_dirty (class_mop);

@@ -636,7 +636,7 @@ extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_pa
 // #if defined(SERVER_MODE)
 /* lob_dir */
 extern int fileio_lob_dir_remove (const char *path);
-extern void xmanage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode);
+extern void xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode);
 extern int fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 // #endif /* SERVER_MODE */
 #endif /* _FILE_IO_H_ */

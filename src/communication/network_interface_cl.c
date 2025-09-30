@@ -11386,7 +11386,7 @@ tdes_reset_query_start_info (PT_NODE * node)
  * manage_lob_dir - request to server to create or delete lob dir
  */
 int
-manage_lob_dir (HFID * hfid, int * attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
+manage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
