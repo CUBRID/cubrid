@@ -58,7 +58,7 @@ char es_base_dir[PATH_MAX] = { 0 };
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
-static void es_rename_path (char *src, char *tgt, char *metaname);
+static void es_rename_path (char *src, char *tgt);
 
 static int es_abs_open (const char *abs_path, int flags);
 static int es_abs_open (const char *abs_path, int flags, mode_t mode);
@@ -165,11 +165,10 @@ retry:
  * tgt(out): target path
  */
 static void
-es_rename_path (char *src, char *tgt, char *metaname)
+es_rename_path (char *src, char *tgt)
 {
   char *s, *t;
 
-  assert (metaname != NULL);
   /*
    * src: /.../ces_000/ces_tmp.123456789
    *                  ^
@@ -201,7 +200,7 @@ es_rename_path (char *src, char *tgt, char *metaname)
       return;
     }
 
-  sprintf (t, "%s%s", metaname, s);
+  sprintf (t, "lob%s", s);
 }
 
 /*
@@ -582,7 +581,7 @@ xes_posix_delete_file (const char *path)
  * new_path(out): file path newly created
  */
 int
-xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
+xes_posix_copy_file (const char *src_path, char *new_path)
 {
 #define ES_POSIX_COPY_BUFSIZE		(4096 * 4)	/* 16K */
 
@@ -611,12 +610,13 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
 
 retry:
   /* create a target file */
-  es_get_unique_name (dirname1, dirname2, metaname, filename);
+  es_get_unique_name (dirname1, dirname2, "lob", filename);
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
 #elif defined (SERVER_MODE) || defined (SA_MODE)
-  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d%c%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);	// ex) 0_4288_4289/1/ces_xxx/file
+  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d%c%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
+                PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);	// ex) 0_4288_4289/1/ces_xxx/file
 #else
   /* default */
 #endif
@@ -626,7 +626,7 @@ retry:
       return ER_ES_INVALID_PATH;
     }
 
-  es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_copy_file(%s): %s\n", src_path, new_path);
 
 #if defined (WINDOWS)
   wr_fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
@@ -637,7 +637,8 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d%c%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1);	// ex) 0_4288_4289/1/ces_xxx
+	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d%c%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
+                    PATH_SEPARATOR, cur_lob_id.attrid, PATH_SEPARATOR, dirname1);	// ex) 0_4288_4289/1/ces_xxx
 	  ret = es_make_dirs (new_dir, dirname2);
 	  if (ret != NO_ERROR)
 	    {
@@ -702,13 +703,13 @@ retry:
  * new_path(out): new file path
  */
 int
-xes_posix_rename_file (const char *src_path, const char *metaname, char *new_path)
+xes_posix_rename_file (const char *src_path, char *new_path)
 {
   int ret;
 
-  es_rename_path ((char *) src_path, new_path, (char *) metaname);
+  es_rename_path ((char *) src_path, new_path);
 
-  es_log ("xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
+  es_log ("xes_posix_rename_file(%s): %s\n", src_path, new_path);
 
   ret = es_os_rename_file_abs (src_path, new_path);
 
