@@ -2762,7 +2762,7 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	}
 
       /* the transmission is performed asynchronously, but waits for a response immediately below. */
-      /* so it behaves essentially the same as sync. therefore, memory (allocated by malloc) is not overwritten. */
+      /* so it behaves essentially the same as sync. therefore, the log page (allocated by malloc) will not be overwritten. */
       error_code = xlog_send_log_pages_to_client (thread_p, logpg_area, logpg_used_size, mode);
       if (error_code != NO_ERROR)
 	{
