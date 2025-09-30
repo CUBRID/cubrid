@@ -6789,7 +6789,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   /* for each attribute of this constraint */
   for (i = 0; *nseg_idxp < seg_idx_num; i++)
     {
-
       if (consp->func_index_info && i == consp->func_index_info->col_id)
 	{
 	  matched = false;
@@ -6806,7 +6805,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 		  /* If we're handling with a multi-column index, then only equality expressions are allowed except for
 		   * the last matching segment.
 		   */
-		  bitset_delset (&working);
 		  matched = true;
 		  count_matched_index_attributes++;
 		  break;
@@ -6817,19 +6815,19 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 	      seg_idx[*nseg_idxp] = -1;	/* not found matched segment */
 	      (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
 	    }			/* if (!matched) */
+
+	  if (*nseg_idxp == seg_idx_num)
+	    {
+	      break;
+	    }
 	}
 
-      if (*nseg_idxp == seg_idx_num)
-	{
-	  break;
-	}
       attrp = consp->attributes[i];
 
       matched = false;
       /* for each indexed segments of this node, compare the name of the segment with the one of the attribute */
       for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
 	{
-
 	  segp = QO_ENV_SEG (env, iseg);
 
 	  if (!intl_identifier_casecmp (QO_SEG_NAME (segp), attrp->header.name))
@@ -8757,8 +8755,6 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  bitset_delset (&order_nodes);
-
   /* In order to create a SORT-LIMIT plan, the query must have a valid limit. All other conditions for creating the
    * plan have been met.
    */
@@ -8793,10 +8789,12 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
     }
 
   env->use_sort_limit = QO_SL_USE;
+  bitset_delset (&order_nodes);
   return;
 
 sort_limit_possible:
   env->use_sort_limit = QO_SL_POSSIBLE;
+  bitset_delset (&order_nodes);
   bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
   return;
 

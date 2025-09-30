@@ -635,7 +635,7 @@ exit:
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("unknown error"),
 					  ARG_FILE_LINE));
       }
 
@@ -741,8 +741,7 @@ exit:
     query_cursor *cursor = m_stack->get_cursor (qid);
     if (cursor == nullptr)
       {
-	assert (false);
-	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("cursor closed"),
 				     ARG_FILE_LINE));
 	error = m_stack->send_data_to_java (b);
 	return error;
@@ -802,7 +801,7 @@ exit:
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("cursor closed"),
 					  ARG_FILE_LINE));
       }
 
@@ -953,9 +952,21 @@ exit:
   {
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_END_TRANSACTION;
-    int command; // commit or abort
+    int command; // commit=1 or abort=2
 
     unpacker.unpack_all (command);
+    if (command == 2)
+      {
+	cubpl::session *pl_session = cubpl::get_session ();
+	if (pl_session)
+	  {
+	    pl_session->destroy_all_cursors();
+	  }
+	else
+	  {
+	    return ER_SES_SESSION_EXPIRED;
+	  }
+      }
 
     auto java_lambda = [&] (const cubmem::block & b)
     {
