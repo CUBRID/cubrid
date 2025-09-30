@@ -1664,7 +1664,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
   else
     {
       ref_clsop = sm_find_class (fk_info->ref_class);
-
       if (ref_clsop == NULL)
 	{
 	  ERROR1 (error, ER_FK_UNKNOWN_REF_CLASSNAME, fk_info->ref_class);

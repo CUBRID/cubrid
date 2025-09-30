@@ -8853,6 +8853,32 @@ error_exit:
   return error;
 }
 
+bool
+ha_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
+{
+  DB_CONSTRAINT *constraints, *tmp_c;
+  MOP ref_clsop = NULL;
+
+  assert (class_obj != NULL);
+
+  constraints = db_get_constraints (class_obj);
+  for (tmp_c = constraints; tmp_c; tmp_c = db_constraint_next (tmp_c))
+    {
+      if (tmp_c->type != SM_CONSTRAINT_FOREIGN_KEY)
+	{
+	  continue;
+	}
+
+      ref_clsop = ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL);
+      if (repl != sm_is_replication_class (ref_clsop))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 /*
  * do_create_entity() - Creates a new class/vclass
  *   return: Error code if the class/vclass is not created
@@ -9246,6 +9272,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      break;
 	    }
 	  do_flush_class_mop = true;
+	}
+      // TODO add !HA_DISABELED()
+      if (ha_fk_replication_violation (class_obj, IS_REPLICATION_ON_OPT (tbl_opt_replication)))
+	{
+	  error = ER_HA_FK_CONSTRAINT_VIOLATION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
+		  "Replication option mismatch for foreign key in HA mode.");
+	  goto error_exit;
 	}
 
       if (tbl_opt_encrypt)

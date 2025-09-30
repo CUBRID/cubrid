@@ -7861,7 +7861,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 
   assert (classname != NULL);
 #endif /* ENABLE_SYSTEMTAP */
-
   for (i = 0; i < num_btids; i++)
     {
       index = &(index_attrinfo.last_classrepr->indexes[i]);
@@ -7931,7 +7930,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
-
 	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
 		{
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -8041,7 +8039,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        * for the update cases, refer to locator_update_force()
        */
       if (need_replication && heap_is_replication_class (thread_p, class_oid) && !replicated
-	  && or_is_replication_key_candidate(index) && error_code == NO_ERROR
+	  && or_is_replication_key_candidate (index) && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  error_code =
@@ -8417,12 +8415,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       goto error;
     }
 #endif /* ENABLE_SYSTEMTAP */
-
   for (i = 0; i < num_btids; i++)
     {
       index = &(new_attrinfo->last_classrepr->indexes[i]);
       if (pk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
-	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_key_candidate(index)
+	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_key_candidate (index)
 	  && !replicated && log_does_allow_replication () == true)
 	{
 	  pk_btid_index = i;

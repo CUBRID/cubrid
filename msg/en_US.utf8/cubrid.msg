@@ -1463,8 +1463,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1368 A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode.
 1369 Changing the replication option of a class is not allowed in HA mode.
-
-1370 Last Error
+1370 Replication option mismatch for foreign key in HA mode.
+1371 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

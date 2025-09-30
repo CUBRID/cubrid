@@ -4722,7 +4722,7 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
  *   index(in): OR_INDEX pointer (may be NULL)
  */
 bool
-or_is_replication_key_candidate (const OR_INDEX *index)
+or_is_replication_key_candidate (const OR_INDEX * index)
 {
   if (index == NULL)
     {
@@ -4743,9 +4743,9 @@ or_is_replication_key_candidate (const OR_INDEX *index)
     {
       OR_ATTRIBUTE *attr = index->atts[i];
       if (attr == NULL || !attr->is_notnull)
-        {
-          return false;
-        }
+	{
+	  return false;
+	}
     }
 
   return true;
