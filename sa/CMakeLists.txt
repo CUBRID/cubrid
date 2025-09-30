@@ -525,6 +525,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
   ${XASL_DIR}/xasl_unpack_info.cpp
+  ${XASL_DIR}/xasl_iteration.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -535,6 +536,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
+  ${XASL_DIR}/xasl_iteration.hpp
   )
 
 set(LOADDB_SOURCES
