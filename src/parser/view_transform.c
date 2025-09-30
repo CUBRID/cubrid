@@ -480,6 +480,55 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * mq_is_right_outer_join_spec () - determine if a spec is right outer joined in a spec list
+ *  returns: boolean
+ *   parser(in): parser context
+ *   spec(in): table spec to check
+ */
+bool
+mq_is_right_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  if (spec == NULL)
+    {
+      /* should not be here */
+      PT_INTERNAL_ERROR (parser, "function called with wrong arguments");
+      return false;
+    }
+
+  assert (spec->node_type == PT_SPEC);
+
+  spec = spec->next;
+  while (spec)
+    {
+      switch (spec->info.spec.join_type)
+	{
+	case PT_JOIN_NONE:
+	case PT_JOIN_CROSS:
+	  /* joins from this point forward do not matter */
+	  return false;
+
+	case PT_JOIN_RIGHT_OUTER:
+	  /* right outer joined */
+	  return true;
+
+#if 1				/* TODO - */
+	case PT_JOIN_NATURAL:	/* not used */
+	case PT_JOIN_INNER:
+	case PT_JOIN_LEFT_OUTER:
+	case PT_JOIN_FULL_OUTER:	/* not used */
+	case PT_JOIN_UNION:	/* not used */
+	  break;
+#endif
+	}
+
+      spec = spec->next;
+    }
+
+  /* if we reached this point, it's not outer joined */
+  return false;
+}
+
+/*
  * mq_bump_corr_pre() -  Bump the correlation level of all matching
  *                       correlated queries
  *   return:
@@ -1955,7 +2004,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
   if (!is_only_spec && (mq_is_outer_join_spec (parser, class_spec) || MQ_IS_OUTER_JOIN_SPEC (class_spec)))
     {
       /* view for single table + left outer join can be merged */
-      if (pt_length_of_list (subquery->info.query.q.select.from) != 1 || !MQ_IS_LEFT_JOIN_SPEC (class_spec))
+      if (pt_length_of_list (subquery->info.query.q.select.from) != 1 || !MQ_IS_LEFT_JOIN_SPEC (class_spec)
+	  || mq_is_right_outer_join_spec (parser, class_spec))
 	{
 	  /* not pushable */
 	  return NON_PUSHABLE;
@@ -10600,7 +10650,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
       goto exit_on_error;
     }
 
-  if (mq_is_outer_join_spec (parser, spec))
+  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
     {
       /* handle is a where parts of view sub-querys */
       if (specptr)
@@ -11368,7 +11418,7 @@ mq_inline_view_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * d
       goto exit_on_error;
     }
 
-  if (mq_is_outer_join_spec (parser, derived_spec))
+  if (derived_spec->info.spec.join_type == PT_JOIN_LEFT_OUTER)
     {
       /* handle is a where parts of view sub-querys */
       if (specptr)
