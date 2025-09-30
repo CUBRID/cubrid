@@ -18199,6 +18199,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       opd1 = pt_dbval_to_value (parser, arg1);
+      result->info.expr.arg1 = (op == PT_LIKE) ? opd1 : result->info.expr.arg1;
       type1 = opd1->type_enum;
     }
   else
@@ -18238,6 +18239,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       opd2 = pt_dbval_to_value (parser, arg2);
+      result->info.expr.arg2 = (op == PT_LIKE) ? opd2 : result->info.expr.arg2;
       type2 = opd2->type_enum;
     }
   else
