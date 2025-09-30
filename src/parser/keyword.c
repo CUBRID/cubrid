@@ -41,7 +41,7 @@
 /* Keyword names must be written in uppercase */
 static KEYWORD_RECORD keywords[] = {
   {ABSOLUTE_, "ABSOLUTE", 0},
-  {ACCESS, "ACCESS", 1},
+  {ACCESS, "ACCESS", 0},
   {ACTION, "ACTION", 0},
   {ACTIVE, "ACTIVE", 1},
   {ADD, "ADD", 0},
@@ -150,7 +150,7 @@ static KEYWORD_RECORD keywords[] = {
   {DAY_MILLISECOND, "DAY_MILLISECOND", 0},
   {DAY_MINUTE, "DAY_MINUTE", 0},
   {DAY_SECOND, "DAY_SECOND", 0},
-  {DBLINK, "DBLINK", 0},
+  {DBLINK, "DBLINK", 1},
   {DBNAME, "DBNAME", 1},
   {DB_TIMEZONE, "DBTIMEZONE", 0},
   {DEALLOCATE, "DEALLOCATE", 0},
@@ -311,7 +311,7 @@ static KEYWORD_RECORD keywords[] = {
   {KEY, "KEY", 0},
   {KEYLIMIT, "KEYLIMIT", 0},
   {KEYS, "KEYS", 1},
-  {KILL, "KILL", 1},
+  {KILL, "KILL", 0},
   {LAG, "LAG", 1},
   {LANGUAGE, "LANGUAGE", 0},
   {LAST, "LAST", 0},
@@ -335,7 +335,7 @@ static KEYWORD_RECORD keywords[] = {
   {LOOP, "LOOP", 0},
   {LOWER, "LOWER", 0},
   {MATCH, "MATCH", 0},
-  {MATCHED, "MATCHED", 1},
+  {MATCHED, "MATCHED", 0},
   {Max, "MAX", 0},
   {MAXIMUM, "MAXIMUM", 1},
   {MAXVALUE, "MAXVALUE", 1},
@@ -365,7 +365,7 @@ static KEYWORD_RECORD keywords[] = {
   {NEXT, "NEXT", 0},
   {NO, "NO", 0},
   {NOCACHE, "NOCACHE", 1},
-  {NOCYCLE, "NOCYCLE", 1},
+  {NOCYCLE, "NOCYCLE", 0},
   {NOMAXVALUE, "NOMAXVALUE", 1},
   {NOMINVALUE, "NOMINVALUE", 1},
   {NONE, "NONE", 0},
@@ -484,7 +484,7 @@ static KEYWORD_RECORD keywords[] = {
   {SEQUENCE_OF, "SEQUENCE_OF", 0},
   {SERIAL, "SERIAL", 1},
   {SERIALIZABLE, "SERIALIZABLE", 0},
-  {SERVER, "SERVER", 0},
+  {SERVER, "SERVER", 1},
   {SESSION, "SESSION", 0},
   {SESSION_TIMEZONE, "SESSIONTIMEZONE", 0},
   {SESSION_USER, "SESSION_USER", 0},
@@ -612,7 +612,7 @@ static KEYWORD_RECORD keywords[] = {
   {YEAR_, "YEAR", 0},
   {YEAR_MONTH, "YEAR_MONTH", 0},
   {ZONE, "ZONE", 0},
-  {TIMEZONES, "TIMEZONES", 1}
+  {TIMEZONES, "TIMEZONES", 0}
 };
 
 static KEYWORD_RECORD *pt_find_keyword (const char *text);
