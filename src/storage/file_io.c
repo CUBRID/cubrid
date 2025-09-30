@@ -12039,7 +12039,7 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
 
   switch (mode)
     {
-    case LOB_CREATE_TABLE:
+    case LOB_CREATE_TABLE_DIR:
       snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       rv_path[strlen (rv_path)] = '\0';
       log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
@@ -12058,7 +12058,7 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
 
       break;
 
-    case LOB_CREATE_COLUMN:
+    case LOB_CREATE_COLUMN_DIR:
       snprintf (rv_path, PATH_MAX, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
       log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
 
@@ -12081,12 +12081,12 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
 
       break;
 
-    case LOB_DROP_TABLE:
+    case LOB_DROP_TABLE_DIR:
       snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;
 
-    case LOB_DROP_COLUMN:
+    case LOB_DROP_COLUMN_DIR:
       snprintf (rv_path, PATH_MAX, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;

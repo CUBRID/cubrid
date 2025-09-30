@@ -30,6 +30,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string.h>
+#include <dirent.h>
 
 #if defined(SOLARIS)
 #include <netdb.h>
@@ -214,6 +216,8 @@ STATIC_INLINE int boot_db_parm_update_heap (THREAD_ENTRY * thread_p) __attribute
 static int boot_after_copydb (THREAD_ENTRY * thread_p);
 
 static int boot_generate_tde_keys (THREAD_ENTRY * thread_p);
+
+static void boot_delete_ces_entries ();
 
 /*
  * bo_server) -set server's status, UP or DOWN
@@ -2562,6 +2566,8 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	{
 	  goto error;
 	}
+      /* remove lob ces temp dir */
+      boot_delete_ces_entries ();
     }
   else
     {
@@ -3030,6 +3036,8 @@ exit:
 bool
 xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final)
 {
+  char *p = NULL;
+  char lob_dir_path[strlen (boot_Lob_path)];
   if (!BO_IS_SERVER_RESTARTED ())
     {
       return true;
@@ -3054,6 +3062,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   session_states_finalize (thread_p);
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
+
+  /* remove lob ces temp dir */
+  boot_delete_ces_entries ();
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
@@ -5237,6 +5248,9 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
     }
 
+  /* remove lob ces temp dir */
+  boot_delete_ces_entries (); /* Already called in createdb/copydb.. — is it necessary here? */
+
   /* Now delete the database */
   error_code = logpb_delete (thread_p, boot_Db_parm->nvols, db_fullname, log_path, log_prefix, force_delete);
   return error_code;
@@ -6148,4 +6162,46 @@ boot_after_copydb (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
 
   return NO_ERROR;
+}
+
+void
+boot_delete_ces_entries ()
+{
+  char *p = NULL;
+  char lob_dir_path[strlen (boot_Lob_path)];
+  char full_path[PATH_MAX];
+  DIR *dir;
+  struct dirent *dir_entry;
+
+  p = strchr(boot_Lob_path, ':');
+  if (p)
+    {
+      p++;
+      strcpy(lob_dir_path, p);
+    }
+
+  dir = opendir (lob_dir_path);
+
+  if (dir == NULL)
+    {
+      closedir (dir);
+      return;
+    }
+
+  while ((dir_entry = readdir (dir)) != NULL)
+    {
+      if (strcmp (dir_entry->d_name, ".") == 0 || strcmp (dir_entry->d_name, "..") == 0)
+	{
+	  continue;
+	}
+
+      snprintf (full_path, (strlen (lob_dir_path) + strlen (dir_entry->d_name) + 2), "%s/%s", lob_dir_path, dir_entry->d_name);
+
+      if (strstr (dir_entry->d_name, "ces_") != NULL)
+	{
+	  fileio_lob_dir_remove (full_path);
+	}
+    }
+
+  closedir (dir);
 }
