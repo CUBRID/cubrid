@@ -423,7 +423,7 @@ static KEYWORD_RECORD keywords[] = {
   {PROCEDURE, "PROCEDURE", 0},
   {PROMOTE, "PROMOTE", 0},
   {PROPERTIES, "PROPERTIES", 1},
-  {PUBLIC, "PUBLIC", 1},
+  // {PUBLIC, "PUBLIC", 1}, TODO add this line
   {QUARTER, "QUARTER", 1},
   {QUERY, "QUERY", 0},
   {QUEUES, "QUEUES", 1},
