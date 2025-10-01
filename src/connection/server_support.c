@@ -723,6 +723,7 @@ css_process_get_server_ha_mode_request (SOCKET master_fd)
   r = send (master_fd, (char *) &response, sizeof (int), 0);
   if (r < 0)
     {
+      assert (false);		// heexoo_test
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 0);
       return;
     }

@@ -25367,17 +25367,15 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
   error_status = db_bfile_from_file (src_value, &bfile_value);
   if (error_status != NO_ERROR)
     {
-      assert (false);
       return error_status;
     }
 
   error_status = db_bfile_to_bit (&bfile_value, NULL, result_value);
   if (error_status != NO_ERROR)
     {
-      assert (false);
       return error_status;
     }
-  assert (false);
+
   return error_status;
 }
 

@@ -1231,6 +1231,11 @@ er_set (int severity, const char *file_name, const int line_no, int err_id, int 
 {
   va_list ap;
 
+  if (err_id == ER_TP_CANT_COERCE)
+    {
+      assert (false);
+    }
+
   va_start (ap, num_args);
   (void) er_set_internal (severity, file_name, line_no, err_id, num_args, false, NULL, &ap);
   va_end (ap);

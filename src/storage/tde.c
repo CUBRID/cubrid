@@ -477,6 +477,7 @@ tde_copy_keys_file (THREAD_ENTRY * thread_p, const char *dest_fullname, const ch
 	      fileio_dismount (thread_p, from_vdes);
 	      fileio_unformat_and_rename (thread_p, dest_fullname, NULL);
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 0);
+	      assert (false);	// heexoo_test
 	      return ER_IO_WRITE;
 	    }
 	}

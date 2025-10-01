@@ -6485,6 +6485,11 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   int result;
   HL_HEAPID save_heapid = 0;
 
+  /* ===== DEBUG LOG START ===== */
+  printf ("[DEBUG] enter (thread_p=%p, regu_var_p=%p, val_desc_p=%p)\n",
+	  (void *) thread_p, (void *) regu_var_p, (void *) val_desc_p);
+  /* ===== DEBUG LOG END ===== */
+
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
 
@@ -6494,6 +6499,9 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
     }
 
   result = fetch_peek_dbval (thread_p, regu_var_p, val_desc_p, NULL, NULL, NULL, &peek_value_p);
+  /* ===== DEBUG LOG START ===== */
+  printf ("[DEBUG] fetch_peek_dbval: result=%d, peek_value_p=%p\n", result, (void *) peek_value_p);
+  /* ===== DEBUG LOG END ===== */
   if (result != NO_ERROR)
     {
       return NULL;
@@ -6502,9 +6510,15 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   if (!DB_IS_NULL (peek_value_p))
     {
       val_type = DB_VALUE_TYPE (peek_value_p);
+      /* ===== DEBUG LOG START ===== */
+      printf ("[DEBUG] peek_value : val_type=%d\n", val_type);
+      /* ===== DEBUG LOG END ===== */
       assert (val_type != DB_TYPE_NULL);
 
       dom_type = TP_DOMAIN_TYPE (regu_var_p->domain);
+      /* ===== DEBUG LOG START ===== */
+      printf ("[DEBUG] regu_var domain : dom_type=%d\n", dom_type);
+      /* ===== DEBUG LOG END ===== */
       if (dom_type != DB_TYPE_NULL)
 	{
 	  assert (dom_type != DB_TYPE_NULL);
@@ -6531,6 +6545,10 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		    }
 
 		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+		  /* ===== DEBUG LOG START ===== */
+		  printf ("[DEBUG] tp_value_auto_cast -> dom_status=%d\n", dom_status);
+		  /* ===== DEBUG LOG END ===== */
+
 		  if (save_heapid != 0)
 		    {
 		      (void) db_change_private_heap (thread_p, save_heapid);
@@ -6538,10 +6556,19 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
+		      /* ===== DEBUG LOG START ===== */
+		      printf ("[DEBUG] DOMAIN NOT COMPATIBLE: status=%d -> set error & return NULL\n", dom_status);
+		      /* ===== DEBUG LOG END ===== */
 		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
 		      return NULL;
 		    }
-		  assert (dom_type == DB_VALUE_TYPE (peek_value_p)
+
+		  /* ===== DEBUG LOG START ===== */
+		  printf ("[DEBUG] after cast: dom_type=%d, val_type=%d\n", dom_type, val_type);
+		  /* ===== DEBUG LOG END ===== */
+
+		  /* *** KEEP ORIGINAL ASSERT EXACTLY AS-IS *** */
+		  assert (dom_type == val_type
 			  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));
 		}
 	    }

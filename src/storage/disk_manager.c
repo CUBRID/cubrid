@@ -4297,6 +4297,7 @@ error:
       || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
     {
       /* this is expected. */
+      assert (false);		// heexoo_test
       return error_code;
     }
   /* this is not. */

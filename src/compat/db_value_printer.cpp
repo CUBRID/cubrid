@@ -625,6 +625,7 @@ void db_value_printer::describe_data (const db_value *value)
 
 	  src = pos + 1;
 	}
+      assert (false); //heexoo_test
       break;
 
       /*

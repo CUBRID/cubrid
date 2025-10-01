@@ -1577,6 +1577,7 @@ unload_writer_thread (void *param)
       if (ret < 0)
 	{
 	  thr_ret = ER_IO_WRITE;
+	  assert (false);	// heexoo_test
 	  break;
 	}
 

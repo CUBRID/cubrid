@@ -1090,6 +1090,7 @@ write_object_file (TEXT_BUFFER_BLK * head)
 	      // TODDO: EAGAIN, EINTR ?
 	      assert (_errno == EINTR || _errno == EBADF);
 	      error = ER_IO_WRITE;
+	      assert (false);	// heexoo_test
 	    }
 	}
 

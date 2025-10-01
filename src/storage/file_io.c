@@ -2394,6 +2394,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	  if (er_errid () != ER_INTERRUPTED)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, 0, vol_id);
+	      assert (false);	// heexoo_test
 	    }
 
 	  vol_fd = NULL_VOLDES;
@@ -4144,6 +4145,7 @@ fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
 				   fileio_get_volume_label_by_fd (vol_fd, PEEK));
+	      assert (false);	// heexoo_test
 	      return NULL;
 	    }
 	}
@@ -4309,6 +4311,7 @@ fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEI
 	      {
 		er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
 				     fileio_get_volume_label_by_fd (vol_fd, PEEK));
+		assert (false);	// heexoo_test
 		return NULL;
 	      }
 	    }
@@ -4759,6 +4762,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
 			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
+      assert (false);		// heexoo_test
       return NULL;
     }
 
@@ -4789,6 +4793,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
 			       fileio_get_volume_label_by_fd (vol_fd, PEEK));
+	  assert (false);	// heexoo_test
 	  return NULL;
 
 	}
@@ -4810,6 +4815,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
     {
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
 			   fileio_get_volume_label_by_fd (vol_fd, PEEK));
+      assert (false);		// heexoo_test
       return NULL;
     }
 #endif /* WINDOWS */
@@ -4835,6 +4841,7 @@ fileio_write_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, page_id,
 				   fileio_get_volume_label_by_fd (vol_fd, PEEK));
+	      assert (false);	// heexoo_test
 	      goto error;
 	    }
 	}
@@ -7240,6 +7247,7 @@ fileio_write_backup_end_time_to_header (FILEIO_BACKUP_SESSION * session_p, INT64
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, 1, first_bkvol_name);
 	  fileio_close (vdes);
+	  assert (false);	// heexoo_test
 	  return ER_IO_WRITE;
 	}
       fileio_close (vdes);
@@ -8610,6 +8618,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 			  break;
 			  /* equiv -- Failure */
 			default:
+			  assert (false);	// heexoo_test
 			  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
 					       CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE),
 					       session_p->bkup.vlabel);
@@ -8860,6 +8869,7 @@ fileio_write_backup_header (FILEIO_BACKUP_SESSION * session_p)
 	    }
 	  else
 	    {
+	      assert (false);	// heexoo_test
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
 				   CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE), session_p->bkup.vlabel);
 	    }

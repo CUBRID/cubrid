@@ -2315,6 +2315,7 @@ _op_get_value_string (DB_VALUE * value)
 	{
 	  snprintf (result, result_size, "%s", db_string_p_tmp);
 	}
+      assert (false);		// heexoo_test
       break;
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:

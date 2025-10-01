@@ -3607,6 +3607,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			    }
 			  else
 			    {
+			      assert (false);
 			      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNKNOWN_FUNCTION,
 					  downcase_generic_name);
 			    }

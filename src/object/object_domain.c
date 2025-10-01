@@ -7411,11 +7411,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_JSON_BOOL:
 	  switch (desired_type)
 	    {
+	    case DB_TYPE_CLOB:
+	      assert (false);	// heexoo_test
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	    case DB_TYPE_NCHAR:
 	    case DB_TYPE_VARNCHAR:
-	    case DB_TYPE_CLOB:
 	      db_make_string (&src_replacement, db_json_get_bool_as_str_from_document (src_doc));
 	      src_replacement.need_clear = true;
 	      break;
@@ -7544,7 +7545,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 
 	  pr_clear_value (&src_replacement);
-	  if (TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_CLOB || TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_BLOB)
+	  if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (desired_domain)))	// heexoo_test
 	    {
 	      assert (false);
 	    }
@@ -7735,7 +7736,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		    if (TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_CLOB
 			|| TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_BLOB)
 		      {
-			assert (false);
+			assert (false);	// heexoo_test
 		      }
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
@@ -7913,6 +7914,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 	      }
 	  }
+	  assert (false);	// heexoo_test
 	  break;
 	case DB_TYPE_FLOAT:
 	  {
