@@ -42,9 +42,9 @@
     do {                          \
 	for (int i = 0; i < num; i++) {				\
 	    parallel_query::callable_task * task =		\
-	       new parallel_query::callable_task (&parallel_query::worker_manager::get_manager(), std::		\
+	       new parallel_query::callable_task (sort_param->px_worker_manager, std::		\
 	          bind (function, std::placeholders::_1, &px_sort_param[i]));	\
-	    parallel_query::worker_manager::get_manager().push_task(task);	\
+	    sort_param->px_worker_manager->push_task(task);	\
 	  }	\
     } while (0)
 // *INDENT-ON*

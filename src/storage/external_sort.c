@@ -177,6 +177,7 @@ struct sort_param
   SORT_PARAM *ori_sort_param;
   int px_parallel_num;
   RESULT_RUN *px_result_run;
+  parallel_query::worker_manager *px_worker_manager;
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
 #if defined(SERVER_MODE)
@@ -1541,7 +1542,7 @@ cleanup:
 	}
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
-      parallel_query::worker_manager::get_manager ().release_workers ();
+      sort_param->px_worker_manager->release_workers (sort_param->px_parallel_num);
       free_and_init (px_sort_param);
     }
   else
@@ -4511,10 +4512,10 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 	  px_sort_param[i].px_status = PX_PROGRESS;
 
 	  parallel_query::callable_task * task =
-	    new parallel_query::callable_task (&parallel_query::worker_manager::get_manager (),
+	    new parallel_query::callable_task (sort_param->px_worker_manager,
 					       std::bind (sort_merge_nruns_parallel, std::placeholders::_1,
 							  &px_sort_param[i]));
-	  parallel_query::worker_manager::get_manager ().push_task (task);
+	  sort_param->px_worker_manager->push_task (task);
 	}
 
       SORT_WAIT_PARALLEL (merge_num, sort_param, px_sort_param);
@@ -4693,7 +4694,12 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
 
       /* check worker */
-      if (parallel_query::worker_manager::get_manager ().try_reserve_workers (parallel_num))
+      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
+      if (sort_param->px_worker_manager == NULL)
+	{
+	  return 1;
+	}
+      else
 	{
 	  return parallel_num;
 	}
