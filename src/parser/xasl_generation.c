@@ -17072,6 +17072,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
+  scan_check_parallel_heap_scan_possible (xasl);
+
   return xasl;
 
 exit_on_error:
@@ -17300,6 +17302,8 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   return xasl;
 
