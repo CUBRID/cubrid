@@ -3418,10 +3418,6 @@ xboot_notify_unregister_client (THREAD_ENTRY * thread_p, int tran_index)
       if (conn->status == CONN_OPEN)
 	{
 	  conn->status = CONN_CLOSING;
-
-	  /* request to connection thread */
-	  css_request_shutdown_conn (conn);
-	  css_wakeup_handler (conn);
 	}
     }
 }

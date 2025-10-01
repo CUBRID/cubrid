@@ -1224,7 +1224,7 @@ namespace cubconn
 
   inline bool master_connector::execute () noexcept
   {
-    std::array<epoll_event, 256> events;
+    std::array<epoll_event, 512> events;
     context *ctx;
     int nfds, i;
 
