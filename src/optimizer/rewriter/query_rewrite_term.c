@@ -30,7 +30,7 @@ static void qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** where
 static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
-static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** wherep);
+static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -43,7 +43,7 @@ static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** from, P
  *   Verify correctness before modifying previous steps
  */
 void
-qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** nodes, PT_NODE ** terms)
+qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms)
 {
   if (*terms)
     {
@@ -1441,7 +1441,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
  *   wherep(in): pointer to WHERE list
  */
 static void
-qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** wherep)
+qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep)
 {
   PT_NODE *node, *sibling, *prev, *fold;
   DB_VALUE value;
@@ -1535,7 +1535,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** from, PT_NODE ** wh
 	}
       else
 	{
-	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_check_not_null_constraint (parser, *from, node_prior))
+	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_check_not_null_constraint (parser, from, node_prior))
 	    {
 	      db_make_int (&value, 1);
 	    }

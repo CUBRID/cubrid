@@ -2735,15 +2735,20 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   parser->auto_param_count = 0;
   parser->flag.set_host_var = 1;
 
-  /* Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may
+  /* Like optimization check: if host-variables were used in LIKE conditions, check if query needs to be recompiled
+   * to remove LIKE conditions.
+   * Multi range optimization check: if host-variables were used (not auto-parameterized), the orderby_num () limit may
    * change and invalidate or validate multi range optimization. Check if query needs to be recompiled. */
   if (!XASL_ID_IS_NULL (&xasl_id)	/* xasl_id should not be null */
       && !statement->info.execute.recompile	/* recompile is already planned */
       && (prepare_info.host_variables.size > prepare_info.auto_param_count))
     {
-      if (db_check_where_need_recompile (parser, statement, xasl_header.xasl_flag))
+      if (xasl_header.xasl_flag & LIKE_RECOMPILE_CANDIDATE)
 	{
-	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	  if (db_check_where_need_recompile (parser, statement, xasl_header.xasl_flag))
+	    {
+	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	    }
 	}
 
       /* query has to be multi range opt candidate */

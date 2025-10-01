@@ -45,7 +45,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 {
   int level, seqno = 0;
   PT_NODE *next, **wherep, **havingp, *dummy;
-  PT_NODE **spec, *derived_table;
+  PT_NODE *spec, *derived_table;
   PT_NODE **startwithp, **connectbyp, **aftercbfilterp;
   PT_NODE **merge_upd_wherep, **merge_ins_wherep, **merge_del_wherep;
   PT_NODE **orderby_for_p;
@@ -54,9 +54,9 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
   bool call_auto_parameterize = false;
 
   /* Initialize pointers to prevent segmentation faults. */
-  dummy = NULL;
+  dummy = NULL, spec = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp =
-    merge_upd_wherep = merge_ins_wherep = merge_del_wherep = orderby_for_p = show_argp = spec = &dummy;
+    merge_upd_wherep = merge_ins_wherep = merge_del_wherep = orderby_for_p = show_argp = &dummy;
 
   /* 1. Pre-rewrite steps. */
   switch (node->node_type)
@@ -111,9 +111,9 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	{
 	  aftercbfilterp = &node->info.query.q.select.after_cb_filter;
 	}
-      spec = &node->info.query.q.select.from;
-      if (*spec != NULL && (*spec)->info.spec.derived_table_type == PT_IS_SHOWSTMT
-	  && (derived_table = (*spec)->info.spec.derived_table) != NULL && derived_table->node_type == PT_SHOWSTMT)
+      spec = node->info.query.q.select.from;
+      if (spec != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT
+	  && (derived_table = spec->info.spec.derived_table) != NULL && derived_table->node_type == PT_SHOWSTMT)
 	{
 	  show_argp = &derived_table->info.showstmt.show_args;
 	}
