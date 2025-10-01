@@ -38,6 +38,7 @@
 #include "file_io.h"
 #include "log_lsa.hpp"
 
+#include "compressor.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "oid.h"
@@ -819,7 +820,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       assert (OR_IS_STRING_LENGTH_COMPRESSABLE (charlen));
 
       /* Alloc memory for the compressed string */
-      compress_buffer_size = LZ4_compressBound (charlen);
+      compress_buffer_size = cubcompress::bound < cubcompress::LZ4 > (charlen);
       compressed_string = (char *) malloc (compress_buffer_size);
       if (compressed_string == NULL)
 	{
@@ -829,7 +830,8 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	}
 
       /* Compress the string */
-      compressed_length = LZ4_compress_default (string, compressed_string, charlen, compress_buffer_size);
+      compressed_length =
+	cubcompress::compress < cubcompress::LZ4 > (string, charlen, compressed_string, compress_buffer_size);
       if (compressed_length <= 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
