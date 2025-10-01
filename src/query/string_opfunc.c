@@ -25570,7 +25570,7 @@ db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 
   if (src_type == DB_TYPE_CLOB)
     {
-      db_string_char_length (src_value, result_value);
+      db_make_bigint (result_value, db_get_string_length (src_value));
     }
   else
     {
