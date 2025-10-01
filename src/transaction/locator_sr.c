@@ -8316,7 +8316,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
-  bool replicated = false;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -8814,8 +8813,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  <<<<<<<HEAD == == == = replicated = true;
-	  >>>>>>>17 a017e3f (lint) if (repl_old_key == &old_dbvalue)
+	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
 	    }
@@ -8825,8 +8823,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  <<<<<<<HEAD == == == = replicated = true;
-	  >>>>>>>17 a017e3f (lint) pr_free_ext_value (repl_old_key);
+
+	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}
     }

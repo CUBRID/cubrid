@@ -965,6 +965,7 @@ extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CON
 
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
 extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints);
+extern bool classobj_has_class_rk_constraint (SM_CLASS_CONSTRAINT * constraints);
 extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
 extern bool classobj_has_function_constraint (SM_CONSTRAINT * constraints);
 extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid, char **shared_cons_name);

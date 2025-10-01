@@ -89,15 +89,15 @@
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
 /* Returns true if replication option is ON or not specified (default ON).
- * Use with table option node (tbl_opt_replication).
+ * Used during CREATE TABLE parsing to check table option node (tbl_opt_replication).
  */
-#define IS_REPLICATION_ON_OPT(_opt) \
+#define IS_CREATE_OPT_REPLICATION_ON(_opt) \
   ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
 
-/* Returns true if replication node value is ON or not specified (default ON).
- * Use with replication_node (tbl_opt_replication->info.table_option.val).
+/* Returns true if replication option is ON.
+ * Used during ALTER TABLE parsing to check replication option node (replication_node).
  */
-#define IS_REPLICATION_ON_VAL(_node) \
+#define IS_ALTER_OPT_REPLICATION_ON(_node) \
   ((_node)->info.value.data_value.i )
 
 typedef enum
@@ -8854,23 +8854,6 @@ error_exit:
   return error;
 }
 
-bool
-has_not_null_unique_attr (DB_OBJECT * class_obj)
-{
-  DB_ATTRIBUTE *attr;
-  attr = db_get_attributes (class_obj);
-  while (attr)
-    {
-      if (db_attribute_is_non_null (attr))
-	{
-	  return true;
-	}
-      attr = db_attribute_next (attr);
-    }
-
-  return false;
-}
-
 /*
  * has_replication_key_constraint() -
  *   return : true if the class has a UNIQUE constraint
@@ -8886,12 +8869,7 @@ has_replication_key_constraint (DB_OBJECT * class_obj)
       return false;
     }
 
-  if (!classobj_has_class_unique_constraint (c))
-    {
-      return false;
-    }
-
-  return has_not_null_unique_attr (class_obj);
+  return classobj_has_class_rk_constraint (c);
 }
 
 /*
@@ -9274,13 +9252,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-
       /*  
        * Set the SM_CLASSFLAG_REPLICATION_DATA_OFF flag.  
        * If the option is omitted, or if the "on|off" value is omitted,  
        * the default is set to "on".  
        */
-      if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
+      if (!IS_CREATE_OPT_REPLICATION_ON (tbl_opt_replication))
 	{
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION_DATA_OFF, TRUE);
 	  if (error != NO_ERROR)
@@ -9296,7 +9273,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
 	  goto error_exit;
 	}
-
 
       if (tbl_opt_encrypt)
 	{
@@ -10717,7 +10693,7 @@ exit:
 }
 
 /*
- * handle_replication_option() - handle the replication option
+ * do_alter_change_replication() - handle the replication option
  *   return: Error code
  *   class_mop(in/out): Class MOP to apply the option
  *   replication_node(in): Parse tree node containing replication option
@@ -10734,7 +10710,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   DB_CTMPL *ctemplate = NULL;
   MOP class_mop = NULL;
   bool tran_saved = false;
-  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;;
+  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
 
   if (!HA_DISABLED ())
     {
@@ -10793,116 +10769,8 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
     }
 
   class_mop = ctemplate->op;
-  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_DATA_OFF, !IS_REPLICATION_ON_VAL (replication_node));
-  if (error != NO_ERROR)
-    {
-      error = er_errid ();
-      goto exit;
-    }
-
-  /* force schema update to server */
-  class_obj = dbt_finish_class (ctemplate);
-  if (class_obj == NULL)
-    {
-      error = er_errid ();
-      goto exit;
-    }
-
-  /* set NULL, avoid 'abort_class' in case of error */
-  ctemplate = NULL;
-
-exit:
-  if (ctemplate != NULL)
-    {
-      dbt_abort_class (ctemplate);
-      ctemplate = NULL;
-    }
-
-  if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
-    {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
-    }
-
-  return error;
-}
-
-/*
- * handle_replication_option() - handle the replication option
- *   return: Error code
- *   class_mop(in/out): Class MOP to apply the option
- *   replication_node(in): Parse tree node containing replication option
- *
- * Note: If the option is omitted, or if "on|off" is omitted,
- *       the default value is set to "on".
- */
-static int
-do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter)
-{
-  int error = NO_ERROR;
-  const char *entity_name = NULL;
-  DB_OBJECT *class_obj = NULL;
-  DB_CTMPL *ctemplate = NULL;
-  MOP class_mop = NULL;
-  bool tran_saved = false;
-  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;;
-
-  if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
-    {
-      error = ER_REPLICATION_CONSTRAINT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-
-      return error;
-    }
-
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  tran_saved = true;
-
-  entity_name = alter->info.alter.entity_name->info.name.original;
-  if (entity_name == NULL)
-    {
-      error = ER_UNEXPECTED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Expecting a class or virtual class name.");
-      goto exit;
-    }
-
-  class_obj = db_find_class (entity_name);
-  if (class_obj == NULL)
-    {
-      error = er_errid ();
-      goto exit;
-    }
-
-  error = locator_flush_class (class_obj);
-  if (error != NO_ERROR)
-    {
-      /* don't overwrite error */
-      goto exit;
-    }
-  /* get exclusive lock on class */
-  if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
-    {
-      error = ER_FAILED;
-      goto exit;
-    }
-
-  ctemplate = dbt_edit_class (class_obj);
-  if (ctemplate == NULL)
-    {
-      /* when dbt_edit_class fails (e.g. because the server unilaterally aborts us), we must record the associated
-       * error message into the parser.  Otherwise, we may get a confusing error msg of the form: "so_and_so is not a
-       * class". */
-      pt_record_error (parser, parser->statement_number - 1, alter->line_number, alter->column_number, er_msg (), NULL);
-      error = er_errid ();
-      goto exit;
-    }
-
-  class_mop = ctemplate->op;
-  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_OFF, !IS_REPLICATION_ON_NODE (replication_node));
+  error =
+    sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_DATA_OFF, !IS_ALTER_OPT_REPLICATION_ON (replication_node));
   if (error != NO_ERROR)
     {
       error = er_errid ();
