@@ -26,14 +26,12 @@
 
 #include "config.h"
 
-
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
 #include "object_primitive.h"
 
-#include "compressor.hpp"
 #include "area_alloc.h"
 #include "db_value_printer.hpp"
 #include "db_json.hpp"

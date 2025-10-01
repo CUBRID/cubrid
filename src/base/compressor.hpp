@@ -37,7 +37,7 @@ namespace cubcompress
   /* options */
   struct lz4_options
   {
-    int accel;
+    int accel = 1;
   };
   /* add here */
 
@@ -95,6 +95,7 @@ namespace cubcompress
     if (compressed_size <= 0)
       {
 	/* failed to compress */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, "failed to compress with LZ4_compress_fast_extState");
 	return 0;
       }
     return compressed_size;
@@ -108,6 +109,7 @@ namespace cubcompress
     if (decompressed_size <= 0)
       {
 	/* failed to decompress */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, "failed to decompress with LZ4_decompress_safe");
 	return 0;
       }
     return decompressed_size;
@@ -125,8 +127,6 @@ namespace cubcompress
       {
 	return lz4_bound (size);
       }
-
-    assert_release (false);
     return 0;
   }
 
@@ -143,8 +143,6 @@ namespace cubcompress
 				 lz4_option->accel);
 	  }
       }
-
-    assert_release (false);
     return 0;
   }
 
@@ -155,12 +153,9 @@ namespace cubcompress
 
     if constexpr (std::is_same<T, LZ4>::value)
       {
-	lz4_options option = /* default */ { 1 };
-
+	lz4_options option;
 	return compress<T> (src, src_size, dst, dst_capacity, option);
       }
-
-    assert_release (false);
     return 0;
   }
 
@@ -173,8 +168,6 @@ namespace cubcompress
       {
 	return lz4_decompress (static_cast<const char *> (src), static_cast<char *> (dst), src_size, dst_capacity);
       }
-
-    assert_release (false);
     return 0;
   }
 }
