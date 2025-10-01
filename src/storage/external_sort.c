@@ -177,7 +177,7 @@ struct sort_param
   SORT_PARAM *ori_sort_param;
   int px_parallel_num;
   RESULT_RUN *px_result_run;
-  parallel_query::worker_manager *px_worker_manager;
+    parallel_query::worker_manager * px_worker_manager;
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
 #if defined(SERVER_MODE)
