@@ -433,6 +433,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *slist;
   PT_TYPE_ENUM pt_desired_type;
   PT_NODE *temp_val, *def_val, *initial_def_val = NULL;
+
 #if 0
   HFID *hfid;
 #endif
@@ -1312,6 +1313,14 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
 
   vclass = dbt_finish_class (ctemplate);
+
+  // TODO add !HA_DISABELED()
+  if (ha_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
+    {
+      error = ER_HA_FK_CONSTRAINT_VIOLATION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0, "Replication option mismatch for foreign key in HA mode.");
+      return error;
+    }
 
   /* the dbt_finish_class() failed, the template was not freed */
   if (vclass == NULL)
@@ -8853,6 +8862,10 @@ error_exit:
   return error;
 }
 
+/* TODO: When creating a table, replication information can be obtained from the parse tree (PT), 
+but when adding a constraint to a column with ALTER TABLE, it has to be retrieved from the schema manager (SM). 
+If the time required to patch the SM is small, the same patch-based approach can be applied consistently. 
+*/
 bool
 ha_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
 {
@@ -10718,7 +10731,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   DB_CTMPL *ctemplate = NULL;
   MOP class_mop = NULL;
   bool tran_saved = false;
-  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;;
+  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
 
   if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
     {
