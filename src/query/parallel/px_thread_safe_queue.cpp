@@ -206,7 +206,8 @@ namespace parallel_query
     std::atomic_thread_fence (std::memory_order_release);
     current_slot.ready.store (true, std::memory_order_release);
     pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
-    if (pos % m_capacity == 0)
+
+    if (pos % m_capacity == 0 && pos != 0)
       {
 	m_enqueue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
@@ -258,7 +259,8 @@ namespace parallel_query
     current_slot.ready.store (false, std::memory_order_release);
 
     pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
-    if (pos % m_capacity == 0)
+
+    if (pos % m_capacity == 0 && pos != 0)
       {
 	m_dequeue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
@@ -319,7 +321,8 @@ namespace parallel_query
     std::atomic_thread_fence (std::memory_order_release);
     current_slot->ready.store (true, std::memory_order_release);
     pos = m_enqueue_pos.fetch_add (1, std::memory_order_release);
-    if (pos % m_capacity == 0)
+
+    if (pos % m_capacity == 0 && pos != 0)
       {
 	m_enqueue_pos.fetch_add (m_capacity, std::memory_order_release);
       }
@@ -385,7 +388,8 @@ namespace parallel_query
     current_slot->ready.store (false, std::memory_order_release);
 
     pos = m_dequeue_pos.fetch_add (1, std::memory_order_release);
-    if (pos % m_capacity == 0)
+
+    if (pos % m_capacity == 0 && pos != 0)
       {
 	m_dequeue_pos.fetch_add (m_capacity, std::memory_order_release);
       }

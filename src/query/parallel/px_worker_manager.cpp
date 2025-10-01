@@ -87,7 +87,8 @@ namespace parallel_query
 	delete this;
 	return;
       }
-    while (true)
+
+    while (m_working_workers.load () > m_reserved_workers - n_workers)
       {
 	std::unique_lock<std::mutex> lock (m_mutex);
 	if (m_working_workers.load (std::memory_order_acquire) <= 0)

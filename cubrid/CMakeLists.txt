@@ -626,9 +626,6 @@ if(WIN32)
 endif(WIN32)
 
 target_compile_definitions(cubrid PRIVATE SERVER_MODE EnableThreadMonitoring CUBRID_EXPORTING ${COMMON_DEFS})
-if(NOT USE_CUBRID_ENV)
-  target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
-endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   set_source_files_properties(

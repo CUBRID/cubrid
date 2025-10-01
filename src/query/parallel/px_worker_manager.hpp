@@ -55,6 +55,8 @@ namespace parallel_query
       std::atomic<int> m_working_workers;
       std::mutex m_mutex;
       std::condition_variable m_condition_variable;
+      worker_manager (const worker_manager &) = delete;
+      worker_manager &operator= (const worker_manager &) = delete;
   };
 
 #if !defined (NDEBUG)

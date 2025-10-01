@@ -23,7 +23,6 @@
 #include <mutex>
 #include <vector>
 #include "error_context.hpp"
-
 namespace parallel_query
 {
   class interrupt
@@ -80,7 +79,6 @@ namespace parallel_query
 	return m_is_instnum_set?m_current_tuple_cnt.fetch_add (1) >= m_destination_tuple_cnt:false;
       }
   };
-
   class err_messages_with_lock
   {
       using er_message = cuberr::er_message;
