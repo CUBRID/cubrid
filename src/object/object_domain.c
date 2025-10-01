@@ -9460,10 +9460,75 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
+    case DB_TYPE_BLOB:
+      switch (original_type)
+	{
+	case DB_TYPE_BLOB:
+	  err = db_value_clone ((DB_VALUE *) src, target);
+	  break;
+	case DB_TYPE_BIT:
+	case DB_TYPE_VARBIT:
+	  err = db_bit_to_blob (src, target);
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	case DB_TYPE_NCHAR:
+	case DB_TYPE_VARNCHAR:
+	  err = db_char_to_blob (src, target);
+	  break;
+	case DB_TYPE_CLOB:
+	  // TODO: update when storage structure is improved.
+	  err = db_char_to_blob (src, target);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
+	  }
+	  break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
+
+    case DB_TYPE_CLOB:
+      switch (original_type)
+	{
+	case DB_TYPE_CLOB:
+	  err = db_value_clone ((DB_VALUE *) src, target);
+	  break;
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  err = db_char_to_clob (src, target);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status =
+	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
+	    break;
+	  }
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
+
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-    case DB_TYPE_BLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       switch (original_type)
 	{
 	case DB_TYPE_CLOB:
@@ -9574,16 +9639,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       break;
 
-    case DB_TYPE_CLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
       switch (original_type)
 	{
-	case DB_TYPE_CLOB:
-	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_NCHAR:
@@ -9949,7 +10010,33 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      break;
 	    }
 	  break;
+	case DB_TYPE_CLOB:
+	  switch (desired_type)
+	    {
+	    case DB_TYPE_CHAR:
+	    case DB_TYPE_VARCHAR:
+	      {
+		DB_VALUE tmpval;
+		DB_VALUE cs;
 
+		db_make_null (&tmpval);
+		/* convert directly from CLOB into charset of desired domain string */
+		db_make_int (&cs, desired_domain->codeset);
+		err = db_clob_to_char (src, &cs, &tmpval);
+		if (err == NO_ERROR)
+		  {
+		    err =
+		      tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
+		  }
+
+		pr_clear_value (&tmpval);
+	      }
+	      break;
+	    default:
+	      status = DOMAIN_INCOMPATIBLE;
+	      break;
+	    }
+	  break;
 	case DB_TYPE_JSON:
 	  {
 	    char *json_str;

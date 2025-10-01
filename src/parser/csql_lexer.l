@@ -233,6 +233,9 @@ IDL       [a-zA-Z0-9_]
 [cC][lL][aA][sS][sS][eE][sS]						{ begin_token(yytext);   return CLASSES; }
 [cC][fF][iI][lL][eE]							{ begin_token(yytext);   return CFILE_; }
 [cC][lL][oO][bB]                                                        { begin_token(yytext);   return CLOB_; }
+[cC][lL][oO][bB]_[tT][oO]_[cC][hH][aA][rR]				{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return CLOB_TO_CHAR; }
 [cC][fF][iI][lL][eE]_[tT][oO]_[cC][hH][aA][rR]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CFILE_TO_CHAR; }

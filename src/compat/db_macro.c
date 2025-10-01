@@ -981,7 +981,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       break;
     case DB_TYPE_BLOB:
       // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-      db_make_bit (value, 1, "0", 1);
+      db_make_blob (value, 1, "0", 1);
       break;
     case DB_TYPE_CLOB:
       // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.

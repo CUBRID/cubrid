@@ -1551,6 +1551,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> CHARACTER_SET_
 %token <cptr> CHARSET
 %token <cptr> CHR
+%token <cptr> CLOB_TO_CHAR
 %token <cptr> CFILE_TO_CHAR
 %token <cptr> CLOSE
 %token <cptr> COLLATION
@@ -17723,6 +17724,18 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| CLOB_TO_CHAR
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CLOB_TO_CHAR); }
+	  '(' expression_ opt_using_charset ')'
+		{ pop_msg(); }
+		{{ DBG_TRACE_GRAMMAR(reserved_func, | CLOB_TO_CHAR '(' expression_ opt_using_charset ')' );
+
+			PT_NODE *node = parser_make_expression (this_parser, PT_CLOB_TO_CHAR, $4, $5, NULL);
+			PICE (node);
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| CFILE_TO_CHAR
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CFILE_TO_CHAR); }
 	  '(' expression_ opt_using_charset ')'
@@ -23143,6 +23156,7 @@ identifier
 	| CHARACTER_SET_         {{ DBG_TRACE_GRAMMAR(identifier, | CHARACTER_SET_     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CHARSET                {{ DBG_TRACE_GRAMMAR(identifier, | CHARSET            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CHR                    {{ DBG_TRACE_GRAMMAR(identifier, | CHR                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CLOB_TO_CHAR           {{ DBG_TRACE_GRAMMAR(identifier, | CLOB_TO_CHAR       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}  
 	| CFILE_TO_CHAR          {{ DBG_TRACE_GRAMMAR(identifier, | CFILE_TO_CHAR      ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CLOSE                  {{ DBG_TRACE_GRAMMAR(identifier, | CLOSE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COLLATION              {{ DBG_TRACE_GRAMMAR(identifier, | COLLATION          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

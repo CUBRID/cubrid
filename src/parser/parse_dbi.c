@@ -3695,70 +3695,93 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
     case PT_TYPE_BLOB:
       // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-      if (value->info.value.string_type == 'B')
-	{
-	  src_length = value->info.value.data_value.str->length;
-	  dst_length = (src_length + 7) / 8;
-	  bits_converted = 0;
-	  bstring = (char *) db_private_alloc (NULL, dst_length + 1);
-	  if (!bstring)
-	    {
-	      return (DB_VALUE *) NULL;
-	    }
-	  bits_converted =
-	    qstr_bit_to_bin (bstring, dst_length, (char *) value->info.value.data_value.str->bytes, src_length);
-	  if (bits_converted != src_length)
-	    {
-	      db_private_free_and_init (NULL, bstring);
-	      PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_BITSTRING,
-			  pt_short_print (parser, value));
-	      return (DB_VALUE *) NULL;
-	    }
+      {
+	const PARSER_VARCHAR *s = value->info.value.data_value.str;
 
-	  db_make_blob (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length);
-	  db_value->need_clear = true;
-	  value->info.value.db_value_is_in_workspace = true;
-	}
-      else if (value->info.value.string_type == 'X')
-	{
-	  src_length = value->info.value.data_value.str->length;
-	  dst_length = (src_length + 1) / 2;
-	  bits_converted = 0;
-	  bstring = (char *) db_private_alloc (NULL, dst_length + 1);
-	  if (!bstring)
-	    {
-	      return (DB_VALUE *) NULL;
-	    }
-	  bits_converted =
-	    qstr_hex_to_bin (bstring, dst_length, (char *) value->info.value.data_value.str->bytes, src_length);
-	  if (bits_converted != src_length)
-	    {
-	      db_private_free_and_init (NULL, bstring);
-	      PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_BITSTRING,
-			  pt_short_print (parser, value));
-	      return (DB_VALUE *) NULL;
-	    }
-	  db_make_blob (db_value, TP_FLOATING_PRECISION_VALUE, bstring, src_length * 4);
-	  db_value->need_clear = true;
-	  value->info.value.db_value_is_in_workspace = true;
-	}
-      else
-	{
-	  PT_ERRORm (parser, value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_UNDEFINED_CONVERSION);
-	  return (DB_VALUE *) NULL;
-	}
-      db_value_alter_type (db_value, pt_type_enum_to_db (value->type_enum));
-      *more_type_info_needed = (value->data_type == NULL);
-      break;
+	if (s == NULL)
+	  {
+	    db_value_domain_init (db_value, DB_TYPE_BLOB, DB_MAX_LOB_PRECISION, 0);
+	    db_make_null (db_value);
+	    value->info.value.db_value_is_in_workspace = false;
+	    *more_type_info_needed = (value->data_type == NULL);
+	    break;
+	  }
 
+	if (value->info.value.string_type == 'B')
+	  {
+	    src_length = s->length;
+	    dst_length = (src_length + 7) / 8;
+	    bstring = (char *) db_private_alloc (NULL, dst_length + 1);
+	    if (!bstring)
+	      {
+		return NULL;
+	      }
+
+	    bits_converted = qstr_bit_to_bin (bstring, dst_length, (char *) s->bytes, src_length);
+	    if (bits_converted != src_length)
+	      {
+		db_private_free_and_init (NULL, bstring);
+		PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_BITSTRING,
+			    pt_short_print (parser, value));
+		return NULL;
+	      }
+
+	    db_make_blob (db_value, DB_MAX_LOB_PRECISION, bstring, src_length /* bits */ );
+	    db_value->need_clear = true;
+	    value->info.value.db_value_is_in_workspace = true;
+	  }
+	else if (value->info.value.string_type == 'X')
+	  {
+	    src_length = s->length;
+	    dst_length = (src_length + 1) / 2;
+	    bstring = (char *) db_private_alloc (NULL, dst_length + 1);
+	    if (!bstring)
+	      {
+		return NULL;
+	      }
+
+	    bits_converted = qstr_hex_to_bin (bstring, dst_length, (char *) s->bytes, src_length);
+	    if (bits_converted != src_length)
+	      {
+		db_private_free_and_init (NULL, bstring);
+		PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_BITSTRING,
+			    pt_short_print (parser, value));
+		return NULL;
+	      }
+
+	    db_make_blob (db_value, DB_MAX_LOB_PRECISION, bstring, src_length * 4 /* bits */ );
+	    db_value->need_clear = true;
+	    value->info.value.db_value_is_in_workspace = true;
+	  }
+	else
+	  {
+	    const int len = s->length;
+	    char *buf = (char *) db_private_alloc (NULL, len + 1);
+	    if (buf == NULL)
+	      {
+		return NULL;
+	      }
+	    if (len > 0)
+	      {
+		memcpy (buf, s->bytes, len);
+	      }
+	    buf[len] = '\0';
+
+	    db_make_blob (db_value, DB_MAX_LOB_PRECISION, buf, len * 8 /* bits */ );
+	    db_value->need_clear = true;
+	    value->info.value.db_value_is_in_workspace = true;
+	  }
+
+	db_value_alter_type (db_value, pt_type_enum_to_db (value->type_enum));
+	*more_type_info_needed = (value->data_type == NULL);
+	break;
+      }
     case PT_TYPE_CLOB:
       {
 	const PARSER_VARCHAR *s = value->info.value.data_value.str;
 
-	// (A) typed NULL 안전 처리: str==NULL이면 CLOB 도메인에 NULL 값을 만든다.
 	if (s == NULL)
 	  {
-	    // CLOB 도메인으로 초기화 + NULL 마킹 (typed NULL)
 	    db_value_domain_init (db_value, DB_TYPE_CLOB, DB_MAX_LOB_PRECISION, 0);
 	    db_value->domain.general_info.is_null = 1;
 	    value->info.value.db_value_is_in_workspace = false;
@@ -3766,7 +3789,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	    break;
 	  }
 
-	// (C) 안전 복사(널 종료까지) — db_make_clob 내부가 길이 대신 strlen을 쓸 가능성까지 방어
 	int len = s->length;
 	char *buf = (char *) db_private_alloc (NULL, len + 1);
 	if (buf == NULL)
@@ -3779,8 +3801,7 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	  }
 	buf[len] = '\0';
 
-	db_make_clob (db_value, DB_MAX_LOB_PRECISION, buf, len, db_get_string_codeset (db_value),
-		      db_get_string_collation (db_value));
+	db_make_clob (db_value, DB_MAX_LOB_PRECISION, buf, len, codeset, collation_id);
 
 	db_value->need_clear = true;
 	value->info.value.db_value_is_in_workspace = true;

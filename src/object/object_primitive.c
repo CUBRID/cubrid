@@ -17289,8 +17289,8 @@ mr_getmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    {
 	      memcpy (new_, cur, mem_length);
 	      new_[mem_length] = '\0';
-	      db_make_varchar (value, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+	      db_make_clob (value, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain),
+			    TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 	    }
 	}
@@ -17484,7 +17484,7 @@ mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
   assert (!db_value_is_corrupted (src));
   if (src == NULL || DB_IS_NULL (src))
     {
-      error = db_value_domain_init (dest, DB_TYPE_CLOB, DB_DEFAULT_PRECISION, 0);
+      error = db_value_domain_init (dest, DB_TYPE_CLOB, DB_MAX_LOB_PRECISION, 0);
     }
   else if ((src_str = db_get_string (src)) == NULL)
     {
@@ -17533,8 +17533,8 @@ mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    {
 	      memcpy (new_, src_str, src_length);
 	      new_[src_length] = '\0';
-	      db_make_varchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
-			       db_get_string_collation (src));
+	      db_make_clob (dest, src_precision, new_, src_length, db_get_string_codeset (src),
+			    db_get_string_collation (src));
 	      dest->need_clear = true;
 	    }
 

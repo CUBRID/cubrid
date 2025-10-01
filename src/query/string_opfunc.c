@@ -25405,7 +25405,7 @@ db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
   if (src_type == DB_TYPE_BLOB)
     {
       // TODO: This part should be revised when the TOAST structure is introduced in the future.
-      db_string_bit_length (src_value, result_value);
+      db_make_bigint (result_value, db_get_string_length (src_value));
     }
   else
     {
@@ -25442,7 +25442,8 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
   if (QSTR_IS_ANY_CHAR (src_type))
     {
       char_data = db_get_char (src_value, &char_length);
-      db_make_blob (result_value, DB_MAX_LOB_PRECISION, char_data, char_length);
+      db_make_clob (result_value, DB_MAX_LOB_PRECISION, char_data, char_length, db_get_string_codeset (src_value),
+		    db_get_string_collation (src_value));
     }
   else
     {
