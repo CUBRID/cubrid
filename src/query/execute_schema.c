@@ -8853,23 +8853,6 @@ error_exit:
   return error;
 }
 
-bool
-has_not_null_unique_attr (DB_OBJECT * class_obj)
-{
-  DB_ATTRIBUTE *attr;
-  attr = db_get_attributes (class_obj);
-  while (attr)
-    {
-      if (db_attribute_is_non_null (attr))
-	{
-	  return true;
-	}
-      attr = db_attribute_next (attr);
-    }
-
-  return false;
-}
-
 /*
  * has_replication_key_constraint() -
  *   return : true if the class has a UNIQUE constraint
@@ -8885,12 +8868,7 @@ has_replication_key_constraint (DB_OBJECT * class_obj)
       return false;
     }
 
-  if (!classobj_has_class_unique_constraint (c))
-    {
-      return false;
-    }
-
-  return has_not_null_unique_attr (class_obj);
+  return classobj_has_class_rk_constraint(c);
 }
 
 /*
