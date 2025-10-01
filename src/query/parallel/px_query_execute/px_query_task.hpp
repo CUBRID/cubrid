@@ -24,116 +24,75 @@
 #define _PX_QUERY_TASK_HPP_
 
 #include "thread_entry_task.hpp"
-#include "xasl.h"
+#include "px_query_executor.hpp"
 #include "px_worker_manager.hpp"
-#include "error_context.hpp"
 
 struct xasl_state;
 
 namespace parallel_query_execute
 {
-  using pool = parallel_query::worker_manager_with_dedicated_pool;
-
-  using err_desc_t = std::pair<int, cuberr::er_message *>;
-
-  const int TASK_QUEUE_RESERVE_SIZE = 64;
-
-  struct WORKER_STATS
+  class task_args
   {
-    std::atomic<UINT64> m_fetches;
-    std::atomic<UINT64> m_ioreads;
-    std::atomic<UINT64> m_fetch_time;
+      using queue = parallel_query::thread_safe_queue<job>;
+      using interrupt = parallel_query::interrupt;
+      using worker_manager = parallel_query::worker_manager;
+    public:
+      THREAD_ENTRY *m_parent_thread_p;
+      queue *m_job_execution_queue_p;
+      err_messages_with_lock *m_error_messages_p;
+      interrupt *m_interrupt_p;
+      worker_manager *m_worker_manager_p;
+      task_args (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
+		 interrupt *interrupt_p,
+		 worker_manager *worker_manager_p)
+	:m_parent_thread_p (parent_thread_p),
+	 m_job_execution_queue_p (job_execution_queue_p),
+	 m_error_messages_p (error_messages_p),
+	 m_interrupt_p (interrupt_p),
+	 m_worker_manager_p (worker_manager_p)
+      {}
+      ~task_args()
+      {
+      }
   };
 
-  using worker_stats = struct WORKER_STATS;
-  class task_state
+  class task_local
   {
     public:
-      enum class state
+      task_local()
+	:m_pop_job_ended (false)
       {
-	WILL_RUN_ON_WORKER=0,
-	WILL_RUN_ON_MAIN=1,
-	RUN_ON_MAIN=2,
-	RUN_ON_WORKER=3,
-	RUN_ON_MAIN_TASK_RETIRE_IGNORED=4,
-	ENDED_ON_MAIN=5,
-	ENDED_ON_MAIN_WORKER_RETIRE_NEEDED=6,
-	ENDED_ON_WORKER=7
-      };
-      task_state() : m_state (state::WILL_RUN_ON_WORKER) {}
-      ~task_state() = default;
-      state get_state() const
-      {
-	return m_state.load();
       }
-      void set_state (state state)
+      ~task_local()
       {
-	m_state.store (state);
       }
-    private:
-      std::atomic<state> m_state;
+      bool m_pop_job_ended;
   };
-
   class task : public cubthread::entry_task
   {
+      using queue = parallel_query::thread_safe_queue<job>;
+      using interrupt = parallel_query::interrupt;
+      using worker_manager = parallel_query::worker_manager;
     public:
-      task() = delete;
-      task (const task &) = delete;
-      task &operator= (const task &) = delete;
-      task (task &&) = delete;
-      task &operator= (task &&) = delete;
-      task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	    task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
-	    worker_stats *worker_stats_p);
+      task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
+	    interrupt *interrupt_p, worker_manager *worker_manager_p);
       ~task();
       virtual void execute (cubthread::entry &thread_ref) override;
       virtual void retire () override;
-      void execute_on_main (cubthread::entry &thread_ref);
-
     private:
-      friend class task_queue;
-      friend class task_queue_global;
-      THREAD_ENTRY *m_orig_thread_p;
-      XASL_NODE *m_xasl;
-      xasl_state *m_xasl_state;
-      pthread_mutex_t *m_mutex_p;
-      task_state *m_task_state_p;
-      pool *m_worker_manager_p;
-      std::vector<err_desc_t> *m_error_messages_p;
-      worker_stats *m_worker_stats_p;
+      task_args m_args;
+      task_local m_local;
+      void init (cubthread::entry &thread_ref);
+      job get_job();
+      int execute_job (cubthread::entry &thread_ref, job &job);
+      void end (cubthread::entry &thread_ref);
   };
 
-  using task_tuple = std::pair<task *, task_state *>;
-  class task_queue
-  {
-    public:
-      task_queue (THREAD_ENTRY *orig_thread_p, pool *worker_manager_p);
-      ~task_queue();
-      task_tuple *add_task (THREAD_ENTRY *orig_thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-			    std::vector<err_desc_t> *error_messages_p);
-      int execute_tasks (THREAD_ENTRY *exec_thread_p);
-      bool get_not_started_task (task **task_p, task_state **task_state_p);
-      void join();
-      worker_stats m_worker_stats;
+  using interrupt = parallel_query::interrupt;
 
-    private:
-      friend class task_queue_global;
-      std::vector<task_tuple *> m_tasks;
-      THREAD_ENTRY *m_thread_p;
-      pool *m_worker_manager_p;
-      pthread_mutex_t *m_mutex_p;
-      std::vector<err_desc_t> *m_error_messages_p;
-  };
-
-  class task_queue_global
-  {
-    public:
-      task_queue_global();
-      ~task_queue_global();
-      void add_task (task_tuple *task_tuple_p);
-      void join();
-    private:
-      std::vector<task_tuple *> m_tasks;
-  };
+  int execute_job_internal (THREAD_ENTRY *cur_thread_p, THREAD_ENTRY *parent_thread_p, XASL_NODE *xasl,
+			    XASL_STATE *xasl_state, err_messages_with_lock *error_messages_p, interrupt *interrupt_p, join_context *join_context_p,
+			    trace_context *trace_context_p);
 }
+
 #endif
