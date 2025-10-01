@@ -11586,6 +11586,8 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_VARBIT:
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
 	  /*
 	   * The compatibility of the value is always determined by the
 	   * actual length of the value, not the destination precision.
