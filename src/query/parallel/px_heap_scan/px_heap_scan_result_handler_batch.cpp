@@ -26,6 +26,7 @@
 #include "object_primitive.h"
 #include "query_opfunc.h"
 #include "list_file.h"
+#include "storage_common.h"
 #include "system.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -52,10 +53,14 @@ namespace parallel_heap_scan
       std::unique_lock<std::mutex> lock (m_result_mutex);
       if (m_active_results != 0)
 	{
-	  m_result_condition_variable.wait (lock, [this]()
-	  {
-	    return m_active_results == 0;
-	  });
+	  while (m_active_results != 0)
+	    {
+	      m_result_condition_variable.wait_for (lock, std::chrono::microseconds (50));
+	      if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		{
+		  return S_SUCCESS;
+		}
+	    }
 	}
     }
     for (QFILE_LIST_ID *list_id : m_writer_results)

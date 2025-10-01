@@ -31,6 +31,7 @@
 #include "error_context.hpp"
 #include "query_executor.h"
 #include "system.h"
+#include "thread_manager.hpp"
 #include "xasl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -455,12 +456,14 @@ namespace parallel_heap_scan
 	    break;
 	  case parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD:
 	  {
+	    std::lock_guard<std::mutex> lock (m_err_messages.m_mutex);
 	    cuberr::context::get_thread_local_error().swap (*m_err_messages.m_error_messages[0]);
 	    return S_ERROR;
 	  }
 	  break;
 	  case parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD:
 	  {
+	    std::lock_guard<std::mutex> lock (m_err_messages.m_mutex);
 	    cuberr::context::get_thread_local_error().swap (*m_err_messages.m_error_messages[0]);
 	    return S_ERROR;
 	  }
