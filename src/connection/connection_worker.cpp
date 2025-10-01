@@ -851,6 +851,15 @@ namespace cubconn
 
     if (status == result::Ok)
       {
+	if (ctx->m_conn->status == CONN_CLOSING)
+	  {
+	    /* this transmission is the last handling on this connection */
+	    handle_connection_error (ctx);
+	    _er_log_debug (__FILE__, __LINE__,
+			   "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
+	    return result::ClosedConnection;
+	  }
+
 	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
 	  {
 	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
@@ -915,7 +924,7 @@ namespace cubconn
 
   bool connection_worker::run ()
   {
-    std::array<epoll_event, 256> events;
+    std::array<epoll_event, 512> events;
     result status;
     context *ctx;
     int nfds, i;
