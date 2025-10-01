@@ -340,6 +340,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   ${PARALLEL_QUERY_DIR}/px_sort.c
+  ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
   )
 
 set(PARALLEL_QUERY_HEADERS
@@ -348,6 +349,8 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   ${PARALLEL_QUERY_DIR}/px_sort.h
+  ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -357,6 +360,7 @@ set(PARALLEL_QUERY_EXECUTE_SOURCES
 set(PARALLEL_QUERY_EXECUTE_HEADERS
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_job.hpp
   )
 
 set(METHOD_SOURCES
@@ -475,6 +479,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/xasl_spawner.cpp
   ${XASL_DIR}/xasl_stream.cpp
   ${XASL_DIR}/xasl_unpack_info.cpp
+  ${XASL_DIR}/xasl_iteration.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -486,6 +491,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_spawner.hpp
   ${XASL_DIR}/xasl_stream.hpp
+  ${XASL_DIR}/xasl_iteration.hpp
   )
 
 set(LOADDB_SOURCES
@@ -621,9 +627,6 @@ if(WIN32)
 endif(WIN32)
 
 target_compile_definitions(cubrid PRIVATE SERVER_MODE EnableThreadMonitoring CUBRID_EXPORTING ${COMMON_DEFS})
-if(NOT USE_CUBRID_ENV)
-  target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
-endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   set_source_files_properties(
