@@ -175,6 +175,10 @@ namespace parallel_heap_scan
 			  }
 		      }
 		  }
+		else if (list_id_header_p->m_list_closed.load (std::memory_order_acquire))
+		  {
+		    ended_count++;
+		  }
 	      }
 	    else
 	      {
@@ -189,7 +193,7 @@ namespace parallel_heap_scan
 	if (!found)
 	  {
 	    std::unique_lock<std::mutex> lock (m_cv_mutex);
-	    m_readable_list_exists_cv.wait (lock);
+	    m_readable_list_exists_cv.wait_for (lock, std::chrono::microseconds (50));
 	  }
       }
     while (!found);
@@ -356,6 +360,7 @@ namespace parallel_heap_scan
 	    tl_list_id_header->m_type_list[i]->store ((TP_DOMAIN *)tl_list_id_header->m_list_id_p->type_list.domp[i],
 		std::memory_order_release);
 	  }
+	tl_list_id_header->m_valid.store (true, std::memory_order_release);
       }
     tl_list_id_header->m_list_closed.store (true, std::memory_order_release);
     m_readable_list_exists_cv.notify_all ();
@@ -422,8 +427,7 @@ namespace parallel_heap_scan
 		std::memory_order_release);
 	  }
       }
-    if (unlikely (!VPID_EQ (&old_last_vpid, &tl_list_id_header->m_list_id_p->last_vpid) && old_last_vpid.pageid != -1
-		  && old_last_vpid.volid != -1))
+    if (unlikely (!VPID_EQ (&old_last_vpid, &tl_list_id_header->m_list_id_p->last_vpid) && old_last_vpid.pageid != -1))
       {
 	VPID64_t vpid;
 	/* last vpid changed, send it to reader */

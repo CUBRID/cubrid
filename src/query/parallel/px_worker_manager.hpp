@@ -41,10 +41,6 @@ namespace parallel_query
       void pop_task ()
       {
 	m_working_workers.fetch_sub (1, std::memory_order_release);
-	if (m_working_workers.load (std::memory_order_acquire) == 0)
-	  {
-	    m_condition_variable.notify_all();
-	  }
       }
 
       worker_manager();
@@ -53,8 +49,6 @@ namespace parallel_query
     private:
       int m_reserved_workers;
       std::atomic<int> m_working_workers;
-      std::mutex m_mutex;
-      std::condition_variable m_condition_variable;
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
   };

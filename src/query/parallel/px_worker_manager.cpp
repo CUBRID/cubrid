@@ -88,14 +88,9 @@ namespace parallel_query
 	return;
       }
 
-    while (m_working_workers.load () > m_reserved_workers - n_workers)
+    while (m_working_workers.load () > 0)
       {
-	std::unique_lock<std::mutex> lock (m_mutex);
-	if (m_working_workers.load (std::memory_order_acquire) <= 0)
-	  {
-	    break;
-	  }
-	m_condition_variable.wait_for (lock, std::chrono::microseconds (100));
+	;
       }
     worker_manager_global::get_manager().release_workers (n_workers);
     m_reserved_workers -= n_workers;
