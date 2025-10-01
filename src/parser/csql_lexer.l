@@ -158,7 +158,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return AUTO_INCREMENT; }
 [aA][vV][gG]								{ begin_token(yytext);   return AVG; }
-[aA][uU][tT][hH][iI][dD]						{ begin_token(yytext);   csql_yylval.cptr = pt_makename(yytext); return AUTHID; }
+[aA][uU][tT][hH][iI][dD]						{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return AUTHID; }
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
 [bB][eE][gG][iI][nN]							{ begin_token(yytext);   return BEGIN_; }
 [bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ begin_token(yytext);
@@ -187,7 +189,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return BUFFER; }
 [cC][aA][lL][lL]							{ begin_token(yytext);   return CALL; }
-[cC][aA][lL][lL][eE][rR]						{ begin_token(yytext);   csql_yylval.cptr = pt_makename(yytext); return CALLER; }
+[cC][aA][lL][lL][eE][rR]						{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return CALLER; }
 [cC][aA][cC][hH][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CACHE; }
@@ -310,7 +314,9 @@ IDL       [a-zA-Z0-9_]
 [dD][eE][fF][aA][uU][lL][tT]						{ begin_token(yytext);   return DEFAULT; }
 [dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]				{ begin_token(yytext);   return DEFERRABLE; }
 [dD][eE][fF][eE][rR][rR][eE][dD]					{ begin_token(yytext);   return DEFERRED; }
-[dD][eE][fF][iI][nN][eE][rR]    					{ begin_token(yytext);   csql_yylval.cptr = pt_makename(yytext); return DEFINER; }
+[dD][eE][fF][iI][nN][eE][rR]    					{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return DEFINER; }
 [dD][eE][lL][eE][tT][eE]						{ begin_token(yytext);   return DELETE_; }
 [dD][eE][nN][sS][eE]_[rR][aA][nN][kK]					{ begin_token(yytext);
 									  csql_yylval.cptr = pt_makename(yytext);
@@ -456,7 +462,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return INCREMENT; }
 [iI][nN][dD][eE][xX]							{ begin_token(yytext);   return INDEX; }
-[iI][nN][dD][eE][xX][_][pP][rR][eE][fF][iI][xX]				{ begin_token(yytext);   return INDEX_PREFIX; }
+[iI][nN][dD][eE][xX][_][pP][rR][eE][fF][iI][xX]				{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return INDEX_PREFIX; }
 [iI][nN][dD][eE][xX][eE][sS]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return INDEXES; }
@@ -1639,10 +1647,12 @@ _[uU][tT][fF]8[']		{
 <PL_LANG_SPEC>[lL][aA][nN][gG][uU][aA][gG][eE]          { begin_token(yytext);   return LANGUAGE; }
 <PL_LANG_SPEC>[jJ][aA][vV][aA]                          { begin_token(yytext);
                                                                 BEGIN(INITIAL);
+							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return JAVA; }
 <PL_LANG_SPEC>[pP][lL][cC][sS][qQ][lL]                  { begin_token(yytext);
                                                                 BEGIN(PLCSQL_TEXT);
                                                                 init_plcsql_lexing();
+								csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL; }
 
 <PL_LANG_SPEC>[ \t\r]+					{ begin_token(yytext); }
