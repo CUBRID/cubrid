@@ -16235,15 +16235,18 @@ exit:
 static int
 adjust_precision (char *data, int precision, int scale)
 {
-  char tmp_data[DB_MAX_NUMERIC_PRECISION * 2 + 1];
+  char tmp_data[NUMERIC_MAX_STRING_SIZE];
   int scale_counter = 0;
   int i = 0;
   int before_dec_point = 0;
   int after_dec_point = 0;
   int space_started = false;
+  int phase_1_tmp_max_prec = 38;
+  int max_precision = (scale == 0) ? phase_1_tmp_max_prec : DB_MAX_FIXED_NUMERIC_PRECISION;
 
-  if (data == NULL || precision < 0 || precision > DB_MAX_NUMERIC_PRECISION || scale < DB_MIN_NUMERIC_SCALE
-      || scale > DB_MAX_NUMERIC_SCALE)
+  if (data == NULL || precision < 0 ||
+      (scale == 0 && precision > (phase_1_tmp_max_prec - DB_MIN_NUMERIC_SCALE)) ||
+      (scale != 0 && precision + scale > DB_MAX_FIXED_NUMERIC_PRECISION))
     {
       return DOMAIN_INCOMPATIBLE;
     }
@@ -16258,7 +16261,7 @@ adjust_precision (char *data, int precision, int scale)
       i++;
     }
 
-  for (; i < DB_MAX_NUMERIC_PRECISION && *(data + i) != '\0' && *(data + i) != '.'; i++)
+  for (; i < max_precision && *(data + i) != '\0' && *(data + i) != '.'; i++)
     {
       if (char_isdigit (*(data + i)))
 	{
@@ -16353,10 +16356,20 @@ adjust_precision (char *data, int precision, int scale)
       return DOMAIN_COMPATIBLE;
     }
 
-  if (before_dec_point + after_dec_point > DB_MAX_NUMERIC_PRECISION || after_dec_point > DB_DEFAULT_NUMERIC_PRECISION
-      || before_dec_point > precision - scale)
+  if (after_dec_point == 0)
     {
-      return DOMAIN_OVERFLOW;
+      if (before_dec_point > (phase_1_tmp_max_prec - DB_MIN_NUMERIC_SCALE))
+	{
+	  return DOMAIN_OVERFLOW;
+	}
+    }
+  else
+    {
+      if (before_dec_point + after_dec_point > DB_MAX_FIXED_NUMERIC_PRECISION ||
+	  after_dec_point > DB_DEFAULT_NUMERIC_PRECISION || before_dec_point > precision - scale)
+	{
+	  return DOMAIN_OVERFLOW;
+	}
     }
 
   tmp_data[i] = '\0';
@@ -16378,6 +16391,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
   /* default precision and scale is (38, 0) */
   /* it is more profitable that the definition of this value is located in some header file */
   const char *dflt_format_str = DB_NUMERIC_E38_MAX;
+  int phase_1_tmp_max_prec = 38;
 
   int error_status = NO_ERROR;
 
@@ -16551,7 +16565,8 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 	  use_default_precision = 1;
 	}
 
-      if (precision + scale > DB_MAX_NUMERIC_PRECISION)
+      if ((scale == 0 && precision > (phase_1_tmp_max_prec - DB_MIN_NUMERIC_SCALE)) ||
+	  (scale != 0 && precision + scale > DB_MAX_FIXED_NUMERIC_PRECISION))
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -16562,7 +16577,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
       if (use_default_precision == 1)
 	{
 	  /* scientific notation */
-	  precision = DB_MAX_NUMERIC_PRECISION;
+	  precision = DB_MAX_FIXED_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_PRECISION;
 	  break;
 	}
@@ -16663,6 +16678,11 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
       goto format_mismatch;
     }
 
+  if (precision > phase_1_tmp_max_prec)
+    {
+      scale = phase_1_tmp_max_prec - precision;
+      precision = phase_1_tmp_max_prec;
+    }
   result_num->domain.numeric_info.precision = precision;
   result_num->domain.numeric_info.scale = scale;
 
@@ -19178,14 +19198,25 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
   int error_status = NO_ERROR;
   int state = 1;
   int i, j, k;
-  char result_str[DB_MAX_NUMERIC_PRECISION + 2];
+  char result_str[NUMERIC_MAX_STRING_SIZE];
   char *res_ptr;
   const char fraction_symbol = lang_digit_fractional_symbol (number_lang_id);
   const char digit_grouping_symbol = lang_digit_grouping_symbol (number_lang_id);
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
 
   result_str[0] = '\0';
-  result_str[DB_MAX_NUMERIC_PRECISION] = '\0';
-  result_str[DB_MAX_NUMERIC_PRECISION + 1] = '\0';
+  result_str[NUMERIC_MAX_STRING_SIZE] = '\0';
+  result_str[NUMERIC_MAX_STRING_SIZE + 1] = '\0';
   *token_length = 0;
 
   while (state != 7 && src < last_src)
@@ -19252,10 +19283,6 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
 	    }
 	  i = j;
 
-	  if (k > DB_MAX_NUMERIC_PRECISION)
-	    {
-	      return ER_IT_DATA_OVERFLOW;
-	    }
 	  if (k > 0)
 	    {
 	      k--;

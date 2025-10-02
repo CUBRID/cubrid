@@ -58,6 +58,7 @@
 #define DB_LONG_NUMERIC_MULTIPLIER 2
 
 #define CARRYOVER(arg)		((arg) >> 8)
+#define BORROW_NEXT(minuend, subtrahend, borrow) ((unsigned)(minuend) < (unsigned)((subtrahend) + (borrow)))
 #define GET_LOWER_BYTE(arg)	((arg) & 0xff)
 #define NUMERIC_ABS(a)		((a) >= 0 ? a : -a)
 /*
@@ -84,6 +85,19 @@
 
 #define ROUND(x)                ((x) > 0 ? ((x) + .5) : ((x) - .5))
 
+/* 
+ * (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + DB_MAX_NUMERIC_SCALE) + 6) 
+ * = ((43 - (-211)) + 252) + 6 
+ * = 506 + 6 = 512
+ */
+#define POW10_MAX_INDEX         (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + DB_MAX_NUMERIC_SCALE) + 6)
+/* 
+ * floor(POW10_MAX_INDEX * log256​(10)) + 1 
+ * = (512 * 0.41524) + 1 
+ * = 212 + 1 = 213
+ */
+#define POW10_BUF_SIZE          (213)
+
 typedef struct dec_string DEC_STRING;
 struct dec_string
 {
@@ -98,7 +112,10 @@ static DEC_STRING powers_of_2[DB_NUMERIC_BUF_SIZE * 16];
 #if !defined(SERVER_MODE)
 static bool initialized_2 = false;
 #endif
-static unsigned char powers_of_10[TWICE_NUM_MAX_PREC + 1][DB_NUMERIC_BUF_SIZE];
+/* [10^n][Buffer containing 10^n values converted to base-256] */
+static unsigned char powers_of_10[POW10_MAX_INDEX][POW10_BUF_SIZE];
+/* Number of significant bytes for each 10^n */
+static uint16_t _gv_powers_of_10_significant_bytes[POW10_BUF_SIZE];
 #if !defined(SERVER_MODE)
 static bool initialized_10 = false;
 #endif
@@ -106,15 +123,6 @@ static bool initialized_10 = false;
 static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
-
-typedef enum fp_value_type
-{
-  FP_VALUE_TYPE_NUMBER,
-  FP_VALUE_TYPE_INFINITE,
-  FP_VALUE_TYPE_NAN,
-  FP_VALUE_TYPE_ZERO
-}
-FP_VALUE_TYPE;
 
 static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
@@ -135,6 +143,9 @@ static void numeric_init_pow_of_10_helper (void);
 static void numeric_init_pow_of_10 (void);
 #endif
 static DB_C_NUMERIC numeric_get_pow_of_10 (int exp);
+static void fp_numeric_init_pow10_table (void);
+static int fp_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes);
+static int fp_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes);
 static void numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, int numbits, DB_C_NUMERIC lsb,
 				      DB_C_NUMERIC msb, bool is_long_num);
 static int numeric_compare_pos (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
@@ -148,11 +159,28 @@ static bool numeric_is_bit_set (DB_C_NUMERIC arg, int pos);
 static bool numeric_overflow (DB_C_NUMERIC arg, int exp);
 static void numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
 static void numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
+static void fp_numeric_sub (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes);
 static void numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool * positive_flag, DB_C_NUMERIC answer);
+static void fp_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes);
 static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
+static void fp_numeric_double_shift_bit (uint8_t * arg1, uint8_t * arg2, int calc_bytes, uint8_t * lsb, uint8_t * msb);
+static void fp_numeric_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf,
+			    int calc_bytes);
+static int knuth_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size);
+static unsigned int knuth_count_leading_zero_bits (uint8_t byte_value);
+static void knuth_normalize_left_shift_msb (uint8_t * buffer, int buffer_size, unsigned int k_bit);
+static void knuth_normalize_right_shift_msb (uint8_t * buffer, int buffer_size, unsigned int k_bit);
+static uint32_t knuth_estimate_quotient_digit (const uint8_t * u_work, const uint8_t * v_work, int window_offset,
+					       int dividend_bytes, int divisor_bytes, uint32_t * out_trial_remainder);
+static uint32_t knuth_multiply_and_subtract (uint8_t * u_work, const uint8_t * v_work, int window_offset,
+					     int divisor_bytes, uint32_t trial_quotient);
+static void fp_numeric_knuth_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf,
+				  int calc_bytes);
 static int numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
+static int fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int prec2, int scale2,
+			       bool arg1_sign, bool arg2_sign);
 static int numeric_scale_by_ten (DB_C_NUMERIC arg, bool is_long_num);
 static int numeric_scale_dec (const DB_C_NUMERIC arg, int dscale, DB_C_NUMERIC answer);
 static int numeric_scale_dec_long (DB_C_NUMERIC answer, int dscale, bool is_long_num);
@@ -184,6 +212,17 @@ static bool numeric_is_longnum_value (DB_C_NUMERIC arg);
 static int numeric_longnum_to_shortnum (DB_C_NUMERIC answer, DB_C_NUMERIC long_arg);
 static void numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer, DB_C_NUMERIC arg);
 static int get_significant_digit (DB_BIGINT i);
+
+static void fp_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int dst_bytes, bool is_negative);
+static void fp_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, int exponent);
+static uint16_t fp_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes);
+static void fp_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
+static int fp_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
+static void fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
+				       int *result_scale, FP_VALUE_TYPE * num_op_type);
+static int compare_mantissa_same_exponent (const uint8_t * u_src, const uint8_t * v_src, int buf_bytes, int prec1,
+					   int prec2);
+
 /*
  * numeric_is_negative () -
  *   return: true, false
@@ -465,17 +504,49 @@ numeric_get_pow_of_2 (int exp)
 static void
 numeric_init_pow_of_10_helper (void)
 {
-  int i;
+  int i, j, k;
+  uint32_t carry, temp;
+  int significant_bytes;
+  int current_byte_size = 1;
 
-  numeric_zero (powers_of_10[0], DB_NUMERIC_BUF_SIZE);
+  numeric_zero (powers_of_10[0], POW10_BUF_SIZE);
 
   /* Set first element to 1 */
-  powers_of_10[0][DB_NUMERIC_BUF_SIZE - 1] = 1;
+  powers_of_10[0][POW10_BUF_SIZE - 1] = 1;
+
+  /* Set significant bytes for 10^0 */
+  _gv_powers_of_10_significant_bytes[0] = 0;
 
   /* Loop through elements setting each one to 10 times the prior */
-  for (i = 1; i < TWICE_NUM_MAX_PREC + 1; i++)
+  for (i = 1; i < POW10_MAX_INDEX + 1; i++)
     {
-      numeric_scale_dec (powers_of_10[i - 1], 1, powers_of_10[i]);
+      carry = 0;
+      for (j = POW10_BUF_SIZE - 1; j >= 0; j--)
+	{
+	  temp = (uint32_t) powers_of_10[i - 1][j] * 10 + carry;
+	  powers_of_10[i][j] = (uint8_t) (temp & 0xFF);
+	  carry = temp >> 8;
+	}
+
+      /* Calculate and store the number of significant bytes */
+      significant_bytes = 0;
+      for (k = 0; k < POW10_BUF_SIZE; k++)
+	{
+	  if (powers_of_10[i][k] != 0)
+	    {
+	      significant_bytes = POW10_BUF_SIZE - k;
+	      break;
+	    }
+	}
+
+      if (significant_bytes > current_byte_size)
+	{
+	  current_byte_size = significant_bytes;
+	  if (current_byte_size - 1 < POW10_BUF_SIZE && current_byte_size - 1 >= 0)
+	    {
+	      _gv_powers_of_10_significant_bytes[current_byte_size - 1] = i;
+	    }
+	}
     }
 }
 
@@ -529,6 +600,88 @@ numeric_init_power_value_string (void)
   numeric_init_pow_of_10 ();
 }
 #endif
+
+static void
+fp_numeric_init_pow10_table (void)
+{
+#if !defined(SERVER_MODE)
+  /* If this is the first time to call this routine, initialize */
+  if (!initialized_10)
+    {
+      numeric_init_pow_of_10_helper ();
+      initialized_10 = true;
+    }
+#endif
+}
+
+int
+fp_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes)
+{
+  int i, start_idx, idx, end_idx;
+  int first_nz = 0;
+  const uint8_t *tmp;
+
+  fp_numeric_init_pow10_table ();
+
+  for (i = 0; i < calc_bytes; i++)
+    {
+      if (calc_buf[i] != 0)
+	{
+	  first_nz = calc_bytes - i;
+	  break;
+	}
+    }
+
+  if (first_nz <= 0)
+    {
+      /* cases where the value is 0 or negative cannot occur */
+      assert (false);
+      return DB_DEFAULT_PRECISION;
+    }
+
+  start_idx = _gv_powers_of_10_significant_bytes[first_nz - 1];
+  if (first_nz < POW10_BUF_SIZE && _gv_powers_of_10_significant_bytes[first_nz] > 0)
+    {
+      end_idx = _gv_powers_of_10_significant_bytes[first_nz] - 1;
+    }
+  else
+    {
+      end_idx = POW10_MAX_INDEX;
+    }
+
+  /* sequentially compare the same significant byte range starting from start_idx */
+  const int offset = POW10_BUF_SIZE - calc_bytes;
+  for (idx = start_idx; idx <= end_idx && idx <= POW10_MAX_INDEX; idx++)
+    {
+      tmp = powers_of_10[idx] + offset;
+
+      /* since significant bytes are the same, compare the values */
+      if (fp_numeric_operation_compare (calc_buf, tmp, calc_bytes) < 0)
+	{
+	  return idx;
+	}
+    }
+
+  /* even at the end of the range, calc_buf >= 10^k:
+   * generally, the number of digits is end_idx + 1, but we cap the upper bound to POW10_MAX_INDEX
+   */
+  return (end_idx < POW10_MAX_INDEX) ? (end_idx + 1) : POW10_MAX_INDEX;
+}
+
+static int
+fp_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes)
+{
+  if (numeric_is_negative (calc_buf))
+    {
+      uint8_t calc_buf_copy[calc_bytes];
+      memcpy (calc_buf_copy, calc_buf, calc_bytes);
+      numeric_negate (calc_buf_copy);
+
+      return fp_numeric_get_decimal_digit (calc_buf_copy, calc_bytes);
+    }
+
+  return fp_numeric_get_decimal_digit (calc_buf, calc_bytes);
+}
 
 /*
  * numeric_double_shift_bit () -
@@ -821,16 +974,19 @@ static bool
 numeric_overflow (DB_C_NUMERIC arg, int exp)
 {
   unsigned char narg[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
+  DB_C_NUMERIC full_pow10 = numeric_get_pow_of_10 (exp);
+  unsigned char tmp_arg[DB_NUMERIC_BUF_SIZE];
+  memcpy (tmp_arg, full_pow10 + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE), DB_NUMERIC_BUF_SIZE);
 
   if (numeric_is_negative (arg))
     {
       numeric_copy (narg, arg);
       numeric_negate (narg);
-      return (numeric_compare_pos (narg, numeric_get_pow_of_10 (exp)) >= 0) ? true : false;
+      return (numeric_compare_pos (narg, tmp_arg) >= 0) ? true : false;
     }
   else
     {
-      return (numeric_compare_pos (arg, numeric_get_pow_of_10 (exp)) >= 0) ? true : false;
+      return (numeric_compare_pos (arg, tmp_arg) >= 0) ? true : false;
     }
 }
 
@@ -882,6 +1038,22 @@ numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size
   /* Add arg1 and neg_arg2 */
   numeric_add (arg1, neg_arg2, answer, size);
 }
+
+static void
+fp_numeric_sub (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes)
+{
+  unsigned int borrow = 0;
+  unsigned int next_borrow = 0;
+  int digit;
+
+  for (digit = calc_bytes - 1; digit >= 0; digit--)
+    {
+      next_borrow = BORROW_NEXT (dbv1_buf[digit], dbv2_buf[digit], borrow);
+      calc_buf[digit] = (uint8_t) ((unsigned) dbv1_buf[digit] - ((unsigned) dbv2_buf[digit] + borrow));
+      borrow = next_borrow;
+    }
+}
+
 
 /*
  * numeric_mul () -
@@ -959,6 +1131,51 @@ numeric_mul (DB_C_NUMERIC a1, DB_C_NUMERIC a2, bool * positive_ans, DB_C_NUMERIC
 	  numeric_add (temp_term, answer, answer, 2 * DB_NUMERIC_BUF_SIZE);
 	}
       shift++;
+    }
+}
+
+static void
+fp_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * calc_buf, int calc_bytes)
+{
+  int outer_idx = 0, inner_idx = 0, result_idx = 0, carry_idx = 0;
+  int inner_min = 0;
+  uint16_t carry = 0;
+  uint32_t product = 0, sum = 0, carry_sum = 0;
+
+  const int last = calc_bytes - 1;
+
+  for (outer_idx = last; outer_idx >= 0; outer_idx--)
+    {
+      carry = 0;
+      inner_min = last - outer_idx;
+      if (inner_min < 0)
+	{
+	  inner_min = 0;
+	}
+
+      for (inner_idx = last; inner_idx >= inner_min; inner_idx--)
+	{
+	  result_idx = outer_idx + inner_idx - last;
+
+	  product = (uint32_t) dbv1_buf[outer_idx] * (uint32_t) dbv2_buf[inner_idx];
+	  sum = (uint32_t) calc_buf[result_idx] + product + carry;
+
+	  calc_buf[result_idx] = (uint8_t) (sum & 0xFF);
+	  carry = (uint16_t) (sum >> 8);
+	}
+
+      /* propagate remaining carry to higher digits after inner loop termination */
+      if (carry)
+	{
+	  carry_idx = (outer_idx + inner_min - last) - 1;
+	  while (carry && carry_idx >= 0)
+	    {
+	      carry_sum = (uint32_t) calc_buf[carry_idx] + carry;
+	      calc_buf[carry_idx] = (uint8_t) (carry_sum & 0xFF);
+	      carry = (uint16_t) (carry_sum >> 8);
+	      --carry_idx;
+	    }
+	}
     }
 }
 
@@ -1117,6 +1334,486 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
     }
 }
 
+static void
+fp_numeric_double_shift_bit (uint8_t * arg1, uint8_t * arg2, int calc_bytes, uint8_t * lsb, uint8_t * msb)
+{
+  int digit;
+  int numbits = 1;
+  uint8_t local_arg1[calc_bytes];
+  uint8_t local_arg2[calc_bytes];
+
+  /* Copy args into local variables */
+  memcpy (local_arg1, arg1, calc_bytes);
+  memcpy (local_arg2, arg2, calc_bytes);
+
+  /* Loop through all but last word of msb shifting bits */
+  for (digit = 0; digit < calc_bytes - 1; digit++)
+    {
+      msb[digit] = (local_arg2[digit] << numbits) | (local_arg2[digit + 1] >> (8 - numbits));
+    }
+
+  /* Do last word of msb separately using upper word of lsb */
+  msb[calc_bytes - 1] = (local_arg2[calc_bytes - 1] << numbits) | (local_arg1[0] >> (8 - numbits));
+
+  /* Loop through all but last word of lsb shifting bits */
+  for (digit = 0; digit < calc_bytes - 1; digit++)
+    {
+      lsb[digit] = (local_arg1[digit] << numbits) | (local_arg1[digit + 1] >> (8 - numbits));
+    }
+
+  /* Do last word of lsb separately.  */
+  lsb[calc_bytes - 1] = local_arg1[calc_bytes - 1] << numbits;
+}
+
+static void
+fp_numeric_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf, int calc_bytes)
+{
+  int nbit, total_bit;
+
+  /* calculate basic variables */
+  total_bit = calc_bytes * 8;
+
+  /* Initialize variables */
+  memcpy (quo_buf, dbv1_buf, calc_bytes);
+
+  /* Shift *answer and *remainder.  Bits shifted out of *answer * are placed into *remainder.  */
+  /*****  NEEDS TO BE UPGRADED TO SHIFT SO THAT FIRST NON-ZERO BIT OF *****/
+  /*****  REMAINDER IS AT LEAST EQUAL TO FIRST NON_ZERO BIT OF ARG2.  *****/
+  /*****  DON'T DO THIS ONE BIT AT A TIME.                            *****/
+  for (nbit = 0; nbit < total_bit; nbit++)
+    {
+      fp_numeric_double_shift_bit (quo_buf, rem_buf, calc_bytes, quo_buf, rem_buf);
+
+      /* If remainder >= arg2, subtract arg2 from remainder and increment the answer.  */
+      if (fp_numeric_operation_compare (rem_buf, dbv2_buf, calc_bytes) >= 0)
+	{
+	  fp_numeric_sub (rem_buf, dbv2_buf, rem_buf, calc_bytes);
+	  quo_buf[calc_bytes - 1] += 1;
+	}
+    }
+}
+
+/*
+ * knuth_find_first_nz_idx_msb() - Find the index of the first non-zero byte in an MSB-first buffer
+ *   return        : Index of the first non-zero byte,
+ *                   or buffer_size if all bytes are zero
+ *   buffer(in)    : Byte array stored in MSB-first order
+ *   buffer_size(in): Size of the buffer in bytes
+ *
+ * Implementation details:
+ *   - Scans the buffer in 8-byte (64-bit) blocks
+ *   - If a block contains non-zero data, narrow down
+ *     within the block by checking up to 8 bytes
+ *   - If no non-zero byte is found, returns buffer_size
+ *
+ * Note: memcpy is used to safely load 64-bit words,
+ *       avoiding alignment and strict aliasing issues (Undefined Behavior),
+ *       while allowing the compiler to optimize into a
+ *       single 64-bit load instruction.
+ */
+static int
+knuth_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size)
+{
+  int i = 0, j = 0;
+  uint64_t word;
+
+  /* scan 8-byte blocks */
+  for (; i + 8 <= buffer_size; i += 8)
+    {
+      memcpy (&word, buffer + i, 8);
+      if (word != 0)
+	{
+	  /* narrow down to find only the first non-zero byte within the block (max 8 iterations) */
+	  for (j = 0; j < 8; j++)
+	    {
+	      if (buffer[i + j])
+		{
+		  return i + j;
+		}
+	    }
+	}
+    }
+
+  /* tail (0..7 bytes) */
+  for (; i < buffer_size; i++)
+    {
+      if (buffer[i])
+	{
+	  return i;
+	}
+    }
+
+  return buffer_size;		/* all zeros */
+}
+
+/*
+ * knuth_count_leading_zero_bits() - Count the number of leading zero bits in a single byte (MSB-first)
+ *   return        : Number of leading zero bits (0 ~ 8)
+ *   byte_value(in): 8-bit value to be examined
+ *
+ * Note : To quickly determine how many bits the divisor V
+ *        must be shifted left so that its most significant
+ *        byte (MSB) becomes ≥ 0x80 (i.e., MSB = 1).
+ */
+static unsigned int
+knuth_count_leading_zero_bits (uint8_t byte_value)
+{
+  unsigned int leading_zeros = 0;
+  if ((byte_value & 0xF0) == 0)
+    {
+      leading_zeros += 4;
+      byte_value <<= 4;
+    }
+  if ((byte_value & 0xC0) == 0)
+    {
+      leading_zeros += 2;
+      byte_value <<= 2;
+    }
+  if ((byte_value & 0x80) == 0)
+    {
+      leading_zeros += 1;
+    }
+  return leading_zeros;
+}
+
+/*
+ * knuth_normalize_left_shift_msb() - Left shift an MSB-first buffer by k bits
+ *   return        : void
+ *   buffer(in/out): Byte array stored in MSB-first order (modified in place)
+ *   buffer_size(in): Size of the buffer in bytes
+ *   k_bit(in)     : Number of bits to shift (0..7)
+ *
+ * Note : Used in the normalization step of Knuth’s division algorithm
+ *        to align the divisor or dividend at the bit level.
+ */
+static void
+knuth_normalize_left_shift_msb (uint8_t * buffer, int buffer_size, unsigned int k_bit)
+{
+  if (k_bit == 0)
+    {
+      return;
+    }
+
+  uint8_t carry = 0;
+  uint8_t next = 0;
+  int i = 0;
+
+  for (i = buffer_size - 1; i >= 0; i--)
+    {
+      next = (uint8_t) (buffer[i] >> (8 - k_bit));
+      buffer[i] = (uint8_t) ((buffer[i] << k_bit) | carry);
+      carry = next;
+    }
+}
+
+/*
+ * knuth_normalize_right_shift_msb() - Right shift an MSB-first buffer by k bits
+ *   return        : void
+ *   buffer(in/out): Byte array stored in MSB-first order (modified in place)
+ *   buffer_size(in): Size of the buffer in bytes
+ *   k_bit(in)     : Number of bits to shift (0..7)
+ *
+ * Note: Used in the denormalization step of Knuth’s division algorithm,
+ *       when restoring the remainder by shifting back.
+ */
+static void
+knuth_normalize_right_shift_msb (uint8_t * buffer, int buffer_size, unsigned int k_bit)
+{
+  if (k_bit == 0)
+    {
+      return;
+    }
+
+  uint8_t carry = 0;
+  uint8_t next = 0;
+  int i = 0;
+
+  for (i = 0; i < buffer_size; i++)
+    {
+      next = (uint8_t) (buffer[i] & ((1u << k_bit) - 1u));
+      buffer[i] = (uint8_t) ((buffer[i] >> k_bit) | (carry << (8 - k_bit)));
+      carry = next;
+    }
+}
+
+/*
+ * knuth_estimate_quotient_digit() - Knuth’s division algorithm, steps D2–D3: trial quotient estimation and adjustment
+ *   return             : Final trial_quotient (0..255)
+ *   u_work(in)         : Dividend work array (MSB-first)
+ *   v_work(in)         : Divisor work array (MSB-first)
+ *   window_offset(in)  : Starting offset in dividend for quotient estimation
+ *   dividend_bytes(in) : Size of dividend in bytes
+ *   divisor_bytes(in)  : Size of divisor in bytes
+ *   out_trial_remainder(out): Trial remainder after estimation
+ *
+ * D2 (Estimation):
+ *   - Use the top 2 bytes of U (u_high, u_next) to form dividend_16
+ *   - Compute trial_quotient = dividend_16 / v_high
+ *   - Compute trial_remainder = dividend_16 % v_high
+ *
+ * D3 (Adjustment):
+ *   - While trial_quotient * v_next > trial_remainder * BASE + u_next2,
+ *     decrement trial_quotient by 1 and update trial_remainder
+ *   - Repeat until the condition is satisfied
+ *
+ * Note:
+ *   - The trial_quotient may be as large as 511, but in base-256 each quotient digit must lie in [0..255].
+ *     Therefore, if ≥ BASE (256), it is clamped to BASE-1 (255).
+ *   - This step is essential in Knuth’s division to ensure each quotient digit is safely and correctly determined.
+ */
+static uint32_t
+knuth_estimate_quotient_digit (const uint8_t * u_work, const uint8_t * v_work, int window_offset,
+			       int dividend_bytes, int divisor_bytes, uint32_t * out_trial_remainder)
+{
+  const unsigned int BASE = 256u;
+  uint32_t u_high;
+  uint32_t u_next;
+  uint32_t u_next2;
+  uint32_t v_high;
+  uint32_t v_next;
+  uint32_t dividend_16;
+  uint32_t trial_quotient;
+  uint32_t trial_remainder;
+
+  /* extract the top 3 bytes from U and top 2 bytes from V */
+  u_high = u_work[window_offset];
+  u_next = u_work[window_offset + 1];
+  u_next2 = (window_offset + 2 < dividend_bytes + 1) ? u_work[window_offset + 2] : 0;
+
+  v_high = v_work[0];
+  v_next = (divisor_bytes > 1) ? v_work[1] : 0;
+
+  /* D2: quotient digit estimation */
+  dividend_16 = (u_high << 8) | u_next;
+  trial_quotient = dividend_16 / v_high;	// may be as large as 511
+  trial_remainder = dividend_16 % v_high;	// ranges up to v_high - 1
+
+  if (divisor_bytes > 1)
+    {
+      /* D3: quotient correction */
+      while ((trial_quotient == BASE)
+	     || ((uint64_t) trial_quotient * (uint64_t) v_next >
+		 ((uint64_t) trial_remainder * BASE + (uint64_t) u_next2)))
+	{
+	  --trial_quotient;
+	  trial_remainder += v_high;
+	  if (trial_remainder >= BASE)
+	    {
+	      break;
+	    }
+	}
+    }
+
+  if (trial_quotient >= BASE)
+    {
+      trial_quotient = BASE - 1;	// clamp trial quotient to BASE - 1(255)
+    }
+
+  *out_trial_remainder = trial_remainder;
+  return trial_quotient;
+}
+
+/*
+ * knuth_multiply_and_subtract() 
+ *   - Knuth’s division algorithm, steps D4–D5: apply q·V to the dividend window U by subtraction, and perform add-back if needed
+ *   return             : Final q (decremented by 1 if add-back occurred)
+ *   u_work(in/out)     : Dividend work array U (MSB-first, modified in place)
+ *   v_work(in)         : Divisor work array V (MSB-first)
+ *   window_offset(in)  : Starting offset of the U window to be updated
+ *   divisor_bytes(in)  : Size of the divisor V in bytes
+ *   trial_quotient(in) : Trial quotient estimated in D2–D3
+ *
+ * D4 (Multiply & Subtract):
+ *   - Compute trial_quotient * V
+ *   - Subtract it from U[j..j+n] while propagating borrow
+ *   - Check the topmost byte for borrow as well
+ *
+ * D5 (Add-back correction):
+ *   - If borrow occurred, decrement trial_quotient (q-1)
+ *   - Add V back to the U window to restore a non-negative remainder
+ *   - Ensures the dividend window remains valid
+ *
+ * Note:
+ *   - At most one add-back is needed
+ *   - This step guarantees that an overestimated trial quotient is corrected safely
+ */
+static uint32_t
+knuth_multiply_and_subtract (uint8_t * u_work, const uint8_t * v_work, int window_offset, int divisor_bytes,
+			     uint32_t trial_quotient)
+{
+  int i = 0;
+  uint32_t product_carry = 0;
+  uint32_t borrow_from_sub = 0;
+  uint32_t product;
+  uint32_t subtrahend;
+  uint32_t minuend;
+  uint32_t diff;
+  uint32_t subtrahend_top;
+  uint32_t minuend_top;
+  uint32_t diff_top;
+
+  /* D4: multiply & subtract */
+  for (i = divisor_bytes - 1; i >= 0; i--)
+    {
+      product = trial_quotient * (uint32_t) v_work[i] + product_carry;
+      product_carry = product >> 8;
+
+      subtrahend = (product & 0xFFu) + borrow_from_sub;
+      minuend = (uint32_t) u_work[window_offset + i + 1];
+      diff = minuend - subtrahend;
+
+      borrow_from_sub = (minuend < subtrahend);
+      u_work[window_offset + i + 1] = (uint8_t) diff;
+    }
+
+  /*
+   * D4: Multiply & Subtract
+   * the main loop processes only the lower n bytes (U[j+1..j+n]).
+   * after the loop, the remaining product_carry and borrow must be applied to the top byte U[j]
+   */
+  {
+    subtrahend_top = product_carry + borrow_from_sub;
+    minuend_top = (uint32_t) u_work[window_offset];
+    diff_top = minuend_top - subtrahend_top;
+
+    borrow_from_sub = (minuend_top < subtrahend_top);
+    u_work[window_offset] = (uint8_t) diff_top;
+  }
+
+  /* D5: add-back correction */
+  uint32_t carry;
+  uint32_t sum;
+  if (borrow_from_sub)
+    {
+      --trial_quotient;
+      carry = 0;
+      for (i = divisor_bytes - 1; i >= 0; i--)
+	{
+	  sum = (uint32_t) u_work[window_offset + i + 1] + (uint32_t) v_work[i] + carry;
+	  u_work[window_offset + i + 1] = (uint8_t) sum;
+	  carry = sum >> 8;
+	}
+      /* carry must always be added to U[j] */
+      u_work[window_offset] = (uint8_t) ((uint32_t) u_work[window_offset] + carry);
+    }
+
+  return trial_quotient;
+}
+
+/*
+ * fp_numeric_knuth_div() - Divide two big-endian numeric buffers using
+ *                          Knuth's long division algorithm (steps D1–D8)
+ *   dbv1_buf(in) : Dividend buffer (MSB-first)
+ *   dbv2_buf(in) : Divisor buffer (MSB-first)
+ *   quo_buf(out) : Quotient buffer (MSB-first, right-justified)
+ *   rem_buf(out) : Remainder buffer (MSB-first, right-justified)
+ *   calc_bytes(in): Working precision in bytes
+ *
+ * Note :
+ *   1) compute significant (non-zero) byte lengths (not part of Knuth D-steps)
+ *   2) prepare working buffers
+ *   3) D1 normalize
+ *   4) D2–D7 main loop (per quotient digit)
+ *      - D2–D3: estimate and adjust trial quotient
+ *      - D4–D5: subtract q*V from U window. if borrow, add back
+ *      - D6–D7: store the finalized quotient digit
+ *   5) D8 denormalize
+ *   6) extract remainder
+ */
+static void
+fp_numeric_knuth_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf, int calc_bytes)
+{
+  int dividend_first_nz_index = 0;
+  int divisor_first_nz_index = 0;
+  int dividend_bytes = 0;
+  int divisor_bytes = 0;
+  int len_diff = 0;
+
+  /*
+   * 1) Compute significant (non-zero) byte lengths (not part of Knuth D-steps)
+   * - Risk if we normalize (D1) directly on the MSB-first buffer:
+   *   Skipping leading zero bytes means shifting in multiples of 8 bits,
+   *   which scales the value by 256^k and distorts it.
+   * - First find the index of the first non-zero byte as the proper base.
+   */
+  dividend_first_nz_index = knuth_find_first_nz_idx_msb (dbv1_buf, calc_bytes);
+  divisor_first_nz_index = knuth_find_first_nz_idx_msb (dbv2_buf, calc_bytes);
+  dividend_bytes = calc_bytes - dividend_first_nz_index;
+  divisor_bytes = calc_bytes - divisor_first_nz_index;
+
+  /*
+   * early exit: if dividend < divisor -> quotient = 0, remainder = dividend
+   * - First compare by significant byte length
+   * - If equal, compare the same-length region with memcmp
+   */
+  len_diff = dividend_bytes - divisor_bytes;
+  if (len_diff < 0
+      || (len_diff == 0
+	  && memcmp (dbv1_buf + dividend_first_nz_index, dbv2_buf + divisor_first_nz_index, divisor_bytes) < 0))
+    {
+      /* quo_buf is already zero-initialized outside */
+      memcpy (rem_buf, dbv1_buf, calc_bytes);
+      return;
+    }
+
+  /* 2) prepare working buffers */
+  // U: dividend working buffer (n+1 bytes, with leading zero space)
+  uint8_t u_work[dividend_bytes + 1];
+  u_work[0] = 0;
+  // V: divisor working buffer (n bytes)
+  uint8_t v_work[divisor_bytes];
+
+  memcpy (u_work + 1, dbv1_buf + dividend_first_nz_index, dividend_bytes);
+  memcpy (v_work, dbv2_buf + divisor_first_nz_index, divisor_bytes);
+
+  /* 3) D1 normalize */
+  unsigned int normalization_bit_count = (divisor_bytes > 0) ? knuth_count_leading_zero_bits (v_work[0]) : 0;
+  if (normalization_bit_count)
+    {
+      knuth_normalize_left_shift_msb (v_work, divisor_bytes, normalization_bit_count);
+      knuth_normalize_left_shift_msb (u_work, dividend_bytes + 1, normalization_bit_count);
+    }
+  unsigned int saved_normalization_bit_count = normalization_bit_count;
+
+  int quo_window_count = len_diff;	// number of quotient digits - 1
+  int quo_total_byte_count = quo_window_count + 1;	// total number of quotient digits
+  int quo_store_start_idx = calc_bytes - quo_total_byte_count;	// starting index for writing quotient in right-justified form
+  int quo_byte_index = 0;
+  int window_offset = 0;
+  uint32_t trial_remainder = 0;
+  uint32_t trial_quotient = 0;
+
+  /* 4) D2–D7 main loop (per quotient digit) */
+  for (quo_byte_index = 0; quo_byte_index <= quo_window_count; quo_byte_index++)
+    {
+      window_offset = quo_byte_index;
+
+      /* D2–D3: estimate and adjust trial quotient */
+      trial_quotient =
+	knuth_estimate_quotient_digit (u_work, v_work, window_offset, dividend_bytes, divisor_bytes, &trial_remainder);
+
+      /* D4–D5: subtract q*V from U window. if borrow, add back */
+      trial_quotient = knuth_multiply_and_subtract (u_work, v_work, window_offset, divisor_bytes, trial_quotient);
+
+      /* D6–D7: store the finalized quotient digit */
+      quo_buf[quo_store_start_idx + quo_byte_index] = (uint8_t) trial_quotient;
+    }
+
+  /* 5) D8 denormalize */
+  if (saved_normalization_bit_count)
+    {
+      knuth_normalize_right_shift_msb (u_work, dividend_bytes + 1, saved_normalization_bit_count);
+    }
+
+  /* 6) extract remainder */
+  int out_rem_idx = calc_bytes - divisor_bytes;	// remainder also right-justified
+  int i = 0;
+  for (i = 0; i < divisor_bytes; i++)
+    {
+      rem_buf[out_rem_idx + i] = u_work[quo_total_byte_count + i];
+    }
+}
+
 /*
  * numeric_is_longnum_value ()
  *   return:
@@ -1263,6 +1960,50 @@ numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2)
 	  return -numeric_compare_pos (narg1, narg2);
 	}
     }
+}
+
+/*
+ * fp_numeric_compare() - Compare two numeric values (byte-buffer form)
+ *   return: -1 if arg1 < arg2, 0 if equal, +1 if arg1 > arg2
+ */
+static int
+fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int prec2, int scale2, bool arg1_sign,
+		    bool arg2_sign)
+{
+  int common_prec, common_scale;
+  int scale_adjust1, scale_adjust2;
+  int calc_bytes;
+  int cmp_rez = 0;
+
+  common_scale = MAX (scale1, scale2);
+  common_prec = MAX (prec1 - scale1, prec2 - scale2) + common_scale;
+  scale_adjust1 = common_scale - scale1;
+  scale_adjust2 = common_scale - scale2;
+
+  calc_bytes = fp_numeric_precision_to_bytes (common_prec) + 1;
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+    {
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
+    }
+
+  uint8_t arg1_buf[calc_bytes];
+  uint8_t arg2_buf[calc_bytes];
+
+  (void) fp_numeric_pad_abs (arg1, DB_NUMERIC_BUF_SIZE, arg1_buf, calc_bytes, arg1_sign);
+  (void) fp_numeric_pad_abs (arg2, DB_NUMERIC_BUF_SIZE, arg2_buf, calc_bytes, arg2_sign);
+
+  if (scale_adjust1)
+    {
+      fp_numeric_mul_pow10 (arg1_buf, calc_bytes, scale_adjust1);
+    }
+  if (scale_adjust2)
+    {
+      fp_numeric_mul_pow10 (arg2_buf, calc_bytes, scale_adjust2);
+    }
+
+  cmp_rez = fp_numeric_operation_compare (arg1_buf, arg2_buf, calc_bytes);
+
+  return cmp_rez;
 }
 
 /*
@@ -1703,6 +2444,151 @@ exit_on_error:
 }
 
 /*
+ * fp_numeric_db_value_add() - Add two NUMERIC values
+ *   return : NO_ERROR on success, or error code
+ *
+ * Note:
+ *   - The legacy numeric_db_value_add() function was limited to 16 bytes and up to 38 digits.
+ *   - fp_numeric_db_value_add() supports the extended NUMERIC range, 
+ *     allowing operations with larger precision.
+ *   - If the result precision exceeds DB_MAX_NUMERIC_PRECISION,
+ *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
+ */
+int
+fp_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, FP_VALUE_TYPE * num_op_type)
+{
+  int ret = NO_ERROR;
+  int scale1, scale2, result_scale;
+  int prec1, prec2, result_prec, calc_prec1, calc_prec2;
+  int calc_bytes;
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
+
+  /* Check for bad inputs */
+  if (answer == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* Check for NULL values */
+  if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
+    {
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return NO_ERROR;
+    }
+
+  scale1 = DB_VALUE_SCALE (dbv1);
+  scale2 = DB_VALUE_SCALE (dbv2);
+  prec1 = DB_VALUE_PRECISION (dbv1);
+  prec2 = DB_VALUE_PRECISION (dbv2);
+  calc_prec1 = prec1 - scale1;
+  calc_prec2 = prec2 - scale2;
+
+  result_scale = MAX (scale1, scale2);
+  result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
+
+  /* 1) compute common precision/scale and scale adjustments */
+  int scale_adjust1 = result_scale - scale1;
+  int scale_adjust2 = result_scale - scale2;
+
+  /* 2) determine common sign of the result */
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  arg1_sign = numeric_is_negative (dbv1_copy);
+  arg2_sign = numeric_is_negative (dbv2_copy);
+
+  /* 3) determine working buffer size */
+  calc_bytes = fp_numeric_precision_to_bytes (result_prec) + 1;
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+    {
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
+    }
+
+  /* 4) initialize new calculation buffers and pad absolute values */
+  uint8_t dbv1_buf[calc_bytes];
+  uint8_t dbv2_buf[calc_bytes];
+  uint8_t calc_buf[calc_bytes];
+
+  memset (calc_buf, 0, calc_bytes);
+  (void) fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dbv1_buf, calc_bytes, arg1_sign);
+  (void) fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, dbv2_buf, calc_bytes, arg2_sign);
+
+  /* 5) scale adjustments */
+  if (scale_adjust1)
+    {
+      fp_numeric_mul_pow10 (dbv1_buf, calc_bytes, scale_adjust1);
+    }
+  if (scale_adjust2)
+    {
+      fp_numeric_mul_pow10 (dbv2_buf, calc_bytes, scale_adjust2);
+    }
+
+  /* 6) addition */
+  if (arg1_sign == arg2_sign)
+    {
+      (void) numeric_add (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+      result_sign = arg1_sign;	// result sign = input sign
+    }
+  else
+    {
+      if (fp_numeric_operation_compare (dbv1_buf, dbv2_buf, calc_bytes) >= 0)
+	{
+	  // |arg1| >= |arg2|
+	  (void) fp_numeric_sub (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+	  result_sign = arg1_sign;	// result sign = sign of larger number
+	}
+      else
+	{
+	  // |arg1| < |arg2|
+	  (void) fp_numeric_sub (dbv2_buf, dbv1_buf, calc_buf, calc_bytes);
+	  result_sign = arg2_sign;	// result sign = sign of larger number
+	}
+    }
+
+  /* 7) check and recalculate precision/scale of the addition result */
+  result_prec = fp_numeric_get_decimal_digit (calc_buf, calc_bytes);
+  if (result_prec > phase_1_tmp_max_prec)
+    {
+      result_scale = result_scale - (result_prec - phase_1_tmp_max_prec);
+    }
+
+  /* 8) round and pack to DB_NUMERIC_BUF_SIZE bytes */
+  (void) fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+
+  /* 9) store result */
+  if (result_sign)
+    {
+      // result is negative
+      numeric_negate ((unsigned char *) result_buf);
+    }
+  db_make_numeric (answer, result_buf, result_prec, result_scale);
+
+  return ret;
+}
+
+/*
  * numeric_db_value_sub () -
  *   return: NO_ERROR, or ER_code
  *     Errors:
@@ -1803,6 +2689,150 @@ exit_on_error:
 }
 
 /*
+ * fp_numeric_db_value_sub() - Subtract two NUMERIC values
+ *   return : NO_ERROR on success, or error code
+ *
+ * Note:
+ *   - The legacy numeric_db_value_sub() function was limited to 16 bytes and up to 38 digits.
+ *   - fp_numeric_db_value_sub() supports the extended NUMERIC range, 
+ *     allowing operations with larger precision.
+ *   - If the result precision exceeds DB_MAX_NUMERIC_PRECISION,
+ *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
+ */
+int
+fp_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, FP_VALUE_TYPE * num_op_type)
+{
+  int ret = NO_ERROR;
+  int scale1, scale2, result_scale;
+  int prec1, prec2, result_prec, calc_prec1, calc_prec2;
+  int calc_bytes;
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
+
+  /* Check for bad inputs */
+  if (answer == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* Check for NULL values */
+  if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
+    {
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return NO_ERROR;
+    }
+
+  scale1 = DB_VALUE_SCALE (dbv1);
+  scale2 = DB_VALUE_SCALE (dbv2);
+  prec1 = DB_VALUE_PRECISION (dbv1);
+  prec2 = DB_VALUE_PRECISION (dbv2);
+  calc_prec1 = prec1 - scale1;
+  calc_prec2 = prec2 - scale2;
+
+  result_scale = MAX (scale1, scale2);
+  result_prec = MAX (calc_prec1, calc_prec2) + result_scale;
+
+  /* 1) compute common precision/scale and scale adjustments */
+  int scale_adjust1 = result_scale - scale1;
+  int scale_adjust2 = result_scale - scale2;
+
+  /* 2) determine common sign of the result */
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  arg1_sign = numeric_is_negative (dbv1_copy);
+  arg2_sign = numeric_is_negative (dbv2_copy);
+
+  /* 3) determine working buffer size */
+  calc_bytes = fp_numeric_precision_to_bytes (result_prec) + 1;
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+    {
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
+    }
+
+  /* 4) initialize new calculation buffers and pad absolute values */
+  uint8_t dbv1_buf[calc_bytes];
+  uint8_t dbv2_buf[calc_bytes];
+  uint8_t calc_buf[calc_bytes];
+
+  memset (calc_buf, 0, calc_bytes);
+  (void) fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dbv1_buf, calc_bytes, arg1_sign);
+  (void) fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, dbv2_buf, calc_bytes, arg2_sign);
+
+  /* 5) scale adjustments */
+  if (scale_adjust1)
+    {
+      fp_numeric_mul_pow10 (dbv1_buf, calc_bytes, scale_adjust1);
+    }
+  if (scale_adjust2)
+    {
+      fp_numeric_mul_pow10 (dbv2_buf, calc_bytes, scale_adjust2);
+    }
+
+  /* 6) subtraction */
+  if (arg1_sign == arg2_sign)
+    {
+      if (fp_numeric_operation_compare (dbv1_buf, dbv2_buf, calc_bytes) >= 0)
+	{
+	  // |arg1| >= |arg2|
+	  (void) fp_numeric_sub (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+	  result_sign = arg1_sign;	// result sign = sign of larger number
+	}
+      else
+	{
+	  // |arg1| < |arg2|
+	  (void) fp_numeric_sub (dbv2_buf, dbv1_buf, calc_buf, calc_bytes);
+	  result_sign = !arg2_sign;	// result sign = sign of larger number
+	}
+    }
+  else
+    {
+      (void) numeric_add (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+      result_sign = arg1_sign;	// result sign = input sign
+    }
+
+  /* 7) check and recalculate precision/scale of the subtraction result */
+  result_prec = fp_numeric_get_decimal_digit (calc_buf, calc_bytes);
+  if (result_prec > phase_1_tmp_max_prec)
+    {
+      result_scale = result_scale - (result_prec - phase_1_tmp_max_prec);
+    }
+
+  /* 8) round and pack to DB_NUMERIC_BUF_SIZE bytes */
+  (void) fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+
+  /* 9) store result */
+  if (result_sign)
+    {
+      numeric_negate ((unsigned char *) result_buf);
+    }
+  db_make_numeric (answer, result_buf, result_prec, result_scale);
+
+  return ret;
+}
+
+/*
  * numeric_db_value_mul () -
  *   return: NO_ERROR, or ER_code
  *     Errors:
@@ -1878,6 +2908,135 @@ exit_on_error:
   db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * fp_numeric_db_value_mul() - Multiply two NUMERIC values
+ *   return : NO_ERROR on success, or error code
+ *
+ * Note:
+ *   - The legacy numeric_db_value_mul() function was limited to 16 bytes and up to 38 digits.
+ *   - fp_numeric_db_value_mul() supports the extended NUMERIC range, 
+ *     allowing operations with larger precision.
+ *   - If the result precision exceeds DB_MAX_NUMERIC_PRECISION,
+ *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
+ */
+int
+fp_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, FP_VALUE_TYPE * num_op_type)
+{
+  int ret = NO_ERROR;
+  int calc_bytes;
+  int scale1, scale2, result_scale;
+  int prec1, prec2, result_prec;
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
+
+  /* Check for bad inputs */
+  if (answer == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* Check for NULL values */
+  if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
+    {
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return NO_ERROR;
+    }
+
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+
+  /* 
+   * The following cases return 0 immediately without any operation
+   * ex) 0 * 0 = 0
+   *     0 * v = 0
+   *     v * 0 = 0
+   */
+  if (numeric_is_zero (dbv1_copy) || numeric_is_zero (dbv2_copy))
+    {
+      memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
+      result_prec = 1;
+      result_scale = 0;
+      db_make_numeric (answer, result_buf, result_prec, result_scale);
+      return NO_ERROR;
+    }
+
+  scale1 = DB_VALUE_SCALE (dbv1);
+  scale2 = DB_VALUE_SCALE (dbv2);
+  prec1 = DB_VALUE_PRECISION (dbv1);
+  prec2 = DB_VALUE_PRECISION (dbv2);
+
+  result_scale = scale1 + scale2;
+  result_prec = prec1 + prec2;
+
+  /* 1) determine common sign of the result */
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  arg1_sign = numeric_is_negative (dbv1_copy);
+  arg2_sign = numeric_is_negative (dbv2_copy);
+  result_sign = arg1_sign ^ arg2_sign;
+
+  /* 2) determine working buffer size */
+  calc_bytes = fp_numeric_precision_to_bytes (result_prec) + 1;
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+    {
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 1;
+    }
+
+  /* 3) initialize new calculation buffers and pad absolute values */
+  uint8_t dbv1_buf[calc_bytes];
+  uint8_t dbv2_buf[calc_bytes];
+  uint8_t calc_buf[calc_bytes];
+
+  memset (calc_buf, 0, calc_bytes);
+  (void) fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dbv1_buf, calc_bytes, arg1_sign);
+  (void) fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, dbv2_buf, calc_bytes, arg2_sign);
+
+  /* 4) scale adjustments */
+  // multiplication does not require scale adjustments
+
+  /* 5) multiplication */
+  fp_numeric_mul (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
+
+  /* 6) check and recalculate precision/scale of the multiplication result */
+  result_prec = fp_numeric_get_decimal_digit (calc_buf, calc_bytes);
+  if (result_prec > phase_1_tmp_max_prec)
+    {
+      result_scale = result_scale - (result_prec - phase_1_tmp_max_prec);
+    }
+
+  /* 7) round and pack to DB_NUMERIC_BUF_SIZE bytes */
+  (void) fp_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+
+  /* 8) store result */
+  if (result_sign)
+    {
+      numeric_negate ((unsigned char *) result_buf);
+    }
+  db_make_numeric (answer, result_buf, result_prec, result_scale);
+
+  return ret;
 }
 
 /*
@@ -2063,6 +3222,181 @@ exit_on_error:
 }
 
 /*
+ * fp_numeric_db_value_div() - divide two NUMERIC values
+ *   return : NO_ERROR on success, or error code
+ *
+ * Note:
+ *   - The legacy numeric_db_value_div() function was limited to 16 bytes and up to 38 digits.
+ *   - fp_numeric_db_value_div() supports the extended NUMERIC range, 
+ *     allowing operations with larger precision.
+ *   - If the result precision exceeds DB_MAX_NUMERIC_PRECISION,
+ *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
+ */
+int
+fp_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer, FP_VALUE_TYPE * num_op_type)
+{
+  int ret = NO_ERROR;
+  int result_prec;
+  int result_scale;
+  int prec1, prec2;
+  int scale1, scale2;
+  int calc_bytes;
+  int exponent10;
+  int last_digit;
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
+
+  /* Check for bad inputs */
+  if (answer == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv1 == NULL || DB_VALUE_TYPE (dbv1) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (dbv2 == NULL || DB_VALUE_TYPE (dbv2) != DB_TYPE_NUMERIC)
+    {
+      db_make_null (answer);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* Check for NULL values */
+  if (DB_IS_NULL (dbv1) || DB_IS_NULL (dbv2))
+    {
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return NO_ERROR;
+    }
+
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+
+  /* 
+   * The following cases return 0 immediately without any operation
+   * ex) 12 / 0 = err (=already handled in parsing)
+   *     0 / 12 = 0
+   */
+  if (numeric_is_zero (dbv1_copy))
+    {
+      memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
+      result_prec = 1;
+      result_scale = 0;
+      db_make_numeric (answer, result_buf, result_prec, result_scale);
+      return NO_ERROR;
+    }
+
+  /* 1) compute exact precision values for mantissa calculations */
+  scale1 = DB_VALUE_SCALE (dbv1);
+  scale2 = DB_VALUE_SCALE (dbv2);
+  prec1 = fp_numeric_get_precision_digits (dbv1_copy, DB_NUMERIC_BUF_SIZE);
+  prec2 = fp_numeric_get_precision_digits (dbv2_copy, DB_NUMERIC_BUF_SIZE);
+
+  /* 2) determine common sign of the result */
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  arg1_sign = numeric_is_negative (dbv1_copy);
+  arg2_sign = numeric_is_negative (dbv2_copy);
+  result_sign = arg1_sign ^ arg2_sign;
+
+  /* 3) initializes buffers for calculating exponents and fills them with absolute values */
+  uint8_t dividend_abs[DB_NUMERIC_BUF_SIZE] = { 0 };
+  uint8_t divisor_abs[DB_NUMERIC_BUF_SIZE] = { 0 };
+  fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dividend_abs, DB_NUMERIC_BUF_SIZE, arg1_sign);
+  fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, divisor_abs, DB_NUMERIC_BUF_SIZE, arg2_sign);
+
+  /* 4) compute exact exponent values for mantissa calculations */
+  int dividend_exponent = (prec1 - 1) - scale1;
+  int divisor_exponent = (prec2 - 1) - scale2;
+  int exponent_diff = dividend_exponent - divisor_exponent;
+
+  /* compare mantissa */
+  int mantissa_compare = compare_mantissa_same_exponent (dividend_abs, divisor_abs, DB_NUMERIC_BUF_SIZE, prec1, prec2);
+  int result_digits = (mantissa_compare >= 0) ? (exponent_diff + 1) : exponent_diff;
+
+  /* 5) mantissa calculations */
+  result_scale = phase_1_tmp_max_prec - result_digits;
+  exponent10 = (result_scale + 1) + (scale2 - scale1);
+
+  /* 6) initialize new calculation buffers and pad absolute values */
+  int extra_bytes = fp_numeric_precision_to_bytes (exponent10 > 0 ? exponent10 : 0);
+  calc_bytes = ((int) DB_NUMERIC_BUF_SIZE + extra_bytes + 2);	// +2 여유
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+    {
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 2;
+    }
+
+  uint8_t dividend_work[calc_bytes];
+  uint8_t divisor_work[calc_bytes];
+  uint8_t quotient_work[calc_bytes];
+  uint8_t remainder_work[calc_bytes];
+
+  memset (quotient_work, 0, calc_bytes);
+  memset (remainder_work, 0, calc_bytes);
+
+  fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dividend_work, calc_bytes, arg1_sign);
+  fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, divisor_work, calc_bytes, arg2_sign);
+
+  /* 7) only dividend_work is scaled (div_pow10 if negative) */
+  if (exponent10 > 0)
+    {
+      fp_numeric_mul_pow10 (dividend_work, calc_bytes, exponent10);
+    }
+  else if (exponent10 < 0)
+    {
+      for (int scale_adjust = 0; scale_adjust < -exponent10; scale_adjust++)
+	{
+	  (void) fp_numeric_div_pow10 (dividend_work, calc_bytes);
+	}
+    }
+
+  /* 8) division */
+  fp_numeric_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+
+  /* knuth division */
+  //fp_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+
+  last_digit = fp_numeric_div_pow10 (quotient_work, calc_bytes);
+  if (last_digit >= 5)
+    {
+      (void) fp_numeric_increment (quotient_work, calc_bytes, 1);
+    }
+
+  /* 9) check and recalculate precision/scale of the addition result */
+  result_prec = fp_numeric_get_decimal_digit (quotient_work, calc_bytes);
+  if (result_scale > DB_MAX_NUMERIC_SCALE)
+    {
+      result_scale = DB_MAX_NUMERIC_SCALE;
+    }
+  if (result_scale < DB_MIN_NUMERIC_SCALE)
+    {
+      result_scale = DB_MIN_NUMERIC_SCALE;
+    }
+
+  /* 10) round and pack to DB_NUMERIC_BUF_SIZE bytes */
+  (void) fp_numeric_round_and_pack (quotient_work, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+
+  /* 11) store result */
+  if (result_sign)
+    {
+      numeric_negate ((unsigned char *) result_buf);
+    }
+  db_make_numeric (answer, result_buf, result_prec, result_scale);
+
+  return ret;
+}
+
+/*
  * numeric_db_value_negate () -
  *   return: NO_ERROR, or ER_code
              The argument answer is modified in place.
@@ -2187,6 +3521,61 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
     {
       /* Simple case. Just compare two numbers. */
       cmp_rez = numeric_compare (db_locate_numeric (dbv1), db_locate_numeric (dbv2));
+      db_make_int (answer, cmp_rez);
+      return NO_ERROR;
+    }
+  else if (scale1 > DB_MAX_FIXED_NUMERIC_PRECISION || scale2 > DB_MAX_FIXED_NUMERIC_PRECISION || scale1 < 0
+	   || scale2 < 0)
+    {
+      /*
+       * handling for extended scale range (-84 ~ 127)
+       * why check signs outside the comparison function?
+       *   - if fp_numeric_compare performs scale adjustment internally,
+       *     the working buffer grows, making sign inversion more costly.
+       *   - therefore, compare signs first, then perform scale-adjusted comparison.
+       */
+
+      /* 1) check signs */
+      unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+      unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+      bool arg1_sign = false, arg2_sign = false;
+
+      arg1_sign = numeric_is_negative (dbv1_copy);
+      arg2_sign = numeric_is_negative (dbv2_copy);
+
+      if (arg1_sign == false && arg2_sign == true)
+	{
+	  /* 2) positive vs negative (positive is always greater) */
+	  cmp_rez = 1;
+	  db_make_int (answer, cmp_rez);
+	  return NO_ERROR;
+	}
+      else if (arg1_sign == true && arg2_sign == false)
+	{
+	  /* 3) negative vs positive (negative is always less) */
+	  cmp_rez = -1;
+	  db_make_int (answer, cmp_rez);
+	  return NO_ERROR;
+	}
+      else
+	{
+	  /* 4) positive vs positive, negative vs negative */
+	  /* 
+	   * 4-1) 함수 내부에서 scale 보정 후 비교
+	   * ex) result :
+	   *      if(arg1 < arg2) = -1
+	   *      if(arg1 = arg2) = 0
+	   *      if(arg1 > arg2) = 1
+	   */
+	  cmp_rez = fp_numeric_compare (dbv1_copy, dbv2_copy, prec1, scale1, prec2, scale2, arg1_sign, arg2_sign);
+
+	  /* 4-3) restore sign (if either arg1_sign or arg2_sign is negative, it is true.) */
+	  if (arg1_sign)
+	    {
+	      cmp_rez = -cmp_rez;
+	    }
+	}
+
       db_make_int (answer, cmp_rez);
       return NO_ERROR;
     }
@@ -2817,6 +4206,140 @@ numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num,
   return numeric_internal_real_to_num (adouble, dst_scale, num, prec, scale, false);
 }
 
+/*
+ * fp_numeric_db_value_mod() - modulo two NUMERIC values and return the remainder
+ *   return : NO_ERROR on success, or error code
+ *
+ * Note:
+ *   - perform mod operation with double in existing db_mod_dbval.
+ *   - fp_numeric_db_value_mod() supports the extended NUMERIC range, 
+ *     allowing operations with larger precision.
+ *   - If the result precision exceeds DB_MAX_NUMERIC_PRECISION,
+ *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
+ */
+int
+fp_numeric_db_value_mod (DB_VALUE * value1, DB_VALUE * value2, DB_VALUE * result)
+{
+  int ret = NO_ERROR;
+  int scale1 = 0, scale2 = 0, prec1 = 0, prec2 = 0;
+  int calc_bytes;
+  int result_prec, result_scale;
+  FP_VALUE_TYPE num_op_type = FP_VALUE_TYPE_NAN;
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
+
+  unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (value1);
+  unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (value2);
+
+  /* 
+   * The following cases return 0 immediately without any operation
+   * ex) 12 / 0 = err (=already handled in parsing)
+   *     0 / 12 = 0
+   */
+  if (numeric_is_zero (dbv1_copy))
+    {
+      memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
+      result_prec = 1;
+      result_scale = DB_VALUE_SCALE (value1);;
+      db_make_numeric (result, result_buf, result_prec, result_scale);
+      return NO_ERROR;
+    }
+
+  /* 1) compute exact precision values for mantissa calculations */
+  scale1 = DB_VALUE_SCALE (value1);
+  scale2 = DB_VALUE_SCALE (value2);
+  prec1 = fp_numeric_get_precision_digits (dbv1_copy, DB_NUMERIC_BUF_SIZE);
+  prec2 = fp_numeric_get_precision_digits (dbv2_copy, DB_NUMERIC_BUF_SIZE);
+
+  /* 2) determine common sign of the result */
+  bool arg1_sign = false, arg2_sign = false, result_sign = false;
+
+  arg1_sign = numeric_is_negative (dbv1_copy);
+  arg2_sign = numeric_is_negative (dbv2_copy);
+  result_sign = arg1_sign;
+
+  /* 3) initializes buffers for calculating exponents and fills them with absolute values */
+  uint8_t dividend_abs[DB_NUMERIC_BUF_SIZE] = { 0 };
+  uint8_t divisor_abs[DB_NUMERIC_BUF_SIZE] = { 0 };
+  fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dividend_abs, DB_NUMERIC_BUF_SIZE, arg1_sign);
+  fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, divisor_abs, DB_NUMERIC_BUF_SIZE, arg2_sign);
+
+  /* 4) compute exact exponent values for mantissa calculations */
+  int dividend_exponent = (scale2 > scale1) ? (scale2 - scale1) : 0;
+  int divisor_exponent = (scale1 > scale2) ? (scale1 - scale2) : 0;
+
+  /* 5) determine exact scale for the result (MOD is independent of the quotient scale) */
+  result_scale = (scale1 > scale2) ? scale1 : scale2;
+  if (result_scale > DB_MAX_NUMERIC_SCALE)
+    {
+      result_scale = DB_MAX_NUMERIC_SCALE;
+    }
+  if (result_scale < DB_MIN_NUMERIC_SCALE)
+    {
+      result_scale = DB_MIN_NUMERIC_SCALE;
+    }
+
+  /* 6) initialize new calculation buffers and pad absolute values */
+  int extra_bytes =
+    fp_numeric_precision_to_bytes ((dividend_exponent > divisor_exponent) ? dividend_exponent : divisor_exponent);
+  calc_bytes = ((int) DB_NUMERIC_BUF_SIZE + extra_bytes + 2);
+  if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
+    {
+      calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 2;
+    }
+
+  uint8_t dividend_work[calc_bytes];
+  uint8_t divisor_work[calc_bytes];
+  uint8_t quotient_work[calc_bytes];
+  uint8_t remainder_work[calc_bytes];
+
+  memset (quotient_work, 0, calc_bytes);
+  memset (remainder_work, 0, calc_bytes);
+
+  fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dividend_work, calc_bytes, arg1_sign);
+  fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, divisor_work, calc_bytes, arg2_sign);
+
+  /* 7) only dividend_work is scaled */
+  if (dividend_exponent > 0)
+    {
+      fp_numeric_mul_pow10 (dividend_work, calc_bytes, dividend_exponent);
+    }
+
+  /* 8) division */
+  fp_numeric_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+
+  /* knuth division */
+  //fp_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+
+  /* 9) check and recalculate precision/scale of the remainder result */
+  result_prec = fp_numeric_get_decimal_digit (remainder_work, calc_bytes);
+  if (result_prec > phase_1_tmp_max_prec)
+    {
+      result_scale = result_scale - (result_prec - phase_1_tmp_max_prec);
+    }
+
+  /* 10) round and pack to DB_NUMERIC_BUF_SIZE bytes */
+  (void) fp_numeric_round_and_pack (remainder_work, calc_bytes, result_buf, &result_prec, &result_scale, &num_op_type);
+
+  /* 11) store result */
+  if (result_sign)
+    {
+      numeric_negate ((unsigned char *) result_buf);
+    }
+  db_make_numeric (result, result_buf, result_prec, result_scale);
+
+  return ret;
+}
 
 /*
  * numeric_internal_float_to_num () - converts a float to a DB_C_NUMERIC
@@ -3525,6 +5048,7 @@ determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, 
 	      // Integer with decimal: 99999.99999... -> 100000.0
 	      memset (out_str + 1, '0', phase_1_tmp_max_prec);
 	      out_str[0] = '1';
+	      scale -= 1;
 	    }
 	}
     }
@@ -3689,6 +5213,11 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
   if (src_scale < dest_scale)
     {				/* add trailing zeroes */
       scale_diff = dest_scale - src_scale;
+      if (scale_diff > DB_MAX_NUMERIC_SCALE)
+	{
+	  scale_diff = DB_MAX_NUMERIC_SCALE;
+	}
+
       orig_length = strlen (num_string);
       for (i = 0; i < scale_diff; i++)
 	{
@@ -3699,6 +5228,11 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
   else if (dest_scale < src_scale)
     {				/* Truncate and prepare for rounding */
       scale_diff = src_scale - dest_scale;
+      if (scale_diff > DB_MAX_NUMERIC_SCALE)
+	{
+	  scale_diff = DB_MAX_NUMERIC_SCALE;
+	}
+
       orig_length = strlen (num_string);
       if (num_string[orig_length - scale_diff] >= '5' && num_string[orig_length - scale_diff] <= '9')
 	{
@@ -3779,6 +5313,218 @@ get_significant_digit (DB_BIGINT i)
   while (i != 0);
 
   return n;
+}
+
+/*
+ * fp_numeric_pad_abs() - Copy NUMERIC buffer into a larger working buffer
+ *                        with zero-padding and optional absolute conversion
+ */
+static void
+fp_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int dst_bytes, bool is_negative)
+{
+  int pad = dst_bytes - src_bytes;
+
+  memset (dst_buf, 0, pad);
+  memcpy (dst_buf + pad, src_buf, src_bytes);
+
+  if (is_negative)
+    {
+      numeric_negate ((DB_C_NUMERIC) (dst_buf + pad));
+    }
+}
+
+/*
+ * fp_numeric_mul_pow10() - Multiply a base-256 big-endian buffer by 10^exponent
+ *
+ * Note:
+ *   - Mainly used for scale adjustment (ex. multiply by 10^exponent to align fractional digits)
+ */
+static void
+fp_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, int exponent)
+{
+  int i = 0;
+  uint16_t carry = 0;
+  uint32_t temp = 0;
+  while (exponent-- > 0)
+    {
+      carry = 0;
+      for (i = calc_bytes - 1; i >= 0; i--)
+	{
+	  temp = (uint32_t) dbv_buf[i] * 10 + carry;
+	  dbv_buf[i] = (uint8_t) (temp & 0xFF);
+	  carry = temp >> 8;
+	}
+    }
+}
+
+/*
+ * fp_numeric_div_pow10() - Divide a base-256 big-endian buffer by 10
+ *
+ * Note:
+ *   - Used for restoring scale after adjustment
+ *     or for rounding operations.
+ */
+static uint16_t
+fp_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes)
+{
+  uint32_t temp = 0;
+  uint16_t rem10 = 0;
+  int i = 0;
+
+  for (i = 0; i < calc_bytes; i++)
+    {
+      temp = (rem10 << 8) | calc_buf[i];
+      calc_buf[i] = (uint8_t) (temp / 10);
+      rem10 = (uint16_t) (temp % 10);
+    }
+  return rem10;
+}
+
+/*
+ * fp_numeric_increment() - Increment a base-256 big-endian buffer by val
+ *
+ * Note:
+ *   - Used for rounding, mainly to increment by 1
+ */
+static void
+fp_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val)
+{
+  int i = 0;
+  uint16_t temp = 0;
+  uint16_t carry = val;
+  for (i = calc_bytes - 1; i >= 0 && carry; --i)
+    {
+      temp = (uint16_t) calc_buf[i] + carry;
+      calc_buf[i] = (uint8_t) (temp & 0xFF);
+      carry = temp >> 8;
+    }
+}
+
+/*
+ * fp_numeric_operation_compare() - Compare two base-256 big-endian buffers
+ *
+ * Note:
+ *   - compare two buffers with same byte values, up to calc_bytes
+ */
+static int
+fp_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes)
+{
+  int i = 0;
+  for (i = 0; i < calc_bytes; i++)
+    {
+      if (dbv1_buf[i] != dbv2_buf[i])
+	{
+	  return dbv1_buf[i] < dbv2_buf[i] ? -1 : 1;
+	}
+    }
+  return 0;
+}
+
+/*
+ * fp_numeric_round_and_pack() - Round and pack intermediate NUMERIC buffer
+ *
+ * calc_buf(in/out): working buffer for calculation
+ * calc_bytes(in)  : size of the working buffer
+ * result_buf(out) : final result buffer (DB_NUMERIC_BUF_SIZE)
+ * result_prec(in/out): result precision (adjusted after rounding)
+ * result_scale(in/out): result scale (may be reduced if rounding overflows)
+ * num_op_type(out): result type (set to FP_VALUE_TYPE_NUMBER if rounding occurs)
+ *
+ * Note:
+ *   - Used to reduce extended numeric precision down to DB_MAX_NUMERIC_PRECISION,
+ *     apply half-up rounding, and pack into the fixed-size NUMERIC buffer.
+ */
+static void
+fp_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
+			   int *result_scale, FP_VALUE_TYPE * num_op_type)
+{
+  uint16_t last_digit = 0;
+  int drop = 0;
+  int i = 0;
+  int round_prec = 0;
+  /*
+   * Currently, only the maximum NUMERIC range has been extended,
+   * so using DB_MAX_NUMERIC_PRECISION as is will not work correctly.
+   * Therefore, in Phase-1 we use an interim variable,
+   * phase_1_tmp_max_prec, fixed at 38.
+   *
+   * Phase overview:
+   *  - Phase-1: 16 bytes, up to 38 digits
+   *  - Phase-2: 18 bytes, up to 43 digits
+   */
+  int phase_1_tmp_max_prec = 38;
+
+  drop = *result_prec - phase_1_tmp_max_prec;
+  if (drop <= 0)
+    {
+      memcpy (result_buf, calc_buf + (calc_bytes - DB_NUMERIC_BUF_SIZE), DB_NUMERIC_BUF_SIZE);
+      return;
+    }
+
+  /* if more than 39 digits, truncate to 38 digits and round at the 39th digit */
+  *num_op_type = FP_VALUE_TYPE_NUMBER;
+  *result_prec = phase_1_tmp_max_prec;
+
+  /* divide the value up to 38 digits and store the 39th digit in last_digit for rounding check */
+  for (i = 0; i < drop; i++)
+    {
+      last_digit = fp_numeric_div_pow10 (calc_buf, calc_bytes);
+    }
+
+  /* half-up rounding: if last_digit >= 5, increment the buffer by 1 */
+  if (last_digit >= 5)
+    {
+      (void) fp_numeric_increment (calc_buf, calc_bytes, 1);
+      round_prec = fp_numeric_get_decimal_digit (calc_buf, calc_bytes);
+      if (round_prec > phase_1_tmp_max_prec)
+	{
+	  (void) fp_numeric_div_pow10 (calc_buf, calc_bytes);
+	  (*result_scale)--;
+	}
+    }
+
+  /* copy the final DB_MAX_NUMERIC_PRECISION-digit value into result_buf (DB_NUMERIC_BUF_SIZE) */
+  memcpy (result_buf, calc_buf + (calc_bytes - DB_NUMERIC_BUF_SIZE), DB_NUMERIC_BUF_SIZE);
+
+  return;
+}
+
+/*
+ * compare_mantissa_same_exponent() - Compare the mantissas of two NUMERIC values (only valid when exponents are equal)
+ *   return: 1: dividend > divisor
+ *          -1: dividend < divisor  
+ *           0: equal
+ */
+static int
+compare_mantissa_same_exponent (const uint8_t * dividend_buf, const uint8_t * divisor_buf, int buf_bytes,
+				int prec1, int prec2)
+{
+  int i = 0;
+  int prec_diff = prec1 - prec2;
+  uint8_t dividend_buf_copy[DB_NUMERIC_BUF_SIZE * 2] = { 0 };
+  uint8_t divisor_buf_copy[DB_NUMERIC_BUF_SIZE * 2] = { 0 };
+  int work_bytes = buf_bytes;
+
+  memcpy (dividend_buf_copy, dividend_buf, work_bytes);
+  memcpy (divisor_buf_copy, divisor_buf, work_bytes);
+
+  /* to avoid buffer overflow, use divide by 10 */
+  if (prec_diff > 0)
+    {
+      for (i = 0; i < prec_diff; i++)
+	{
+	  (void) fp_numeric_div_pow10 (dividend_buf_copy, work_bytes);
+	}
+    }
+  else if (prec_diff < 0)
+    {
+      for (i = 0; i < -prec_diff; i++)
+	{
+	  (void) fp_numeric_div_pow10 (divisor_buf_copy, work_bytes);
+	}
+    }
+
+  return fp_numeric_operation_compare (dividend_buf_copy, divisor_buf_copy, work_bytes);
 }
 
 /*
@@ -4403,4 +6149,39 @@ numeric_db_value_increase (DB_VALUE * arg)
   numeric_increase (db_get_numeric (arg));
 
   return NO_ERROR;
+}
+
+/*
+ * fp_numeric_precision_to_bytes() - convert decimal precision to required byte length (base-256)
+ *
+ * prec(in): decimal precision (number of digits)
+ *
+ * Return:
+ *   - prec > 0 : minimum number of bytes required
+ *                (calculated as ceil(prec / log10(256)))
+ *   - prec == 0: currently returns DB_NUMERIC_BUF_SIZE
+ *                (reserved for future floating-point mode)
+ *   - prec < 0 : invalid case, triggers assert and returns default precision
+ *
+ * Note:
+ *   - log10(256) = 2.40824 -> one byte can store about 2.4 decimal digits
+ */
+int
+fp_numeric_precision_to_bytes (int prec)
+{
+  const double log10_256 = log10 (256.0);
+
+  if (prec == 0)
+    {
+      /* for future floating-point mode */
+      return DB_NUMERIC_BUF_SIZE;
+    }
+  else if (prec < 0)
+    {
+      /* cases where the value is 0 or negative cannot occur */
+      assert (false);
+      return DB_DEFAULT_PRECISION;
+    }
+
+  return (int) ceil ((double) prec / log10_256);
 }

@@ -40,6 +40,15 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
+typedef enum fp_value_type
+{
+  FP_VALUE_TYPE_NUMBER,
+  FP_VALUE_TYPE_INFINITE,
+  FP_VALUE_TYPE_NAN,
+  FP_VALUE_TYPE_ZERO
+}
+FP_VALUE_TYPE;
+
 /*
  * NUMERIC_MAX_STRING_SIZE:
  * Defines the maximum internal working buffer size for NUMERIC values.
@@ -105,6 +114,18 @@ extern int numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_D
 extern int numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest);
 extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
+
+/* Floating-Point NUMERIC */
+extern int fp_numeric_precision_to_bytes (int prec);
+extern int fp_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				    FP_VALUE_TYPE * num_op_type);
+extern int fp_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				    FP_VALUE_TYPE * num_op_type);
+extern int fp_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				    FP_VALUE_TYPE * num_op_type);
+extern int fp_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				    FP_VALUE_TYPE * num_op_type);
+extern int fp_numeric_db_value_mod (DB_VALUE * value1, DB_VALUE * value2, DB_VALUE * result);
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);

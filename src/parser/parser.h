@@ -272,7 +272,7 @@ extern "C"
   extern void pt_evaluate_tree_having_serial (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_value,
 					      int vals_cnt);
   extern int pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, DB_VALUE * arg1,
-					DB_VALUE * arg2, DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN * domain,
+					DB_VALUE * arg2, DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN ** domain,
 					PT_NODE * o1, PT_NODE * o2, PT_NODE * o3, PT_MISC_TYPE qualifier);
   extern int pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE * args[],
 					  const int num_args, DB_VALUE * result);

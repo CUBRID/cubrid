@@ -687,14 +687,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (regu_var->domain)))
 	  {
 	    /* at here, T_ADD is really T_STRCAT */
-	    if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	    if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 	      {
 		goto error;
 	      }
 	  }
 	else
 	  {
-	    if (qdata_add_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	    if (qdata_add_dbval (peek_left, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -755,21 +755,21 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_SUB:
-      if (qdata_subtract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_subtract_dbval (peek_left, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_MUL:
-      if (qdata_multiply_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_multiply_dbval (peek_left, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_DIV:
-      if (qdata_divide_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_divide_dbval (peek_left, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2757,7 +2757,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_CONCAT:
       if (arithptr->rightptr != NULL)
 	{
-	  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -2808,11 +2808,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      DB_VALUE tmp_val;
 
 	      db_make_null (&tmp_val);
-	      if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, regu_var->domain) != NO_ERROR)
+	      if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, &regu_var->domain) != NO_ERROR)
 		{
 		  goto error;
 		}
-	      if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	      if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 		{
 		  (void) pr_clear_value (&tmp_val);
 		  goto error;
@@ -3331,7 +3331,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       }
 
     case T_STRCAT:
-      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, &regu_var->domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3773,6 +3773,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  regu_var->domain = resolved_dom;
 	}
+    }
+
+  /*
+   * After NUMERIC operation, precision/scale are modified
+   * At this point, only regu_var->domain is updated internally,
+   * while arithptr->domain remains unchanged and retains the original value
+   * Therefore, we synchronize the domain values as shown below
+   */
+  if (arithptr && arithptr->domain && TP_DOMAIN_TYPE (arithptr->domain) == DB_TYPE_NUMERIC && regu_var
+      && regu_var->domain && TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC
+      && arithptr->domain != regu_var->domain)
+    {
+      tp_domain_free (arithptr->domain);
+      arithptr->domain = regu_var->domain;
     }
 
   /* check for the first time */

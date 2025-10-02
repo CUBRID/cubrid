@@ -7396,7 +7396,7 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 
   if (node == NULL)
     {
-      *p_precision = DB_MAX_NUMERIC_PRECISION;
+      *p_precision = DB_MAX_FIXED_NUMERIC_PRECISION;
       *p_scale = DB_DEFAULT_NUMERIC_SCALE;
     }
   else
@@ -7491,7 +7491,9 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 	  precision += scale;
 	}
 
-      if (!maybe_sci_notation && (precision + scale) < DB_MAX_NUMERIC_PRECISION)
+      if (!maybe_sci_notation &&
+	  ((scale == 0 && precision > (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE)) ||
+	   (scale != 0 && precision + scale > DB_MAX_FIXED_NUMERIC_PRECISION)))
 	{
 	  *p_precision = precision;
 	  *p_scale = scale;

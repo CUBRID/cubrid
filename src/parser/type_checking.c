@@ -40,6 +40,7 @@
 #endif /* ! WINDOWS */
 
 #include "authenticate.h"
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -11456,6 +11457,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
   PT_NODE *dt = NULL;
   bool do_detect_collation = true;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_LEAVE;
+  int phase_1_tmp_max_prec = 38;
 
   if (node->data_type)
     {				/* node has already been resolved */
@@ -12171,14 +12173,20 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_PRECISION)
+	  if (dt->info.data_type.precision > phase_1_tmp_max_prec)
 	    {
-	      dt->info.data_type.dec_precision = (dt->info.data_type.dec_precision
-						  - (dt->info.data_type.precision - DB_MAX_NUMERIC_PRECISION));
+	      dt->info.data_type.dec_precision =
+		dt->info.data_type.dec_precision - (dt->info.data_type.precision - phase_1_tmp_max_prec);
+	      dt->info.data_type.precision = phase_1_tmp_max_prec;
 	    }
-
-	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
-					  ? DB_MAX_NUMERIC_PRECISION : dt->info.data_type.precision);
+	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_SCALE)
+	    {
+	      dt->info.data_type.dec_precision = DB_MAX_NUMERIC_SCALE;
+	    }
+	  if (dt->info.data_type.dec_precision < DB_MIN_NUMERIC_SCALE)
+	    {
+	      dt->info.data_type.dec_precision = DB_MIN_NUMERIC_SCALE;
+	    }
 	  break;
 
 	case PT_TYPE_ENUMERATION:
@@ -12650,7 +12658,7 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 int
 pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2,
-			   DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN * domain, PT_NODE * o1, PT_NODE * o2,
+			   DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN ** domain, PT_NODE * o1, PT_NODE * o2,
 			   PT_NODE * o3, PT_MISC_TYPE qualifier)
 {
   DB_TYPE typ;
@@ -12665,6 +12673,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
   TP_DOMAIN_STATUS dom_status;
   PT_NODE *between_ge_lt, *between_ge_lt_arg1, *between_ge_lt_arg2;
   DB_VALUE *width_bucket_arg2 = NULL, *width_bucket_arg3 = NULL;
+  FP_VALUE_TYPE num_op_type = FP_VALUE_TYPE_NAN;
 
   assert (parser != NULL);
 
@@ -12673,7 +12682,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 0;
     }
 
-  typ = TP_DOMAIN_TYPE (domain);
+  typ = TP_DOMAIN_TYPE (*domain);
   rTyp = pt_db_to_type_enum (typ);
 
   /* do not coerce arg1, arg2 for STRCAT */
@@ -13082,7 +13091,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else
 	  {
-	    target_domain = domain;
+	    target_domain = *domain;
 	  }
 
 	if (typ1 == DB_TYPE_NULL)
@@ -13128,7 +13137,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else
 	  {
-	    target_domain = domain;
+	    target_domain = *domain;
 	  }
 
 	if (typ1 == DB_TYPE_NULL)
@@ -13229,10 +13238,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  *domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	  db_make_null (&tmp_val);
 	  /* force explicit cast ; scenario : INSERT INTO t VALUE(-?) , USING '10', column is INTEGER */
-	  if (tp_value_cast (arg1, &tmp_val, domain, false) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (arg1, &tmp_val, *domain, false) != DOMAIN_COMPATIBLE)
 	    {
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 		{
@@ -13889,7 +13898,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      rTyp = PT_TYPE_DOUBLE;
 	    }
 	  typ = pt_type_enum_to_db (rTyp);
-	  domain = tp_domain_resolve_default (typ);
+	  *domain = tp_domain_resolve_default (typ);
 	}
 
       if (typ1 == DB_TYPE_NULL || typ2 == DB_TYPE_NULL)
@@ -13920,7 +13929,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      db_make_null (&tmp_val);
 	      /* force explicit cast ; scenario : INSERT INTO t VALUE(''1''+?) , USING 10, column is INTEGER */
-	      if (tp_value_cast (arg1, &tmp_val, domain, false) != DOMAIN_COMPATIBLE)
+	      if (tp_value_cast (arg1, &tmp_val, *domain, false) != DOMAIN_COMPATIBLE)
 		{
 		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			       parser_print_tree (parser, o1), pt_show_type_enum (rTyp));
@@ -13938,7 +13947,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      db_make_null (&tmp_val);
 	      /* force explicit cast ; scenario: INSERT INTO t VALUE(? + ''1'') , USING 10, column is INTEGER */
-	      if (tp_value_cast (arg2, &tmp_val, domain, false) != DOMAIN_COMPATIBLE)
+	      if (tp_value_cast (arg2, &tmp_val, *domain, false) != DOMAIN_COMPATIBLE)
 		{
 		  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			       parser_print_tree (parser, o2), pt_show_type_enum (rTyp));
@@ -13961,7 +13970,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
 	    case DB_TYPE_SEQUENCE:
-	      if (!pt_union_sets (parser, domain, arg1, arg2, result, o2))
+	      if (!pt_union_sets (parser, *domain, arg1, arg2, result, o2))
 		{
 		  return 0;	/* set union failed */
 		}
@@ -14051,16 +14060,24 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      if (numeric_db_value_add (arg1, arg2, result) != NO_ERROR)
+	      if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
+	      if (num_op_type == FP_VALUE_TYPE_NUMBER
+		  || ((*domain)->precision < result->domain.numeric_info.precision
+		      || (*domain)->scale != result->domain.numeric_info.scale))
+		{
+		  *domain =
+		    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+				       result->domain.numeric_info.scale, NULL, 0);
+		}
 
-	      dom_status = tp_value_coerce (result, result, domain);
+	      dom_status = tp_value_coerce (result, result, *domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
 		  return 0;
 		}
 	      break;
@@ -14557,7 +14574,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
-	      if (!pt_difference_sets (parser, domain, arg1, arg2, result, o2))
+	      if (!pt_difference_sets (parser, *domain, arg1, arg2, result, o2))
 		{
 		  return 0;	/* set union failed */
 		}
@@ -14730,15 +14747,24 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      if (numeric_db_value_sub (arg1, arg2, result) != NO_ERROR)
+	      if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      dom_status = tp_value_coerce (result, result, domain);
+	      if (num_op_type == FP_VALUE_TYPE_NUMBER
+		  || ((*domain)->precision < result->domain.numeric_info.precision
+		      || (*domain)->scale != result->domain.numeric_info.scale))
+		{
+		  *domain =
+		    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+				       result->domain.numeric_info.scale, NULL, 0);
+		}
+
+	      dom_status = tp_value_coerce (result, result, *domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
 		  return 0;
 		}
 	      break;
@@ -15024,7 +15050,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
 	    case DB_TYPE_SEQUENCE:
-	      if (!pt_product_sets (parser, domain, arg1, arg2, result, o2))
+	      if (!pt_product_sets (parser, *domain, arg1, arg2, result, o2))
 		{
 		  return 0;	/* set union failed */
 		}
@@ -15126,7 +15152,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      error = numeric_db_value_mul (arg1, arg2, result);
+	      error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
 	      if (error == ER_IT_DATA_OVERFLOW)
 		{
 		  goto overflow;
@@ -15136,10 +15162,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      dom_status = tp_value_coerce (result, result, domain);
+	      if (num_op_type == FP_VALUE_TYPE_NUMBER
+		  || ((*domain)->precision < result->domain.numeric_info.precision
+		      || (*domain)->scale != result->domain.numeric_info.scale))
+		{
+		  *domain =
+		    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+				       result->domain.numeric_info.scale, NULL, 0);
+		}
+
+	      dom_status = tp_value_coerce (result, result, *domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
 		  return 0;
 		}
 	      break;
@@ -15230,7 +15265,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_NUMERIC:
 	      if (!numeric_db_value_is_zero (arg2))
 		{
-		  error = numeric_db_value_div (arg1, arg2, result);
+		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;
@@ -15240,11 +15275,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		      PT_ERRORc (parser, o1, er_msg ());
 		      return 0;
 		    }
+		  if (num_op_type == FP_VALUE_TYPE_NUMBER
+		      || ((*domain)->precision < result->domain.numeric_info.precision
+			  || (*domain)->scale != result->domain.numeric_info.scale))
+		    {
+		      *domain =
+			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					   result->domain.numeric_info.scale, NULL, 0);
+		    }
 
-		  dom_status = tp_value_coerce (result, result, domain);
+		  dom_status = tp_value_coerce (result, result, *domain);
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
-		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
+		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
 		      return 0;
 		    }
 
@@ -15646,7 +15689,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
 
-      if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast (result, result, *domain, true) != DOMAIN_COMPATIBLE)
 	{
 	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, o2), pt_show_type_enum (rTyp));
@@ -15664,7 +15707,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
 
-      if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast (result, result, *domain, true) != DOMAIN_COMPATIBLE)
 	{
 	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, o2), pt_show_type_enum (rTyp));
@@ -16002,7 +16045,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_FROM_UNIXTIME:
-      error = db_from_unixtime (arg1, arg2, arg3, result, domain);
+      error = db_from_unixtime (arg1, arg2, arg3, result, *domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16203,7 +16246,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TIME_FORMAT:
-      error = db_time_format (arg1, arg2, arg3, result, domain);
+      error = db_time_format (arg1, arg2, arg3, result, *domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16496,7 +16539,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_DATE_FORMAT:
-      error = db_date_format (arg1, arg2, arg3, result, domain);
+      error = db_date_format (arg1, arg2, arg3, result, *domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16827,7 +16870,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_TO_CHAR:
-      error = db_to_char (arg1, arg2, arg3, result, domain);
+      error = db_to_char (arg1, arg2, arg3, result, *domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17020,11 +17063,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       }
 
     case PT_CAST:
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (*domain) == DB_TYPE_VARIABLE)
 	{
 	  return 0;
 	}
-      dom_status = tp_value_cast (arg1, result, domain, false);
+      dom_status = tp_value_cast (arg1, result, *domain, false);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  assert (expr->node_type == PT_EXPR);
@@ -17052,7 +17095,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
        * case_search_condition. */
       if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER && db_get_int (arg3) != 0))
 	{
-	  if (tp_value_coerce (arg1, result, domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_coerce (arg1, result, *domain) != DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			   pt_short_print (parser, o1), pt_show_type_enum (rTyp));
@@ -17061,7 +17104,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  if (tp_value_coerce (arg2, result, domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_coerce (arg2, result, *domain) != DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			   pt_short_print (parser, o2), pt_show_type_enum (rTyp));
@@ -18614,7 +18657,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  goto end;
 	}
 
-      if (pt_evaluate_db_value_expr (parser, expr, op, arg1, arg2, arg3, &dbval_res, domain, opd1, opd2, opd3,
+      if (pt_evaluate_db_value_expr (parser, expr, op, arg1, arg2, arg3, &dbval_res, &domain, opd1, opd2, opd3,
 				     qualifier))
 	{
 	  result = pt_dbval_to_value (parser, &dbval_res);
