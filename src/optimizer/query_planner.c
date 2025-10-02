@@ -862,24 +862,8 @@ qo_set_orderby_skip (QO_PLAN * plan, void *arg)
   if (qo_is_iscan (plan) || qo_is_iscan_from_orderby (plan))
     {
       bool yn = *((bool *) arg);
-
-      if (yn)
-	{
-	  if (qo_is_index_covering_scan (plan))
-	    {
-	      assert (plan->info->env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_POSSIBLE);
-	      plan->info->env->skip_orderby_opt = QO_ENV_SKIP_ORDERBY_USE;
-	    }
-
-	  assert (plan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE);
-	  plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_USE;
-
-	  plan->plan_un.scan.index->head->orderby_skip = true;
-	}
-      else
-	{
-	  plan->plan_un.scan.index->head->orderby_skip = false;
-	}
+      plan->plan_un.scan.index->head->orderby_skip = yn;
+      plan->skip_orderby_opt = (yn) ? QO_PLAN_SKIP_ORDERBY_USE : plan->skip_orderby_opt;
     }
 
   return NO_ERROR;
@@ -1946,7 +1930,6 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
-  double guessed_result_cardinality = DBL_MAX;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -2068,13 +2051,8 @@ qo_iscan_cost (QO_PLAN * planp)
       filter_sel *= QO_TERM_SELECTIVITY (termp);
     }
 
-  if (qo_plan_is_orderby_skip_candidate (planp) && (QO_PLAN_HAS_LIMIT (planp)))
-    {
-      guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
-    }
-
   /* number of leaf to be selected */
-  leaf_access = MIN (sel * (double) QO_NODE_NCARD (nodep), guessed_result_cardinality);
+  leaf_access = sel * (double) QO_NODE_NCARD (nodep);
   /* height of the B+tree */
   height = (double) cum_statsp->height - 1;
   if (height < 0)
@@ -2112,9 +2090,7 @@ qo_iscan_cost (QO_PLAN * planp)
   else
     {
       object_IO = opages * sel * filter_sel;
-      heap_access =
-	MIN ((double) QO_NODE_NCARD (nodep) * sel * filter_sel,
-	     guessed_result_cardinality) * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      heap_access = (double) QO_NODE_NCARD (nodep) * sel * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
   object_IO = MAX (1.0, object_IO);
 
@@ -2591,6 +2567,14 @@ qo_sort_cost (QO_PLAN * planp)
 	{
 	  /* No sense in having a STOP plan above a SORT plan */
 	  qo_worst_cost (planp);
+	}
+
+      if (qo_is_iscan_from_orderby (subplanp))
+	{
+	  double save_ncard = QO_NODE_NCARD (subplanp->plan_un.scan.node);
+	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (planp->info->env));
+	  (*(subplanp->vtbl)->cost_fn) (subplanp);
+	  QO_NODE_NCARD (subplanp->plan_un.scan.node) = save_ncard;
 	}
 
       /* SORT-LIMIT plan has the same cost as the subplan (since actually sorting items in memory is not a big
@@ -3997,6 +3981,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_LT;
 	}
 
+
       temp_res = qo_plan_cmp_prefer_covering_index (a, b);
       if (temp_res == PLAN_COMP_LT)
 	{
@@ -4018,6 +4003,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
+	}
+
+      if (qo_plan_is_orderby_skip_candidate (b->plan_un.sort.subplan))
+	{
+	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
+	  return PLAN_COMP_GT;
 	}
     }
 
@@ -4057,6 +4048,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	      return PLAN_COMP_GT;
 	    }
 	}
+
+      if (qo_plan_is_orderby_skip_candidate (a->plan_un.sort.subplan))
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
     }
 
   if (a->plan_type == QO_PLANTYPE_SCAN && b->plan_type == QO_PLANTYPE_SCAN)
@@ -4086,12 +4083,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* check index scan */
-      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a)) && qo_is_seq_scan (b))
+      if (qo_is_iscan (a) && qo_is_seq_scan (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b)) && qo_is_seq_scan (a))
+      if (qo_is_iscan (b) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -5594,8 +5591,7 @@ qo_check_new_best_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 	      EQ = info->planner->EQ;
 	      best_plan = qo_find_best_plan_on_planvec (&info->best_no_order, 1.0);
 	      if (QO_ENV_USE_SORT_LIMIT (env) == QO_SL_USE && !best_plan->has_sort_limit
-		  && bitset_is_equivalent (&QO_ENV_SORT_LIMIT_NODES (env), &info->nodes)
-		  && !qo_plan_is_orderby_skip_candidate (best_plan))
+		  && bitset_is_equivalent (&QO_ENV_SORT_LIMIT_NODES (env), &info->nodes))
 		{
 		  /* generate a SORT_LIMIT plan over this plan */
 		  sort_plan = qo_sort_new (best_plan, QO_UNORDERED, SORT_LIMIT);
@@ -5664,10 +5660,7 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
 
   /* if the plan is of type QO_SCANMETHOD_INDEX_ORDERBY_SCAN but it doesn't skip the orderby, we release the plan. */
   if (qo_is_iscan_from_orderby (plan)
-      && !(plan->top_rooted
-	   ? plan->plan_un.scan.index->head->orderby_skip
-	   : (qo_plan_is_orderby_skip_candidate (plan)
-	      && (qo_is_index_covering_scan (plan) || QO_PLAN_HAS_LIMIT (plan)))))
+      && !(plan->top_rooted ? plan->plan_un.scan.index->head->orderby_skip : qo_plan_is_orderby_skip_candidate (plan)))
     {
       qo_plan_release (plan);
       return 0;
@@ -8766,8 +8759,7 @@ qo_search_planner (QO_PLANNER * planner)
 	  /* generate a stop plan over the current best plan of the */
 	  QO_PLAN *best_plan;
 	  best_plan = qo_find_best_plan_on_info (info, QO_UNORDERED, 1.0);
-	  if (best_plan->plan_type == QO_PLANTYPE_SCAN && !qo_plan_multi_range_opt (best_plan)
-	      && !qo_plan_is_orderby_skip_candidate (best_plan) && !qo_is_iscan_from_groupby (best_plan))
+	  if (best_plan->plan_type == QO_PLANTYPE_SCAN && !qo_plan_multi_range_opt (best_plan) && !qo_is_iscan_from_groupby (best_plan))
 	    {
 	      qo_generate_sort_limit_plan (planner->env, info, best_plan);
 	    }
@@ -10845,9 +10837,9 @@ qo_order_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
       return PLAN_COMP_UNK;
     }
 
-  if (a_ent->orderby_skip || qo_plan_is_orderby_skip_candidate (a))
+  if (a_ent->orderby_skip)
     {
-      if (b_ent->orderby_skip || qo_plan_is_orderby_skip_candidate (b))
+      if (b_ent->orderby_skip)
 	{
 	  return qo_plan_iscan_terms_cmp (a, b);
 	}
@@ -10858,7 +10850,7 @@ qo_order_by_skip_plans_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else
     {
-      if (b_ent->orderby_skip || qo_plan_is_orderby_skip_candidate (b))
+      if (b_ent->orderby_skip)
 	{
 	  return PLAN_COMP_GT;
 	}
@@ -11516,24 +11508,21 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   switch (plan->skip_orderby_opt)
     {
     case QO_PLAN_SKIP_ORDERBY_USE:
-      /* may be unused */
     case QO_PLAN_SKIP_ORDERBY_CAN_USE:
-      assert (env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_POSSIBLE);
       return true;
 
     case QO_PLAN_SKIP_ORDERBY_CANNOT_USE:
-      assert (env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_INVALID);
       return false;
 
     case QO_PLAN_SKIP_ORDERBY_NO:
-      /* fall through */
+      /* need check */
       break;
 
     default:
       /* impossible case */
       assert (false);
 
-      /* fall through */
+      /* need check */
       break;
     }
 
@@ -11590,7 +11579,6 @@ cleanup:
 
   if (is_orderby_skip)
     {
-      plan->info->env->skip_orderby_opt = QO_ENV_SKIP_ORDERBY_POSSIBLE;
       plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_CAN_USE;
     }
   else

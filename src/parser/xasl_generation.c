@@ -27113,16 +27113,6 @@ pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
 	}
     }
 
-  /* Set SKIP-ORDERBY flags */
-  if (qo_plan->info->env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_USE)
-    {
-      xasl->header.xasl_flag |= SKIP_ORDERBY_USED;
-    }
-  else if (qo_plan->info->env->skip_orderby_opt == QO_ENV_SKIP_ORDERBY_POSSIBLE)
-    {
-      xasl->header.xasl_flag |= SKIP_ORDERBY_CANDIDATE;
-    }
-
   /* Set MULTI-RANGE-OPTIMIZATION flags */
   if (qo_plan_multi_range_opt (qo_plan))
     {

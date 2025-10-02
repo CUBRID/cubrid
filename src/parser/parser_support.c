@@ -10333,8 +10333,7 @@ pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * stateme
 {
   DB_VALUE limit_val;
   DB_BIGINT val = 0;
-  int limit_opt_flag =
-    (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED | SKIP_ORDERBY_CANDIDATE | SKIP_ORDERBY_USED);
+  int limit_opt_flag = (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED);
 
   if (!(xasl_flag & limit_opt_flag))
     {
@@ -10371,16 +10370,6 @@ pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * stateme
 	  return true;
 	}
       return false;
-    }
-
-  /* verify SKIP-ORDERBY */
-  if (xasl_flag & SKIP_ORDERBY_USED)
-    {
-      return false;
-    }
-  else if (xasl_flag & SKIP_ORDERBY_CANDIDATE)
-    {
-      return true;
     }
 
   /* verify SORT-LIMIT */

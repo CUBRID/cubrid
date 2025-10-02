@@ -841,13 +841,6 @@ struct qo_partition
 
 typedef enum
 {
-  QO_ENV_SKIP_ORDERBY_INVALID,
-  QO_ENV_SKIP_ORDERBY_USE,
-  QO_ENV_SKIP_ORDERBY_POSSIBLE
-} QO_ENV_SKIP_ORDERBY_OPT;
-
-typedef enum
-{
   QO_SL_INVALID,		/* SORT-LIMIT plan cannot be created */
   QO_SL_USE,			/* SORT-LIMIT plan should be created */
   QO_SL_POSSIBLE		/* All conditions for the SORT-LIMIT plans are met but user did not supply a valid
@@ -917,11 +910,8 @@ struct qo_env
   /* stopping cardinality for the plan (LIMIT, ORDERBY_FOR, etc) */
   DB_VALUE limit_value;
 
-  QO_ENV_SKIP_ORDERBY_OPT skip_orderby_opt;
-
   /* true if we should consider generating SORT-LIMIT plans */
   QO_SORT_LIMIT_USE use_sort_limit;
-
   /*
    * True iff we found a conjunct which was not an expression.  We assume
    * that this is a false conjunct and we don't need to optimize a query

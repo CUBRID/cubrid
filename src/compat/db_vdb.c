@@ -2741,7 +2741,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
       && (prepare_info.host_variables.size > prepare_info.auto_param_count))
     {
       /* query has to be multi range opt candidate */
-      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED | SKIP_ORDERBY_CANDIDATE | SKIP_ORDERBY_USED))
+      if (xasl_header.xasl_flag & (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED))
 	{
 	  if (db_check_limit_need_recompile (parser, statement, xasl_header.xasl_flag))
 	    {

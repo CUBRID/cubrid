@@ -5887,7 +5887,6 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
       env->plan_dump_enabled = true;
     }
   env->multi_range_opt_candidate = false;
-  env->skip_orderby_opt = QO_ENV_SKIP_ORDERBY_INVALID;
 
   return env;
 }
