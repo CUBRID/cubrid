@@ -72,6 +72,7 @@ namespace parallel_heap_scan
     m_vd = vd;
     m_scan_stats = &scan_id->scan_stats;
     m_on_trace = thread_p->on_trace;
+    m_recdes = RECDES_INITIALIZER;
     return NO_ERROR;
   }
 

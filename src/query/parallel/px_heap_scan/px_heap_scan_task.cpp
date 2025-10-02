@@ -327,8 +327,8 @@ namespace parallel_heap_scan
 	  }
 	if (scan_code == S_ERROR)
 	  {
-	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages->move_top_error_message_to_this();
+	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    break;
 	  }
 	m_slot_iterator.set_page (&thread_ref, &vpid);
@@ -341,8 +341,8 @@ namespace parallel_heap_scan
 	      }
 	    if (scan_code == S_ERROR)
 	      {
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		stop = true;
 		break;
 	      }
@@ -396,8 +396,8 @@ namespace parallel_heap_scan
 	  }
 	if (scan_code == S_ERROR)
 	  {
-	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages->move_top_error_message_to_this();
+	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    break;
 	  }
 	m_slot_iterator.set_page (&thread_ref, &vpid);
@@ -410,8 +410,8 @@ namespace parallel_heap_scan
 	      }
 	    if (scan_code == S_ERROR)
 	      {
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		stop = true;
 		break;
 	      }
@@ -464,8 +464,8 @@ namespace parallel_heap_scan
 	  }
 	if (scan_code == S_ERROR)
 	  {
-	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages->move_top_error_message_to_this();
+	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    break;
 	  }
 	m_slot_iterator.set_page (&thread_ref, &vpid);
@@ -478,8 +478,8 @@ namespace parallel_heap_scan
 	      }
 	    if (scan_code == S_ERROR)
 	      {
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		stop = true;
 		break;
 	      }

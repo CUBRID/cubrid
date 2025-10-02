@@ -288,8 +288,8 @@ namespace parallel_heap_scan
 	  {
 	    if (scan_code == S_ERROR)
 	      {
-		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return S_ERROR;
 	      }
 	    else
@@ -335,8 +335,8 @@ namespace parallel_heap_scan
     tl_tpl_buf.tpl = (char *)db_private_alloc (thread_p, DB_PAGESIZE);
     if (tl_tpl_buf.tpl == nullptr)
       {
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	return;
       }
     tl_tpl_buf.size = DB_PAGESIZE;
@@ -377,16 +377,16 @@ namespace parallel_heap_scan
 	err_code = qdata_get_val_list_type_list (thread_p, input, &type_list);
 	if (err_code != NO_ERROR)
 	  {
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return false;
 	  }
 	tl_list_id_header->m_list_id_p = qfile_open_list (thread_p, &type_list, NULL, m_query_id,
 					 QFILE_FLAG_ALL, NULL);
 	if (tl_list_id_header->m_list_id_p == nullptr)
 	  {
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return false;
 	  }
 	tl_list_id_header->m_type_cnt = type_list.type_cnt;
@@ -406,16 +406,16 @@ namespace parallel_heap_scan
     prefetch (list_id_p, PREFETCH_WRITE, PREFETCH_CACHE_TIME_LONG);
     if (unlikely (err_code != NO_ERROR))
       {
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	return false;
       }
     old_last_vpid = tl_list_id_header->m_list_id_p->last_vpid;
     err_code = qfile_add_tuple_to_list (thread_p, tl_list_id_header->m_list_id_p, tl_tpl_buf.tpl);
     if (unlikely (err_code != NO_ERROR))
       {
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	return false;
       }
     if (unlikely (!tl_list_id_header->m_list_id_p->is_domain_resolved))

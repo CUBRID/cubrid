@@ -125,8 +125,8 @@ namespace parallel_heap_scan
       err_code = qdata_get_valptr_type_list (thread_p, outptr_list, &type_list);
       if (err_code != NO_ERROR)
 	{
-	  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	  m_err_messages_p->move_top_error_message_to_this();
+	  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	  /* error occurred, return false to stop the writer */
 	  return;
 	}
@@ -138,8 +138,8 @@ namespace parallel_heap_scan
 #endif
       if (!list_id)
 	{
-	  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	  m_err_messages_p->move_top_error_message_to_this();
+	  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	  /* error occurred, return false to stop the writer */
 	  return;
 	}
@@ -155,8 +155,8 @@ namespace parallel_heap_scan
     if (m_tl_writer_result_p->tpl_descr.f_valp == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	/* error occurred, return false to stop the writer */
 	return;
       }
@@ -165,8 +165,8 @@ namespace parallel_heap_scan
     if (m_tl_writer_result_p->tpl_descr.clear_f_val_at_clone_decache == NULL)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	/* error occurred, return false to stop the writer */
 	return;
       }
@@ -177,16 +177,16 @@ namespace parallel_heap_scan
     m_tl_tpl_buf = (QFILE_TUPLE_RECORD *) db_private_alloc (thread_p, sizeof (QFILE_TUPLE_RECORD));
     if (m_tl_tpl_buf == nullptr)
       {
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	/* error occurred, return false to stop the writer */
 	return;
       }
     m_tl_tpl_buf->tpl = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
     if (m_tl_tpl_buf->tpl == nullptr)
       {
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	/* error occurred, return false to stop the writer */
 	return;
       }
@@ -233,16 +233,16 @@ namespace parallel_heap_scan
       {
 	if (unlikely (qfile_generate_tuple_into_list (thread_p, m_tl_writer_result_p, T_NORMAL) != NO_ERROR))
 	  {
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    /* error occurred, return false to stop the writer */
 	    return false;
 	  }
       }
     else if (unlikely (status == QPROC_TPLDESCR_FAILURE))
       {
-	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	m_err_messages_p->move_top_error_message_to_this();
+	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	/* error occurred, return false to stop the writer */
 	return false;
       }
@@ -251,16 +251,16 @@ namespace parallel_heap_scan
 	err_code = qdata_copy_valptr_list_to_tuple (thread_p, input, m_tl_vd, m_tl_tpl_buf);
 	if (err_code != NO_ERROR)
 	  {
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    /* error occurred, return false to stop the writer */
 	    return false;
 	  }
 	err_code = qfile_add_tuple_to_list (thread_p, m_tl_writer_result_p, m_tl_tpl_buf->tpl);
 	if (err_code != NO_ERROR)
 	  {
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    /* error occurred, return false to stop the writer */
 	    return false;
 	  }
