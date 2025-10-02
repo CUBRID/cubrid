@@ -97,7 +97,7 @@
 /* Returns true if replication node value is ON or not specified (default ON).
  * Use with replication_node (tbl_opt_replication->info.table_option.val).
  */
-#define IS_REPLICATION_ON_NODE(_node) \
+#define IS_REPLICATION_ON_VAL(_node) \
   ((_node)->info.value.data_value.i )
 typedef enum
 {
@@ -8893,6 +8893,24 @@ ha_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
 }
 
 /*
+ * has_replication_key_constraint() -
+ *   return : true if the class has a UNIQUE constraint
+ *   class_obj(in): class object pointer
+ */
+bool
+has_replication_key_constraint (DB_OBJECT * class_obj)
+{
+  DB_CONSTRAINT *c = db_get_constraints (class_obj);
+
+  if (c == NULL)
+    {
+      return false;
+    }
+
+  return classobj_has_class_rk_constraint(c);
+}
+
+/*
  * do_create_entity() - Creates a new class/vclass
  *   return: Error code if the class/vclass is not created
  *   parser(in): Parser context
@@ -9272,26 +9290,26 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
+
       /*  
-       * Set the SM_CLASSFLAG_REPLICATION_OFF flag.  
+       * Set the SM_CLASSFLAG_REPLICATION_DATA_OFF flag.  
        * If the option is omitted, or if the "on|off" value is omitted,  
        * the default is set to "on".  
        */
       if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
 	{
-	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION_OFF, TRUE);
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION_DATA_OFF, TRUE);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
+
 	  do_flush_class_mop = true;
 	}
-      // TODO add !HA_DISABELED()
-      if (ha_fk_replication_violation (class_obj, IS_REPLICATION_ON_OPT (tbl_opt_replication)))
+          else if (!HA_DISABLED () && !has_replication_key_constraint (class_obj))
 	{
-	  error = ER_HA_FK_CONSTRAINT_VIOLATION;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
-		  "Replication option mismatch for foreign key in HA mode.");
+	  error = ER_HA_REQUIRES_REPLICATION_KEY;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
 	  goto error_exit;
 	}
 
@@ -10733,9 +10751,9 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   bool tran_saved = false;
   PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
 
-  if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
+  if (!HA_DISABLED ())
     {
-      error = ER_REPLICATION_CONSTRAINT;
+      error = ER_REPLICATION_OPTION_CHANGE_IN_HA_MODE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
 	      "Changing the replication option of a class is not allowed in HA mode.");
 
@@ -10790,7 +10808,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
     }
 
   class_mop = ctemplate->op;
-  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_OFF, !IS_REPLICATION_ON_NODE (replication_node));
+  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_DATA_OFF, !IS_REPLICATION_ON_VAL (replication_node));
   if (error != NO_ERROR)
     {
       error = er_errid ();

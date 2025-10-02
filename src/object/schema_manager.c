@@ -3397,7 +3397,7 @@ sm_is_replication_class (MOP op)
 
   if (op != NULL && au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
     {
-      return !(class_->flags & SM_CLASSFLAG_REPLICATION_OFF);
+      return !(class_->flags & SM_CLASSFLAG_REPLICATION_DATA_OFF);
     }
 
   assert (false);
