@@ -19198,7 +19198,7 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
   int error_status = NO_ERROR;
   int state = 1;
   int i, j, k;
-  char result_str[NUMERIC_MAX_STRING_SIZE];
+  char result_str[NUMERIC_MAX_STRING_SIZE + 2];
   char *res_ptr;
   const char fraction_symbol = lang_digit_fractional_symbol (number_lang_id);
   const char digit_grouping_symbol = lang_digit_grouping_symbol (number_lang_id);
