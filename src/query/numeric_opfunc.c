@@ -113,7 +113,7 @@ static DEC_STRING powers_of_2[DB_NUMERIC_BUF_SIZE * 16];
 static bool initialized_2 = false;
 #endif
 /* [10^n][Buffer containing 10^n values converted to base-256] */
-static unsigned char powers_of_10[POW10_MAX_INDEX][POW10_BUF_SIZE];
+static unsigned char powers_of_10[POW10_MAX_INDEX + 1][POW10_BUF_SIZE];
 /* Number of significant bytes for each 10^n */
 static uint16_t _gv_powers_of_10_significant_bytes[POW10_BUF_SIZE];
 #if !defined(SERVER_MODE)
@@ -4309,10 +4309,14 @@ fp_numeric_db_value_mod (DB_VALUE * value1, DB_VALUE * value2, DB_VALUE * result
   fp_numeric_pad_abs (dbv1_copy, DB_NUMERIC_BUF_SIZE, dividend_work, calc_bytes, arg1_sign);
   fp_numeric_pad_abs (dbv2_copy, DB_NUMERIC_BUF_SIZE, divisor_work, calc_bytes, arg2_sign);
 
-  /* 7) only dividend_work is scaled */
+  /* 7) scale adjustments */
   if (dividend_exponent > 0)
     {
       fp_numeric_mul_pow10 (dividend_work, calc_bytes, dividend_exponent);
+    }
+  if (divisor_exponent > 0)
+    {
+      fp_numeric_mul_pow10 (divisor_work, calc_bytes, divisor_exponent);
     }
 
   /* 8) division */
