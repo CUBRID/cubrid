@@ -634,11 +634,8 @@ uReadDBtxtFile (const char *dn, int idx, char *outbuf)
   char *value_p[4];
   int retval = ERR_DBDIRNAME_NULL;
   char *cubrid_database_path;
-#if !defined (DO_NOT_USE_CUBRIDENV)
+
   cubrid_database_path = getenv (CUBRID_DATABASES_ENV);
-#else
-  cubrid_database_path = CUBRID_VARDIR;
-#endif
 
   if (outbuf != NULL)
     outbuf[0] = '\0';

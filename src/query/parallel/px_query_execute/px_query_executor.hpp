@@ -17,7 +17,7 @@
  */
 
 /*
- * px_list_merger.hpp - parallel list merger
+ * px_query_executor.hpp - parallel query executor
  */
 
 #ifndef _PX_QUERY_EXECUTOR_HPP_
@@ -25,56 +25,91 @@
 
 #include "px_worker_manager.hpp"
 #include "xasl.h"
-#include "px_query_task.hpp"
 #include "error_context.hpp"
-#include "xasl_predicate.hpp"
+#include "px_thread_safe_queue.hpp"
+#include "px_query_job.hpp"
+#include "px_interrupt.hpp"
 
 //forward definition
 struct xasl_state;
 
 namespace parallel_query_execute
 {
-  using pool = parallel_query::worker_manager_with_dedicated_pool;
+  class err_messages_with_lock
+  {
+      using er_message = cuberr::er_message;
+    public:
+      std::mutex m_mutex;
+      std::vector<er_message *> m_error_messages;
+      err_messages_with_lock()
+	:m_mutex (),
+	 m_error_messages ()
+      {}
+      ~err_messages_with_lock()
+      {
+	for (auto *msg : m_error_messages)
+	  {
+	    delete msg;
+	  }
+	m_error_messages.clear();
+      }
+      inline int move_top_error_message_to_this ()
+      {
+	int err_id = NO_ERROR;
+	std::lock_guard<std::mutex> lock (m_mutex);
+	m_error_messages.push_back (new cuberr::er_message (false));
+	err_id = cuberr::context::get_thread_local_context ().get_current_error_level ().err_id;
+	m_error_messages.back()->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
+	return err_id;
+      }
+  };
 
-  using err_desc_t = std::pair<int, cuberr::er_message *>;
-
-  const int max_parallelism = 2;
-
+  using query_executor_stats = XASL_STATS;
   class query_executor
   {
-    public:
-      static bool make_parallel_query_executor_recursively (THREAD_ENTRY *thread_p, XASL_NODE *xasl, pool *worker_manager_p,
-	  query_executor *parent_p, int parallelism);
-      query_executor (THREAD_ENTRY *thread_p, pool *worker_manager_p,
-		      int parallelism);
-      query_executor (query_executor *);
-      ~query_executor ();
-      bool add_task (XASL_NODE *xasl, xasl_state *xasl_state);
-      int run_tasks (THREAD_ENTRY *thread_p);
-      inline int get_recursion_level() const
-      {
-	return m_recursion_level;
-      }
-      void get_error_from_childs ();
-      inline bool is_error_occurred () const
-      {
-	bool is_error_occurred = false;
-	pthread_mutex_lock (m_mutex_p);
-	is_error_occurred = m_error_messages_p->size() > 0;
-	pthread_mutex_unlock (m_mutex_p);
-	return is_error_occurred;
-      }
+      using queue = parallel_query::thread_safe_queue<job>;
+      using worker_manager = parallel_query::worker_manager;
 
+      using interrupt = parallel_query::interrupt;
+    public:
+      query_executor (THREAD_ENTRY *root_thread_p, worker_manager *worker_manager_p, int parallelism, int estimated_jobs,
+		      bool on_trace);
+      query_executor (query_executor *parent_executor_p);
+      ~query_executor();
+      bool add_job (THREAD_ENTRY *thread_p, xasl_node *xasl, xasl_state *xasl_state);
+      int run_jobs (THREAD_ENTRY *thread_p);
+      inline int get_parallelism() const
+      {
+	return m_parallelism;
+      }
+      inline query_executor_stats get_stats() const
+      {
+	return m_stats;
+      }
     private:
-      THREAD_ENTRY *m_thread_p;
-      pool *m_worker_manager_p;
-      pthread_mutex_t *m_mutex_p;
-      task_queue m_task_queue;
-      task_queue_global *m_task_queue_global_p;
-      std::vector<err_desc_t> *m_error_messages_p;
+      /* from parent */
+      THREAD_ENTRY *m_root_thread_p;
+      worker_manager *m_worker_manager_p;
+      queue *m_job_execution_queue;
+      bool *m_is_task_running_p;
       int m_parallelism;
-      int m_recursion_level;
+      /* child's own */
+      query_executor_stats m_stats;
+      join_context m_join_context;
+      interrupt m_interrupt;
+      err_messages_with_lock m_error_messages;
+      trace_context m_trace_context;
+      bool m_is_root_executor;
+      job m_job;
+      bool m_has_job;
+      bool m_on_trace;
   };
+
+}
+
+extern "C" {
+  bool make_parallel_query_executor_recursively (THREAD_ENTRY *thread_p, xasl_node *xasl,
+      parallel_query::worker_manager *worker_manager_p, int parallelism);
 }
 
 #endif /* _PX_QUERY_EXECUTOR_HPP_ */

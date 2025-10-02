@@ -2808,7 +2808,7 @@ revoke_all_from_user (DB_OBJECT * user)
     {
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      if (is_class_entry (col, i) && db_is_system_class (obj))
+      if (obj->class_mop == NULL || (is_class_entry (col, i) && db_is_system_class (obj)))
 	{
 	  continue;
 	}
@@ -2938,11 +2938,7 @@ get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname)
     {
       return -1;
     }
-#if !defined (DO_NOT_USE_CUBRIDENV)
   envpath = getenv (CUBRID_DATABASES_ENV);
-#else
-  envpath = CUBRID_VARDIR;
-#endif
   if (envpath == NULL || strlen (envpath) == 0)
     {
       return -1;

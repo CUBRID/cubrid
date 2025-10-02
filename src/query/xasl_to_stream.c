@@ -63,6 +63,7 @@ struct xts_visited_ptr
 static char *xts_Stream_buffer = NULL;	/* pointer to the stream */
 static int xts_Stream_size = 0;	/* # of bytes allocated */
 static int xts_Free_offset_in_stream = 0;
+static int xts_id_serial = 0;
 
 /* blocks of visited pointer constants */
 static XTS_VISITED_PTR *xts_Ptr_blocks[MAX_PTR_BLOCKS] = { 0 };
@@ -302,6 +303,8 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   offset = xasl_stream_make_align (offset);
 
   xts_reserve_location_in_stream (offset);
+
+  xts_id_serial = 0;
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
@@ -2813,6 +2816,7 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
   assert (PTR_ALIGN (ptr, MAX_ALIGNMENT) == ptr);
 
   /* pack header first */
+  ((XASL_NODE *) xasl)->header.id = xts_id_serial++;
   ptr = xts_process_xasl_header (ptr, xasl->header);
 
   ptr = or_pack_int (ptr, xasl->type);

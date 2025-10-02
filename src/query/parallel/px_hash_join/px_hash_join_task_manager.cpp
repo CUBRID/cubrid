@@ -231,6 +231,7 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager,m_index);
+	  thread_ref.m_uses_px_stats = true;
 	}
       else
 	{
@@ -546,6 +547,7 @@ namespace parallel_query
 	}
 
       thread_ref.m_px_stats = nullptr;
+      thread_ref.m_uses_px_stats = false;
     }
 
     PAGE_PTR
@@ -668,6 +670,7 @@ namespace parallel_query
       if (thread_is_on_trace (&thread_ref))
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager,m_index);
+	  thread_ref.m_uses_px_stats = true;
 	}
       else
 	{
@@ -744,6 +747,7 @@ namespace parallel_query
 	}
 
       thread_ref.m_px_stats = nullptr;
+      thread_ref.m_uses_px_stats = false;
     }
 
     HASHJOIN_CONTEXT *
