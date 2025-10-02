@@ -75,6 +75,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     public String buildCodeLines(Unit unit) {
 
         javaTypesUsed.add("com.cubrid.jsp.Server");
+        javaTypesUsed.add("com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode");
         javaTypesUsed.add("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
         javaTypesUsed.add("java.util.List");
 
@@ -1579,7 +1580,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  }",
                 "} catch (SQLException e) {",
                 "  Server.log(e);",
-                "  throw new SQL_ERROR(e.getMessage());",
+                "  if (e.getErrorCode() == CUBRIDServerSideJDBCErrorCode.ER_SP_INVALID_CURSOR) {",
+                "    throw new INVALID_CURSOR(e.getMessage());",
+                "  } else {",
+                "    throw new SQL_ERROR(e.getMessage());",
+                "  }",
                 "}"
             };
 
