@@ -8326,7 +8326,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_WEEK, domain);
 		  break;
 
-		case PT_SCHEMA:
 		case PT_DATABASE:
 		  {
 		    PT_NODE *dbname_val;
@@ -8853,12 +8852,21 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		    return NULL;
 		  }
+		case PT_SCHEMA:
 		case PT_USER:
 		  {
 		    char *user = NULL;
 		    PT_NODE *current_user_val = NULL;
 
-		    user = db_get_user_and_host_name ();
+		    if (node->info.expr.op == PT_USER)
+		      {
+			user = db_get_user_and_host_name ();
+		      }
+		    else
+		      {
+			user = db_get_user_name ();
+		      }
+
 		    if (user == NULL)
 		      {
 			assert (er_errid () != NO_ERROR);

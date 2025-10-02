@@ -33,6 +33,10 @@ package com.cubrid.jsp.jdbc;
 import java.util.HashMap;
 
 public class CUBRIDServerSideJDBCErrorCode {
+
+    /* The following codes are from error_code.h */
+    public static final int ER_SP_INVALID_CURSOR = -1368;
+
     /* The following codes are ported from UErrorCode.java */
     public static final int ER_NO_ERROR = 0;
     public static final int ER_NOT_OBJECT = -21001;
@@ -76,7 +80,9 @@ public class CUBRIDServerSideJDBCErrorCode {
     private static HashMap<Integer, String> messageString = null;
 
     public static String codeToMessage(int index) {
-        if (messageString == null) setMessageHash();
+        if (messageString == null) {
+            setMessageHash();
+        }
         return messageString.get(index);
     }
 
@@ -85,7 +91,7 @@ public class CUBRIDServerSideJDBCErrorCode {
             setMessageHash();
         }
 
-        if (index == ER_DBMS && msg != null) {
+        if ((index == ER_SP_INVALID_CURSOR || index == ER_DBMS) && msg != null) {
             // received error message from DB server
             return msg;
         } else {
@@ -96,6 +102,8 @@ public class CUBRIDServerSideJDBCErrorCode {
 
     private static void setMessageHash() {
         messageString = new HashMap<Integer, String>();
+
+        messageString.put(ER_SP_INVALID_CURSOR, "Invalid cursor");
 
         messageString.put(ER_UNKNOWN, "Error");
         messageString.put(ER_NO_ERROR, "No Error");

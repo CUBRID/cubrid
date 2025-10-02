@@ -4216,7 +4216,7 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
       return false;
     }
 
-  where = parser_copy_tree (parser, node->info.query.q.select.where);
+  where = parser_copy_tree_list (parser, node->info.query.q.select.where);
 
   /* substitute attributes for query_spec_columns in statement */
   where = mq_lambda (parser, where, attributes, query_spec_columns);

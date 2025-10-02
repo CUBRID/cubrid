@@ -390,21 +390,6 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
 	  return ER_FAILED;
 	}
 
-      /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
-      if (clear_compressed_string)
-	{
-	  if (dbval_type == DB_TYPE_VARCHAR || dbval_type == DB_TYPE_VARNCHAR)
-	    {
-	      rc = pr_clear_compressed_string (dbval_p);
-	      if (rc != NO_ERROR)
-		{
-		  /* This should not happen for now */
-		  assert (false);
-		  return ER_FAILED;
-		}
-	    }
-	}
-
       /* I don't know if the following is still true. */
       /* since each tuple data value field is already aligned with MAX_ALIGNMENT, val_size by itself can be used to
        * find the maximum alignment for the following field which is next val_header */
