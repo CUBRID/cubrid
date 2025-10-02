@@ -4282,7 +4282,6 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 		default_value_string[def_size + 2] = '\0';
 	      }
 	  }
-	assert (false);		//heexoo_test
       }
       break;
 
@@ -5054,7 +5053,6 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	    decomposed = NULL;
 	  }
       }
-      assert (false);		//heexoo_test
       break;
     case DB_TYPE_VARNCHAR:
     case DB_TYPE_NCHAR:

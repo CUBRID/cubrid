@@ -1231,7 +1231,7 @@ er_set (int severity, const char *file_name, const int line_no, int err_id, int 
 {
   va_list ap;
 
-  if (err_id == ER_TP_CANT_COERCE)
+  if (err_id == ER_TP_CANT_COERCE || err_id == ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
       assert (false);
     }

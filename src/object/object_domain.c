@@ -7412,7 +7412,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  switch (desired_type)
 	    {
 	    case DB_TYPE_CLOB:
-	      assert (false);	// heexoo_test
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	    case DB_TYPE_NCHAR:
@@ -7545,10 +7544,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 
 	  pr_clear_value (&src_replacement);
-	  if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (desired_domain)))	// heexoo_test
-	    {
-	      assert (false);
-	    }
+	  assert (false);	// heexoo_test
 	  return DOMAIN_INCOMPATIBLE;
 	}
     }
@@ -7733,11 +7729,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    if (TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_CLOB
-			|| TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_BLOB)
-		      {
-			assert (false);	// heexoo_test
-		      }
+		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -7757,10 +7749,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_short (target, db_get_enum_short (src));
 	  break;
 	default:
-	  if (TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_CLOB || TP_DOMAIN_TYPE (desired_domain) == DB_TYPE_BLOB)
-	    {
-	      assert (false);
-	    }
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -7859,6 +7848,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
+		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -7878,6 +7868,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_int (target, db_get_enum_short (src));
 	  break;
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8003,6 +7994,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
+		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -8020,6 +8012,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_bigint (target, db_get_enum_short (src));
 	  break;
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8081,6 +8074,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
+		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -8100,6 +8094,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_float (target, (float) db_get_enum_short (src));
 	  break;
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8147,6 +8142,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
+		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -8167,6 +8163,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_double (target, (double) db_get_enum_short (src));
 	  break;
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8196,6 +8193,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
+		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;
 		  }
 	      }
@@ -8215,6 +8213,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	    else if (error_code != NO_ERROR)
 	      {
+		assert (false);	// heexoo_test
 		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    else
@@ -8267,6 +8266,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
+		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -8286,6 +8286,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_enum_short (src));
 	  break;
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8401,6 +8402,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      else
 		{
+		  assert (false);	// heexoo_test
 		  status = DOMAIN_INCOMPATIBLE;
 		}
 	    }
@@ -8652,6 +8654,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      else
 		{
+		  assert (false);	// heexoo_test
 		  status = DOMAIN_INCOMPATIBLE;
 		}
 	    }
@@ -8752,6 +8755,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -10104,6 +10108,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -10136,6 +10141,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    break;
 	  }
 	default:
+	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -10541,6 +10547,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	    break;
 	  default:
+	    assert (false);	// heexoo_test
 	    status = DOMAIN_INCOMPATIBLE;
 	    break;
 	  }
@@ -10559,6 +10566,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       }
       break;
     default:
+      assert (false);		// heexoo_test
       status = DOMAIN_INCOMPATIBLE;
       break;
     }
