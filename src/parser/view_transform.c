@@ -6065,7 +6065,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* need to recheck this in case something went wrong */
       insert_statement = pt_check_odku_assignments (parser, insert_statement);
     }
-  insert_rewrite_names_in_value_clauses (parser, insert_statement);
+
+  /* no need rewrite names in case of dblink query */
+  if (insert_statement->info.insert.spec->info.spec.remote_server_name == NULL)
+    {
+      insert_rewrite_names_in_value_clauses (parser, insert_statement);
+    }
+
   if (pt_has_error (parser))
     {
       return NULL;
