@@ -35,7 +35,8 @@
 
 namespace parallel_heap_scan
 {
-  void task::execute (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type>
+  void task<result_type>::execute (cubthread::entry &thread_ref)
   {
     int err_code;
     err_code = initialize (thread_ref);
@@ -43,32 +44,24 @@ namespace parallel_heap_scan
       {
 	return;
       }
-    switch (m_result_type)
-      {
-      case RESULT_TYPE::MERGEABLE_LIST:
-	loop_mergeable_list (thread_ref);
-	break;
-      case RESULT_TYPE::XASL_SNAPSHOT:
-	loop_xasl_snapshot (thread_ref);
-	break;
-      default:
-	assert (false);
-	break;
-      }
+    loop (thread_ref);
     finalize (thread_ref);
   }
 
-  void task::retire()
+  template <RESULT_TYPE result_type>
+  void task<result_type>::retire()
   {
     m_worker_manager->pop_task();
     delete this;
   }
 
-  task::~task()
+  template <RESULT_TYPE result_type>
+  task<result_type>::~task()
   {
   }
 
-  int task::initialize (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type>
+  int task<result_type>::initialize (cubthread::entry &thread_ref)
   {
     int err_code = NO_ERROR;
     HEAP_SCAN_ID *hsidp;
@@ -110,32 +103,13 @@ namespace parallel_heap_scan
       }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
     m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
-    switch (m_result_type)
-      {
-      case RESULT_TYPE::MERGEABLE_LIST:
-      {
-	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
-	    (m_result_handler);
-	result_handler_mergeable_list_p->write_initialize (&thread_ref, m_xasl->outptr_list, m_vd);
-	result_handler_mergeable_list_p->set_tl_val_list_for_agg_domain_resolve (m_xasl->val_list);
-      }
-      break;
-      case RESULT_TYPE::XASL_SNAPSHOT:
-      {
-	result_handler_xasl_snapshot *result_handler_xasl_snapshot_p = std::get<result_handler_xasl_snapshot *>
-	    (m_result_handler);
-	result_handler_xasl_snapshot_p->write_initialize (&thread_ref);
-      }
-      break;
-      default:
-	assert (false);
-	break;
-      }
+    m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_vd);
 
     return NO_ERROR;
   }
 
-  int task::finalize (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type>
+  int task<result_type>::finalize (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = m_parent_thread_p;
     if (thread_ref.on_trace)
@@ -154,26 +128,7 @@ namespace parallel_heap_scan
 				    elapsed_time);
 	perfmon_destroy_parallel_stats (&thread_ref);
       }
-    switch (m_result_type)
-      {
-      case RESULT_TYPE::MERGEABLE_LIST:
-      {
-	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
-	    (m_result_handler);
-	result_handler_mergeable_list_p->write_finalize (&thread_ref);
-      }
-      break;
-      case RESULT_TYPE::XASL_SNAPSHOT:
-      {
-	result_handler_xasl_snapshot *result_handler_xasl_snapshot_p = std::get<result_handler_xasl_snapshot *>
-	    (m_result_handler);
-	result_handler_xasl_snapshot_p->write_finalize (&thread_ref);
-      }
-      break;
-      default:
-	assert (false);
-	break;
-      }
+    m_result_handler->write_finalize (&thread_ref);
     m_input_handler->finalize (&thread_ref);
     m_slot_iterator.finalize (&thread_ref);
     scan_end_scan (&thread_ref, m_scan_id);
@@ -209,11 +164,11 @@ namespace parallel_heap_scan
       }
     pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 
-
     return NO_ERROR;
   }
 
-  int task::clone_xasl (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type>
+  int task<result_type>::clone_xasl (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = m_parent_thread_p;
     int err_code = NO_ERROR;
@@ -275,10 +230,10 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  void task::loop_mergeable_list (cubthread::entry &thread_ref)
+  template <RESULT_TYPE result_type>
+  void task<result_type>::loop (cubthread::entry &thread_ref)
   {
-    result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
-	(m_result_handler);
+    result_handler<result_type> *result_handler_p = m_result_handler;
     SCAN_CODE scan_code;
     VPID vpid;
     bool stop = false;
@@ -334,81 +289,21 @@ namespace parallel_heap_scan
 		stop = true;
 		break;
 	      }
-	    if (result_handler_mergeable_list_p->write (&thread_ref, m_xasl->outptr_list) == false)
+
+	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
 	      {
-		stop = true;
-		break;
+		result_handler_p->write (&thread_ref, m_xasl->outptr_list);
+	      }
+	    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
+	      {
+		result_handler_p->write (&thread_ref, m_xasl->val_list);
 	      }
 	  }
       }
   }
 
-  void task::loop_xasl_snapshot (cubthread::entry &thread_ref)
-  {
-    result_handler_xasl_snapshot *result_handler_xasl_snapshot_p = std::get<result_handler_xasl_snapshot *>
-	(m_result_handler);
-    (m_result_handler);
-    SCAN_CODE scan_code;
-    VPID vpid;
-    bool stop = false;
-    bool is_interrupt;
-    bool dummy = false;
-    while (!stop)
-      {
-	if (m_interrupt->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    break;
-	  }
-	is_interrupt= logtb_get_check_interrupt (&thread_ref)
-		      && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
-	if (is_interrupt)
-	  {
-	    if (er_errid() != NO_ERROR)
-	      {
-		/* other thread set interrupt but error is not ER_INTERRUPTED */
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	      }
-	    else
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
-	      }
-	    break;
-	  }
-	scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
-	if (scan_code == S_END)
-	  {
-	    break;
-	  }
-	if (scan_code == S_ERROR)
-	  {
-	    m_err_messages->move_top_error_message_to_this();
-	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    break;
-	  }
-	m_slot_iterator.set_page (&thread_ref, &vpid);
-	while (!stop)
-	  {
-	    scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);
-	    if (scan_code == S_END)
-	      {
-		break;
-	      }
-	    if (scan_code == S_ERROR)
-	      {
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		stop = true;
-		break;
-	      }
-	    if (result_handler_xasl_snapshot_p->write (&thread_ref, m_xasl->val_list) == false)
-	      {
-		stop = true;
-		break;
-	      }
-	  }
-      }
-  }
+  // Explicit template instantiations
+  template class task<RESULT_TYPE::MERGEABLE_LIST>;
+  template class task<RESULT_TYPE::XASL_SNAPSHOT>;
+
 }

@@ -122,7 +122,7 @@ struct heap_scan_id
 
 namespace parallel_heap_scan
 {
-  class manager;		// forward declaration
+  enum class RESULT_TYPE;
   class accumulative_trace_storage;	// forward declaration
 }
 
@@ -146,7 +146,8 @@ struct parallel_heap_scan_id
   sampling_info sampling;	/* for sampling statistics */
   // *INDENT-OFF*
   #if !WINDOWS
-  parallel_heap_scan::manager * manager;
+  parallel_heap_scan::RESULT_TYPE result_type;
+  void * manager;
   parallel_heap_scan::accumulative_trace_storage * trace_storage;
   #endif
   // *INDENT-ON*

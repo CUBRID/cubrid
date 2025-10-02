@@ -1931,7 +1931,21 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    {
 	      if (p->s_id.s.phsid.manager)
 		{
-		  p->s_id.s.phsid.manager->close ();
+		  parallel_heap_scan::RESULT_TYPE result_type = p->s_id.s.phsid.result_type;
+		  switch (result_type)
+		    {
+		    case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >
+			*)p->s_id.s.phsid.manager)->close ();
+		      break;
+		    case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
+			*)p->s_id.s.phsid.manager)->close ();
+		      break;
+		    default:
+		      assert (false);
+		      break;
+		    }
 		  p->s_id.s.phsid.manager = nullptr;
 		}
 	    }

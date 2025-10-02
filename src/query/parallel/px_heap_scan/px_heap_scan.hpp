@@ -26,23 +26,21 @@
 #include "xasl.h"
 #include "px_worker_manager.hpp"
 #include "px_heap_scan_result_handler.hpp"
-#include "px_heap_scan_result_handler_mergeable_list.hpp"
-#include "px_heap_scan_result_handler_xasl_snapshot.hpp"
 #include "px_heap_scan_input_handler.hpp"
 #include "px_heap_scan_input_handler_single_table.hpp"
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan_task.hpp"
+#include "px_heap_scan_result_type.hpp"
 
 #define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 
 namespace parallel_heap_scan
 {
+  template <RESULT_TYPE result_type>
   class manager
   {
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
-      using result_handler_variant =
-	      std::variant<result_handler_mergeable_list *, result_handler_xasl_snapshot *>;
       using input_handler = parallel_heap_scan::input_handler;
       using atomic_instnum = parallel_query::atomic_instnum;
       using worker_manager = parallel_query::worker_manager;
@@ -50,7 +48,7 @@ namespace parallel_heap_scan
       manager (THREAD_ENTRY *thread_p, QUERY_ID query_id, SCAN_ID *scan_id, xasl_node *xasl, int parallelism, HFID hfid,
 	       OID cls_oid,
 	       val_descr *vd,
-	       RESULT_TYPE result_type, bool is_fixed, bool is_grouped,
+	       bool is_fixed, bool is_grouped,
 	       worker_manager *worker_manager)
 	: m_thread_p (thread_p),
 	  m_query_id (query_id),
@@ -60,7 +58,6 @@ namespace parallel_heap_scan
 	  m_hfid (hfid),
 	  m_cls_oid (cls_oid),
 	  m_vd (vd),
-	  m_result_type (result_type),
 	  m_trace_handler (),
 	  m_interrupt (),
 	  m_atomic_instnum (),
@@ -84,7 +81,7 @@ namespace parallel_heap_scan
       }
       RESULT_TYPE get_result_type()
       {
-	return m_result_type;
+	return result_type;
       }
 
     private:
@@ -98,8 +95,7 @@ namespace parallel_heap_scan
       OID m_cls_oid;
       val_descr *m_vd;
       input_handler *m_input_handler;
-      result_handler_variant m_result_handler;
-      RESULT_TYPE m_result_type;
+      result_handler<result_type> *m_result_handler;
       bool m_on_trace;
       bool m_px_stats_initialized_by_me;
       bool m_result_handler_read_initialized;

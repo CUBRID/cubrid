@@ -314,9 +314,8 @@ set(PARALLEL_HASH_JOIN_HEADERS
 
 set(PARALLEL_HEAP_SCAN_SOURCES
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler_mergeable_list.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler_xasl_snapshot.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.cpp
@@ -325,9 +324,8 @@ set(PARALLEL_HEAP_SCAN_SOURCES
 set(PARALLEL_HEAP_SCAN_HEADERS
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler_mergeable_list.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler_xasl_snapshot.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.hpp
