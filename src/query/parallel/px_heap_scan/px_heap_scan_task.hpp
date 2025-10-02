@@ -28,7 +28,6 @@
 #include "px_heap_scan_slot_iterator.hpp"
 #include "px_heap_scan_result_handler_mergeable_list.hpp"
 #include "px_heap_scan_result_handler_xasl_snapshot.hpp"
-#include "px_heap_scan_result_handler_count.hpp"
 #include "px_heap_scan_input_handler.hpp"
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_interrupt.hpp"
@@ -43,7 +42,7 @@ namespace parallel_heap_scan
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
       using worker_manager = parallel_query::worker_manager;
       using result_handler_variant =
-	      std::variant<result_handler_mergeable_list *, result_handler_xasl_snapshot *, result_handler_count *>;
+	      std::variant<result_handler_mergeable_list *, result_handler_xasl_snapshot *>;
       using input_handler = parallel_heap_scan::input_handler;
     public:
       task (THREAD_ENTRY *parent_thread_p, QMGR_QUERY_ENTRY *query_entry, result_handler_variant result_handler,
@@ -119,7 +118,6 @@ namespace parallel_heap_scan
       int handle_result (cubthread::entry &thread_ref);
       void loop_mergeable_list (cubthread::entry &thread_ref);
       void loop_xasl_snapshot (cubthread::entry &thread_ref);
-      void loop_count (cubthread::entry &thread_ref);
 
   };
 }

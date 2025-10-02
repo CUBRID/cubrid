@@ -202,16 +202,6 @@ namespace parallel_heap_scan
 	  }
 	break;
       }
-      case RESULT_TYPE::COUNT:
-      {
-	result_handler_count *result_handler_count_p = std::get<result_handler_count *> (m_result_handler);
-	if (result_handler_count_p != nullptr)
-	  {
-	    result_handler_count_p->~result_handler_count();
-	    db_private_free (m_thread_p, result_handler_count_p);
-	  }
-	break;
-      }
       default:
       {
 	break;
@@ -291,16 +281,6 @@ namespace parallel_heap_scan
 					 m_query_id, &m_interrupt,
 					 &m_atomic_instnum, should_check_instnum, &m_err_messages, m_parallelism);
 	m_result_handler = result_handler_xasl_snapshot_p;
-      }
-      break;
-      case RESULT_TYPE::COUNT:
-      {
-	result_handler_count *result_handler_count_p = (result_handler_count *) db_private_alloc (m_thread_p,
-	    sizeof (result_handler_count));
-	result_handler_count_p = placement_new ((result_handler_count *) result_handler_count_p, m_query_id, &m_interrupt,
-						&m_atomic_instnum, should_check_instnum, &m_err_messages, m_parallelism);
-	m_result_handler = result_handler_count_p;
-
       }
       break;
       case RESULT_TYPE::NONE:
@@ -428,19 +408,6 @@ namespace parallel_heap_scan
 	scan_code = result_handler_xasl_snapshot_p->get_next (m_thread_p, m_xasl->val_list);
 	break;
       }
-      case RESULT_TYPE::COUNT:
-      {
-	int count = 0;
-	result_handler_count *result_handler_count_p = std::get<result_handler_count *> (m_result_handler);
-	if (m_result_handler_read_initialized == false)
-	  {
-	    result_handler_count_p->read_initialize (m_thread_p);
-	    m_result_handler_read_initialized = true;
-	  }
-	scan_code = result_handler_count_p->get_next (m_thread_p, &count);
-	assert (false);
-	break;
-      }
       default:
 	assert (false);
 	scan_code = S_ERROR;
@@ -539,12 +506,6 @@ namespace parallel_heap_scan
 	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
 	    (m_result_handler);
 	result_handler_mergeable_list_p->read_finalize (m_thread_p);
-      }
-      break;
-      case RESULT_TYPE::COUNT:
-      {
-	result_handler_count *result_handler_count_p = std::get<result_handler_count *> (m_result_handler);
-	result_handler_count_p->read_finalize (m_thread_p);
       }
       break;
       default:

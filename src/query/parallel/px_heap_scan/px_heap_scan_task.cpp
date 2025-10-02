@@ -51,9 +51,6 @@ namespace parallel_heap_scan
       case RESULT_TYPE::XASL_SNAPSHOT:
 	loop_xasl_snapshot (thread_ref);
 	break;
-      case RESULT_TYPE::COUNT:
-	loop_count (thread_ref);
-	break;
       default:
 	assert (false);
 	break;
@@ -130,12 +127,6 @@ namespace parallel_heap_scan
 	result_handler_xasl_snapshot_p->write_initialize (&thread_ref);
       }
       break;
-      case RESULT_TYPE::COUNT:
-      {
-	result_handler_count *result_handler_count_p = std::get<result_handler_count *> (m_result_handler);
-	result_handler_count_p->write_initialize (&thread_ref);
-      }
-      break;
       default:
 	assert (false);
 	break;
@@ -177,12 +168,6 @@ namespace parallel_heap_scan
 	result_handler_xasl_snapshot *result_handler_xasl_snapshot_p = std::get<result_handler_xasl_snapshot *>
 	    (m_result_handler);
 	result_handler_xasl_snapshot_p->write_finalize (&thread_ref);
-      }
-      break;
-      case RESULT_TYPE::COUNT:
-      {
-	result_handler_count *result_handler_count_p = std::get<result_handler_count *> (m_result_handler);
-	result_handler_count_p->write_finalize (&thread_ref);
       }
       break;
       default:
@@ -419,74 +404,6 @@ namespace parallel_heap_scan
 		break;
 	      }
 	    if (result_handler_xasl_snapshot_p->write (&thread_ref, m_xasl->val_list) == false)
-	      {
-		stop = true;
-		break;
-	      }
-	  }
-      }
-  }
-
-  void task::loop_count (cubthread::entry &thread_ref)
-  {
-    result_handler_count *result_handler_count_p = std::get<result_handler_count *> (m_result_handler);
-    SCAN_CODE scan_code;
-    VPID vpid;
-    bool stop = false;
-    int dummy = 1;
-    bool is_interrupt;
-    bool dummy_flag = false;
-    while (!stop)
-      {
-	if (m_interrupt->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    break;
-	  }
-	is_interrupt= logtb_get_check_interrupt (&thread_ref)
-		      && logtb_is_interrupted_tran (&thread_ref, true, &dummy_flag, thread_ref.tran_index);
-	if (is_interrupt)
-	  {
-	    if (er_errid() != NO_ERROR)
-	      {
-		/* other thread set interrupt but error is not ER_INTERRUPTED */
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	      }
-	    else
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
-	      }
-	    break;
-	  }
-	scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
-	if (scan_code == S_END)
-	  {
-	    break;
-	  }
-	if (scan_code == S_ERROR)
-	  {
-	    m_err_messages->move_top_error_message_to_this();
-	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    break;
-	  }
-	m_slot_iterator.set_page (&thread_ref, &vpid);
-	while (!stop)
-	  {
-	    scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);
-	    if (scan_code == S_END)
-	      {
-		break;
-	      }
-	    if (scan_code == S_ERROR)
-	      {
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		stop = true;
-		break;
-	      }
-	    if (result_handler_count_p->write (&thread_ref, &dummy) == false)
 	      {
 		stop = true;
 		break;

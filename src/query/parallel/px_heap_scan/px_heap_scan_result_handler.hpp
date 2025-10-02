@@ -35,7 +35,7 @@ namespace parallel_heap_scan
     NONE,
     MERGEABLE_LIST, /* (fast) list-per-thread return, and merge (set dependent) it. */
     XASL_SNAPSHOT, /* (slow) xasl snapshot return (row-by-row) */
-    COUNT, /* count(col) or count(*) */
+    /* should we handle COUNT(*) ?*/
   };
 
   template<typename ReadType, typename WriteType, typename... Args>
