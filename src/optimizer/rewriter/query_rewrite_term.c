@@ -1461,7 +1461,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	}
 
       node_prior = pt_get_first_arg_ignore_prior (node);
-      if (!pt_is_attr (node_prior) && !PT_EXPR_INFO_IS_FLAGED (node_prior, PT_EXPR_INFO_CAST_WRAP))
+      if (!pt_is_cast_wrapped_attr (node_prior))
 	{
 	  /* LHS is not an attribute */
 	  prev = prev ? prev->next : node;
@@ -2471,8 +2471,7 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	    }
 
 	  compared_expr = pt_get_first_arg_ignore_prior (crt_expr);
-	  if (!PT_EXPR_INFO_IS_FLAGED (compared_expr, PT_EXPR_INFO_CAST_WRAP) && !pt_is_attr (compared_expr)
-	      && !pt_is_function_index_expr (parser, compared_expr, false))
+	  if (!pt_is_cast_wrapped_attr (compared_expr) && !pt_is_function_index_expr (parser, compared_expr, false))
 	    {
 	      /* LHS is not an attribute or an expression supported as function index so it cannot currently have an
 	       * index. The transformation could still be useful as it might provide faster execution time in some

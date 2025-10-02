@@ -17907,7 +17907,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
 
   save_set_host_var = parser->flag.set_host_var;
-  parser->flag.set_host_var = (prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING) ? 1 : save_set_host_var);
+  parser->flag.set_host_var = 1;
 
   location = expr->info.expr.location;
 
@@ -18189,7 +18189,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg1 = pt_value_to_db (parser, opd1);
       type1 = opd1->type_enum;
     }
-  else if (opd1 && opd1->node_type == PT_HOST_VAR && parser->flag.set_host_var == 1)
+  else if (opd1 && opd1->node_type == PT_HOST_VAR)
     {
       arg1 = pt_value_to_db (parser, opd1);
       if (DB_IS_NULL (arg1))
@@ -18228,7 +18228,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg2 = pt_value_to_db (parser, opd2);
       type2 = opd2->type_enum;
     }
-  else if (opd2 && opd2->node_type == PT_HOST_VAR && parser->flag.set_host_var == 1)
+  else if (opd2 && opd2->node_type == PT_HOST_VAR)
     {
       arg2 = pt_value_to_db (parser, opd2);
       if (DB_IS_NULL (arg2))
@@ -18474,7 +18474,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg3 = pt_value_to_db (parser, opd3);
       type3 = opd3->type_enum;
     }
-  else if (opd3 && opd3->node_type == PT_HOST_VAR && parser->flag.set_host_var == 1)
+  else if (opd3 && opd3->node_type == PT_HOST_VAR)
     {
       arg3 = pt_value_to_db (parser, opd3);
       if (DB_IS_NULL (arg3))
