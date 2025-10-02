@@ -217,8 +217,6 @@ static int boot_after_copydb (THREAD_ENTRY * thread_p);
 
 static int boot_generate_tde_keys (THREAD_ENTRY * thread_p);
 
-static void boot_delete_ces_entries ();
-
 /*
  * bo_server) -set server's status, UP or DOWN
  *   return: void
@@ -2567,7 +2565,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	  goto error;
 	}
       /* remove lob ces temp dir */
-      boot_delete_ces_entries ();
+      fileio_remove_lob_dir ("ces");
     }
   else
     {
@@ -3037,7 +3035,7 @@ bool
 xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final)
 {
   char *p = NULL;
-  char lob_dir_path[strlen (boot_Lob_path)];
+
   if (!BO_IS_SERVER_RESTARTED ())
     {
       return true;
@@ -3064,7 +3062,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
   /* remove lob ces temp dir */
-  boot_delete_ces_entries ();
+  fileio_remove_lob_dir ("ces");
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
@@ -5249,7 +5247,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
 
   /* remove lob ces temp dir */
-  boot_delete_ces_entries (); /* Already called in createdb/copydb.. — is it necessary here? */
+  fileio_remove_lob_dir ("ces");
 
   /* Now delete the database */
   error_code = logpb_delete (thread_p, boot_Db_parm->nvols, db_fullname, log_path, log_prefix, force_delete);
