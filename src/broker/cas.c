@@ -104,10 +104,7 @@ static int cas_init_shm (void);
 static int cas_register_to_proxy (SOCKET proxy_sock_fd);
 static int net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info);
 static int get_graceful_down_timeout (void);
-#if !defined(CAS_FOR_CGW)
 static void set_db_parameter (void);
-#endif /* !CAS_FOR_CGW */
-
 static int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info);
 static int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header);
 static void set_db_connection_info (void);
@@ -318,7 +315,6 @@ static T_REQ_INFO req_info;
 static SOCKET srv_sock_fd;
 static int cas_req_count = 0;
 
-#if !defined(CAS_FOR_CGW)
 static void
 cas_make_session_for_driver (char *out)
 {
@@ -359,7 +355,6 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       db_set_session_id (DB_EMPTY_SESSION);
     }
 }
-#endif /* !CAS_FOR_CGW */
 
 static void
 cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
@@ -1524,7 +1519,6 @@ unset_hang_check_time (void)
 bool
 check_server_alive (const char *db_name, const char *db_host)
 {
-#if !defined(CAS_FOR_CGW)
   int i, u_index;
   char *unusable_db_name;
   char *unusable_db_host;
@@ -1558,7 +1552,6 @@ check_server_alive (const char *db_name, const char *db_host)
 	    }
 	}
     }
-#endif /* !CAS_FOR_CGW */
 
   return true;
 }
@@ -2874,7 +2867,6 @@ get_graceful_down_timeout (void)
   return 1 * 60;		/* 1 min */
 }
 
-#if !defined(CAS_FOR_CGW)
 static void
 set_db_parameter (void)
 {
@@ -2908,8 +2900,6 @@ set_db_parameter (void)
       cas_log_write_and_end (0, false, "set_db_parameter isolation_level %d", isolation_level);
     }
 }
-#endif /* !CAS_FOR_CGW */
-
 
 int
 query_seq_num_next_value (void)

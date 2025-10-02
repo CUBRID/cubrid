@@ -72,10 +72,7 @@ static char *get_error_log_eids (int err);
 
 static void bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int param_size,
 			    char *param_mode, unsigned int query_seq_num, bool slow_log);
-
-#if !defined(CAS_FOR_CGW)
 void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
-#endif /* CAS_FOR_CGW */
 
 /* functions implemented in transaction_cl.c */
 extern void tran_set_query_timeout (int);
@@ -269,7 +266,6 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -961,7 +957,6 @@ fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_b
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
 
 FN_RETURN
 fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -1070,7 +1065,6 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1149,7 +1143,6 @@ fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
 
 FN_RETURN
 fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -1176,7 +1169,6 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1752,7 +1744,6 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
 
 FN_RETURN
 fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -1776,7 +1767,6 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1981,7 +1971,6 @@ fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
 
 FN_RETURN
 fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -2023,7 +2012,6 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     }
 }
 
-#if !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2081,7 +2069,6 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
 
 static const char *
 get_schema_type_str (int schema_type)
@@ -2442,7 +2429,7 @@ get_error_log_eids (int err)
   return buf;
 }
 
-#if !defined(CAS_FOR_CGW)
+
 FN_RETURN
 fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2581,7 +2568,7 @@ fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 #endif /* CAS_FOR_DBMS */
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
+
 
 FN_RETURN
 fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -2591,7 +2578,6 @@ fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_CGW)
 void
 set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 {
@@ -2627,7 +2613,6 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 	}
     }
 }
-#endif /* !CAS_FOR_CGW */
 
 static void
 update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * err_info_p)
@@ -3113,7 +3098,7 @@ fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
 		 (ret_code < 0) ? "error:" : "", err_number_execute,
-		 (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle), elapsed_sec,
+		 (get_cgw_tuple_count (srv_handle) == INT_MAX) ? -1 : get_cgw_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 
@@ -3148,7 +3133,7 @@ fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
 			      err_number_execute,
-			      (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle),
+			      (get_cgw_tuple_count (srv_handle) == INT_MAX) ? -1 : get_cgw_tuple_count (srv_handle),
 			      elapsed_sec, elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 	  cas_slow_log_end ();

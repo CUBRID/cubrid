@@ -70,26 +70,15 @@ extern int ux_check_connection (void);
 extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_err_msg);
 extern int ux_database_reconnect (void);
 extern int ux_is_database_connected (void);
-
-#if defined(CAS_FOR_CGW)
-extern int ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-			   unsigned int query_seq_num);
-#else
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
 		       unsigned int query_seq_num);
-#endif /* CAS_FOR_CGW */
 extern int ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
 extern int ux_end_session (void);
 extern int ux_get_row_count (T_NET_BUF * net_buf);
 extern int ux_get_last_insert_id (T_NET_BUF * net_buf);
 extern int ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-#if defined(CAS_FOR_CGW)
-extern int ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
-			   T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
-#else
 extern int ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 		       T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
-#endif /* CAS_FOR_CGW */
 extern void ux_get_tran_setting (int *lock_wait, int *isol_level);
 extern int ux_set_isolation_level (int isol_level, T_NET_BUF * net_buf);
 extern void ux_set_lock_timeout (int lock_timeout);
@@ -185,13 +174,16 @@ extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BU
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 
 #if defined(CAS_FOR_CGW)
+extern int ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+			   unsigned int query_seq_num);
+extern int ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+			   T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
 extern int ux_cgw_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
 extern int ux_cgw_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf);
-
-
 extern int ux_cgw_check_connection (void);
 extern void ux_cgw_cursor_close (T_SRV_HANDLE * srv_handle);
 extern void ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle);
+extern int get_cgw_tuple_count (T_SRV_HANDLE * srv_handle);
 #endif /* CAS_FOR_CGW */
 
 #endif /* _CAS_EXECUTE_H_ */
