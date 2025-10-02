@@ -8759,7 +8759,8 @@ qo_search_planner (QO_PLANNER * planner)
 	  /* generate a stop plan over the current best plan of the */
 	  QO_PLAN *best_plan;
 	  best_plan = qo_find_best_plan_on_info (info, QO_UNORDERED, 1.0);
-	  if (best_plan->plan_type == QO_PLANTYPE_SCAN && !qo_plan_multi_range_opt (best_plan) && !qo_is_iscan_from_groupby (best_plan))
+	  if (best_plan->plan_type == QO_PLANTYPE_SCAN && !qo_plan_multi_range_opt (best_plan)
+	      && !qo_is_iscan_from_groupby (best_plan))
 	    {
 	      qo_generate_sort_limit_plan (planner->env, info, best_plan);
 	    }
