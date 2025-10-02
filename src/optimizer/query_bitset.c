@@ -610,7 +610,7 @@ bitset_delset (BITSET * s)
       s->nwords = NWORDS;
       BITSET_CLEAR (*s);
     }
-#if 0 // Disable using BITSET_MEMBER() after bitset_delset() until we can fix the issue.
+#if 0				// Disable using BITSET_MEMBER() after bitset_delset() until we can fix the issue.
 #if !defined(NDEBUG)
   s->nwords = 0;
   assert (BITSET_IS_VALID (s) == false);
