@@ -2332,7 +2332,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_char_to_cfile (peek_left, arithptr->value) != NO_ERROR)
+      else if (db_char_to_clob (peek_left, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
