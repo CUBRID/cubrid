@@ -136,14 +136,7 @@ namespace parallel_heap_scan
     thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
     thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
     thread_p->on_trace = m_context->m_orig_thread_p->on_trace;
-    if (m_context->m_orig_thread_p->m_px_orig_thread_entry != NULL)
-      {
-	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p->m_px_orig_thread_entry;
-      }
-    else
-      {
-	thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p;
-      }
+    thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p;
 
     if (on_trace)
       {
@@ -317,6 +310,7 @@ namespace parallel_heap_scan
     if (on_trace)
       {
 	perfmon_merge_child_stats_to_parent_stats (thread_p);
+	perfmon_destroy_parallel_stats (thread_p);
       }
     if (is_list_merge)
       {

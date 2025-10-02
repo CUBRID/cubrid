@@ -44,7 +44,7 @@ namespace parallel_heap_scan
 {
 
   manager_page_by_page::manager_page_by_page (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism,
-      QUERY_ID query_id)
+      QUERY_ID query_id, worker_manager *worker_manager)
   {
     m_is_start_once = false;
     timeout_occurred = false;
@@ -52,6 +52,7 @@ namespace parallel_heap_scan
     m_scan_id = scan_id;
     m_parallelism = parallelism;
     m_query_id = query_id;
+    m_worker_manager = worker_manager;
     m_context = std::make_shared<context> (thread_p, scan_id);
     m_list_stream = std::make_shared<list_stream> (thread_p, m_parallelism, PAGE_QUEUE_SIZE_PER_CORE, query_id, scan_id);
     m_list_reader = std::make_shared<list_reader> ();
@@ -60,10 +61,11 @@ namespace parallel_heap_scan
       {
 	m_memory_mappers.push_back (std::make_shared<memory_mapper> (scan_id, nullptr));
       }
+    m_px_stats_initialized_by_me = false;
   }
 
   manager_merge::manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id,
-				XASL_NODE *xasl)
+				XASL_NODE *xasl, worker_manager *worker_manager)
   {
     m_is_start_once = false;
     timeout_occurred = false;
@@ -71,6 +73,7 @@ namespace parallel_heap_scan
     m_scan_id = scan_id;
     m_parallelism = parallelism;
     m_query_id = query_id;
+    m_worker_manager = worker_manager;
     m_context = std::make_shared<context> (thread_p, scan_id);
     if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_agg_list != NULL
 	&& !xasl->proc.buildlist.g_agg_domains_resolved)
@@ -91,16 +94,25 @@ namespace parallel_heap_scan
 	m_mergable_list_writers.push_back (new mergable_list_writer (m_mergable_list->get_list_id_p (i), query_id,
 					   m_memory_mappers[i]->get_outptr_list()));
       }
+    m_px_stats_initialized_by_me = false;
   }
 
   manager_page_by_page::~manager_page_by_page()
   {
-    parallel_query::worker_manager::get_manager().release_workers ();
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->release_workers (m_parallelism);
+	m_worker_manager = nullptr;
+      }
   }
 
   manager_merge::~manager_merge()
   {
-    parallel_query::worker_manager::get_manager().release_workers ();
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->release_workers (m_parallelism);
+	m_worker_manager = nullptr;
+      }
     if (m_mergable_list != nullptr)
       {
 	delete m_mergable_list;
@@ -221,7 +233,8 @@ namespace parallel_heap_scan
 	    return S_ERROR;
 	  }
       }
-    parallel_query::worker_manager::get_manager ().release_workers ();
+    m_worker_manager->release_workers (m_parallelism);
+    m_worker_manager = nullptr;
     /* all scan ended, merge lists */
     if (m_context->has_error())
       {
@@ -338,13 +351,39 @@ namespace parallel_heap_scan
   void manager_page_by_page::start_tasks()
   {
     std::unique_ptr<task> taskp = NULL;
-    parallel_query::worker_manager *worker_manager = &parallel_query::worker_manager::get_manager();
+    if (m_thread_p->on_trace)
+      {
+	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
+	  {
+	    assert (m_thread_p->m_px_orig_thread_entry != nullptr);
+	    /* this is child thread, so we need to use px_stats */
+	    m_thread_p->m_uses_px_stats = true;
+	    /* parent handle this thread's px_stats */
+	    assert (m_thread_p->m_px_stats != nullptr);
+	  }
+	else
+	  {
+	    /* this is main thread, so we have to use tran_stats, instead of px_stats */
+	    if (!m_thread_p->m_uses_px_stats)
+	      {
+		/* this is truly main thread, not aptr */
+		m_px_stats_initialized_by_me = true;
+		perfmon_initialize_parallel_stats (m_thread_p);
+		m_thread_p->m_uses_px_stats = false;
+	      }
+	    else
+	      {
+		/* this is aptr child executing main thread */
+		m_px_stats_initialized_by_me = false;
+	      }
+	  }
+      }
 
     for (size_t i = 0; i < m_parallelism; i++)
       {
 	taskp.reset (new task (m_context, m_memory_mappers[i], m_list_stream, m_list_stream->m_list_id_wrappers[i],nullptr,
-			       worker_manager));
-	worker_manager->push_task (taskp.release());
+			       m_worker_manager));
+	m_worker_manager->push_task (taskp.release());
 	m_context->add_tasks_started();
       }
   }
@@ -352,12 +391,38 @@ namespace parallel_heap_scan
   void manager_merge::start_tasks()
   {
     std::unique_ptr<task> taskp = NULL;
-    parallel_query::worker_manager *worker_manager = &parallel_query::worker_manager::get_manager();
+    if (m_thread_p->on_trace)
+      {
+	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
+	  {
+	    assert (m_thread_p->m_px_orig_thread_entry != nullptr);
+	    /* this is child thread, so we need to use px_stats */
+	    m_thread_p->m_uses_px_stats = true;
+	    /* parent handle this thread's px_stats */
+	    assert (m_thread_p->m_px_stats != nullptr);
+	  }
+	else
+	  {
+	    /* this is main thread, so we have to use tran_stats, instead of px_stats */
+	    if (!m_thread_p->m_uses_px_stats)
+	      {
+		/* this is truly main thread, not aptr */
+		m_px_stats_initialized_by_me = true;
+		perfmon_initialize_parallel_stats (m_thread_p);
+		m_thread_p->m_uses_px_stats = false;
+	      }
+	    else
+	      {
+		/* this is aptr child executing main thread */
+		m_px_stats_initialized_by_me = false;
+	      }
+	  }
+      }
     for (size_t i = 0; i < m_parallelism; i++)
       {
 	taskp.reset (new task (m_context, m_memory_mappers[i], std::shared_ptr<list_stream> (nullptr),
-			       std::shared_ptr<list_id_wrapper> (nullptr), m_mergable_list_writers[i],worker_manager));
-	worker_manager->push_task (taskp.release());
+			       std::shared_ptr<list_id_wrapper> (nullptr), m_mergable_list_writers[i],m_worker_manager));
+	m_worker_manager->push_task (taskp.release());
 	m_context->add_tasks_started();
       }
   }
@@ -374,7 +439,8 @@ namespace parallel_heap_scan
 	list_id_data data;
 	m_list_stream->dequeue_timeout (data, 1);
       }
-    parallel_query::worker_manager::get_manager ().release_workers ();
+    m_worker_manager->release_workers (m_parallelism);
+    m_worker_manager = nullptr;
     m_is_start_once = false;
     timeout_occurred = false;
     m_context->is_scan_external_ended = false;
@@ -390,6 +456,11 @@ namespace parallel_heap_scan
 	return;
       }
     assert (m_context->all_tasks_ended());
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->release_workers (m_parallelism);
+	m_worker_manager = nullptr;
+      }
     m_is_start_once = false;
     timeout_occurred = false;
     m_context->is_scan_external_ended = false;
@@ -466,7 +537,7 @@ extern void
 scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
 {
   HL_HEAPID orig_heap_id;
-  parallel_query::worker_manager::get_manager ().release_workers ();
+
   if (thread_is_on_trace (thread_p))
     {
       std::size_t parallelism = scan_id->s.phsid.manager->m_parallelism;
@@ -477,6 +548,26 @@ scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
       else
 	{
 	  scan_id->s.phsid.perf_monitor->add_statistics (scan_id, parallelism);
+	}
+      if (thread_p->m_px_orig_thread_entry != thread_p)
+	{
+	  assert (thread_p->m_px_orig_thread_entry != nullptr);
+	  /* this is child thread, so we need to use px_stats */
+	  /* parent handle this thread's px_stats */
+	  assert (thread_p->m_px_stats != nullptr);
+	}
+      else
+	{
+	  if (scan_id->s.phsid.manager->m_px_stats_initialized_by_me)
+	    {
+	      perfmon_merge_parallel_stats_to_tran_stats (thread_p);
+	      perfmon_destroy_parallel_stats (thread_p);
+	      thread_p->m_px_orig_thread_entry = nullptr;
+	    }
+	  else
+	    {
+	      /* some parent parallel query executor will handle this thread's px_stats */
+	    }
 	}
       /* should be deleted in qdump_print_access_specs_text or json */
     }
@@ -505,6 +596,8 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
   HL_HEAPID orig_heap_id;
   assert (scan_type == S_PARALLEL_HEAP_SCAN);
   scan_id->type = S_HEAP_SCAN;
+  using worker_manager = parallel_query::worker_manager;
+  worker_manager *manager = nullptr;
   ret = scan_open_heap_scan (thread_p, scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch,
 			     join_dbval,
 			     val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
@@ -520,9 +613,10 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
     }
   if (n_user_pages > PARALLEL_HEAP_SCAN_MIN_USER_PAGES)
     {
-      if (!parallel_query::worker_manager::get_manager().try_reserve_workers (parallelism))
+      manager = worker_manager::try_reserve_workers (parallelism);
+      if (manager == nullptr)
 	{
-	  return ret;
+	  return NO_ERROR;
 	}
       if (thread_p->m_px_orig_thread_entry == NULL)
 	{
@@ -533,11 +627,12 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
       if (result_get_method == parallel_heap_scan::RESULT_GET_METHOD::LIST_PAGE)
 	{
 	  scan_id->s.phsid.manager = new parallel_heap_scan::manager_page_by_page (thread_p, scan_id,
-	      parallelism, query_id);
+	      parallelism, query_id, manager);
 	}
       else if (result_get_method == parallel_heap_scan::RESULT_GET_METHOD::LIST_MERGE)
 	{
-	  scan_id->s.phsid.manager = new parallel_heap_scan::manager_merge (thread_p, scan_id, parallelism, query_id, xasl);
+	  scan_id->s.phsid.manager = new parallel_heap_scan::manager_merge (thread_p, scan_id, parallelism, query_id, xasl,
+	      manager);
 	}
       else
 	{
