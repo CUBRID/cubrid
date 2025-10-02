@@ -5243,7 +5243,8 @@ xts_process_val_list (char *ptr, const VAL_LIST * val_list)
 	}
 
       ptr = or_pack_int (ptr, offset);
-      ptr = or_pack_domain (ptr, p->dom, 1, 1);
+      /* !OID_ISNULL(&p->dom->class_oid) need? */
+      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, p->dom, 0, 0);
     }
 
   return ptr;
