@@ -21,7 +21,9 @@
  */
 
 #include "px_heap_scan_perf_monitor.hpp"
+#include "perf_monitor.h"
 #include "px_heap_scan_manager.hpp"
+#include "thread_manager.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -40,6 +42,7 @@ namespace parallel_heap_scan
     m_prev_scan_stats.agl = NULL;
     m_prev_scan_stats.qualified_rows = 0;
     m_prev_scan_stats.read_rows = 0;
+    m_prev_scan_stats.num_fetches = 0;
   }
 
   perf_monitor::~perf_monitor()
@@ -63,12 +66,13 @@ namespace parallel_heap_scan
 
     ended_partition_spec->scan_stats.qualified_rows = qualified_rows - m_prev_scan_stats.qualified_rows;
     ended_partition_spec->scan_stats.read_rows = read_rows - m_prev_scan_stats.read_rows;
+    ended_partition_spec->scan_stats.num_fetches = perfmon_get_from_statistic (thread_get_thread_entry_info(),
+	PSTAT_PB_NUM_FETCHES) - m_prev_scan_stats.num_fetches;
 
-    for (std::size_t i = 0; i < m_parallelism; ++i)
-      {
-	m_prev_scan_stats.qualified_rows = qualified_rows;
-	m_prev_scan_stats.read_rows = read_rows;
-      }
+    m_prev_scan_stats.num_fetches = perfmon_get_from_statistic (thread_get_thread_entry_info(), PSTAT_PB_NUM_FETCHES);
+    m_prev_scan_stats.qualified_rows = qualified_rows;
+    m_prev_scan_stats.read_rows = read_rows;
+
   }
 
   void perf_monitor::add_scan_stats (SCAN_ID *whole_scan_id)

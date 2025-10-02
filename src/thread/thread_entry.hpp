@@ -304,6 +304,7 @@ namespace cubthread
       pthread_mutex_t m_px_stats_mutex;
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
+      bool m_uses_px_stats;
 
       bool m_skip_end_resource_tracks_in_recycle;
 

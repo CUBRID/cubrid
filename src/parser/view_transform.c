@@ -4231,7 +4231,7 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
       return false;
     }
 
-  where = parser_copy_tree (parser, node->info.query.q.select.where);
+  where = parser_copy_tree_list (parser, node->info.query.q.select.where);
 
   /* substitute attributes for query_spec_columns in statement */
   where = mq_lambda (parser, where, attributes, query_spec_columns);
@@ -6065,7 +6065,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* need to recheck this in case something went wrong */
       insert_statement = pt_check_odku_assignments (parser, insert_statement);
     }
-  insert_rewrite_names_in_value_clauses (parser, insert_statement);
+
+  /* no need rewrite names in case of dblink query */
+  if (insert_statement->info.insert.spec->info.spec.remote_server_name == NULL)
+    {
+      insert_rewrite_names_in_value_clauses (parser, insert_statement);
+    }
+
   if (pt_has_error (parser))
     {
       return NULL;

@@ -74,9 +74,10 @@ typedef struct xasl_node_header XASL_NODE_HEADER;
 struct xasl_node_header
 {
   int xasl_flag;		/* query flags (e.g, multi range optimization) */
+  int id;			/* id of the xasl */
 };
 
-#define XASL_NODE_HEADER_SIZE OR_INT_SIZE	/* xasl_flag */
+#define XASL_NODE_HEADER_SIZE OR_INT_SIZE + OR_INT_SIZE	/* xasl_flag + id */
 
 #define OR_PACK_XASL_NODE_HEADER(PTR, X) \
   do \
@@ -87,6 +88,7 @@ struct xasl_node_header
         } \
       ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
       (PTR) = or_pack_int ((PTR), (X)->xasl_flag); \
+      (PTR) = or_pack_int ((PTR), (X)->id); \
     } \
   while (0)
 
@@ -99,6 +101,7 @@ struct xasl_node_header
         } \
       ASSERT_ALIGN ((PTR), INT_ALIGNMENT); \
       (PTR) = or_unpack_int ((PTR), &(X)->xasl_flag); \
+      (PTR) = or_unpack_int ((PTR), &(X)->id); \
     } \
   while (0)
 
