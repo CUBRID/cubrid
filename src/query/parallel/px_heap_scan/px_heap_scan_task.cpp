@@ -45,8 +45,8 @@ namespace parallel_heap_scan
       }
     switch (m_result_type)
       {
-      case RESULT_TYPE::BATCH:
-	loop_batch (thread_ref);
+      case RESULT_TYPE::MERGEABLE_LIST:
+	loop_mergeable_list (thread_ref);
 	break;
       case RESULT_TYPE::XASL_SNAPSHOT:
 	loop_xasl_snapshot (thread_ref);
@@ -115,11 +115,12 @@ namespace parallel_heap_scan
     m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
     switch (m_result_type)
       {
-      case RESULT_TYPE::BATCH:
+      case RESULT_TYPE::MERGEABLE_LIST:
       {
-	result_handler_batch *result_handler_batch_p = std::get<result_handler_batch *> (m_result_handler);
-	result_handler_batch_p->write_initialize (&thread_ref, m_xasl->outptr_list, m_vd);
-	result_handler_batch_p->set_tl_val_list_for_agg_domain_resolve (m_xasl->val_list);
+	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
+	    (m_result_handler);
+	result_handler_mergeable_list_p->write_initialize (&thread_ref, m_xasl->outptr_list, m_vd);
+	result_handler_mergeable_list_p->set_tl_val_list_for_agg_domain_resolve (m_xasl->val_list);
       }
       break;
       case RESULT_TYPE::XASL_SNAPSHOT:
@@ -164,10 +165,11 @@ namespace parallel_heap_scan
       }
     switch (m_result_type)
       {
-      case RESULT_TYPE::BATCH:
+      case RESULT_TYPE::MERGEABLE_LIST:
       {
-	result_handler_batch *result_handler_batch_p = std::get<result_handler_batch *> (m_result_handler);
-	result_handler_batch_p->write_finalize (&thread_ref);
+	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
+	    (m_result_handler);
+	result_handler_mergeable_list_p->write_finalize (&thread_ref);
       }
       break;
       case RESULT_TYPE::XASL_SNAPSHOT:
@@ -288,9 +290,10 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
-  void task::loop_batch (cubthread::entry &thread_ref)
+  void task::loop_mergeable_list (cubthread::entry &thread_ref)
   {
-    result_handler_batch *result_handler_batch_p = std::get<result_handler_batch *> (m_result_handler);
+    result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
+	(m_result_handler);
     SCAN_CODE scan_code;
     VPID vpid;
     bool stop = false;
@@ -346,7 +349,7 @@ namespace parallel_heap_scan
 		stop = true;
 		break;
 	      }
-	    if (result_handler_batch_p->write (&thread_ref, m_xasl->outptr_list) == false)
+	    if (result_handler_mergeable_list_p->write (&thread_ref, m_xasl->outptr_list) == false)
 	      {
 		stop = true;
 		break;

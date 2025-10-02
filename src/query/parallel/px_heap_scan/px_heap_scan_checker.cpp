@@ -450,7 +450,7 @@ namespace parallel_heap_scan
 	    return;
 	  }
 	map->set_lm ((void *)spec);
-	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_MERGED_LIST );
+	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_MERGEABLE_LIST );
       }
     else if (result == CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
       {
@@ -460,9 +460,9 @@ namespace parallel_heap_scan
 	  }
 	map->set_pbp ((void *)spec);
 	map->set_lm ((void *)spec);
-	if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	if (spec->flags & ACCESS_SPEC_FLAG_MERGEABLE_LIST)
 	  {
-	    spec->flags = (ACCESS_SPEC_FLAG) (spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
+	    spec->flags = (ACCESS_SPEC_FLAG) (spec->flags & ~ACCESS_SPEC_FLAG_MERGEABLE_LIST);
 	  }
       }
     else if (result == CHECK_RESULT::CANNOT_PARALLEL)

@@ -77,7 +77,8 @@ extern "C"
 	    scan_id->s.phsid.trace_storage = (parallel_heap_scan::accumulative_trace_storage *) malloc (sizeof (
 		parallel_heap_scan::accumulative_trace_storage));
 	    scan_id->s.phsid.trace_storage = placement_new ((parallel_heap_scan::accumulative_trace_storage *)
-					     scan_id->s.phsid.trace_storage, scan_id->s.phsid.manager->get_result_type() == parallel_heap_scan::RESULT_TYPE::BATCH);
+					     scan_id->s.phsid.trace_storage, scan_id->s.phsid.manager->get_result_type() ==
+					     parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST);
 	  }
 	scan_id->s.phsid.trace_storage->add_stats (scan_id->s.phsid.manager->get_trace_handler());
       }
@@ -179,13 +180,14 @@ namespace parallel_heap_scan
       }
     switch (m_result_type)
       {
-      case RESULT_TYPE::BATCH:
+      case RESULT_TYPE::MERGEABLE_LIST:
       {
-	result_handler_batch *result_handler_batch_p = std::get<result_handler_batch *> (m_result_handler);
-	if (result_handler_batch_p != nullptr)
+	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
+	    (m_result_handler);
+	if (result_handler_mergeable_list_p != nullptr)
 	  {
-	    result_handler_batch_p->~result_handler_batch();
-	    db_private_free (m_thread_p, result_handler_batch_p);
+	    result_handler_mergeable_list_p->~result_handler_mergeable_list();
+	    db_private_free (m_thread_p, result_handler_mergeable_list_p);
 	  }
 	break;
       }
@@ -263,18 +265,20 @@ namespace parallel_heap_scan
       }
     switch (result_type)
       {
-      case RESULT_TYPE::BATCH:
+      case RESULT_TYPE::MERGEABLE_LIST:
       {
 	if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.g_agg_list != NULL &&
 	    !m_xasl->proc.buildlist.g_agg_domains_resolved)
 	  {
 	    m_g_agg_domain_resolve_need = true;
 	  }
-	result_handler_batch *result_handler_batch_p = (result_handler_batch *) db_private_alloc (m_thread_p,
-	    sizeof (result_handler_batch));
-	result_handler_batch_p = placement_new ((result_handler_batch *) result_handler_batch_p, m_query_id, &m_interrupt,
-						&m_atomic_instnum, should_check_instnum, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl->val_list);
-	m_result_handler = result_handler_batch_p;
+	result_handler_mergeable_list *result_handler_mergeable_list_p = (result_handler_mergeable_list *) db_private_alloc (
+		    m_thread_p,
+		    sizeof (result_handler_mergeable_list));
+	result_handler_mergeable_list_p = placement_new ((result_handler_mergeable_list *) result_handler_mergeable_list_p,
+					  m_query_id, &m_interrupt,
+					  &m_atomic_instnum, should_check_instnum, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl->val_list);
+	m_result_handler = result_handler_mergeable_list_p;
       }
       break;
       case RESULT_TYPE::XASL_SNAPSHOT:
@@ -387,15 +391,16 @@ namespace parallel_heap_scan
       }
     switch (m_result_type)
       {
-      case RESULT_TYPE::BATCH:
+      case RESULT_TYPE::MERGEABLE_LIST:
       {
-	result_handler_batch *result_handler_batch_p = std::get<result_handler_batch *> (m_result_handler);
+	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
+	    (m_result_handler);
 	if (m_result_handler_read_initialized == false)
 	  {
-	    result_handler_batch_p->read_initialize (m_thread_p, nullptr, nullptr);
+	    result_handler_mergeable_list_p->read_initialize (m_thread_p, nullptr, nullptr);
 	    m_result_handler_read_initialized = true;
 	  }
-	scan_code = result_handler_batch_p->get_next (m_thread_p, m_xasl->list_id);
+	scan_code = result_handler_mergeable_list_p->get_next (m_thread_p, m_xasl->list_id);
 	if (m_g_agg_domain_resolve_need)
 	  {
 	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl, m_vd,
@@ -529,10 +534,11 @@ namespace parallel_heap_scan
 	result_handler_xasl_snapshot_p->read_finalize (m_thread_p);
       }
       break;
-      case RESULT_TYPE::BATCH:
+      case RESULT_TYPE::MERGEABLE_LIST:
       {
-	result_handler_batch *result_handler_batch_p = std::get<result_handler_batch *> (m_result_handler);
-	result_handler_batch_p->read_finalize (m_thread_p);
+	result_handler_mergeable_list *result_handler_mergeable_list_p = std::get<result_handler_mergeable_list *>
+	    (m_result_handler);
+	result_handler_mergeable_list_p->read_finalize (m_thread_p);
       }
       break;
       case RESULT_TYPE::COUNT:

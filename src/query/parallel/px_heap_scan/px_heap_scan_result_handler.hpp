@@ -33,7 +33,7 @@ namespace parallel_heap_scan
   enum class RESULT_TYPE
   {
     NONE,
-    BATCH, /* (fast) list-per-thread return, and merge (set dependent) it. */
+    MERGEABLE_LIST, /* (fast) list-per-thread return, and merge (set dependent) it. */
     XASL_SNAPSHOT, /* (slow) xasl snapshot return (row-by-row) */
     COUNT, /* count(col) or count(*) */
   };

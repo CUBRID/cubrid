@@ -26,7 +26,7 @@
 #include "xasl.h"
 #include "px_worker_manager.hpp"
 #include "px_heap_scan_result_handler.hpp"
-#include "px_heap_scan_result_handler_batch.hpp"
+#include "px_heap_scan_result_handler_mergeable_list.hpp"
 #include "px_heap_scan_result_handler_xasl_snapshot.hpp"
 #include "px_heap_scan_result_handler_count.hpp"
 #include "px_heap_scan_input_handler.hpp"
@@ -43,7 +43,7 @@ namespace parallel_heap_scan
       using interrupt = parallel_query::interrupt;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
       using result_handler_variant =
-	      std::variant<result_handler_batch *, result_handler_xasl_snapshot *, result_handler_count *>;
+	      std::variant<result_handler_mergeable_list *, result_handler_xasl_snapshot *, result_handler_count *>;
       using input_handler = parallel_heap_scan::input_handler;
       using atomic_instnum = parallel_query::atomic_instnum;
       using worker_manager = parallel_query::worker_manager;

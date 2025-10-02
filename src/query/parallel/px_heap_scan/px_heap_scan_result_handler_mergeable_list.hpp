@@ -17,11 +17,11 @@
  */
 
 /*
- * px_heap_scan_result_handler_batch.hpp
+ * px_heap_scan_result_handler_mergeable_list.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_RESULT_HANDLER_BATCH_HPP_
-#define _PX_HEAP_SCAN_RESULT_HANDLER_BATCH_HPP_
+#ifndef _PX_HEAP_SCAN_RESULT_HANDLER_mergeable_list_HPP_
+#define _PX_HEAP_SCAN_RESULT_HANDLER_mergeable_list_HPP_
 
 #include "px_heap_scan_result_handler.hpp"
 #include <vector>
@@ -29,14 +29,14 @@
 
 namespace parallel_heap_scan
 {
-  class result_handler_batch : public result_handler<QFILE_LIST_ID, OUTPTR_LIST, OUTPTR_LIST *, VAL_DESCR *>
+  class result_handler_mergeable_list : public result_handler<QFILE_LIST_ID, OUTPTR_LIST, OUTPTR_LIST *, VAL_DESCR *>
   {
       using interrupt = parallel_query::interrupt;
       using atomic_instnum = parallel_query::atomic_instnum;
       using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
 
-      ~result_handler_batch() = default;
+      ~result_handler_mergeable_list() = default;
 
       void read_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_DESCR *vd) override;
       SCAN_CODE get_next (THREAD_ENTRY *thread_p, QFILE_LIST_ID *result) override;
@@ -54,10 +54,11 @@ namespace parallel_heap_scan
 	  }
       }
 
-      result_handler_batch (QUERY_ID query_id, interrupt *interrupt_p, atomic_instnum *atomic_instnum_p,
-			    bool should_check_instnum, err_messages_with_lock *err_messages_p, int parallelism, bool g_agg_domain_resolve_need,
-			    VAL_LIST *orig_val_list_for_agg_domain_resolve)
-	: result_handler (query_id, interrupt_p, atomic_instnum_p, should_check_instnum, err_messages_p, RESULT_TYPE::BATCH),
+      result_handler_mergeable_list (QUERY_ID query_id, interrupt *interrupt_p, atomic_instnum *atomic_instnum_p,
+				     bool should_check_instnum, err_messages_with_lock *err_messages_p, int parallelism, bool g_agg_domain_resolve_need,
+				     VAL_LIST *orig_val_list_for_agg_domain_resolve)
+	: result_handler (query_id, interrupt_p, atomic_instnum_p, should_check_instnum, err_messages_p,
+			  RESULT_TYPE::MERGEABLE_LIST),
 	  m_writer_results (),
 	  m_writer_results_mutex (),
 	  m_is_list_id_domain_resolved (false),
@@ -92,4 +93,4 @@ namespace parallel_heap_scan
       thread_local static std::vector<DB_VALUE> m_tl_dbvals_for_agg_domain_resolve;
   };
 }
-#endif /*_PX_HEAP_SCAN_RESULT_HANDLER_BATCH_HPP_ */
+#endif /*_PX_HEAP_SCAN_RESULT_HANDLER_mergeable_list_HPP_ */

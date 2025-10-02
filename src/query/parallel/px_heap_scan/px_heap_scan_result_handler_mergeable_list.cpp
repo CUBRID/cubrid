@@ -17,10 +17,10 @@
  */
 
 /*
- * px_heap_scan_result_handler_batch.cpp
+ * px_heap_scan_result_handler_mergeable_list.cpp
  */
 
-#include "px_heap_scan_result_handler_batch.hpp"
+#include "px_heap_scan_result_handler_mergeable_list.hpp"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
@@ -35,18 +35,18 @@
 namespace parallel_heap_scan
 {
   // thread_local static 변수 정의
-  thread_local QFILE_LIST_ID *result_handler_batch::m_tl_writer_result_p = nullptr;
-  thread_local QFILE_TUPLE_RECORD *result_handler_batch::m_tl_tpl_buf = nullptr;
-  thread_local VAL_DESCR *result_handler_batch::m_tl_vd = nullptr;
-  thread_local std::vector<DB_VALUE> result_handler_batch::m_tl_dbvals_for_agg_domain_resolve;
-  thread_local VAL_LIST *result_handler_batch::m_tl_val_list_for_agg_domain_resolve = nullptr;
+  thread_local QFILE_LIST_ID *result_handler_mergeable_list::m_tl_writer_result_p = nullptr;
+  thread_local QFILE_TUPLE_RECORD *result_handler_mergeable_list::m_tl_tpl_buf = nullptr;
+  thread_local VAL_DESCR *result_handler_mergeable_list::m_tl_vd = nullptr;
+  thread_local std::vector<DB_VALUE> result_handler_mergeable_list::m_tl_dbvals_for_agg_domain_resolve;
+  thread_local VAL_LIST *result_handler_mergeable_list::m_tl_val_list_for_agg_domain_resolve = nullptr;
 
-  void result_handler_batch::read_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_DESCR *vd)
+  void result_handler_mergeable_list::read_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_DESCR *vd)
   {
 
   }
 
-  SCAN_CODE result_handler_batch::get_next (THREAD_ENTRY *thread_p, QFILE_LIST_ID *result)
+  SCAN_CODE result_handler_mergeable_list::get_next (THREAD_ENTRY *thread_p, QFILE_LIST_ID *result)
   {
     assert (result != nullptr);
     {
@@ -108,12 +108,12 @@ namespace parallel_heap_scan
     return S_END;
   }
 
-  void result_handler_batch::read_finalize (THREAD_ENTRY *thread_p)
+  void result_handler_mergeable_list::read_finalize (THREAD_ENTRY *thread_p)
   {
 
   }
 
-  void result_handler_batch::write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_DESCR *vd)
+  void result_handler_mergeable_list::write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_DESCR *vd)
   {
     int size;
     m_tl_vd = vd;
@@ -201,7 +201,7 @@ namespace parallel_heap_scan
       }
   }
 
-  bool result_handler_batch::write (THREAD_ENTRY *thread_p, OUTPTR_LIST *input)
+  bool result_handler_mergeable_list::write (THREAD_ENTRY *thread_p, OUTPTR_LIST *input)
   {
     int err_code = NO_ERROR;
     QPROC_TPLDESCR_STATUS status;
@@ -276,7 +276,7 @@ namespace parallel_heap_scan
     return true;
   }
 
-  void result_handler_batch::write_finalize (THREAD_ENTRY *thread_p)
+  void result_handler_mergeable_list::write_finalize (THREAD_ENTRY *thread_p)
   {
     qfile_close_list (thread_p, m_tl_writer_result_p);
     assert (m_tl_writer_result_p->last_pgptr == nullptr);
