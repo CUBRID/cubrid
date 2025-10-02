@@ -1321,6 +1321,7 @@ static int g_plcsql_text_pos;
 %token NCHAR
 %token NEXT
 %token NO
+%token NOCYCLE
 %token NOT
 %token Null
 %token NULLIF
@@ -1626,7 +1627,6 @@ static int g_plcsql_text_pos;
 %token <cptr> MINVALUE
 %token <cptr> NAME
 %token <cptr> NESTED
-%token <cptr> NOCYCLE
 %token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
@@ -23375,7 +23375,6 @@ identifier
 	| NAME                   {{ DBG_TRACE_GRAMMAR(identifier, | NAME               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NESTED                 {{ DBG_TRACE_GRAMMAR(identifier, | NESTED             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOCACHE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCACHE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOCYCLE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCYCLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMAXVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMAXVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMINVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMINVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NTH_VALUE              {{ DBG_TRACE_GRAMMAR(identifier, | NTH_VALUE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

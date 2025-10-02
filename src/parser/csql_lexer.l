@@ -690,9 +690,7 @@ IDL       [a-zA-Z0-9_]
 [nN][oO][cC][aA][cC][hH][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return NOCACHE; }
-[nN][oO][cC][yY][cC][lL][eE]						{ begin_token(yytext);
-										csql_yylval.cptr = pt_makename(yytext);
-										return NOCYCLE; }
+[nN][oO][cC][yY][cC][lL][eE]						{ begin_token(yytext);   return NOCYCLE; }
 [nN][oO][mM][aA][xX][vV][aA][lL][uU][eE]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return NOMAXVALUE; }
