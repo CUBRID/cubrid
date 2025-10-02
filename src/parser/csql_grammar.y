@@ -1116,6 +1116,7 @@ static int g_plcsql_text_pos;
 /* Token define */
 /*{{{*/
 %token ABSOLUTE_
+%token ACCESS
 %token ACTION
 %token ADD
 %token ADD_MONTHS
@@ -1507,7 +1508,6 @@ static int g_plcsql_text_pos;
 %token COMP_LE
 %token PARAM_HEADER
 
-%token <cptr> ACCESS
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
 %token <cptr> AES
@@ -23255,7 +23255,6 @@ identifier
 			$$ = p;
 		DBG_PRINT}}
 /*{{{*/
-	| ACCESS                 {{ DBG_TRACE_GRAMMAR(identifier, | ACCESS             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ACTIVE                 {{ DBG_TRACE_GRAMMAR(identifier, | ACTIVE             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ADDDATE                {{ DBG_TRACE_GRAMMAR(identifier, | ADDDATE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| AES                    {{ DBG_TRACE_GRAMMAR(identifier, | AES                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
