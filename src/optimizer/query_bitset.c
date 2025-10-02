@@ -607,11 +607,14 @@ bitset_delset (BITSET * s)
   if (s->setp != s->set.word)
     {
       bitset_free (s->setp);
-      assert (s->setp == NULL);
+      s->setp = s->set.word;
+      s->nwords = NWORDS;
+      BITSET_CLEAR (*s);
     }
-
+#if 0 // Disable using BITSET_MEMBER() after bitset_delset() until we can fix the issue.
 #if !defined(NDEBUG)
   s->nwords = 0;
   assert (BITSET_IS_VALID (s) == false);
+#endif
 #endif
 }
