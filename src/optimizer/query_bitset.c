@@ -39,12 +39,7 @@
 #define bitset_malloc(env, size) malloc(size)
 #define bitset_free(ptr)         free_and_init(ptr)
 
-#if 0				// Disable using BITSET_MEMBER() after bitset_delset() until we can fix the issue.
 #define BITSET_IS_VALID(p)    ((p)->nwords > 0)
-#else
-#define BITSET_IS_VALID(p)    (true)
-#endif
-
 
 /*
  * The number of one bits in a four-bit nibble.
