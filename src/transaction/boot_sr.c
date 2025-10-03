@@ -2560,10 +2560,12 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (boot_Lob_path[0] != '\0')
     {
       error_code = es_init (boot_Lob_path);
+
       if (error_code != NO_ERROR)
 	{
 	  goto error;
 	}
+
       /* remove lob ces temp dir */
       fileio_remove_lob_dir ("ces");
     }
@@ -6162,46 +6164,4 @@ boot_after_copydb (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "Complete boot_after_copydb \n");
 
   return NO_ERROR;
-}
-
-void
-boot_delete_ces_entries ()
-{
-  char *p = NULL;
-  char lob_dir_path[strlen (boot_Lob_path)];
-  char full_path[PATH_MAX];
-  DIR *dir;
-  struct dirent *dir_entry;
-
-  p = strchr(boot_Lob_path, ':');
-  if (p)
-    {
-      p++;
-      strcpy(lob_dir_path, p);
-    }
-
-  dir = opendir (lob_dir_path);
-
-  if (dir == NULL)
-    {
-      closedir (dir);
-      return;
-    }
-
-  while ((dir_entry = readdir (dir)) != NULL)
-    {
-      if (strcmp (dir_entry->d_name, ".") == 0 || strcmp (dir_entry->d_name, "..") == 0)
-	{
-	  continue;
-	}
-
-      snprintf (full_path, (strlen (lob_dir_path) + strlen (dir_entry->d_name) + 2), "%s/%s", lob_dir_path, dir_entry->d_name);
-
-      if (strstr (dir_entry->d_name, "ces_") != NULL)
-	{
-	  fileio_lob_dir_remove (full_path);
-	}
-    }
-
-  closedir (dir);
 }
