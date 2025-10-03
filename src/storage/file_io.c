@@ -11948,71 +11948,8 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
   return is_formatted;
 }
 
-/*
- * fileio_lob_dir_remove () - remove lob directory.
- */
-int
-fileio_lob_dir_remove (const char *path)
-{
-  struct stat statbuf;
-  DIR *dir_p;
-  size_t path_len;
-  int result = 0;
-
-  if (stat (path, &statbuf) != 0 || !S_ISDIR (statbuf.st_mode))
-    {
-      return 0;
-    }
-
-  dir_p = opendir (path);
-  path_len = strlen (path);
-
-  if (dir_p)
-    {
-      struct dirent *dir_entry;
-
-      while (!result && (dir_entry = readdir (dir_p)))
-	{
-	  char *buf;
-	  size_t len;
-
-	  if (!strcmp (dir_entry->d_name, ".") || !strcmp (dir_entry->d_name, ".."))
-	    {
-	      continue;
-	    }
-
-	  len = path_len + strlen (dir_entry->d_name) + 2;
-	  buf = (char *) malloc (len);
-
-	  snprintf (buf, len, "%s/%s", path, dir_entry->d_name);
-
-	  if (stat (buf, &statbuf) == 0)
-	    {
-	      if (S_ISDIR (statbuf.st_mode))
-		{
-		  result = fileio_lob_dir_remove (buf);
-		}
-	      else
-		{
-		  result = unlink (buf);
-		}
-	    }
-
-	  free (buf);
-	}
-
-      closedir (dir_p);
-    }
-
-  if (!result)
-    {
-      result = rmdir (path);
-    }
-
-  return result;
-}
-
 #define	MAX_INTEGER_DISPLAY_LENGTH	  11
+#define	MAX_SHORT_DISPLAY_LENGTH	  6
 /*
  * xmanage_lob_dir () - Create or remove a LOB directory.
  *
@@ -12039,44 +11976,17 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
 
   switch (mode)
     {
-    case LOB_CREATE_TABLE_DIR:
-      snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      rv_path[strlen (rv_path)] = '\0';
-      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
-
-      snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
-      dirbuf[strlen (dirbuf)] = '\0';
-      mkdir (dirbuf, 0755);
-
+    case LOB_CREATE_DIR:
       for (int i = 0; i < lob_arr_length; i++)
 	{
-	  snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1 + MAX_INTEGER_DISPLAY_LENGTH + 1),
-		    "%s/%s/%d", es_base_dir, rv_path, attrid_arr[i]);
+          snprintf (rv_path, (MAX_INTEGER_DISPLAY_LENGTH * 3 + MAX_SHORT_DISPLAY_LENGTH), "%d_%d_%d_id%d",
+                    hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+          log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
+
+          rv_path[strlen (rv_path)] = '\0';
+	  snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
 	  dirbuf[strlen (dirbuf)] = '\0';
 	  mkdir (dirbuf, 0755);
-	}
-
-      break;
-
-    case LOB_CREATE_COLUMN_DIR:
-      snprintf (rv_path, PATH_MAX, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
-      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
-
-      snprintf (dirbuf, (strlen (es_base_dir) + strlen (rv_path) + 2), "%s/%s", es_base_dir, rv_path);
-      dirbuf[strlen (dirbuf)] = '\0';
-      mkdir (dirbuf, 0755);
-
-      if (lob_arr_length > 1)
-	{
-	  for (int i = 1; i < lob_arr_length; i++)
-	    {
-	      snprintf (rv_path, max_lob_path_len, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid,
-			attrid_arr[i]);
-	      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), &rv_path);
-
-	      snprintf (dirbuf, (strlen (es_base_dir) + strlen (rv_path) + 2), "%s/%s", es_base_dir, rv_path);
-	      mkdir (dirbuf, 0755);
-	    }
 	}
 
       break;
@@ -12116,16 +12026,94 @@ fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   char lob_path[PATH_MAX];
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
-  snprintf (lob_path, (strlen (es_base_dir) + 1 + strlen (path) + 1), "%s/%s", es_base_dir, path);
+  snprintf (lob_path, (strlen (path) + 1), "%s", path);
 #endif /* SERVER_MODE || SA_MODE */
 
-  error_code = fileio_lob_dir_remove (lob_path);
+  fileio_remove_lob_dir (lob_path);
 
-  if (error_code != NO_ERROR)
+  return error_code;
+}
+
+void
+fileio_remove_lob_dir (const char *lob_path)
+{
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  DIR *dir_p;
+  struct dirent *dir_entry;
+  struct stat statbuf;
+  char full_path[PATH_MAX];
+  int result = 0;
+
+  if (lob_path == NULL)
     {
-      assert_release (false);
-      return error_code;
+      return;
     }
 
-  return NO_ERROR;
+  dir_p = opendir (es_base_dir);
+  if (dir_p == NULL)
+    {
+      return;
+    }
+
+  while ((dir_entry = readdir(dir_p)) != NULL && result == 0)
+    {
+      if (strcmp (dir_entry->d_name, ".") == 0 || strcmp (dir_entry->d_name, "..") == 0)
+        {
+          continue;
+        }
+
+      snprintf (full_path, (strlen (es_base_dir) + 1 + strlen (dir_entry->d_name) + 1), "%s/%s", es_base_dir, dir_entry->d_name);
+
+      if (stat (full_path, &statbuf) != 0)
+        {
+          continue;
+        }
+
+      if (S_ISDIR (statbuf.st_mode) && strstr (dir_entry->d_name, lob_path) != NULL)
+        {
+          DIR *subdir = opendir (full_path);
+          if (subdir != NULL)
+            {
+              struct dirent *sub_dir_entry;
+              char sub_full_path[PATH_MAX];
+
+              while ((sub_dir_entry = readdir(subdir)) != NULL && result == 0)
+                {
+                  if (strcmp (sub_dir_entry->d_name, ".") == 0 || strcmp (sub_dir_entry->d_name, "..") == 0)
+                    {
+                      continue;
+                    }
+
+                  snprintf (sub_full_path, (strlen (full_path) + 1 + strlen (sub_dir_entry->d_name) + 1), "%s/%s", full_path, sub_dir_entry->d_name);
+
+                  if (stat (sub_full_path, &statbuf) == 0)
+                    {
+                      if (S_ISDIR(statbuf.st_mode))
+                        {
+                          char re_path[PATH_MAX];
+                          snprintf (re_path, (strlen (lob_path) + 1 + strlen (sub_dir_entry->d_name) + 1), "%s/%s", lob_path, sub_dir_entry->d_name);
+
+                          fileio_remove_lob_dir (re_path);
+                        }
+                      else
+                        {
+                          result = unlink (sub_full_path);
+                        }
+                    }
+                }
+
+              closedir (subdir);
+            }
+
+          if (result == 0)
+            {
+              result = rmdir (full_path);
+            }
+        }
+    }
+
+  closedir (dir_p);
+
+  return;
+#endif /* SERVER_MODE || SA_MODE */
 }

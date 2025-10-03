@@ -633,10 +633,8 @@ extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * 
 extern void fileio_page_hexa_dump (const char *data, int length);
 extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
 
-// #if defined(SERVER_MODE)
 /* lob_dir */
-extern int fileio_lob_dir_remove (const char *path);
 extern void xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode);
 extern int fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-// #endif /* SERVER_MODE */
+extern void fileio_remove_lob_dir (const char *lob_path);
 #endif /* _FILE_IO_H_ */
