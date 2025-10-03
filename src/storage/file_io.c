@@ -11961,18 +11961,18 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
  * NOTE: A LOB directory is created immediately,
  *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
  */
-void
+int
 xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
+  char dirbuf[PATH_MAX];
+  char rv_path[PATH_MAX];
+  int ret = NO_ERROR;
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   LOG_DATA_ADDR addr;
   addr.offset = -1;
   addr.pgptr = NULL;
   addr.vfid = NULL;
-  int max_lob_path_len = sizeof (short) + sizeof (int32_t) + sizeof (INT32) + sizeof (int) + 4;	// volid+fileid+hpgid+/_..
-  char dirbuf[PATH_MAX];
-  char rv_path[PATH_MAX];
 
   switch (mode)
     {
@@ -11981,14 +11981,18 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
 	{
 	  snprintf (rv_path, (MAX_INTEGER_DISPLAY_LENGTH * 3 + MAX_SHORT_DISPLAY_LENGTH), "%d_%d_%d_id%d",
 		    hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+
 	  log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
 
 	  rv_path[strlen (rv_path)] = '\0';
 	  snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
 	  dirbuf[strlen (dirbuf)] = '\0';
-	  mkdir (dirbuf, 0755);
-	}
 
+          if (mkdir (dirbuf, 0755) != 0 && errno != EEXIST)
+            {
+              ret = ER_FAILED;
+            }
+	}
       break;
 
     case LOB_DROP_TABLE_DIR:
@@ -11997,11 +12001,14 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
       break;
 
     case LOB_DROP_COLUMN_DIR:
-      snprintf (rv_path, PATH_MAX, "%d_%d_%d/%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
+      snprintf (rv_path, PATH_MAX, "%d_%d_%d_id%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[0]);
       log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
       break;
     }
+
+  return ret;
 #endif /* SERVER_MODE || SA_MODE */
+  return 0;
 }
 
 /*

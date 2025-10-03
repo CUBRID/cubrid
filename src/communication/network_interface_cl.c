@@ -11411,10 +11411,13 @@ manage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE
 
   return error;
 #else /* CS_MODE */
+  int success = NO_ERROR;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  xmanage_lob_dir (hfid, attrid_arr, lob_arr_length, mode);
+  success = xmanage_lob_dir (hfid, attrid_arr, lob_arr_length, mode);
 
   exit_server (*thread_p);
+
+  return success;
 #endif /* !CS_MODE */
 }
