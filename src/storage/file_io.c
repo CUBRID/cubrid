@@ -11979,11 +11979,11 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
     case LOB_CREATE_DIR:
       for (int i = 0; i < lob_arr_length; i++)
 	{
-          snprintf (rv_path, (MAX_INTEGER_DISPLAY_LENGTH * 3 + MAX_SHORT_DISPLAY_LENGTH), "%d_%d_%d_id%d",
-                    hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
-          log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
+	  snprintf (rv_path, (MAX_INTEGER_DISPLAY_LENGTH * 3 + MAX_SHORT_DISPLAY_LENGTH), "%d_%d_%d_id%d",
+		    hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+	  log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
 
-          rv_path[strlen (rv_path)] = '\0';
+	  rv_path[strlen (rv_path)] = '\0';
 	  snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
 	  dirbuf[strlen (dirbuf)] = '\0';
 	  mkdir (dirbuf, 0755);
@@ -12055,61 +12055,64 @@ fileio_remove_lob_dir (const char *lob_path)
       return;
     }
 
-  while ((dir_entry = readdir(dir_p)) != NULL && result == 0)
+  while ((dir_entry = readdir (dir_p)) != NULL && result == 0)
     {
       if (strcmp (dir_entry->d_name, ".") == 0 || strcmp (dir_entry->d_name, "..") == 0)
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
-      snprintf (full_path, (strlen (es_base_dir) + 1 + strlen (dir_entry->d_name) + 1), "%s/%s", es_base_dir, dir_entry->d_name);
+      snprintf (full_path, (strlen (es_base_dir) + 1 + strlen (dir_entry->d_name) + 1), "%s/%s", es_base_dir,
+		dir_entry->d_name);
 
       if (stat (full_path, &statbuf) != 0)
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       if (S_ISDIR (statbuf.st_mode) && strstr (dir_entry->d_name, lob_path) != NULL)
-        {
-          DIR *subdir = opendir (full_path);
-          if (subdir != NULL)
-            {
-              struct dirent *sub_dir_entry;
-              char sub_full_path[PATH_MAX];
+	{
+	  DIR *subdir = opendir (full_path);
+	  if (subdir != NULL)
+	    {
+	      struct dirent *sub_dir_entry;
+	      char sub_full_path[PATH_MAX];
 
-              while ((sub_dir_entry = readdir(subdir)) != NULL && result == 0)
-                {
-                  if (strcmp (sub_dir_entry->d_name, ".") == 0 || strcmp (sub_dir_entry->d_name, "..") == 0)
-                    {
-                      continue;
-                    }
+	      while ((sub_dir_entry = readdir (subdir)) != NULL && result == 0)
+		{
+		  if (strcmp (sub_dir_entry->d_name, ".") == 0 || strcmp (sub_dir_entry->d_name, "..") == 0)
+		    {
+		      continue;
+		    }
 
-                  snprintf (sub_full_path, (strlen (full_path) + 1 + strlen (sub_dir_entry->d_name) + 1), "%s/%s", full_path, sub_dir_entry->d_name);
+		  snprintf (sub_full_path, (strlen (full_path) + 1 + strlen (sub_dir_entry->d_name) + 1), "%s/%s",
+			    full_path, sub_dir_entry->d_name);
 
-                  if (stat (sub_full_path, &statbuf) == 0)
-                    {
-                      if (S_ISDIR(statbuf.st_mode))
-                        {
-                          char re_path[PATH_MAX];
-                          snprintf (re_path, (strlen (lob_path) + 1 + strlen (sub_dir_entry->d_name) + 1), "%s/%s", lob_path, sub_dir_entry->d_name);
+		  if (stat (sub_full_path, &statbuf) == 0)
+		    {
+		      if (S_ISDIR (statbuf.st_mode))
+			{
+			  char re_path[PATH_MAX];
+			  snprintf (re_path, (strlen (lob_path) + 1 + strlen (sub_dir_entry->d_name) + 1), "%s/%s",
+				    lob_path, sub_dir_entry->d_name);
 
-                          fileio_remove_lob_dir (re_path);
-                        }
-                      else
-                        {
-                          result = unlink (sub_full_path);
-                        }
-                    }
-                }
+			  fileio_remove_lob_dir (re_path);
+			}
+		      else
+			{
+			  result = unlink (sub_full_path);
+			}
+		    }
+		}
 
-              closedir (subdir);
-            }
+	      closedir (subdir);
+	    }
 
-          if (result == 0)
-            {
-              result = rmdir (full_path);
-            }
-        }
+	  if (result == 0)
+	    {
+	      result = rmdir (full_path);
+	    }
+	}
     }
 
   closedir (dir_p);
