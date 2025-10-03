@@ -11988,10 +11988,10 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
 	  snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
 	  dirbuf[strlen (dirbuf)] = '\0';
 
-          if (mkdir (dirbuf, 0755) != 0 && errno != EEXIST)
-            {
-              ret = ER_FAILED;
-            }
+	  if (mkdir (dirbuf, 0755) != 0 && errno != EEXIST)
+	    {
+	      ret = ER_FAILED;
+	    }
 	}
       break;
 
