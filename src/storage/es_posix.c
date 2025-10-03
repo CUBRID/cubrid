@@ -615,8 +615,7 @@ retry:
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
 #elif defined (SERVER_MODE) || defined (SA_MODE)
-  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d_id%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
-                cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);	// ex) 0_4288_4289_id1/ces_xxx/file
+  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d_id%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);	// ex) 0_4288_4289_id1/ces_xxx/file
 #else
   /* default */
 #endif
@@ -637,8 +636,7 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d_id%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid,
-                    cur_lob_id.attrid, PATH_SEPARATOR, dirname1);	// ex) 0_4288_4289_id1/ces_xxx
+	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d_id%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, cur_lob_id.attrid, PATH_SEPARATOR, dirname1);	// ex) 0_4288_4289_id1/ces_xxx
 	  ret = es_make_dirs (new_dir, dirname2);
 	  if (ret != NO_ERROR)
 	    {
