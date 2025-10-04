@@ -124,6 +124,11 @@ namespace cubconn
     m_buf.stamp_msghdr ();
   }
 
+  bool transmitter::empty ()
+  {
+    return m_buf.get_msghdr ().msg_iovlen == 0;
+  }
+
   void transmitter::clear ()
   {
     for (auto &deleter : m_deleter)
