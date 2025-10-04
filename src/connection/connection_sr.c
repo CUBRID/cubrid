@@ -3155,7 +3155,7 @@ css_request_shutdown_conn (css_conn_entry * conn)
       return;
     }
 
-  conn->worker->enqueue (std::move (request));
+  conn->worker->enqueue (cubconn::connection_worker::queue_type::LAZY, std::move (request));
   if (!conn->worker->notify ())
     {
       assert_release (false);
@@ -3195,7 +3195,7 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
       return;
     }
 
-  conn->worker->enqueue (std::move (request));
+  conn->worker->enqueue (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
 
   /* unlock */
   r = rmutex_unlock (NULL, &conn->cmutex);
