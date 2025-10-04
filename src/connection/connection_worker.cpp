@@ -308,12 +308,26 @@ namespace cubconn
   {
     context *ctx;
     result status;
+    int r;
 
-    assert (item.conn && item.conn->context);
+    assert (item.conn);
 
-    _er_log_debug (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
+    r = rmutex_lock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
 
     ctx = reinterpret_cast<context *> (item.conn->context);
+    if (ctx == nullptr)
+      {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
+	_er_log_debug (__FILE__, __LINE__,
+		       "connection_worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
+		       static_cast<void *> (item.conn));
+	return true;
+      }
+
+    _er_log_debug (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     for (auto &packet : item.packet)
       {
@@ -326,6 +340,9 @@ namespace cubconn
     status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
 	/* this connection will be handled by other loop */
 	return true;
       }
@@ -336,15 +353,25 @@ namespace cubconn
       {
 	ctx->m_send.m_transmitter.clear ();
 	_er_log_debug (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
+
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
 	return true;
       }
 
     /* if buffer is full, register the fd to epoll loop and wait to send the others */
     if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
       {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
 	return false;
       }
+
+    r = rmutex_unlock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
 
     return true;
   }
@@ -352,13 +379,20 @@ namespace cubconn
   bool connection_worker::handle_message_queue_release_packet (message &item)
   {
     context *ctx;
+    int r;
 
-    assert (item.conn && item.conn->context);
+    assert (item.conn);
     assert (item.packet.size () > 0);
+
+    r = rmutex_lock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
 
     ctx = reinterpret_cast<context *> (item.conn->context);
     if (ctx == nullptr)
       {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
 		       static_cast<void *> (item.conn));
@@ -371,6 +405,9 @@ namespace cubconn
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
       }
+
+    r = rmutex_unlock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
 
     return true;
   }
@@ -414,18 +451,29 @@ namespace cubconn
   bool connection_worker::handle_message_queue_shutdown_client (message &item)
   {
     context *ctx;
+    int r;
 
-    assert (item.conn && item.conn->context);
+    assert (item.conn);
+
+    r = rmutex_lock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
 
     ctx = reinterpret_cast<context *> (item.conn->context);
     if (ctx == nullptr)
       {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
 		       static_cast<void *> (item.conn));
 	return true;
       }
     handle_connection_error (ctx);
+
+    r = rmutex_unlock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
+
     return true;
   }
 
@@ -966,9 +1014,7 @@ namespace cubconn
     int nfds, i;
     int error;
     socklen_t length;
-    bool queue_traversal;
 
-    queue_traversal = false;
     while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
@@ -1018,7 +1064,11 @@ namespace cubconn
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
-		    queue_traversal = true;
+		    if (!this->handle_message_queue ())
+		      {
+			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
+			return false;
+		      }
 		    continue;
 		  }
 		status = this->handle_reception (ctx);
@@ -1044,16 +1094,6 @@ namespace cubconn
 		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_transmission failed");
 		    return false;
 		  }
-	      }
-	  }
-
-	/* lazy traversal */
-	if (queue_traversal)
-	  {
-	    if (!this->handle_message_queue ())
-	      {
-		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
-		return false;
 	      }
 	  }
       }
