@@ -1346,16 +1346,11 @@ css_enqueue_and_notify (cubconn::connection_worker::message &&item)
       r = rmutex_unlock (NULL, &conn->cmutex);
       assert (r == NO_ERROR);
 
-      if (item.deleter)
-	{
-	  item.deleter ();
-	}
-
       return INTERNAL_CSS_ERROR;
     }
 
   /* unlock */
-  r = rmutex_unlock (NULL, &item.conn->cmutex);
+  r = rmutex_unlock (NULL, &conn->cmutex);
   assert (r == NO_ERROR);
 
   return 0;
