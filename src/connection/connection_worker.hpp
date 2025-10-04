@@ -31,6 +31,7 @@
 #include "epoll.hpp"
 #include "tbb/concurrent_queue.h"
 
+#include <atomic>
 #include <thread>
 #include <unordered_set>
 #include <cstring>
@@ -163,6 +164,10 @@ namespace cubconn
       /* data can be put into the queue from anywhere, but  */
       /* consumption must happen from only one thread.	    */
       tbb::concurrent_queue<message> m_queue[static_cast<std::size_t> (queue_type::TYPE_COUNT)];
+      /* use a counter to ensure that the handler only processes	*/
+      /* requests currently in the queue. this is essential to prevent	*/
+      /* starvation.							*/
+      std::atomic<uint64_t> m_queue_size[static_cast<std::size_t> (queue_type::TYPE_COUNT)];
 
       /* stats */
       connection_stats m_stats;
