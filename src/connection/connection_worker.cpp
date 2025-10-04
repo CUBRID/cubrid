@@ -29,6 +29,7 @@
 #include "buffer.hpp"
 #include "error_manager.h"
 
+#include <atomic>
 #include <iostream>
 #include <chrono>
 #include <array>
@@ -80,13 +81,16 @@ namespace cubconn
     m_index (index)
   {
     context *ctx;
+    std::size_t i;
 
+    /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (m_eventfd == -1)
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker: failed to create eventfd\n");
 	assert_release (false);
       }
+    /* context */
     ctx = new context (4 * 1024, nullptr);
     if (!ctx)
       {
@@ -104,6 +108,11 @@ namespace cubconn
 	_er_log_debug (__FILE__, __LINE__, "connection_worker: add_descriptor failed\n");
 	delete ctx->m_conn;
 	assert_release (false);
+      }
+    /* request queue */
+    for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
+      {
+	m_queue_size[i].store (0, std::memory_order_relaxed);
       }
 
     m_thread = std::thread (&connection_worker::attach, this);
@@ -123,6 +132,7 @@ namespace cubconn
   void connection_worker::enqueue (queue_type type, message &&item)
   {
     m_queue[static_cast<std::size_t> (type)].push (std::move (item));
+    m_queue_size[static_cast<std::size_t> (type)].fetch_add (1, std::memory_order_release);
 
     _er_log_debug (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d, queue_type = %d\n", item.type,
 		   m_index, type);
@@ -486,8 +496,11 @@ namespace cubconn
   bool connection_worker::handle_message_queue_by_index (queue_type type)
   {
     message request;
+    uint64_t size, i;
 
-    while (m_queue[static_cast<std::size_t> (type)].try_pop (request))
+    i = 0;
+    size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
+    while (i++ < size && m_queue[static_cast<std::size_t> (type)].try_pop (request))
       {
 	_er_log_debug (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
 		       m_index);
