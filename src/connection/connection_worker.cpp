@@ -321,6 +321,11 @@ namespace cubconn
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
+	if (item.deleter)
+	  {
+	    item.deleter ();
+	  }
+
 	_er_log_debug (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
 		       static_cast<void *> (item.conn));
