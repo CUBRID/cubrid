@@ -721,6 +721,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
     case PT_DROP_ATTR_MTHD:
       {
+        attr_mthd_name = "";
 	p = alter->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
 	for (; p && p->node_type == PT_NAME; p = p->next)
 	  {
