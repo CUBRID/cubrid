@@ -202,23 +202,11 @@ namespace cubconn
 
   bool connection_worker::handle_connection_error (context *ctx)
   {
+    /* TODO: this function makes this thread blocked. epoll threads must not be blocked */
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     int r;
 
-    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
-    assert (r == NO_ERROR);
-
-    if (ctx->m_conn == nullptr || ctx->m_conn->worker == nullptr)
-      {
-	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
-	assert (r == NO_ERROR);
-
-	/* already cleared */
-	return true;
-      }
-
-    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
-    assert (r == NO_ERROR);
+    assert_release (ctx->m_conn && ctx->m_conn->worker);
 
     _er_log_debug (ARG_FILE_LINE,
 		   "css_connection_handler_thread: conn { status %d transaction_id %d "
@@ -227,14 +215,13 @@ namespace cubconn
 
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
-
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
 	return false;
       }
 
     ctx->m_send.m_transmitter.clear ();
 
-    /* TODO: this function makes this thread blocked. epoll threads must not be blocked */
+    /* wait until the transaction related this connection is complete */
 
     start = std::chrono::steady_clock::now ();
 
@@ -253,12 +240,7 @@ namespace cubconn
 	return false;
       }
 
-    /* remove from myself */
-    if (m_context.erase (ctx) == 0)
-      {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
-	return false;
-      }
+    /* this context has no remaining processing */
 
     start = std::chrono::steady_clock::now ();
 
@@ -274,6 +256,11 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
+    if (m_context.erase (ctx) == 0)
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
+	return false;
+      }
     delete ctx;
 
     m_stats.sub (stats::NET_CLIENTS, 1);
