@@ -224,6 +224,8 @@ static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
+static unsigned int css_enqueue_and_notify (cubconn::connection_worker::message &&item);
+
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
 #endif /* WINDOWS */
@@ -1304,6 +1306,62 @@ shutdown:
   return status;
 }
 
+// *INDENT-OFF*
+/*
+ * css_enqueue_and_notify () - enqueue the request and notify to worker
+ *   return:
+ *   item (in): the request
+ */
+static unsigned int
+css_enqueue_and_notify (cubconn::connection_worker::message &&item)
+{
+  CSS_CONN_ENTRY * conn;
+  int r;
+
+  assert (item.conn);
+  conn = item.conn;
+
+  /* lock to access worker and context */
+  r = rmutex_lock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
+
+  if (conn->worker == nullptr || conn->context == nullptr)
+    {
+      /* unlock */
+      r = rmutex_unlock (NULL, &conn->cmutex);
+      assert (r == NO_ERROR);
+
+      if (item.deleter)
+	{
+	  item.deleter ();
+	}
+
+      return 0;
+    }
+
+  conn->worker->enqueue (std::move (item));
+  if (!conn->worker->notify ())
+    {
+      /* unlock */
+      r = rmutex_unlock (NULL, &conn->cmutex);
+      assert (r == NO_ERROR);
+
+      if (item.deleter)
+	{
+	  item.deleter ();
+	}
+
+      return INTERNAL_CSS_ERROR;
+    }
+
+  /* unlock */
+  r = rmutex_unlock (NULL, &item.conn->cmutex);
+  assert (r == NO_ERROR);
+
+  return 0;
+}
+// *INDENT-ON*
+
 /*
  * css_send_data_to_client() - send a data buffer to the server
  *   return:
@@ -1350,14 +1408,9 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
 	delete[] mem_reply;
       }
   };
-
-  conn->worker->enqueue (std::move (request));
   // *INDENT-ON*
-  if (!conn->worker->notify ())
-    {
-      return INTERNAL_CSS_ERROR;
-    }
-  return 0;
+
+  return css_enqueue_and_notify (std::move (request));
 }
 
 unsigned int
@@ -1453,14 +1506,9 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
 	deleter ();
       }
   };
-
-  conn->worker->enqueue (std::move (request));
   // *INDENT-ON*
-  if (!conn->worker->notify ())
-    {
-      return INTERNAL_CSS_ERROR;
-    }
-  return 0;
+
+  return css_enqueue_and_notify (std::move (request));
 }
 
 #if 0
@@ -1630,14 +1678,9 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 	deleter ();
       }
   };
-
-  conn->worker->enqueue (std::move (request));
   // *INDENT-ON*
-  if (!conn->worker->notify ())
-    {
-      return INTERNAL_CSS_ERROR;
-    }
-  return 0;
+
+  return css_enqueue_and_notify (std::move (request));
 }
 
 /*
@@ -1750,14 +1793,9 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 	deleter ();
       }
   };
-
-  conn->worker->enqueue (std::move (request));
   // *INDENT-ON*
-  if (!conn->worker->notify ())
-    {
-      return INTERNAL_CSS_ERROR;
-    }
-  return 0;
+
+  return css_enqueue_and_notify (std::move (request));
 }
 
 /*
@@ -1808,14 +1846,9 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 	delete[] mem_reply;
       }
   };
-
-  conn->worker->enqueue (std::move (request));
   // *INDENT-ON*
-  if (!conn->worker->notify ())
-    {
-      return INTERNAL_CSS_ERROR;
-    }
-  return 0;
+
+  return css_enqueue_and_notify (std::move (request));
 }
 
 /*
@@ -1866,9 +1899,9 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   {
     delete header;
   };
-  conn->worker->enqueue (std::move (request));
   // *INDENT-ON*
-  if (!conn->worker->notify ())
+
+  if (css_enqueue_and_notify (std::move (request)) != NO_ERROR)
     {
       return INTERNAL_CSS_ERROR;
     }

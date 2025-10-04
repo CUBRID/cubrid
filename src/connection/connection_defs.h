@@ -455,7 +455,10 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
-    cubconn::connection_worker * worker;
+  SYNC_RMUTEX cmutex;		/* context mutex */
+  // *INDENT-OFF*
+  cubconn::connection_worker *worker;
+  // *INDENT-ON*
   void *context;
 
   CSS_QUEUE_ENTRY *free_queue_list;
