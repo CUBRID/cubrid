@@ -48,6 +48,7 @@ namespace cubconn
       void push_for_deleter (std::function<void ()> &&deleter);
       void stamp ();
 
+      bool empty ();
       void clear ();
 
     private:
