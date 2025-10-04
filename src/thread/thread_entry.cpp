@@ -138,6 +138,7 @@ namespace cubthread
     , m_px_stats_mutex ()
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
+    , m_uses_px_stats (false)
     , m_skip_end_resource_tracks_in_recycle (false)
       // private:
     , m_id ()
