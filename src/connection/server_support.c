@@ -224,7 +224,7 @@ static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
-static unsigned int css_enqueue_and_notify (cubconn::connection_worker::message &&item);
+static unsigned int css_enqueue_and_notify (cubconn::connection_worker::queue_type type, cubconn::connection_worker::message &&item);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
@@ -1310,10 +1310,11 @@ shutdown:
 /*
  * css_enqueue_and_notify () - enqueue the request and notify to worker
  *   return:
- *   item (in): the request
+ *   type (in): queue to be inserted 
+ *   item (in): request
  */
 static unsigned int
-css_enqueue_and_notify (cubconn::connection_worker::message &&item)
+css_enqueue_and_notify (cubconn::connection_worker::queue_type type, cubconn::connection_worker::message &&item)
 {
   CSS_CONN_ENTRY * conn;
   int r;
@@ -1339,7 +1340,7 @@ css_enqueue_and_notify (cubconn::connection_worker::message &&item)
       return 0;
     }
 
-  conn->worker->enqueue (std::move (item));
+  conn->worker->enqueue (type, std::move (item));
   if (!conn->worker->notify ())
     {
       /* unlock */
@@ -1405,7 +1406,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (std::move (request));
+  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 unsigned int
@@ -1503,7 +1504,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (std::move (request));
+  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 #if 0
@@ -1675,7 +1676,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (std::move (request));
+  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 /*
@@ -1790,7 +1791,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (std::move (request));
+  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 /*
@@ -1843,7 +1844,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (std::move (request));
+  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 /*
@@ -1896,7 +1897,7 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   };
   // *INDENT-ON*
 
-  if (css_enqueue_and_notify (std::move (request)) != NO_ERROR)
+  if (css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request)) != NO_ERROR)
     {
       return INTERNAL_CSS_ERROR;
     }

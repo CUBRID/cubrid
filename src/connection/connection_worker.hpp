@@ -45,10 +45,18 @@ namespace cubconn
   class connection_worker
   {
     public:
+      enum class queue_type : uint8_t
+      {
+	IMMEDIATE,
+	LAZY,
+
+	TYPE_COUNT
+      };
+
       enum class message_type
       {
 	NEW_CLIENT,
-	SHUTDOWN_CLIENT,
+	SHUTDOWN_CLIENT, /* lazy queue */
 
 	SEND_PACKET,
 	RELEASE_PACKET,
@@ -129,7 +137,7 @@ namespace cubconn
       void attach ();
 
       /* used for control from other threads */
-      void enqueue (message &&item);
+      void enqueue (queue_type type, message &&item);
       bool notify ();
 
       /* statistics */
@@ -154,7 +162,7 @@ namespace cubconn
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
       /* consumption must happen from only one thread.	    */
-      tbb::concurrent_queue<message> m_queue;
+      tbb::concurrent_queue<message> m_queue[static_cast<std::size_t> (queue_type::TYPE_COUNT)];
 
       /* stats */
       connection_stats m_stats;
@@ -173,6 +181,8 @@ namespace cubconn
 
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue_shutdown_client (message &item);
+
+      bool handle_message_queue_by_index (queue_type type);
       bool handle_message_queue ();
 
       /* --------------------------------------------------------------------------- */

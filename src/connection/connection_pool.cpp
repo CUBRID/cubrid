@@ -80,7 +80,7 @@ namespace cubconn
       {
 	connection_worker::message request;
 	request.type = connection_worker::message_type::SHUTDOWN;
-	worker->enqueue (std::move (request));
+	worker->enqueue (connection_worker::queue_type::IMMEDIATE, std::move (request));
 	if (!worker->notify ())
 	  {
 	    assert_release (false);
@@ -99,7 +99,7 @@ namespace cubconn
 
     request.type = connection_worker::message_type::NEW_CLIENT;
     request.conn = conn;
-    m_workers[m_counter]->enqueue (std::move (request));
+    m_workers[m_counter]->enqueue (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
     if (!m_workers[m_counter]->notify ())
       {
 	assert_release (false);

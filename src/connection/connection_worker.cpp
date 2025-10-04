@@ -120,11 +120,12 @@ namespace cubconn
     assert (m_context.size () == 0);
   }
 
-  void connection_worker::enqueue (message &&item)
+  void connection_worker::enqueue (queue_type type, message &&item)
   {
-    m_queue.push (std::move (item));
+    m_queue[static_cast<std::size_t> (type)].push (std::move (item));
 
-    _er_log_debug (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d\n", item.type, m_index);
+    _er_log_debug (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d, queue_type = %d\n", item.type,
+		   m_index, type);
   }
 
   bool connection_worker::notify ()
@@ -236,7 +237,7 @@ namespace cubconn
     m_stats.add (stats::BLOCKED_WAIT_WORKER, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    if (!this->handle_message_queue ())
+    if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
       {
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
 	return false;
@@ -482,18 +483,11 @@ namespace cubconn
     return true;
   }
 
-  bool connection_worker::handle_message_queue ()
+  bool connection_worker::handle_message_queue_by_index (queue_type type)
   {
     message request;
 
-    if (!this->clear_event ())
-      {
-	return false;
-      }
-
-    m_stats.add (stats::MQ_REQUESTED, 1);
-
-    while (m_queue.try_pop (request))
+    while (m_queue[static_cast<std::size_t> (type)].try_pop (request))
       {
 	_er_log_debug (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
 		       m_index);
@@ -545,6 +539,27 @@ namespace cubconn
 	  }
       }
 
+    return true;
+  }
+
+  bool connection_worker::handle_message_queue ()
+  {
+    std::size_t i;
+
+    if (!this->clear_event ())
+      {
+	return false;
+      }
+
+    m_stats.add (stats::MQ_REQUESTED, 1);
+
+    for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
+      {
+	if (!handle_message_queue_by_index (static_cast<queue_type> (i)))
+	  {
+	    return false;
+	  }
+      }
     return true;
   }
 
@@ -1019,7 +1034,9 @@ namespace cubconn
     int nfds, i;
     int error;
     socklen_t length;
+    bool notified;
 
+    notified = false;
     while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
@@ -1069,11 +1086,7 @@ namespace cubconn
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
-		    if (!this->handle_message_queue ())
-		      {
-			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
-			return false;
-		      }
+		    notified = true;
 		    continue;
 		  }
 		status = this->handle_reception (ctx);
@@ -1100,6 +1113,17 @@ namespace cubconn
 		    return false;
 		  }
 	      }
+	  }
+
+	/* lazy handling */
+	if (notified)
+	  {
+	    if (!this->handle_message_queue ())
+	      {
+		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
+		return false;
+	      }
+	    notified = false;
 	  }
       }
 
