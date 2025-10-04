@@ -966,7 +966,9 @@ namespace cubconn
     int nfds, i;
     int error;
     socklen_t length;
+    bool queue_traversal;
 
+    queue_traversal = false;
     while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
@@ -1016,11 +1018,7 @@ namespace cubconn
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
-		    if (!this->handle_message_queue ())
-		      {
-			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
-			return false;
-		      }
+		    queue_traversal = true;
 		    continue;
 		  }
 		status = this->handle_reception (ctx);
@@ -1046,6 +1044,16 @@ namespace cubconn
 		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_transmission failed");
 		    return false;
 		  }
+	      }
+	  }
+
+	/* lazy traversal */
+	if (queue_traversal)
+	  {
+	    if (!this->handle_message_queue ())
+	      {
+		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
+		return false;
 	      }
 	  }
       }
