@@ -76,12 +76,12 @@ namespace parallel_heap_scan
   class mergeable_list_variables
   {
     public:
-      mergeable_list_variables() 
-        : result_p(nullptr), 
-          orig_val_list_for_agg_domain_resolve(nullptr), 
-          active_results(0), 
-          g_agg_domain_resolve_need(false), 
-          is_list_id_domain_resolved(false) {}
+      mergeable_list_variables()
+	: result_p (nullptr),
+	  orig_val_list_for_agg_domain_resolve (nullptr),
+	  active_results (0),
+	  g_agg_domain_resolve_need (false),
+	  is_list_id_domain_resolved (false) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
@@ -95,9 +95,9 @@ namespace parallel_heap_scan
   class xasl_snapshot_variables
   {
     public:
-      xasl_snapshot_variables() 
-        : list_id_header_index(0), 
-          current_read_spec(nullptr) {}
+      xasl_snapshot_variables()
+	: list_id_header_index (0),
+	  current_read_spec (nullptr) {}
       ~xasl_snapshot_variables() = default;
       std::vector<list_id_header> list_id_headers;
       std::vector<read_spec> read_specs;
@@ -108,10 +108,10 @@ namespace parallel_heap_scan
   class mergeable_list_tls
   {
     public:
-      mergeable_list_tls() 
-        : writer_result_p(nullptr), 
-          vd(nullptr), 
-          val_list_for_agg_domain_resolve(nullptr) {}
+      mergeable_list_tls()
+	: writer_result_p (nullptr),
+	  vd (nullptr),
+	  val_list_for_agg_domain_resolve (nullptr) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
@@ -123,8 +123,8 @@ namespace parallel_heap_scan
   class xasl_snapshot_tls
   {
     public:
-      xasl_snapshot_tls() 
-        : list_id_header_p(nullptr) {}
+      xasl_snapshot_tls()
+	: list_id_header_p (nullptr) {}
       ~xasl_snapshot_tls() = default;
       list_id_header *list_id_header_p;
       QFILE_TUPLE_RECORD tpl_buf;
