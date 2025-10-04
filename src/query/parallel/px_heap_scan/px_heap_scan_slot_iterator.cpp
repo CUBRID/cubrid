@@ -34,6 +34,14 @@
 namespace parallel_heap_scan
 {
   slot_iterator::slot_iterator()
+    : m_is_peeking(false),
+      m_rest_regu_list(nullptr),
+      m_rest_attr_cache(nullptr),
+      m_val_list(nullptr),
+      m_scan_cache(nullptr),
+      m_vd(nullptr),
+      m_scan_stats(nullptr),
+      m_on_trace(false)
   {
   }
 

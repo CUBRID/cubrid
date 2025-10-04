@@ -183,7 +183,7 @@ extern "C"
 				bool is_partition_table, QUERY_ID query_id, int num_parallel_threads, parallel_heap_scan::RESULT_TYPE result_type,
 				XASL_NODE *xasl)
   {
-    int ret, n_user_pages = -1;
+    int ret = NO_ERROR, n_user_pages = -1;
     int parallelism = num_parallel_threads;
     HL_HEAPID orig_heap_id;
     assert (scan_type == S_PARALLEL_HEAP_SCAN);

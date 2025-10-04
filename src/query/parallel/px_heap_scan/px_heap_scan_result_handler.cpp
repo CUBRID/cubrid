@@ -185,7 +185,8 @@ namespace parallel_heap_scan
   }
 
   template <RESULT_TYPE result_type>
-  void result_handler<result_type>::write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, VAL_DESCR *vd)
+  void result_handler<result_type>::write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list,
+      VAL_LIST *val_list, VAL_DESCR *vd)
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
@@ -259,6 +260,7 @@ namespace parallel_heap_scan
 	      {
 		dbval.domain.general_info.is_null = 1;
 	      }
+	    tl.val_list_for_agg_domain_resolve = val_list;
 	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)

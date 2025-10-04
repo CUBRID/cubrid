@@ -103,7 +103,7 @@ namespace parallel_heap_scan
       }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
     m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
-    m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_vd);
+    m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->val_list, m_vd);
 
     return NO_ERROR;
   }
