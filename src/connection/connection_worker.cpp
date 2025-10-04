@@ -206,6 +206,9 @@ namespace cubconn
 	return true;
       }
 
+    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+
     _er_log_debug (ARG_FILE_LINE,
 		   "css_connection_handler_thread: conn { status %d transaction_id %d "
 		   "db_error %d stop_talk %d stop_phase %d }\n", ctx->m_conn->status, ctx->m_conn->get_tran_index (),
@@ -213,6 +216,7 @@ namespace cubconn
 
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
+
 	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
 	return false;
       }
