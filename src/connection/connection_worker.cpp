@@ -192,17 +192,24 @@ namespace cubconn
   bool connection_worker::handle_connection_error (context *ctx)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
+    int r;
+
+    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
 
     if (ctx->m_conn == nullptr || ctx->m_conn->worker == nullptr)
       {
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
 	/* already cleared */
 	return true;
       }
 
     _er_log_debug (ARG_FILE_LINE,
-		  "css_connection_handler_thread: conn { status %d transaction_id %d "
-		  "db_error %d stop_talk %d stop_phase %d }\n", ctx->m_conn->status, ctx->m_conn->get_tran_index (),
-		  ctx->m_conn->db_error, ctx->m_conn->stop_talk, ctx->m_conn->stop_phase);
+		   "css_connection_handler_thread: conn { status %d transaction_id %d "
+		   "db_error %d stop_talk %d stop_phase %d }\n", ctx->m_conn->status, ctx->m_conn->get_tran_index (),
+		   ctx->m_conn->db_error, ctx->m_conn->stop_talk, ctx->m_conn->stop_phase);
 
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
@@ -238,8 +245,19 @@ namespace cubconn
 	return false;
       }
 
+    start = std::chrono::steady_clock::now ();
+
+    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+
     ctx->m_conn->worker = nullptr;
     ctx->m_conn->context = nullptr;
+
+    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+
+    end = std::chrono::steady_clock::now ();
+    m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     delete ctx;
 
@@ -364,6 +382,7 @@ namespace cubconn
 	return false;
       }
     ctx->m_conn = item.conn;
+    /* there is no need to hold the mutex now */
     ctx->m_conn->worker = this;
     ctx->m_conn->context = ctx;
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
@@ -900,6 +919,8 @@ namespace cubconn
 
   void connection_worker::finalize ()
   {
+    int r;
+
     for (auto &ctx : m_context)
       {
 	if (!m_events.remove_descriptor (ctx->m_conn->fd))
@@ -916,8 +937,14 @@ namespace cubconn
 	css_Connection_error_handler (m_entry, ctx->m_conn);
 	m_entry->conn_entry = NULL;
 
+	r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
+
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
 
 	delete ctx;
       }

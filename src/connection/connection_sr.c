@@ -467,6 +467,14 @@ css_init_conn_list (void)
 	  goto error;
 	}
 
+      err = rmutex_initialize (&conn->cmutex, RMUTEX_NAME_CONN_ENTRY);
+      if (err != NO_ERROR)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
+	  err = ER_CSS_CONN_INIT;
+	  goto error;
+	}
+
       if (i < css_Num_max_conn - 1)
 	{
 	  conn->next = &css_Conn_array[i + 1];
@@ -534,6 +542,7 @@ css_final_conn_list (void)
 	  assert (conn->idx == i);
 #endif
 	  (void) rmutex_finalize (&conn->rmutex);
+	  (void) rmutex_finalize (&conn->cmutex);
 	}
 
       free_and_init (css_Conn_array);
@@ -1391,7 +1400,6 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
 		  /* request to connection thread */
 		  css_request_shutdown_conn (conn);
-		  css_wakeup_handler (conn);
 		}
 	      break;
 	    }
@@ -3123,47 +3131,88 @@ css_get_argv (void)
 void
 css_request_shutdown_conn (css_conn_entry * conn)
 {
+  cubconn::connection_worker::message request;
+  int r;
+
+  assert (conn);
+
+  request.type = cubconn::connection_worker::message_type::SHUTDOWN_CLIENT;
+  request.conn = conn;
+
+  /* lock to access worker and context */
+  r = rmutex_lock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
+
   if (conn->worker == nullptr || conn->context == nullptr)
     {
       _er_log_debug (__FILE__, __LINE__,
 		     "css_request_shutdown_conn: worker already cleared for conn = %p\n", (void *) conn);
+
+      /* unlock */
+      r = rmutex_unlock (NULL, &conn->cmutex);
+      assert (r == NO_ERROR);
+
       return;
     }
 
-  cubconn::connection_worker::message request;
-
-  request.type = cubconn::connection_worker::message_type::SHUTDOWN_CLIENT;
-  request.conn = conn;
   conn->worker->enqueue (std::move (request));
+  if (!conn->worker->notify ())
+    {
+      assert_release (false);
+    }
+
+  /* unlock */
+  r = rmutex_unlock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
 }
 
 void
 css_request_release_packet (css_conn_entry * conn, void *buffer)
 {
-  if (conn == nullptr || buffer == nullptr)
-    {
-      return;
-    }
+  cubconn::connection_worker::message request;
+  int r;
+
+  assert (conn && buffer);
+
+  request.type = cubconn::connection_worker::message_type::RELEASE_PACKET;
+  request.conn = conn;
+  request.packet.emplace_back ((std::byte *) buffer, 0 /* idk the size */ );
+
+  /* lock to access worker and context */
+  r = rmutex_lock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
 
   if (conn->worker == nullptr || conn->context == nullptr)
     {
       _er_log_debug (__FILE__, __LINE__,
 		     "css_request_release_packet: worker already cleared for conn = %p, buffer = %p\n", (void *) conn,
 		     buffer);
+
+      /* unlock */
+      r = rmutex_unlock (NULL, &conn->cmutex);
+      assert (r == NO_ERROR);
+
       return;
     }
 
-  cubconn::connection_worker::message request;
-
-  request.type = cubconn::connection_worker::message_type::RELEASE_PACKET;
-  request.conn = conn;
-  request.packet.emplace_back ((std::byte *) buffer, 0 /* idk the size */ );
   conn->worker->enqueue (std::move (request));
+
+  /* unlock */
+  r = rmutex_unlock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
 }
 
 void
 css_wakeup_handler (css_conn_entry * conn)
 {
+  int r;
+
+  assert (conn);
+
+  /* lock to access worker and context */
+  r = rmutex_lock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
+
   if (conn->worker == nullptr || conn->context == nullptr)
     {
       _er_log_debug (__FILE__, __LINE__, "css_wakeup_handler: worker already cleared for conn = %p\n", (void *) conn);
@@ -3174,4 +3223,8 @@ css_wakeup_handler (css_conn_entry * conn)
     {
       assert_release (false);
     }
+
+  /* unlock */
+  r = rmutex_unlock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
 }
