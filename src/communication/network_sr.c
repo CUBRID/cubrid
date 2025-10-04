@@ -899,7 +899,15 @@ end:
     {
       thread_p->release_packet (buffer);
     }
-  css_wakeup_handler (thread_p->conn_entry);
+
+  if (conn->status == CONN_CLOSING && !conn->has_pending_request ())
+    {
+      css_request_shutdown_conn (conn);
+    }
+  else
+    {
+      css_wakeup_handler (thread_p->conn_entry);
+    }
 
   /* clear memory to be used at request handling */
   db_clear_private_heap (thread_p, 0);
