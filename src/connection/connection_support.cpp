@@ -3081,7 +3081,7 @@ css_conn_entry::add_pending_request ()
 }
 
 void
-css_conn_entry::start_request ()
+css_conn_entry::end_request ()
 {
   --pending_request_count;
 }
