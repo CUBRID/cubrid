@@ -282,8 +282,8 @@ namespace cubconn
 
 retry:
     _er_log_debug (ARG_FILE_LINE,
-                     "connection_worker->handle_connection_error: send buffer not empty, retry shutdown (conn %p, tran_index %d)",
-                     ctx->m_conn, ctx->m_conn->tran_index);
+		   "connection_worker->handle_connection_error: send buffer not empty, retry shutdown (conn %p, tran_index %d)",
+		   ctx->m_conn, ctx->m_conn->tran_index);
 
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
