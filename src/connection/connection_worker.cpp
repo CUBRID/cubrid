@@ -246,6 +246,13 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_WAIT_WORKER, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
+    /* check again. handle the entries in the message queue as there may be a queued request to release the memory in ctx */
+    if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
+      {
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
+	return false;
+      }
+
     /* this context has no remaining processing */
 
     start = std::chrono::steady_clock::now ();
@@ -274,6 +281,10 @@ namespace cubconn
     return true;
 
 retry:
+    _er_log_debug (ARG_FILE_LINE,
+                     "connection_worker->handle_connection_error: send buffer not empty, retry shutdown (conn %p, tran_index %d)",
+                     ctx->m_conn, ctx->m_conn->tran_index);
+
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
 
