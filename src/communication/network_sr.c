@@ -780,6 +780,16 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   int error_code;
   CSS_CONN_ENTRY *conn;
 
+  conn = thread_p->conn_entry;
+  assert (conn != NULL);
+
+  /* check if the conn is valid */
+  if (IS_INVALID_SOCKET (conn->fd) || conn->status != CONN_OPEN)
+    {
+      /* have nothing to do because the client has gone */
+      goto end;
+    }
+
   if (buffer == NULL && size > 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_CANT_ALLOC_BUFFER, 0);
@@ -806,14 +816,6 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ, 0);
       return_error_to_client (thread_p, rid);
-      goto end;
-    }
-  conn = thread_p->conn_entry;
-  assert (conn != NULL);
-  /* check if the conn is valid */
-  if (IS_INVALID_SOCKET (conn->fd) || conn->status != CONN_OPEN)
-    {
-      /* have nothing to do because the client has gone */
       goto end;
     }
 
@@ -898,15 +900,6 @@ end:
   if (buffer != NULL && size > 0)
     {
       thread_p->release_packet (buffer);
-    }
-
-  if (conn->status == CONN_CLOSING && !conn->has_pending_request ())
-    {
-      css_request_shutdown_conn (conn);
-    }
-  else
-    {
-      css_wakeup_handler (thread_p->conn_entry);
     }
 
   /* clear memory to be used at request handling */
