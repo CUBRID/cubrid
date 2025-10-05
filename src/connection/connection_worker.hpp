@@ -159,7 +159,6 @@ namespace cubconn
       std::size_t m_index;
       cubsocket::epoll m_events;
       int m_eventfd;
-      bool m_notified;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */

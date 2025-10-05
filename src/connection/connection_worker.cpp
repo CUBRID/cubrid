@@ -78,8 +78,7 @@ namespace cubconn
     m_core (core),
     m_stop (false),
     m_entry (nullptr),
-    m_index (index),
-    m_notified (false)
+    m_index (index)
   {
     context *ctx;
     std::size_t i;
@@ -205,22 +204,21 @@ namespace cubconn
   {
     /* TODO: this function makes this thread blocked. epoll threads must not be blocked */
     std::chrono::time_point<std::chrono::steady_clock> start, end;
+    message request;
     int r;
 
     assert_release (ctx->m_conn && ctx->m_conn->worker);
 
-    /* if there are tasks that are still being performed or have not been performed */
-    if (ctx->m_conn->has_pending_request ())
+    /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
+    if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
       {
-	message request;
+	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
+	return false;
+      }
 
-	request.type = message_type::SHUTDOWN_CLIENT;
-	request.conn = ctx->m_conn;
-	this->enqueue (queue_type::LAZY, std::move (request));
-
-	/* this request must be handled as razily */
-	m_notified = true;
-	return true;
+    if (!ctx->m_send.m_transmitter.empty ())
+      {
+	goto retry;
       }
 
     _er_log_debug (ARG_FILE_LINE,
@@ -248,13 +246,6 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_WAIT_WORKER, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
-    /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
-      {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
-	return false;
-      }
-
     /* this context has no remaining processing */
 
     start = std::chrono::steady_clock::now ();
@@ -279,6 +270,16 @@ namespace cubconn
     delete ctx;
 
     m_stats.sub (stats::NET_CLIENTS, 1);
+
+    return true;
+
+retry:
+    request.type = message_type::SHUTDOWN_CLIENT;
+    request.conn = ctx->m_conn;
+
+    /* this request must be handled as razily */
+    this->enqueue (queue_type::LAZY, std::move (request));
+    this->notify ();
 
     return true;
   }
@@ -1043,8 +1044,9 @@ namespace cubconn
     int nfds, i;
     int error;
     socklen_t length;
+    bool notified;
 
-    m_notified = false;
+    notified = false;
     while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
@@ -1094,7 +1096,7 @@ namespace cubconn
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
-		    m_notified = true;
+		    notified = true;
 		    continue;
 		  }
 		status = this->handle_reception (ctx);
@@ -1124,14 +1126,14 @@ namespace cubconn
 	  }
 
 	/* lazy handling */
-	if (m_notified)
+	if (notified)
 	  {
 	    if (!this->handle_message_queue ())
 	      {
 		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
 		return false;
 	      }
-	    m_notified = false;
+	    notified = false;
 	  }
       }
 

@@ -1397,6 +1397,8 @@ css_shutdown_conn_by_tran_index (int tran_index)
 	      if (conn->status == CONN_OPEN)
 		{
 		  conn->status = CONN_CLOSING;
+
+		  css_request_shutdown_conn (conn);
 		}
 	      break;
 	    }
