@@ -78,7 +78,8 @@ namespace cubconn
     m_core (core),
     m_stop (false),
     m_entry (nullptr),
-    m_index (index)
+    m_index (index),
+    m_notified (false)
   {
     context *ctx;
     std::size_t i;
@@ -207,6 +208,20 @@ namespace cubconn
     int r;
 
     assert_release (ctx->m_conn && ctx->m_conn->worker);
+
+    /* if there are tasks that are still being performed or have not been performed */
+    if (ctx->m_conn->has_pending_request ())
+      {
+	message request;
+
+	request.type = message_type::SHUTDOWN_CLIENT;
+	request.conn = ctx->m_conn;
+	this->enqueue (queue_type::LAZY, std::move (request));
+
+	/* this request must be handled as razily */
+	m_notified = true;
+	return true;
+      }
 
     _er_log_debug (ARG_FILE_LINE,
 		   "css_connection_handler_thread: conn { status %d transaction_id %d "
@@ -929,12 +944,6 @@ namespace cubconn
   {
     result status;
 
-    if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
-      {
-	handle_connection_error (ctx);
-	return result::ClosedConnection;
-      }
-
     status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
@@ -1034,9 +1043,8 @@ namespace cubconn
     int nfds, i;
     int error;
     socklen_t length;
-    bool notified;
 
-    notified = false;
+    m_notified = false;
     while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
@@ -1086,7 +1094,7 @@ namespace cubconn
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
-		    notified = true;
+		    m_notified = true;
 		    continue;
 		  }
 		status = this->handle_reception (ctx);
@@ -1116,14 +1124,14 @@ namespace cubconn
 	  }
 
 	/* lazy handling */
-	if (notified)
+	if (m_notified)
 	  {
 	    if (!this->handle_message_queue ())
 	      {
 		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
 		return false;
 	      }
-	    notified = false;
+	    m_notified = false;
 	  }
       }
 

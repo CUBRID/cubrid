@@ -2978,8 +2978,6 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 void
 css_server_task::execute (context_type &thread_ref)
 {
-  m_conn.start_request ();
-
   thread_ref.conn_entry = &m_conn;
   session_state *session_p = thread_ref.conn_entry->session_p;
 
@@ -3001,6 +2999,16 @@ css_server_task::execute (context_type &thread_ref)
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
+
+  m_conn.end_request ();
+  if (m_conn.status == CONN_CLOSING && !m_conn.has_pending_request ())
+    {
+      css_request_shutdown_conn (&m_conn);
+    }
+  else
+    {
+      css_wakeup_handler (&m_conn);
+    }
 }
 
 void
