@@ -1007,6 +1007,7 @@ namespace cubconn
       case state::SendInHandshake:
       case state::SwitchToUnixSocket:
       case state::SendReplyToClient:
+      case state::SendHBToMaster:
 	/* these will be handled in handle_master_transmission */
 	break;
 
