@@ -7196,8 +7196,12 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	}
       else
 	{
-	  auto deleter = [copy_area, desc_ptr]() noexcept
+	  auto deleter = [packed, packed_size, copy_area, desc_ptr]() noexcept
 	  {
+	    if (packed)
+	      {
+		locator_free_packed (packed, packed_size);
+	      }
 	    if (copy_area)
 	      {
 		locator_free_copy_area (copy_area);
@@ -7209,6 +7213,9 @@ slocator_fetch_lockhint_classes (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	  };
 	  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
 					       send_size, desc_ptr, desc_size, content_ptr, content_size, std::move (deleter));
+	  /* packed area must not be shared */
+	  lockhint->packed = NULL;
+	  lockhint->packed_size = 0;
 	}
       first_call = false;
     }
