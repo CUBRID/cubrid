@@ -1464,26 +1464,31 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
   if (reply && reply_size > 0)
     {
-      /* reply */
       mem_reply = new std::byte[reply_size];
       std::memcpy (mem_reply, reply, reply_size);
     }
   request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
 
   /* data */
-  mem_header[1] = new NET_HEADER {};
-  css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer), static_cast < std::size_t > (buffer_size));
+  if (buffer && buffer_size > 0)
+    {
+      mem_header[1] = new NET_HEADER {};
+      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer), static_cast < std::size_t > (buffer_size));
+    }
 
   /* deleter */
   request.deleter =[header1 = mem_header[0],
 		    header2 = mem_header[1], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
   {
     delete header1;
-    delete header2;
 
+    if (header2)
+      {
+	delete header2;
+      }
     if (body1)
       {
 	delete[] body1;
@@ -1607,13 +1612,11 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   request.conn = conn;
   request.packet.clear ();
 
-  /* header */
+  /* reply */
   mem_header[0] = new NET_HEADER {};
   css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
   request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
-
-  /* reply */
   if (reply && reply_size > 0)
     {
       mem_reply = new std::byte[reply_size];
@@ -1621,23 +1624,29 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     }
   request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
 
-  /* header */
-  mem_header[1] = new NET_HEADER {};
-  css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
-  /* buffer */
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer1),
-			       static_cast < std::size_t > (buffer1_size));
+  /* don't refactor! I've split the conditions to make the code easier to read. */
+  /* these conditions will be optimized at the compiler level. */
+  /* data1 */
+  if ((buffer1 && buffer1_size > 0) || (buffer2 && buffer2_size > 0))
+    {
+      mem_header[1] = new NET_HEADER {};
+      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer1),
+				   static_cast < std::size_t > (buffer1_size));
+    }
 
-  /* header */
-  mem_header[2] = new NET_HEADER {};
-  css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
-  /* buffer */
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer2),
-			       static_cast < std::size_t > (buffer2_size));
+  /* data2 */
+  if (buffer2 && buffer2_size > 0)
+    {
+      mem_header[2] = new NET_HEADER {};
+      css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer2),
+				   static_cast < std::size_t > (buffer2_size));
+    }
 
   /* deleter */
   request.deleter =[header1 = mem_header[0],
@@ -1645,9 +1654,15 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 		    header3 = mem_header[2], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
   {
     delete header1;
-    delete header2;
-    delete header3;
 
+    if (header2)
+      {
+	delete header2;
+      }
+    if (header3)
+      {
+	delete header3;
+      }
     if (body1)
       {
 	delete[]body1;
@@ -1696,13 +1711,11 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   request.conn = conn;
   request.packet.clear ();
 
-  /* header */
+  /* reply */
   mem_header[0] = new NET_HEADER {};
   css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
 		      conn->invalidate_snapshot, conn->db_error);
   request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
-
-  /* reply */
   if (reply && reply_size > 0)
     {
       mem_reply = new std::byte[reply_size];
@@ -1710,32 +1723,38 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     }
   request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
 
-  /* header */
-  mem_header[1] = new NET_HEADER {};
-  css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
-  /* buffer */
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer1),
-			       static_cast < std::size_t > (buffer1_size));
+  /* data1 */
+  if ((buffer1 && buffer1_size > 0) || (buffer2 && buffer2_size > 0) || (buffer3 && buffer3_size > 0))
+    {
+      mem_header[1] = new NET_HEADER {};
+      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer1),
+				   static_cast < std::size_t > (buffer1_size));
+    }
 
-  /* header */
-  mem_header[2] = new NET_HEADER {};
-  css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
-  /* buffer */
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer2),
-			       static_cast < std::size_t > (buffer2_size));
+  /* data2 */
+  if ((buffer2 && buffer2_size > 0) || (buffer3 && buffer3_size > 0))
+    {
+      mem_header[2] = new NET_HEADER {};
+      css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer2),
+				   static_cast < std::size_t > (buffer2_size));
+    }
 
-  /* header */
-  mem_header[3] = new NET_HEADER {};
-  css_set_net_header (mem_header[3], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer3_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[3]), sizeof (NET_HEADER));
-  /* buffer */
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer3),
-			       static_cast < std::size_t > (buffer3_size));
+  /* data3 */
+  if (buffer3 && buffer3_size > 0)
+    {
+      mem_header[3] = new NET_HEADER {};
+      css_set_net_header (mem_header[3], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer3_size, conn->get_tran_index (),
+			  conn->invalidate_snapshot, conn->db_error);
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[3]), sizeof (NET_HEADER));
+      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer3),
+				   static_cast < std::size_t > (buffer3_size));
+    }
 
   /* deleter */
   request.deleter =[header1 = mem_header[0],
@@ -1744,10 +1763,19 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 		    header4 = mem_header[3], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
   {
     delete header1;
-    delete header2;
-    delete header3;
-    delete header4;
 
+    if (header2)
+      {
+	delete header2;
+      }
+    if (header3)
+      {
+	delete header3;
+      }
+    if (header4)
+      {
+	delete header4;
+      }
     if (body1)
       {
 	delete[]body1;
