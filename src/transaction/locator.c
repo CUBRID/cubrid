@@ -54,7 +54,7 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
-#define LOCATOR_NKEEP_LIMIT (50)
+#define LOCATOR_NKEEP_LIMIT (200)
 #else /* SERVER_MODE */
 #define LOCATOR_NKEEP_LIMIT (2)
 #endif /* SERVER_MODE */
