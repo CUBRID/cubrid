@@ -59,6 +59,20 @@ namespace cubbase
 
   void hardware_topology::pin_core (int core)
   {
+    fprintf (stderr, "[DEBUG] Attempting to pin thread %lu to core %d.\n", (unsigned long)pthread_self(), core);
+
+    unsigned int num_cores = std::thread::hardware_concurrency();
+    fprintf (stderr, "[DEBUG] System has %u available cores (reported by C++ std::thread).\n", num_cores);
+
+    long num_cores_posix = sysconf (_SC_NPROCESSORS_ONLN);
+    fprintf (stderr, "[DEBUG] System has %ld available cores (reported by POSIX sysconf).\n", num_cores_posix);
+
+    if (core < 0 || core >= num_cores_posix)
+      {
+	fprintf (stderr, "[ERROR] Invalid core id %d. It should be between 0 and %ld.\n", core, num_cores_posix - 1);
+	return;
+      }
+
     cpu_set_t set;
     int fail;
 
@@ -67,6 +81,7 @@ namespace cubbase
     fail = pthread_setaffinity_np (pthread_self (), sizeof (set), &set);
     if (fail)
       {
+	fprintf (stderr, "[ERROR] pthread_setaffinity_np failed for core %d. Error code: %d\n", core, fail);
 	errno = fail;
 	perror ("pthread_setaffinity_np");
       }
