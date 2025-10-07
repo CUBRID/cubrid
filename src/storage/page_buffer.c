@@ -5209,9 +5209,7 @@ pgbuf_initialize_lock_table (void)
 
   /* allocate memory space for the buffer lock table */
   thrd_num_total = thread_num_total_threads ();
-#if defined(SERVER_MODE)
-  assert ((int) thrd_num_total > MAX_NTRANS * 2);
-#else /* !SERVER_MODE */
+#if !defined(SERVER_MODE)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
@@ -5430,9 +5428,7 @@ pgbuf_initialize_thrd_holder (void)
   size_t i, j, idx;
 
   thrd_num_total = thread_num_total_threads ();
-#if defined(SERVER_MODE)
-  assert ((int) thrd_num_total > MAX_NTRANS * 2);
-#else /* !SERVER_MODE */
+#if !defined(SERVER_MODE)
   assert (thrd_num_total == 1);
 #endif /* !SERVER_MODE */
 
