@@ -498,10 +498,11 @@ retry:
 		       static_cast<void *> (item.conn));
 	return true;
       }
-    handle_connection_error (ctx);
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
+
+    handle_connection_error (ctx);
 
     return true;
   }
