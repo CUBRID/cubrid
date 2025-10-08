@@ -132,6 +132,8 @@ namespace cubconn
 
   void connection_worker::enqueue (queue_type type, message &&item)
   {
+    assert (item.conn->fd != -1);
+
     m_queue[static_cast<std::size_t> (type)].push (std::move (item));
     m_queue_size[static_cast<std::size_t> (type)].fetch_add (1, std::memory_order_release);
 
@@ -210,6 +212,11 @@ namespace cubconn
 
     assert_release (ctx->m_conn && ctx->m_conn->worker);
 
+    if (ctx->m_conn->has_pending_request ())
+      {
+	goto retry;
+      }
+
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
     if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
       {
@@ -223,9 +230,9 @@ namespace cubconn
       }
 
     _er_log_debug (ARG_FILE_LINE,
-		   "css_connection_handler_thread: conn { status %d transaction_id %d "
-		   "db_error %d stop_talk %d stop_phase %d }\n", ctx->m_conn->status, ctx->m_conn->get_tran_index (),
-		   ctx->m_conn->db_error, ctx->m_conn->stop_talk, ctx->m_conn->stop_phase);
+		   "handle_connection_error: conn { status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
+		   ctx->m_conn->status, ctx->m_conn->get_tran_index (), ctx->m_conn->db_error, ctx->m_conn->stop_talk,
+		   ctx->m_conn->stop_phase);
 
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
@@ -354,6 +361,7 @@ retry:
 	er_log_conn (__FILE__, __LINE__,
 		     "connection_worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
 		     static_cast<void *> (item.conn));
+
 	return true;
       }
 
