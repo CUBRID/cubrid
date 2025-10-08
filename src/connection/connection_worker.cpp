@@ -55,6 +55,8 @@
 namespace cubconn
 {
   connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
+    m_conn (nullptr),
+    m_closed (false),
     m_recv
   {
     .m_state = state::HEADER,
@@ -210,9 +212,9 @@ namespace cubconn
     message request;
     int r;
 
-    assert_release (ctx->m_conn && ctx->m_conn->worker);
+    assert_release (ctx->m_conn);
 
-    if (ctx->m_conn->has_pending_request ())
+    if (!ctx->m_closed && ctx->m_conn->has_pending_request ())
       {
 	er_log_conn (ARG_FILE_LINE,
 		     "connection_worker->handle_connection_error: retry shutdown (conn %p): has pending request\n", ctx->m_conn);
@@ -226,7 +228,7 @@ namespace cubconn
 	return false;
       }
 
-    if (!ctx->m_send.m_transmitter.empty ())
+    if (!ctx->m_closed && !ctx->m_send.m_transmitter.empty ())
       {
 	er_log_conn (ARG_FILE_LINE,
 		     "connection_worker->handle_connection_error: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
@@ -376,7 +378,8 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
-	ctx->m_send.m_transmitter.clear ();
+	/* ctx will be forcibly removed */
+	ctx->m_closed = true;
 
 	/* this connection will be removed by main loop */
 	return true;
@@ -967,7 +970,10 @@ retry:
     if (status == result::PeerReset || status == result::Error)
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: status = %d\n", status);
-	ctx->m_send.m_transmitter.clear ();
+
+	/* ctx will be forcibly removed */
+	ctx->m_closed = true;
+
 	handle_connection_error (ctx);
 	return status;
       }
@@ -988,7 +994,10 @@ retry:
 	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
-	    ctx->m_send.m_transmitter.clear ();
+
+	    /* ctx will be forcibly removed */
+	    ctx->m_closed = true;
+
 	    handle_connection_error (ctx);
 	    return result::Error;
 	  }
@@ -1106,7 +1115,10 @@ retry:
 		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.",
 				 ctx->m_conn->fd);
 		  }
-		ctx->m_send.m_transmitter.clear ();
+
+		/* ctx will be forcibly removed */
+		ctx->m_closed = true;
+
 		handle_connection_error (ctx);
 		continue;
 	      }
@@ -1146,12 +1158,12 @@ retry:
 	/* lazy handling */
 	if (m_notified)
 	  {
+	    m_notified = false;
 	    if (!this->handle_message_queue ())
 	      {
 		er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
 		return false;
 	      }
-	    m_notified = false;
 	  }
       }
 
