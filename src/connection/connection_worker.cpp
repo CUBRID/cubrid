@@ -136,7 +136,7 @@ namespace cubconn
     m_queue_size[static_cast<std::size_t> (type)].fetch_add (1, std::memory_order_release);
 
     er_log_conn (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d, queue_type = %d\n", item.type,
-		   m_index, type);
+		 m_index, type);
   }
 
   bool connection_worker::notify ()
@@ -283,7 +283,7 @@ namespace cubconn
 
 retry:
     er_log_conn (ARG_FILE_LINE,
-		   "connection_worker->handle_connection_error: send buffer not empty, retry shutdown (conn %p)", ctx->m_conn);
+		 "connection_worker->handle_connection_error: send buffer not empty, retry shutdown (conn %p)", ctx->m_conn);
 
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
@@ -352,8 +352,8 @@ retry:
 	  }
 
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
-		       static_cast<void *> (item.conn));
+		     "connection_worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
+		     static_cast<void *> (item.conn));
 	return true;
       }
 
@@ -424,8 +424,8 @@ retry:
 	assert (r == NO_ERROR);
 
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
-		       static_cast<void *> (item.conn));
+		     "connection_worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
+		     static_cast<void *> (item.conn));
 	return true;
       }
 
@@ -433,7 +433,7 @@ retry:
       {
 	ctx->m_recv.m_receiver.release (packet.data ());
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
+		     "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
       }
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
@@ -471,7 +471,7 @@ retry:
 	ctx->m_conn->context = nullptr;
 	delete ctx;
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
+		     "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
 	return false;
       }
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
@@ -495,8 +495,8 @@ retry:
 	assert (r == NO_ERROR);
 
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
-		       static_cast<void *> (item.conn));
+		     "connection_worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
+		     static_cast<void *> (item.conn));
 	return true;
       }
 
@@ -518,7 +518,7 @@ retry:
     while (i++ < size && m_queue[static_cast<std::size_t> (type)].try_pop (request))
       {
 	er_log_conn (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
-		       m_index);
+		     m_index);
 
 	switch (request.type)
 	  {
@@ -561,7 +561,7 @@ retry:
 
 	  default:
 	    er_log_conn (__FILE__, __LINE__,
-			   "master_connector->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
+			 "master_connector->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
 	    assert_release (false);
 	    break;
 	  }
@@ -607,7 +607,7 @@ retry:
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
+		     "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
 	return result::Skewed;
       }
 
@@ -649,7 +649,7 @@ retry:
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
+		     "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
 	return result::Skewed;
       }
 
@@ -784,7 +784,7 @@ retry:
 	/* from the socket to recover this state machine and handle   */
 	/* the next request properly.				      */
 	er_log_conn (__FILE__, __LINE__,
-		       "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
+		     "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
 	return result::Skewed;
       }
 
@@ -839,7 +839,7 @@ retry:
 
       default:
 	er_log_conn (ARG_FILE_LINE,
-		       "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
+		     "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
 	status = result::Skewed;
 	break;
       }
@@ -974,7 +974,7 @@ retry:
 	    /* this transmission is the last handling on this connection */
 	    handle_connection_error (ctx);
 	    er_log_conn (__FILE__, __LINE__,
-			   "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
+			 "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
 	    return result::ClosedConnection;
 	  }
 
@@ -1088,18 +1088,18 @@ retry:
 		    if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0)
 		      {
 			er_log_conn (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd,
-				       strerror (error));
+				     strerror (error));
 		      }
 		    else
 		      {
 			er_log_conn (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
-				       ctx->m_conn->fd);
+				     ctx->m_conn->fd);
 		      }
 		  }
 		else
 		  {
 		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.",
-				   ctx->m_conn->fd);
+				 ctx->m_conn->fd);
 		  }
 		handle_connection_error (ctx);
 		continue;
