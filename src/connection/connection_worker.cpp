@@ -41,13 +41,14 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#ifdef _er_log_debug
-#undef _er_log_debug
+#if 1
+#define er_log_conn(...) er_log_debug (__VA_ARGS__)
+#else
+#define er_log_conn(...)
 #endif
-#define _er_log_debug(x, ...) do { } while (0)
 
 #define NEXT_STATE(ctx, sel, x) do { \
-    _er_log_debug (__FILE__, __LINE__, "fd = %d, set state = %d\n", ctx->m_conn ? ctx->m_conn->fd : -1, state::x); \
+    er_log_conn (__FILE__, __LINE__, "fd = %d, set state = %d\n", ctx->m_conn ? ctx->m_conn->fd : -1, state::x); \
     (ctx->sel.m_state = state::x); \
 } while (0)
 
@@ -87,25 +88,25 @@ namespace cubconn
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (m_eventfd == -1)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker: failed to create eventfd\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to create eventfd\n");
 	assert_release (false);
       }
     /* context */
     ctx = new context (4 * 1024, nullptr);
     if (!ctx)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker: failed to allocate memory\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to allocate memory\n");
 	assert_release (false);
       }
     ctx->m_conn = reinterpret_cast<css_conn_entry *> (new int { m_eventfd });
     if (!ctx->m_conn)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker: failed to allocate memory\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to allocate memory\n");
 	assert_release (false);
       }
     if (!m_events.add_descriptor (m_eventfd, EPOLLET | EPOLLIN, ctx))
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker: add_descriptor failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker: add_descriptor failed\n");
 	delete ctx->m_conn;
 	assert_release (false);
       }
@@ -134,7 +135,7 @@ namespace cubconn
     m_queue[static_cast<std::size_t> (type)].push (std::move (item));
     m_queue_size[static_cast<std::size_t> (type)].fetch_add (1, std::memory_order_release);
 
-    _er_log_debug (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d, queue_type = %d\n", item.type,
+    er_log_conn (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d, queue_type = %d\n", item.type,
 		   m_index, type);
   }
 
@@ -170,7 +171,7 @@ namespace cubconn
 	return false;
       }
 
-    _er_log_debug (__FILE__, __LINE__, "requested to wake up the worker index = %d\n", m_index);
+    er_log_conn (__FILE__, __LINE__, "requested to wake up the worker index = %d\n", m_index);
     return true;
   }
 
@@ -212,7 +213,7 @@ namespace cubconn
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
     if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
 	return false;
       }
 
@@ -228,7 +229,7 @@ namespace cubconn
 
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
 	return false;
       }
 
@@ -249,7 +250,7 @@ namespace cubconn
     /* check again. handle the entries in the message queue as there may be a queued request to release the memory in ctx */
     if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
 	return false;
       }
 
@@ -271,7 +272,7 @@ namespace cubconn
 
     if (m_context.erase (ctx) == 0)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
 	return false;
       }
     delete ctx;
@@ -281,7 +282,7 @@ namespace cubconn
     return true;
 
 retry:
-    _er_log_debug (ARG_FILE_LINE,
+    er_log_conn (ARG_FILE_LINE,
 		   "connection_worker->handle_connection_error: send buffer not empty, retry shutdown (conn %p)", ctx->m_conn);
 
     request.type = message_type::SHUTDOWN_CLIENT;
@@ -350,13 +351,13 @@ retry:
 	    item.deleter ();
 	  }
 
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
 		       static_cast<void *> (item.conn));
 	return true;
       }
 
-    _er_log_debug (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
+    er_log_conn (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     for (auto &packet : item.packet)
       {
@@ -381,7 +382,7 @@ retry:
     if (status == result::Ok)
       {
 	ctx->m_send.m_transmitter.clear ();
-	_er_log_debug (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
+	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
 
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
@@ -395,7 +396,7 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
 	return false;
       }
 
@@ -422,7 +423,7 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
 		       static_cast<void *> (item.conn));
 	return true;
@@ -431,7 +432,7 @@ retry:
     for (cubbase::span<std::byte> &packet : item.packet)
       {
 	ctx->m_recv.m_receiver.release (packet.data ());
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
       }
 
@@ -448,7 +449,7 @@ retry:
     ctx = new context (32 * 1024, &m_stats);
     if (!ctx)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: failed to allocate memory\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: failed to allocate memory\n");
 	return false;
       }
     ctx->m_conn = item.conn;
@@ -460,7 +461,7 @@ retry:
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
 	delete ctx;
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: add_descriptor failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
     if (!m_context.insert (ctx).second)
@@ -469,11 +470,11 @@ retry:
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
 	delete ctx;
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
 	return false;
       }
-    _er_log_debug (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
+    er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
     return true;
   }
 
@@ -493,7 +494,7 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
 		       static_cast<void *> (item.conn));
 	return true;
@@ -516,7 +517,7 @@ retry:
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
     while (i++ < size && m_queue[static_cast<std::size_t> (type)].try_pop (request))
       {
-	_er_log_debug (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
+	er_log_conn (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
 		       m_index);
 
 	switch (request.type)
@@ -559,7 +560,7 @@ retry:
 	    break;
 
 	  default:
-	    _er_log_debug (__FILE__, __LINE__,
+	    er_log_conn (__FILE__, __LINE__,
 			   "master_connector->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
 	    assert_release (false);
 	    break;
@@ -605,7 +606,7 @@ retry:
     size = ntohl (header->buffer_size);
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
 	return result::Skewed;
       }
@@ -647,7 +648,7 @@ retry:
     size = ntohl (header->buffer_size);
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
 	return result::Skewed;
       }
@@ -782,7 +783,7 @@ retry:
 	/* in this case, we must reset the context and drain all data */
 	/* from the socket to recover this state machine and handle   */
 	/* the next request properly.				      */
-	_er_log_debug (__FILE__, __LINE__,
+	er_log_conn (__FILE__, __LINE__,
 		       "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
 	return result::Skewed;
       }
@@ -837,7 +838,7 @@ retry:
 	break;
 
       default:
-	_er_log_debug (ARG_FILE_LINE,
+	er_log_conn (ARG_FILE_LINE,
 		       "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
 	status = result::Skewed;
 	break;
@@ -866,7 +867,7 @@ retry:
 
       default:
 	status = result::Error;
-	_er_log_debug (ARG_FILE_LINE, "connection_worker->handle_packet: unknown state\n");
+	er_log_conn (ARG_FILE_LINE, "connection_worker->handle_packet: unknown state\n");
 	assert_release (false);
 	break;
       }
@@ -890,7 +891,7 @@ retry:
     status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
 	handle_connection_error (ctx);
 	return status;
       }
@@ -929,7 +930,7 @@ retry:
 	  }
 	else if (status == result::ClosedConnection)
 	  {
-	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
 	    mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 	    if (mtx != NO_ERROR)
 	      {
@@ -959,7 +960,7 @@ retry:
     status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->handle_transmission: status = %d\n", status);
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: status = %d\n", status);
 	handle_connection_error (ctx);
 	return status;
       }
@@ -972,19 +973,19 @@ retry:
 	  {
 	    /* this transmission is the last handling on this connection */
 	    handle_connection_error (ctx);
-	    _er_log_debug (__FILE__, __LINE__,
+	    er_log_conn (__FILE__, __LINE__,
 			   "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
 	    return result::ClosedConnection;
 	  }
 
 	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
 	  {
-	    _er_log_debug (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
 	    handle_connection_error (ctx);
 	    return result::Error;
 	  }
 	ctx->m_send.m_transmitter.clear ();
-	_er_log_debug (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
+	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
       }
     return status;
   }
@@ -998,7 +999,7 @@ retry:
     m_entry = cubthread::get_manager ()->claim_entry ();
     if (m_entry == nullptr)
       {
-	_er_log_debug (__FILE__, __LINE__, "connection_worker->initialize: claim_entry failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->initialize: claim_entry failed\n");
 	assert_release (false);
       }
     m_entry->register_id ();
@@ -1018,7 +1019,7 @@ retry:
       {
 	if (!m_events.remove_descriptor (ctx->m_conn->fd))
 	  {
-	    _er_log_debug (__FILE__, __LINE__, "connection_worker->finalize: remove_descriptor failed\n");
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->finalize: remove_descriptor failed\n");
 	    assert_release (false);
 	  }
 
@@ -1067,7 +1068,7 @@ retry:
 	      {
 		continue;
 	      }
-	    _er_log_debug (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
+	    er_log_conn (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
 	  }
 
@@ -1086,18 +1087,18 @@ retry:
 		    length = sizeof (error);
 		    if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0)
 		      {
-			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd,
+			er_log_conn (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd,
 				       strerror (error));
 		      }
 		    else
 		      {
-			_er_log_debug (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
+			er_log_conn (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
 				       ctx->m_conn->fd);
 		      }
 		  }
 		else
 		  {
-		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.",
+		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.",
 				   ctx->m_conn->fd);
 		  }
 		handle_connection_error (ctx);
@@ -1117,7 +1118,7 @@ retry:
 		  }
 		if (status == result::Error)
 		  {
-		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_reception failed");
+		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_reception failed");
 		    return false;
 		  }
 	      }
@@ -1130,7 +1131,7 @@ retry:
 		  }
 		if (status == result::Error)
 		  {
-		    _er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_transmission failed");
+		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_transmission failed");
 		    return false;
 		  }
 	      }
@@ -1141,7 +1142,7 @@ retry:
 	  {
 	    if (!this->handle_message_queue ())
 	      {
-		_er_log_debug (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
+		er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
 		return false;
 	      }
 	    notified = false;

@@ -20,6 +20,7 @@
  * receiver.cpp
  */
 
+#include "system_parameter.h"
 #include "connection_defs.h"
 #include "receiver.hpp"
 #include "error_manager.h"
@@ -34,13 +35,14 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#ifdef _er_log_debug
-#undef _er_log_debug
+#if 1
+#define er_log_conn(...) er_log_debug (__VA_ARGS__)
+#else
+#define er_log_conn(...)
 #endif
-#define _er_log_debug(x, ...) do { } while (0)
 
 #define NEXT_STATE(x) do { \
-    _er_log_debug (__FILE__, __LINE__, "receiver (%p) state %d -> state = %d\n", this, m_state, state::x); \
+    er_log_conn (__FILE__, __LINE__, "receiver (%p) state %d -> state = %d\n", this, m_state, state::x); \
     (m_state = state::x); \
 } while (0)
 
@@ -62,8 +64,8 @@ namespace cubconn
 #if !defined (NDEBUG)
     if (m_allocated.size () > 0)
       {
-	_er_log_debug (ARG_FILE_LINE, "receiver: found unreleased memory first = %p\n", m_allocated[0]);
-	//assert (false);
+	er_log_conn (ARG_FILE_LINE, "receiver: found unreleased memory first = %p\n", m_allocated[0]);
+	assert (false);
       }
 #endif
   }
@@ -125,8 +127,8 @@ namespace cubconn
 
     while (m_received >= SIZE_HEADER + m_size)
       {
-	_er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: m_bufptr = %p, m_received = %d, m_size = %d, after parse = %d\n",
-		       m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_received, m_size, m_received - SIZE_HEADER - m_size);
+	er_log_conn (ARG_FILE_LINE, "receiver->parse_packet: m_bufptr = %p, m_received = %d, m_size = %d, after parse = %d\n",
+		     m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_received, m_size, m_received - SIZE_HEADER - m_size);
 
 	assert ((reinterpret_cast<uintptr_t> (m_bufptr) & 7) == 0);
 
@@ -136,8 +138,8 @@ namespace cubconn
 
 	*reinterpret_cast<int *> (m_bufptr + SIZE_HEADER) = padding;
 
-	_er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: packet size = %d, padding = %d, push size = %d.\n", m_size,
-		       SIZE_HEADER_PADDING + padding, m_size - SIZE_HEADER_PADDING - padding);
+	er_log_conn (ARG_FILE_LINE, "receiver->parse_packet: packet size = %d, padding = %d, push size = %d.\n", m_size,
+		     SIZE_HEADER_PADDING + padding, m_size - SIZE_HEADER_PADDING - padding);
 
 	m_result.emplace_back (m_bufptr + SIZE_HEADER + SIZE_HEADER_PADDING, m_size - SIZE_HEADER_PADDING - padding);
 	m_received -= SIZE_HEADER + m_size;
@@ -159,7 +161,7 @@ namespace cubconn
 	std::memcpy (&aligned, m_bufptr, sizeof (std::uint32_t));
 	m_size = ntohl (aligned);
       }
-    _er_log_debug (ARG_FILE_LINE, "receiver->parse_packet: remains = %d.\n", m_received);
+    er_log_conn (ARG_FILE_LINE, "receiver->parse_packet: remains = %d.\n", m_received);
   }
 
   result receiver::parse_size_in_tmpsize ()
@@ -172,7 +174,7 @@ namespace cubconn
     m_size = ntohl (m_tmpsize);
     if (m_size == 0)
       {
-	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size_in_tmpsize: zero-length frame: peer sent a size of 0.\n");
+	er_log_conn (ARG_FILE_LINE, "receiver->parse_size_in_tmpsize: zero-length frame: peer sent a size of 0.\n");
 	assert_release (false);
       }
 
@@ -182,9 +184,9 @@ namespace cubconn
 	return result::Error;
       }
     m_stats->add (stats::MEM_ALLOCATE, 1);
-    _er_log_debug (ARG_FILE_LINE,
-		   "receiver->parse_size_in_tmpsize: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
-		   m_bufsize, m_size);
+    er_log_conn (ARG_FILE_LINE,
+		 "receiver->parse_size_in_tmpsize: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
+		 m_bufsize, m_size);
 
     assert (m_received == SIZE_HEADER);
     std::memcpy (ptr, &m_tmpsize, m_received);
@@ -209,7 +211,7 @@ namespace cubconn
     m_size = ntohl (aligned);
     if (m_size == 0)
       {
-	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size: zero-length frame: peer sent a size of 0.\n");
+	er_log_conn (ARG_FILE_LINE, "receiver->parse_size: zero-length frame: peer sent a size of 0.\n");
 	assert_release (false);
       }
 
@@ -250,8 +252,8 @@ namespace cubconn
 	    return result::Error;
 	  }
 	m_stats->add (stats::MEM_ALLOCATE, 1);
-	_er_log_debug (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
-		       m_bufsize, m_size);
+	er_log_conn (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
+		     m_bufsize, m_size);
 	std::memcpy (ptr, m_bufptr, m_received);
 
 	m_allocated.push_back (ptr);
@@ -284,9 +286,9 @@ namespace cubconn
 	m_received += bytes;
 
 	m_stats->add (stats::NET_RECV, bytes);
-	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n",
-		       (int) m_state,
-		       (int) bytes, (int) m_received);
+	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n",
+		     (int) m_state,
+		     (int) bytes, (int) m_received);
 
 	if (m_received < SIZE_HEADER + m_size)
 	  {
@@ -326,9 +328,9 @@ namespace cubconn
 	m_received += bytes;
 
 	m_stats->add (stats::NET_RECV, bytes);
-	_er_log_debug (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n",
-		       (int) m_state,
-		       (int) bytes, (int) m_received);
+	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n",
+		     (int) m_state,
+		     (int) bytes, (int) m_received);
 
 	if (m_received < SIZE_HEADER)
 	  {
@@ -345,7 +347,7 @@ namespace cubconn
   {
     ssize_t bytes;
 
-    _er_log_debug (__FILE__, __LINE__, "receiver (%p) drain from fd = %d\n", this, fd);
+    er_log_conn (__FILE__, __LINE__, "receiver (%p) drain from fd = %d\n", this, fd);
     \
     /* receive data from socket */
     assert (m_bufsize - m_received > 0);
@@ -355,8 +357,8 @@ namespace cubconn
 	m_received += bytes;
 
 	m_stats->add (stats::NET_RECV, bytes);
-	_er_log_debug (ARG_FILE_LINE, "receiver->receive: state = %d, received = %d, accumulated = %d\n", (int) m_state,
-		       (int) bytes, (int) m_received);
+	er_log_conn (ARG_FILE_LINE, "receiver->receive: state = %d, received = %d, accumulated = %d\n", (int) m_state,
+		     (int) bytes, (int) m_received);
 	if (m_received < SIZE_HEADER)
 	  {
 	    return result::Partial;
@@ -400,7 +402,7 @@ namespace cubconn
 
 	  default:
 	    status = result::Error;
-	    _er_log_debug (ARG_FILE_LINE, "receiver->drain: unknown state\n");
+	    er_log_conn (ARG_FILE_LINE, "receiver->drain: unknown state\n");
 	    assert_release (false);
 	    break;
 	  }
@@ -419,7 +421,7 @@ namespace cubconn
 	    return status;
 
 	  default:
-	    _er_log_debug (ARG_FILE_LINE, "receiver->drain: unknown state\n");
+	    er_log_conn (ARG_FILE_LINE, "receiver->drain: unknown state\n");
 	    assert_release (false);
 	    break;
 	  }
@@ -447,8 +449,8 @@ namespace cubconn
 	auto it = std::find (m_allocated.begin (), m_allocated.end (), ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
 	if (it == m_allocated.end ())
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "receiver: memory = %p does not belong to this receiver\n",
-			   ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
+	    er_log_conn (ARG_FILE_LINE, "receiver: memory = %p does not belong to this receiver\n",
+			 ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
 	    assert_release (false);
 	    return;
 	  }
