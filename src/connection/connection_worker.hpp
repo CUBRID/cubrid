@@ -98,6 +98,8 @@ namespace cubconn
       struct context
       {
 	css_conn_entry *m_conn;
+	/* ERR/HUP */
+	bool m_closed;
 
 	/* --------------------------------------------------------------------------- */
 	/* reception								       */
