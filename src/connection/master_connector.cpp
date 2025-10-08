@@ -783,14 +783,16 @@ namespace cubconn
     _er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: unpack new socket: %d\n", new_fd);
     if (IS_INVALID_SOCKET (new_fd))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: css_open_new_socket_from_master failed");
+	er_log_debug (__FILE__, __LINE__,
+		      "master_connector->request_new_client: failed to receive client socket from master. \
+		      this usually indicates the master process cannot accept new connections. \
+		      check master process logs and system fd limits (ulimit -n, /proc/sys/fs/file-max)");
 	return result::Reset;
       }
 
     if (!this->opt_socket (new_fd) || !this->make_nonblocking (new_fd))
       {
-	_er_log_debug (__FILE__, __LINE__, "master_connector->connect: request_new_client failed - error: %s",
-		       strerror (errno));
+	_er_log_debug (__FILE__, __LINE__, "master_connector->request_new_client: %s", strerror (errno));
 	::close (new_fd);
 	return result::Error;
       }

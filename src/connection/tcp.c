@@ -844,6 +844,17 @@ css_master_accept (SOCKET sockfd)
 	    }
 
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_ACCEPT_ERROR, 0);
+	  if (errno == EMFILE)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "failed to accept connection: too many open files in this process (EMFILE). current process fd limit may be insufficient.");
+	    }
+	  else if (errno == ENFILE)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "failed to accept connection: system-wide file descriptor limit reached (ENFILE).");
+	    }
+
 	  return INVALID_SOCKET;
 	}
 
