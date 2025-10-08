@@ -168,6 +168,7 @@ namespace cubconn
       /* requests currently in the queue. this is essential to prevent	*/
       /* starvation.							*/
       std::atomic<uint64_t> m_queue_size[static_cast<std::size_t> (queue_type::TYPE_COUNT)];
+      bool m_notified;
 
       /* stats */
       connection_stats m_stats;

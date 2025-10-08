@@ -214,6 +214,8 @@ namespace cubconn
 
     if (ctx->m_conn->has_pending_request ())
       {
+	er_log_conn (ARG_FILE_LINE,
+		     "connection_worker->handle_connection_error: retry shutdown (conn %p): has pending request\n", ctx->m_conn);
 	goto retry;
       }
 
@@ -226,6 +228,8 @@ namespace cubconn
 
     if (!ctx->m_send.m_transmitter.empty ())
       {
+	er_log_conn (ARG_FILE_LINE,
+		     "connection_worker->handle_connection_error: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
 	goto retry;
       }
 
@@ -253,13 +257,6 @@ namespace cubconn
 
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_WAIT_WORKER, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
-
-    /* check again. handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
-	return false;
-      }
 
     /* this context has no remaining processing */
 
@@ -289,15 +286,13 @@ namespace cubconn
     return true;
 
 retry:
-    er_log_conn (ARG_FILE_LINE,
-		 "connection_worker->handle_connection_error: send buffer not empty, retry shutdown (conn %p)", ctx->m_conn);
-
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
 
     /* this request must be handled as razily */
     this->enqueue (queue_type::LAZY, std::move (request));
-    this->notify ();
+    /* rezily notified */
+    m_notified = true;
 
     return true;
   }
@@ -381,7 +376,9 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
-	/* this connection will be handled by other loop */
+	ctx->m_send.m_transmitter.clear ();
+
+	/* this connection will be removed by main loop */
 	return true;
       }
 
@@ -900,6 +897,7 @@ retry:
     if (status == result::PeerReset || status == result::Error)
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
+	ctx->m_send.m_transmitter.empty ();
 	handle_connection_error (ctx);
 	return status;
       }
@@ -969,6 +967,7 @@ retry:
     if (status == result::PeerReset || status == result::Error)
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: status = %d\n", status);
+	ctx->m_send.m_transmitter.clear ();
 	handle_connection_error (ctx);
 	return status;
       }
@@ -989,6 +988,7 @@ retry:
 	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
+	    ctx->m_send.m_transmitter.clear ();
 	    handle_connection_error (ctx);
 	    return result::Error;
 	  }
@@ -1064,12 +1064,11 @@ retry:
     int nfds, i;
     int error;
     socklen_t length;
-    bool notified;
 
-    notified = false;
+    m_notified = false;
     while (!m_stop)
       {
-	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
+	nfds = m_events.wait (events.data (), events.size (), 5 * 1000 /* timeout for retry */);
 	if (nfds < 0)
 	  {
 	    if (errno == EINTR)
@@ -1079,8 +1078,6 @@ retry:
 	    er_log_conn (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
 	  }
-
-	assert (nfds > 0);
 
 	for (i = 0; i < nfds; i++)
 	  {
@@ -1109,6 +1106,7 @@ retry:
 		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.",
 				 ctx->m_conn->fd);
 		  }
+		ctx->m_send.m_transmitter.clear ();
 		handle_connection_error (ctx);
 		continue;
 	      }
@@ -1116,7 +1114,7 @@ retry:
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
-		    notified = true;
+		    m_notified = true;
 		    continue;
 		  }
 		status = this->handle_reception (ctx);
@@ -1146,14 +1144,14 @@ retry:
 	  }
 
 	/* lazy handling */
-	if (notified)
+	if (m_notified)
 	  {
 	    if (!this->handle_message_queue ())
 	      {
 		er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
 		return false;
 	      }
-	    notified = false;
+	    m_notified = false;
 	  }
       }
 
