@@ -20,6 +20,7 @@
  * hardware_topology.cpp
  */
 
+#include "error_manager.h"
 #include "ifsys.hpp"
 #include "hardware_topology.hpp"
 
@@ -59,20 +60,6 @@ namespace cubbase
 
   void hardware_topology::pin_core (int core)
   {
-    fprintf (stderr, "[DEBUG] Attempting to pin thread %lu to core %d.\n", (unsigned long)pthread_self(), core);
-
-    unsigned int num_cores = std::thread::hardware_concurrency();
-    fprintf (stderr, "[DEBUG] System has %u available cores (reported by C++ std::thread).\n", num_cores);
-
-    long num_cores_posix = sysconf (_SC_NPROCESSORS_ONLN);
-    fprintf (stderr, "[DEBUG] System has %ld available cores (reported by POSIX sysconf).\n", num_cores_posix);
-
-    if (core < 0 || core >= num_cores_posix)
-      {
-	fprintf (stderr, "[ERROR] Invalid core id %d. It should be between 0 and %ld.\n", core, num_cores_posix - 1);
-	return;
-      }
-
     cpu_set_t set;
     int fail;
 
@@ -81,9 +68,8 @@ namespace cubbase
     fail = pthread_setaffinity_np (pthread_self (), sizeof (set), &set);
     if (fail)
       {
-	fprintf (stderr, "[ERROR] pthread_setaffinity_np failed for core %d. Error code: %d\n", core, fail);
 	errno = fail;
-	perror ("pthread_setaffinity_np");
+	_er_log_debug (__FILE__, __LINE__, "pthread_setaffinity_np failed for core %d: %s\n", core, strerror (errno));
       }
   }
 
@@ -104,14 +90,14 @@ namespace cubbase
     ifname = cubbase::ifsys::auto_select_primary_iface ();
     if (ifname.empty ())
       {
-	fprintf (stderr, "warning: no interfaces available for selection. (virtual environment)\n");
+	_er_log_debug (__FILE__, __LINE__, "warning: no interfaces available for selection. (virtual environment)\n");
 	return ;
       }
 
     /* channel */
     if (!this->set_nic_channels (ifname, m_selected.size ()))
       {
-	fprintf (stderr, "warning: NIC channel configuration failed. (driver may limit)\n");
+	_er_log_debug (__FILE__, __LINE__, "warning: NIC channel configuration failed. (driver may limit)\n");
       }
     /* wait until applied */
     usleep (1000 * 1000);
@@ -126,7 +112,7 @@ namespace cubbase
       }
     else
       {
-	fprintf (stderr, "warning: no IRQ lines found for %s in /proc/interrupts.\n", ifname.c_str ());
+	_er_log_debug (__FILE__, __LINE__, "warning: no IRQ lines found for %s in /proc/interrupts.\n", ifname.c_str ());
       }
     free (qs.v);
 
