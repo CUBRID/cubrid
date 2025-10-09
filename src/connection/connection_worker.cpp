@@ -58,6 +58,7 @@ namespace cubconn
   connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
     m_conn (nullptr),
     m_ignore (ignore_level::DONT_IGNORE),
+    m_retry (0),
     m_recv
   {
     .m_state = state::HEADER,
@@ -275,11 +276,20 @@ namespace cubconn
 
     assert_release (ctx->m_conn);
 
+    /* tran_index was not granted because something was wrong, but */
+    /* it still has the resource and needs to be freed. */
+
+    if (ctx->m_retry > 20)
+      {
+	goto clear;
+      }
+
     /* get tran index and client id */
 
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
+	ctx->m_retry++;
 	goto retry;
       }
 
@@ -325,8 +335,7 @@ namespace cubconn
 
     this->end_connection_close ();
 
-    /* clear */
-
+clear:
     ctx->m_send.m_transmitter.clear ();
 
     start = std::chrono::steady_clock::now ();
@@ -1105,7 +1114,9 @@ retry:
 
   void connection_worker::finalize ()
   {
-    for (auto &ctx : m_context)
+    std::vector<context *> contexts (m_context.begin (), m_context.end ());
+
+    for (auto &ctx : contexts)
       {
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 	this->handle_connection_close (ctx);

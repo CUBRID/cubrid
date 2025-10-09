@@ -1030,7 +1030,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 		    "css_connection_handler_thread: status %d conn { status %d transaction_id %d "
 		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->get_tran_index (),
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
-      rv = pthread_mutex_lock (&thread_p->tran_index_lock);
+      //rv = pthread_mutex_lock (&thread_p->tran_index_lock);
       //(*css_Connection_error_handler) (thread_p, conn);
     }
   else
