@@ -1026,6 +1026,7 @@ retry:
     m_entry->register_id ();
     m_entry->index = m_index;
     m_entry->type = TT_SERVER;
+    m_entry->tran_index = -1;
     m_entry->m_status = cubthread::entry::status::TS_RUN;
     m_entry->shutdown = false;
 
