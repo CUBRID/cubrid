@@ -67,7 +67,6 @@ namespace cubconn
       enum class ignore_level : uint8_t
       {
 	DONT_IGNORE = 0,
-	IGNORE_PENDING,
 	IGNORE_ALL
       };
 
