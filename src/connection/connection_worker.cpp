@@ -209,13 +209,6 @@ namespace cubconn
 
   bool connection_worker::has_remaining_tasks (context *ctx)
   {
-    if (ctx->m_ignore < ignore_level::IGNORE_PENDING && ctx->m_conn->has_pending_request ())
-      {
-	er_log_conn (ARG_FILE_LINE,
-		     "connection_worker->handle_connection_close: retry shutdown (conn %p): has pending request\n", ctx->m_conn);
-	return true;
-      }
-
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
     this->handle_message_queue_by_index (queue_type::IMMEDIATE);
 
@@ -250,6 +243,7 @@ namespace cubconn
 	return { -1, -1 };
       }
     client_id = conn->client_id;
+    m_entry->conn_entry = ctx->m_conn;
     css_set_thread_info (m_entry, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
 
     pthread_mutex_unlock (&m_entry->tran_index_lock);
@@ -262,6 +256,7 @@ namespace cubconn
     pthread_mutex_lock (&m_entry->tran_index_lock);
 
     css_set_thread_info (m_entry, -1, 0, -1, -1);
+    m_entry->conn_entry = NULL;
     m_entry->m_status = cubthread::entry::status::TS_RUN;
 
     pthread_mutex_unlock (&m_entry->tran_index_lock);
@@ -276,20 +271,19 @@ namespace cubconn
 
     assert_release (ctx->m_conn);
 
-    /* tran_index was not granted because something was wrong, but */
-    /* it still has the resource and needs to be freed. */
-
-    if (ctx->m_retry > 20)
-      {
-	goto clear;
-      }
-
     /* get tran index and client id */
 
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
 	ctx->m_retry++;
+
+	/* tran_index was not granted because something was wrong, but */
+	/* it still has the resource and needs to be freed. */
+	if (ctx->m_retry > 20)
+	  {
+	    goto clear;
+	  }
 	goto retry;
       }
 
@@ -328,6 +322,7 @@ namespace cubconn
 		   ctx->m_conn->status, ctx->m_conn->get_tran_index (), ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
 
+clear:
     /* remove and close */
 
     m_events.remove_descriptor (ctx->m_conn->fd);
@@ -335,7 +330,8 @@ namespace cubconn
 
     this->end_connection_close ();
 
-clear:
+    /* clear resource */
+
     ctx->m_send.m_transmitter.clear ();
 
     start = std::chrono::steady_clock::now ();
