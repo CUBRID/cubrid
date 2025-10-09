@@ -25,7 +25,6 @@
 
 #include "connection_defs.h"
 #include "connection_stats.hpp"
-#include "server_support.h"
 #include "receiver.hpp"
 #include "transmitter.hpp"
 #include "epoll.hpp"
@@ -65,6 +64,13 @@ namespace cubconn
 	SHUTDOWN
       };
 
+      enum class ignore_level : uint8_t
+      {
+	DONT_IGNORE = 0,
+	IGNORE_PENDING,
+	IGNORE_ALL
+      };
+
       struct message
       {
 	public:
@@ -85,6 +91,8 @@ namespace cubconn
 	  std::vector<cubbase::span<std::byte>> packet;
 	  /* send packet */
 	  std::function<void ()> deleter;
+	  /* shutdown client */
+	  ignore_level ignore;
       };
 
     private:
@@ -98,8 +106,9 @@ namespace cubconn
       struct context
       {
 	css_conn_entry *m_conn;
-	/* ERR/HUP */
-	bool m_closed;
+
+	/* ignore guards (ERR/HUP) */
+	ignore_level m_ignore;
 
 	/* --------------------------------------------------------------------------- */
 	/* reception								       */
