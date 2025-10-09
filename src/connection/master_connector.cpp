@@ -1220,7 +1220,9 @@ namespace cubconn
 	    return true;
 	  }
 	/* WAIT RESPONSE or ESTABLISHED */
-	return this->reestablish_with_master ();
+	this->reestablish_with_master ();
+
+	return true;
       }
 
     return this->dispose_connection (ctx);
