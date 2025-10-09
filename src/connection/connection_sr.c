@@ -1398,7 +1398,9 @@ css_shutdown_conn_by_tran_index (int tran_index)
 		{
 		  conn->status = CONN_CLOSING;
 
-		  css_request_shutdown_conn (conn);
+		  css_request_shutdown_conn (conn,
+					     static_cast < uint8_t >
+					     (cubconn::connection_worker::ignore_level::IGNORE_PENDING));
 		}
 	      break;
 	    }
@@ -3128,7 +3130,7 @@ css_get_argv (void)
 }
 
 void
-css_request_shutdown_conn (css_conn_entry * conn)
+css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore)
 {
   cubconn::connection_worker::message request;
   int r;
@@ -3137,6 +3139,7 @@ css_request_shutdown_conn (css_conn_entry * conn)
 
   request.type = cubconn::connection_worker::message_type::SHUTDOWN_CLIENT;
   request.conn = conn;
+  request.ignore = static_cast < cubconn::connection_worker::ignore_level > (ignore);
 
   /* lock to access worker and context */
   r = rmutex_lock (NULL, &conn->cmutex);

@@ -23,6 +23,7 @@
 #include "hardware_topology.hpp"
 #include "network.h"
 #include "network_interface_sr.h"
+#include "server_support.h"
 #include "connection_sr.h"
 #include "connection_defs.h"
 #include "connection_worker.hpp"
@@ -56,7 +57,7 @@ namespace cubconn
 {
   connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
     m_conn (nullptr),
-    m_closed (false),
+    m_ignore (ignore_level::DONT_IGNORE),
     m_recv
   {
     .m_state = state::HEADER,
@@ -214,7 +215,7 @@ namespace cubconn
 
     assert_release (ctx->m_conn);
 
-    if (!ctx->m_closed && ctx->m_conn->has_pending_request ())
+    if (ctx->m_ignore < ignore_level::IGNORE_PENDING && ctx->m_conn->has_pending_request ())
       {
 	er_log_conn (ARG_FILE_LINE,
 		     "connection_worker->handle_connection_error: retry shutdown (conn %p): has pending request\n", ctx->m_conn);
@@ -228,7 +229,7 @@ namespace cubconn
 	return false;
       }
 
-    if (!ctx->m_closed && !ctx->m_send.m_transmitter.empty ())
+    if (ctx->m_ignore < ignore_level::IGNORE_ALL && !ctx->m_send.m_transmitter.empty ())
       {
 	er_log_conn (ARG_FILE_LINE,
 		     "connection_worker->handle_connection_error: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
@@ -290,6 +291,7 @@ namespace cubconn
 retry:
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
+    request.ignore = ctx->m_ignore;
 
     /* this request must be handled as razily */
     this->enqueue (queue_type::LAZY, std::move (request));
@@ -379,7 +381,7 @@ retry:
 	assert (r == NO_ERROR);
 
 	/* ctx will be forcibly removed */
-	ctx->m_closed = true;
+	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
 	/* this connection will be removed by main loop */
 	return true;
@@ -507,6 +509,8 @@ retry:
 		     static_cast<void *> (item.conn));
 	return true;
       }
+
+    ctx->m_ignore = item.ignore;
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
@@ -972,7 +976,7 @@ retry:
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: status = %d\n", status);
 
 	/* ctx will be forcibly removed */
-	ctx->m_closed = true;
+	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
 	handle_connection_error (ctx);
 	return status;
@@ -996,7 +1000,7 @@ retry:
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
 
 	    /* ctx will be forcibly removed */
-	    ctx->m_closed = true;
+	    ctx->m_ignore = ignore_level::IGNORE_ALL;
 
 	    handle_connection_error (ctx);
 	    return result::Error;
@@ -1117,7 +1121,7 @@ retry:
 		  }
 
 		/* ctx will be forcibly removed */
-		ctx->m_closed = true;
+		ctx->m_ignore = ignore_level::IGNORE_ALL;
 
 		handle_connection_error (ctx);
 		continue;
