@@ -1023,15 +1023,12 @@ net_server_active_workers (THREAD_ENTRY * thread_p, void *arg, int tran_index, i
 int
 net_server_conn_down (THREAD_ENTRY * thread_p, int tran_index)
 {
-  assert (thread_p);
+  assert (thread_p && tran_index != NULL_TRAN_INDEX);
 
   logtb_set_tran_index_interrupt (thread_p, tran_index, false);
 
-  if (tran_index != NULL_TRAN_INDEX)
-    {
-      (void) xboot_unregister_client (thread_p, tran_index);
-      session_remove_query_entry_all (thread_p);
-    }
+  (void) xboot_unregister_client (thread_p, tran_index);
+  session_remove_query_entry_all (thread_p);
 
   return NO_ERROR;
 }
