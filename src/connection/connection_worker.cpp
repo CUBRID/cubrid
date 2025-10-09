@@ -206,62 +206,128 @@ namespace cubconn
     css_push_server_task (*ctx->m_conn);
   }
 
-  bool connection_worker::handle_connection_error (context *ctx)
+  bool connection_worker::has_remaining_tasks (context *ctx)
   {
-    /* TODO: this function makes this thread blocked. epoll threads must not be blocked */
-    std::chrono::time_point<std::chrono::steady_clock> start, end;
-    message request;
-    int r;
-
-    assert_release (ctx->m_conn);
-
     if (ctx->m_ignore < ignore_level::IGNORE_PENDING && ctx->m_conn->has_pending_request ())
       {
 	er_log_conn (ARG_FILE_LINE,
-		     "connection_worker->handle_connection_error: retry shutdown (conn %p): has pending request\n", ctx->m_conn);
-	goto retry;
+		     "connection_worker->handle_connection_close: retry shutdown (conn %p): has pending request\n", ctx->m_conn);
+	return true;
       }
 
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    if (!this->handle_message_queue_by_index (queue_type::IMMEDIATE))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: handle_message_queue failed");
-	return false;
-      }
+    this->handle_message_queue_by_index (queue_type::IMMEDIATE);
 
     if (ctx->m_ignore < ignore_level::IGNORE_ALL && !ctx->m_send.m_transmitter.empty ())
       {
 	er_log_conn (ARG_FILE_LINE,
-		     "connection_worker->handle_connection_error: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
+		     "connection_worker->handle_connection_close: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
+	return true;
+      }
+
+    return false;
+  }
+
+  std::pair<int, int> connection_worker::start_connection_close (context *ctx)
+  {
+    css_conn_entry *conn;
+    int tran_index, client_id;
+
+    /* the thread_p is only accessible from this connection thread (myself), but  */
+    /* the entry may be accessed through unknown path because it is in the thread */
+    /* manager's entry list. */
+    pthread_mutex_lock (&m_entry->tran_index_lock);
+
+    conn = ctx->m_conn;
+    tran_index = conn->get_tran_index ();
+    if (tran_index == NULL_TRAN_INDEX)
+      {
+	pthread_mutex_unlock (&m_entry->tran_index_lock);
+
+	/* the connected client does not yet finished boot_client_register */
+	/* retry */
+	return { -1, -1 };
+      }
+    client_id = conn->client_id;
+    css_set_thread_info (m_entry, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
+
+    pthread_mutex_unlock (&m_entry->tran_index_lock);
+
+    return { tran_index, client_id };
+  }
+
+  void connection_worker::end_connection_close ()
+  {
+    pthread_mutex_lock (&m_entry->tran_index_lock);
+
+    css_set_thread_info (m_entry, -1, 0, -1, -1);
+    m_entry->m_status = cubthread::entry::status::TS_RUN;
+
+    pthread_mutex_unlock (&m_entry->tran_index_lock);
+  }
+
+  bool connection_worker::handle_connection_close (context *ctx)
+  {
+    std::chrono::time_point<std::chrono::steady_clock> start, end;
+    message request;
+    int tran_index, client_id;
+    int r;
+
+    assert_release (ctx->m_conn);
+
+    /* get tran index and client id */
+
+    std::tie (tran_index, client_id) = this->start_connection_close (ctx);
+    if (tran_index < 0 && client_id < 0)
+      {
 	goto retry;
       }
 
+    /* stop the sessions associated with conn */
+
+    css_end_server_request (ctx->m_conn);
+    /* avoid infinite waiting with xtran_wait_server_active_trans() */
+    m_entry->m_status = cubthread::entry::status::TS_CHECK;
+    if (ctx->m_conn->session_p != NULL)
+      {
+	ssession_stop_attached_threads (m_entry, ctx->m_conn->session_p);
+      }
+
+    /* interrupt and wake up */
+
+    net_server_wakeup_workers (m_entry, tran_index, client_id);
+
+    /* retry until the worker related to the connection is complete */
+
+    if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
+      {
+	goto retry;
+      }
+
+    /* check if there is any remaining task */
+
+    if (this->has_remaining_tasks (ctx))
+      {
+	goto retry;
+      }
+
+    /* this context has no remaining tasks */
+
     _er_log_debug (ARG_FILE_LINE,
-		   "handle_connection_error: conn { status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
+		   "handle_connection_close: conn { status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
 		   ctx->m_conn->status, ctx->m_conn->get_tran_index (), ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
 
-    if (!m_events.remove_descriptor (ctx->m_conn->fd))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: remove_descriptor failed\n");
-	return false;
-      }
+    /* remove and close */
+
+    m_events.remove_descriptor (ctx->m_conn->fd);
+    net_server_conn_down (m_entry, tran_index);
+
+    this->end_connection_close ();
+
+    /* clear */
 
     ctx->m_send.m_transmitter.clear ();
-
-    /* wait until the transaction related this connection is complete */
-
-    start = std::chrono::steady_clock::now ();
-
-    m_entry->conn_entry = ctx->m_conn;
-    pthread_mutex_lock (&m_entry->tran_index_lock);
-    css_Connection_error_handler (m_entry, ctx->m_conn); /* net_server_conn_down */
-    m_entry->conn_entry = NULL;
-
-    end = std::chrono::steady_clock::now ();
-    m_stats.add (stats::BLOCKED_WAIT_WORKER, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
-
-    /* this context has no remaining processing */
 
     start = std::chrono::steady_clock::now ();
 
@@ -277,9 +343,11 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
+    css_free_conn (ctx->m_conn);
+
     if (m_context.erase (ctx) == 0)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_error: context not found\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: context not found\n");
 	return false;
       }
     delete ctx;
@@ -289,6 +357,8 @@ namespace cubconn
     return true;
 
 retry:
+    this->end_connection_close ();
+
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
     request.ignore = ctx->m_ignore;
@@ -515,7 +585,7 @@ retry:
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
 
-    handle_connection_error (ctx);
+    this->handle_connection_close (ctx);
 
     return true;
   }
@@ -595,7 +665,7 @@ retry:
 
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
       {
-	if (!handle_message_queue_by_index (static_cast<queue_type> (i)))
+	if (!this->handle_message_queue_by_index (static_cast<queue_type> (i)))
 	  {
 	    return false;
 	  }
@@ -896,7 +966,7 @@ retry:
 
     if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
       {
-	handle_connection_error (ctx);
+	this->handle_connection_close (ctx);
 	return result::ClosedConnection;
       }
 
@@ -905,7 +975,7 @@ retry:
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
 	ctx->m_send.m_transmitter.empty ();
-	handle_connection_error (ctx);
+	this->handle_connection_close (ctx);
 	return status;
       }
 
@@ -949,7 +1019,7 @@ retry:
 	      {
 		return result::Error;
 	      }
-	    handle_connection_error (ctx);
+	    this->handle_connection_close (ctx);
 	    return status;
 	  }
       }
@@ -978,7 +1048,7 @@ retry:
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-	handle_connection_error (ctx);
+	this->handle_connection_close (ctx);
 	return status;
       }
 
@@ -989,7 +1059,7 @@ retry:
 	if (ctx->m_conn->status == CONN_CLOSING)
 	  {
 	    /* this transmission is the last handling on this connection */
-	    handle_connection_error (ctx);
+	    this->handle_connection_close (ctx);
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
 	    return result::ClosedConnection;
@@ -1002,7 +1072,7 @@ retry:
 	    /* ctx will be forcibly removed */
 	    ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-	    handle_connection_error (ctx);
+	    this->handle_connection_close (ctx);
 	    return result::Error;
 	  }
 	ctx->m_send.m_transmitter.clear ();
@@ -1035,34 +1105,17 @@ retry:
 
   void connection_worker::finalize ()
   {
-    int r;
-
     for (auto &ctx : m_context)
       {
-	if (!m_events.remove_descriptor (ctx->m_conn->fd))
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->finalize: remove_descriptor failed\n");
-	    assert_release (false);
-	  }
+	ctx->m_ignore = ignore_level::IGNORE_ALL;
+	this->handle_connection_close (ctx);
+      }
 
-	ctx->m_send.m_transmitter.clear ();
-
-	m_entry->conn_entry = ctx->m_conn;
-	/* net_server_conn_down */
-	pthread_mutex_lock (&m_entry->tran_index_lock);
-	css_Connection_error_handler (m_entry, ctx->m_conn);
-	m_entry->conn_entry = NULL;
-
-	r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
-	assert (r == NO_ERROR);
-
-	ctx->m_conn->worker = nullptr;
-	ctx->m_conn->context = nullptr;
-
-	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
-	assert (r == NO_ERROR);
-
-	delete ctx;
+    while (!m_context.empty ())
+      {
+	this->handle_message_queue_by_index (queue_type::LAZY);
+	/* 50 ms */
+	thread_sleep (50);
       }
     m_context.clear ();
 
@@ -1124,7 +1177,7 @@ retry:
 		/* ctx will be forcibly removed */
 		ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-		handle_connection_error (ctx);
+		this->handle_connection_close (ctx);
 		continue;
 	      }
 	    if (events[i].events & EPOLLIN)

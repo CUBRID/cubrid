@@ -1031,7 +1031,7 @@ css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
 		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->get_tran_index (),
 		    conn->db_error, conn->stop_talk, conn->stop_phase);
       rv = pthread_mutex_lock (&thread_p->tran_index_lock);
-      (*css_Connection_error_handler) (thread_p, conn);
+      //(*css_Connection_error_handler) (thread_p, conn);
     }
   else
     {
@@ -1179,11 +1179,10 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
  */
 void
 css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, unsigned int eid, int request,
-							  int size, char *buffer),
-				  CSS_THREAD_FN connection_error_function)
+							  int size, char *buffer))
 {
   css_Server_request_handler = request_handler;
-  css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ , connection_error_function);
+  css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ );
 }
 
 bool

@@ -138,9 +138,6 @@ css_error_code (*css_Connect_handler) (CSS_CONN_ENTRY *) = NULL;
 /* This will handle new requests per connection */
 CSS_THREAD_FN css_Request_handler = NULL;
 
-/* This will handle closed connection errors */
-CSS_THREAD_FN css_Connection_error_handler = NULL;
-
 static char css_Server_exec_path[PATH_MAX];
 static char **css_Server_argv;
 
@@ -1005,7 +1002,6 @@ css_print_free_conn_list (void)
  *   connect_handler(in): connection handler function pointer
  *   conn(in): connection entry
  *   request_handler(in): request handler function pointer
- *   connection_error_handler(in): error handler function pointer
  *
  * Note: This is the routine that will enroll various handler routines
  *       that the client/server interface software may use. Any of these
@@ -1029,16 +1025,10 @@ css_print_free_conn_list (void)
  *       detects an error it considers to be fatal.
  */
 void
-css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn),
-			       CSS_THREAD_FN request_handler, CSS_THREAD_FN connection_error_handler)
+css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn), CSS_THREAD_FN request_handler)
 {
   css_Connect_handler = connect_handler;
   css_Request_handler = request_handler;
-
-  if (connection_error_handler)
-    {
-      css_Connection_error_handler = connection_error_handler;
-    }
 }
 
 /*
