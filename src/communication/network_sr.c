@@ -908,62 +908,17 @@ end:
   return (status);
 }
 
-/*
- * net_server_conn_down () - CSS callback function used when a connection to a
- *                       particular client went down
- *   return: 0
- *   arg(in): transaction id
- */
-static int
-net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+void
+net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_id)
 {
-  int tran_index;
-  CSS_CONN_ENTRY *conn_p;
-  size_t prev_thrd_cnt, thrd_cnt;
-  bool continue_check;
-  int client_id;
-  int local_tran_index;
   THREAD_ENTRY *suspended_p;
-  size_t loop_count_for_pending_request = 0;
+  size_t active_workers;
+  bool continue_check;
 
-  if (thread_p == NULL)
+  /* count and interrupt if possible */
+  active_workers = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
+  if (active_workers > 0)
     {
-      thread_p = thread_get_thread_entry_info ();
-      if (thread_p == NULL)
-	{
-	  return 0;
-	}
-    }
-
-  local_tran_index = thread_p->tran_index;
-
-  conn_p = (CSS_CONN_ENTRY *) arg;
-  tran_index = conn_p->get_tran_index ();
-  client_id = conn_p->client_id;
-
-  css_set_thread_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
-
-  css_end_server_request (conn_p);
-
-  /* avoid infinite waiting with xtran_wait_server_active_trans() */
-  thread_p->m_status = cubthread::entry::status::TS_CHECK;
-
-  if (conn_p->session_p != NULL)
-    {
-      ssession_stop_attached_threads (thread_p, conn_p->session_p);
-    }
-
-loop:
-  prev_thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
-  if (prev_thrd_cnt > 0)
-    {
-      if (tran_index == NULL_TRAN_INDEX)
-	{
-	  /* the connected client does not yet finished boot_client_register */
-	  thread_sleep (50);	/* 50 msec */
-	  tran_index = conn_p->get_tran_index ();
-	}
       if (!logtb_is_interrupted_tran (thread_p, false, &continue_check, tran_index))
 	{
 	  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
@@ -1032,34 +987,89 @@ loop:
 	    }
 	}
     }
+}
 
-  while ((thrd_cnt = css_count_transaction_worker_threads (thread_p, tran_index, client_id)) >= prev_thrd_cnt
-	 && thrd_cnt > 0)
+int
+net_server_wait_workers (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn, int tran_index, int client_id)
+{
+  size_t active_workers;
+
+  active_workers = css_count_transaction_worker_threads (thread_p, tran_index, client_id);
+  if (active_workers > 0)
     {
-      /* Some threads may wait for data from the m-driver. It's possible from the fact that css_server_thread() is
-       * responsible for receiving every data from which is sent by a client and all m-drivers. We must have chance to
-       * receive data from them. */
-      thread_sleep (50);	/* 50 msec */
+      /* retry */
+      return 1;
     }
 
-  if (thrd_cnt > 0)
+  if (conn->has_pending_request () && !css_is_shutdowning_server ())
     {
-      goto loop;
+      /* need to wait for pending request */
+      /* retry */
+      return 1;
     }
 
-  if (conn_p->has_pending_request () && !css_is_shutdowning_server ())
+  return 0;
+}
+
+/*
+ * net_server_conn_down () - CSS callback function used when a connection to a
+ *                       particular client went down
+ *   return: 0
+ *   arg(in): transaction id
+ */
+static int
+net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
+{
+  CSS_CONN_ENTRY *conn;
+  int tran_index;
+  int client_id;
+
+  assert (thread_p && arg);
+
+  /* the thread_p is only accessible from this connection thread (myself), but  */
+  /* the entry may be accessed through unknown path because it is in the thread */
+  /* manager's entry list. */
+  pthread_mutex_lock (&thread_p->tran_index_lock);
+
+  conn = (CSS_CONN_ENTRY *) arg;
+  tran_index = conn->get_tran_index ();
+  if (tran_index == NULL_TRAN_INDEX)
     {
-      // need to wait for pending request
-      thread_sleep (50);	/* 50 msec */
-      if (++loop_count_for_pending_request >= 10)
+      pthread_mutex_unlock (&thread_p->tran_index_lock);
+
+      /* the connected client does not yet finished boot_client_register */
+      /* retry */
+      return 1;
+    }
+  client_id = conn->client_id;
+  css_set_thread_info (thread_p, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
+
+  pthread_mutex_unlock (&thread_p->tran_index_lock);
+
+  /* clear this connection */
+
+  css_end_server_request (conn);
+
+  /* avoid infinite waiting with xtran_wait_server_active_trans() */
+  thread_p->m_status = cubthread::entry::status::TS_CHECK;
+  if (conn->session_p != NULL)
+    {
+      ssession_stop_attached_threads (thread_p, conn->session_p);
+    }
+
+  while (1)
+    {
+      /* interrupt and wakeup */
+      net_server_wakeup_workers (thread_p, tran_index, client_id);
+
+      /* wait until workers finish their task */
+      if (!net_server_wait_workers (thread_p, conn, tran_index, client_id))
 	{
-	  // too long...
-	  assert (false);
+	  break;
 	}
-      else
-	{
-	  goto loop;
-	}
+
+      /* 50 msec */
+      thread_sleep (50);
     }
 
   logtb_set_tran_index_interrupt (thread_p, tran_index, false);
@@ -1069,9 +1079,9 @@ loop:
       (void) xboot_unregister_client (thread_p, tran_index);
       session_remove_query_entry_all (thread_p);
     }
-  css_free_conn (conn_p);
+  css_free_conn (conn);
 
-  css_set_thread_info (thread_p, -1, 0, local_tran_index, -1);
+  css_set_thread_info (thread_p, -1, 0, -1, -1);
   thread_p->m_status = cubthread::entry::status::TS_RUN;
 
   return NO_ERROR;
