@@ -186,7 +186,14 @@ namespace cubconn
 
       void push_task_into_worker_pool (context *ctx);
 
-      bool handle_connection_error (context *ctx);
+      /* --------------------------------------------------------------------------- */
+      /* close connection							     */
+      /* --------------------------------------------------------------------------- */
+      bool has_remaining_tasks (context *ctx);
+      std::pair<int, int> start_connection_close (context *ctx);
+      void end_connection_close ();
+
+      bool handle_connection_close (context *ctx);
 
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
