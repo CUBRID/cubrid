@@ -9311,6 +9311,15 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  error = ER_HA_REQUIRES_REPLICATION_KEY;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
 	  goto error_exit;
+	}      
+  
+        // TODO add !HA_DISABELED()
+        if (ha_fk_replication_violation (class_obj, IS_REPLICATION_ON_OPT (tbl_opt_replication)))
+	{
+	  error = ER_HA_FK_CONSTRAINT_VIOLATION;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
+		  "Replication option mismatch for foreign key in HA mode.");
+	  goto error_exit;
 	}
 
       if (tbl_opt_encrypt)
