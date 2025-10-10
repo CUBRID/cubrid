@@ -73,7 +73,11 @@ namespace cubconn
       struct message
       {
 	public:
-	  message () = default;
+	  message () :
+	    conn (nullptr),
+	    ignore (ignore_level::DONT_IGNORE)
+	  {
+	  }
 	  ~message () = default;
 
 	  message (const message &) = delete;
