@@ -136,7 +136,7 @@ namespace cubconn
 
   void connection_worker::enqueue (queue_type type, message &&item)
   {
-    assert (item.conn->fd != -1);
+    assert ((item.conn ? (item.conn->fd != -1) : false) || item.type == message_type::SHUTDOWN);
 
     m_queue[static_cast<std::size_t> (type)].push (std::move (item));
     m_queue_size[static_cast<std::size_t> (type)].fetch_add (1, std::memory_order_release);
