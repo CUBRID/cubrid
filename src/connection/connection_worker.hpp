@@ -112,7 +112,6 @@ namespace cubconn
 
 	/* ignore guards (ERR/HUP) */
 	ignore_level m_ignore;
-	std::size_t m_retry;
 
 	/* --------------------------------------------------------------------------- */
 	/* reception								       */
