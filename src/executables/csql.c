@@ -2092,7 +2092,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       db_error = db_execute_statement (session, stmt_id, &result);
-      if (db_error < 0 || (db_error == NO_ERROR && (db_get_errors (session) != NULL || er_errid () != NO_ERROR)))
+      if (db_error < 0)
 	{
 	  logddl_set_err_code (db_error_code ());
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -2116,10 +2116,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	      continue;
 	    }
 	  goto error;
-	}
-      else if (er_errid () != NO_ERROR)
-	{
-	  er_clear ();
 	}
 
       snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
