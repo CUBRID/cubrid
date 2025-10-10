@@ -67,7 +67,7 @@ namespace cubconn
 {
   master_connector::context::context () :
     m_conn (nullptr),
-    m_sendbuf (10),
+    m_sendbuf (32),
     m_has_error (false)
   {
   }

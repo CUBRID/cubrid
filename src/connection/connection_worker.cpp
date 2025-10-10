@@ -300,6 +300,7 @@ namespace cubconn
 
     if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
       {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: net_server_active_workers\n");
 	goto retry;
       }
 
@@ -307,6 +308,7 @@ namespace cubconn
 
     if (this->has_remaining_tasks (ctx))
       {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: has_remaining_tasks\n");
 	goto retry;
       }
 

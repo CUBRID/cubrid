@@ -41,10 +41,10 @@
 namespace cubconn
 {
   transmitter::transmitter (connection_stats *stats) :
-    m_buf (16),
+    m_buf (64),
     m_stats (stats)
   {
-    m_deleter.reserve (16);
+    m_deleter.reserve (64);
   }
 
   transmitter::~transmitter ()
