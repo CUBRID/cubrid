@@ -58,7 +58,6 @@ namespace cubconn
   connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
     m_conn (nullptr),
     m_ignore (ignore_level::DONT_IGNORE),
-    m_retry (0),
     m_recv
   {
     .m_state = state::HEADER,
@@ -276,15 +275,11 @@ namespace cubconn
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
-	ctx->m_retry++;
-
-	/* tran_index was not granted because something was wrong, but */
-	/* it still has the resource and needs to be freed. */
-	if (ctx->m_retry > 20)
-	  {
-	    goto clear;
-	  }
-	goto retry;
+	/* the connected client does not yet finished boot_client_register */
+	/* this case is unusual */
+	/* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
+	thread_sleep (50);
+	tran_index = ctx->m_conn->get_tran_index ();
       }
 
     /* stop the sessions associated with conn */
@@ -315,14 +310,15 @@ namespace cubconn
 	goto retry;
       }
 
+clear:
+
     /* this context has no remaining tasks */
 
     _er_log_debug (ARG_FILE_LINE,
-		   "handle_connection_close: conn { status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
-		   ctx->m_conn->status, ctx->m_conn->get_tran_index (), ctx->m_conn->db_error, ctx->m_conn->stop_talk,
+		   "handle_connection_close: conn { fd %d status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
+		   ctx->m_conn->fd, ctx->m_conn->status, ctx->m_conn->get_tran_index (), ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
 
-clear:
     /* remove and close */
 
     m_events.remove_descriptor (ctx->m_conn->fd);
@@ -362,6 +358,9 @@ clear:
     return true;
 
 retry:
+    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: retry fd = %d, ignore = %d, conn = %p\n",
+		 ctx->m_conn ? ctx->m_conn->fd : -1, ctx->m_ignore, ctx->m_conn);
+
     this->end_connection_close ();
 
     request.type = message_type::SHUTDOWN_CLIENT;
@@ -1142,7 +1141,7 @@ retry:
     m_notified = false;
     while (!m_stop)
       {
-	nfds = m_events.wait (events.data (), events.size (), 5 * 1000 /* timeout for retry */);
+	nfds = m_events.wait (events.data (), events.size (), m_notified ? 50 /* 50 msec */ : TIMEOUT_INFINITE);
 	if (nfds < 0)
 	  {
 	    if (errno == EINTR)
