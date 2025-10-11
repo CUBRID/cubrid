@@ -167,6 +167,7 @@ namespace cubconn
 	      {
 	      case EPIPE:
 	      case ECONNRESET:
+		_er_log_debug (__FILE__, __LINE__, "socket_io->send_partial: client disconnected: %s", strerror (errno));
 		return result::PeerReset;
 
 	      case EAGAIN:
@@ -176,7 +177,7 @@ namespace cubconn
 		return result::Pending;
 
 	      default:
-		_er_log_debug (__FILE__, __LINE__, "socket_io->send_partial: send error: %s", strerror (errno));
+		_er_log_debug (__FILE__, __LINE__, "socket_io->send_partial: unexpected send error: %s", strerror (errno));
 		return result::Error;
 	      }
 	  }
