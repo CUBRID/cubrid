@@ -778,6 +778,10 @@ namespace cubconn
     CSS_CONN_ENTRY *conn;
     unsigned short request_id;
     SOCKET new_fd;
+    result status;
+
+    /* master context goes back to waiting for next request regardless of send path */
+    NEXT_STATE (ctx, RecvRequestType);
 
     /* receive new socket descriptor from the master */
     new_fd = css_open_new_socket_from_master (ctx->m_conn->fd, &request_id);
@@ -795,7 +799,10 @@ namespace cubconn
       {
 	er_log_conn (__FILE__, __LINE__, "master_connector->request_new_client: %s", strerror (errno));
 	::close (new_fd);
-	return result::Error;
+
+	/* this return value indicates the status of the master connection, so */
+	/* return RefuseConnection and close new connections here. */
+	return result::RefuseConnection;
       }
 
     /* make new context and conn */
@@ -804,17 +811,20 @@ namespace cubconn
     /* check */
     if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
       {
+	NEXT_STATE (ctx, RecvRequestType);
 	new_ctx->m_conn = new css_conn_entry;
 	css_initialize_conn (new_ctx->m_conn, new_fd);
 	new_ctx->m_conn->request_id = request_id;
 
 	if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_INACCESSIBLE_IP))
 	  {
-	    return result::Error;
+	    delete new_ctx->m_conn;
+	    delete new_ctx;
+
+	    return result::RefuseConnection;
 	  }
 
 	NEXT_STATE (new_ctx, SendReplyToClient);
-	NEXT_STATE (ctx, RecvRequestType);
 	return result::RefuseConnection;
       }
 
@@ -829,11 +839,13 @@ namespace cubconn
 
 	if (!this->prepare_reply_refuse_connection (new_ctx, SERVER_CLIENTS_EXCEEDED))
 	  {
-	    return result::Error;
+	    delete new_ctx->m_conn;
+	    delete new_ctx;
+
+	    return result::RefuseConnection;
 	  }
 
 	NEXT_STATE (new_ctx, SendReplyToClient);
-	NEXT_STATE (ctx, RecvRequestType);
 	return result::RefuseConnection;
       }
 
@@ -841,29 +853,38 @@ namespace cubconn
     new_ctx->m_conn->request_id = request_id;
     if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
       {
-	css_free_conn (conn);
+	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
-	return result::Error;
-      }
 
-    /* master context goes back to waiting for next request regardless of send path */
-    NEXT_STATE (ctx, RecvRequestType);
+	return result::RefuseConnection;
+      }
 
     /* try to send and register the fd to epoll if fails. */
-    if (buffered_socket::send_partial (new_ctx->m_conn->fd, new_ctx->m_sendbuf))
+    status = buffered_socket::send_partial (new_ctx->m_conn->fd, new_ctx->m_sendbuf);
+    if (status == result::Ok)
       {
 	this->sent_reply_to_client (new_ctx);
+
 	return result::Ok;
       }
+    else if (status == result::PeerReset || status == result::Error)
+      {
+	css_free_conn (new_ctx->m_conn);
+	delete new_ctx;
 
-    /* pending */
+	return result::RefuseConnection;
+      }
+
+    assert (status == result::Pending);
+
     if (!m_events.add_descriptor (new_ctx->m_conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, new_ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
 		     "master_connector->request_new_client: m_events->add_descriptor failed: %s", strerror (errno));
-	css_free_conn (conn);
+	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
-	return result::Error;
+
+	return result::RefuseConnection;
       }
 
     NEXT_STATE (new_ctx, SendReplyToClient);
