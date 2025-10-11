@@ -1090,6 +1090,8 @@ namespace cubconn
 
   inline bool master_connector::handle_master_transmission (context *ctx) noexcept
   {
+    result status;
+
     assert (ctx->m_state != state::RecvInHandshake &&
 	    ctx->m_state != state::RecvRequestType &&
 	    ctx->m_state != state::RecvNewClient &&
@@ -1102,11 +1104,19 @@ namespace cubconn
 	return true;
       }
 
-    if (!buffered_socket::send_partial (ctx->m_conn->fd, ctx->m_sendbuf))
+    status = buffered_socket::send_partial (ctx->m_conn->fd, ctx->m_sendbuf);
+    if (status == result::PeerReset || status == result::Error)
+      {
+	return false;
+      }
+    if (status == result::Pending)
       {
 	/* pending */
 	return true;
       }
+
+    assert (status == result::Ok);
+
     /* fully send */
     er_log_conn (__FILE__, __LINE__, "master_connector->handle_master_transmission: fully sent the data to fd = %d\n",
 		 ctx->m_conn->fd);
