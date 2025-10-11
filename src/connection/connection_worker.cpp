@@ -279,7 +279,9 @@ namespace cubconn
 	/* this case is unusual */
 	/* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
 	thread_sleep (50);
+
 	tran_index = ctx->m_conn->get_tran_index ();
+	client_id = ctx->m_conn->client_id;
       }
 
     /* stop the sessions associated with conn */
@@ -294,14 +296,17 @@ namespace cubconn
 
     /* interrupt and wake up */
 
-    net_server_wakeup_workers (m_entry, tran_index, client_id);
-
-    /* retry until the worker related to the connection is complete */
-
-    if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
+    if (tran_index != NULL_TRAN_INDEX)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: net_server_active_workers\n");
-	goto retry;
+	net_server_wakeup_workers (m_entry, tran_index, client_id);
+
+	/* retry until the worker related to the connection is complete */
+
+	if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: net_server_active_workers\n");
+	    goto retry;
+	  }
       }
 
     /* check if there is any remaining task */
@@ -324,7 +329,10 @@ clear:
     /* remove and close */
 
     m_events.remove_descriptor (ctx->m_conn->fd);
-    net_server_conn_down (m_entry, tran_index);
+    if (tran_index != NULL_TRAN_INDEX)
+      {
+	net_server_conn_down (m_entry, tran_index);
+      }
 
     this->end_connection_close ();
 
