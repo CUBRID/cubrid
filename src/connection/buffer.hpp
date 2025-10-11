@@ -121,7 +121,7 @@ namespace cubconn
   {
     public:
       [[gnu::hot]]
-      static bool send_partial (int fd, cubbase::packet_buffer &buffer) noexcept
+      static result send_partial (int fd, cubbase::packet_buffer &buffer) noexcept
       {
 	struct ::msghdr *msg;
 	std::size_t advance;
@@ -159,23 +159,29 @@ namespace cubconn
 
 	    if (__builtin_expect (bytes == 0, 0))
 	      {
-		/* master might be dead */
 		_er_log_debug (__FILE__, __LINE__, "socket_io->send_partial: send returned 0 - error: %s", strerror (errno));
-		assert_release (false);
+		return result::PeerReset;
 	      }
 
-	    if (errno == EAGAIN || errno == EWOULDBLOCK)
+	    switch (errno)
 	      {
-		return false;
-	      }
-	    else
-	      {
+	      case EPIPE:
+	      case ECONNRESET:
+		return result::PeerReset;
+
+	      case EAGAIN:
+#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+	      case EWOULDBLOCK:
+#endif
+		return result::Pending;
+
+	      default:
 		_er_log_debug (__FILE__, __LINE__, "socket_io->send_partial: send error: %s", strerror (errno));
-		assert_release (false);
+		return result::Error;
 	      }
 	  }
 
-	return true;
+	return result::Ok;
       }
 
       [[gnu::hot]]
