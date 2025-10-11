@@ -253,7 +253,21 @@ namespace cubconn
 		     strerror (errno));
 	return false;
       }
-    css_free_conn (ctx->m_conn);
+    /* if this is an error (refuse) context, the connection entry was temporarily allocated. */
+    /* DO NOT PASS it to css_free_conn (which expects a pool entry). */
+    if (ctx->m_has_error)
+      {
+	if (!IS_INVALID_SOCKET (ctx->m_conn->fd))
+	  {
+	    css_shutdown_socket (ctx->m_conn->fd);
+	    ctx->m_conn->fd = INVALID_SOCKET;
+	  }
+	delete ctx->m_conn;
+      }
+    else
+      {
+	css_free_conn (ctx->m_conn);
+      }
     delete ctx;
 
     return true;
