@@ -83,6 +83,9 @@
     (reply) = NULL; \
   } while (0)
 
+/* avoid truncation when dumping large plans */
+#define PLAN_DUMP_STREAM_CHUNK_SIZE (64 * 1024)
+
 #if defined(CS_MODE)
 unsigned short method_request_id;
 #endif /* CS_MODE */
@@ -3312,8 +3315,8 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
   int send_argsize;
   char *recv_replybuf;
   int recv_replybuf_size;
-  char reply_streamdata[100];
-  int reply_streamdata_size = 100;
+  char *reply_streamdata = NULL;
+  int reply_streamdata_size = PLAN_DUMP_STREAM_CHUNK_SIZE;
   int file_size;
 
   error = NO_ERROR;
@@ -3345,11 +3348,22 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       return error;
     }
 
+  reply_streamdata = (char *) malloc (reply_streamdata_size);
+  if (reply_streamdata == NULL)
+    {
+      free_and_init (send_argbuffer);
+      free_and_init (recv_replybuf);
+      error = ER_NET_CANT_ALLOC_BUFFER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
       free_and_init (send_argbuffer);
       free_and_init (recv_replybuf);
+      free_and_init (reply_streamdata);
       error = ER_NET_SERVER_CRASHED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return error;
@@ -3426,6 +3440,7 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
 end:
   free_and_init (send_argbuffer);
   free_and_init (recv_replybuf);
+  free_and_init (reply_streamdata);
 
   return error;
 }
