@@ -236,17 +236,10 @@ namespace cubconn
     css_conn_entry *conn;
     int tran_index, client_id;
 
-    /* the thread_p is only accessible from this connection thread (myself), but  */
-    /* the entry may be accessed through unknown path because it is in the thread */
-    /* manager's entry list. */
-    pthread_mutex_lock (&m_entry->tran_index_lock);
-
     conn = ctx->m_conn;
     tran_index = conn->get_tran_index ();
     if (tran_index == NULL_TRAN_INDEX)
       {
-	pthread_mutex_unlock (&m_entry->tran_index_lock);
-
 	/* the connected client does not yet finished boot_client_register */
 	/* retry */
 	return { -1, -1 };
@@ -254,8 +247,6 @@ namespace cubconn
     client_id = conn->client_id;
     m_entry->conn_entry = ctx->m_conn;
     css_set_thread_info (m_entry, client_id, 0, tran_index, NET_SERVER_SHUTDOWN);
-
-    pthread_mutex_unlock (&m_entry->tran_index_lock);
 
     return { tran_index, client_id };
   }
@@ -276,23 +267,35 @@ namespace cubconn
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     message request;
     int tran_index, client_id;
+    int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
     int r;
 
     assert_release (ctx->m_conn);
 
     /* change status */
+
+    rmutex_lock (m_entry, &ctx->m_conn->rmutex);
     if (ctx->m_conn->status == CONN_OPEN)
       {
 	ctx->m_conn->status = CONN_CLOSING;
       }
+    status = ctx->m_conn->status;
+    rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 
     /* get tran index and client id */
+
+    /* the thread_p is only accessible from this connection thread (myself), but  */
+    /* the entry may be accessed through unknown path because it is in the thread */
+    /* manager's entry list. */
+    pthread_mutex_lock (&m_entry->tran_index_lock);
 
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
 	if (this->is_wait_required (ctx))
 	  {
+	    pthread_mutex_unlock (&m_entry->tran_index_lock);
+
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: wait for transaction index\n");
 
 	    /* the connected client does not yet finished boot_client_register */
@@ -300,10 +303,15 @@ namespace cubconn
 	    /* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
 	    thread_sleep (50);
 
+	    pthread_mutex_lock (&m_entry->tran_index_lock);
+
 	    tran_index = ctx->m_conn->get_tran_index ();
 	    client_id = ctx->m_conn->client_id;
+
 	  }
       }
+
+    pthread_mutex_unlock (&m_entry->tran_index_lock);
 
     /* stop the sessions associated with conn */
 
@@ -339,7 +347,7 @@ namespace cubconn
 
     _er_log_debug (ARG_FILE_LINE,
 		   "handle_connection_close: conn { fd %d status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
-		   ctx->m_conn->fd, ctx->m_conn->status, ctx->m_conn->get_tran_index (), ctx->m_conn->db_error, ctx->m_conn->stop_talk,
+		   ctx->m_conn->fd, status, tran_index, ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
 
     /* remove and close */
@@ -994,11 +1002,14 @@ retry:
     result status;
     int mtx;
 
+    rmutex_lock (m_entry, &ctx->m_conn->rmutex);
     if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
       {
+	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 	this->handle_connection_close (ctx);
 	return result::ClosedConnection;
       }
+    rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 
     status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
@@ -1086,14 +1097,17 @@ retry:
 
     if (status == result::Ok)
       {
+	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
 	if (ctx->m_conn->status == CONN_CLOSING)
 	  {
+	    rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 	    /* this transmission is the last handling on this connection */
 	    this->handle_connection_close (ctx);
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
 	    return result::ClosedConnection;
 	  }
+	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 
 	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
 	  {
