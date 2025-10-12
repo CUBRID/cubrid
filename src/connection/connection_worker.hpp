@@ -192,6 +192,7 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       /* close connection							     */
       /* --------------------------------------------------------------------------- */
+      bool is_wait_required (context *ctx);
       bool has_remaining_tasks (context *ctx);
       std::pair<int, int> start_connection_close (context *ctx);
       void end_connection_close ();

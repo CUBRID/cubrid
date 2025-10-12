@@ -206,6 +206,16 @@ namespace cubconn
     css_push_server_task (*ctx->m_conn);
   }
 
+  bool connection_worker::is_wait_required (context *ctx)
+  {
+    if (ctx->m_conn->fd == cdc_Gl.conn.fd)
+      {
+	return false;
+      }
+
+    return true;
+  }
+
   bool connection_worker::has_remaining_tasks (context *ctx)
   {
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
@@ -270,18 +280,29 @@ namespace cubconn
 
     assert_release (ctx->m_conn);
 
+    /* change status */
+    if (ctx->m_conn->status == CONN_OPEN)
+      {
+	ctx->m_conn->status = CONN_CLOSING;
+      }
+
     /* get tran index and client id */
 
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
-	/* the connected client does not yet finished boot_client_register */
-	/* this case is unusual */
-	/* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
-	thread_sleep (50);
+	if (this->is_wait_required (ctx))
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: wait for transaction index\n");
 
-	tran_index = ctx->m_conn->get_tran_index ();
-	client_id = ctx->m_conn->client_id;
+	    /* the connected client does not yet finished boot_client_register */
+	    /* this case is unusual */
+	    /* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
+	    thread_sleep (50);
+
+	    tran_index = ctx->m_conn->get_tran_index ();
+	    client_id = ctx->m_conn->client_id;
+	  }
       }
 
     /* stop the sessions associated with conn */
@@ -296,17 +317,14 @@ namespace cubconn
 
     /* interrupt and wake up */
 
-    if (tran_index != NULL_TRAN_INDEX)
+    net_server_wakeup_workers (m_entry, tran_index, client_id);
+
+    /* retry until the worker related to the connection is complete */
+
+    if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
       {
-	net_server_wakeup_workers (m_entry, tran_index, client_id);
-
-	/* retry until the worker related to the connection is complete */
-
-	if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: net_server_active_workers\n");
-	    goto retry;
-	  }
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: net_server_active_workers\n");
+	goto retry;
       }
 
     /* check if there is any remaining task */
@@ -316,8 +334,6 @@ namespace cubconn
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: has_remaining_tasks\n");
 	goto retry;
       }
-
-clear:
 
     /* this context has no remaining tasks */
 
