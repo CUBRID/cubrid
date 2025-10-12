@@ -41,10 +41,10 @@
 namespace cubconn
 {
   transmitter::transmitter (connection_stats *stats) :
-    m_buf (64),
+    m_buf (IOV_MAX),
     m_stats (stats)
   {
-    m_deleter.reserve (64);
+    m_deleter.reserve (IOV_MAX);
   }
 
   transmitter::~transmitter ()
