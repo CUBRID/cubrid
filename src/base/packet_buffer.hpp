@@ -25,7 +25,7 @@
 
 #ident "$Id$"
 
-#include "assert.h"
+#include "error_manager.h"
 #include "span.hpp"
 
 #include <arpa/inet.h>
@@ -118,7 +118,7 @@ namespace cubbase
 	(append (rest), ...);
       }
 
-    assert (m_buf.size () <= m_iovmax);
+    assert_release (m_buf.size () <= m_iovmax);
   }
 
   template <typename... Spans>
@@ -138,7 +138,7 @@ namespace cubbase
 	(append (rest), ...);
       }
 
-    assert (m_buf.size () <= m_iovmax);
+    assert_release (m_buf.size () <= m_iovmax);
   }
 }
 
