@@ -1695,7 +1695,7 @@ static int
 qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, char *page_p, int tuple_length)
 {
   int i, tuple_value_size;
-
+  int total_tuple_value_size = 0;
   for (i = 0; i < tuple_descr_p->f_cnt; i++)
     {
       if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i],
@@ -1704,9 +1704,11 @@ qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, 
 	{
 	  return ER_FAILED;
 	}
+      total_tuple_value_size += tuple_value_size;
       tuple_p += tuple_value_size;
     }
 
+  assert_release (total_tuple_value_size <= tuple_length);
   QFILE_PUT_TUPLE_LENGTH (page_p, tuple_length);
   return NO_ERROR;
 }
@@ -6925,8 +6927,15 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
       return;
     }
 
-  THREAD_ENTRY *target_thread_p =
-    (thread_p->m_px_orig_thread_entry != NULL) ? thread_p->m_px_orig_thread_entry : thread_p;
+  THREAD_ENTRY *target_thread_p = thread_p;
+  while (target_thread_p->m_px_orig_thread_entry != NULL)
+    {
+      if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
+	{
+	  break;
+	}
+      target_thread_p = target_thread_p->m_px_orig_thread_entry;
+    }
 
   target_thread_p->m_qlist_count.fetch_add (inc);
 
