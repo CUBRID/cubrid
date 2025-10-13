@@ -365,7 +365,7 @@ static KEYWORD_RECORD keywords[] = {
   {NEXT, "NEXT", 0},
   {NO, "NO", 0},
   {NOCACHE, "NOCACHE", 1},
-  {NOCYCLE, "NOCYCLE", 0},
+  {NOCYCLE, "NOCYCLE", 1},
   {NOMAXVALUE, "NOMAXVALUE", 1},
   {NOMINVALUE, "NOMINVALUE", 1},
   {NONE, "NONE", 0},

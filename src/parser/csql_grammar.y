@@ -853,6 +853,7 @@ static int g_plcsql_text_pos;
 %type <node> opt_where_clause
 %type <node> startwith_clause
 %type <node> connectby_clause
+%type <node> connectby_clause_with_option
 %type <node> opt_groupby_clause
 %type <node> group_spec_list
 %type <node> group_spec
@@ -1321,7 +1322,6 @@ static int g_plcsql_text_pos;
 %token NCHAR
 %token NEXT
 %token NO
-%token NOCYCLE
 %token NOT
 %token Null
 %token NULLIF
@@ -1627,6 +1627,7 @@ static int g_plcsql_text_pos;
 %token <cptr> MINVALUE
 %token <cptr> NAME
 %token <cptr> NESTED
+%token <cptr> NOCYCLE
 %token <cptr> NOCACHE
 %token <cptr> NOMAXVALUE
 %token <cptr> NOMINVALUE
@@ -15495,33 +15496,37 @@ connectby_clause
 			parser_save_and_set_pseudoc (1);
 			parser_save_and_set_sqc (0);
 		}
-	  CONNECT BY opt_nocycle search_condition
-		{{ DBG_TRACE_GRAMMAR(connectby_clause, CONNECT BY opt_nocycle search_condition);
+	  connectby_clause_with_option
+		{{ DBG_TRACE_GRAMMAR(connectby_clause, connectby_clause_with_option);
 
 			parser_restore_prc ();
 			parser_restore_serc ();
 			parser_restore_pseudoc ();
 			parser_restore_sqc ();
-			$$ = $5;
+			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
 
-opt_nocycle
-	: /* empty */
-	| NOCYCLE
-		{{ DBG_TRACE_GRAMMAR(opt_nocycle, |  NOCYCLE);
+connectby_clause_with_option
+       : CONNECT BY NOCYCLE search_condition %dprec 2
+        {{ DBG_TRACE_GRAMMAR(connectby_clause_with_option, : CONNECT BY NOCYCLE search_condition);
+                PT_NODE *node = parser_top_select_stmt_node ();
+		if (node)
+		  {
+		    node->info.query.q.select.check_cycles =
+		      CONNECT_BY_CYCLES_NONE;
+		  }
 
-			PT_NODE *node = parser_top_select_stmt_node ();
-			if (node)
-			  {
-			    node->info.query.q.select.check_cycles =
-			      CONNECT_BY_CYCLES_NONE;
-			  }
-
+                $$=$4;
 		DBG_PRINT}}
-	;
+
+        | CONNECT BY search_condition %dprec 1
+        {{ DBG_TRACE_GRAMMAR(connectby_clause_with_option, | CONNECT BY search_condition);
+                $$=$3;
+		DBG_PRINT}}
+        ;
 
 opt_groupby_clause
 	: /* empty */
@@ -23375,6 +23380,7 @@ identifier
 	| NAME                   {{ DBG_TRACE_GRAMMAR(identifier, | NAME               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NESTED                 {{ DBG_TRACE_GRAMMAR(identifier, | NESTED             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOCACHE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCACHE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NOCYCLE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCYCLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMAXVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMAXVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMINVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMINVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NTH_VALUE              {{ DBG_TRACE_GRAMMAR(identifier, | NTH_VALUE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
