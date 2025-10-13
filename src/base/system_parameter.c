@@ -5185,7 +5185,10 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 300}},
    {false, {.i = 300}},
    {false, {.i = 3000}},
-   {false, {.i = 0}}
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
