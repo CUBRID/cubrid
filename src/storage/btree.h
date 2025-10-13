@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
+// cppcheck-suppress preprocessorErrorDirective
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
