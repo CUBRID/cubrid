@@ -679,6 +679,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_USE_STAT_ESTIMATION "use_stat_estimation"
 
+#define PRM_NAME_PAGE_LATCH_TIMEOUT "page_latch_timeout"
+
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
@@ -2298,6 +2300,12 @@ static unsigned int prm_use_stat_estimation_flag = 0;
 bool PRM_STATDUMP_FORCE_ADD_INT_MAX = false;
 static bool prm_statdump_force_add_int_max_default = false;
 static unsigned int prm_statdump_force_add_int_max_flag = 0;
+
+int PRM_PAGE_LATCH_TIMEOUT = 300;
+static int prm_page_latch_timeout_default = 300;
+static int prm_page_latch_timeout_upper = 3000;
+static int prm_page_latch_timeout_lower = 0;
+static unsigned int prm_page_latch_timeout_flag = 0;
 
 int PRM_RECOVERY_PROGRESS_LOGGING_INTERVAL = 0;
 static int prm_recovery_progress_logging_interval_default = 0;
@@ -5919,6 +5927,18 @@ static SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PAGE_LATCH_TIMEOUT,
+   PRM_NAME_PAGE_LATCH_TIMEOUT,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_page_latch_timeout_flag,
+   (void *) &prm_page_latch_timeout_default,
+   (void *) &PRM_PAGE_LATCH_TIMEOUT,
+   (void *) &prm_page_latch_timeout_upper,
+   (void *) &prm_page_latch_timeout_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
    PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL,
    (PRM_FOR_SERVER),
@@ -5930,7 +5950,7 @@ static SYSPRM_PARAM prm_Def[] = {
    (void *) &prm_recovery_progress_logging_interval_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) NULL}
 };
 
 #define NUM_PRM ((int)(sizeof(prm_Def)/sizeof(prm_Def[0])))
