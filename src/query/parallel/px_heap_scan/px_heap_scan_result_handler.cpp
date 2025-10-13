@@ -334,6 +334,7 @@ namespace parallel_heap_scan
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
+	VPID64_t last_vpid;
 	if (tl.tpl_buf.size > 0 && tl.tpl_buf.tpl != nullptr)
 	  {
 	    db_private_free_and_init (thread_p, tl.tpl_buf.tpl);
@@ -347,6 +348,12 @@ namespace parallel_heap_scan
 	      {
 		tl.list_id_header_p->m_type_list[i]->store ((TP_DOMAIN *)tl.list_id_header_p->m_list_id_p->type_list.domp[i],
 		    std::memory_order_release);
+	      }
+	    last_vpid.vpid = tl.list_id_header_p->m_list_id_p->last_vpid;
+	    tl.list_id_header_p->m_last_vpid.store (last_vpid, std::memory_order_release);
+	    if (VPID_EQ (&tl.list_id_header_p->m_list_id_p->last_vpid, &tl.list_id_header_p->m_list_id_p->first_vpid))
+	      {
+		tl.list_id_header_p->m_first_vpid.store (last_vpid, std::memory_order_release);
 	      }
 	    tl.list_id_header_p->m_valid.store (true, std::memory_order_release);
 	  }
