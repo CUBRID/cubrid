@@ -376,52 +376,18 @@ set(SP_HEADERS
 )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
-  )
-
-set(PARALLEL_QUERY_SOURCES
-  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
-  ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
-  )
-
-set(PARALLEL_QUERY_HEADERS
-  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
-  ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
-  ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.cpp
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.cpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.cpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_HEADERS
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
-  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.hpp
   )
 
@@ -559,6 +525,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/xasl_predicate.cpp
   ${XASL_DIR}/xasl_stream.cpp
   ${XASL_DIR}/xasl_unpack_info.cpp
+  ${XASL_DIR}/xasl_iteration.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -569,6 +536,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_unpack_info.hpp
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_stream.hpp
+  ${XASL_DIR}/xasl_iteration.hpp
   )
 
 set(LOADDB_SOURCES
@@ -663,7 +631,6 @@ SET_SOURCE_FILES_PROPERTIES(
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
   ${PARALLEL_HEAP_SCAN_SOURCES}
-  ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
@@ -703,8 +670,6 @@ add_library(cubridsa SHARED
   ${SP_HEADERS}
   ${PARALLEL_HEAP_SCAN_SOURCES}
   ${PARALLEL_HEAP_SCAN_HEADERS}
-  ${PARALLEL_QUERY_SOURCES}
-  ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   ${METHOD_SOURCES}
@@ -733,9 +698,6 @@ add_library(cubridsa SHARED
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
 target_compile_definitions(cubridsa PRIVATE SA_MODE CUBRID_EXPORTING ${COMMON_DEFS})
-if(NOT USE_CUBRID_ENV)
-  target_compile_definitions(cubridsa PRIVATE ${DIR_DEFS})
-endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${BASE_DIR}/message_catalog.c PROPERTIES COMPILE_FLAGS -DNDEBUG)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)

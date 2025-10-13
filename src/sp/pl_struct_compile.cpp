@@ -307,6 +307,11 @@ namespace cubpl
     code = METHOD_CALLBACK_GET_SQL_SEMANTICS;
     int size;
     deserializator.unpack_int (size);
+    if (size != 1)
+      {
+	// current implementation only asks one by one.
+	er_log_debug (ARG_FILE_LINE, "note: size of SQL semantics request %d\n", size);
+      }
 
     std::string s;
     for (int i = 0; i < size; i++)

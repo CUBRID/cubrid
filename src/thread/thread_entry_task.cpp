@@ -24,9 +24,16 @@
 
 #include "error_manager.h"
 #include "log_impl.h"
+#include "perf_monitor.h"	/* pstat_Metadata, PSTAT_...*/
 #include "porting.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+
+#if defined (SERVER_MODE)
+#if !defined (NDEBUG)
+#include "px_worker_manager.hpp"
+#endif
+#endif
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -46,6 +53,9 @@ namespace cubthread
 #if defined (SERVER_MODE)
     context.m_status = entry::status::TS_RUN;
     context.shutdown = false;
+    context.m_px_orig_thread_entry = NULL;
+    context.m_uses_px_stats = false;
+    context.m_px_stats = NULL;
 #endif // SERVER_MODE
 
     context.get_error_context ().register_thread_local ();
@@ -63,10 +73,7 @@ namespace cubthread
     context.get_error_context ().deregister_thread_local ();
 
     context.end_resource_tracks ();
-    if (context.m_px_stats != NULL)
-      {
-	free_and_init (context.m_px_stats);
-      }
+    context.m_skip_end_resource_tracks_in_recycle = false;
     // todo: here we should do more operations to clear thread entry before being reused
     context.unregister_id ();
     context.tran_index = NULL_TRAN_INDEX;
@@ -76,6 +83,8 @@ namespace cubthread
     context.m_status = entry::status::TS_FREE;
     context.resume_status = THREAD_RESUME_NONE;
     context.m_px_orig_thread_entry = NULL;
+    perfmon_destroy_parallel_stats (&context);
+    context.m_uses_px_stats = false;
 #endif // SERVER_MODE
 
     get_manager ()->retire_entry (context);
@@ -85,18 +94,23 @@ namespace cubthread
   entry_manager::recycle_context (entry &context)
   {
     er_clear ();    // clear errors
-    context.end_resource_tracks ();
-    if (context.m_px_stats != NULL)
+    if (!context.m_skip_end_resource_tracks_in_recycle)
       {
-	free_and_init (context.m_px_stats);
+	context.end_resource_tracks ();
       }
-    context.m_px_orig_thread_entry = NULL;
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
+    context.m_px_orig_thread_entry = NULL;
     context.shutdown = false;
+    context.m_px_orig_thread_entry = NULL;
+    perfmon_destroy_parallel_stats (&context);
+    context.m_uses_px_stats = false;
+#if !defined (NDEBUG)
+    parallel_query::assertion_all_workers_released ();
+#endif
 #endif // SERVER_MODE
 
     /* Set clearly for safety.

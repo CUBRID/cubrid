@@ -130,10 +130,6 @@ struct filter_info
   ATTR_ID *vstr_ids;		/* attribute id array of variable string */
   int btree_num_attrs;		/* number of attributes of the index key */
   int func_idx_col_id;		/* function expression column position, if this is a function index */
-
-  // *INDENT-OFF*
-  filter_info () = default;
-  // *INDENT-ON*
 };
 
 extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
