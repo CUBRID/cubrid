@@ -16489,7 +16489,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
-		      pr_clear_value (index_valp);
 		    }
 		  else
 		    {
@@ -16511,8 +16510,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
-		      pr_clear_value (index_valp);
-
 		    }
 		}
 	      else if (!XASL_IS_FLAGED (xasl, XASL_HAS_NOCYCLE))
@@ -16568,7 +16565,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      temp_tuple_rec = tuple_rec;
-	      pr_clear_value (index_valp);
+
 	      if (qfile_add_tuple_get_pos_in_list (thread_p, listfile0, tuple_rec.tpl, &parent_pos) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
