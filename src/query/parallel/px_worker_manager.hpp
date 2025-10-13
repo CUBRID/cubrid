@@ -53,10 +53,6 @@ namespace parallel_query
       worker_manager &operator= (const worker_manager &) = delete;
   };
 
-#if !defined (NDEBUG)
-  void assertion_all_workers_released();
-#endif
-
   class worker_manager_with_dedicated_pool
   {
     public:
