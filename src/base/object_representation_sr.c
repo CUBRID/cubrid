@@ -782,7 +782,7 @@ bool
 or_class_is_replication_on (RECDES * record)
 {
   int flags = 0;
-  int replication_off_flag = 32;	/* SM_CLASSFLAG_NO_REPLICATION = 32 */
+  int replication_off_flag = 32;	/* SM_CLASSFLAG_REPLICATION_OFF = 32 */
 
   /* TODO:
    * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation(EPIC CBRD-26096). */
@@ -4716,16 +4716,17 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
 }
 
 /* 
- * or_is_replication_key_candidate() -
+ * or_is_replication_candidate_key() -
  *   return : true if the index is a replication-key candidate
  *            (PRIMARY KEY, or UNIQUE with all key attributes NOT NULL)
  *   index(in): OR_INDEX pointer (may be NULL)
  */
 bool
-or_is_replication_key_candidate (const OR_INDEX * index)
+or_is_replication_candidate_key (const OR_INDEX * index)
 {
   if (index == NULL)
     {
+      assert (false);
       return false;
     }
 

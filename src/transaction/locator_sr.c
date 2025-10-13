@@ -8041,7 +8041,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        * for the update cases, refer to locator_update_force()
        */
       if (need_replication && heap_is_replication_class (thread_p, class_oid) && !replicated
-	  && or_is_replication_key_candidate (index) && error_code == NO_ERROR
+	  && or_is_replication_candidate_key (index) && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  error_code =
@@ -8421,7 +8421,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     {
       index = &(new_attrinfo->last_classrepr->indexes[i]);
       if (rk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
-	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_key_candidate (index)
+	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_candidate_key (index)
 	  && log_does_allow_replication () == true)
 	{
 	  rk_btid_index = i;
