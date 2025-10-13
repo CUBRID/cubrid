@@ -96,7 +96,6 @@ namespace cubcompress
       {
 	/* failed to compress */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, "failed to compress with LZ4_compress_fast_extState");
-	return 0;
       }
     return compressed_size;
   }
@@ -106,11 +105,10 @@ namespace cubcompress
     int decompressed_size;
 
     decompressed_size = LZ4_decompress_safe (src, dst, compressed_size, dst_capacity);
-    if (decompressed_size <= 0)
+    if (decompressed_size < 0)
       {
 	/* failed to decompress */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, "failed to decompress with LZ4_decompress_safe");
-	return 0;
       }
     return decompressed_size;
   }
@@ -127,7 +125,7 @@ namespace cubcompress
       {
 	return lz4_bound (size);
       }
-    return 0;
+    return -1;
   }
 
   template <typename T>
@@ -143,7 +141,7 @@ namespace cubcompress
 				 lz4_option->accel);
 	  }
       }
-    return 0;
+    return -1;
   }
 
   template <typename T>
@@ -156,7 +154,7 @@ namespace cubcompress
 	lz4_options option;
 	return compress<T> (src, src_size, dst, dst_capacity, option);
       }
-    return 0;
+    return -1;
   }
 
   template <typename T>
@@ -168,7 +166,7 @@ namespace cubcompress
       {
 	return lz4_decompress (static_cast<const char *> (src), static_cast<char *> (dst), src_size, dst_capacity);
       }
-    return 0;
+    return -1;
   }
 }
 

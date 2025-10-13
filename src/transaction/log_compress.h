@@ -42,7 +42,7 @@
 
 /* plus compression overhead to log_zip data size */
 #define LOG_ZIP_BUF_SIZE(type, length) \
-        (cubcompress::bound<cubcompress::type> ((length) + sizeof (LOG_ZIP_SIZE_T)))
+        (cubcompress::bound<cubcompress::type> (length) + sizeof (LOG_ZIP_SIZE_T))
 
 #define LOG_ZIP_SIZE_T int
 
