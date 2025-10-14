@@ -2752,9 +2752,8 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
-  cubconn::connection_pool_global.finalize ();
-
   pl_server_destroy ();
+  css_stop_connections ();
 
   cdc_daemons_destroy ();
 

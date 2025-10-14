@@ -121,6 +121,8 @@ extern size_t css_get_max_workers ();
 extern size_t css_get_max_task_count ();
 extern size_t css_get_max_connections ();
 
+extern void css_stop_connections ();
+
 #if defined (SERVER_MODE)
 extern int css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt,
 				      void **ptr);
