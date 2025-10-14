@@ -4109,28 +4109,28 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
       return;
     }
 
-  memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
-  for (i = 0; i < n; i++)
-    {
-      QO_SUBQUERY *src, *dst;
-      src = &env->subqueries[i];
-      dst = &tmp[i];
-
-      if (src->segs.setp == src->segs.set.word)
-	{
-	  dst->segs.setp = dst->segs.set.word;
-	}
-      if (src->nodes.setp == src->nodes.set.word)
-	{
-	  dst->nodes.setp = dst->nodes.set.word;
-	}
-      if (src->terms.setp == src->terms.set.word)
-	{
-	  dst->terms.setp = dst->terms.set.word;
-	}
-    }
   if (env->subqueries)
     {
+      memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
+      for (i = 0; i < n; i++)
+	{
+	  QO_SUBQUERY *src, *dst;
+	  src = &env->subqueries[i];
+	  dst = &tmp[i];
+
+	  if (src->segs.setp == src->segs.set.word)
+	    {
+	      dst->segs.setp = dst->segs.set.word;
+	    }
+	  if (src->nodes.setp == src->nodes.set.word)
+	    {
+	      dst->nodes.setp = dst->nodes.set.word;
+	    }
+	  if (src->terms.setp == src->terms.set.word)
+	    {
+	      dst->terms.setp = dst->terms.set.word;
+	    }
+	}
       free_and_init (env->subqueries);
     }
   env->subqueries = tmp;
