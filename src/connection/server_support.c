@@ -3570,6 +3570,12 @@ size_t css_get_max_connections ()
   return css_get_max_conn () + 1;
 }
 
+void css_stop_connections ()
+{
+  cubconn::master_connector_global.stop ();
+  cubconn::connection_pool_global.finalize ();
+}
+
 static bool
 css_get_connection_thread_pooling_configuration (void)
 {
