@@ -4082,41 +4082,37 @@ pt_is_pseudo_const (PT_NODE * expr)
 static void
 add_local_subquery (QO_ENV * env, PT_NODE * node)
 {
-  int n;
   QO_SUBQUERY *tmp;
-
-  n = env->nsubqueries++;
 
   /*
    * Be careful here: the previously allocated QO_SUBQUERY terms
    * contain bitsets that may have self-relative internal pointers, and
    * those pointers have to be maintained in the new array.
    */
-  tmp = NULL;
-  if ((n + 1) > 0)
+  if (env->nsubqueries < 0)
     {
-      tmp = (QO_SUBQUERY *) realloc (env->subqueries, sizeof (QO_SUBQUERY) * (n + 1));
-      if (tmp == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_SUBQUERY) * (n + 1));
-	  return;
-	}
+      return;
     }
-  else
+
+  tmp = (QO_SUBQUERY *) realloc (env->subqueries, sizeof (QO_SUBQUERY) * (env->nsubqueries + 1));
+  if (tmp == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (QO_SUBQUERY) * (env->nsubqueries + 1));
       return;
     }
 
   env->subqueries = tmp;
 
-  tmp = &env->subqueries[n];
+  tmp = &env->subqueries[env->nsubqueries];
   tmp->node = node;
   bitset_init (&tmp->segs, env);
   bitset_init (&tmp->nodes, env);
   bitset_init (&tmp->terms, env);
   qo_expr_segs (env, node, &tmp->segs);
   qo_seg_nodes (env, &tmp->segs, &tmp->nodes);
-  tmp->idx = n;
+  tmp->idx = env->nsubqueries;
+  env->nsubqueries++;
 }
 
 
