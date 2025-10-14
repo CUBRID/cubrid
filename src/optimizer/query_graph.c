@@ -4082,39 +4082,68 @@ pt_is_pseudo_const (PT_NODE * expr)
 static void
 add_local_subquery (QO_ENV * env, PT_NODE * node)
 {
+  int i, n;
   QO_SUBQUERY *tmp;
+
+  n = env->nsubqueries++;
 
   /*
    * Be careful here: the previously allocated QO_SUBQUERY terms
    * contain bitsets that may have self-relative internal pointers, and
    * those pointers have to be maintained in the new array.
    */
-  if (env->nsubqueries < 0)
+  tmp = NULL;
+  if ((n + 1) > 0)
     {
+      tmp = (QO_SUBQUERY *) malloc (sizeof (QO_SUBQUERY) * (n + 1));
+      if (tmp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_SUBQUERY) * (n + 1));
+	  env->nsubqueries--;
+	  return;
+	}
+    }
+  else
+    {
+      env->nsubqueries--;
       return;
     }
 
-  tmp = (QO_SUBQUERY *) realloc (env->subqueries, sizeof (QO_SUBQUERY) * (env->nsubqueries + 1));
-  if (tmp == NULL)
+  memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
+  for (i = 0; i < n; i++)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (QO_SUBQUERY) * (env->nsubqueries + 1));
-      return;
-    }
+      QO_SUBQUERY *src, *dst;
+      src = &env->subqueries[i];
+      dst = &tmp[i];
 
+      if (src->segs.setp == src->segs.set.word)
+	{
+	  dst->segs.setp = dst->segs.set.word;
+	}
+      if (src->nodes.setp == src->nodes.set.word)
+	{
+	  dst->nodes.setp = dst->nodes.set.word;
+	}
+      if (src->terms.setp == src->terms.set.word)
+	{
+	  dst->terms.setp = dst->terms.set.word;
+	}
+    }
+  if (env->subqueries)
+    {
+      free_and_init (env->subqueries);
+    }
   env->subqueries = tmp;
 
-  tmp = &env->subqueries[env->nsubqueries];
+  tmp = &env->subqueries[n];
   tmp->node = node;
   bitset_init (&tmp->segs, env);
   bitset_init (&tmp->nodes, env);
   bitset_init (&tmp->terms, env);
   qo_expr_segs (env, node, &tmp->segs);
   qo_seg_nodes (env, &tmp->segs, &tmp->nodes);
-  tmp->idx = env->nsubqueries;
-  env->nsubqueries++;
+  tmp->idx = n;
 }
-
 
 /*
  * get_local_subqueries_pre () - Builds vector of locally correlated
