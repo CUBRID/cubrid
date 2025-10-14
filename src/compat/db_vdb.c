@@ -2902,6 +2902,7 @@ db_check_where_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   DB_VALUE *save_host_variables = NULL;
   TP_DOMAIN **save_host_var_expected_domains = NULL;
   int save_host_var_count, save_auto_param_count;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
 
   if (statement->node_type != PT_EXECUTE_PREPARE)
     {
@@ -2944,10 +2945,20 @@ db_check_where_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   session->parser->auto_param_count = parent_parser->auto_param_count;
   session->parser->flag.set_host_var = 1;
 
+  /* TODO: need to change function name */
   if (pt_recompile_for_like_optimizations (session->parser, query, xasl_flag))
     {
-      /* need recompile */
-      do_recompile = true;
+      do_recompile = false;
+      sc_info.top_node = query;
+      sc_info.donot_fold = false;
+
+      /* this is required to set sql_hash_text (temporary) */
+      parser_walk_tree (session->parser, query, NULL, NULL, pt_set_user_specified_name, NULL);
+      query = pt_resolve_names (session->parser, query, &sc_info);
+
+      /* only lookup whether the query's XASL is cached; do not generate XASL if it does not exist. */
+      do_prepare_select_lookup (session->parser, query);
+      statement->info.execute.xasl_id = (query->xasl_id == NULL) ? statement->info.execute.xasl_id : *(query->xasl_id);
     }
 
   /* restore host variable info */

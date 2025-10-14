@@ -10381,6 +10381,8 @@ end:
 bool
 pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
+  PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
+  bool cut_off;
   PT_NODE *where, *arg2;
   PT_NODE *pattern = NULL, *escape = NULL;
   DB_VALUE where_val, compressed_pattern;
@@ -10408,17 +10410,18 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
       return false;
     }
 
-  for (where = statement->info.query.q.select.where; where != NULL; where = where->next)
+  where = statement->info.query.q.select.where;
+  /* traverse CNF list and keep track the pointer to previous node */
+  cnf_prev = NULL;
+  while ((cnf_node = ((cnf_prev) ? cnf_prev->next : where)))
     {
-      if (where->node_type == PT_HOST_VAR)
-	{
-	  /* where ? */
-	  continue;
-	}
+      cut_off = false;
 
-      if (PT_IS_EXPR_NODE_WITH_OPERATOR (where, PT_LIKE))
+      if (cnf_node->or_next == NULL)
+	{
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (cnf_node, PT_LIKE))
 	    {
-	  arg2 = PT_EXPR_ARG2 (where);
+	      arg2 = PT_EXPR_ARG2 (cnf_node);
 
 	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
 		{
@@ -10485,13 +10488,127 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 		      if (num_logical_chars == 1 && num_match_many == 1)
 			{
+			  cut_off = true;
+			  need_recompile = true;
+			}
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  /* traverse DNF list and keep track of the pointer to previous node */
+	  dnf_prev = NULL;
+	  while ((dnf_node = ((dnf_prev) ? dnf_prev->or_next : cnf_node)))
+	    {
+	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (dnf_node, PT_LIKE))
+		{
+		  arg2 = PT_EXPR_ARG2 (dnf_node);
+
+		  if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+		    {
+		      pattern = PT_EXPR_ARG1 (arg2);
+		      escape = PT_EXPR_ARG2 (arg2);
+		      assert (escape != NULL);
+		    }
+		  else
+		    {
+		      pattern = arg2;
+		      escape = NULL;
+		    }
+
+		  if (escape != NULL)
+		    {
+		      if (PT_IS_NULL_NODE (escape))
+			{
+			  has_escape_char = true;
+			  escape_str = "\\";
+			}
+		      else
+			{
+			  int esc_char_len = 0;
+
+			  assert (pt_is_ascii_string_value_node (escape));
+
+			  escape_str = (const char *) escape->info.value.data_value.str->bytes;
+			  codeset = db_get_string_codeset (&pattern->info.value.db_value);
+
+			  intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length,
+					   codeset, &esc_char_len);
+			  if (esc_char_len != 1)
+			    {
+			      PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
+			      return false;
+			    }
+			  has_escape_char = true;
+			}
+		    }
+		  else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
+		    {
+		      assert (escape == NULL);
+		      assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+		      has_escape_char = true;
+		      escape_str = "\\";
+		    }
+		  else
+		    {
+		      has_escape_char = false;
+		      escape_str = NULL;
+		    }
+
+		  if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
+		    {
+		      if (!DB_IS_NULL (&where_val))
+			{
+			  db_make_null (&compressed_pattern);
+
+			  db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
+
+			  db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
+							     &num_logical_chars, &last_safe_logical_pos,
+							     &num_match_many, &num_match_one);
+
+			  if (num_logical_chars == 1 && num_match_many == 1)
+			    {
+			      cut_off = true;
 			      need_recompile = true;
 			      break;
 			    }
 			}
 		    }
 		}
-    }
+
+	      dnf_prev = (dnf_prev) ? dnf_prev->or_next : dnf_node;
+	    }			/* while (dnf_node) */
+	}			/* else (cnf_node->or_next == NULL) */
+
+      if (cut_off)
+	{
+	  /* cut if off from CNF list */
+	  if (cnf_prev)
+	    {
+	      cnf_prev->next = cnf_node->next;
+	    }
+	  else
+	    {
+	      where = cnf_node->next;
+	    }
+	  cnf_node->next = NULL;
+	  parser_free_tree (parser, cnf_node);
+
+	  /* this will be restored to its original value in db_check_where_need_recompile. */
+	  parser->host_var_count--;
+	}
+      else
+	{
+	  cnf_prev = (cnf_prev) ? cnf_prev->next : cnf_node;
+	}
+    }				/* while (cnf_node) */
+
+  statement->info.query.q.select.where = where;
+
+  statement->sql_user_text = parser_print_tree (parser, statement);
+  statement->sql_user_text_len = strlen (statement->sql_user_text) + 1;
 
   return need_recompile;
 }
