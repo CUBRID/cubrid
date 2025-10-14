@@ -1376,10 +1376,13 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
 
   assert (conn != NULL);
 
+  rmutex_lock (NULL, &conn->rmutex);
   if (conn->status == CONN_CLOSED)
     {
+      rmutex_unlock (NULL, &conn->rmutex);
       return CONNECTION_CLOSED;
     }
+  rmutex_unlock (NULL, &conn->rmutex);
 
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
@@ -1458,14 +1461,18 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   assert (conn != NULL);
   assert(!!buffer == !!buffer_size);
 
+  rmutex_lock (NULL, &conn->rmutex);
   if (conn->status != CONN_OPEN)
     {
+      rmutex_unlock (NULL, &conn->rmutex);
+
       if (deleter)
 	{
 	  deleter ();
 	}
       return CONNECTION_CLOSED;
     }
+  rmutex_unlock (NULL, &conn->rmutex);
 
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
@@ -1624,14 +1631,18 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   assert(!!buffer1 == !!buffer1_size);
   assert(!!buffer2 == !!buffer2_size);
 
+  rmutex_lock (NULL, &conn->rmutex);
   if (conn->status != CONN_OPEN)
     {
+      rmutex_unlock (NULL, &conn->rmutex);
+
       if (deleter)
 	{
 	  deleter ();
 	}
       return CONNECTION_CLOSED;
     }
+  rmutex_unlock (NULL, &conn->rmutex);
 
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
@@ -1735,14 +1746,18 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   assert(!!buffer2 == !!buffer2_size);
   assert(!!buffer3 == !!buffer3_size);
 
-  if (conn->status != CONN_OPEN)
+  rmutex_lock (NULL, &conn->rmutex);
+  if (conn->status == CONN_CLOSED)
     {
+      rmutex_unlock (NULL, &conn->rmutex);
+
       if (deleter)
 	{
 	  deleter ();
 	}
       return CONNECTION_CLOSED;
     }
+  rmutex_unlock (NULL, &conn->rmutex);
 
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
@@ -1848,10 +1863,14 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 
   assert (conn != NULL);
 
+  rmutex_lock (NULL, &conn->rmutex);
   if (conn->status == CONN_CLOSED)
     {
+      rmutex_unlock (NULL, &conn->rmutex);
+
       return CONNECTION_CLOSED;
     }
+  rmutex_unlock (NULL, &conn->rmutex);
 
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
@@ -1902,10 +1921,13 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 
   assert (conn != NULL);
 
+  rmutex_lock (NULL, &conn->rmutex);
   if (conn->status != CONN_OPEN)
     {
+      rmutex_unlock (NULL, &conn->rmutex);
       return CONNECTION_CLOSED;
     }
+  rmutex_unlock (NULL, &conn->rmutex);
 
   request.type = cubconn::connection_worker::message_type::SEND_PACKET;
   request.conn = conn;
