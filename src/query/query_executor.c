@@ -16369,7 +16369,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    {
 	      /* not START WITH tuples but a previous generation of children, now parents. They have the index string
 	       * column written. */
-	      if (!DB_IS_NULL (index_valp) && index_valp->need_clear == true)
+	      if (DB_NEED_CLEAR (index_valp))
 		{
 		  pr_clear_value (index_valp);
 		}
@@ -16875,7 +16875,7 @@ exit_on_error:
 	}
     }
 
-  if (!index_valp && !DB_IS_NULL (index_valp) && index_valp->need_clear == true)
+  if (!index_valp && DB_NEED_CLEAR (index_valp))
     {
       pr_clear_value (index_valp);
     }
