@@ -1882,6 +1882,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
   };
   // *INDENT-ON*
 
+  er_log_debug (__FILE__, __LINE__, "css_send_error_to_client: fd = %d, buffer_size = %d\n", conn->fd, buffer_size);
   return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
 }
 

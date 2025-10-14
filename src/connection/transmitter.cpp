@@ -20,6 +20,7 @@
  * transmitter.cpp
  */
 
+#include "system_parameter.h"
 #include "connection_defs.h"
 #include "transmitter.hpp"
 #include "error_manager.h"
@@ -32,6 +33,12 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+#if 1
+#define er_log_conn(...) er_log_debug (__VA_ARGS__)
+#else
+#define er_log_conn(...)
+#endif
 
 #define NEXT_STATE(x) do { \
     _er_log_debug (__FILE__, __LINE__, "transmitter state %d -> state = %d\n", m_state, state::x); \
@@ -61,6 +68,7 @@ namespace cubconn
     while (msg->msg_iovlen)
       {
 	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL);
+	er_log_conn (__FILE__, __LINE__, "transmitter->fill: sendmsg returned fd = %d, bytes = %u\n", fd, bytes);
 	if (bytes > 0)
 	  {
 	    m_stats->add (stats::NET_SEND, bytes);

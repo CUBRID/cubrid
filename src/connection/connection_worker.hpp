@@ -96,6 +96,11 @@ namespace cubconn
 	  std::function<void ()> deleter;
 	  /* shutdown client */
 	  ignore_level ignore;
+
+	  /* debug purpose */
+#if !defined (NDEBUG)
+	  uint64_t message_id;
+#endif
       };
 
     private:
