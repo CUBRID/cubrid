@@ -236,6 +236,7 @@ namespace parallel_heap_scan
     result_handler<result_type> *result_handler_p = m_result_handler;
     SCAN_CODE scan_code;
     VPID vpid;
+    int err_code;
     bool stop = false;
     bool is_interrupt;
     bool dummy = false;
@@ -249,13 +250,7 @@ namespace parallel_heap_scan
 		      && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
 	if (is_interrupt)
 	  {
-	    if (er_errid() != NO_ERROR)
-	      {
-		/* other thread set interrupt but error is not ER_INTERRUPTED */
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	      }
-	    else
+	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 		m_err_messages->move_top_error_message_to_this();
@@ -270,8 +265,18 @@ namespace parallel_heap_scan
 	  }
 	if (scan_code == S_ERROR)
 	  {
-	    m_err_messages->move_top_error_message_to_this();
-	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	      {
+		err_code = m_err_messages->move_top_error_message_to_this();
+		if (err_code == ER_INTERRUPTED)
+		  {
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		else
+		  {
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+	      }
 	    break;
 	  }
 	m_slot_iterator.set_page (&thread_ref, &vpid);
