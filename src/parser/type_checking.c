@@ -12676,6 +12676,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
   FP_VALUE_TYPE num_op_type = FP_VALUE_TYPE_NAN;
 
   assert (parser != NULL);
+  assert (domain != NULL && *domain != NULL);
 
   if (!arg1 || !result)
     {

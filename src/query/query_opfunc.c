@@ -2002,7 +2002,7 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 	  return ER_QPROC_OVERFLOW_ADDITION;
 	}
-      if (domain_p != NULL
+      if (domain_p != NULL && *domain_p != NULL
 	  && (num_op_type == FP_VALUE_TYPE_NUMBER
 	      || ((*domain_p)->precision < result_p->domain.numeric_info.precision
 		  || (*domain_p)->scale != result_p->domain.numeric_info.scale)))
@@ -3625,7 +3625,7 @@ qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
 	  return ER_FAILED;
 	}
-      if (domain_p != NULL
+      if (domain_p != NULL && *domain_p != NULL
 	  && (num_op_type == FP_VALUE_TYPE_NUMBER
 	      || ((*domain_p)->precision < result_p->domain.numeric_info.precision
 		  || (*domain_p)->scale != result_p->domain.numeric_info.scale)))
@@ -5086,7 +5086,7 @@ qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
 	  return ER_FAILED;
 	}
-      if (domain_p != NULL
+      if (domain_p != NULL && *domain_p != NULL
 	  && (num_op_type == FP_VALUE_TYPE_NUMBER
 	      || ((*domain_p)->precision < result_p->domain.numeric_info.precision
 		  || (*domain_p)->scale != result_p->domain.numeric_info.scale)))
@@ -5709,7 +5709,7 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
 	}
-      if (domain_p != NULL
+      if (domain_p != NULL && *domain_p != NULL
 	  && (num_op_type == FP_VALUE_TYPE_NUMBER
 	      || ((*domain_p)->precision < result_p->domain.numeric_info.precision
 		  || (*domain_p)->scale != result_p->domain.numeric_info.scale)))
