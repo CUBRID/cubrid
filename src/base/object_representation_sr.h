@@ -240,6 +240,7 @@ struct or_class
 extern void or_class_rep_dir (RECDES * record, OID * rep_dir_p);
 extern void or_class_hfid (RECDES * record, HFID * hfid);
 extern void or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo);
+extern bool or_class_is_replication_on (RECDES * record);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void or_class_statistics (RECDES * record, OID * oid);
 extern int or_class_subclasses (RECDES * record, int *array_size, OID ** array_ptr);
@@ -277,4 +278,5 @@ extern int or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_heade
 extern int or_mvcc_add_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header, int bound_bit,
 			       int variable_offset_size);
 extern int or_mvcc_set_log_lsa_to_record (RECDES * record, LOG_LSA * lsa);
+bool or_is_replication_candidate_key (const OR_INDEX * index);
 #endif /* _OBJECT_REPRESENTATION_SR_H_ */

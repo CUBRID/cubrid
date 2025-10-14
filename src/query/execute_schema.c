@@ -10689,8 +10689,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
     {
       error = ER_REPLICATION_CONSTRAINT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
-	      "Changing the replication option of a class is not allowed in HA mode.");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 
       return error;
     }

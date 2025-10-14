@@ -767,6 +767,30 @@ or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
   *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ALGORITHM);
 }
 
+void
+or_class_flags (RECDES * record, int *flags)
+{
+  char *ptr;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  *(int *) flags = OR_GET_INT (ptr + ORC_CLASS_FLAGS);
+}
+
+bool
+or_class_is_replication_on (RECDES * record)
+{
+  int flags = 0;
+  int replication_off_flag = 32;	/* SM_CLASSFLAG_REPLICATION_OFF = 32 */
+
+  /* TODO:
+   * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation(EPIC CBRD-26096). */
+  or_class_flags (record, &flags);
+
+  return !(flags & replication_off_flag);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_class_statistics () - extracts the OID of the statistics instance for
@@ -4689,4 +4713,42 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
   buf->ptr += OR_MVCC_PREV_VERSION_LSA_SIZE;
 
   return NO_ERROR;
+}
+
+/* 
+ * or_is_replication_candidate_key() -
+ *   return : true if the index is a replication-key candidate
+ *            (PRIMARY KEY, or UNIQUE with all key attributes NOT NULL)
+ *   index(in): OR_INDEX pointer (may be NULL)
+ */
+/* TODO: We need to review a method to replace the index-dependent approach with one that receives the replication key name from the master node(EPIC CBRD-26096). */
+bool
+or_is_replication_candidate_key (const OR_INDEX * index)
+{
+  if (index == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  if (index->type == BTREE_PRIMARY_KEY)
+    {
+      return true;
+    }
+
+  if (index->type != BTREE_UNIQUE || index->n_atts <= 0 || index->atts == NULL)
+    {
+      return false;
+    }
+
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      OR_ATTRIBUTE *attr = index->atts[i];
+      if (attr == NULL || !attr->is_notnull)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }

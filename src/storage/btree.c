@@ -8260,7 +8260,7 @@ exit_on_end:
 }
 
 int
-btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
+btree_get_rkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * rkey_btid)
 {
   OR_CLASSREP *cls_repr = NULL;
   OR_INDEX *curr_idx;
@@ -8268,9 +8268,9 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
   int i;
   int error = NO_ERROR;
 
-  assert (pkey_btid != NULL);
+  assert (rkey_btid != NULL);
 
-  BTID_SET_NULL (pkey_btid);
+  BTID_SET_NULL (rkey_btid);
 
   cls_repr = heap_classrepr_get (thread_p, cls_oid, NULL, NULL_REPRID, &cache_idx);
   if (cls_repr == NULL)
@@ -8290,9 +8290,9 @@ btree_get_pkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * pkey_btid)
 	  break;
 	}
 
-      if (curr_idx->type == BTREE_PRIMARY_KEY)
+      if (or_is_replication_candidate_key (curr_idx))
 	{
-	  BTID_COPY (pkey_btid, &curr_idx->btid);
+	  BTID_COPY (rkey_btid, &curr_idx->btid);
 	  break;
 	}
     }
