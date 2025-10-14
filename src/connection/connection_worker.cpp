@@ -278,8 +278,7 @@ namespace cubconn
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     message request;
     int tran_index, client_id;
-    int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
-    int r;
+    int status;
 
     assert_release (ctx->m_conn);
 
@@ -377,14 +376,12 @@ namespace cubconn
 
     start = std::chrono::steady_clock::now ();
 
-    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
-    assert (r == NO_ERROR);
+    rmutex_lock (m_entry, &ctx->m_conn->cmutex);
 
     ctx->m_conn->worker = nullptr;
     ctx->m_conn->context = nullptr;
 
-    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
-    assert (r == NO_ERROR);
+    rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
 
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
