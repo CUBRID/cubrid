@@ -9585,6 +9585,43 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	  }
 	  break;
+	case DB_TYPE_BLOB:
+	  {
+	    DB_VALUE temp;
+	    char *bit_bytes = NULL;
+	    int blob_len = 0;	/* bytes */
+	    int read_len = 0;
+
+	    blob_len = db_get_string_length (src);
+	    bit_bytes = (char *) db_private_alloc (NULL, blob_len);
+	    if (bit_bytes == NULL)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+		break;
+	      }
+
+	    db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE, bit_bytes, blob_len * 8);
+	    temp.need_clear = true;
+
+	    if (db_bit_string_coerce (&temp, target, &data_stat) != NO_ERROR)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
+		     (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
+		      || coercion_mode == TP_IMPLICIT_COERCION))
+	      {
+		status = DOMAIN_OVERFLOW;
+		pr_clear_value (target);
+	      }
+	    else
+	      {
+		status = DOMAIN_COMPATIBLE;
+	      }
+
+	    pr_clear_value (&temp);
+	  }
+	  break;
 
 	case DB_TYPE_ENUMERATION:
 	  {
