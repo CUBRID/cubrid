@@ -41,7 +41,7 @@ import org.apache.commons.lang3.StringUtils;
 
 public class ServerConfig {
 
-    private static final String LOG_DIR = "log";
+    private static final String LOG_DIR = "log/pl";
 
     private final String name;
     private final String version;
