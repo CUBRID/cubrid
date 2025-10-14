@@ -10403,7 +10403,7 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
       return false;
     }
 
-  if (!(xasl_flag & LIKE_RECOMPILE_CANDIDATE))
+  if (!(xasl_flag & LIKE_RECOMPILE_CANDIDATE) || !prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING))
     {
       return false;
     }
@@ -10417,80 +10417,80 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
 
       if (PT_IS_EXPR_NODE_WITH_OPERATOR (where, PT_LIKE))
-	{
+	    {
 	  arg2 = PT_EXPR_ARG2 (where);
 
-	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
-	    {
-	      pattern = PT_EXPR_ARG1 (arg2);
-	      escape = PT_EXPR_ARG2 (arg2);
-	      assert (escape != NULL);
-	    }
-	  else
-	    {
-	      pattern = arg2;
-	      escape = NULL;
-	    }
-
-	  if (escape != NULL)
-	    {
-	      if (PT_IS_NULL_NODE (escape))
+	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
 		{
+		  pattern = PT_EXPR_ARG1 (arg2);
+		  escape = PT_EXPR_ARG2 (arg2);
+		  assert (escape != NULL);
+		}
+	      else
+		{
+		  pattern = arg2;
+		  escape = NULL;
+		}
+
+	      if (escape != NULL)
+		{
+		  if (PT_IS_NULL_NODE (escape))
+		    {
+		      has_escape_char = true;
+		      escape_str = "\\";
+		    }
+		  else
+		    {
+		      int esc_char_len = 0;
+
+		      assert (pt_is_ascii_string_value_node (escape));
+
+		      escape_str = (const char *) escape->info.value.data_value.str->bytes;
+		      codeset = db_get_string_codeset (&pattern->info.value.db_value);
+
+		      intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
+				       &esc_char_len);
+		      if (esc_char_len != 1)
+			{
+			  PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
+			  return false;
+			}
+		      has_escape_char = true;
+		    }
+		}
+	      else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
+		{
+		  assert (escape == NULL);
+		  assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
 		  has_escape_char = true;
 		  escape_str = "\\";
 		}
 	      else
 		{
-		  int esc_char_len = 0;
-
-		  assert (pt_is_ascii_string_value_node (escape));
-
-		  escape_str = (const char *) escape->info.value.data_value.str->bytes;
-		  codeset = db_get_string_codeset (&pattern->info.value.db_value);
-
-		  intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
-				   &esc_char_len);
-		  if (esc_char_len != 1)
-		    {
-		      PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
-		      return false;
-		    }
-		  has_escape_char = true;
+		  has_escape_char = false;
+		  escape_str = NULL;
 		}
-	    }
-	  else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
-	    {
-	      assert (escape == NULL);
-	      assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
-	      has_escape_char = true;
-	      escape_str = "\\";
-	    }
-	  else
-	    {
-	      has_escape_char = false;
-	      escape_str = NULL;
-	    }
 
-	  if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
-	    {
-	      if (!DB_IS_NULL (&where_val))
+	      if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
 		{
-		  db_make_null (&compressed_pattern);
-
-		  db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
-
-		  db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
-						     &num_logical_chars, &last_safe_logical_pos,
-						     &num_match_many, &num_match_one);
-
-		  if (num_logical_chars == 1 && num_match_many == 1)
+		  if (!DB_IS_NULL (&where_val))
 		    {
-		      need_recompile = true;
-		      break;
+		      db_make_null (&compressed_pattern);
+
+		      db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
+
+		      db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
+							 &num_logical_chars, &last_safe_logical_pos,
+							 &num_match_many, &num_match_one);
+
+		      if (num_logical_chars == 1 && num_match_many == 1)
+			{
+			      need_recompile = true;
+			      break;
+			    }
+			}
 		    }
 		}
-	    }
-	}
     }
 
   return need_recompile;

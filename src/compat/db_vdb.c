@@ -2743,7 +2743,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
       && !statement->info.execute.recompile	/* recompile is already planned */
       && (prepare_info.host_variables.size > prepare_info.auto_param_count))
     {
-      if (xasl_header.xasl_flag & LIKE_RECOMPILE_CANDIDATE)
+      if (xasl_header.xasl_flag & LIKE_RECOMPILE_CANDIDATE && prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING))
 	{
 	  if (db_check_where_need_recompile (parser, statement, xasl_header.xasl_flag))
 	    {
