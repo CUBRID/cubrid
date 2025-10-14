@@ -7561,6 +7561,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     {
       target = dest;
     }
+  printf ("tp_value_cast_internal: src_type=%d, target_type=%d\n", original_type, DB_VALUE_TYPE (target));
 
   /*
    * Initialize the destination domain, important for the
@@ -9587,42 +9588,27 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_BLOB:
 	  {
-	    DB_VALUE temp;
-	    char *bit_bytes = NULL;
-	    int blob_len = 0;	/* bytes */
-	    int read_len = 0;
+	    DB_VALUE tmpval;
 
-	    blob_len = db_get_string_length (src);
-	    bit_bytes = (char *) db_private_alloc (NULL, blob_len);
-	    if (bit_bytes == NULL)
+	    /* DBG */ printf ("[DBG][BLOB->BIT] src_type=%d, target_type(before)=%d\n",
+			      DB_VALUE_DOMAIN_TYPE (src), DB_VALUE_DOMAIN_TYPE (target));
+
+	    db_make_null (&tmpval);
+
+	    err = db_blob_to_bit (src, NULL, &tmpval);
+	    /* DBG */ printf ("[DBG][BLOB->BIT] after db_blob_to_bit: tmpval_type=%d\n",
+			      DB_VALUE_DOMAIN_TYPE (&tmpval));
+
+	    if (err == NO_ERROR)
 	      {
-		status = DOMAIN_INCOMPATIBLE;
-		break;
+		err = tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
+		/* DBG */ printf ("[DBG][BLOB->BIT] after cast: target_type=%d\n",
+				  DB_VALUE_DOMAIN_TYPE (target));
 	      }
 
-	    db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE, bit_bytes, blob_len * 8);
-	    temp.need_clear = true;
-
-	    if (db_bit_string_coerce (&temp, target, &data_stat) != NO_ERROR)
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	    else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
-		     (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
-		      || coercion_mode == TP_IMPLICIT_COERCION))
-	      {
-		status = DOMAIN_OVERFLOW;
-		pr_clear_value (target);
-	      }
-	    else
-	      {
-		status = DOMAIN_COMPATIBLE;
-	      }
-
-	    pr_clear_value (&temp);
+	    (void) pr_clear_value (&tmpval);
 	  }
 	  break;
-
 	case DB_TYPE_ENUMERATION:
 	  {
 	    DB_VALUE varchar_val;
@@ -10584,7 +10570,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 	    break;
 	  default:
-	    assert (false);	// heexoo_test
 	    status = DOMAIN_INCOMPATIBLE;
 	    break;
 	  }
@@ -10603,7 +10588,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       }
       break;
     default:
-      assert (false);		// heexoo_test
       status = DOMAIN_INCOMPATIBLE;
       break;
     }
@@ -12007,7 +11991,8 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * des
 	  er_clear ();
 	}
     }
-
+  printf ("tp_value_auto_cast: src(%d), dest(%d), desired_domain(%d)\n", DB_VALUE_TYPE (src), DB_VALUE_TYPE (dest),
+	  TP_DOMAIN_TYPE (desired_domain));
   return status;
 }
 
