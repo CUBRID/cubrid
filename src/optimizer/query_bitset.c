@@ -628,11 +628,13 @@ bitset_init (BITSET * s, QO_ENV * env)
 void
 bitset_delset (BITSET * s)
 {
-  assert (BITSET_IS_VALID (s));
   if (s->setp != s->set.word)
     {
-      bitset_free (s->setp);
-      assert (s->setp == NULL);
+      if (s->setp)
+	{
+	  bitset_free (s->setp);
+	  assert (s->setp == NULL);
+	}
     }
 
 #if !defined(NDEBUG)
