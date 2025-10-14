@@ -48,6 +48,10 @@
 #define er_log_conn(...)
 #endif
 
+#if !defined (NDEBUG)
+std::atomic<uint64_t> message_counter (0);
+#endif
+
 #define NEXT_STATE(ctx, sel, x) do { \
     er_log_conn (__FILE__, __LINE__, "fd = %d, set state = %d\n", ctx->m_conn ? ctx->m_conn->fd : -1, state::x); \
     (ctx->sel.m_state = state::x); \
@@ -137,11 +141,18 @@ namespace cubconn
   {
     assert ((item.conn ? (item.conn->fd != -1) : false) || item.type == message_type::SHUTDOWN);
 
+#if !defined (NDEBUG)
+    item.message_id = message_counter++;
+#endif
+
     m_queue[static_cast<std::size_t> (type)].push (std::move (item));
     m_queue_size[static_cast<std::size_t> (type)].fetch_add (1, std::memory_order_release);
 
-    er_log_conn (__FILE__, __LINE__, "enqueued request_type = %d to the worker index = %d, queue_type = %d\n", item.type,
-		 m_index, type);
+#if !defined (NDEBUG)
+    er_log_conn (__FILE__, __LINE__,
+		 "enqueued message_id = %lld, request_type = %d to the worker index = %d, queue_type = %d\n", item.message_id,
+		 item.type, m_index, type);
+#endif
   }
 
   bool connection_worker::notify ()
@@ -465,14 +476,19 @@ retry:
 	    item.deleter ();
 	  }
 
+#if !defined (NDEBUG)
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
-		     static_cast<void *> (item.conn));
+		     "connection_worker->handle_message_queue_send_packet: message_id = %lld, context is already cleared for conn = %p\n",
+		     item.message_id, static_cast<void *> (item.conn));
+#endif
 
 	return true;
       }
 
-    er_log_conn (__FILE__, __LINE__, "new packet to send. fd = %d in the worker = %d\n", item.conn->fd, m_index);
+#if !defined (NDEBUG)
+    er_log_conn (__FILE__, __LINE__, "new packet to send. message_id = %lld, fd = %d in the worker = %d\n", item.message_id,
+		 item.conn->fd, m_index);
+#endif
 
     for (auto &packet : item.packet)
       {
@@ -500,7 +516,10 @@ retry:
     if (status == result::Ok)
       {
 	ctx->m_send.m_transmitter.clear ();
-	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
+#if !defined (NDEBUG)
+	er_log_conn (__FILE__, __LINE__, "fully sent. message_id = %lld, fd = %d in the worker = %d\n", item.message_id,
+		     ctx->m_conn->fd, m_index);
+#endif
 
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
@@ -637,8 +656,11 @@ retry:
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
     while (i++ < size && m_queue[static_cast<std::size_t> (type)].try_pop (request))
       {
-	er_log_conn (__FILE__, __LINE__, "recevied request_type = %d from message queue in the worker = %d\n", request.type,
-		     m_index);
+#if !defined (NDEBUG)
+	er_log_conn (__FILE__, __LINE__,
+		     "recevied message_id = %lld, request_type = %d from message queue in the worker = %d\n", request.message_id,
+		     request.type, m_index);
+#endif
 
 	switch (request.type)
 	  {
