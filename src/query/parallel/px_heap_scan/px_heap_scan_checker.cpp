@@ -433,6 +433,10 @@ namespace parallel_heap_scan
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_pred));
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_rest));
     result = merge_check_result (result, general_checker.check (spec->where_pred));
+    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
+      {
+	result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+      }
     return result;
   }
 

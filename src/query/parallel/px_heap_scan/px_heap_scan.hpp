@@ -27,10 +27,9 @@
 #include "px_worker_manager.hpp"
 #include "px_heap_scan_result_handler.hpp"
 #include "px_heap_scan_input_handler.hpp"
-#include "px_heap_scan_input_handler_single_table.hpp"
 #include "px_heap_scan_trace_handler.hpp"
-#include "px_heap_scan_task.hpp"
 #include "px_heap_scan_result_type.hpp"
+#include "query_manager.h"
 
 #define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 
