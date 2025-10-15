@@ -8290,11 +8290,13 @@ btree_get_rkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * rkey_btid)
 	  break;
 	}
 
-      if (or_is_replication_candidate_key (curr_idx))
-	{
-	  BTID_COPY (rkey_btid, &curr_idx->btid);
-	  break;
-	}
+      <<<<<<<HEAD if (or_is_replication_candidate_key (curr_idx))
+	== == == = if (curr_idx->type == BTREE_PRIMARY_KEY || curr_idx->type == BTREE_UNIQUE)
+	>>>>>>>78030462 a (fix (pgbuf):prevent assertion in pgbuf_is_valid_page during UPDATE / DELETE)
+	  {
+	    BTID_COPY (rkey_btid, &curr_idx->btid);
+	    break;
+	  }
     }
 
   if (cls_repr != NULL)
