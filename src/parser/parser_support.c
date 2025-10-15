@@ -156,6 +156,7 @@ static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
 					  bool add_offset);
 static int pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val);
+static bool pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
@@ -9755,6 +9756,13 @@ cleanup:
   return error;
 }
 
+/*
+ * pt_get_query_expr_value () - get the value of an expression
+ * return : error code or NO_ERROR
+ * parser (in) : parser context
+ * expr (in) : expression
+ * expr_val (in/out) : expression value
+ */
 static int
 pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val)
 {
@@ -9802,6 +9810,111 @@ cleanup:
 
   parser->flag.set_host_var = save_set_host_var;
   return error;
+}
+
+/*
+ * pt_check_removable_like_condition () - check if LIKE condition is removable
+ * return : true/false
+ * parser (in) : parser context
+ * from (in) : from clause
+ * expr (in) : expression
+ */
+static bool
+pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr)
+{
+  PT_NODE *arg1, *arg2;
+  PT_NODE *pattern = NULL, *escape = NULL;
+  DB_VALUE where_val, compressed_pattern;
+  int num_logical_chars = 0;
+  int last_safe_logical_pos = 0;
+  int num_match_many = 0;
+  int num_match_one = 0;
+  bool need_recompile = false;
+  bool has_escape_char = false;
+  const char *escape_str = NULL;
+  INTL_CODESET codeset;
+
+  arg1 = PT_EXPR_ARG1 (expr);
+  if (pt_check_not_null_constraint (parser, from, arg1) && PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_LIKE))
+    {
+      arg2 = PT_EXPR_ARG2 (expr);
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+	{
+	  pattern = PT_EXPR_ARG1 (arg2);
+	  escape = PT_EXPR_ARG2 (arg2);
+	  assert (escape != NULL);
+	}
+      else
+	{
+	  pattern = arg2;
+	  escape = NULL;
+	}
+
+      if (escape != NULL)
+	{
+	  if (PT_IS_NULL_NODE (escape))
+	    {
+	      has_escape_char = true;
+	      escape_str = "\\";
+	    }
+	  else
+	    {
+	      int esc_char_len = 0;
+
+	      assert (pt_is_ascii_string_value_node (escape));
+
+	      escape_str = (const char *) escape->info.value.data_value.str->bytes;
+	      codeset = db_get_string_codeset (&pattern->info.value.db_value);
+
+	      intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
+			       &esc_char_len);
+	      if (esc_char_len != 1)
+		{
+		  PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
+		  return false;
+		}
+	      has_escape_char = true;
+	    }
+	}
+      else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
+	{
+	  assert (escape == NULL);
+	  assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+	  has_escape_char = true;
+	  escape_str = "\\";
+	}
+      else
+	{
+	  has_escape_char = false;
+	  escape_str = NULL;
+	}
+
+      if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
+	{
+	  if (!DB_IS_NULL (&where_val))
+	    {
+	      db_make_null (&compressed_pattern);
+
+	      db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
+
+	      db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
+						 &num_logical_chars, &last_safe_logical_pos,
+						 &num_match_many, &num_match_one);
+
+	      if (num_logical_chars == 1 && num_match_many == 1)
+		{
+		  return true;
+		}
+
+	      /* If num_logical_chars is greater than 0 and both num_match_many and num_match_one are 0, 
+	       * the PT_LIKE can be replaced with PT_EQ instead.
+	       * See: qo_rewrite_one_like_term() */
+	    }
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -10378,21 +10491,17 @@ end:
   return err;
 }
 
+/*
+ * pt_recompile_for_like_optimizations () - check if query should be recompiled due to removal of unnecessary LIKE condition
+ * return : true/false
+ * parser (in) : parser context
+ * statement (in) : statement
+ * xasl_flag (in) : xasl flag
+ */
 bool
 pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
   PT_NODE *cnf_node, *dnf_node;
-  PT_NODE *where, *arg2;
-  PT_NODE *pattern = NULL, *escape = NULL;
-  DB_VALUE where_val, compressed_pattern;
-  int num_logical_chars = 0;
-  int last_safe_logical_pos = 0;
-  int num_match_many = 0;
-  int num_match_one = 0;
-  bool need_recompile = false;
-  bool has_escape_char = false;
-  const char *escape_str = NULL;
-  INTL_CODESET codeset;
 
   if (statement->node_type != PT_SELECT)
     {
@@ -10413,158 +10522,18 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
     {
       if (cnf_node->or_next == NULL)
 	{
-	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (cnf_node, PT_LIKE))
+	  if (pt_check_removable_like_condition (parser, statement->info.query.q.select.from, cnf_node))
 	    {
-	      arg2 = PT_EXPR_ARG2 (cnf_node);
-
-	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
-		{
-		  pattern = PT_EXPR_ARG1 (arg2);
-		  escape = PT_EXPR_ARG2 (arg2);
-		  assert (escape != NULL);
-		}
-	      else
-		{
-		  pattern = arg2;
-		  escape = NULL;
-		}
-
-	      if (escape != NULL)
-		{
-		  if (PT_IS_NULL_NODE (escape))
-		    {
-		      has_escape_char = true;
-		      escape_str = "\\";
-		    }
-		  else
-		    {
-		      int esc_char_len = 0;
-
-		      assert (pt_is_ascii_string_value_node (escape));
-
-		      escape_str = (const char *) escape->info.value.data_value.str->bytes;
-		      codeset = db_get_string_codeset (&pattern->info.value.db_value);
-
-		      intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
-				       &esc_char_len);
-		      if (esc_char_len != 1)
-			{
-			  PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
-			  return false;
-			}
-		      has_escape_char = true;
-		    }
-		}
-	      else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
-		{
-		  assert (escape == NULL);
-		  assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
-		  has_escape_char = true;
-		  escape_str = "\\";
-		}
-	      else
-		{
-		  has_escape_char = false;
-		  escape_str = NULL;
-		}
-
-	      if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
-		{
-		  if (!DB_IS_NULL (&where_val))
-		    {
-		      db_make_null (&compressed_pattern);
-
-		      db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
-
-		      db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
-							 &num_logical_chars, &last_safe_logical_pos,
-							 &num_match_many, &num_match_one);
-
-		      if (num_logical_chars == 1 && num_match_many == 1)
-			{
-			  return true;
-			}
-		    }
-		}
+	      return true;
 	    }
 	}
       else
 	{
 	  for (dnf_node = cnf_node; dnf_node != NULL; dnf_node = dnf_node->or_next)
 	    {
-	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (dnf_node, PT_LIKE))
+	      if (pt_check_removable_like_condition (parser, statement->info.query.q.select.from, dnf_node))
 		{
-		  arg2 = PT_EXPR_ARG2 (dnf_node);
-
-		  if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
-		    {
-		      pattern = PT_EXPR_ARG1 (arg2);
-		      escape = PT_EXPR_ARG2 (arg2);
-		      assert (escape != NULL);
-		    }
-		  else
-		    {
-		      pattern = arg2;
-		      escape = NULL;
-		    }
-
-		  if (escape != NULL)
-		    {
-		      if (PT_IS_NULL_NODE (escape))
-			{
-			  has_escape_char = true;
-			  escape_str = "\\";
-			}
-		      else
-			{
-			  int esc_char_len = 0;
-
-			  assert (pt_is_ascii_string_value_node (escape));
-
-			  escape_str = (const char *) escape->info.value.data_value.str->bytes;
-			  codeset = db_get_string_codeset (&pattern->info.value.db_value);
-
-			  intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length,
-					   codeset, &esc_char_len);
-			  if (esc_char_len != 1)
-			    {
-			      PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
-			      return false;
-			    }
-			  has_escape_char = true;
-			}
-		    }
-		  else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
-		    {
-		      assert (escape == NULL);
-		      assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
-		      has_escape_char = true;
-		      escape_str = "\\";
-		    }
-		  else
-		    {
-		      has_escape_char = false;
-		      escape_str = NULL;
-		    }
-
-		  if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
-		    {
-		      if (!DB_IS_NULL (&where_val))
-			{
-			  db_make_null (&compressed_pattern);
-
-			  db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
-
-			  db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
-							     &num_logical_chars, &last_safe_logical_pos,
-							     &num_match_many, &num_match_one);
-
-			  if (num_logical_chars == 1 && num_match_many == 1)
-			    {
-			      return true;
-			    }
-			}
-		    }
+		  return true;
 		}
 	    }
 	}
