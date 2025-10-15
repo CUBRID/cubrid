@@ -2753,7 +2753,6 @@ error:
 
 #if defined(SERVER_MODE)
   pl_server_destroy ();
-  css_stop_connections ();
 
   cdc_daemons_destroy ();
 
