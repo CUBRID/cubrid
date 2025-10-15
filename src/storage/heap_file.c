@@ -11078,12 +11078,22 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 bool
 heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
   bool ret;
+=======
+bool
+
+heap_is_replicable_class (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes;
+  int error = NO_ERROR;
+>>>>>>> fadde80a3 (replication pk only)
 
   assert (class_oid != NULL);
 
@@ -11092,7 +11102,16 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
       return false;
     }
 
+<<<<<<< HEAD
   (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+=======
+  error = heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      return false;
+    }
+>>>>>>> fadde80a3 (replication pk only)
 
   if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
     {
@@ -11101,6 +11120,7 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
       return false;
     }
 
+<<<<<<< HEAD
   ret = or_class_is_replication_on (&recdes);
 
   heap_scancache_end (thread_p, &scan_cache);
@@ -11110,6 +11130,13 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 
 =======
 >>>>>>> dcff04cb6 (replication 저장 및 조회 구현)
+=======
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return or_class_is_replicable (&recdes);
+}
+
+>>>>>>> fadde80a3 (replication pk only)
 /*
  * heap_class_get_partition_info () - Get partition information for the class
  *				      identified by class_oid

@@ -767,7 +767,7 @@ or_class_tde_algorithm (RECDES * record, TDE_ALGORITHM * tde_algo)
   *(int *) tde_algo = OR_GET_INT (ptr + ORC_CLASS_TDE_ALGORITHM);
 }
 
-<<<<<<<HEAD void
+void
 or_class_flags (RECDES * record, int *flags)
 {
   char *ptr;
@@ -791,7 +791,6 @@ or_class_is_replication_on (RECDES * record)
   return !(flags & replication_off_flag);
 }
 
-== == == = >>>>>>>dcff04cb6 (replication � ��장및조회구현)
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * or_class_statistics () - extracts the OID of the statistics instance for
@@ -800,8 +799,8 @@ or_class_is_replication_on (RECDES * record)
  *   record(in): packed disk record containing class
  *   oid(in): pointer to OID structure to be filled in
  */
-     void
-     or_class_statistics (RECDES * record, OID * oid)
+void
+or_class_statistics (RECDES * record, OID * oid)
 {
   char *ptr;
 
