@@ -29,6 +29,8 @@
 
 #include "boot.h"
 #if defined(SERVER_MODE)
+#include "receiver.hpp"
+#include "transmitter.hpp"
 #include "connection_list_sr.h"
 #include "critical_section.h"
 #endif
@@ -419,6 +421,11 @@ struct css_queue_entry
 struct session_state;
 #endif
 
+namespace cubconn
+{
+  class connection_worker;
+};
+
 /*
  * This data structure is the interface between the client and the
  * communication software to identify the data connection.
@@ -426,7 +433,7 @@ struct session_state;
 typedef struct css_conn_entry CSS_CONN_ENTRY;
 struct css_conn_entry
 {
-  SOCKET fd;
+  SOCKET fd;			/* this must be first */
   unsigned short request_id;
   int status;			/* CONN_OPEN, CONN_CLOSED, CONN_CLOSING = 3 */
   int invalidate_snapshot;
@@ -448,12 +455,16 @@ struct css_conn_entry
 
   char *version_string;		/* client version string */
 
+  SYNC_RMUTEX cmutex;		/* context mutex */
+  // *INDENT-OFF*
+  cubconn::connection_worker *worker;
+  // *INDENT-ON*
+  void *context;
+
   CSS_QUEUE_ENTRY *free_queue_list;
   struct css_wait_queue_entry *free_wait_queue_list;
-  char *free_net_header_list;
   int free_queue_count;
   int free_wait_queue_count;
-  int free_net_header_count;
 
   CSS_LIST request_queue;	/* list of requests */
   CSS_LIST data_queue;		/* list of data packets */
@@ -481,9 +492,11 @@ struct css_conn_entry
 
   // request count manipulation
   void add_pending_request ();
-  void start_request ();
+  void end_request ();
   bool has_pending_request () const;
   void init_pending_request ();
+
+  void release_packet (void *buffer);
 
 private:
   // note - I want to protect this.
@@ -495,6 +508,19 @@ private:
   int transaction_id;
 #endif				// not c++ = c
 };
+
+/*
+ * This data structure is the waiter to receive data
+ */
+typedef struct css_wait_queue_entry
+{
+  char **buffer;
+  int *size;
+  int *rc;
+  THREAD_ENTRY *thrd_entry;	/* thread waiting for data */
+  struct css_wait_queue_entry *next;
+  unsigned int key;
+} CSS_WAIT_QUEUE_ENTRY;
 
 /*
  * This is the mapping entry from a host/key to/from the entry id.

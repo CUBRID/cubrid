@@ -26,6 +26,7 @@ set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODB
 set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
 set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
 set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.4.tar.gz")                          # LZ4
+set(WITH_HWLOC_URL "https://download.open-mpi.org/release/hwloc/v2.12/hwloc-2.12.1.tar.gz")                   # HWLOC
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -52,6 +53,7 @@ set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208
 set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")             # intel oneTBB library 
 set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")		# RE2
 set(WITH_LZ4_URL_HASH "SHA256=0b0e3aa07c8c063ddf40b082bdf7e37a1562bda40a0ff5272957f3e987e0e54b")		# LZ4
+set(WITH_HWLOC_URL_HASH "SHA256=ffa02c3a308275a9339fbe92add054fac8e9a00cb8fe8c53340094012cb7c633")		# HWLOC
 
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
@@ -73,6 +75,7 @@ set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODB
 set(WITH_RE2          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with re2 library (default: EXTERNAL)")
 set(WITH_LZ4          "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with lz4 library (default: EXTERNAL)")
 set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB library (default: EXTERNAL)")
+set(WITH_HWLOC        "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with hwloc library (default: EXTERNAL)")
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
@@ -83,6 +86,7 @@ message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
 message(STATUS "Build with RE2 library: ${WITH_RE2}")
 message(STATUS "Build with LZ4 library: ${WITH_LZ4}")
 message(STATUS "Build with TBB library: ${WITH_LIBTBB}")
+message(STATUS "Build with HWLOC library: ${WITH_HWLOC}")
 
 macro(ADD_BY_PRODUCTS_VARIABLE prefix_dependee)
   if (CMAKE_GENERATOR MATCHES "Ninja")
@@ -492,6 +496,27 @@ endif()
 list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
+
+# HWLOC
+set(HWLOC_TARGET hwloc)
+set(HWLOC_INCLUDES ${3RDPARTY_LIBS_DIR}/Install/hwloc/include)
+set(HWLOC_LIBS ${3RDPARTY_LIBS_DIR}/Install/hwloc/lib/libhwloc.a)
+ADD_BY_PRODUCTS_VARIABLE ("HWLOC" ${HWLOC_LIBS})
+externalproject_add(${HWLOC_TARGET}
+  URL                   ${WITH_HWLOC_URL}
+  URL_HASH              ${WITH_HWLOC_URL_HASH}
+  TIMEOUT               600
+  LOG_BUILD             TRUE
+  DOWNLOAD_NO_PROGRESS  1
+  CONFIGURE_COMMAND     ./configure --prefix=${3RDPARTY_LIBS_DIR}/Install/hwloc --disable-libxml2 --enable-plugins=xml_libxml --enable-static --disable-shared
+  BUILD_IN_SOURCE       true
+  BUILD_COMMAND         make -j CFLAGS=-fPIC
+  INSTALL_COMMAND       make -j install
+  "${HWLOC_BYPRODUCTS}"
+)
+list(APPEND EP_TARGETS ${HWLOC_TARGET})
+list(APPEND EP_LIBS ${HWLOC_LIBS})
+list(APPEND EP_INCLUDES ${HWLOC_INCLUDES})
 
 # libTBB
 set(LIBTBB_TARGET libtbb)

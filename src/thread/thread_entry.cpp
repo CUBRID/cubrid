@@ -363,6 +363,12 @@ namespace cubthread
   }
 
   void
+  entry::release_packet (void *buffer)
+  {
+    conn_entry->release_packet (buffer);
+  }
+
+  void
   entry::lock (void)
   {
     pthread_mutex_lock (&th_entry_lock);
