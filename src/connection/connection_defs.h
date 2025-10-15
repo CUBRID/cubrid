@@ -492,7 +492,7 @@ struct css_conn_entry
 
   // request count manipulation
   void add_pending_request ();
-  void end_request ();
+  size_t end_request ();
   bool has_pending_request () const;
   void init_pending_request ();
 
