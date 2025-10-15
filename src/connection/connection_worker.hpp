@@ -117,6 +117,7 @@ namespace cubconn
 
 	/* ignore guards (ERR/HUP) */
 	ignore_level m_ignore;
+	bool m_removed;
 
 	/* --------------------------------------------------------------------------- */
 	/* reception								       */
@@ -187,6 +188,8 @@ namespace cubconn
       /* requests currently in the queue. this is essential to prevent	*/
       /* starvation.							*/
       std::atomic<uint64_t> m_queue_size[static_cast<std::size_t> (queue_type::TYPE_COUNT)];
+
+      std::vector<context *> m_removed_context;
       bool m_notified;
 
       /* stats */

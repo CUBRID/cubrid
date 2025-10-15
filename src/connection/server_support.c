@@ -3066,8 +3066,7 @@ css_server_task::execute (context_type &thread_ref)
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 
-  m_conn.end_request ();
-  if (m_conn.status == CONN_CLOSING && !m_conn.has_pending_request ())
+  if (m_conn.end_request () == 0 && m_conn.status == CONN_CLOSING)
     {
       css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection_worker::ignore_level::DONT_IGNORE));
     }

@@ -62,6 +62,7 @@ namespace cubconn
   connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
     m_conn (nullptr),
     m_ignore (ignore_level::DONT_IGNORE),
+    m_removed (false),
     m_recv
   {
     .m_state = state::HEADER,
@@ -280,6 +281,12 @@ namespace cubconn
     int tran_index, client_id;
     int status;
 
+    if (ctx->m_removed)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: already removed context\n");
+	return true;
+      }
+
     assert_release (ctx->m_conn);
 
     /* change status */
@@ -386,14 +393,8 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
-    css_free_conn (ctx->m_conn);
-
-    if (m_context.erase (ctx) == 0)
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: context not found\n");
-	return false;
-      }
-    delete ctx;
+    /* mark deleted and lazily release this */
+    ctx->m_removed = true;
 
     m_stats.sub (stats::NET_CLIENTS, 1);
 
@@ -727,6 +728,20 @@ retry:
 	    return false;
 	  }
       }
+
+    /* the actual release of the context is handled last */
+    for (auto &ctx : m_removed_context)
+      {
+	css_free_conn (ctx->m_conn);
+	if (m_context.erase (ctx) == 0)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
+	    assert_release (false);
+	  }
+	delete ctx;
+      }
+    m_removed_context.clear ();
+
     return true;
   }
 
@@ -1164,6 +1179,9 @@ retry:
     m_entry->shutdown = false;
 
     m_entry->get_error_context ().register_thread_local ();
+
+    m_context.clear ();
+    m_removed_context.clear ();
   }
 
   void connection_worker::finalize ()

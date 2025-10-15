@@ -3138,7 +3138,8 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore)
   if (conn->worker == nullptr || conn->context == nullptr)
     {
       _er_log_debug (__FILE__, __LINE__,
-		     "css_request_shutdown_conn: worker already cleared for conn = %p\n", (void *) conn);
+		     "css_request_shutdown_conn: worker already cleared for conn = %p, fd = %d\n", (void *) conn,
+		     conn->fd);
 
       /* unlock */
       r = rmutex_unlock (NULL, &conn->cmutex);
@@ -3177,8 +3178,8 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
   if (conn->worker == nullptr || conn->context == nullptr)
     {
       _er_log_debug (__FILE__, __LINE__,
-		     "css_request_release_packet: worker already cleared for conn = %p, buffer = %p\n", (void *) conn,
-		     buffer);
+		     "css_request_release_packet: worker already cleared for conn = %p, fd = %d, buffer = %p\n",
+		     (void *) conn, conn->fd, buffer);
 
       /* unlock */
       r = rmutex_unlock (NULL, &conn->cmutex);
@@ -3211,7 +3212,8 @@ css_wakeup_handler (css_conn_entry * conn)
       r = rmutex_unlock (NULL, &conn->cmutex);
       assert (r == NO_ERROR);
 
-      _er_log_debug (__FILE__, __LINE__, "css_wakeup_handler: worker already cleared for conn = %p\n", (void *) conn);
+      _er_log_debug (__FILE__, __LINE__, "css_wakeup_handler: worker already cleared for conn = %p, fd = %d\n",
+		     (void *) conn, conn->fd);
       return;
     }
 
