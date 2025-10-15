@@ -14507,108 +14507,6 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
- * do_prepare_select_lookup() - Prepare the SELECT statement excluding optimization and
- *                       plan generation, and creating XASL as the result
- *   return: Error code
- *   parser(in/out): Parser context
- *   statement(in/out): A statement to do
- *
- * Note:
- */
-int
-do_prepare_select_lookup (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  int err = NO_ERROR;
-  int au_save;
-
-  COMPILE_CONTEXT *contextp;
-  XASL_STREAM stream;
-
-  contextp = &parser->context;
-
-  init_xasl_stream (&stream);
-
-  if (parser == NULL || statement == NULL)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  contextp->sql_user_text = statement->sql_user_text;
-  contextp->sql_user_text_len = statement->sql_user_text_len;
-
-  /* click counter check */
-  if (statement->flag.is_click_counter)
-    {
-      CHECK_MODIFICATION_ERROR ();
-    }
-
-  /* there can be no results, this is a compile time false where clause */
-  if (pt_false_where (parser, statement))
-    {
-      /* tell to the execute routine that there's no XASL to execute */
-      statement->xasl_id = NULL;
-      return NO_ERROR;
-    }
-
-  /* if already prepared */
-  if (statement->xasl_id)
-    {
-      return NO_ERROR;
-    }
-
-  /* make query string */
-  parser->flag.dont_prt_long_string = 1;
-  parser->flag.long_string_skipped = 0;
-  parser->flag.print_type_ambiguity = 0;
-
-  PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
-
-  contextp->sql_hash_text = (char *) statement->alias_print;
-  err =
-    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
-		 &contextp->sha1);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return err;
-    }
-  parser->flag.dont_prt_long_string = 0;
-  if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
-    {
-      statement->flag.cannot_prepare = 1;
-      return NO_ERROR;
-    }
-
-  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
-  contextp->recompile_xasl = statement->flag.recompile;
-  if (statement->flag.recompile == 0)
-    {
-      XASL_NODE_HEADER xasl_header;
-      stream.xasl_header = &xasl_header;
-
-      err = prepare_query (contextp, &stream);
-      if (err != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (err);
-	}
-      else if (contextp->recompile_xasl == true)
-	{
-	  /* recompile flag was returned by server */
-	  if (stream.xasl_id != NULL)
-	    {
-	      free_and_init (stream.xasl_id);
-	    }
-	}
-    }
-
-  statement->xasl_id = stream.xasl_id;
-
-  return err;
-}
-
-/*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
  *   return: Error code
@@ -14676,7 +14574,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       ASSERT_ERROR ();
       return err;
     }
-  parser->flag.dont_prt_long_string = 0;	// 이 flag만 원복, 나머지는 원복하면 안된다고 함...
+  parser->flag.dont_prt_long_string = 0;
   if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
     {
       statement->flag.cannot_prepare = 1;

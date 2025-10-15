@@ -10381,8 +10381,7 @@ end:
 bool
 pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
-  PT_NODE *cnf_node, *dnf_node, *cnf_prev, *dnf_prev;
-  bool cut_off;
+  PT_NODE *cnf_node, *dnf_node;
   PT_NODE *where, *arg2;
   PT_NODE *pattern = NULL, *escape = NULL;
   DB_VALUE where_val, compressed_pattern;
@@ -10410,13 +10409,8 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
       return false;
     }
 
-  where = statement->info.query.q.select.where;
-  /* traverse CNF list and keep track the pointer to previous node */
-  cnf_prev = NULL;
-  while ((cnf_node = ((cnf_prev) ? cnf_prev->next : where)))
+  for (cnf_node = statement->info.query.q.select.where; cnf_node != NULL; cnf_node = cnf_node->next)
     {
-      cut_off = false;
-
       if (cnf_node->or_next == NULL)
 	{
 	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (cnf_node, PT_LIKE))
@@ -10488,8 +10482,7 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 		      if (num_logical_chars == 1 && num_match_many == 1)
 			{
-			  cut_off = true;
-			  need_recompile = true;
+			  return true;
 			}
 		    }
 		}
@@ -10497,9 +10490,7 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 	}
       else
 	{
-	  /* traverse DNF list and keep track of the pointer to previous node */
-	  dnf_prev = NULL;
-	  while ((dnf_node = ((dnf_prev) ? dnf_prev->or_next : cnf_node)))
+	  for (dnf_node = cnf_node; dnf_node != NULL; dnf_node = dnf_node->or_next)
 	    {
 	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (dnf_node, PT_LIKE))
 		{
@@ -10570,47 +10561,16 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 			  if (num_logical_chars == 1 && num_match_many == 1)
 			    {
-			      cut_off = true;
-			      need_recompile = true;
-			      break;
+			      return true;
 			    }
 			}
 		    }
 		}
-
-	      dnf_prev = (dnf_prev) ? dnf_prev->or_next : dnf_node;
-	    }			/* while (dnf_node) */
-	}			/* else (cnf_node->or_next == NULL) */
-
-      if (cut_off)
-	{
-	  /* cut if off from CNF list */
-	  if (cnf_prev)
-	    {
-	      cnf_prev->next = cnf_node->next;
 	    }
-	  else
-	    {
-	      where = cnf_node->next;
-	    }
-	  cnf_node->next = NULL;
-	  parser_free_tree (parser, cnf_node);
-
-	  /* this will be restored to its original value in db_check_where_need_recompile. */
-	  parser->host_var_count--;
 	}
-      else
-	{
-	  cnf_prev = (cnf_prev) ? cnf_prev->next : cnf_node;
-	}
-    }				/* while (cnf_node) */
+    }
 
-  statement->info.query.q.select.where = where;
-
-  statement->sql_user_text = parser_print_tree (parser, statement);
-  statement->sql_user_text_len = strlen (statement->sql_user_text) + 1;
-
-  return need_recompile;
+  return false;
 }
 
 /*
