@@ -18771,14 +18771,14 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       pt_check_dblink_trigger (parser, statement);
       if (statement->info.insert.spec->info.spec.remote_server_name->node_type == PT_NAME)
-        {
-          /*
-           * pt_rewrite_dblink has to be called only once
-           * at pt_rewrite_dblink
-           * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
-           */
-          pt_rewrite_for_dblink (parser, statement);
-        }
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
@@ -20593,14 +20593,14 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       pt_check_dblink_trigger (parser, statement);
       if (from->info.spec.remote_server_name->node_type == PT_NAME)
-        {
-          /*
-           * pt_rewrite_dblink has to be called only once
-           * at pt_rewrite_dblink
-           * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
-           */
-          pt_rewrite_for_dblink (parser, statement);
-        }
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
@@ -21297,14 +21297,14 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     {
       pt_check_dblink_trigger (parser, statement);
       if (from->info.spec.remote_server_name->node_type == PT_NAME)
-        {
-          /*
-           * pt_rewrite_dblink has to be called only once
-           * at pt_rewrite_dblink
-           * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
-           */
-          pt_rewrite_for_dblink (parser, statement);
-        }
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
