@@ -323,6 +323,13 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       return NO_ERROR;
     }
 
+    if (!heap_is_replicable_class (thread_p, class_oid))
+    {
+      printf ("[NOK-REP]\n");
+      return NO_ERROR;
+    }
+  printf ("[OK-REP]\n");
+    
   /* check the replication log array status, if we need to alloc? */
   if (REPL_LOG_IS_NOT_EXISTS (tran_index)
       && ((error = repl_log_info_alloc (tdes, REPL_LOG_INFO_ALLOC_SIZE, false)) != NO_ERROR))
