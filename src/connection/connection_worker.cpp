@@ -395,6 +395,7 @@ namespace cubconn
 
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
+    m_removed_context.push_back (ctx);
 
     m_stats.sub (stats::NET_CLIENTS, 1);
 
