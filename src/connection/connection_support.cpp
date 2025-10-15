@@ -3080,10 +3080,10 @@ css_conn_entry::add_pending_request ()
   ++pending_request_count;
 }
 
-void
+size_t
 css_conn_entry::end_request ()
 {
-  --pending_request_count;
+  return --pending_request_count;
 }
 
 bool
