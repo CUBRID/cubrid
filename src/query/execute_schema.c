@@ -10680,7 +10680,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
    * If the option is omitted, or if "on|off" is omitted,
    * the default value is set to "on".
    */
-  if (!replication_node || replication_node->info.value.data_value.i)
+  if (IS_REPLICATION_ON_NODE (replication_node))
     {
       _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table replication set to on. \n",
 		     entity_name);
