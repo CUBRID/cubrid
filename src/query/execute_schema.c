@@ -66,7 +66,6 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
@@ -89,7 +88,6 @@
 #define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
-<<<<<<< HEAD
 /* Returns true if replication option is ON or not specified (default ON).
  * Use with table option node (tbl_opt_replication).
  */
@@ -101,11 +99,7 @@
  */
 #define IS_REPLICATION_ON_NODE(_node) \
   ((_node)->info.value.data_value.i )
-=======
-#define REPL_IS_ON_OR_DEFAULT(_opt) \
-  ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
 
->>>>>>> ea2584163 (Code changes)
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
