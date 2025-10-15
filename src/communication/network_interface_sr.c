@@ -4719,12 +4719,12 @@ shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       return;
     }
 
-    hnsw_build_params params;
+  hnsw_build_params params;
 
-    params.dimension = dimension;
-    params.m = hnsw_M;
-    params.ef_construction = hnsw_efConstruction;
-    params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
 
   error = xhnsw_load_index (thread_p, &btid, class_oids, n_classes, n_attrs, attr_ids, hfids, params);
 
