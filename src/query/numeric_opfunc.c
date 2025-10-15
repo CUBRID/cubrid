@@ -4218,7 +4218,7 @@ numeric_internal_double_to_num (double adouble, int dst_scale, DB_C_NUMERIC num,
  *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
  */
 int
-fp_numeric_db_value_mod (DB_VALUE * value1, DB_VALUE * value2, DB_VALUE * result)
+fp_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result)
 {
   int ret = NO_ERROR;
   int scale1 = 0, scale2 = 0, prec1 = 0, prec2 = 0;

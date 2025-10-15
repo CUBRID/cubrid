@@ -125,7 +125,7 @@ extern int fp_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2
 				    FP_VALUE_TYPE * num_op_type);
 extern int fp_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
 				    FP_VALUE_TYPE * num_op_type);
-extern int fp_numeric_db_value_mod (DB_VALUE * value1, DB_VALUE * value2, DB_VALUE * result);
+extern int fp_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);
