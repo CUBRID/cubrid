@@ -8040,14 +8040,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        * Generates the replication log info. for data insert/delete
        * for the update cases, refer to locator_update_force()
        */
-<<<<<<< HEAD
       /*TODO: We need to review a method to record replication logs only when the replication key (RK) has already been determined, instead of checking all RK candidates and handling the replicated flag. 
          Also, a comprehensive refactoring of replication-related operations and variables, including need_replication, is required(EPIC CBRD-26096). */
       if (need_replication && heap_is_replication_class (thread_p, class_oid) && !replicated
 	  && or_is_replication_candidate_key (index) && error_code == NO_ERROR
-=======
-      if (need_replication && heap_is_replicable_class(thread_p, class_oid) && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
->>>>>>> fadde80a3 (replication pk only)
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  error_code =
