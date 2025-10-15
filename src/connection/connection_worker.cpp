@@ -737,7 +737,7 @@ retry:
 	if (m_context.erase (ctx) == 0)
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
-	    assert_release (false);
+	    continue;
 	  }
 	delete ctx;
       }
@@ -1189,6 +1189,7 @@ retry:
   {
     std::vector<context *> contexts (m_context.begin (), m_context.end ());
 
+    /* alive context */
     for (auto &ctx : contexts)
       {
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
@@ -1202,6 +1203,19 @@ retry:
 	thread_sleep (50);
       }
     m_context.clear ();
+
+    /* removed context */
+    for (auto &ctx : m_removed_context)
+      {
+	css_free_conn (ctx->m_conn);
+	if (m_context.erase (ctx) == 0)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
+	    continue;
+	  }
+	delete ctx;
+      }
+    m_removed_context.clear ();
 
     m_entry->unregister_id ();
     cubthread::get_manager ()->retire_entry (*m_entry);
