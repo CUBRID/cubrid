@@ -6927,12 +6927,12 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  hnsw_build_params params = {
-    .dimension = dimension,
-    .m = hnsw_M,
-    .ef_construction = hnsw_efConstruction,
-    .metric = (DB_VECTOR_DISTANCE_METRIC) metric
-  };
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
 
   error = xhnsw_add_index (thread_p, params, *btid);
 
@@ -7055,12 +7055,12 @@ hnsw_load_index (BTID * btid, OID * class_oids, int n_classes, int n_attrs, int 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  hnsw_build_params params = {
-    .dimension = dimension,
-    .m = m,
-    .ef_construction = ef_construction,
-    .metric = (DB_VECTOR_DISTANCE_METRIC) metric
-  };
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = m;
+  params.ef_construction = ef_construction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
 
   error = xhnsw_load_index (thread_p, btid, class_oids, n_classes, n_attrs, attr_ids, hfids, params);
 
