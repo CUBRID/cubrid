@@ -9241,20 +9241,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
        */
       if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
 	{
-<<<<<<< HEAD
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION_OFF, TRUE);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
 	  do_flush_class_mop = true;
-=======
-	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION, TRUE);
-          if (error != NO_ERROR){
-            break;
-          }
-          do_flush_class_mop = true;
->>>>>>> dcff04cb6 (replication 저장 및 조회 구현)
 	}
 
       if (tbl_opt_encrypt)
@@ -10740,7 +10732,14 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   class_mop = ctemplate->op;
   replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
   
-  error = sm_set_class_flag(class_mop, SM_CLASSFLAG_REPLICATION, replication_node->info.value.data_value.i ? TRUE : FALSE);
+  if (!HA_DISABLED() && replication_node->info.value.data_value.i){
+    error = ER_REPLICATION_CONSTRAINT;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Replication setting is not permitted for this table.");
+    
+    goto exit;
+  }
+
+  error = sm_set_class_flag(class_mop, SM_CLASSFLAG_NO_REPLICATION, !replication_node->info.value.data_value.i);
 
     /* force schema update to server */
     class_obj = dbt_finish_class (ctemplate);
