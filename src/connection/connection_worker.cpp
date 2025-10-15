@@ -42,7 +42,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#if 1
+#if 0
 #define er_log_conn(...) er_log_debug (__VA_ARGS__)
 #else
 #define er_log_conn(...)
