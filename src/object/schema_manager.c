@@ -10418,48 +10418,37 @@ construct_index_key_domain (int n_atts, SM_ATTRIBUTE ** atts, const int *asc_des
 		  current->next = new_domain;
 		  current = new_domain;
 		}
-
-	      if (asc_desc && asc_desc[i] == 1)
-		{
-		  new_domain->is_desc = true;
-		}
-	      else
-		{
-		  new_domain->is_desc = false;
-		}
 	    }
-	  else
+
+	  new_domain = tp_domain_new (DB_TYPE_NULL);
+	  if (new_domain == NULL)
 	    {
-	      new_domain = tp_domain_new (DB_TYPE_NULL);
-	      if (new_domain == NULL)
+	      goto mem_error;
+	    }
+
+	  new_domain->type = atts[i]->domain->type;
+	  new_domain->precision = atts[i]->domain->precision;
+	  new_domain->scale = atts[i]->domain->scale;
+	  new_domain->codeset = atts[i]->domain->codeset;
+	  new_domain->collation_id = atts[i]->domain->collation_id;
+	  new_domain->is_parameterized = atts[i]->domain->is_parameterized;
+
+	  if (new_domain->type->id == DB_TYPE_ENUMERATION)
+	    {
+	      if (tp_domain_copy_enumeration (&DOM_GET_ENUMERATION (new_domain), &DOM_GET_ENUMERATION (atts[i]->domain))
+		  != NO_ERROR)
 		{
 		  goto mem_error;
 		}
+	    }
 
-	      new_domain->type = atts[i]->domain->type;
-	      new_domain->precision = atts[i]->domain->precision;
-	      new_domain->scale = atts[i]->domain->scale;
-	      new_domain->codeset = atts[i]->domain->codeset;
-	      new_domain->collation_id = atts[i]->domain->collation_id;
-	      new_domain->is_parameterized = atts[i]->domain->is_parameterized;
-
-	      if (new_domain->type->id == DB_TYPE_ENUMERATION)
-		{
-		  if (tp_domain_copy_enumeration
-		      (&DOM_GET_ENUMERATION (new_domain), &DOM_GET_ENUMERATION (atts[i]->domain)) != NO_ERROR)
-		    {
-		      goto mem_error;
-		    }
-		}
-
-	      if (asc_desc && asc_desc[i] == 1)
-		{
-		  new_domain->is_desc = true;
-		}
-	      else
-		{
-		  new_domain->is_desc = false;
-		}
+	  if (asc_desc && asc_desc[i] == 1)
+	    {			/* is descending order */
+	      new_domain->is_desc = true;
+	    }
+	  else
+	    {
+	      new_domain->is_desc = false;
 	    }
 
 	  if (head == NULL)
