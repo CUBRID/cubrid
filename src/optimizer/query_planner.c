@@ -799,6 +799,13 @@ qo_set_use_desc (QO_PLAN * plan)
       qo_set_use_desc (plan->plan_un.join.outer);
       break;
 
+    case QO_PLANTYPE_SORT:
+      if (qo_is_iscan_from_orderby (plan->plan_un.sort.subplan))
+	{
+	  qo_set_use_desc (plan->plan_un.sort.subplan);
+	}
+      break;
+
     default:
       break;
     }
@@ -3981,7 +3988,6 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  return PLAN_COMP_LT;
 	}
 
-
       temp_res = qo_plan_cmp_prefer_covering_index (a, b);
       if (temp_res == PLAN_COMP_LT)
 	{
@@ -4532,7 +4538,6 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	      }
 	  }
       }
-
   }
 
 cost_cmp:
