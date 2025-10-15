@@ -66,6 +66,7 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+
 #define UNIQUE_SAVEPOINT_ADD_ATTR_MTHD "aDDaTTRmTHD"
 #define UNIQUE_SAVEPOINT_CREATE_ENTITY "cREATEeNTITY"
 #define UNIQUE_SAVEPOINT_DROP_ENTITY "dROPeNTITY"
@@ -88,6 +89,7 @@
 #define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
+<<<<<<< HEAD
 /* Returns true if replication option is ON or not specified (default ON).
  * Use with table option node (tbl_opt_replication).
  */
@@ -99,6 +101,11 @@
  */
 #define IS_REPLICATION_ON_NODE(_node) \
   ((_node)->info.value.data_value.i )
+=======
+#define REPL_IS_ON_OR_DEFAULT(_opt) \
+  ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
+
+>>>>>>> ea2584163 (Code changes)
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -9035,29 +9042,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      error = er_errid ();
 	      goto error_exit;
 	    }
-	}
-
-      // TODO: Implement replication option handling
-      /*
-       * Handle the replication option.
-       * If the option is omitted, or if "on|off" is omitted,
-       * the default value is set to "on".
-       */
-      if (tbl_opt_replication)
-	{
-	  replication_node = tbl_opt_replication->info.table_option.val;
-	  if (!replication_node || replication_node->info.value.data_value.i)
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table created. \n", class_name);
-	    }
-	  else
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created. \n", class_name);
-	    }
-	}
-      else
-	{
-	  _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=default) table created. \n", class_name);
 	}
 
       /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
