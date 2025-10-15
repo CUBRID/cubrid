@@ -10684,15 +10684,15 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
       goto exit;
     }
   tran_saved = true;
-  
+
   entity_name = alter->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
-  {
-    error = ER_UNEXPECTED;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Expecting a class or virtual class name.");
-    goto exit;
-  }
-  
+    {
+      error = ER_UNEXPECTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Expecting a class or virtual class name.");
+      goto exit;
+    }
+
   class_obj = db_find_class (entity_name);
   if (class_obj == NULL)
     {
@@ -10700,18 +10700,18 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
       goto exit;
     }
 
-    error = locator_flush_class (class_obj);
-    if (error != NO_ERROR)
-      {
-        /* don't overwrite error */
-        goto exit;
-      }
-        /* get exclusive lock on class */
+  error = locator_flush_class (class_obj);
+  if (error != NO_ERROR)
+    {
+      /* don't overwrite error */
+      goto exit;
+    }
+  /* get exclusive lock on class */
   if (locator_fetch_class (class_obj, DB_FETCH_WRITE) == NULL)
-  {
-    error = ER_FAILED;
-    goto exit;
-  } 
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
 
   ctemplate = dbt_edit_class (class_obj);
   if (ctemplate == NULL)
@@ -10731,28 +10731,29 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
    */
   class_mop = ctemplate->op;
   replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
-  
-  if (!HA_DISABLED() && replication_node->info.value.data_value.i){
-    error = ER_REPLICATION_CONSTRAINT;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Replication setting is not permitted for this table.");
-    
-    goto exit;
-  }
 
-  error = sm_set_class_flag(class_mop, SM_CLASSFLAG_NO_REPLICATION, !replication_node->info.value.data_value.i);
+  if (!HA_DISABLED () && replication_node->info.value.data_value.i)
+    {
+      error = ER_REPLICATION_CONSTRAINT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Replication setting is not permitted for this table.");
 
-    /* force schema update to server */
-    class_obj = dbt_finish_class (ctemplate);
-    if (class_obj == NULL)
-      {
-        error = er_errid ();
-        goto exit;
-      }
+      goto exit;
+    }
 
-    /* set NULL, avoid 'abort_class' in case of error */
-    ctemplate = NULL;
+  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_NO_REPLICATION, !IS_REPLICATION_ON_NODE (replication_node));
 
-    exit:
+  /* force schema update to server */
+  class_obj = dbt_finish_class (ctemplate);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      goto exit;
+    }
+
+  /* set NULL, avoid 'abort_class' in case of error */
+  ctemplate = NULL;
+
+exit:
   if (ctemplate != NULL)
     {
       dbt_abort_class (ctemplate);
@@ -10763,7 +10764,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
     }
-    
+
   return error;
 }
 
