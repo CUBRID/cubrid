@@ -9054,7 +9054,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created. \n", class_name);
 	    }
-	}
+	}else{
+          _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=default) table created. \n", class_name);
+        }
 
       /* get default value of reuse_oid from system parameter, if don't use table option related reuse_oid */
       if (!found_reuse_oid_option)
@@ -10683,6 +10685,24 @@ exit:
     }
 
   return error;
+}
+
+static int do_alter_change_replication(PARSER_CONTEXT * const parser, PT_NODE * const alter_node)
+{
+  const char *entity_name = NULL;
+  PT_NODE *replication_node = alter_node->info.alter.alter_clause.replication.tbl_replication;
+
+  entity_name = alter_node->info.alter.entity_name->info.name.original;
+
+  if (!replication_node || replication_node->info.value.data_value.i)
+  {
+    _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=on) table replication set to on. \n", entity_name);
+  }
+  else
+  {
+    _er_log_debug (ARG_FILE_LINE, "[Not implemented] %s(replication=off) table created set to off. \n", entity_name);
+  }
+  return NO_ERROR;
 }
 
 /*
