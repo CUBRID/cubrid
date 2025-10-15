@@ -70,7 +70,11 @@ sm_define_view_class_spec (void)
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [class_type], "
 	  "CASE WHEN MOD ([c].[is_system_class], 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
+<<<<<<< HEAD
 	  "CASE WHEN MOD ([c].[is_system_class] / 32, 2) = 1 THEN 'NO' ELSE 'YES' END AS [is_replication_class], "
+=======
+          "CASE WHEN MOD ([c].[is_system_class] / 32, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_replication_class], "
+>>>>>>> dcff04cb6 (replication 저장 및 조회 구현)
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
 	  "CASE "
 	    "WHEN [c].[sub_classes] IS NULL THEN 'NO' "

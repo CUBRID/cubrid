@@ -11077,6 +11077,7 @@ heap_get_class_tde_algorithm (THREAD_ENTRY * thread_p, const OID * class_oid, TD
   return error;
 }
 
+<<<<<<< HEAD
 bool
 heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
@@ -11107,6 +11108,8 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
   return ret;
 }
 
+=======
+>>>>>>> dcff04cb6 (replication 저장 및 조회 구현)
 /*
  * heap_class_get_partition_info () - Get partition information for the class
  *				      identified by class_oid
