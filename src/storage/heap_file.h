@@ -458,14 +458,7 @@ extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, R
 
 extern bool heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern bool heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
-<<<<<<< HEAD
-<<<<<<< HEAD
 extern bool heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid);
-=======
->>>>>>> dcff04cb6 (replication 저장 및 조회 구현)
-=======
-extern bool heap_is_replicable_class (THREAD_ENTRY * thread_p, const OID * class_oid);
->>>>>>> fadde80a3 (replication pk only)
 extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
 
 extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);

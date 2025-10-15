@@ -11100,7 +11100,7 @@ heap_is_replication_class (THREAD_ENTRY * thread_p, const OID * class_oid)
       return false;
     }
 
-  <<<<<<<HEAD ret = or_class_is_replication_on (&recdes);
+  ret = or_class_is_replication_on (&recdes);
 
   heap_scancache_end (thread_p, &scan_cache);
 
