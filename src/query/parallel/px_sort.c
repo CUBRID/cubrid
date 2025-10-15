@@ -48,7 +48,6 @@ sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_
   if (sort_info == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sizeof (SORT_INFO)));
       goto end;
     }
   memcpy (sort_info, src_sort_info, sizeof (SORT_INFO));
@@ -57,7 +56,6 @@ sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_
   if (sort_info->s_id == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sizeof (QFILE_SORT_SCAN_ID)));
       goto end;
     }
   memcpy (sort_info->s_id, src_sort_info->s_id, sizeof (QFILE_SORT_SCAN_ID));
@@ -66,7 +64,6 @@ sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_
   if (sort_info->s_id->s_id == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sizeof (QFILE_LIST_SCAN_ID)));
       goto end;
     }
   memcpy (sort_info->s_id->s_id, src_sort_info->s_id->s_id, sizeof (QFILE_LIST_SCAN_ID));
