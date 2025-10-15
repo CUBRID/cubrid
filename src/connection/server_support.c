@@ -138,12 +138,6 @@ static int ha_Log_applier_state_num = 0;
 static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
 static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
 
-namespace cubconn
-{
-  master_connector master_connector_global;
-  connection_pool connection_pool_global;
-}
-
 class css_server_task : public cubthread::entry_task
 {
 public:
@@ -1219,6 +1213,8 @@ css_start_shutdown_server ()
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
+  cubconn::master_connector connector;
+  cubconn::connection_pool connections;
   std::size_t core_count, worker_count, connection_thread_count;
   std::string name;
   int status = NO_ERROR;
@@ -1255,14 +1251,14 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  cubconn::connection_pool_global.initialize (MAX_CONNECTIONS, connection_thread_count);
+  connections.initialize (MAX_CONNECTIONS, connection_thread_count);
 
   /* attach thread entry */
-  cubconn::master_connector_global.attach (*thread_p);
+  connector.attach (*thread_p);
   /* attach pool */
-  cubconn::master_connector_global.attach (cubconn::connection_pool_global);
+  connector.attach (connections);
   /* handshake and dispatch connection */
-  cubconn::master_connector_global.run (port_id, name);
+  connector.run (port_id, name);
 
 shutdown:
   /*
@@ -1274,8 +1270,8 @@ shutdown:
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
 
-  cubconn::master_connector_global.stop ();
-  cubconn::connection_pool_global.finalize ();
+  connector.stop ();
+  connections.finalize ();
 
   /* stop vacuum threads. */
   vacuum_stop_workers (thread_p);
