@@ -3397,11 +3397,7 @@ sm_is_replication_class (MOP op)
 
   if (op != NULL && au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
     {
-<<<<<<< HEAD
       return !(class_->flags & SM_CLASSFLAG_REPLICATION_OFF);
-=======
-	return class_->flags & SM_CLASSFLAG_REPLICATION;
->>>>>>> dcff04cb6 (replication 저장 및 조회 구현)
     }
 
   assert (false);
