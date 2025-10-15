@@ -172,7 +172,6 @@ namespace cubconn
 	assert_release (false);
       }
   }
-
   bool master_connector::attach (cubthread::entry &entry) noexcept
   {
     m_entry = &entry;
