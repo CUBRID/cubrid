@@ -9590,20 +9590,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  {
 	    DB_VALUE tmpval;
 
-	    /* DBG */ printf ("[DBG][BLOB->BIT] src_type=%d, target_type(before)=%d\n",
-			      DB_VALUE_DOMAIN_TYPE (src), DB_VALUE_DOMAIN_TYPE (target));
-
 	    db_make_null (&tmpval);
 
 	    err = db_blob_to_bit (src, NULL, &tmpval);
-	    /* DBG */ printf ("[DBG][BLOB->BIT] after db_blob_to_bit: tmpval_type=%d\n",
-			      DB_VALUE_DOMAIN_TYPE (&tmpval));
-
 	    if (err == NO_ERROR)
 	      {
 		err = tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
-		/* DBG */ printf ("[DBG][BLOB->BIT] after cast: target_type=%d\n",
-				  DB_VALUE_DOMAIN_TYPE (target));
 	      }
 
 	    (void) pr_clear_value (&tmpval);
