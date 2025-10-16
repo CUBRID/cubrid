@@ -7564,7 +7564,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
-	if (!bitset_is_empty (&sm_join_terms))
+	if (!bitset_is_empty (&sm_join_terms) && !(head_node->sort_limit_candidate || tail_node->sort_limit_candidate))
 	  {
 	    kept +=
 	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
@@ -7574,7 +7574,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms))
+	if (!bitset_is_empty (&sm_join_terms) && !(head_node->sort_limit_candidate || tail_node->sort_limit_candidate))
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
@@ -11208,7 +11208,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	    }
 	  else
 	    {
-	      /* QO_JOINMETHOD_MERGE_JOIN */
+	      /* QO_JOINMETHOD_MERGE_JOIN, QO_JOINMETHOD_HASH_JOIN */
 	      plan = NULL;
 	    }
 	  break;
