@@ -7621,7 +7621,8 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
       show_status->num_flusher_waiting_threads++;
 
-      r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
+      r = thread_suspend_timeout_wakeup (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
+      thread_unlock_entry (thread_p);
 
       show_status->num_flusher_waiting_threads--;
 

@@ -528,14 +528,14 @@ thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resum
 }
 
 /*
- * thread_suspend_timeout_wakeup_and_unlock_entry() -
+ * thread_suspend_timeout_wakeup() -
  *   return:
  *   thread_p(in):
  *   time_p(in):
  *   suspended_reason(in):
  */
 int
-thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, struct timespec *time_p,
+thread_suspend_timeout_wakeup (cubthread::entry *thread_p, struct timespec *time_p,
     thread_resume_suspend_status suspended_reason)
 {
   int r;
@@ -567,18 +567,24 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
 
   if (r != 0 && r != ETIMEDOUT)
     {
+      thread_p->m_status = old_status;
+
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
-      return ER_CSS_PTHREAD_COND_TIMEDWAIT;
+      error = ER_CSS_PTHREAD_COND_TIMEDWAIT;
+
+      return error;
     }
 
   if (r == ETIMEDOUT)
     {
+      thread_p->m_status = old_status;
+
       error = ER_CSS_PTHREAD_COND_TIMEDOUT;
+
+      return error;
     }
 
   thread_p->m_status = old_status;
-
-  pthread_mutex_unlock (&thread_p->th_entry_lock);
 
   return error;
 }
