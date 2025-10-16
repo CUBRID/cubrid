@@ -643,7 +643,7 @@ extern "C"
 /* Defines the state of a value as not being compressable due to its bad compression size or
  * its uncompressed size being lower than PRIM_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
  */
-#define DB_UNCOMPRESSABLE -1
+#define DB_UNCOMPRESSABLE (-1)
 
 /* Defines the state of a value not being yet prompted for a compression process. */
 #define DB_NOT_YET_COMPRESSED 0
