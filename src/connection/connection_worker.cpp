@@ -363,8 +363,8 @@ namespace cubconn
     /* this context has no remaining tasks */
 
     _er_log_debug (ARG_FILE_LINE,
-		   "handle_connection_close: conn { fd %d status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
-		   ctx->m_conn->fd, status, tran_index, ctx->m_conn->db_error, ctx->m_conn->stop_talk,
+		   "handle_connection_close: conn %p { fd %d status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
+		   ctx->m_conn, ctx->m_conn->fd, status, tran_index, ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
 
     /* remove and close */
@@ -392,6 +392,9 @@ namespace cubconn
 
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
+
+    /* close and detach from the session */
+    css_shutdown_conn (ctx->m_conn);
 
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
@@ -733,7 +736,7 @@ retry:
     /* the actual release of the context is handled last */
     for (auto &ctx : m_removed_context)
       {
-	css_free_conn (ctx->m_conn);
+	css_free_conn_without_shutdown (ctx->m_conn);
 	if (m_context.erase (ctx) == 0)
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
@@ -1203,7 +1206,7 @@ retry:
 	/* removed context */
 	for (auto &ctx : m_removed_context)
 	  {
-	    css_free_conn (ctx->m_conn);
+	    css_free_conn_without_shutdown (ctx->m_conn);
 	    if (m_context.erase (ctx) == 0)
 	      {
 		er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
