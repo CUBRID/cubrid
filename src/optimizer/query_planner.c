@@ -791,19 +791,19 @@ qo_set_use_desc (QO_PLAN * plan)
 	}
       break;
 
-    case QO_PLANTYPE_FOLLOW:
-      qo_set_use_desc (plan->plan_un.follow.head);
+    case QO_PLANTYPE_SORT:
+      if (qo_is_iscan_from_orderby (plan->plan_un.sort.subplan))
+	{
+	  qo_set_use_desc (plan->plan_un.sort.subplan);
+	}
       break;
 
     case QO_PLANTYPE_JOIN:
       qo_set_use_desc (plan->plan_un.join.outer);
       break;
 
-    case QO_PLANTYPE_SORT:
-      if (qo_is_iscan_from_orderby (plan->plan_un.sort.subplan))
-	{
-	  qo_set_use_desc (plan->plan_un.sort.subplan);
-	}
+    case QO_PLANTYPE_FOLLOW:
+      qo_set_use_desc (plan->plan_un.follow.head);
       break;
 
     default:
@@ -8742,8 +8742,8 @@ qo_search_planner (QO_PLANNER * planner)
 								  QO_SCANMETHOD_INDEX_GROUPBY_SCAN, &seg_terms, NULL));
 		    }
 
-		  if (!n && !index_entry->orderby_skip && tree->info.query.order_by
-		      && qo_validate_index_for_orderby (info->env, ni_entry))
+		  if (!n && !index_entry->orderby_skip && !tree->info.query.q.select.group_by
+		      && tree->info.query.order_by && qo_validate_index_for_orderby (info->env, ni_entry))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
