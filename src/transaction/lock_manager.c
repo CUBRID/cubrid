@@ -3576,7 +3576,7 @@ start:
 	  is_res_mutex_locked = false;
 
 	  thread_suspend_wakeup (thrd_entry, THREAD_LOCK_SUSPENDED);
-          thread_unlock_entry (thrd_entry);
+	  thread_unlock_entry (thrd_entry);
 
 	  if (entry_ptr)
 	    {
