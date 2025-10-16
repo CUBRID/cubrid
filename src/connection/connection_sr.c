@@ -905,25 +905,52 @@ css_free_conn (CSS_CONN_ENTRY * conn)
 }
 
 void
-css_remove_all_unexpected_packets_tmp (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
+css_free_conn_without_shutdown (CSS_CONN_ENTRY * conn)
 {
+  CSS_CONN_ENTRY *p, *prev = NULL, *next;
   int r;
 
-  r = rmutex_lock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 
-  css_traverse_list (&conn->request_queue, css_remove_and_free_queue_entry, conn);
+  /* find and remove from active conn list */
+  for (p = css_Active_conn_anchor; p != NULL; p = next)
+    {
+      next = p->next;
 
-  css_traverse_list (&conn->data_queue, css_remove_and_free_queue_entry, conn);
+      if (p == conn)
+	{
+	  if (prev == NULL)
+	    {
+	      css_Active_conn_anchor = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
 
-  css_traverse_list (&conn->data_wait_queue, css_remove_and_free_wait_queue_entry, conn);
+	  css_Num_active_conn--;
 
-  css_traverse_list (&conn->abort_queue, css_remove_and_free_queue_entry, conn);
+	  assert (css_Num_active_conn >= 0);
+	  assert (css_Num_active_conn < css_Num_max_conn);
 
-  css_traverse_list (&conn->error_queue, css_remove_and_free_queue_entry, conn);
+	  CSS_LOG_STACK ("css_free_conn - removed conn = %d from " CSS_ACTIVE_CONN_MSG, CSS_CONN_IDX (conn),
+			 CSS_ACTIVE_CONN_ARGS);
 
-  r = rmutex_unlock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
+	  break;
+	}
+
+      prev = p;
+    }
+
+  if (p == NULL)
+    {
+      CSS_LOG_STACK ("css_free_conn - not found conn = %p in " CSS_ACTIVE_CONN_MSG, conn, CSS_ACTIVE_CONN_ARGS);
+    }
+
+  css_dealloc_conn (conn);
+  css_decrement_num_conn (conn->client_type);
+
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
 
 /*
