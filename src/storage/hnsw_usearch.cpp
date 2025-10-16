@@ -52,7 +52,7 @@ static hnsw_oid_encoder_default default_oid_encoder;
 class hnsw_usearch_backend final : public hnsw_index_backend
 {
   public:
-    hnsw_usearch_backend (hnsw_index_manager &mgr, const std::string &id) : hnsw_index_backend (mgr, "usearch") {}
+    hnsw_usearch_backend (const std::string &id) : hnsw_index_backend (id) {}
     ~hnsw_usearch_backend() override = default;
 
     virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const override;
@@ -293,7 +293,7 @@ hnsw_index_usearch::load (const std::string &path)
 }
 
 HNSW_REGISTER_BACKEND ("usearch",
-		       [] (hnsw_index_manager &mgr) -> std::unique_ptr<hnsw_index_backend>
+		       [] (const char *id)
 {
-  return std::make_unique<hnsw_usearch_backend> (mgr, std::string ("usearch"));
+  return std::make_unique<hnsw_usearch_backend> (id);
 });

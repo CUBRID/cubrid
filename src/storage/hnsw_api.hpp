@@ -38,7 +38,6 @@
 // forward declarations
 class hnsw_index_backend;
 class hnsw_index;
-class hnsw_index_manager;
 
 struct hnsw_build_params
 {
@@ -98,12 +97,12 @@ class hnsw_oid_encoder_default: public hnsw_oid_encoder<int64_t>
     OID decode_oid (const int64_t &id) override;
 };
 
-using hnsw_backend_factory_fn = std::function<std::unique_ptr<hnsw_index_backend> (hnsw_index_manager &)>;
+using hnsw_backend_factory_fn = std::function<std::unique_ptr<hnsw_index_backend> ()>;
 
 class hnsw_index_backend
 {
   public:
-    explicit hnsw_index_backend (hnsw_index_manager &mgr, const std::string &id) : m_id (id), m_mgr (mgr) {}
+    explicit hnsw_index_backend (const std::string &id) : m_id (id) {}
     virtual ~hnsw_index_backend() = default;
 
     hnsw_index_backend (const hnsw_index_backend &) = delete;
@@ -120,7 +119,6 @@ class hnsw_index_backend
 
   private:
     const std::string m_id;
-    const hnsw_index_manager &m_mgr;
 };
 
 class hnsw_index
@@ -164,70 +162,6 @@ class hnsw_index
     const hnsw_build_params m_build_params;
 };
 
-namespace fs = std::filesystem;
-
-class hnsw_index_manager
-{
-  public:
-
-    static hnsw_index_manager &instance()
-    {
-      static hnsw_index_manager inst;
-      return inst;
-    }
-
-    fs::path get_index_file_path (const std::string &prefix, const BTID *btid) const;
-    fs::path get_index_meta_file_path (const std::string &prefix, const BTID *btid) const;
-    fs::path get_index_directory_path() const;
-
-    void create_index_directory();
-    bool is_index_file_exists (const std::string &prefix, const BTID *btid) const;
-    bool is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const;
-
-    BTID create_btid (const hnsw_index_backend *backend);
-
-    // index management on memory
-    bool is_index_loaded (const BTID *btid) const;
-    int add_index (const BTID *btid, hnsw_index *index);
-    hnsw_index *get_index (const BTID *btid) const;
-    int delete_index (const BTID *btid);
-
-    void print_index_info (const BTID *btid);
-
-    // index management on disk
-    int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
-    int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
-    int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
-    int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
-    int save_all_indices (THREAD_ENTRY *thread_p);
-    int delete_index_on_disk (const std::string &prefix, const BTID *btid);
-
-    // backend management
-    void register_backend (std::unique_ptr<hnsw_index_backend> backend);
-    const hnsw_index_backend *get_backend () const;
-    hnsw_index_backend *get_backend ();
-
-    ~hnsw_index_manager() = default;
-
-  private:
-    fs::path get_vindex_root_path() const;
-
-    /* singleton */
-    hnsw_index_manager();
-
-    hnsw_index_manager (const hnsw_index_manager &) = delete;
-    hnsw_index_manager &operator= (const hnsw_index_manager &) = delete;
-    hnsw_index_manager (hnsw_index_manager &&) = delete;
-    hnsw_index_manager &operator= (hnsw_index_manager &&) = delete;
-
-    /* index directory root path */
-    fs::path m_root_path;
-    int m_last_index_id;
-
-    std::unordered_map<BTID, std::unique_ptr<hnsw_index>> m_index_map;
-    std::unique_ptr<hnsw_index_backend> m_backend;
-};
-
 namespace hnsw_backend_registry
 {
   std::unordered_map<std::string, hnsw_backend_factory_fn> &factories();
@@ -235,11 +169,14 @@ namespace hnsw_backend_registry
 }
 
 /* do not use the following macro in the header file */
-#define HNSW_REGISTER_BACKEND(ID_STR, FACTORY_LAMBDA)                     \
-  inline const bool hnsw_backend_registered = [] {                        \
-    hnsw_backend_registry::register_factory(                              \
-        std::string(ID_STR), hnsw_backend_factory_fn(FACTORY_LAMBDA));    \
-    return true;                                                          \
+#define HNSW_REGISTER_BACKEND(ID_STR, FACTORY_LAMBDA)                           \
+  inline const bool hnsw_backend_registered = [] {                              \
+    hnsw_backend_registry::register_factory(                                    \
+        std::string(ID_STR),                                                    \
+        hnsw_backend_factory_fn(                                                \
+          [=]() { return FACTORY_LAMBDA(ID_STR); }  \
+        ));                                                                     \
+    return true;                                                                \
   }()
 
 #endif
