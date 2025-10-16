@@ -113,36 +113,6 @@ pl_get_info_file (char *buf, size_t len, const char *db_name)
 }
 
 bool
-pl_get_error_file (char *buf, size_t len, const char *db_name)
-{
-  char pl_logdir[PATH_MAX];
-  envvar_logdir_file (pl_logdir, sizeof (pl_logdir), "");
-
-  if (snprintf (buf, len, "%s/%s_pl.err", pl_logdir, db_name) < 0)
-    {
-      assert (false);
-      buf[0] = '\0';
-      return false;
-    }
-  return true;
-}
-
-bool
-pl_get_log_file (char *buf, size_t len, const char *db_name)
-{
-  char pl_logdir[PATH_MAX];
-  envvar_logdir_file (pl_logdir, sizeof (pl_logdir), "");
-
-  if (snprintf (buf, len, "%s/%s_pl.log", pl_logdir, db_name) < 0)
-    {
-      assert (false);
-      buf[0] = '\0';
-      return false;
-    }
-  return true;
-}
-
-bool
 pl_read_info (const char *db_name, PL_SERVER_INFO & info)
 {
   FILE *fp = NULL;

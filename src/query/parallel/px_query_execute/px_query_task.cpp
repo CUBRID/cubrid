@@ -19,467 +19,208 @@
 /*
  * px_query_task.cpp
  */
+
 #include "px_query_task.hpp"
-#include "query_executor.h"
-#include "query_list.h"
-#include "object_representation.h"
-#include "px_query_executor.hpp"
 #include "list_file.h"
+#include "log_impl.h"
 #include "perf_monitor.h"
+#include "query_executor.h"
+
+#if !defined(NDEBUG)
+#include <unistd.h>
+#include <sys/syscall.h>
+#endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_query_execute
 {
-  using state_enum = task_state::state;
-
-  task::task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state, pthread_mutex_t *mutex_p,
-	      task_state *task_state_p, pool *worker_manager_p, std::vector<err_desc_t> *error_messages_p,
-	      worker_stats *worker_stats_p)
-    : m_orig_thread_p (thread_p),
-      m_xasl (xasl),
-      m_xasl_state (xasl_state),
-      m_mutex_p (mutex_p),
-      m_task_state_p (task_state_p),
-      m_worker_manager_p (worker_manager_p),
-      m_error_messages_p (error_messages_p),
-      m_worker_stats_p (worker_stats_p)
-  {}
-
+  task::task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
+	      interrupt *interrupt_p, worker_manager *worker_manager_p)
+    :m_args (parent_thread_p, job_execution_queue_p, error_messages_p, interrupt_p, worker_manager_p)
+  {
+  }
   task::~task()
   {
+    m_args.m_worker_manager_p->pop_task ();
   }
-
-  void task::execute_on_main (cubthread::entry &thread_ref)
-  {
-    pthread_mutex_lock (m_mutex_p);
-    if (m_task_state_p->get_state() == state_enum::RUN_ON_MAIN_TASK_RETIRE_IGNORED)
-      {
-	/* do nothing */
-	;
-      }
-    else if (m_task_state_p->get_state() == state_enum::WILL_RUN_ON_MAIN)
-      {
-	m_task_state_p->set_state (state_enum::RUN_ON_MAIN);
-      }
-    else
-      {
-	pthread_mutex_unlock (m_mutex_p);
-	return;
-      }
-    pthread_mutex_unlock (m_mutex_p);
-    int err = 0;
-    css_conn_entry *temp_conn_entry = thread_ref.conn_entry;
-    int enter_qlist_count = thread_ref.m_qlist_count;
-    QFILE_LIST_ID list_id;
-    bool is_list_id_kept = false;
-    bool orig_on_trace = thread_ref.on_trace;
-    bool is_on_parallel_worker = (thread_ref.get_id() != m_orig_thread_p->get_id());
-
-    thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
-    if (is_on_parallel_worker)
-      {
-	thread_ref.tran_index = m_orig_thread_p->tran_index;
-	thread_ref.conn_entry = m_orig_thread_p->conn_entry;
-	if (m_orig_thread_p->on_trace)
-	  {
-	    thread_ref.on_trace = true;
-	  }
-      }
-    err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
-    if (err != NO_ERROR)
-      {
-	pthread_mutex_lock (m_mutex_p);
-	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
-	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
-	pthread_mutex_unlock (m_mutex_p);
-      }
-
-    /* clear XASL tree */
-    if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
-      {
-	qfile_copy_list_id (&list_id, m_xasl->list_id, true, QFILE_MOVE_DEPENDENT); //+1
-	qfile_clear_list_id (m_xasl->list_id); //-1
-	is_list_id_kept = true;
-      }
-
-    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
-
-    if (is_list_id_kept)
-      {
-	qfile_copy_list_id (m_xasl->list_id, &list_id, true, QFILE_MOVE_DEPENDENT);
-	qfile_clear_list_id (&list_id);
-      }
-
-    if (m_orig_thread_p->index != thread_ref.index)
-      {
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(thread) : xasl: %p, qlist: %d",
-		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
-#endif
-      }
-    else
-      {
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(main) : xasl: %p, qlist: %d",
-		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
-#endif
-      }
-
-
-    if (is_on_parallel_worker)
-      {
-	thread_ref.conn_entry = temp_conn_entry;
-	thread_ref.on_trace = orig_on_trace;
-      }
-  }
-
   void task::execute (cubthread::entry &thread_ref)
   {
-#if WITH_PARALLEL_DETAIL_INFO
-    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute %p, xasl: %p", this, m_xasl);
-#endif
-    pthread_mutex_lock (m_mutex_p);
-    if (m_task_state_p->get_state() != state_enum::WILL_RUN_ON_WORKER)
+    int err_code;
+    init (thread_ref);
+    while (true)
       {
-	pthread_mutex_unlock (m_mutex_p);
-	return;
-      }
-    m_task_state_p->set_state (state_enum::RUN_ON_WORKER);
-    pthread_mutex_unlock (m_mutex_p);
-
-    int err = 0;
-    css_conn_entry *temp_conn_entry = thread_ref.conn_entry;
-    bool temp_on_trace = thread_ref.on_trace;
-    int enter_qlist_count = thread_ref.m_qlist_count;
-    QFILE_LIST_ID list_id;
-    bool is_list_id_kept = false;
-    thread_ref.tran_index = m_orig_thread_p->tran_index;
-    thread_ref.conn_entry = m_orig_thread_p->conn_entry;
-    thread_ref.on_trace = m_orig_thread_p->on_trace;
-    thread_ref.m_px_orig_thread_entry = m_orig_thread_p;
-
-    if (m_orig_thread_p->on_trace)
-      {
-	perfmon_initialize_parallel_stats (&thread_ref);
-      }
-
-    err = qexec_execute_mainblock (&thread_ref, m_xasl, m_xasl_state, nullptr);
-    if (err != NO_ERROR)
-      {
-	pthread_mutex_lock (m_mutex_p);
-	m_error_messages_p->emplace_back (err, new cuberr::er_message (false));
-	m_error_messages_p->back().second->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
-	pthread_mutex_unlock (m_mutex_p);
-      }
-
-    /* clear XASL tree */
-    if (m_xasl->list_id && m_xasl->list_id->type_list.type_cnt > 0)
-      {
-	qfile_copy_list_id (&list_id, m_xasl->list_id, true, QFILE_MOVE_DEPENDENT);
-	qfile_clear_list_id (m_xasl->list_id);
-	is_list_id_kept = true;
-      }
-    (void) qexec_clear_xasl_for_parallel_aptr (&thread_ref, m_xasl, true);
-
-    if (is_list_id_kept)
-      {
-	qfile_copy_list_id (m_xasl->list_id, &list_id, true, QFILE_MOVE_DEPENDENT);
-	qfile_clear_list_id (&list_id);
-      }
-
-    if (m_orig_thread_p->index != thread_ref.index)
-      {
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(thread) : xasl: %p, qlist: %d",
-		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
-#endif
-      }
-    else
-      {
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task : execute(main) : xasl: %p, qlist: %d",
-		       m_xasl, thread_ref.m_qlist_count-enter_qlist_count);
-#endif
-      }
-
-    thread_ref.conn_entry = temp_conn_entry;
-    thread_ref.on_trace = temp_on_trace;
-  }
-
-
-  void task::retire ()
-  {
-    pthread_mutex_lock (m_mutex_p);
-    if (m_task_state_p->get_state() == state_enum::RUN_ON_WORKER
-	|| m_task_state_p->get_state() == state_enum::WILL_RUN_ON_WORKER
-	|| m_task_state_p->get_state() == state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED)
-      {
-	m_task_state_p->set_state (state_enum::ENDED_ON_WORKER);
-      }
-    else if (m_task_state_p->get_state() == state_enum::WILL_RUN_ON_MAIN
-	     || m_task_state_p->get_state() == state_enum::RUN_ON_MAIN)
-      {
-	m_task_state_p->set_state (state_enum::RUN_ON_MAIN_TASK_RETIRE_IGNORED);
-      }
-    pthread_mutex_unlock (m_mutex_p);
-    m_worker_manager_p->pop_task();
-  }
-
-
-  task_queue::task_queue (THREAD_ENTRY *thread_p, pool *worker_manager_p)
-    : m_thread_p (thread_p),
-      m_worker_manager_p (worker_manager_p),
-      m_mutex_p (nullptr),
-      m_error_messages_p (nullptr)
-  {
-    if (thread_p->on_trace)
-      {
-	m_worker_stats.m_fetches = 0;
-	m_worker_stats.m_ioreads = 0;
-	m_worker_stats.m_fetch_time = 0;
-      }
-    m_tasks.reserve (TASK_QUEUE_RESERVE_SIZE);
-  }
-  task_queue::~task_queue()
-  {
-#if WITH_PARALLEL_DETAIL_INFO
-    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : delete task_queue %p", this);
-#endif
-    m_tasks.clear();
-  }
-
-  task_tuple *task_queue::add_task (THREAD_ENTRY *thread_p, XASL_NODE *xasl, xasl_state *xasl_state,
-				    pthread_mutex_t *mutex_p, std::vector<err_desc_t> *error_messages_p)
-  {
-    task_state *task_state_p = new task_state();
-    task *task_p = new task (thread_p, xasl, xasl_state, mutex_p, task_state_p, m_worker_manager_p, error_messages_p,
-			     &m_worker_stats);
-    task_tuple *task_tuple_p = new task_tuple (task_p, task_state_p);
-    m_tasks.emplace_back (task_tuple_p);
-    if (m_mutex_p == nullptr)
-      {
-	m_mutex_p = mutex_p;
-      }
-    if (m_error_messages_p == nullptr)
-      {
-	m_error_messages_p = error_messages_p;
-      }
-    return task_tuple_p;
-  }
-
-  bool task_queue::get_not_started_task (task **task_out, task_state **task_state_out)
-  {
-    if (m_tasks.size() == 0)
-      {
-	return false;
-      }
-    pthread_mutex_lock (m_mutex_p);
-    std::size_t iter = m_tasks.size();
-    for (; iter > 0; iter--)
-      {
-	auto it = m_tasks[iter -1];
-	auto task_p = it->first;
-	auto task_state_p = it->second;
-	if (task_state_p->get_state() == state_enum::WILL_RUN_ON_WORKER)
-	  {
-	    task_state_p->set_state (state_enum::WILL_RUN_ON_MAIN);
-	    *task_out = task_p;
-	    *task_state_out = task_state_p;
-	    pthread_mutex_unlock (m_mutex_p);
-	    return true;
-	  }
-      }
-    pthread_mutex_unlock (m_mutex_p);
-    return false;
-  }
-
-  void task_queue::join()
-  {
-    bool not_ended;
-    state_enum state;
-    for (const auto &it : m_tasks)
-      {
-	state = it->second->get_state();
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : join task %p, xasl: %p, state: %d", it->first,
-		       it->first->m_xasl,
-		       state);
-#endif
-      }
-    do
-      {
-	not_ended = false;
-	for (const auto &it : m_tasks)
-	  {
-	    state = it->second->get_state();
-	    if (state == state_enum::ENDED_ON_WORKER)
-	      {
-		continue;
-	      }
-	    else if (state == state_enum::ENDED_ON_MAIN)
-	      {
-		continue;
-	      }
-	    else if (state == state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED)
-	      {
-		continue;
-	      }
-	    else
-	      {
-		not_ended = true;
-		break;
-	      }
-	  }
-	thread_sleep (1);
-      }
-    while (not_ended);
-  }
-
-  int task_queue::execute_tasks (THREAD_ENTRY *thread_p)
-  {
-    int err = NO_ERROR;
-    task *cur_task_p, *first_task_p;
-    task_state *cur_task_state_p, *first_task_state_p;
-    bool all_ended = false, error_occurred = false;
-    if (m_tasks.empty())
-      {
-	return err;
-      }
-#if WITH_PARALLEL_DETAIL_INFO
-    for (const auto &it : m_tasks)
-      {
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue %p, xasl: %p", it->first, it->first->m_xasl);
-      }
-#endif
-    auto it = m_tasks.back();
-    m_tasks.pop_back();
-    for (const auto &it : m_tasks)
-      {
-	m_worker_manager_p->push_task (it->first);
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : push task %p, xasl: %p", it->first,
-		       it->first->m_xasl);
-#endif
-      }
-    first_task_p = it->first;
-    first_task_state_p = it->second;
-#if WITH_PARALLEL_DETAIL_INFO
-    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : first task %p, xasl: %p", first_task_p,
-		   first_task_p->m_xasl);
-#endif
-    first_task_state_p->set_state (state_enum::WILL_RUN_ON_MAIN);
-    first_task_p->execute_on_main (*thread_p);
-    first_task_state_p->set_state (state_enum::ENDED_ON_MAIN);
-
-    while (1)
-      {
-	if (get_not_started_task (&cur_task_p, &cur_task_state_p))
-	  {
-#if WITH_PARALLEL_DETAIL_INFO
-	    _er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue : execute task %p, xasl: %p", cur_task_p,
-			   cur_task_p->m_xasl);
-#endif
-	    cur_task_p->execute_on_main (*thread_p);
-	    pthread_mutex_lock (m_mutex_p);
-	    if (cur_task_state_p->get_state() == state_enum::RUN_ON_MAIN_TASK_RETIRE_IGNORED)
-	      {
-		cur_task_state_p->set_state (state_enum::ENDED_ON_MAIN);
-	      }
-	    else
-	      {
-		cur_task_state_p->set_state (state_enum::ENDED_ON_MAIN_WORKER_RETIRE_NEEDED);
-	      }
-	    pthread_mutex_unlock (m_mutex_p);
-	  }
-	else
+	job job = get_job();
+	if (m_local.m_pop_job_ended)
 	  {
 	    break;
 	  }
+	err_code = execute_job (thread_ref, job);
       }
-    join();
-    pthread_mutex_lock (m_mutex_p);
-    error_occurred = m_error_messages_p->size() > 0;
-    pthread_mutex_unlock (m_mutex_p);
-
-    if (thread_p->on_trace)
-      {
-	m_worker_stats.m_fetches.store (0);
-	m_worker_stats.m_ioreads.store (0);
-	m_worker_stats.m_fetch_time.store (0);
-      }
-    if (error_occurred)
-      {
-	err = ER_FAILED;
-      }
-    return err;
+    end (thread_ref);
+  }
+  void task::retire()
+  {
+    delete this;
   }
 
-  task_queue_global::task_queue_global()
+  void task::init (cubthread::entry &thread_ref)
   {
-    m_tasks.reserve (TASK_QUEUE_RESERVE_SIZE);
+  }
+  job task::get_job()
+  {
+    job j;
+    m_local.m_pop_job_ended = !m_args.m_job_execution_queue_p->pop (j, *m_args.m_interrupt_p);
+    return j;
   }
 
-  task_queue_global::~task_queue_global()
+  int task::execute_job (cubthread::entry &thread_ref, job &job)
   {
-    for (auto &task_tuple_p : m_tasks)
+    int err_code = NO_ERROR;
+    err_code = parallel_query_execute::execute_job_internal (&thread_ref, m_args.m_parent_thread_p, job.m_xasl,
+	       job.m_xasl_state,
+	       m_args.m_error_messages_p, m_args.m_interrupt_p, job.m_join_context, job.m_trace_context);
+    return err_code;
+  }
+
+  void task::end (cubthread::entry &thread_ref)
+  {
+  }
+
+  int execute_job_internal (THREAD_ENTRY *cur_thread_p, THREAD_ENTRY *parent_thread_p, XASL_NODE *xasl,
+			    XASL_STATE *xasl_state, err_messages_with_lock *error_messages_p,
+			    interrupt *interrupt_p, join_context *join_context_p, trace_context *trace_context_p)
+  {
+    int err_code = NO_ERROR;
+    bool is_list_id_exists = false;
+    bool is_on_root_thread = false;
+    bool uses_px_stats = false;
+    QFILE_LIST_ID list_id;
+    UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
+    /* check interrupt */
+    if (interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
       {
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue_global : delete task %p, xasl: %p",
-		       task_tuple_p->first,
-		       task_tuple_p->first->m_xasl);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	logtb_set_tran_index_interrupt (cur_thread_p, parent_thread_p->tran_index, true);
+	join_context_p->sub_running_jobs();
+	return ER_FAILED;
+      }
+    /* backup original values */
+    css_conn_entry *conn_entry = cur_thread_p->conn_entry;
+    int tran_index = cur_thread_p->tran_index;
+    bool on_trace = !! (trace_context_p);
+    THREAD_ENTRY *px_orig_thread_entry = cur_thread_p->m_px_orig_thread_entry;
+    UINT64 *px_stats = nullptr;
+    uses_px_stats = cur_thread_p->m_uses_px_stats;
+    /* set parent thread_entry values */
+    cur_thread_p->conn_entry = parent_thread_p->conn_entry;
+    cur_thread_p->tran_index = parent_thread_p->tran_index;
+    cur_thread_p->on_trace = parent_thread_p->on_trace;
+    cur_thread_p->m_px_orig_thread_entry = parent_thread_p;
+    is_on_root_thread = cur_thread_p == parent_thread_p;
+    if (on_trace)
+      {
+	px_stats = cur_thread_p->m_px_stats;
+	cur_thread_p->m_px_stats = nullptr;
+	perfmon_initialize_parallel_stats (cur_thread_p);
+      }
+#if !defined(NDEBUG)
+    er_log_debug (ARG_FILE_LINE, "thread %8ld starts xasl : %3d",
+		  syscall (SYS_gettid), xasl->header.id);
 #endif
-	delete task_tuple_p->first;
-	delete task_tuple_p->second;
-	delete task_tuple_p;
-      }
-  }
+    /* job execution */
+    err_code = qexec_execute_mainblock (cur_thread_p, xasl, xasl_state, NULL);
 
-  void task_queue_global::add_task (task_tuple *task_tuple_p)
-  {
-    m_tasks.emplace_back (task_tuple_p);
-  }
-
-  void task_queue_global::join()
-  {
-    bool not_ended = false;
-    state_enum state;
-    THREAD_ENTRY *thread_p = thread_get_thread_entry_info();
-    for (const auto &it : m_tasks)
+    /* check error */
+    if (err_code != NO_ERROR)
       {
-	state = it->second->get_state();
-#if WITH_PARALLEL_DETAIL_INFO
-	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : task_queue_global : join task %p, xasl: %p, state: %d", it->first,
-		       it->first->m_xasl,
-		       state);
-#endif
-      }
-
-    do
-      {
-	not_ended = false;
-	for (const auto &it : m_tasks)
+	bool dummy = false;
+	bool is_interrupt = logtb_get_check_interrupt (cur_thread_p)
+			    && logtb_is_interrupted_tran (cur_thread_p, true, &dummy, cur_thread_p->tran_index);
+	/* logtb_set_tran_index_interrupt sets ER_INTERRUPTING with ER_NOTIFICATION_SEVERITY,
+	 * so er_errid may return NO_ERROR in this case. */
+	if (is_interrupt)
 	  {
-	    state = it->second->get_state();
-	    if (state == state_enum::ENDED_ON_WORKER)
+	    if (er_errid() != NO_ERROR)
 	      {
-		continue;
-	      }
-	    else if (state == state_enum::ENDED_ON_MAIN)
-	      {
-		continue;
+		/* other thread set interrupt but error is not ER_INTERRUPTED */
 	      }
 	    else
 	      {
-		not_ended = true;
-		break;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	      }
-	    assert (false);
 	  }
-	thread_sleep (1);
+	err_code = error_messages_p->move_top_error_message_to_this();
+	if (interrupt_p->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	  {
+	    if (err_code == ER_INTERRUPTED)
+	      {
+		if (is_on_root_thread)
+		  {
+		    interrupt_p->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_MAIN_THREAD);
+		  }
+		else
+		  {
+		    interrupt_p->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+	      }
+	    else
+	      {
+		if (is_on_root_thread)
+		  {
+		    interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD);
+		  }
+		else
+		  {
+		    interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+	      }
+	  }
+	logtb_set_tran_index_interrupt (cur_thread_p, cur_thread_p->tran_index, true);
       }
-    while (not_ended);
+    /* clear contextual data */
+    if (xasl->list_id && xasl->list_id->type_list.type_cnt > 0)
+      {
+	qfile_copy_list_id (&list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
+	is_list_id_exists = true;
+	qfile_clear_list_id (xasl->list_id);
+      }
+#if !defined(NDEBUG)
+    er_log_debug (ARG_FILE_LINE, "thread %8ld clears xasl : %p",
+		  syscall (SYS_gettid), xasl);
+#endif
+    (void) qexec_clear_xasl_for_parallel_aptr (cur_thread_p, xasl, true);
+    if (is_list_id_exists)
+      {
+	qfile_copy_list_id (xasl->list_id,&list_id, true, QFILE_MOVE_DEPENDENT);
+	qfile_clear_list_id (&list_id);
+      }
+    /* restore original values */
+    if (on_trace)
+      {
+	std::lock_guard<std::mutex> lock (trace_context_p->m_mutex);
+	pthread_mutex_lock (&cur_thread_p->m_px_stats_mutex);
+	UINT64 fetches = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
+	UINT64 ioreads = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
+	UINT64 fetch_time = cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset];
+	trace_context_p->m_stats.push_back ((trace_context::stat)
+	{ {0, 0}, fetches, ioreads, fetch_time
+	});
+	perfmon_destroy_parallel_stats (cur_thread_p);
+	cur_thread_p->m_px_stats = px_stats;
+	pthread_mutex_unlock (&cur_thread_p->m_px_stats_mutex);
+      }
+    cur_thread_p->conn_entry = conn_entry;
+    cur_thread_p->tran_index = tran_index;
+    cur_thread_p->on_trace = on_trace;
+    cur_thread_p->m_px_orig_thread_entry = px_orig_thread_entry;
+    cur_thread_p->m_uses_px_stats = uses_px_stats;
+#if !defined(NDEBUG)
+    er_log_debug (ARG_FILE_LINE, "thread %8ld ends xasl : %3d",
+		  syscall (SYS_gettid), xasl->header.id);
+#endif
+    join_context_p->sub_running_jobs();
+    return err_code;
   }
-
 }
