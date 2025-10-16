@@ -17907,7 +17907,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
 
   save_set_host_var = parser->flag.set_host_var;
-  parser->flag.set_host_var = 1;
+  parser->flag.set_host_var = prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING) ? 1 : save_set_host_var;
 
   location = expr->info.expr.location;
 
