@@ -4816,8 +4816,13 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	  break;
 
 	default:
+#if 0				// used in phase-3
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  scale = DB_DEFAULT_NUMERIC_SCALE;
+#else
 	  precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
+#endif
 	  break;
 	}
       break;
@@ -11596,6 +11601,15 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	}
       else if (common_type == PT_TYPE_NUMERIC)
 	{
+#if 0				// used in phase-3
+	  /*
+	   * In phase-3, with the introduction of the FP_NUMERIC concept, 
+	   * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
+	   */
+	  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	  dt->info.data_type.units = 0;
+#else
 	  int integral_digits1, integral_digits2;
 
 	  integral_digits1 = arg1_prec - arg1_dec_prec;
@@ -11605,6 +11619,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    (dt->info.data_type.dec_precision + MAX (integral_digits1, integral_digits2) + 1);
 	  dt->info.data_type.units = 0;
 	}
+#endif
       else
 	{
 	  dt->info.data_type.precision = arg1_prec + arg2_prec;
@@ -11709,9 +11724,19 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    }
 	  else
 	    {
+#if 0				// used in phase-3
+	      /*
+	       * In phase-3, with the introduction of the FP_NUMERIC concept, 
+	       * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
+	       */
+	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	      dt->info.data_type.units = 0;
+#else
 	      dt->info.data_type.precision = arg1_prec + arg2_prec + 1;
 	      dt->info.data_type.dec_precision = (arg1_dec_prec + arg2_dec_prec);
 	      dt->info.data_type.units = 0;
+#endif
 	    }
 	}
       break;
@@ -11728,6 +11753,15 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    }
 	  else
 	    {
+#if 0				// used in phase-3
+	      /*
+	       * In phase-3, with the introduction of the FP_NUMERIC concept, 
+	       * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
+	       */
+	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	      dt->info.data_type.units = 0;
+#else
 	      int scaleup = 0;
 
 	      if (arg2_dec_prec > 0)
@@ -11760,6 +11794,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 		    }
 		}
 	    }
+#endif
 	}
       break;
     case PT_TIMEF:
@@ -12179,11 +12214,12 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 		dt->info.data_type.dec_precision - (dt->info.data_type.precision - phase_1_tmp_max_prec);
 	      dt->info.data_type.precision = phase_1_tmp_max_prec;
 	    }
+
 	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_SCALE)
 	    {
 	      dt->info.data_type.dec_precision = DB_MAX_NUMERIC_SCALE;
 	    }
-	  if (dt->info.data_type.dec_precision < DB_MIN_NUMERIC_SCALE)
+	  else if (dt->info.data_type.dec_precision < DB_MIN_NUMERIC_SCALE)
 	    {
 	      dt->info.data_type.dec_precision = DB_MIN_NUMERIC_SCALE;
 	    }
@@ -12658,7 +12694,7 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 int
 pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE op, DB_VALUE * arg1, DB_VALUE * arg2,
-			   DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN ** domain, PT_NODE * o1, PT_NODE * o2,
+			   DB_VALUE * arg3, DB_VALUE * result, TP_DOMAIN * domain, PT_NODE * o1, PT_NODE * o2,
 			   PT_NODE * o3, PT_MISC_TYPE qualifier)
 {
   DB_TYPE typ;
@@ -12676,14 +12712,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
   FP_VALUE_TYPE num_op_type = FP_VALUE_TYPE_NAN;
 
   assert (parser != NULL);
-  assert (domain != NULL && *domain != NULL);
+  assert (domain != NULL);
 
   if (!arg1 || !result)
     {
       return 0;
     }
 
-  typ = TP_DOMAIN_TYPE (*domain);
+  typ = TP_DOMAIN_TYPE (domain);
   rTyp = pt_db_to_type_enum (typ);
 
   /* do not coerce arg1, arg2 for STRCAT */
@@ -13092,7 +13128,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else
 	  {
-	    target_domain = *domain;
+	    target_domain = domain;
 	  }
 
 	if (typ1 == DB_TYPE_NULL)
@@ -13138,7 +13174,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else
 	  {
-	    target_domain = *domain;
+	    target_domain = domain;
 	  }
 
 	if (typ1 == DB_TYPE_NULL)
@@ -13239,10 +13275,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
-	  *domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	  db_make_null (&tmp_val);
 	  /* force explicit cast ; scenario : INSERT INTO t VALUE(-?) , USING '10', column is INTEGER */
-	  if (tp_value_cast (arg1, &tmp_val, *domain, false) != DOMAIN_COMPATIBLE)
+	  if (tp_value_cast (arg1, &tmp_val, domain, false) != DOMAIN_COMPATIBLE)
 	    {
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == false)
 		{
@@ -13899,7 +13935,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      rTyp = PT_TYPE_DOUBLE;
 	    }
 	  typ = pt_type_enum_to_db (rTyp);
-	  *domain = tp_domain_resolve_default (typ);
+	  domain = tp_domain_resolve_default (typ);
 	}
 
       if (typ1 == DB_TYPE_NULL || typ2 == DB_TYPE_NULL)
@@ -13930,7 +13966,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      db_make_null (&tmp_val);
 	      /* force explicit cast ; scenario : INSERT INTO t VALUE(''1''+?) , USING 10, column is INTEGER */
-	      if (tp_value_cast (arg1, &tmp_val, *domain, false) != DOMAIN_COMPATIBLE)
+	      if (tp_value_cast (arg1, &tmp_val, domain, false) != DOMAIN_COMPATIBLE)
 		{
 		  PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			       parser_print_tree (parser, o1), pt_show_type_enum (rTyp));
@@ -13948,7 +13984,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	      db_make_null (&tmp_val);
 	      /* force explicit cast ; scenario: INSERT INTO t VALUE(? + ''1'') , USING 10, column is INTEGER */
-	      if (tp_value_cast (arg2, &tmp_val, *domain, false) != DOMAIN_COMPATIBLE)
+	      if (tp_value_cast (arg2, &tmp_val, domain, false) != DOMAIN_COMPATIBLE)
 		{
 		  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			       parser_print_tree (parser, o2), pt_show_type_enum (rTyp));
@@ -13971,7 +14007,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
 	    case DB_TYPE_SEQUENCE:
-	      if (!pt_union_sets (parser, *domain, arg1, arg2, result, o2))
+	      if (!pt_union_sets (parser, domain, arg1, arg2, result, o2))
 		{
 		  return 0;	/* set union failed */
 		}
@@ -14061,26 +14097,44 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
+#if 1				// used in phase-1, phase-2
+	      {
+		TP_DOMAIN *tmp_domain = domain;
+		if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		  {
+		    PT_ERRORc (parser, o1, er_msg ());
+		    return 0;
+		  }
+		if (num_op_type == FP_VALUE_TYPE_NUMBER
+		    || (tmp_domain->precision < result->domain.numeric_info.precision
+			|| tmp_domain->scale != result->domain.numeric_info.scale))
+		  {
+		    tmp_domain =
+		      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					 result->domain.numeric_info.scale, NULL, 0);
+		  }
+
+		dom_status = tp_value_coerce (result, result, tmp_domain);
+		if (dom_status != DOMAIN_COMPATIBLE)
+		  {
+		    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
+		    return 0;
+		  }
+	      }
+#else // used in phase-3
 	      if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      if (num_op_type == FP_VALUE_TYPE_NUMBER
-		  || ((*domain)->precision < result->domain.numeric_info.precision
-		      || (*domain)->scale != result->domain.numeric_info.scale))
-		{
-		  *domain =
-		    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
-				       result->domain.numeric_info.scale, NULL, 0);
-		}
 
-	      dom_status = tp_value_coerce (result, result, *domain);
+	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
 		  return 0;
 		}
+#endif
 	      break;
 
 	    case DB_TYPE_MONETARY:
@@ -14575,7 +14629,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    {
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
-	      if (!pt_difference_sets (parser, *domain, arg1, arg2, result, o2))
+	      if (!pt_difference_sets (parser, domain, arg1, arg2, result, o2))
 		{
 		  return 0;	/* set union failed */
 		}
@@ -14748,26 +14802,44 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
+#if 1				// used in phase-1, phase-2
+	      {
+		TP_DOMAIN *tmp_domain = domain;
+		if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		  {
+		    PT_ERRORc (parser, o1, er_msg ());
+		    return 0;
+		  }
+		if (num_op_type == FP_VALUE_TYPE_NUMBER
+		    || (tmp_domain->precision < result->domain.numeric_info.precision
+			|| tmp_domain->scale != result->domain.numeric_info.scale))
+		  {
+		    tmp_domain =
+		      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					 result->domain.numeric_info.scale, NULL, 0);
+		  }
+
+		dom_status = tp_value_coerce (result, result, tmp_domain);
+		if (dom_status != DOMAIN_COMPATIBLE)
+		  {
+		    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
+		    return 0;
+		  }
+	      }
+#else // used in phase-3
 	      if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      if (num_op_type == FP_VALUE_TYPE_NUMBER
-		  || ((*domain)->precision < result->domain.numeric_info.precision
-		      || (*domain)->scale != result->domain.numeric_info.scale))
-		{
-		  *domain =
-		    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
-				       result->domain.numeric_info.scale, NULL, 0);
-		}
 
-	      dom_status = tp_value_coerce (result, result, *domain);
+	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
 		  return 0;
 		}
+#endif
 	      break;
 
 	    case DB_TYPE_MONETARY:
@@ -15051,7 +15123,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
 	    case DB_TYPE_SEQUENCE:
-	      if (!pt_product_sets (parser, *domain, arg1, arg2, result, o2))
+	      if (!pt_product_sets (parser, domain, arg1, arg2, result, o2))
 		{
 		  return 0;	/* set union failed */
 		}
@@ -15153,6 +15225,36 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
+#if 1				// used in phase-1, phase-2
+	      {
+		TP_DOMAIN *tmp_domain = domain;
+		error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
+		if (error == ER_IT_DATA_OVERFLOW)
+		  {
+		    goto overflow;
+		  }
+		else if (error != NO_ERROR)
+		  {
+		    PT_ERRORc (parser, o1, er_msg ());
+		    return 0;
+		  }
+		if (num_op_type == FP_VALUE_TYPE_NUMBER
+		    || (tmp_domain->precision < result->domain.numeric_info.precision
+			|| tmp_domain->scale != result->domain.numeric_info.scale))
+		  {
+		    tmp_domain =
+		      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					 result->domain.numeric_info.scale, NULL, 0);
+		  }
+
+		dom_status = tp_value_coerce (result, result, tmp_domain);
+		if (dom_status != DOMAIN_COMPATIBLE)
+		  {
+		    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
+		    return 0;
+		  }
+	      }
+#else
 	      error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
 	      if (error == ER_IT_DATA_OVERFLOW)
 		{
@@ -15163,21 +15265,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
-	      if (num_op_type == FP_VALUE_TYPE_NUMBER
-		  || ((*domain)->precision < result->domain.numeric_info.precision
-		      || (*domain)->scale != result->domain.numeric_info.scale))
-		{
-		  *domain =
-		    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
-				       result->domain.numeric_info.scale, NULL, 0);
-		}
 
-	      dom_status = tp_value_coerce (result, result, *domain);
+	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
 		  return 0;
 		}
+#endif
 	      break;
 
 	    case DB_TYPE_MONETARY:
@@ -15266,6 +15361,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_NUMERIC:
 	      if (!numeric_db_value_is_zero (arg2))
 		{
+#if 1				// used in phase-1, phase-2
+		  TP_DOMAIN *tmp_domain = domain;
 		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
@@ -15277,22 +15374,43 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		      return 0;
 		    }
 		  if (num_op_type == FP_VALUE_TYPE_NUMBER
-		      || ((*domain)->precision < result->domain.numeric_info.precision
-			  || (*domain)->scale != result->domain.numeric_info.scale))
+		      || (tmp_domain->precision < result->domain.numeric_info.precision
+			  || tmp_domain->scale != result->domain.numeric_info.scale))
 		    {
-		      *domain =
+		      tmp_domain =
 			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
 					   result->domain.numeric_info.scale, NULL, 0);
 		    }
 
-		  dom_status = tp_value_coerce (result, result, *domain);
+		  dom_status = tp_value_coerce (result, result, tmp_domain);
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
-		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, *domain);
+		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
 		      return 0;
 		    }
 
 		  return 1;
+#else // used in phase-3
+		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      goto overflow;
+		    }
+		  else if (error != NO_ERROR)
+		    {
+		      PT_ERRORc (parser, o1, er_msg ());
+		      return 0;
+		    }
+
+		  dom_status = tp_value_coerce (result, result, domain);
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
+		      return 0;
+		    }
+
+		  return 1;
+#endif
 		}
 	      break;
 
@@ -15690,7 +15808,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
 
-      if (tp_value_cast (result, result, *domain, true) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
 	{
 	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, o2), pt_show_type_enum (rTyp));
@@ -15708,7 +15826,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 0;
 	}
 
-      if (tp_value_cast (result, result, *domain, true) != DOMAIN_COMPATIBLE)
+      if (tp_value_cast (result, result, domain, true) != DOMAIN_COMPATIBLE)
 	{
 	  PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 		       pt_short_print (parser, o2), pt_show_type_enum (rTyp));
@@ -16046,7 +16164,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_FROM_UNIXTIME:
-      error = db_from_unixtime (arg1, arg2, arg3, result, *domain);
+      error = db_from_unixtime (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16247,7 +16365,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_TIME_FORMAT:
-      error = db_time_format (arg1, arg2, arg3, result, *domain);
+      error = db_time_format (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16540,7 +16658,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_DATE_FORMAT:
-      error = db_date_format (arg1, arg2, arg3, result, *domain);
+      error = db_date_format (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16871,7 +16989,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       return 1;
 
     case PT_TO_CHAR:
-      error = db_to_char (arg1, arg2, arg3, result, *domain);
+      error = db_to_char (arg1, arg2, arg3, result, domain);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17064,11 +17182,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       }
 
     case PT_CAST:
-      if (TP_DOMAIN_TYPE (*domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 	{
 	  return 0;
 	}
-      dom_status = tp_value_cast (arg1, result, *domain, false);
+      dom_status = tp_value_cast (arg1, result, domain, false);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  assert (expr->node_type == PT_EXPR);
@@ -17096,7 +17214,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
        * case_search_condition. */
       if (arg3 && (DB_VALUE_TYPE (arg3) == DB_TYPE_INTEGER && db_get_int (arg3) != 0))
 	{
-	  if (tp_value_coerce (arg1, result, *domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_coerce (arg1, result, domain) != DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o1, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			   pt_short_print (parser, o1), pt_show_type_enum (rTyp));
@@ -17105,7 +17223,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
       else
 	{
-	  if (tp_value_coerce (arg2, result, *domain) != DOMAIN_COMPATIBLE)
+	  if (tp_value_coerce (arg2, result, domain) != DOMAIN_COMPATIBLE)
 	    {
 	      PT_ERRORmf2 (parser, o2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
 			   pt_short_print (parser, o2), pt_show_type_enum (rTyp));
@@ -18658,7 +18776,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  goto end;
 	}
 
-      if (pt_evaluate_db_value_expr (parser, expr, op, arg1, arg2, arg3, &dbval_res, &domain, opd1, opd2, opd3,
+      if (pt_evaluate_db_value_expr (parser, expr, op, arg1, arg2, arg3, &dbval_res, domain, opd1, opd2, opd3,
 				     qualifier))
 	{
 	  result = pt_dbval_to_value (parser, &dbval_res);

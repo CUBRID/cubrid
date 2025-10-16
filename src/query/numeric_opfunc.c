@@ -632,9 +632,13 @@ fp_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes)
 	}
     }
 
-  if (first_nz <= 0)
+  if (first_nz == 0)
     {
-      /* cases where the value is 0 or negative cannot occur */
+      return 1;
+    }
+  else if (first_nz < 0)
+    {
+      /* cases where the value is negative cannot occur */
       assert (false);
       return DB_DEFAULT_PRECISION;
     }

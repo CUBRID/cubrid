@@ -196,6 +196,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 
 		if (carry || num_str_p <= num_str_digits)
 		  {
+#if 1				// used in phase-1
 		    if (p < phase_1_tmp_max_prec)
 		      {
 			p++;
@@ -205,6 +206,9 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 			s--;
 			num_str[num_str_len] = '\0';
 		      }
+#else // used in phase-2
+		    // this part will be modified differently in phase-2.
+#endif
 		  }
 
 		if (num_str[0])
@@ -216,6 +220,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		    num_str_p = num_str + 1;
 		  }
 
+#if 1				// used in phase-1
 		/*
 		 * Due to the change in precision concept to match Oracle's behavior, 
 		 * incrementing precision with p++ causes the condition 
@@ -237,7 +242,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		 */
 		DB_C_NUMERIC arg = db_locate_numeric (value);
 		p += (arg[0] & 0x80) ? 1 : 0;
-
+#endif
 		numeric_coerce_dec_str_to_num (num_str_p, num);
 		db_make_numeric (result, num, p, s);
 	      }
@@ -350,10 +355,17 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 	      }
 
 	    num_str_len = strlen (num_str_p);
+#if 1				// used in phase-1
 	    if (s > phase_1_tmp_max_prec)
 	      {
 		s = phase_1_tmp_max_prec;
 	      }
+#else // used in phase-2
+	    if (s > DB_MAX_NUMERIC_PRECISION)
+	      {
+		s = DB_MAX_NUMERIC_PRECISION;
+	      }
+#endif
 	    num_str_p += num_str_len - s;
 
 	    while (*num_str_p)
@@ -403,6 +415,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 			    *num_str_p = '1';
 			  }
 
+#if 1				// used in phase-1
 			if (p < phase_1_tmp_max_prec)
 			  {
 			    p++;
@@ -412,6 +425,9 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 			    num_str[num_str_len] = '\0';
 			    s--;
 			  }
+#else // used in phase-2
+			// this part will be modified differently in phase-2.
+#endif
 		      }
 		    else
 		      {

@@ -380,16 +380,24 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
       cinfo->scale = MAX (att1_info->scale, att2_info->scale);
       cinfo->prec = MAX ((att1_info->prec - att1_info->scale), (att2_info->prec - att2_info->scale)) + cinfo->scale;
 
+#if 1				// used in phase-1
       if (cinfo->prec > phase_1_tmp_max_prec)
 	{
 	  cinfo->scale = cinfo->scale - (cinfo->prec - phase_1_tmp_max_prec);
 	  cinfo->prec = phase_1_tmp_max_prec;
 	}
+#else // used in phase-2
+      if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
+	{
+	  cinfo->scale = cinfo->scale - (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
+	  cinfo->prec = DB_MAX_NUMERIC_PRECISION;
+	}
+#endif
       if (cinfo->scale > DB_MAX_NUMERIC_SCALE)
 	{
 	  cinfo->scale = DB_MAX_NUMERIC_SCALE;
 	}
-      if (cinfo->scale < DB_MIN_NUMERIC_SCALE)
+      else if (cinfo->scale < DB_MIN_NUMERIC_SCALE)
 	{
 	  cinfo->scale = DB_MIN_NUMERIC_SCALE;
 	}
@@ -2294,18 +2302,27 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	  data_type->info.data_type.precision =
 	    MAX ((ci1.prec - ci1.scale), (ci2.prec - ci2.scale)) + MAX (ci1.scale, ci2.scale);
 	  data_type->info.data_type.dec_precision = MAX (ci1.scale, ci2.scale);
-
+#if 1				// used in phase-1
 	  if (data_type->info.data_type.precision > phase_1_tmp_max_prec)
 	    {
 	      data_type->info.data_type.dec_precision =
 		data_type->info.data_type.dec_precision - (data_type->info.data_type.precision - phase_1_tmp_max_prec);
 	      data_type->info.data_type.precision = phase_1_tmp_max_prec;
 	    }
+#else // used in phase-2
+	  if (data_type->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
+	    {
+	      data_type->info.data_type.dec_precision =
+		data_type->info.data_type.dec_precision - (data_type->info.data_type.precision -
+							   DB_MAX_NUMERIC_PRECISION);
+	      data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	    }
+#endif
 	  if (data_type->info.data_type.dec_precision > DB_MAX_NUMERIC_SCALE)
 	    {
 	      data_type->info.data_type.dec_precision = DB_MAX_NUMERIC_SCALE;
 	    }
-	  if (data_type->info.data_type.dec_precision < DB_MIN_NUMERIC_SCALE)
+	  else if (data_type->info.data_type.dec_precision < DB_MIN_NUMERIC_SCALE)
 	    {
 	      data_type->info.data_type.dec_precision = DB_MIN_NUMERIC_SCALE;
 	    }
