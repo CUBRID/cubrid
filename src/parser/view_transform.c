@@ -1956,14 +1956,37 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       /* not pushable */
       return NON_PUSHABLE;
     }
-  /* subquery has order_by and main query has inst_num or analytic or order-sensitive aggrigation */
+  /* subquery has order_by and main query has analytic or order-sensitive aggrigation */
   if (subquery->info.query.order_by
-      && ((!is_rownum_only && pt_has_inst_in_where_and_select_list (parser, mainquery))
-	  || pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
+      && (pt_has_analytic (parser, mainquery) || pt_has_order_sensitive_agg (parser, mainquery)
 	  || pt_has_expr_of_inst_in_sel_list (parser, select_list)))
     {
       /* not pushable */
       return NON_PUSHABLE;
+    }
+
+  /* subquery has order_by and main query has inst_num */
+  if (subquery->info.query.order_by && pt_has_inst_in_where_and_select_list (parser, mainquery))
+    {
+      /* only can be mergeable in case of rownum only predicate and updatable order by */
+      /* query containing distinct, agg cannot add hidden cols, so orderby may be removed during view merging. */
+      if (!is_rownum_only || pt_has_aggregate (parser, mainquery))
+	{
+	  /* not pushable */
+	  return NON_PUSHABLE;
+	}
+      else if (pt_is_distinct (mainquery))
+	{
+	  if (pt_length_of_list (select_list) == 1 && PT_IS_INSTNUM (select_list)
+	      && !pt_has_inst_or_orderby_num_in_where (parser, mainquery))
+	    {
+	      /* case of 'select distinct rownum from (subq)' can be view-merged */
+	    }
+	  else
+	    {
+	      return NON_PUSHABLE;
+	    }
+	}
     }
 
   /*****************************/
@@ -4208,7 +4231,7 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
       return false;
     }
 
-  where = parser_copy_tree (parser, node->info.query.q.select.where);
+  where = parser_copy_tree_list (parser, node->info.query.q.select.where);
 
   /* substitute attributes for query_spec_columns in statement */
   where = mq_lambda (parser, where, attributes, query_spec_columns);
@@ -6042,7 +6065,13 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* need to recheck this in case something went wrong */
       insert_statement = pt_check_odku_assignments (parser, insert_statement);
     }
-  insert_rewrite_names_in_value_clauses (parser, insert_statement);
+
+  /* no need rewrite names in case of dblink query */
+  if (insert_statement->info.insert.spec->info.spec.remote_server_name == NULL)
+    {
+      insert_rewrite_names_in_value_clauses (parser, insert_statement);
+    }
+
   if (pt_has_error (parser))
     {
       return NULL;

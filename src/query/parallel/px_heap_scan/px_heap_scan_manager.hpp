@@ -23,19 +23,19 @@
 #ifndef _PX_HEAP_SCAN_MANAGER_HPP_
 #define _PX_HEAP_SCAN_MANAGER_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include "dbtype.h"
 #include "scan_manager.h"
 #include "thread_manager.hpp"
 #include "px_heap_scan_context.hpp"
 #include "px_heap_scan_list_stream.hpp"
 #include "px_heap_scan_mergable_list.hpp"
+#include "px_worker_manager.hpp"
 #include "xasl.h"
 
 #define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 namespace parallel_heap_scan
 {
+  using worker_manager = parallel_query::worker_manager;
   enum class RESULT_GET_METHOD
   {
     NONE,
@@ -61,6 +61,8 @@ namespace parallel_heap_scan
       std::size_t m_parallelism;
       bool m_is_start_once;
       bool timeout_occurred;
+      worker_manager *m_worker_manager;
+      bool m_px_stats_initialized_by_me;
     protected:
       friend class perf_monitor;
       std::vector<std::shared_ptr<memory_mapper>> m_memory_mappers;
@@ -77,7 +79,8 @@ namespace parallel_heap_scan
   {
     public:
       manager_page_by_page() = default;
-      manager_page_by_page (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id);
+      manager_page_by_page (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id,
+			    worker_manager *worker_manager);
       ~manager_page_by_page();
 
       void start() override;
@@ -96,7 +99,8 @@ namespace parallel_heap_scan
   {
     public:
       manager_merge() = default;
-      manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id, XASL_NODE *xasl);
+      manager_merge (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, std::size_t parallelism, QUERY_ID query_id, XASL_NODE *xasl,
+		     worker_manager *worker_manager);
       ~manager_merge();
 
       void start() override;
@@ -141,7 +145,5 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      parallel_heap_scan::RESULT_GET_METHOD result_get_method, XASL_NODE *xasl);
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-
-#endif /* SERVER_MODE && !WINDOWS */
 
 #endif /*_PX_HEAP_SCAN_MANAGER_HPP_ */

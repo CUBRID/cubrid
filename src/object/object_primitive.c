@@ -10426,6 +10426,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       error = db_value_domain_init (dest, DB_TYPE_VARCHAR, db_value_precision (src), 0);
       if (src->data.ch.info.is_max_string)
 	{
+	  dest->data.ch.info.style = MEDIUM_STRING;
 	  dest->data.ch.info.is_max_string = true;
 	  dest->domain.general_info.is_null = 0;
 	  dest->domain.char_info.collation_id = db_get_string_collation (src);
@@ -10433,6 +10434,9 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  dest->data.ch.medium.codeset = db_get_string_codeset (src);
 	  dest->data.ch.medium.compressed_size = DB_UNCOMPRESSABLE;
 	  dest->data.ch.info.compressed_need_clear = false;
+	  dest->data.ch.medium.size = 0;
+	  dest->data.ch.medium.length = -1;
+	  dest->data.ch.medium.buf = NULL;
 	}
     }
   else
@@ -10635,11 +10639,16 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
   const char *string;
   int size;
 
-  if (value != NULL && (str = db_get_string (value)) != NULL)
+  if (value != NULL && !db_value_is_null (value))
     {
+      str = db_get_string (value);
       src_length = db_get_string_size (value);	/* size in bytes */
-      if (src_length < 0)
+      if (src_length <= 0)
 	{
+	  if (src_length == 0)
+	    {
+	      return pr_write_uncompressed_string_to_buffer (buf, "", 0, align);
+	    }
 	  src_length = strlen (str);
 	}
 

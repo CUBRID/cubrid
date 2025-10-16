@@ -127,7 +127,7 @@ namespace parallel_query
     else
       {
 	qfile_destroy_list (thread_p, *orig_list);
-	qfile_copy_list_id (*orig_list, *new_list, false);
+	qfile_copy_list_id (*orig_list, *new_list, false, QFILE_MOVE_DEPENDENT);
       }
   }
 }

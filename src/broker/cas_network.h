@@ -58,22 +58,12 @@
 	  SIZE = ntohl(tmp_i);                          \
 	} while (0)
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#define NET_ARG_GET_BIGINT(VALUE, ARG)                                     \
-        do {                                                               \
-          int64_t   tmp_i;                                               \
-          memcpy(&tmp_i, (char*) (ARG) + NET_SIZE_INT, NET_SIZE_BIGINT);           \
-          VALUE = ntohi64(tmp_i);                                          \
-        } while (0)
-
-#else
 #define NET_ARG_GET_BIGINT(VALUE, ARG)                                     \
         do {                                                               \
           DB_BIGINT   tmp_i;                                               \
           memcpy(&tmp_i, (char*) (ARG) + NET_SIZE_INT, NET_SIZE_BIGINT);           \
           VALUE = ntohi64(tmp_i);                                          \
         } while (0)
-#endif
 
 #define NET_ARG_GET_INT(VALUE, ARG)                                        \
 	do {                                                               \
