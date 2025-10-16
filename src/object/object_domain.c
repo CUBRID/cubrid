@@ -10037,20 +10037,17 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      {
-		DB_VALUE tmpval;
 		DB_VALUE cs;
 
-		db_make_null (&tmpval);
 		/* convert directly from CLOB into charset of desired domain string */
 		db_make_int (&cs, desired_domain->codeset);
-		err = db_clob_to_char (src, &cs, &tmpval);
+		err = db_clob_to_char (src, &cs, target);
 		if (err == NO_ERROR)
 		  {
-		    err =
-		      tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
+		    err = tp_value_cast_internal (target, dest, desired_domain, coercion_mode, do_domain_select, false);
 		  }
 
-		pr_clear_value (&tmpval);
+		status = (err == NO_ERROR) ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
 	      }
 	      break;
 	    default:
