@@ -3775,6 +3775,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
     }
 
+#if 1				// used in phase-1, phase-2
   /*
    * After NUMERIC operation, precision/scale are modified
    * At this point, only regu_var->domain is updated internally,
@@ -3788,6 +3789,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       tp_domain_free (arithptr->domain);
       arithptr->domain = regu_var->domain;
     }
+#endif
 
   /* check for the first time */
   if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)

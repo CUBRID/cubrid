@@ -6564,6 +6564,8 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
 	    }
 	}
+
+#if 1				// used in phase-1, phase-2
       /*
        * The client (CAS) side cannot determine whether the domain has been modified,
        * so when it's a NUMERIC type and the address values differ as shown below,
@@ -6593,6 +6595,7 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 
       count++;
     }
+#endif
 
   /* The number of columns should be same. */
   if (count != list_id_p->type_list.type_cnt)
