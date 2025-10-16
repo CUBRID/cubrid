@@ -479,7 +479,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
 }
 
 /*
- * thread_suspend_wakeup_and_unlock_entry() -
+ * thread_suspend_wakeup() -
  *   return:
  *   thread_p(in):
  *   suspended_reason(in):
@@ -487,7 +487,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
  * Note: this function must be called by current thread also, the lock must have already been acquired.
  */
 void
-thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
+thread_suspend_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
 {
   cubthread::entry::status old_status;
 
@@ -523,8 +523,6 @@ thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resum
     }
 
   thread_p->m_status = old_status;
-
-  pthread_mutex_unlock (&thread_p->th_entry_lock);
 }
 
 /*
@@ -536,7 +534,7 @@ thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resum
  */
 int
 thread_suspend_timeout_wakeup (cubthread::entry *thread_p, struct timespec *time_p,
-    thread_resume_suspend_status suspended_reason)
+			       thread_resume_suspend_status suspended_reason)
 {
   int r;
   cubthread::entry::status old_status;

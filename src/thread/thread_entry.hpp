@@ -480,9 +480,9 @@ thread_unlock_entry (cubthread::entry *thread_p)
   thread_p->unlock ();
 }
 
-void thread_suspend_wakeup_and_unlock_entry (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
+void thread_suspend_wakeup (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
 int thread_suspend_timeout_wakeup (cubthread::entry *p, struct timespec *t,
-    thread_resume_suspend_status suspended_reason);
+				   thread_resume_suspend_status suspended_reason);
 void thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
     thread_resume_suspend_status suspend_reason);
