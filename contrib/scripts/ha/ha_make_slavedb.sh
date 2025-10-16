@@ -91,6 +91,20 @@ step_func_slave_from_replica=(
 	"show_complete"
 )
 
+step_func_slave_from_slave=(
+	"get_password"
+	"show_environment"
+	"copy_script_to_master"
+	"copy_script_to_target"
+	"copy_script_to_replica"
+	"check_environment"
+	"online_backup_db"
+	"copy_backup_db_from_target"
+	"restore_db_to_current"
+	"copy_active_log_from_master"
+	"show_complete"
+)
+
 step_func_replica_from_slave=(
 	"get_password"
 	"show_environment"
@@ -268,12 +282,12 @@ function get_output_from_replica()
 		rm -f "$local_output_file"
 
 		# Copy the remote output file to a local file named after the host
-		scp_from_expect "$cubrid_user" "$server_password" "$remote_output_path" "$replica_host" "$local_output_file"
+        scp_from_expect "$cubrid_user" "$server_password" "$remote_output_path" "$replica_host" "$local_output_file"
 
 		# Explicitly check if the scp command was successful
-		if [ ! -f "$local_output_file" ]; then
+        if [ ! -f "$local_output_file" ]; then
 			error "Failed to copy output file from $replica_host. SCP command might have failed." true
-		fi
+        fi
 	done
 }
 
@@ -301,13 +315,10 @@ function check_args()
 }
 
 function check_db_name() {
-    # This function parses the global 'db_name' variable.
-    # It handles comma-separated values, extra whitespace, and quotes.
     # It updates the global 'db_name' to be only the first valid database name found.
     local original_input="$db_name"
     local first_db_found=""
 
-    # Use echo to resolve any quotes in the input string
     # e.g., db_name='"db1, db2"' becomes `db1, db2`
     original_input="$(echo "$original_input")"
 
@@ -369,13 +380,13 @@ function init_conf()
 				"ha_node_list") # ha_node_list=group_id@master:slave1:slave2...
 					hosts=$(echo ${conf[1]} | cut -d '@' -f 2)
 					master_host=$(echo $hosts | cut -d ':' -f 1)
-					# In a multi-slave setup, all hosts after the master are slaves.
+					# In multi-slave setups, all hosts after the master are slaves.
 					slave_hosts_str=$(echo "$hosts" | cut -d':' -f2-)
-					# For compatibility with functions that expect a single slave, we set slave_host to the first one.
+					# For compatibility with single-slave logic, we set `slave_host` as the first slave.
 					slave_host=$(echo "$slave_hosts_str" | cut -d':' -f1)
-					if [ "$slave_host" == "$target_host" ]; then # This logic might need review for multi-slave scenarios
-						node_index=2
-					fi
+					for h in ${slave_hosts_str//:/ }; do
+						[ "$target_host" == "$h" ] && node_index=2 && break
+					done
 					;;
 				"ha_replica_list") replica_hosts=$(echo ${conf[1]} | cut -d '@' -f 2);;
 				"ha_db_list")
@@ -392,64 +403,140 @@ function init_conf()
 		error "The db_name is null. Please specify 'db_name' variable or set 'ha_db_list' in cubrid_ha.conf."
 	fi
 
-	# check the master and slave host is valid
-	# The logic for swapping master/slave is removed as it's not compatible with multi-slave environments.
-	# It is assumed that the ha_node_list in cubrid_ha.conf correctly specifies the current master.
-	cubrid changemode $db_name@$master_host 2>/dev/null | grep active >/dev/null
-	if [ $? -ne $SUCCESS ]; then
-		error "The master node ($master_host) is not active. Please check the HA configuration and node status."
+	# Check if target_host is in /etc/hosts
+    if ! grep -q -w "$target_host" /etc/hosts; then
+        error "The target host '$target_host' is not defined in /etc/hosts. Please add it to /etc/hosts."
+    fi
+
+	# Error if target_host is the same as the current host where the script is running.
+	if [ "$target_host" == "$current_host" ]; then
+		error "The target host ($target_host) for backup cannot be the same as the current host ($current_host)."
+	fi
+
+	# Check master host status
+	local master_status_output=$(cubrid changemode $db_name@$master_host 2>&1)
+	if echo "$master_status_output" | grep -q "Failed to connect to database server"; then
+		error "Failed to connect to the master node ($master_host). Please check the network connection and server status."
+	# If the target is not the master, the master must be in 'active' state.
+	elif [ "$target_host" != "$master_host" ] && ! echo "$master_status_output" | grep -q -E "is active"; then
+		error "The master node ($master_host) is not in 'active' state. Please check the HA configuration and node status."
+	fi
+
+	# Check target host status if it's not the master
+	if [ "$target_host" != "$master_host" ]; then
+		local target_status_output=$(cubrid changemode $db_name@$target_host 2>&1)
+		if echo "$target_status_output" | grep -q "Failed to connect to database server"; then
+			error "Failed to connect to the target node ($target_host). Please check the network connection and server status."
+		fi
 	fi
 
 	# get state of the current server (master / slave / replica)
-	is_slave=false
-	for h in ${slave_hosts_str//:/ }; do
-		if [ "$current_host" == "$h" ]; then
-			is_slave=true
-			break
-		fi
-	done
+	is_current_slave=false
+    local old_ifs=$IFS
+    IFS=':' read -r -a slave_array <<< "$slave_hosts_str"
+    IFS=$old_ifs
+
+    for h in "${slave_array[@]}"; do
+        if [ "$current_host" == "$h" ]; then
+            is_current_slave=true
+            break
+        fi
+    done
 
 	if [ $current_host == "$master_host" ]; then
 		error "This script is supposed not to run on master."
-	elif [ "$is_slave" == "true" ]; then
+	elif [ "$is_current_slave" == "true" ]; then
 		current_state="slave"
 	else
-		current_state="replica" # If not in ha_node_list, it's considered a replica
+		current_state="replica" 
 	fi
 
 	# get state of the target server (master / slave / replica)
 	is_target_slave=false
-	for h in ${slave_hosts_str//:/ }; do
-		if [ "$target_host" == "$h" ]; then
-			is_target_slave=true
-			break
-		fi
-	done
+    for h in "${slave_array[@]}"; do
+        if [ "$target_host" == "$h" ]; then
+            is_target_slave=true
+            break
+        fi
+    done
+
 	if [ "$target_host" == "$master_host" ]; then
 		target_state="master"
 	elif [ "$is_target_slave" == "true" ]; then
-		target_state="slave"
-	elif [ "$(echo $replica_hosts | grep $target_host)" != "" ]; then
-		target_state="replica"
+		target_state="slave"	
 	else
-		error "Could not find the target server."
+		# Check if target_host is in the replica_hosts list
+		local is_target_replica=false
+		local old_ifs=$IFS
+		IFS=':' read -r -a replica_array <<< "$replica_hosts"
+		IFS=$old_ifs
+		for h in "${replica_array[@]}"; do
+			if [ "$target_host" == "$h" ]; then
+				is_target_replica=true
+				break
+			fi
+		done
+
+		if [ "$is_target_replica" == "true" ]; then
+			target_state="replica"
+		else
+			error "Could not determine the role of the target server '$target_host'. Please check your HA configuration."
+		fi
 	fi
+	##DEBUG
+	echo "target_host=$target_host"
+	echo "current_host=$current_host"
+	echo "slave_hosts_str=$slave_hosts_str"
+	echo "master_host=$master_host"
+	echo "replica_hosts=$replica_hosts"
+	echo "db_name=$db_name"	
+	echo "current_state=$current_state"
+	echo "target_state=$target_state"
 
 	# check the target server state and current server state is valid.
 	case $current_state in
 		"slave") # current_state is slave
 			case $target_state in
-				"master") step_func=(${step_func_slave_from_master[@]});; 
-				"slave") step_func=(${step_func_replica_from_slave[@]});; # Support from-slave-to-multislave
-				#"replica") step_func=(${step_func_slave_from_replica[@]});; # target_state is replica, step_func_slave_from_replica
-				"replica") step_func=(${step_func_replica_from_slave[@]});;  # Support from-replica-to-slave
-				*) error "Invalid target server state.";;
-			esac;;
+				"master") # from-master-to-slave: Allowed only if no other slaves or replicas are online.
+					# Check if a replica is available and running
+					if [ -n "$replica_hosts" ]; then
+						local first_replica=$(echo "$replica_hosts" | cut -d':' -f1)
+						# Check if the replica server is responsive (active or standby)
+						if cubrid changemode ${db_name}@${first_replica} 2>/dev/null | grep -q -E "is active|is standby"; then
+							error "Unsupported operation: A running replica node exists. Please use the replica node ('$first_replica') as the target to reduce master load."
+						fi
+					fi
+
+					local online_slaves=0
+					for s_host in "${slave_array[@]}"; do
+						# Exclude the current host from the online check
+						if [ "$s_host" != "$current_host" ]; then
+							# Check if the slave is not just running, but is an active part of the HA setup.
+							if cubrid changemode ${db_name}@${s_host} 2>/dev/null | grep -q -E "is active|is standby"; then
+								((online_slaves++))
+							fi
+						fi
+					done
+					if [ $online_slaves -gt 0 ]; then
+						error "Unsupported operation: Creating a slave from the master is not allowed in a multi-slave environment. Please use another slave or a replica as the target."
+					fi
+					step_func=(${step_func_slave_from_master[@]}) ;;
+				"slave") # from-slave-to-slave: Allowed in multi-slave setup.
+					step_func=(${step_func_slave_from_slave[@]}) ;;
+				"replica") # from-replica-to-slave: Allowed.
+					step_func=(${step_func_slave_from_replica[@]}) ;;
+				*)
+					error "Invalid target server state for creating a slave: '$target_state'." ;;
+			esac
+			;;
 		"replica") # current_state is replica
 			case $target_state in
-				"master") step_func=(${step_func_slave_from_master[@]});;
-				"slave") step_func=(${step_func_replica_from_slave[@]});;
-				"replica") step_func=(${step_func_replica_from_replica[@]});;
+				"master") # from-master-to-replica: Always denied.
+					error "Unsupported operation: Creating a replica from a master is not allowed." ;;
+				"slave") # from-slave-to-replica: Allowed.
+					step_func=(${step_func_replica_from_slave[@]}) ;;
+				"replica") # from-replica-to-replica: Allowed.
+					step_func=(${step_func_replica_from_replica[@]}) ;;
 				*) error "Invalid target server state.";;
 			esac;;
 	esac
@@ -744,7 +831,10 @@ function check_environment()
 
 	rm -rf $env_output
 	mkdir $env_output
-	for host in $master_host $slave_host ${replica_hosts[@]}; do
+
+	# Create a unique list of hosts to check
+	local host_list=$(echo "$master_host $slave_host ${replica_hosts[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+	for host in $host_list; do
 		echo "< checking $host >"
 		if [ "$current_host" == "$host" ]; then
 			echo "[$cubrid_user@$current_host]$ sh $CURR_DIR/functions/ha_check_environment.sh -t $ha_temp_home -o $env_output/$host -c $CUBRID -d $CUBRID_DATABASES -r $repl_log_home -s"
@@ -756,7 +846,7 @@ function check_environment()
 		echo -ne "\n"
 	done
 
-	for host in $master_host $slave_host ${replica_hosts[@]}; do
+	for host in $host_list; do
 		if [ -f $env_output/$host ]; then
 			echo -ne "\n"
 			echo " !!! check $host host environment "
