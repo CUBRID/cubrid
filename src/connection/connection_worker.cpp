@@ -363,15 +363,6 @@ namespace cubconn
 		   ctx->m_conn, ctx->m_conn->fd, status, tran_index, ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
 
-    /* exception rule */
-    if (ctx->m_conn->fd == cdc_Gl.conn.fd)
-      {
-	cdc_cleanup ();
-
-	cdc_Gl.conn.fd = -1;
-	cdc_Gl.conn.status = CONN_CLOSED;
-      }
-
     /* remove and close */
 
     m_events.remove_descriptor (ctx->m_conn->fd);
