@@ -152,11 +152,6 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	    num_str_p = num_str + 1;
 	    numeric_coerce_num_to_dec_str (db_get_numeric (value), num_str_p);
 	    num_str_len = strlen (num_str_p);
-	    if (s > phase_1_tmp_max_prec)
-	      {
-		s = phase_1_tmp_max_prec;
-	      }
-
 	    num_str_p += num_str_len - s;
 
 	    while (*num_str_p)
@@ -169,6 +164,18 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 
 		num_str_p++;
 	      }
+
+#if 1				// used in phase-1
+	    if (s > phase_1_tmp_max_prec)
+	      {
+		s = phase_1_tmp_max_prec - 1;
+	      }
+#else // used in phase-2
+	    if (s > DB_MAX_NUMERIC_PRECISION)
+	      {
+		s = DB_MAX_NUMERIC_PRECISION - 1;
+	      }
+#endif
 
 	    if (decrement && num_str[1] == '-')
 	      {
@@ -355,17 +362,6 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 	      }
 
 	    num_str_len = strlen (num_str_p);
-#if 1				// used in phase-1
-	    if (s > phase_1_tmp_max_prec)
-	      {
-		s = phase_1_tmp_max_prec;
-	      }
-#else // used in phase-2
-	    if (s > DB_MAX_NUMERIC_PRECISION)
-	      {
-		s = DB_MAX_NUMERIC_PRECISION;
-	      }
-#endif
 	    num_str_p += num_str_len - s;
 
 	    while (*num_str_p)
@@ -378,6 +374,18 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 
 		num_str_p++;
 	      }
+
+#if 1				// used in phase-1
+	    if (s > phase_1_tmp_max_prec)
+	      {
+		s = phase_1_tmp_max_prec - 1;
+	      }
+#else // used in phase-2
+	    if (s > DB_MAX_NUMERIC_PRECISION)
+	      {
+		s = DB_MAX_NUMERIC_PRECISION - 1;
+	      }
+#endif
 
 	    if (increment)
 	      {
