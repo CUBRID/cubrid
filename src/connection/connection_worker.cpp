@@ -20,6 +20,7 @@
  * connection_worker.cpp
  */
 
+#include "log_manager.h"
 #include "hardware_topology.hpp"
 #include "network.h"
 #include "network_interface_sr.h"
@@ -311,8 +312,6 @@ namespace cubconn
       {
 	if (this->is_wait_required (ctx))
 	  {
-	    pthread_mutex_unlock (&m_entry->tran_index_lock);
-
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: wait for transaction index\n");
 
 	    /* the connected client does not yet finished boot_client_register */
@@ -320,11 +319,8 @@ namespace cubconn
 	    /* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
 	    thread_sleep (50);
 
-	    pthread_mutex_lock (&m_entry->tran_index_lock);
-
 	    tran_index = ctx->m_conn->get_tran_index ();
 	    client_id = ctx->m_conn->client_id;
-
 	  }
       }
 
@@ -366,6 +362,15 @@ namespace cubconn
 		   "handle_connection_close: conn %p { fd %d status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
 		   ctx->m_conn, ctx->m_conn->fd, status, tran_index, ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
+
+    /* exception rule */
+    if (ctx->m_conn->fd == cdc_Gl.conn.fd)
+      {
+	cdc_cleanup ();
+
+	cdc_Gl.conn.fd = -1;
+	cdc_Gl.conn.status = CONN_CLOSED;
+      }
 
     /* remove and close */
 
