@@ -7826,15 +7826,13 @@ pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE *
       return false;
     }
 
-  if (node->node_type == PT_EXPR)
+  switch (node->node_type)
     {
-      if (node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
-	{
-	  return pt_check_not_null_constraint (parser, from, node->info.expr.arg1);
-	}
-    }
-  else if (node->node_type == PT_NAME)
-    {
+    case PT_DOT_:
+      node = pt_get_end_path_node (node);
+      [[fallthrough]];
+
+    case PT_NAME:
       entity = pt_find_entity (parser, from, node->info.name.spec_id);
       if (entity == NULL)
 	{
@@ -7875,6 +7873,17 @@ pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE *
 		}
 	    }
 	}
+      break;
+
+    case PT_EXPR:
+      if (node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
+	{
+	  return pt_check_not_null_constraint (parser, from, node->info.expr.arg1);
+	}
+      break;
+
+    default:
+      break;
     }
 
   return false;
@@ -18189,8 +18198,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg1 = pt_value_to_db (parser, opd1);
       type1 = opd1->type_enum;
     }
-  else if (opd1 && opd1->node_type == PT_HOST_VAR && opd1->info.host_var.index < parser->host_var_count
-	   && op == PT_LIKE)
+  else if (opd1 && opd1->node_type == PT_HOST_VAR && opd1->info.host_var.index < parser->host_var_count)
     {
       arg1 = pt_value_to_db (parser, opd1);
       if (DB_IS_NULL (arg1))
@@ -18229,8 +18237,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg2 = pt_value_to_db (parser, opd2);
       type2 = opd2->type_enum;
     }
-  else if (opd2 && opd2->node_type == PT_HOST_VAR && opd2->info.host_var.index < parser->host_var_count
-	   && op == PT_LIKE)
+  else if (opd2 && opd2->node_type == PT_HOST_VAR && opd2->info.host_var.index < parser->host_var_count)
     {
       arg2 = pt_value_to_db (parser, opd2);
       if (DB_IS_NULL (arg2))
@@ -18476,8 +18483,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       arg3 = pt_value_to_db (parser, opd3);
       type3 = opd3->type_enum;
     }
-  else if (opd3 && opd3->node_type == PT_HOST_VAR && opd3->info.host_var.index < parser->host_var_count
-	   && op == PT_LIKE)
+  else if (opd3 && opd3->node_type == PT_HOST_VAR && opd3->info.host_var.index < parser->host_var_count)
     {
       arg3 = pt_value_to_db (parser, opd3);
       if (DB_IS_NULL (arg3))

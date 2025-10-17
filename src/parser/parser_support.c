@@ -9834,87 +9834,110 @@ pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_N
   const char *escape_str = NULL;
   INTL_CODESET codeset;
 
-  arg1 = PT_EXPR_ARG1 (expr);
-  if (pt_check_not_null_constraint (parser, from, arg1) && PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_LIKE))
+  if (expr->node_type != PT_EXPR)
     {
-      arg2 = PT_EXPR_ARG2 (expr);
-
-      if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
-	{
-	  pattern = PT_EXPR_ARG1 (arg2);
-	  escape = PT_EXPR_ARG2 (arg2);
-	  assert (escape != NULL);
-	}
-      else
-	{
-	  pattern = arg2;
-	  escape = NULL;
-	}
-
-      if (escape != NULL)
-	{
-	  if (PT_IS_NULL_NODE (escape))
-	    {
-	      has_escape_char = true;
-	      escape_str = "\\";
-	    }
-	  else
-	    {
-	      int esc_char_len = 0;
-
-	      assert (pt_is_ascii_string_value_node (escape));
-
-	      escape_str = (const char *) escape->info.value.data_value.str->bytes;
-	      codeset = db_get_string_codeset (&pattern->info.value.db_value);
-
-	      intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
-			       &esc_char_len);
-	      if (esc_char_len != 1)
-		{
-		  PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
-		  return false;
-		}
-	      has_escape_char = true;
-	    }
-	}
-      else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
-	{
-	  assert (escape == NULL);
-	  assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
-	  has_escape_char = true;
-	  escape_str = "\\";
-	}
-      else
-	{
-	  has_escape_char = false;
-	  escape_str = NULL;
-	}
-
-      if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
-	{
-	  if (!DB_IS_NULL (&where_val))
-	    {
-	      db_make_null (&compressed_pattern);
-
-	      db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
-
-	      db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
-						 &num_logical_chars, &last_safe_logical_pos,
-						 &num_match_many, &num_match_one);
-
-	      if (num_logical_chars == 1 && num_match_many == 1)
-		{
-		  return true;
-		}
-
-	      /* If num_logical_chars is greater than 0 and both num_match_many and num_match_one are 0, 
-	       * the PT_LIKE can be replaced with PT_EQ instead.
-	       * See: qo_rewrite_one_like_term() */
-	    }
-	}
+      return false;
     }
 
-  return false;
+  arg1 = PT_EXPR_ARG1 (expr);
+  arg2 = PT_EXPR_ARG2 (expr);
+
+  switch (expr->info.expr.op)
+    {
+    case PT_AND:
+    case PT_OR:
+      {
+	need_recompile = pt_check_removable_like_condition (parser, from, arg1)
+	  || pt_check_removable_like_condition (parser, from, arg2);
+	break;
+      }
+    case PT_LIKE:
+      {
+	if (!arg1 || !pt_check_not_null_constraint (parser, from, arg1))
+	  {
+	    break;
+	  }
+
+	if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+	  {
+	    pattern = PT_EXPR_ARG1 (arg2);
+	    escape = PT_EXPR_ARG2 (arg2);
+	    assert (escape != NULL);
+	  }
+	else
+	  {
+	    pattern = arg2;
+	    escape = NULL;
+	  }
+
+	if (escape != NULL)
+	  {
+	    if (PT_IS_NULL_NODE (escape))
+	      {
+		has_escape_char = true;
+		escape_str = "\\";
+	      }
+	    else
+	      {
+		int esc_char_len = 0;
+
+		assert (pt_is_ascii_string_value_node (escape));
+
+		escape_str = (const char *) escape->info.value.data_value.str->bytes;
+		codeset = db_get_string_codeset (&pattern->info.value.db_value);
+
+		intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
+				 &esc_char_len);
+		if (esc_char_len != 1)
+		  {
+		    PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
+		    return false;
+		  }
+		has_escape_char = true;
+	      }
+	  }
+	else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
+	  {
+	    assert (escape == NULL);
+	    assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+	    has_escape_char = true;
+	    escape_str = "\\";
+	  }
+	else
+	  {
+	    has_escape_char = false;
+	    escape_str = NULL;
+	  }
+
+	if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
+	  {
+	    if (!DB_IS_NULL (&where_val))
+	      {
+		db_make_null (&compressed_pattern);
+
+		db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
+
+		db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
+						   &num_logical_chars, &last_safe_logical_pos,
+						   &num_match_many, &num_match_one);
+
+		if (num_logical_chars == 1 && num_match_many == 1)
+		  {
+		    need_recompile = true;
+		  }
+
+		/* If num_logical_chars is greater than 0 and both num_match_many and num_match_one are 0, 
+		 * the PT_LIKE can be replaced with PT_EQ instead.
+		 * See: qo_rewrite_one_like_term() */
+	      }
+	  }
+      }
+
+    default:
+      break;
+    }
+
+  return need_recompile;
 }
 
 /*
@@ -10501,14 +10524,10 @@ end:
 bool
 pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
-  PT_NODE *cnf_node, *dnf_node;
+  PT_NODE *cnf_node, *dnf_node, *where, *on_cond = NULL, *link, *spec, *expr;
+  bool need_recompile = false;
 
   if (statement->node_type != PT_SELECT)
-    {
-      return false;
-    }
-
-  if (statement->info.query.q.select.where == NULL)
     {
       return false;
     }
@@ -10518,13 +10537,38 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
       return false;
     }
 
-  for (cnf_node = statement->info.query.q.select.where; cnf_node != NULL; cnf_node = cnf_node->next)
+  for (spec = statement->info.query.q.select.from; spec; spec = spec->next)
+    {
+      if (spec->info.spec.on_cond != NULL)
+	{
+	  on_cond = parser_append_node (spec->info.spec.on_cond, on_cond);
+	}
+    }
+
+  where = statement->info.query.q.select.where;
+
+  for (link = where; link && link->next; link = link->next)
+    {
+      ;
+    }
+  if (link)
+    {
+      expr = where;
+      link->next = on_cond;
+    }
+  else
+    {
+      expr = on_cond;
+    }
+
+  for (cnf_node = expr; cnf_node != NULL; cnf_node = cnf_node->next)
     {
       if (cnf_node->or_next == NULL)
 	{
 	  if (pt_check_removable_like_condition (parser, statement->info.query.q.select.from, cnf_node))
 	    {
-	      return true;
+	      need_recompile = true;
+	      goto end;
 	    }
 	}
       else
@@ -10533,13 +10577,21 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 	    {
 	      if (pt_check_removable_like_condition (parser, statement->info.query.q.select.from, dnf_node))
 		{
-		  return true;
+		  need_recompile = true;
+		  goto end;
 		}
 	    }
 	}
     }
 
-  return false;
+end:
+  /* un-link */
+  if (link)
+    {
+      link->next = NULL;
+    }
+
+  return need_recompile;
 }
 
 /*
