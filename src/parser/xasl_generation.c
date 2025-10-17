@@ -7492,8 +7492,8 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
 	}
 
       if (!maybe_sci_notation &&
-	  ((scale == 0 && precision > (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE)) ||
-	   (scale != 0 && precision + scale > DB_MAX_FIXED_NUMERIC_PRECISION)))
+	  ((scale == 0 && precision < (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE)) ||
+	   (scale != 0 && precision + scale < DB_MAX_FIXED_NUMERIC_PRECISION)))
 	{
 	  *p_precision = precision;
 	  *p_scale = scale;

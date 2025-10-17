@@ -16245,8 +16245,8 @@ adjust_precision (char *data, int precision, int scale)
   int max_precision = (scale == 0) ? phase_1_tmp_max_prec : DB_MAX_FIXED_NUMERIC_PRECISION;
 
   if (data == NULL || precision < 0 ||
-      (scale == 0 && precision > (phase_1_tmp_max_prec - DB_MIN_NUMERIC_SCALE)) ||
-      (scale != 0 && precision + scale > DB_MAX_FIXED_NUMERIC_PRECISION))
+      precision > (phase_1_tmp_max_prec - DB_MIN_NUMERIC_SCALE) ||
+      scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE)
     {
       return DOMAIN_INCOMPATIBLE;
     }
