@@ -904,28 +904,6 @@ css_free_conn (CSS_CONN_ENTRY * conn)
   END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
 }
 
-void
-css_remove_all_unexpected_packets_tmp (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
-{
-  int r;
-
-  r = rmutex_lock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
-
-  css_traverse_list (&conn->request_queue, css_remove_and_free_queue_entry, conn);
-
-  css_traverse_list (&conn->data_queue, css_remove_and_free_queue_entry, conn);
-
-  css_traverse_list (&conn->data_wait_queue, css_remove_and_free_wait_queue_entry, conn);
-
-  css_traverse_list (&conn->abort_queue, css_remove_and_free_queue_entry, conn);
-
-  css_traverse_list (&conn->error_queue, css_remove_and_free_queue_entry, conn);
-
-  r = rmutex_unlock (thread_p, &conn->rmutex);
-  assert (r == NO_ERROR);
-}
-
 /*
  * css_print_conn_entry_info() - print connection entry information to stderr
  *   return: void

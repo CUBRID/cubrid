@@ -20,6 +20,7 @@
  * connection_worker.cpp
  */
 
+#include "log_manager.h"
 #include "hardware_topology.hpp"
 #include "network.h"
 #include "network_interface_sr.h"
@@ -311,8 +312,6 @@ namespace cubconn
       {
 	if (this->is_wait_required (ctx))
 	  {
-	    pthread_mutex_unlock (&m_entry->tran_index_lock);
-
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: wait for transaction index\n");
 
 	    /* the connected client does not yet finished boot_client_register */
@@ -320,11 +319,8 @@ namespace cubconn
 	    /* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
 	    thread_sleep (50);
 
-	    pthread_mutex_lock (&m_entry->tran_index_lock);
-
 	    tran_index = ctx->m_conn->get_tran_index ();
 	    client_id = ctx->m_conn->client_id;
-
 	  }
       }
 
@@ -363,8 +359,8 @@ namespace cubconn
     /* this context has no remaining tasks */
 
     _er_log_debug (ARG_FILE_LINE,
-		   "handle_connection_close: conn { fd %d status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
-		   ctx->m_conn->fd, status, tran_index, ctx->m_conn->db_error, ctx->m_conn->stop_talk,
+		   "handle_connection_close: conn %p { fd %d status %d transaction_id %d db_error %d stop_talk %d stop_phase %d }\n",
+		   ctx->m_conn, ctx->m_conn->fd, status, tran_index, ctx->m_conn->db_error, ctx->m_conn->stop_talk,
 		   ctx->m_conn->stop_phase);
 
     /* remove and close */
@@ -393,6 +389,8 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
+    /* release the conneciton */
+    css_free_conn (ctx->m_conn);
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
     m_removed_context.push_back (ctx);
@@ -733,7 +731,6 @@ retry:
     /* the actual release of the context is handled last */
     for (auto &ctx : m_removed_context)
       {
-	css_free_conn (ctx->m_conn);
 	if (m_context.erase (ctx) == 0)
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
@@ -1203,7 +1200,6 @@ retry:
 	/* removed context */
 	for (auto &ctx : m_removed_context)
 	  {
-	    css_free_conn (ctx->m_conn);
 	    if (m_context.erase (ctx) == 0)
 	      {
 		er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
