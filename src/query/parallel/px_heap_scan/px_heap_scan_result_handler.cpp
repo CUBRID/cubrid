@@ -667,7 +667,7 @@ namespace parallel_heap_scan
 
 	OUTPTR_LIST *input = (OUTPTR_LIST *)src;
 
-	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_TIME_LONG);
+	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
 	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, & (tl.writer_result_p->tpl_descr));
 
@@ -764,7 +764,7 @@ namespace parallel_heap_scan
 	  }
 	list_id_p = tl_list_id_header->m_list_id_p;
 	err_code = qdata_copy_val_list_to_tuple (thread_p, input, &tl_tpl_buf);
-	prefetch (list_id_p, PREFETCH_WRITE, PREFETCH_CACHE_TIME_LONG);
+	prefetch (list_id_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 	if (unlikely (err_code != NO_ERROR))
 	  {
 	    m_err_messages_p->move_top_error_message_to_this();

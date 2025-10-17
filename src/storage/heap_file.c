@@ -10435,6 +10435,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   else
     {
       attrepr = value->read_attrepr;
+      prefetch (attrepr, PREFETCH_WRITE, PREFETCH_CACHE_L1);
       /* Is it a fixed size attribute ? */
       if (attrepr->is_fixed != 0)
 	{
