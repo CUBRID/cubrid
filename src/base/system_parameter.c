@@ -4721,13 +4721,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
-   {false, {.i = 1}},
-   {false, {.i = 1}},
-#endif
+   {false, {.i = 32}},
+   {false, {.i = 32}},
    {false, {.i = 2048}},
    {false, {.i = 1}},
    (char *) NULL,
@@ -5148,13 +5143,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
-#else
-   {false, {.i = 3}},
-   {false, {.i = 3}},
-#endif
+   {false, {.i = 200}},
+   {false, {.i = 200}},
    {false, {.i = 8192}},
    {false, {.i = 0}},
    (char *) NULL,
@@ -5165,13 +5155,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count ()}},
-   {false, {.i = (int) cubthread::system_core_count ()}},
-#else
-   {false, {.i = 2}},
-   {false, {.i = 2}},
-#endif
+   {false, {.i = 16}},
+   {false, {.i = 16}},
    {false, {.i = 2048}},
    {false, {.i = 1}},
    (char *) NULL,
