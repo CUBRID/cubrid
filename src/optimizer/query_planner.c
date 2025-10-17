@@ -515,6 +515,7 @@ qo_plan_malloc (QO_ENV * env)
 
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
+  plan->need_final_orderby = false;
 
   return plan;
 }
@@ -792,10 +793,7 @@ qo_set_use_desc (QO_PLAN * plan)
       break;
 
     case QO_PLANTYPE_SORT:
-      if (qo_is_iscan_from_orderby (plan->plan_un.sort.subplan))
-	{
-	  qo_set_use_desc (plan->plan_un.sort.subplan);
-	}
+      qo_set_use_desc (plan->plan_un.sort.subplan);
       break;
 
     case QO_PLANTYPE_JOIN:
@@ -1100,7 +1098,6 @@ qo_top_plan_new (QO_PLAN * plan)
 
 			      if (orderby_skip)
 				{
-				  assert (qo_is_interesting_order_scan (plan) || plan->plan_type == QO_PLANTYPE_JOIN);
 				  plan->use_iscan_descending = true;
 				}
 			    }
@@ -2418,7 +2415,7 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->plan_un.sort.xasl = NULL;	/* To be determined later */
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
-  plan->has_sort_limit = (sort_type == SORT_LIMIT);
+  plan->has_sort_limit = (sort_type == SORT_LIMIT || subplan->has_sort_limit);
 
   qo_plan_compute_cost (plan);
 
@@ -2893,13 +2890,10 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       /* Consider creating a SORT_LIMIT plan over this plan only if it cannot skip order by. Since we know that we
        * already have all ORDER BY nodes in this plan, we can verify orderby_skip at this point
        */
-      if (!qo_plan_is_orderby_skip_candidate (plan))
+      plan = qo_sort_new (plan, QO_UNORDERED, SORT_LIMIT);
+      if (plan == NULL)
 	{
-	  plan = qo_sort_new (plan, QO_UNORDERED, SORT_LIMIT);
-	  if (plan == NULL)
-	    {
-	      return NULL;
-	    }
+	  return NULL;
 	}
     }
 
@@ -2914,6 +2908,11 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
       plan = qo_sort_new (plan, plan->order, SORT_TEMP);
     }
 #endif /* MERGE_ALWAYS_MAKES_LISTFILE */
+
+  if (join_method == QO_JOINMETHOD_HASH_JOIN)
+    {
+      plan->need_final_orderby = true;
+    }
 
   bitset_delset (&sarg_out_terms);
 
@@ -7564,7 +7563,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
-	if (!bitset_is_empty (&sm_join_terms) && !(head_node->sort_limit_candidate || tail_node->sort_limit_candidate))
+	if (!bitset_is_empty (&sm_join_terms))
 	  {
 	    kept +=
 	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
@@ -7574,7 +7573,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms) && !(head_node->sort_limit_candidate || tail_node->sort_limit_candidate))
+	if (!bitset_is_empty (&sm_join_terms))
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
@@ -11201,27 +11200,11 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	  break;
 
 	case QO_PLANTYPE_JOIN:
-	  if (plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
-	      || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
-	    {
-	      plan = plan->plan_un.join.outer;
-	    }
-	  else
-	    {
-	      /* QO_JOINMETHOD_MERGE_JOIN, QO_JOINMETHOD_HASH_JOIN */
-	      plan = NULL;
-	    }
+	  plan = plan->plan_un.join.outer;
 	  break;
 
 	case QO_PLANTYPE_SORT:
-	  if (plan->plan_un.sort.sort_type == SORT_LIMIT)
-	    {
-	      plan = plan->plan_un.sort.subplan;
-	    }
-	  else
-	    {
-	      plan = NULL;
-	    }
+	  plan = plan->plan_un.sort.subplan;
 	  break;
 
 	default:
@@ -11577,10 +11560,13 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
     }
 
 cleanup:
-  if (need_cleanup && plan->iscan_sort_list != NULL)
+  if (need_cleanup)
     {
-      parser_free_tree (parser, plan->iscan_sort_list);
-      plan->iscan_sort_list = NULL;
+      if (!is_orderby_skip && plan->iscan_sort_list != NULL)
+	{
+	  parser_free_tree (parser, plan->iscan_sort_list);
+	  plan->iscan_sort_list = NULL;
+	}
     }
 
   if (is_orderby_skip)
