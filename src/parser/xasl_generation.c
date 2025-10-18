@@ -16886,45 +16886,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      xasl->ordbynum_flag = XASL_ORDBYNUM_FLAG_SCAN_CONTINUE;
 	    }
 
-	  if (!qo_plan->need_final_orderby)
-	    {
-	      if (qo_plan->iscan_sort_list != NULL)
-		{
-		  PT_NODE *sort_spec;
-
-		  if (qo_plan->use_iscan_descending)
-		    {
-		      for (sort_spec = qo_plan->iscan_sort_list; sort_spec; sort_spec = sort_spec->next)
-			{
-			  /* change PT_ASC to PT_DESC and vice-versa */
-			  sort_spec->info.sort_spec.asc_or_desc =
-			    (PT_MISC_TYPE) (PT_ASC + PT_DESC - sort_spec->info.sort_spec.asc_or_desc);
-			}
-		    }
-
-		  orderby_skip = pt_is_sort_list_covered (parser, xasl->after_iscan_list,
-							  pt_to_orderby (parser, qo_plan->iscan_sort_list,
-									 select_node));
-
-		  /* change back directions */
-		  if (qo_plan->use_iscan_descending)
-		    {
-		      for (sort_spec = qo_plan->iscan_sort_list; sort_spec; sort_spec = sort_spec->next)
-			{
-			  /* change PT_ASC to PT_DESC and vice-versa */
-			  sort_spec->info.sort_spec.asc_or_desc =
-			    (PT_MISC_TYPE) (PT_ASC + PT_DESC - sort_spec->info.sort_spec.asc_or_desc);
-			}
-		    }
-		}
-	      else
-		{
-		  orderby_skip = true;
-		}
-	    }
-
 	  /* check order by opt */
-	  if (qo_plan && qo_plan_skip_orderby (qo_plan) && orderby_skip && !qo_plan_multi_range_opt (qo_plan))
+	  if (qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
+	      && !qo_plan_multi_range_opt (qo_plan))
 	    {
 	      orderby_skip = true;
 

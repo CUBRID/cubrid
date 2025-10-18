@@ -515,7 +515,7 @@ qo_plan_malloc (QO_ENV * env)
 
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
-  plan->need_final_orderby = false;
+  plan->need_final_sort = false;
 
   return plan;
 }
@@ -2416,6 +2416,7 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (sort_type == SORT_LIMIT || subplan->has_sort_limit);
+  plan->need_final_sort = subplan->need_final_sort;
 
   qo_plan_compute_cost (plan);
 
@@ -2906,12 +2907,13 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   if (join_method == QO_JOINMETHOD_MERGE_JOIN)
     {
       plan = qo_sort_new (plan, plan->order, SORT_TEMP);
+      plan->need_final_sort = plan->has_sort_limit;
     }
 #endif /* MERGE_ALWAYS_MAKES_LISTFILE */
 
   if (join_method == QO_JOINMETHOD_HASH_JOIN)
     {
-      plan->need_final_orderby = true;
+      plan->need_final_sort = plan->has_sort_limit;
     }
 
   bitset_delset (&sarg_out_terms);

@@ -219,7 +219,7 @@ struct qo_plan
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
-  bool need_final_orderby;
+  bool need_final_sort;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
