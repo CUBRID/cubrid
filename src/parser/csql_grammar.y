@@ -865,6 +865,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> opt_where_clause
 %type <node> startwith_clause
 %type <node> connectby_clause
+%type <node> connectby_clause_with_option
 %type <node> opt_groupby_clause
 %type <node> group_spec_list
 %type <node> group_spec
@@ -1128,6 +1129,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 /* Token define */
 /*{{{*/
 %token ABSOLUTE_
+%token ACCESS
 %token ACTION
 %token ADD
 %token ADD_MONTHS
@@ -1210,7 +1212,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token DAY_SECOND
 %token DAY_MINUTE
 %token DAY_HOUR
-%token DB_TIMEZONE
 %token DEALLOCATE
 %token DECLARE
 %token DEFAULT
@@ -1253,7 +1254,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token FIRST
 %token FLOAT_
 %token For
-%token FORCE
 %token FOREIGN
 %token FOUND
 %token FROM
@@ -1295,7 +1295,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token JOIN
 %token JSON
 %token KEY
-%token KEYLIMIT
 %token LANGUAGE
 %token LAST
 %token LEADING_
@@ -1313,7 +1312,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token LOOP
 %token LOWER
 %token MATCH
-%token MATCHED
 %token Max
 %token MERGE
 %token METHOD
@@ -1353,7 +1351,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token OUT_
 %token OUTER
 %token OUTPUT
-%token OVER
 %token OVERLAPS
 %token PARAMETERS
 %token PARTIAL
@@ -1366,14 +1363,12 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token PRIOR
 %token PRIVILEGES
 %token PROCEDURE
-%token PROMOTE
 %token QUERY
 %token READ
 %token RECURSIVE
 %token REF
 %token REFERENCES
 %token REFERENCING
-%token REGEXP
 %token RELATIVE_
 %token RENAME
 %token REPLACE
@@ -1383,7 +1378,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token RETURNS
 %token REVOKE
 %token RIGHT
-%token RLIKE
 %token ROLE
 %token ROLLBACK
 %token ROLLUP
@@ -1405,7 +1399,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SEQUENCE_OF
 %token SERIALIZABLE
 %token SESSION
-%token SESSION_TIMEZONE
 %token SESSION_USER
 %token SET
 %token SET_OF
@@ -1447,7 +1440,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token TIMESTAMP
 %token TIMESTAMPTZ
 %token TIMESTAMPLTZ
-%token TIMEZONES
 %token TIMEZONE_HOUR
 %token TIMEZONE_MINUTE
 %token TO
@@ -1529,7 +1521,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token COMP_LE
 %token PARAM_HEADER
 
-%token <cptr> ACCESS
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
 %token <cptr> AES
@@ -1561,6 +1552,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
+%token <cptr> DB_TIMEZONE
 %token <cptr> DBLINK
 %token <cptr> DBNAME
 %token <cptr> DECREMENT
@@ -1574,6 +1566,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ERROR_
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
+%token <cptr> FORCE
 %token <cptr> FULLSCAN
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
@@ -1600,6 +1593,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
 %token <cptr> ISNULL
+%token <cptr> KEYLIMIT
 %token <cptr> KEYS
 %token <cptr> KILL
 %token <cptr> JAVA
@@ -1637,6 +1631,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> LEAD
 %token <cptr> LOCK_
 %token <cptr> LOG
+%token <cptr> MATCHED
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
 %token <cptr> MEDIAN
@@ -1656,6 +1651,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ONLINE
 %token <cptr> OPEN
 %token <cptr> ORDINALITY
+%token <cptr> OVER
 %token <cptr> PATH
 %token <cptr> OWNER
 %token <cptr> PAGE
@@ -1672,6 +1668,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PRINT
 %token <cptr> PRIORITY
 %token <cptr> PRIVATE
+%token <cptr> PROMOTE
 %token <cptr> PROPERTIES
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
@@ -1679,6 +1676,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> RANGE_
 %token <cptr> RANK
 %token <cptr> REBUILD
+%token <cptr> REGEXP
 %token <cptr> REGEXP_COUNT
 %token <cptr> REGEXP_INSTR
 %token <cptr> REGEXP_LIKE
@@ -1692,6 +1690,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
 %token <cptr> REVERSE
+%token <cptr> RLIKE
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
@@ -1699,6 +1698,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SERVER
+%token <cptr> SESSION_TIMEZONE
 %token <cptr> SHOW
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
@@ -1719,6 +1719,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> THREADS
 %token <cptr> TIMEOUT
 %token <cptr> TIMEZONE
+%token <cptr> TIMEZONES
 %token <cptr> TRACE
 %token <cptr> TRAN
 %token <cptr> TYPE
@@ -15302,33 +15303,37 @@ connectby_clause
 			parser_save_and_set_pseudoc (1);
 			parser_save_and_set_sqc (0);
 		}
-	  CONNECT BY opt_nocycle search_condition
-		{{ DBG_TRACE_GRAMMAR(connectby_clause, CONNECT BY opt_nocycle search_condition);
+	  connectby_clause_with_option
+		{{ DBG_TRACE_GRAMMAR(connectby_clause, connectby_clause_with_option);
 
 			parser_restore_prc ();
 			parser_restore_serc ();
 			parser_restore_pseudoc ();
 			parser_restore_sqc ();
-			$$ = $5;
+			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
 
-opt_nocycle
-	: /* empty */
-	| NOCYCLE
-		{{ DBG_TRACE_GRAMMAR(opt_nocycle, |  NOCYCLE);
+connectby_clause_with_option
+       : CONNECT BY NOCYCLE search_condition %dprec 2
+        {{ DBG_TRACE_GRAMMAR(connectby_clause_with_option, : CONNECT BY NOCYCLE search_condition);
+                PT_NODE *node = parser_top_select_stmt_node ();
+		if (node)
+		  {
+		    node->info.query.q.select.check_cycles =
+		      CONNECT_BY_CYCLES_NONE;
+		  }
 
-			PT_NODE *node = parser_top_select_stmt_node ();
-			if (node)
-			  {
-			    node->info.query.q.select.check_cycles =
-			      CONNECT_BY_CYCLES_NONE;
-			  }
-
+                $$=$4;
 		DBG_PRINT}}
-	;
+
+        | CONNECT BY search_condition %dprec 1
+        {{ DBG_TRACE_GRAMMAR(connectby_clause_with_option, | CONNECT BY search_condition);
+                $$=$3;
+		DBG_PRINT}}
+        ;
 
 opt_groupby_clause
 	: /* empty */
@@ -23096,6 +23101,7 @@ identifier
 	| CUME_DIST              {{ DBG_TRACE_GRAMMAR(identifier, | CUME_DIST          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DATE_ADD               {{ DBG_TRACE_GRAMMAR(identifier, | DATE_ADD           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DATE_SUB               {{ DBG_TRACE_GRAMMAR(identifier, | DATE_SUB           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DB_TIMEZONE            {{ DBG_TRACE_GRAMMAR(identifier, | DB_TIMEZONE        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
@@ -23166,13 +23172,16 @@ identifier
 	| JSON_TYPE              {{ DBG_TRACE_GRAMMAR(identifier, | JSON_TYPE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| JSON_UNQUOTE           {{ DBG_TRACE_GRAMMAR(identifier, | JSON_UNQUOTE       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| JSON_VALID             {{ DBG_TRACE_GRAMMAR(identifier, | JSON_VALID         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| KEYLIMIT               {{ DBG_TRACE_GRAMMAR(identifier, | KEYLIMIT           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| KEYS                   {{ DBG_TRACE_GRAMMAR(identifier, | KEYS               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| KILL                   {{ DBG_TRACE_GRAMMAR(identifier, | KILL               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LAG                    {{ DBG_TRACE_GRAMMAR(identifier, | LAG                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LAST_VALUE             {{ DBG_TRACE_GRAMMAR(identifier, | LAST_VALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LCASE                  {{ DBG_TRACE_GRAMMAR(identifier, | LCASE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LEAD                   {{ DBG_TRACE_GRAMMAR(identifier, | LEAD               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LOCK_                  {{ DBG_TRACE_GRAMMAR(identifier, | LOCK_              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LOG                    {{ DBG_TRACE_GRAMMAR(identifier, | LOG                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
+	| MATCHED                {{ DBG_TRACE_GRAMMAR(identifier, | MATCHED            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MAXIMUM                {{ DBG_TRACE_GRAMMAR(identifier, | MAXIMUM            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MAXVALUE               {{ DBG_TRACE_GRAMMAR(identifier, | MAXVALUE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MEDIAN                 {{ DBG_TRACE_GRAMMAR(identifier, | MEDIAN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}	
@@ -23181,6 +23190,7 @@ identifier
 	| NAME                   {{ DBG_TRACE_GRAMMAR(identifier, | NAME               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NESTED                 {{ DBG_TRACE_GRAMMAR(identifier, | NESTED             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOCACHE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCACHE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NOCYCLE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCYCLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMAXVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMAXVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMINVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMINVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NTH_VALUE              {{ DBG_TRACE_GRAMMAR(identifier, | NTH_VALUE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23190,6 +23200,7 @@ identifier
 	| ONLINE                 {{ DBG_TRACE_GRAMMAR(identifier, | ONLINE             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OPEN                   {{ DBG_TRACE_GRAMMAR(identifier, | OPEN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ DBG_TRACE_GRAMMAR(identifier, | ORDINALITY         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| OVER                   {{ DBG_TRACE_GRAMMAR(identifier, | OVER               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OWNER                  {{ DBG_TRACE_GRAMMAR(identifier, | OWNER              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PAGE                   {{ DBG_TRACE_GRAMMAR(identifier, | PAGE               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARALLEL               {{ DBG_TRACE_GRAMMAR(identifier, | PARALLEL           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23200,10 +23211,12 @@ identifier
 	| PERCENTILE_CONT        {{ DBG_TRACE_GRAMMAR(identifier, | PERCENTILE_CONT    ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PERCENTILE_DISC        {{ DBG_TRACE_GRAMMAR(identifier, | PERCENTILE_DISC    ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PERCENT_RANK           {{ DBG_TRACE_GRAMMAR(identifier, | PERCENT_RANK       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PLCSQL                 {{ DBG_TRACE_GRAMMAR(identifier, | PLCSQL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PORT                   {{ DBG_TRACE_GRAMMAR(identifier, | PORT               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRINT                  {{ DBG_TRACE_GRAMMAR(identifier, | PRINT              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIORITY               {{ DBG_TRACE_GRAMMAR(identifier, | PRIORITY           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIVATE                {{ DBG_TRACE_GRAMMAR(identifier, | PRIVATE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PROMOTE                {{ DBG_TRACE_GRAMMAR(identifier, | PROMOTE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PROPERTIES             {{ DBG_TRACE_GRAMMAR(identifier, | PROPERTIES         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PUBLIC                 {{ DBG_TRACE_GRAMMAR(identifier, | PUBLIC             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUARTER                {{ DBG_TRACE_GRAMMAR(identifier, | QUARTER            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23211,6 +23224,7 @@ identifier
 	| RANGE_                 {{ DBG_TRACE_GRAMMAR(identifier, | RANGE_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANK                   {{ DBG_TRACE_GRAMMAR(identifier, | RANK               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REBUILD                {{ DBG_TRACE_GRAMMAR(identifier, | REBUILD            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REGEXP                 {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_COUNT           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_COUNT       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_INSTR           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_INSTR       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_LIKE            {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_LIKE        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23229,8 +23243,9 @@ identifier
 	| SEPARATOR              {{ DBG_TRACE_GRAMMAR(identifier, | SEPARATOR          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SERIAL                 {{ DBG_TRACE_GRAMMAR(identifier, | SERIAL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SERVER                 {{ DBG_TRACE_GRAMMAR(identifier, | SERVER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SESSION_TIMEZONE       {{ DBG_TRACE_GRAMMAR(identifier, | SESSION_TIMEZONE   ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SHOW                   {{ DBG_TRACE_GRAMMAR(identifier, | SHOW               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+    | SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SLOTTED                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTTED            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STABILITY              {{ DBG_TRACE_GRAMMAR(identifier, | STABILITY          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| START_                 {{ DBG_TRACE_GRAMMAR(identifier, | START_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23249,6 +23264,7 @@ identifier
 	| THREADS                {{ DBG_TRACE_GRAMMAR(identifier, | THREADS            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TIMEOUT                {{ DBG_TRACE_GRAMMAR(identifier, | TIMEOUT            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TIMEZONE               {{ DBG_TRACE_GRAMMAR(identifier, | TIMEZONE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TIMEZONES              {{ DBG_TRACE_GRAMMAR(identifier, | TIMEZONES          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRACE                  {{ DBG_TRACE_GRAMMAR(identifier, | TRACE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRAN                   {{ DBG_TRACE_GRAMMAR(identifier, | TRAN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRIGGERS               {{ DBG_TRACE_GRAMMAR(identifier, | TRIGGERS           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
