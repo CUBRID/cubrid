@@ -116,7 +116,7 @@ namespace cubthread
       // note: context must implement interrupt_execution function
       template <typename Context>
       static void loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-              Context *context, task<Context> *exec_arg, const char *name);
+				     Context *context, task<Context> *exec_arg, const char *name);
 
       // loop_without_context - just execute context-less task in a loop
       static void loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name);
@@ -166,7 +166,7 @@ namespace cubthread
 
     // starts a thread to execute daemon::loop
     m_thread = std::thread (daemon::loop_with_context<Context>, this, context_manager_arg, &context,
-            exec, m_name.c_str ());
+			    exec, m_name.c_str ());
   }
 
   template <typename Context>
