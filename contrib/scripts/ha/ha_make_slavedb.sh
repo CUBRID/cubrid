@@ -255,18 +255,13 @@ function scp_cubrid_from()
 
 function get_output_from_replica
 {
-    if [ $# -ne 1 ]; then
-        error "Invalid get_output_from_replica call. $*"
-    fi
+	if [ $# -ne 1 ]; then
+		error "Invalid get_output_from_replica call. $*"
+	fi
 
-	output=$1
-	
-	rm -rf $output
-	mkdir $output
 	local remote_output_path=$1
 	
 	for replica_host in ${replica_hosts[@]}; do
-		scp_from_expect "$cubrid_user" "$server_password" $output $replica_host $output/$replica_host 
 		local local_output_file="$ha_temp_home/${replica_host}.output"
 		# Ensure any previous local output file is removed before copying
 		rm -f "$local_output_file"
@@ -276,6 +271,8 @@ function get_output_from_replica
 		fi
 	done
 }
+
+
 function check_version()
 {
 	cubrid_version=$(cubrid_rel)
@@ -920,7 +917,6 @@ function show_complete()
 clear
 check_version
 check_args
-check_backup_dest_path
 init_conf
 
 echo -ne "\n\n###### START $now ######\n" >> time.output
