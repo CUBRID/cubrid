@@ -5732,7 +5732,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       SM_CLASS *class_;
       SM_ATTRIBUTE *attr;
       int *lob_attrid_arr = NULL;
-      int lob_arr_length = 0;
+      int attrid_arr_length = 0;
 
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5765,14 +5765,14 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	{
 	  if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
 	    {
-	      lob_attrid_arr[lob_arr_length++] = attr->id;
+	      lob_attrid_arr[attrid_arr_length++] = attr->id;
 	    }
 	}
 
-      if (lob_arr_length)
+      if (attrid_arr_length)
 	{
 	  HFID lob_hfid = *hfid;
-	  manage_lob_dir (&lob_hfid, lob_attrid_arr, lob_arr_length, LOB_CREATE_DIR);
+	  manage_lob_dir (&lob_hfid, lob_attrid_arr, attrid_arr_length, LOB_CREATE_DIR);
 	}
       free (lob_attrid_arr);
 
