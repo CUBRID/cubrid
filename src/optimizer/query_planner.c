@@ -2906,14 +2906,21 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
    */
   if (join_method == QO_JOINMETHOD_MERGE_JOIN)
     {
+      /* As noted in the comment on plan->order in qo_join_new,
+       * the sort-merge join preserves the outer plan’s sort order but does not consider the sort direction.
+       * It always sorts the join columns in S_ASC order (gen_outer).
+       * Therefore, even if the ORDER BY sort column matches the sort column used for the sort-merge join,
+       * a final sort may be required if the sort directions differ.
+       */
+      plan->need_final_sort = true;
+
       plan = qo_sort_new (plan, plan->order, SORT_TEMP);
-      plan->need_final_sort = plan->has_sort_limit;
     }
 #endif /* MERGE_ALWAYS_MAKES_LISTFILE */
 
   if (join_method == QO_JOINMETHOD_HASH_JOIN)
     {
-      plan->need_final_sort = plan->has_sort_limit;
+      plan->need_final_sort = true;
     }
 
   bitset_delset (&sarg_out_terms);
