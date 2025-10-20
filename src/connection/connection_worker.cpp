@@ -545,6 +545,12 @@ retry:
 	eventfds[0] = false;
 	m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
 
+	if (!this->eventfd_clear (m_eventfd))
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_handler: eventfd_clear failed\n");
+	    return false;
+	  }
+
 	if (!this->handle_message_queue ())
 	  {
 	    return false;
@@ -572,6 +578,12 @@ retry:
 	      {
 		this->ha_close_all_connections ();
 	      }
+	  }
+
+	if (!this->eventfd_clear (m_timerfd))
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_handler: eventfd_clear failed\n");
+	    return false;
 	  }
       }
 
@@ -839,12 +851,6 @@ retry:
   bool connection_worker::handle_message_queue ()
   {
     std::size_t i;
-
-    if (!this->eventfd_clear (m_eventfd))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: eventfd_clear failed\n");
-	return false;
-      }
 
     m_stats.add (stats::MQ_REQUESTED, 1);
 
@@ -1408,7 +1414,9 @@ retry:
 	    assert (events[i].data.ptr);
 
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
-	    if ((events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) && ctx->m_conn->fd != m_eventfd)
+	    if ((events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) &&
+		ctx->m_conn->fd != m_eventfd &&
+		ctx->m_conn->fd != m_timerfd)
 	      {
 		this->handle_hangup_or_error (ctx, events[i].events & EPOLLERR);
 		continue;
