@@ -116,7 +116,7 @@ namespace cubthread
       // note: context must implement interrupt_execution function
       template <typename Context>
       static void loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
-				     task<Context> *exec_arg, const char *name);
+              Context *context, task<Context> *exec_arg, const char *name);
 
       // loop_without_context - just execute context-less task in a loop
       static void loop_without_context (daemon *daemon_arg, task_without_context *exec_arg, const char *name);
@@ -151,31 +151,33 @@ namespace cubthread
 		  task<Context> *exec, const char *name /* = "" */)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
-    , m_func_on_stop ()
     , m_thread ()
     , m_name (name)
     , m_stats (daemon::create_statset ())
   {
+    // create execution context
+    Context &context = context_manager_arg->create_context ();
+
+    // now that we have access to context we can set the callback function on stop
+    m_func_on_stop = [&context_manager_arg, &context]()
+    {
+      context_manager_arg->stop_execution (context);
+    };
+
     // starts a thread to execute daemon::loop
-    m_thread = std::thread (daemon::loop_with_context<Context>, this, context_manager_arg, exec, m_name.c_str ());
+    m_thread = std::thread (daemon::loop_with_context<Context>, this, context_manager_arg, &context,
+            exec, m_name.c_str ());
   }
 
   template <typename Context>
   void
-  daemon::loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg,
+  daemon::loop_with_context (daemon *daemon_arg, context_manager<Context> *context_manager_arg, Context *cnxt,
 			     task<Context> *exec_arg, const char *name)
   {
     (void) name;  // suppress unused parameter warning
     // its purpose is to help visualize daemon thread stacks
 
-    // create execution context
-    Context &context = context_manager_arg->create_context ();
-
-    // now that we have access to context we can set the callback function on stop
-    daemon_arg->m_func_on_stop = [&context_manager_arg, &context]()
-    {
-      context_manager_arg->stop_execution (context);
-    };
+    Context &context = *cnxt;
 
     daemon_arg->register_stat_start ();
 
