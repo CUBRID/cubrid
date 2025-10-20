@@ -132,14 +132,14 @@ STATIC_INLINE int stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, i
 static bool need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid);
 static int server_capabilities (void);
 
-static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, int rel_compare,
-				      REL_COMPATIBILITY * compatibility, const char *client_host);
-static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
-			      UINT64 * diff_stats, char *queryinfo_string);
-static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
+static int check_client_capabilities (THREAD_ENTRY *thread_p, int client_cap, int rel_compare,
+				      REL_COMPATIBILITY *compatibility, const char *client_host);
+static void sbtree_find_unique_internal (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
+static int er_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time,
+			      UINT64 *diff_stats, char *queryinfo_string);
+static void event_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats);
+static void event_log_many_ioreads (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats);
+static void event_log_extend_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info);
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
 
 /*
@@ -1226,6 +1226,17 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	      (void) return_error_to_client (thread_p, rid);
 	    }
 
+	  if (!desc_size && desc_ptr)
+	    {
+	      free_and_init (desc_ptr);
+	    }
+	  if (!content_size && reply_content_ptr)
+	    {
+	      locator_free_copy_area (reply_copy_area);
+	      reply_copy_area = NULL;
+	      reply_content_ptr = NULL;
+	    }
+
 	  auto deleter = [desc_ptr, reply_copy_area]() noexcept
 	  {
 	    if (reply_copy_area)
@@ -1513,8 +1524,12 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 	}
       else
 	{
-	  auto deleter = [copy_area, desc_ptr]() noexcept
+	  auto deleter = [packed = lockset->packed, packed_size = lockset->packed_size, copy_area, desc_ptr]() noexcept
 	  {
+	    if (packed)
+	      {
+		locator_free_packed (packed, packed_size);
+	      }
 	    if (copy_area)
 	      {
 		locator_free_copy_area (copy_area);
@@ -1526,6 +1541,8 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 	  };
 	  css_send_reply_and_3_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
 					       send_size, desc_ptr, desc_size, content_ptr, content_size, std::move (deleter));
+	  lockset->packed = NULL;
+	  lockset->packed_size = 0;
 	}
       first_call = false;
     }
@@ -5910,7 +5927,7 @@ event_log_many_ioreads (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, 
  *   bind_vals(in):
  */
 static void
-event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
+event_log_extend_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info)
 {
   FILE *log_fp;
   int indent = 2;
