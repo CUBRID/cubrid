@@ -11955,14 +11955,14 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
  *
  * hfid (in) : hfid is used to identify the table.
  * attrid_arr (in)	 : Array containing attr_id values of LOB-type columns.
- * lob_arr_length (in)	 : Length of the attrid_arr array
+ * attrid_arr_length (in)	 : Length of the attrid_arr array
  * mode (in)	 : mode for handling the LOB directory
  *
  * NOTE: A LOB directory is created immediately,
  *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
  */
 int
-xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
+xmanage_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length, LOB_DIR_MANAGE_MODE mode)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   char dirbuf[PATH_MAX];
@@ -11977,7 +11977,7 @@ xmanage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAG
   switch (mode)
     {
     case LOB_CREATE_DIR:
-      for (int i = 0; i < lob_arr_length; i++)
+      for (int i = 0; i < attrid_arr_length; i++)
 	{
 	  snprintf (rv_path, (MAX_INTEGER_DISPLAY_LENGTH * 3 + MAX_SHORT_DISPLAY_LENGTH), "%d_%d_%d_id%d",
 		    hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
@@ -12028,8 +12028,6 @@ int
 fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   const char *path = rcv->data;
-  int error_code = NO_ERROR;
-
   char lob_path[PATH_MAX];
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -12038,7 +12036,7 @@ fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   fileio_remove_lob_dir (lob_path);
 
-  return error_code;
+  return NO_ERROR;
 }
 
 void

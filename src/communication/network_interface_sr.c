@@ -11541,8 +11541,13 @@ smanage_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &mode);
   ptr = or_unpack_int (ptr, &arr_length);
   ptr = or_unpack_int_array (ptr, arr_length, &lob_attrid_arr);
+  if (ptr == NULL)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      return;
+    }
 
-  xmanage_lob_dir (&hfid, lob_attrid_arr, arr_length, (LOB_DIR_MANAGE_MODE) mode);
+  error = xmanage_lob_dir (&hfid, lob_attrid_arr, arr_length, (LOB_DIR_MANAGE_MODE) mode);
 
   if (error != NO_ERROR)
     {

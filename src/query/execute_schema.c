@@ -651,7 +651,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (arr_length)
 	      {
 		HFID lob_hfid = class_->header.ch_heap;
-		manage_lob_dir (&lob_hfid, lob_attrid_arr, arr_length, LOB_CREATE_DIR);
+		error = manage_lob_dir (&lob_hfid, lob_attrid_arr, arr_length, LOB_CREATE_DIR);
 	      }
 	    free (lob_attrid_arr);
 	  }
@@ -783,7 +783,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  }
 
 	SM_CLASS *class_ = ctemplate->current;
-	int *lob_attrid_arr;
+	int *lob_attrid_arr = (int *) malloc (sizeof (int));
 
 	for (int i = 0; i < class_->att_count; i++)
 	  {
@@ -794,10 +794,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		if (attr.type->id == DB_TYPE_CLOB || attr.type->id == DB_TYPE_BLOB)
 		  {
 		    HFID lob_hfid = class_->header.ch_heap;
-		    lob_attrid_arr = (int *) malloc (sizeof (int));
 
 		    lob_attrid_arr[0] = attr.id;
 
+<<<<<<< HEAD
       p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
       for (;
 	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
@@ -811,6 +811,14 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      return error;
 	    }
 	}
+=======
+		    error = manage_lob_dir (&lob_hfid, lob_attrid_arr, 1, LOB_DROP_COLUMN_DIR);
+		  }
+	      }
+	  }
+>>>>>>> ae53d90f6 (Develop reflect on code review)
+
+	free (lob_attrid_arr);
 
 	break;
       }

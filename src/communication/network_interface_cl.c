@@ -11375,30 +11375,29 @@ tdes_reset_query_start_info (PT_NODE * node)
  *
  *   hfid(in): separate lob dir by table
  *   attrid_arr(in): separate lob dir by column
- *   lob_arr_length(in): number of LOB-type columns
+ *   attrid_arr_length(in): number of LOB-type columns
  *   mode(in): separate create or delete mode
  *
  * NOTE:
  * manage_lob_dir - request to server to create or delete lob dir
  */
 int
-manage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE_MODE mode)
+manage_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length, LOB_DIR_MANAGE_MODE mode)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
   char *ptr;
   OR_ALIGNED_BUF (4096) a_request;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_HFID_SIZE) a_reply;
-  char *reply;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_hfid (request, hfid);
   ptr = or_pack_int (ptr, (int) mode);
-  ptr = or_pack_int_array (ptr, lob_arr_length, attrid_arr);
+  ptr = or_pack_int_array (ptr, attrid_arr_length, attrid_arr);
 
   req_error =
     net_client_request (NET_SERVER_MANAGE_LOB_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
@@ -11411,13 +11410,13 @@ manage_lob_dir (HFID * hfid, int *attrid_arr, int lob_arr_length, LOB_DIR_MANAGE
 
   return error;
 #else /* CS_MODE */
-  int success = NO_ERROR;
+  int error = NO_ERROR;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xmanage_lob_dir (hfid, attrid_arr, lob_arr_length, mode);
+  error = xmanage_lob_dir (hfid, attrid_arr, attrid_arr_length, mode);
 
   exit_server (*thread_p);
 
-  return success;
+  return error;
 #endif /* !CS_MODE */
 }
