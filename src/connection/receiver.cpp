@@ -59,6 +59,11 @@ namespace cubconn
     this->reset ();
   }
 
+  receiver::receiver () :
+    m_buf ()
+  {
+  }
+
   receiver::~receiver ()
   {
 #if !defined (NDEBUG)

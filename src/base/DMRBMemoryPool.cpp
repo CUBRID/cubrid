@@ -35,6 +35,11 @@ namespace cubbase
   {
   }
 
+  DMRBMemoryPool::DMRBMemoryPool () :
+    DMRB<false> ()
+  {
+  }
+
   DMRBMemoryPool::~DMRBMemoryPool ()
   {
   }
