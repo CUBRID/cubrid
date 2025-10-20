@@ -38,6 +38,7 @@
 #include <thread>
 #include <unistd.h>
 #include <sys/eventfd.h>
+#include <sys/timerfd.h>
 #include <sys/epoll.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -79,6 +80,23 @@ namespace cubconn
   {
   }
 
+  connection_worker::context::context () :
+    m_conn (nullptr),
+    m_recv
+  {
+    .m_state = state::HEADER,
+    .m_receiver = receiver (),
+    .m_header = { nullptr, 0 },
+    .m_request_id = -1,
+    .m_command = false
+  },
+  m_send
+  {
+    .m_transmitter = transmitter ()
+  }
+  {
+  }
+
   connection_worker::context::~context ()
   {
   }
@@ -90,35 +108,24 @@ namespace cubconn
     m_entry (nullptr),
     m_index (index)
   {
-    context *ctx;
     std::size_t i;
 
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
-    if (m_eventfd == -1)
+    m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (m_eventfd < 0 || m_timerfd < 0)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to create eventfd\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to create fd. %s\n", strerror (errno));
 	assert_release (false);
       }
-    /* context */
-    ctx = new context (4 * 1024, nullptr);
-    if (!ctx)
+
+    if (!this->register_eventfd (m_eventfd) ||
+	!this->register_eventfd (m_timerfd))
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to allocate memory\n");
+	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to register fd\n");
 	assert_release (false);
       }
-    ctx->m_conn = reinterpret_cast<css_conn_entry *> (new int { m_eventfd });
-    if (!ctx->m_conn)
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to allocate memory\n");
-	assert_release (false);
-      }
-    if (!m_events.add_descriptor (m_eventfd, EPOLLET | EPOLLIN, ctx))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker: add_descriptor failed\n");
-	delete ctx->m_conn;
-	assert_release (false);
-      }
+
     /* request queue */
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
       {
@@ -211,6 +218,32 @@ namespace cubconn
       }
     std::cout << std::endl;
     std::cout << std::endl;
+  }
+
+  bool connection_worker::register_eventfd (int fd)
+  {
+    context *ctx;
+    css_conn_entry *conn;
+
+    ctx = new context ();
+    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
+    if (!ctx || !conn)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->register_eventfd: failed to allocate memory\n");
+	return false;
+      }
+    ctx->m_conn = conn;
+
+    if (!m_events.add_descriptor (m_eventfd, EPOLLET | EPOLLIN, ctx))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->register_eventfd: add_descriptor failed\n");
+
+	delete ctx;
+	delete conn;
+	return false;
+      }
+
+    return true;
   }
 
   void connection_worker::push_task_into_worker_pool (context *ctx)

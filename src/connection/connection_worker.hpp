@@ -144,6 +144,7 @@ namespace cubconn
 	} m_send;
 
 	context (std::size_t capacity, connection_stats *stats);
+	context ();
 	~context ();
       };
 
@@ -177,8 +178,11 @@ namespace cubconn
       std::unordered_set<context *> m_context;
 
       std::size_t m_index;
+
+      /* polling */
       cubsocket::epoll m_events;
       int m_eventfd;
+      int m_timerfd;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
@@ -195,6 +199,7 @@ namespace cubconn
       /* stats */
       connection_stats m_stats;
 
+      bool register_eventfd (int fd);
       void push_task_into_worker_pool (context *ctx);
 
       /* --------------------------------------------------------------------------- */

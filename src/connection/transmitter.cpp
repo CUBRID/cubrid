@@ -54,6 +54,10 @@ namespace cubconn
     m_deleter.reserve (IOV_MAX);
   }
 
+  transmitter::transmitter ()
+  {
+  }
+
   transmitter::~transmitter ()
   {
   }

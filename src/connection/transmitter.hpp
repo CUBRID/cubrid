@@ -39,6 +39,7 @@ namespace cubconn
   {
     public:
       transmitter (connection_stats *stats);
+      transmitter ();
       ~transmitter ();
 
       result fill (int fd);

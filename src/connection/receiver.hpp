@@ -50,6 +50,7 @@ namespace cubconn
 
     public:
       receiver (std::size_t capacity, connection_stats *stats);
+      receiver ();
       ~receiver ();
 
       void reset ();

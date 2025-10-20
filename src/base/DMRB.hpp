@@ -85,6 +85,7 @@ namespace cubbase
 
     public:
       DMRB (std::size_t capacity);
+      DMRB ();
       virtual ~DMRB ();
 
       DMRB (const DMRB &other) = delete;
@@ -177,6 +178,13 @@ namespace cubbase
 	_er_log_debug (ARG_FILE_LINE, "madvise failed: %s.\n", strerror (errno));
 	assert_release (false);
       }
+  }
+
+  template <bool T>
+  DMRB<T>::DMRB () :
+    m_size (0),
+    m_mask (0)
+  {
   }
 
   template <bool T>

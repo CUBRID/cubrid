@@ -37,6 +37,7 @@ namespace cubbase
   {
     public:
       DMRBMemoryPool (std::size_t capacity);
+      DMRBMemoryPool ();
       ~DMRBMemoryPool ();
 
       void reset ();
