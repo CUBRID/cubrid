@@ -1170,7 +1170,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
       limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, false);
       if (limit_infop)
 	{
-	  if (qo_is_iscan_from_orderby (subplan)
+	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
 	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
 		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE))
 	    {
