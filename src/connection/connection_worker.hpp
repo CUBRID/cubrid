@@ -64,6 +64,12 @@ namespace cubconn
 	SHUTDOWN
       };
 
+      enum class notification_type : uint8_t
+      {
+	QUEUE = 0x1,
+	HA = 0x2
+      };
+
       enum class ignore_level : uint8_t
       {
 	DONT_IGNORE = 0,
@@ -183,6 +189,8 @@ namespace cubconn
       cubsocket::epoll m_events;
       int m_eventfd;
       int m_timerfd;
+      /* purpose of timer notification */
+      uint32_t m_notification;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
@@ -194,12 +202,10 @@ namespace cubconn
       std::atomic<uint64_t> m_queue_size[static_cast<std::size_t> (queue_type::TYPE_COUNT)];
 
       std::vector<context *> m_removed_context;
-      bool m_notified;
 
       /* stats */
       connection_stats m_stats;
 
-      bool register_eventfd (int fd);
       void push_task_into_worker_pool (context *ctx);
 
       /* --------------------------------------------------------------------------- */
@@ -207,16 +213,30 @@ namespace cubconn
       /* --------------------------------------------------------------------------- */
       bool is_wait_required (context *ctx);
       bool has_remaining_tasks (context *ctx);
+
       std::pair<int, int> start_connection_close (context *ctx);
       void end_connection_close ();
 
       bool handle_connection_close (context *ctx);
 
       /* --------------------------------------------------------------------------- */
+      /* HA									     */
+      /* --------------------------------------------------------------------------- */
+      void ha_close_all_connections ();
+
+      /* --------------------------------------------------------------------------- */
+      /* event fd								     */
+      /* --------------------------------------------------------------------------- */
+      bool eventfd_register (int fd);
+      bool eventfd_clear (int fd);
+
+      bool eventfd_settimer (int fd, uint32_t sec, uint64_t nsec);
+
+      bool eventfd_handler (bool *eventfds);
+
+      /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
-      bool clear_event ();
-
       bool handle_message_queue_send_packet (message &item);
       bool handle_message_queue_release_packet (message &item);
 
