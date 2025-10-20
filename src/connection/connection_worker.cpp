@@ -743,6 +743,41 @@ retry:
     return true;
   }
 
+  void connection_worker::handle_hangup_or_error (context *ctx, bool err)
+  {
+    socklen_t length;
+    int error;
+
+    if (err)
+      {
+	error = 0;
+	length = sizeof (error);
+	if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_hangup_or_error: socket error (EPOLLERR) on fd %d: %s",
+			 ctx->m_conn->fd,
+			 strerror (error));
+	  }
+	else
+	  {
+	    er_log_conn (__FILE__, __LINE__,
+			 "connection_worker->handle_hangup_or_error: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
+			 ctx->m_conn->fd);
+	  }
+      }
+    else
+      {
+	er_log_conn (__FILE__, __LINE__,
+		     "connection_worker->handle_hangup_or_error: connection closed by peer (HUP/RDHUP) on fd %d.",
+		     ctx->m_conn->fd);
+      }
+
+    /* ctx will be forcibly removed */
+    ctx->m_ignore = ignore_level::IGNORE_ALL;
+
+    this->handle_connection_close (ctx);
+  }
+
   result connection_worker::handle_error_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
     css_conn_entry *conn;
@@ -1224,8 +1259,6 @@ retry:
     result status;
     context *ctx;
     int nfds, i;
-    int error;
-    socklen_t length;
 
     m_notified = false;
     while (!m_stop)
@@ -1248,31 +1281,7 @@ retry:
 	    ctx = reinterpret_cast<context *> (events[i].data.ptr);
 	    if ((events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) && ctx->m_conn->fd != m_eventfd)
 	      {
-		if (events[i].events & EPOLLERR)
-		  {
-		    error = 0;
-		    length = sizeof (error);
-		    if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0)
-		      {
-			er_log_conn (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d: %s", ctx->m_conn->fd,
-				     strerror (error));
-		      }
-		    else
-		      {
-			er_log_conn (__FILE__, __LINE__, "connection_worker->run: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
-				     ctx->m_conn->fd);
-		      }
-		  }
-		else
-		  {
-		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: connection closed by peer (HUP/RDHUP) on fd %d.",
-				 ctx->m_conn->fd);
-		  }
-
-		/* ctx will be forcibly removed */
-		ctx->m_ignore = ignore_level::IGNORE_ALL;
-
-		this->handle_connection_close (ctx);
+		this->handle_hangup_or_error (ctx, events[i].events & EPOLLERR);
 		continue;
 	      }
 	    if (events[i].events & EPOLLIN)
