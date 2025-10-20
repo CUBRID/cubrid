@@ -20,7 +20,6 @@
  * connection_worker.cpp
  */
 
-#include "log_manager.h"
 #include "hardware_topology.hpp"
 #include "network.h"
 #include "network_interface_sr.h"
@@ -119,10 +118,17 @@ namespace cubconn
 	assert_release (false);
       }
 
-    if (!this->register_eventfd (m_eventfd) ||
-	!this->register_eventfd (m_timerfd))
+    if (!this->eventfd_register (m_eventfd) ||
+	!this->eventfd_register (m_timerfd))
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to register fd\n");
+	assert_release (false);
+      }
+
+    m_notification = static_cast<uint32_t> (notification_type::HA);
+    if (!this->eventfd_settimer (m_timerfd, 1 /* 1 sec */, 0))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to eventfd_settimer\n");
 	assert_release (false);
       }
 
@@ -219,32 +225,6 @@ namespace cubconn
       }
     std::cout << std::endl;
     std::cout << std::endl;
-  }
-
-  bool connection_worker::register_eventfd (int fd)
-  {
-    context *ctx;
-    css_conn_entry *conn;
-
-    ctx = new context ();
-    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
-    if (!ctx || !conn)
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->register_eventfd: failed to allocate memory\n");
-	return false;
-      }
-    ctx->m_conn = conn;
-
-    if (!m_events.add_descriptor (fd, EPOLLET | EPOLLIN, ctx))
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->register_eventfd: add_descriptor failed\n");
-
-	delete ctx;
-	delete conn;
-	return false;
-      }
-
-    return true;
   }
 
   void connection_worker::push_task_into_worker_pool (context *ctx)
@@ -445,13 +425,67 @@ retry:
 
     /* this request must be handled as razily */
     this->enqueue (queue_type::LAZY, std::move (request));
+
     /* rezily notified */
-    m_notified = true;
+    m_notification |= static_cast<uint32_t> (notification_type::QUEUE);
 
     return true;
   }
 
-  bool connection_worker::clear_event ()
+  void connection_worker::ha_close_all_connections ()
+  {
+    std::vector<context *> contexts (m_context.begin (), m_context.end ());
+
+    /* alive context */
+    for (auto &ctx : contexts)
+      {
+	if (!ctx->m_conn->in_transaction)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->ha_close_all_connections: close fd = %d, conn = %p\n",
+			 ctx->m_conn->fd, ctx->m_conn);
+	    this->handle_connection_close (ctx);
+	  }
+      }
+
+    for (auto &ctx : m_removed_context)
+      {
+	if (m_context.erase (ctx) == 0)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->ha_close_all_connections: context not found\n");
+	    continue;
+	  }
+	delete ctx;
+      }
+    m_removed_context.clear ();
+  }
+
+  bool connection_worker::eventfd_register (int fd)
+  {
+    context *ctx;
+    css_conn_entry *conn;
+
+    ctx = new context ();
+    conn = reinterpret_cast<css_conn_entry *> (new int { fd });
+    if (!ctx || !conn)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_register: failed to allocate memory\n");
+	return false;
+      }
+    ctx->m_conn = conn;
+
+    if (!m_events.add_descriptor (fd, EPOLLET | EPOLLIN, ctx))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_register: add_descriptor failed\n");
+
+	delete ctx;
+	delete conn;
+	return false;
+      }
+
+    return true;
+  }
+
+  bool connection_worker::eventfd_clear (int fd)
   {
     ssize_t bytes;
     uint64_t u;
@@ -459,7 +493,7 @@ retry:
     /* read counter */
     while (true)
       {
-	bytes = ::read (m_eventfd, &u, sizeof (u));
+	bytes = ::read (fd, &u, sizeof (u));
 	if (bytes == sizeof (u))
 	  {
 	    break;
@@ -482,6 +516,65 @@ retry:
 	  }
 	return false;
       }
+    return true;
+  }
+
+  bool connection_worker::eventfd_settimer (int fd, uint32_t sec, uint64_t nsec)
+  {
+    struct itimerspec its;
+
+    memset (&its, 0, sizeof (its));
+    its.it_value.tv_sec = sec;
+    its.it_value.tv_nsec = nsec;
+    its.it_interval.tv_sec = sec;
+    its.it_interval.tv_nsec = nsec;
+
+    if (timerfd_settime (fd, 0, &its, NULL) < 0)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_settimer: %s\n", strerror (errno));
+	return false;
+      }
+    return true;
+  }
+
+  bool connection_worker::eventfd_handler (bool *eventfds)
+  {
+    /* event fd */
+    if (eventfds[0])
+      {
+	eventfds[0] = false;
+	m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
+
+	if (!this->handle_message_queue ())
+	  {
+	    return false;
+	  }
+      }
+
+    /* timer fd */
+    if (eventfds[1])
+      {
+	eventfds[1] = false;
+
+	if (m_notification & static_cast<uint32_t> (notification_type::QUEUE))
+	  {
+	    m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
+
+	    if (!this->handle_message_queue ())
+	      {
+		return false;
+	      }
+	  }
+	if (m_notification & static_cast<uint32_t> (notification_type::HA))
+	  {
+	    /* HA msut continue to check */
+	    if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY)
+	      {
+		this->ha_close_all_connections ();
+	      }
+	  }
+      }
+
     return true;
   }
 
@@ -747,8 +840,9 @@ retry:
   {
     std::size_t i;
 
-    if (!this->clear_event ())
+    if (!this->eventfd_clear (m_eventfd))
       {
+	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: eventfd_clear failed\n");
 	return false;
       }
 
@@ -758,6 +852,7 @@ retry:
       {
 	if (!this->handle_message_queue_by_index (static_cast<queue_type> (i)))
 	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: handle_message_queue_by_index failed\n");
 	    return false;
 	  }
       }
@@ -1290,14 +1385,14 @@ retry:
   bool connection_worker::run ()
   {
     std::array<epoll_event, 512> events;
+    bool eventfds[2] = { false, false };
     result status;
     context *ctx;
     int nfds, i;
 
-    m_notified = false;
     while (!m_stop)
       {
-	nfds = m_events.wait (events.data (), events.size (), m_notified ? 50 /* 50 msec */ : TIMEOUT_INFINITE);
+	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
 	if (nfds < 0)
 	  {
 	    if (errno == EINTR)
@@ -1322,7 +1417,12 @@ retry:
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
 		  {
-		    m_notified = true;
+		    eventfds[0] = true;
+		    continue;
+		  }
+		else if (ctx->m_conn->fd == m_timerfd)
+		  {
+		    eventfds[1] = true;
 		    continue;
 		  }
 		status = this->handle_reception (ctx);
@@ -1352,12 +1452,11 @@ retry:
 	  }
 
 	/* lazy handling */
-	if (m_notified)
+	if (eventfds[0] || eventfds[1])
 	  {
-	    m_notified = false;
-	    if (!this->handle_message_queue ())
+	    if (!this->eventfd_handler (eventfds))
 	      {
-		er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_message_queue failed");
+		er_log_conn (__FILE__, __LINE__, "connection_worker->run: eventfd_handler failed");
 		return false;
 	      }
 	  }
