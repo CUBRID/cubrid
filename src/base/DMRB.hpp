@@ -182,6 +182,8 @@ namespace cubbase
 
   template <bool T>
   DMRB<T>::DMRB () :
+    m_base (nullptr),
+    m_fd (-1),
     m_size (0),
     m_mask (0)
   {
@@ -190,8 +192,14 @@ namespace cubbase
   template <bool T>
   DMRB<T>::~DMRB ()
   {
-    ::munmap (m_base, m_size * 2);
-    ::close (m_fd);
+    if (m_base)
+      {
+	::munmap (m_base, m_size * 2);
+      }
+    if (m_fd >= 0)
+      {
+	::close (m_fd);
+      }
   }
 
   template <bool T>

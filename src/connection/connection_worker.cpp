@@ -142,6 +142,7 @@ namespace cubconn
 	m_thread.join ();
       }
     ::close (m_eventfd);
+    ::close (m_timerfd);
 
     assert (m_context.size () == 0);
   }
@@ -234,7 +235,7 @@ namespace cubconn
       }
     ctx->m_conn = conn;
 
-    if (!m_events.add_descriptor (m_eventfd, EPOLLET | EPOLLIN, ctx))
+    if (!m_events.add_descriptor (fd, EPOLLET | EPOLLIN, ctx))
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker->register_eventfd: add_descriptor failed\n");
 
