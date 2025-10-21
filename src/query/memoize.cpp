@@ -25,6 +25,7 @@
 
 #include "memory_wrapper.hpp"
 #include "thread_compat.hpp"
+#include "thread_manager.hpp"
 #include "xasl.h"
 #include <pthread.h>
 
@@ -415,7 +416,9 @@ namespace memoize
   }
 
   storage::storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list)
-    : m_max_storage_size (max_storage_size)
+    : hit (0)
+    , miss (0)
+    , m_max_storage_size (max_storage_size)
     , m_key_cnt (key_cnt)
     , m_value_cnt (value_cnt)
     , m_thread_p (thread_p)
@@ -423,8 +426,11 @@ namespace memoize
     , m_dbval_p_allocator (thread_p)
     , m_dbval_allocator (thread_p)
     , m_key_value_allocator (thread_p)
+    , m_1key_sz (sizeof (key) + sizeof (DB_VALUE) * m_key_cnt)
+    , m_1value_sz (sizeof (value) + sizeof (DB_VALUE) * m_value_cnt)
     , m_key_sz (0)
     , m_value_sz (0)
+    , m_hash_sz (0)
     , m_last_key (nullptr)
     , m_keyptr_src (m_dbval_p_allocator)
     , m_key_value_map (m_key_value_allocator)
@@ -433,8 +439,10 @@ namespace memoize
     , cur_end ()
     , has_range (false)
     , key_changed (false)
+    , current_key_joined (false)
   {
   }
+
   storage::~storage()
   {
     if (m_last_key != nullptr)
@@ -446,9 +454,12 @@ namespace memoize
     for (auto it = m_key_value_map.begin(); it != m_key_value_map.end(); it++)
       {
 	it->first->~key();
-	it->second->~value();
+	if (it->second != nullptr)
+	  {
+	    it->second->~value();
+	    db_private_free (m_thread_p, it->second);
+	  }
 	db_private_free (m_thread_p, it->first);
-	db_private_free (m_thread_p, it->second);
       }
     m_keyptr_src.clear();
     m_key_value_map.clear();
@@ -466,7 +477,7 @@ namespace memoize
     if (disabled || get_current_size() >= m_max_storage_size)
       {
 	disabled = true;
-	return result_code::FAIL;
+	return result_code::FULL;
       }
 
     if (key_changed)
@@ -475,6 +486,7 @@ namespace memoize
 	  {
 	    m_last_key->~key();
 	    db_private_free (m_thread_p, m_last_key);
+	    m_key_sz -= m_1key_sz;
 	  }
 	m_last_key = get_key();
 	key_changed = false;
@@ -486,16 +498,24 @@ namespace memoize
 	if (cur_iter == cur_end)
 	  {
 	    has_range = false;
-	    return result_code::FAIL;
+	    miss++;
+	    return result_code::NOT_FOUND;
 	  }
-	has_range = true;
 	v = cur_iter->second;
+	if (v == nullptr)
+	  {
+	    hit++;
+	    cur_iter++;
+	    return result_code::ENDED;
+	  }
+	hit++;
+	has_range = true;
 	cur_iter++;
 	return set_value (v);
       }
     if (m_last_key == nullptr)
       {
-	return result_code::FAIL;
+	return result_code::NOT_FOUND;
       }
 
     if (has_range)
@@ -511,7 +531,7 @@ namespace memoize
       }
     else
       {
-	return result_code::FAIL;
+	return result_code::NOT_FOUND;
       }
   }
 
@@ -522,10 +542,35 @@ namespace memoize
 	if (disabled || get_current_size() >= m_max_storage_size)
 	  {
 	    disabled = true;
-	    return result_code::FAIL;
+	    return result_code::FULL;
 	  }
+	current_key_joined = true;
 	assert (m_last_key != nullptr);
 	m_key_value_map.insert ({get_key(), get_value()});
+	m_hash_sz += hash_entry_sz;
+	return result_code::SUCCESS;
+      }
+    catch (const std::exception &e)
+      {
+	return result_code::ERROR;
+      }
+  }
+
+  result_code storage::put_nullptr()
+  {
+    try
+      {
+	if (!current_key_joined)
+	  {
+	    if (disabled || get_current_size() >= m_max_storage_size)
+	      {
+		disabled = true;
+		return result_code::FULL;
+	      }
+	    assert (m_last_key != nullptr);
+	    m_key_value_map.insert ({get_key(), nullptr});
+	    m_hash_sz += hash_entry_sz;
+	  }
 	return result_code::SUCCESS;
       }
     catch (const std::exception &e)
@@ -541,7 +586,7 @@ namespace memoize
       {
 	return nullptr;
       }
-    m_key_sz += sizeof (key);
+    m_key_sz += m_1key_sz;
     k = placement_new (k,&m_dbval_allocator);
     for (auto dbvalp : m_keyptr_src)
       {
@@ -559,7 +604,7 @@ namespace memoize
       {
 	return nullptr;
       }
-    m_value_sz += sizeof (value);
+    m_value_sz += m_1value_sz;
     v = placement_new (v,&m_dbval_allocator);
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next)
       {
@@ -583,8 +628,7 @@ namespace memoize
 
   size_t storage::get_current_size () const
   {
-    return m_key_sz + m_value_sz + m_dbval_p_allocator.get_size() + m_dbval_allocator.get_size() +
-	   m_key_value_allocator.get_size() + sizeof (storage);
+    return m_key_sz + m_value_sz + m_hash_sz + m_key_value_map.bucket_count() * sizeof (void *) + sizeof (storage);
   }
 }
 
@@ -609,6 +653,7 @@ extern "C"
       {
 	xasl->memoize_storage->storage::~storage();
 	db_private_free (thread_p, xasl->memoize_storage);
+	xasl->memoize_storage = nullptr;
       }
   }
 
@@ -628,9 +673,15 @@ extern "C"
 	*is_ended = true;
 	return NO_ERROR;
       }
-    if (ret == result_code::FAIL)
+    if (ret == result_code::NOT_FOUND)
       {
 	*success = false;
+	return NO_ERROR;
+      }
+    if (ret == result_code::FULL)
+      {
+	*success = false;
+	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
       }
     if (ret == result_code::ERROR)
@@ -650,9 +701,32 @@ extern "C"
 	*success = true;
 	return NO_ERROR;
       }
-    if (ret == result_code::FAIL)
+    if (ret == result_code::FULL)
       {
 	*success = false;
+	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
+	return NO_ERROR;
+      }
+    if (ret == result_code::ERROR)
+      {
+	*success = false;
+	return ER_FAILED;
+      }
+    return NO_ERROR;
+  }
+  int memoize_put_nullptr (xasl_node *xasl, bool *success)
+  {
+    *success = true;
+    result_code ret = xasl->memoize_storage->put_nullptr();
+    if (ret == result_code::SUCCESS)
+      {
+	*success = true;
+	return NO_ERROR;
+      }
+    if (ret == result_code::FULL)
+      {
+	*success = false;
+	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
       }
     if (ret == result_code::ERROR)

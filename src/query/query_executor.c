@@ -7943,7 +7943,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   int qualified;
   SCAN_OPERATION_TYPE scan_operation_type;
   int memoize_err_code;
-  bool memoize_success = true, memoize_key_ended, memoize_put_success;
+  bool memoize_success = true, memoize_key_ended, memoize_put_success, memoize_ended;
 
   /* check if further scan procedure are still active */
   if (xasl->scan_ptr && xasl->next_scan_on)
@@ -7957,38 +7957,111 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       xasl->next_scan_on = false;
     }
 
+  /* check memoize */
+  if (xasl->memoize_storage)
+    {
+      memoize_err_code = memoize_get (xasl, &memoize_success, &memoize_ended);
+      if (memoize_err_code == ER_FAILED)
+	{
+	  return S_ERROR;
+	}
+      if (memoize_success)
+	{
+	  if (memoize_ended)
+	    {
+	      if (xasl->curr_spec->s_id.direction == S_FORWARD)
+		{
+		  xasl->curr_spec->s_id.position = S_AFTER;
+		}
+	      else
+		{
+		  xasl->curr_spec->s_id.position = S_BEFORE;
+		}
+	      return S_END;
+	    }
+	  else
+	    {
+	      if (!xasl->scan_ptr)
+		{
+		  /* no scan procedure block */
+		  return S_SUCCESS;
+		}
+	      else
+		{
+		  while (1)
+		    {
+		      /* current scan block has at least one qualified item */
+		      xasl->curr_spec->s_id.qualified_block = true;
+
+		      /* start following scan procedure */
+		      xasl->scan_ptr->next_scan_on = false;
+		      if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+			{
+			  return S_ERROR;
+			}
+
+		      if (xasl->scan_ptr->memoize_storage)
+			{
+			  xasl->scan_ptr->memoize_storage->set_key_changed ();
+			}
+
+		      xasl->next_scan_on = true;
+		      /* execute following scan procedure */
+		      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+		      if (xs_scan == S_END)
+			{
+			  xasl->next_scan_on = false;
+			  qualified = false;
+			  memoize_err_code = memoize_get (xasl, &memoize_success, &memoize_ended);
+			  if (memoize_err_code == ER_FAILED)
+			    {
+			      return S_ERROR;
+			    }
+			  if (memoize_success)
+			    {
+			      if (memoize_ended)
+				{
+				  if (xasl->curr_spec->s_id.direction == S_FORWARD)
+				    {
+				      xasl->curr_spec->s_id.position = S_AFTER;
+				    }
+				  else
+				    {
+				      xasl->curr_spec->s_id.position = S_BEFORE;
+				    }
+				  return S_END;
+				}
+			      else
+				{
+				  continue;
+				}
+			    }
+			}
+		      else
+			{
+			  return xs_scan;
+			}
+		    }
+
+		}
+	    }
+
+	}
+    }
+
+  /* execute scan */
   do
     {
-      if (xasl->memoize_storage)
+      sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+      if (sc_scan == S_END && xasl->memoize_storage)
 	{
-	  int memoize_err_code;
-	  bool memoize_success, memoize_ended;
-	  memoize_err_code = memoize_get (xasl, &memoize_success, &memoize_ended);
+	  memoize_err_code = memoize_put_nullptr (xasl, &memoize_put_success);
 	  if (memoize_err_code == ER_FAILED)
 	    {
 	      return S_ERROR;
 	    }
-	  if (memoize_success)
-	    {
-	      if (memoize_ended)
-		{
-		  if (xasl->curr_spec->s_id.direction == S_FORWARD)
-		    {
-		      xasl->curr_spec->s_id.position = S_AFTER;
-		    }
-		  else
-		    {
-		      xasl->curr_spec->s_id.position = S_BEFORE;
-		    }
-		  return S_END;
-		}
-	      else
-		{
-		  return S_SUCCESS;
-		}
-	    }
 	}
-      sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+
       if (sc_scan != S_SUCCESS)
 	{
 	  return sc_scan;

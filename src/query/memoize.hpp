@@ -26,64 +26,19 @@
 
 namespace memoize
 {
-
   template <typename T>
-  class allocator : public cubmem::private_allocator<T>
-  {
-    public:
-      typedef T *pointer;
-      typedef size_t size_type;
-
-      // rebind template to ensure proper allocator type
-      template <typename U>
-      struct rebind
-      {
-	typedef allocator<U> other;
-      };
-
-      allocator (cubthread::entry *thread_p)
-	: cubmem::private_allocator<T> (thread_p)
-      {
-	m_size = 0;
-      }
-
-      // copy constructor
-      allocator (const allocator &other)
-	: cubmem::private_allocator<T> (other)
-	, m_size (other.m_size)
-      {
-      }
-
-      // conversion constructor from other allocator types
-      template <typename U>
-      allocator (const allocator<U> &other)
-	: cubmem::private_allocator<T> (other)
-	, m_size (other.get_size())
-      {
-      }
-
-      pointer allocate (size_type count)
-      {
-	pointer p = cubmem::private_allocator<T>::allocate (count);
-	m_size += count*sizeof (T);
-	return p;
-      }
-      size_t get_size() const
-      {
-	return m_size;
-      }
-    private:
-      size_t m_size;
-  };
+  using allocator = cubmem::private_allocator<T>;
 
   template <typename T>
   using pvector = std::vector<T, allocator<T>>;
+
   enum class result_code
   {
     SUCCESS = 0,
     ENDED = 1,
-    FAIL = 2,
-    ERROR = 3,
+    NOT_FOUND = 2,
+    FULL = 3,
+    ERROR = 4,
   };
 
   class key
@@ -125,6 +80,8 @@ namespace memoize
 	       cubmem::private_allocator<std::pair<key *const, value *>>
 	       >::iterator;
 
+  constexpr size_t hash_entry_sz = sizeof (std::pair<key *const, value *>) + sizeof (void *)*3;
+
   class storage
   {
     public:
@@ -135,20 +92,23 @@ namespace memoize
       void init (ACCESS_SPEC_TYPE *spec);
       result_code get ();
       result_code put();
+      result_code put_nullptr();
       void set_key_changed()
       {
 	key_changed = true;
+	current_key_joined = false;
       }
       size_t get_current_size () const;
       bool is_disabled () const
       {
 	return disabled;
       }
+      size_t hit;
+      size_t miss;
     private:
       key *get_key();
       value *get_value();
       result_code set_value (value *value);
-
 
       const size_t m_max_storage_size;
       const int m_key_cnt;
@@ -159,8 +119,11 @@ namespace memoize
       allocator<DB_VALUE *> m_dbval_p_allocator;
       allocator<DB_VALUE> m_dbval_allocator;
       allocator<std::pair<key *const, value *>> m_key_value_allocator;
+      const size_t m_1key_sz;
+      const size_t m_1value_sz;
       size_t m_key_sz;
       size_t m_value_sz;
+      size_t m_hash_sz;
       key *m_last_key;
       pvector<DB_VALUE *> m_keyptr_src;
       std::unordered_multimap<key *, value *, key::hash, key::equal, cubmem::private_allocator<std::pair<key *const, value *>>>
@@ -170,6 +133,7 @@ namespace memoize
       iter cur_end;
       bool has_range;
       bool key_changed;
+      bool current_key_joined;
   };
 }
 
@@ -179,6 +143,7 @@ extern "C"
   void clear_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl);
   int memoize_get (xasl_node *xasl, bool *success, bool *is_ended);
   int memoize_put (xasl_node *xasl, bool *success);
+  int memoize_put_nullptr (xasl_node *xasl, bool *success);
 }
 
 #endif /* _MEMOIZE_HPP_ */

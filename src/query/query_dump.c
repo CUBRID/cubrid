@@ -3730,8 +3730,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   if (xasl_p->memoize_storage)
     {
       fprintf (fp, "%*c", indent, ' ');
-      fprintf (fp, "MEMOIZE (size: %luKB, enabled: %s)\n", xasl_p->memoize_storage->get_current_size () / 1024,
-	       xasl_p->memoize_storage->is_disabled ()? "false" : "true");
+      fprintf (fp, "MEMOIZE (size: %luKB, hit: %lu, miss: %lu, enabled: %s)\n",
+	       xasl_p->memoize_storage->get_current_size () / 1024, xasl_p->memoize_storage->hit,
+	       xasl_p->memoize_storage->miss, xasl_p->memoize_storage->is_disabled ()? "false" : "true");
     }
 
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);
