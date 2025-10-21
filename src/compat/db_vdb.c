@@ -807,6 +807,9 @@ db_compile_statement_local (DB_SESSION * session)
 	}
 
       /* now, prepare the statement by calling do_prepare_statement() */
+
+      printf ("asjdfkl a;sjdkf l;ajsdf\n QUERY: %s\n", parser_print_tree (parser, statement));
+      printf ("hsdfa sdfa sdf asdf asdf \n");
       err = do_prepare_statement (parser, statement);
 #if 0
       if (err == ER_QPROC_INVALID_XASLNODE)

@@ -12149,6 +12149,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_V
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 
       db_make_null (&new_time_value);
+      printf ("[25]\n");	//heexoo_test;
       TP_DOMAIN_STATUS status = tp_value_auto_cast (value_ptr, &new_time_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -25224,7 +25225,7 @@ db_cfile_length (const DB_VALUE * src_value, DB_VALUE * result_value)
   return error_status;
 }
 
-
+#include "stack_dump.h"
 /*
  * db_bit_to_blob - convert bit string value to blob value
  *   return: NO_ERROR or error code
@@ -25251,7 +25252,15 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
     {
       // TODO: This part should be revised when the TOAST structure is introduced in the future.
       bit_data = db_get_bit (src_value, &bit_length);
+      printf ("---------------%s---------------\n", __func__);
+
+      er_dump_call_stack (stdout);
+      printf ("src : ");
+      db_value_fprint (stdout, src_value);
       db_make_blob (result_value, DB_MAX_LOB_PRECISION, bit_data, bit_length);
+      printf ("\nresult : ");
+      db_value_fprint (stdout, result_value);
+      printf ("\n--------------------\n");
     }
   else
     {
@@ -27176,6 +27185,7 @@ coerce_pos:
       param_domain = tp_domain_resolve_default (param_type);
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       /* don't mind error code here, we need to know if param is out of range */
+      printf ("[26]\n");	//heexoo_test;
       (void) tp_value_auto_cast (param, &param_db_bigint, domain);
       if (DB_IS_NULL (&param_db_bigint))
 	{
@@ -27419,6 +27429,7 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       DB_VALUE new_value;
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
       db_make_null (&new_value);
+      printf ("[27]\n");	//heexoo_test;
       TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{

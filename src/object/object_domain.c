@@ -7561,7 +7561,21 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     {
       target = dest;
     }
-  printf ("tp_value_cast_internal: src_type=%d, target_type=%d\n", original_type, DB_VALUE_TYPE (target));
+  printf ("[START] tp_value_cast_internal: src_type=%d, dest_type=%d, target_type=%d, desired_type=%d\n", original_type,
+	  DB_VALUE_TYPE (dest), DB_VALUE_TYPE (target), desired_type);
+  printf ("---------------%s---------------\n", __func__);
+  printf ("src : ");
+  db_value_fprint (stdout, src);
+  printf ("\ndest (should be NULL)): ");
+  db_value_fprint (stdout, dest);
+  printf ("\n--------------------\n");
+  if (DB_VALUE_TYPE (dest) == desired_type && DB_VALUE_TYPE (src) == desired_type)
+    {
+      status = DOMAIN_COMPATIBLE;
+      pr_clear_value (&src_replacement);
+      printf ("[END2 ] tp_value_cast_interna\n");
+      return status;
+    }
 
   /*
    * Initialize the destination domain, important for the
@@ -8143,7 +8157,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -9475,7 +9488,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
+	  printf ("DEBUG dbbittoblob start\n");
 	  err = db_bit_to_blob (src, target);
+	  printf ("DEBUG dbbittoblob end\n");
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -10614,7 +10629,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     }
 
   pr_clear_value (&src_replacement);
-
+  printf ("[END  ] tp_value_cast_internal: src_type=%d, dest_type=%d, target_type=%d, desired_type=%d\n", original_type,
+	  DB_VALUE_TYPE (dest), DB_VALUE_TYPE (target), desired_type);
   return status;
 }
 
@@ -10634,6 +10650,7 @@ tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
+  printf ("[DEBUG] tp_value_cast\n");
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
 }
 
@@ -10643,6 +10660,7 @@ tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * de
   TP_COERCION_MODE mode;
 
   mode = TP_FORCE_COERCION;
+  printf ("[DEBUG] tp_value_cast_force\n");
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
 }
 
@@ -10664,6 +10682,7 @@ tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest, const TP_D
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
+  printf ("[DEBUG] tp_value_cast_preserve_domain\n");
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, true);
 }
 
@@ -10684,6 +10703,7 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest, const TP_
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
+  printf ("[DEBUG] tp_value_cast_no_domain_select\n");
   return tp_value_cast_internal (src, dest, desired_domain, mode, false, false);
 }
 
@@ -11945,7 +11965,17 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 
   if (dom_status != DOMAIN_OVERFLOW)
     {
+      printf ("[28]\n");	//heexoo_test;
+      printf ("---------------%s---------------\n", __func__);
+      printf ("src : ");
+      db_value_fprint (stdout, src);
+      printf ("\n");
       dom_status = tp_value_auto_cast (src, dest, desired_domain);
+      printf ("dest : ");
+      db_value_fprint (stdout, dest);
+      printf ("\n--------------------\n");
+
+
     }
 
   return dom_status;
@@ -11969,6 +11999,9 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * des
 {
   TP_DOMAIN_STATUS status;
 
+  printf ("[START] tp_value_auto_cast: src(%d), dest(%d), desired_domain(%d)\n", DB_VALUE_TYPE (src),
+	  DB_VALUE_TYPE (dest), TP_DOMAIN_TYPE (desired_domain));
+
   status = tp_value_cast (src, dest, desired_domain, false);
   if (status != DOMAIN_COMPATIBLE)
     {
@@ -11980,8 +12013,8 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * des
 	  er_clear ();
 	}
     }
-  printf ("tp_value_auto_cast: src(%d), dest(%d), desired_domain(%d)\n", DB_VALUE_TYPE (src), DB_VALUE_TYPE (dest),
-	  TP_DOMAIN_TYPE (desired_domain));
+  printf ("[END  ] tp_value_auto_cast: src(%d), dest(%d), desired_domain(%d)\n", DB_VALUE_TYPE (src),
+	  DB_VALUE_TYPE (dest), TP_DOMAIN_TYPE (desired_domain));
   return status;
 }
 
@@ -12017,7 +12050,7 @@ tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val
     {
       return ER_FAILED;
     }
-
+  printf ("[29]\n");		//heexoo_test;
   dom_status = tp_value_auto_cast (src, dest, cast_dom);
   if (dom_status != DOMAIN_COMPATIBLE)
     {

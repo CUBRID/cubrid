@@ -21,7 +21,7 @@
  */
 
 #ident "$Id$"
-
+#include "stack_dump.h"
 #include "config.h"
 
 #include <stdio.h>
@@ -21852,7 +21852,18 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	      error = er_errid ();
 	      goto cleanup;
 	    }
+	  printf ("[30]\n");
+	  er_dump_call_stack (stdout);
+	  //heexoo_test;
+	  printf ("---------------%s---------------\n", __func__);
+	  printf ("stmt: %s\n", parser_print_tree (parser, statement));
+	  printf ("\nval : ");
+	  db_value_fprint (stdout, val);
+	  printf ("\n");
 	  dom_status = tp_value_auto_cast (val, update->assigns[a].constant, dom);
+	  printf ("\nupdate->assigns[a].constant : ");
+	  db_value_fprint (stdout, update->assigns[a].constant);
+	  printf ("\n--------------------\n");
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, val, dom);

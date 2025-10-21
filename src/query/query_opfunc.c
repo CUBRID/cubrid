@@ -2387,7 +2387,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	{
 	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
 	}
-
+      printf ("[10]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -2408,6 +2408,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	{
 	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
 	}
+      printf ("[11]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -2475,6 +2476,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
   if (cast_dom2 != NULL)
     {
+      printf ("[12]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -2486,6 +2488,7 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
   if (cast_dom1 != NULL)
     {
+      printf ("[13]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -4473,6 +4476,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
     {
       /* The enumeration will always be casted to SMALLINT */
       cast_dom1 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
+      printf ("[14]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -4484,6 +4488,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
   else if (type2 == DB_TYPE_ENUMERATION)
     {
       cast_dom2 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
+      printf ("[15]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -4563,6 +4568,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 
   if (cast_dom1 != NULL)
     {
+      printf ("[16]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -4574,6 +4580,7 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 
   if (cast_dom2 != NULL)
     {
+      printf ("[17]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -5194,6 +5201,7 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 
   if (cast_dom2 != NULL)
     {
+      printf ("[18]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -5205,6 +5213,7 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 
   if (cast_dom1 != NULL)
     {
+      printf ("[19]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -5810,6 +5819,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   if (cast_dom2 != NULL)
     {
+      printf ("[20]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -5821,6 +5831,7 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   if (cast_dom1 != NULL)
     {
+      printf ("[21]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -6072,6 +6083,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   if (cast_dom1 != NULL)
     {
+      printf ("[22]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -6085,6 +6097,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   if (cast_dom2 != NULL)
     {
+      printf ("[23]\n");	//heexoo_test;
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -6543,7 +6556,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		    {
 		      save_heapid = db_change_private_heap (thread_p, 0);
 		    }
-
+		  printf ("[24]\n");	//heexoo_test;
 		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
 		  /* ===== DEBUG LOG START ===== */
 		  printf ("[DEBUG] tp_value_auto_cast -> dom_status=%d\n", dom_status);
@@ -6564,7 +6577,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		    }
 
 		  /* ===== DEBUG LOG START ===== */
-		  printf ("[DEBUG] after cast: dom_type=%d, val_type=%d\n", dom_type, val_type);
+		  printf ("[DEBUG] after cast: dom_type=%d, val_type=%d\n", dom_type, DB_VALUE_TYPE (peek_value_p));
 		  /* ===== DEBUG LOG END ===== */
 
 		  /* *** KEEP ORIGINAL ASSERT EXACTLY AS-IS *** */
