@@ -4226,7 +4226,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
     }
   if (is_class > 0)
     {
-
       /* make sure the workspace is flushed before calculating stats */
       if (locator_flush_all_instances (classop, DONT_DECACHE) != NO_ERROR)
 	{
@@ -4234,7 +4233,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (classop, (with_fullscan ? 1 : 0));
+      error = stats_update_statistics (classop, with_fullscan);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -4370,7 +4369,7 @@ sm_update_all_statistics (bool with_fullscan)
       return er_errid ();
     }
 
-  error = stats_update_all_statistics ((with_fullscan ? 1 : 0));
+  error = stats_update_all_statistics (with_fullscan);
   if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
@@ -4415,7 +4414,7 @@ sm_update_all_statistics (bool with_fullscan)
 /*
  * sm_update_all_catalog_statistics()
  *   return: NO_ERROR on success, non-zero for ERROR
- *   with_fullscan(in): true iff WITH FULLSCAN
+ *   with_fullscan(in): true if WITH FULLSCAN
  */
 
 int
@@ -4447,7 +4446,7 @@ sm_update_all_catalog_statistics (bool with_fullscan)
  * sm_update_catalog_statistics()
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_name(in):
- *   with_fullscan(in): true iff WITH FULLSCAN
+ *   with_fullscan(in): true if WITH FULLSCAN
  */
 
 int

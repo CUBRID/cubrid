@@ -3161,8 +3161,8 @@ struct pt_update_info
 struct pt_update_stats_info
 {
   PT_NODE *class_list;		/* PT_NAME */
-  int all_classes;		/* 1 iff ALL CLASSES */
-  int with_fullscan;		/* 1 iff WITH FULLSCAN */
+  int all_classes;		/* 1 if ALL CLASSES */
+  int with_fullscan;		/* 1 if WITH FULLSCAN */
 };
 
 /* GET STATISTICS INFO */
