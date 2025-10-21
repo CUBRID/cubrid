@@ -594,7 +594,7 @@ extern "C"
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
   {
     int storage_size; /* system parameter need*/
-    storage_size = 1024*1024;
+    storage_size = 512*1024*1024;
     xasl->memoize_storage = storage::new_storage (thread_p, storage_size, xasl->spec_list, xasl->val_list);
     if (!xasl->memoize_storage)
       {
