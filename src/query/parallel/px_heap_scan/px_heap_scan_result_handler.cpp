@@ -788,7 +788,8 @@ namespace parallel_heap_scan
 		    std::memory_order_release);
 	      }
 	  }
-	if (unlikely (!VPID_EQ (&old_last_vpid, &tl_list_id_header->m_list_id_p->last_vpid) && old_last_vpid.pageid != -1))
+	if (unlikely (!VPID_EQ (&old_last_vpid, &tl_list_id_header->m_list_id_p->last_vpid)
+		      && old_last_vpid.pageid != NULL_PAGEID))
 	  {
 	    VPID64_t vpid;
 	    /* last vpid changed, send it to reader */
