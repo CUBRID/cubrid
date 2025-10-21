@@ -4313,19 +4313,6 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 		  free_and_init (px_sort_param[i].file_contents[j].num_pages);
 		}
 	    }
-	  SORT_INFO *sort_info = (SORT_INFO *) px_sort_param[i].put_arg;
-	  if (sort_info != NULL)
-	    {
-	      if (sort_info->s_id->s_id != NULL)
-		{
-		  db_private_free_and_init (thread_p, sort_info->s_id->s_id);
-		}
-	      if (sort_info->s_id != NULL)
-		{
-		  db_private_free_and_init (thread_p, sort_info->s_id);
-		}
-	      db_private_free_and_init (thread_p, sort_info);
-	    }
 	}
     }
 
