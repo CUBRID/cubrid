@@ -40,6 +40,7 @@ typedef enum
   DATA_STATUS_NOT_CONSUMED = 1005	/* Operation not consumed all input */
 } DB_DATA_STATUS;
 
+#if 1				// used in phase-1, phase-2
 typedef enum fp_value_type
 {
   FP_VALUE_TYPE_NUMBER,
@@ -47,6 +48,7 @@ typedef enum fp_value_type
   FP_VALUE_TYPE_NAN,
   FP_VALUE_TYPE_ZERO
 } FP_VALUE_TYPE;
+#endif
 
 /*
  * NUMERIC_MAX_STRING_SIZE:

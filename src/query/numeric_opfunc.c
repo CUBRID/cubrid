@@ -124,6 +124,17 @@ static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
+#if 0				// used in phase-3
+typedef enum fp_value_type
+{
+  FP_VALUE_TYPE_NUMBER,
+  FP_VALUE_TYPE_INFINITE,
+  FP_VALUE_TYPE_NAN,
+  FP_VALUE_TYPE_ZERO
+}
+FP_VALUE_TYPE;
+#endif
+
 static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
 static void numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num);
