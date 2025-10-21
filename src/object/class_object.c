@@ -90,6 +90,10 @@ static const char *Constraint_properties[] = {
   ((int)(sizeof(Constraint_types)/sizeof(Constraint_types[0])))
 #define NUM_CONSTRAINT_PROPERTIES       \
   ((int)(sizeof(Constraint_properties)/sizeof(Constraint_properties[0])))
+#define IS_HA_REPLICATION_KEY_CONSTRAINT(c) \
+  ((c)->type == SM_CONSTRAINT_PRIMARY_KEY || \
+    (SM_IS_CONSTRAINT_UNIQUE_FAMILY((c)->type) && \
+     sm_has_non_null_attribute((c)->attributes)))
 
 static AREA *Template_area = NULL;
 
@@ -2175,6 +2179,28 @@ classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints)
   for (c = constraints; c != NULL; c = c->next)
     {
       if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * classobj_has_class_repl_key_constraint ()
+ *   return: true if a replication key constraint is contained in the constraint list,
+ *           otherwise false.
+ *   constraints(in): constraint list
+ */
+bool
+classobj_has_class_repl_key_constraint (SM_CLASS_CONSTRAINT * constraints)
+{
+  SM_CLASS_CONSTRAINT *c;
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      if (IS_HA_REPLICATION_KEY_CONSTRAINT (c))
 	{
 	  return true;
 	}

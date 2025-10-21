@@ -89,16 +89,17 @@
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
 /* Returns true if replication option is ON or not specified (default ON).
- * Use with table option node (tbl_opt_replication).
+ * Used during CREATE TABLE parsing to check table option node (tbl_opt_replication).
  */
-#define IS_REPLICATION_ON_OPT(_opt) \
+#define IS_CREATE_STMT_SET_REPL_OPTION(_opt) \
   ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
 
-/* Returns true if replication node value is ON or not specified (default ON).
- * Use with replication_node (tbl_opt_replication->info.table_option.val).
+/* Returns true if replication option is ON.
+ * Used during ALTER TABLE parsing to check replication option node (replication_node).
  */
-#define IS_REPLICATION_ON_NODE(_node) \
+#define IS_ALTER_STMT_SET_REPL_OPTION(_node) \
   ((_node)->info.value.data_value.i )
+
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -9234,17 +9235,27 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       /*  
-       * Set the SM_CLASSFLAG_REPLICATION_OFF flag.  
+       * Set the SM_CLASSFLAG_DATA_REPLICATION_OFF flag.  
        * If the option is omitted, or if the "on|off" value is omitted,  
        * the default is set to "on".  
        */
-      if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
+      if (IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication))
 	{
-	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION_OFF, TRUE);
+	  if (!HA_DISABLED () && !classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
+	    {
+	      error = ER_HA_REQUIRES_REPLICATION_KEY;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
+
 	  do_flush_class_mop = true;
 	}
 
@@ -10667,7 +10678,7 @@ exit:
 }
 
 /*
- * handle_replication_option() - handle the replication option
+ * do_alter_change_replication() - handle the replication option
  *   return: Error code
  *   class_mop(in/out): Class MOP to apply the option
  *   replication_node(in): Parse tree node containing replication option
@@ -10684,14 +10695,13 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   DB_CTMPL *ctemplate = NULL;
   MOP class_mop = NULL;
   bool tran_saved = false;
-  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;;
+  PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
 
-  if (!HA_DISABLED () && IS_REPLICATION_ON_NODE (replication_node))
+  if (!HA_DISABLED ())
     {
-      error = ER_REPLICATION_CONSTRAINT;
+      error = ER_REPLICATION_OPTION_CHANGE_IN_HA_MODE;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-
-      return error;
+      goto exit;
     }
 
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
@@ -10742,7 +10752,8 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
     }
 
   class_mop = ctemplate->op;
-  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_OFF, !IS_REPLICATION_ON_NODE (replication_node));
+  error =
+    sm_set_class_flag (class_mop, SM_CLASSFLAG_DATA_REPLICATION_OFF, !IS_ALTER_STMT_SET_REPL_OPTION (replication_node));
   if (error != NO_ERROR)
     {
       error = er_errid ();
