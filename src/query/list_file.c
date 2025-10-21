@@ -6576,7 +6576,7 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 	{
 	  list_id_p->type_list.domp[count] = reg_var_p->value.domain;
 	}
-
+#endif
       if (list_id_p->type_list.domp[count]->collation_flag != TP_DOMAIN_COLL_NORMAL)
 	{
 	  if (reg_var_p->value.domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
@@ -6595,7 +6595,6 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 
       count++;
     }
-#endif
 
   /* The number of columns should be same. */
   if (count != list_id_p->type_list.type_cnt)
