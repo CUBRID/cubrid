@@ -40,6 +40,7 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 #include "query_hash_join.h"
+#include "memoize.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -3725,6 +3726,12 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
     {
       qdump_print_access_spec_stats_text (fp, xasl_p->spec_list, indent);
       qdump_print_access_spec_stats_text (fp, xasl_p->merge_spec, indent);
+    }
+  if (xasl_p->memoize_storage)
+    {
+      fprintf (fp, "%*c", indent, ' ');
+      fprintf (fp, "MEMOIZE (size: %lu, enabled: %s)\n", xasl_p->memoize_storage->get_current_size (),
+	       xasl_p->memoize_storage->is_disabled ()? "false" : "true");
     }
 
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);

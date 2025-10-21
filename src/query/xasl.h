@@ -1036,6 +1036,10 @@ namespace parallel_query_execute
 {
   class query_executor;
 }
+namespace memoize
+{
+  class storage;
+}
 // *INDENT-ON*
 struct xasl_node
 {
@@ -1155,6 +1159,7 @@ struct xasl_node
   // *INDENT-OFF*
   parallel_query_execute::query_executor *px_executor;
   int executed_parallelism;	/* parallelism of the query */
+  memoize::storage *memoize_storage;
   // *INDENT-ON*
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };

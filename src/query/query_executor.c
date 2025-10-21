@@ -20,6 +20,7 @@
  * query_executor.c - Query evaluator module
  */
 
+#include "storage_common.h"
 #ident "$Id$"
 
 
@@ -82,6 +83,7 @@
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
 #include "query_hash_join.h"
+#include "memoize.hpp"
 
 #if SERVER_MODE && !WINDOWS
 #include "px_heap_scan_manager.hpp"
@@ -2238,6 +2240,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final)
       xasl->px_executor = NULL;
     }
 #endif // SERVER_MODE
+  if (xasl->memoize_storage)
+    {
+      clear_memoize_storage (thread_p, xasl);
+    }
   xasl->executed_parallelism = 0;
 
   /* clear the head node */
@@ -2746,7 +2752,10 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   assert (xasl->composite_lock.lockcomp.class_list == NULL);
   lock_abort_composite_lock (&xasl->composite_lock);
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-
+  if (xasl->memoize_storage)
+    {
+      clear_memoize_storage (thread_p, xasl);
+    }
   /* clear subquery's result-cache */
   if (xasl->sub_xasl_id)
     {
@@ -7933,6 +7942,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   DB_LOGICAL ev_res;
   int qualified;
   SCAN_OPERATION_TYPE scan_operation_type;
+  int memoize_err_code;
+  bool memoize_success = true, memoize_key_ended, memoize_put_success;
 
   /* check if further scan procedure are still active */
   if (xasl->scan_ptr && xasl->next_scan_on)
@@ -7948,6 +7959,35 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
   do
     {
+      if (xasl->memoize_storage)
+	{
+	  int memoize_err_code;
+	  bool memoize_success, memoize_ended;
+	  memoize_err_code = memoize_get (xasl, &memoize_success, &memoize_ended);
+	  if (memoize_err_code == ER_FAILED)
+	    {
+	      return S_ERROR;
+	    }
+	  if (memoize_success)
+	    {
+	      if (memoize_ended)
+		{
+		  if (xasl->curr_spec->s_id.direction == S_FORWARD)
+		    {
+		      xasl->curr_spec->s_id.position = S_AFTER;
+		    }
+		  else
+		    {
+		      xasl->curr_spec->s_id.position = S_BEFORE;
+		    }
+		  return S_END;
+		}
+	      else
+		{
+		  return S_SUCCESS;
+		}
+	    }
+	}
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
       if (sc_scan != S_SUCCESS)
 	{
@@ -8066,6 +8106,14 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
       if (qualified)
 	{
+	  if (xasl->memoize_storage)
+	    {
+	      memoize_err_code = memoize_put (xasl, &memoize_put_success);
+	      if (memoize_err_code == ER_FAILED)
+		{
+		  return S_ERROR;
+		}
+	    }
 	  if (!xasl->scan_ptr)
 	    {
 	      /* no scan procedure block */
@@ -8083,8 +8131,12 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		  return S_ERROR;
 		}
 
-	      xasl->next_scan_on = true;
+	      if (xasl->scan_ptr->memoize_storage)
+		{
+		  xasl->scan_ptr->memoize_storage->set_key_changed ();
+		}
 
+	      xasl->next_scan_on = true;
 	      /* execute following scan procedure */
 	      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
 	      if (xs_scan == S_END)
@@ -8978,6 +9030,10 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 			    }
 
 			  xasl->next_scan_on = true;
+			  if (xasl->scan_ptr->memoize_storage)
+			    {
+			      xasl->scan_ptr->memoize_storage->set_key_changed ();
+			    }
 
 
 			  while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, tplrec,
@@ -15261,6 +15317,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    {
 			      /* the instances are locked at select phase */
 			      p_class_instance_lock_info->instances_locked = true;
+			    }
+			}
+		      if (spec_level == 0 && level >= 1)
+			{
+			  if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
+			    {
+			      qexec_clear_mainblock_iterations (thread_p, xasl);
+			      GOTO_EXIT_ON_ERROR;
 			    }
 			}
 		    }
