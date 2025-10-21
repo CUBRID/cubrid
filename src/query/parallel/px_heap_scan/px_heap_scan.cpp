@@ -192,7 +192,6 @@ extern "C"
     using namespace parallel_heap_scan;
     int ret = NO_ERROR, n_user_pages = -1;
     int parallelism = num_parallel_threads;
-    HL_HEAPID orig_heap_id;
     assert (scan_type == S_PARALLEL_HEAP_SCAN);
 
     if (!HFID_IS_NULL (hfid))
@@ -353,12 +352,12 @@ namespace parallel_heap_scan
 	m_uses_xasl_clone = true;
       }
     m_input_handler = (input_handler_single_table *) db_private_alloc (m_thread_p, sizeof (input_handler_single_table));
-    m_input_handler = placement_new ((input_handler_single_table *) m_input_handler, &m_interrupt, &m_err_messages);
     if (m_input_handler == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	return ER_FAILED;
       }
+    m_input_handler = placement_new ((input_handler_single_table *) m_input_handler, &m_interrupt, &m_err_messages);
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	m_result_handler = (result_handler<RESULT_TYPE::MERGEABLE_LIST> *) db_private_alloc (m_thread_p,
@@ -575,6 +574,7 @@ namespace parallel_heap_scan
   template <RESULT_TYPE result_type>
   int manager<result_type>::end()
   {
+    int err_code = NO_ERROR;
     m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
     m_worker_manager->release_workers (m_parallelism);
     m_worker_manager = nullptr;
@@ -585,8 +585,8 @@ namespace parallel_heap_scan
 	    /* child thread */
 	    if (m_px_stats_initialized_by_me)
 	      {
-		assert (false);
 		perfmon_destroy_parallel_stats (m_thread_p);
+		err_code = ER_FAILED;
 	      }
 	    else
 	      {
@@ -609,7 +609,7 @@ namespace parallel_heap_scan
       }
     m_result_handler->read_finalize (m_thread_p);
 
-    return NO_ERROR;
+    return err_code;
   }
 
   template <RESULT_TYPE result_type>
