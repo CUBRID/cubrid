@@ -130,11 +130,10 @@ jobs:
                         else
                           echo "[debug] split tests for parallel execution"
                           circleci tests glob "\$glob_path" | grep -P '/cases/[^/]+\.sql$' \
-                            | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=name
-                          cat tc.list
+                            | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
                           echo "[debug] total testcases: \$(wc -l tc.list)"
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
+                          find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rvf
                         fi
 
                         echo "[debug] Run the tests"
