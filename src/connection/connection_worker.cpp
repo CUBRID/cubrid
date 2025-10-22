@@ -105,7 +105,8 @@ namespace cubconn
     m_core (core),
     m_stop (false),
     m_entry (nullptr),
-    m_index (index)
+    m_index (index),
+    m_timer_latency (timer_latency::NA)
   {
     std::size_t i;
 
@@ -590,9 +591,6 @@ retry:
       {
 	eventfds[1] = false;
 
-	/* default latency */
-	m_timer_latency_to_be = timer_latency::MEDIUM_LATENCY;
-
 	if (m_notification & static_cast<uint32_t> (notification_type::QUEUE))
 	  {
 	    m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
@@ -615,12 +613,6 @@ retry:
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_handler: eventfd_clear failed\n");
 	    return false;
-	  }
-
-	/* change the timer latency */
-	if (m_timer_latency != m_timer_latency_to_be)
-	  {
-	    this->eventfd_settimer (m_timerfd, m_timer_latency_to_be);
 	  }
       }
 
@@ -1445,6 +1437,7 @@ retry:
 	    er_log_conn (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
 	  }
+	m_timer_latency_to_be = timer_latency::MEDIUM_LATENCY;
 
 	for (i = 0; i < nfds; i++)
 	  {
@@ -1504,6 +1497,12 @@ retry:
 		er_log_conn (__FILE__, __LINE__, "connection_worker->run: eventfd_handler failed");
 		return false;
 	      }
+	  }
+
+	/* change the timer latency */
+	if (m_timer_latency != m_timer_latency_to_be)
+	  {
+	    this->eventfd_settimer (m_timerfd, m_timer_latency_to_be);
 	  }
       }
 
