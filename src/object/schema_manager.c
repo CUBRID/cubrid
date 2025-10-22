@@ -4275,7 +4275,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      return error;
 		    }
 
-		  // class_->stats is NULL if class doesn't have attributes.
+		  /* class_->stats is NULL if class doesn't have attributes. */
 		  if (class_->stats != NULL)
 		    {
 		      class_name = sm_ch_name ((MOBJ) class_);
@@ -4422,7 +4422,7 @@ sm_update_all_statistics (bool with_fullscan)
 		      return error;
 		    }
 
-		  // class_->stats is NULL if class doesn't have attributes.
+		  /* class_->stats is NULL if class doesn't have attributes. */
 		  if (class_->stats != NULL)
 		    {
 		      class_name = sm_ch_name ((MOBJ) class_);
