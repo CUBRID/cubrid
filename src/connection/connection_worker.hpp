@@ -70,6 +70,12 @@ namespace cubconn
 	HA = 0x2
       };
 
+      enum class timer_latency : uint32_t
+      {
+	LOW_LATENCY = static_cast<uint32_t> (1 * 1e5), /* 100 usec */
+	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9) /* 2 sec, default */
+      };
+
       enum class ignore_level : uint8_t
       {
 	DONT_IGNORE = 0,
@@ -185,10 +191,14 @@ namespace cubconn
 
       std::size_t m_index;
 
-      /* polling */
+      /* eventfds */
       cubsocket::epoll m_events;
+      /* event based */
       int m_eventfd;
+      /* timer based */
       int m_timerfd;
+      timer_latency m_timer_latency;
+      timer_latency m_timer_latency_to_be;
       /* purpose of timer notification */
       uint32_t m_notification;
 
@@ -231,6 +241,7 @@ namespace cubconn
       bool eventfd_clear (int fd);
 
       bool eventfd_settimer (int fd, uint32_t sec, uint64_t nsec);
+      bool eventfd_settimer (int fd, timer_latency latency);
 
       bool eventfd_handler (bool *eventfds);
 
