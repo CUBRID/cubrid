@@ -199,9 +199,10 @@ namespace cubconn
       /* timer based */
       int m_timerfd;
       timer_latency m_timer_latency;
-      timer_latency m_timer_latency_to_be;
       /* purpose of timer notification */
       uint32_t m_notification;
+
+      bool m_has_retry;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
