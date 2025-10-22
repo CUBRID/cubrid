@@ -126,8 +126,7 @@ namespace cubconn
       }
 
     m_notification = static_cast<uint32_t> (notification_type::HA);
-    if (!this->eventfd_settimer (m_timerfd, 0, 1 * 1e5))
-      //if (!this->eventfd_settimer (m_timerfd, 1 /* 1 sec */, 0))
+    if (!this->eventfd_settimer (m_timerfd, timer_latency::MEDIUM_LATENCY))
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to eventfd_settimer\n");
 	assert_release (false);
@@ -436,6 +435,7 @@ retry:
 
     /* rezily notified */
     m_notification |= static_cast<uint32_t> (notification_type::QUEUE);
+    m_timer_latency_to_be = timer_latency::LOW_LATENCY;
 
     return true;
   }
@@ -545,6 +545,26 @@ retry:
     return true;
   }
 
+  bool connection_worker::eventfd_settimer (int fd, timer_latency latency)
+  {
+    uint32_t sec, nsec;
+
+    if (m_timer_latency == latency)
+      {
+	/* no need to change */
+	return true;
+      }
+
+    sec = static_cast<uint32_t> (latency) / static_cast<uint32_t> (1e9);
+    nsec = static_cast<uint32_t> (latency) % static_cast<uint32_t> (1e9);
+    if (eventfd_settimer (fd, sec, nsec))
+      {
+	m_timer_latency = latency;
+	return true;
+      }
+    return false;
+  }
+
   bool connection_worker::eventfd_handler (bool *eventfds)
   {
     /* event fd */
@@ -570,6 +590,9 @@ retry:
       {
 	eventfds[1] = false;
 
+	/* default latency */
+	m_timer_latency_to_be = timer_latency::MEDIUM_LATENCY;
+
 	if (m_notification & static_cast<uint32_t> (notification_type::QUEUE))
 	  {
 	    m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
@@ -592,6 +615,12 @@ retry:
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_handler: eventfd_clear failed\n");
 	    return false;
+	  }
+
+	/* change the timer latency */
+	if (m_timer_latency != m_timer_latency_to_be)
+	  {
+	    this->eventfd_settimer (m_timerfd, m_timer_latency_to_be);
 	  }
       }
 
