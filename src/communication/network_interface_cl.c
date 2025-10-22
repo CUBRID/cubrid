@@ -81,6 +81,7 @@
 #include "message_catalog.h"
 #include "utility.h"
 #include "sp_constants.hpp"
+#include "locator_cl.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -113,6 +114,7 @@ static THREAD_ENTRY *enter_server (void);
 static void exit_server_no_thread_entry (void);
 static void exit_server (const THREAD_ENTRY & thread_ref);
 #endif // SERVER_MODE
+static int is_top_level_class (MOBJ mobj);
 
 #if defined (SA_MODE)
 //
@@ -5888,8 +5890,7 @@ end:
     }
 
   thread_p = enter_server ();
-  error =
-    xstats_update_statistics (thread_p, WS_OID (classop), with_fullscan, &class_attr_ndv);
+  error = xstats_update_statistics (thread_p, WS_OID (classop), with_fullscan, &class_attr_ndv);
   exit_server (*thread_p);
 
 end:
@@ -5900,6 +5901,19 @@ end:
 
   return error;
 #endif /* !CS_MODE */
+}
+
+static int
+is_top_level_class (MOBJ mobj)
+{
+  assert (mobj != NULL);
+
+  SM_CLASS *class_ = (SM_CLASS *) mobj;
+  bool is_class = class_->class_type == SM_CLASS_CT;
+  bool is_root_partition_class = (class_->partition == NULL ||
+				  class_->partition->class_partition_type == DB_PARTITIONED_CLASS);
+
+  return (is_class && is_root_partition_class);
 }
 
 /*
@@ -5914,80 +5928,28 @@ int
 stats_update_all_statistics (int with_fullscan)
 {
   int error = NO_ERROR;
-  const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
-    "union "
-    "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE class_name_val;
-  MOP class_mop;
-  const char *class_name = NULL;
+  MOP class_mop = NULL;
+  LIST_MOPS *lmops = NULL;
 
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-  db_make_null (&class_name_val);
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
+  lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
+  if (lmops == NULL)
     {
-      goto end;
+      return ER_FAILED;
     }
 
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
+  for (int i = 0; i < lmops->num; i++)
     {
-      goto end;
-    }
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-  db_make_null (&class_name_val);
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto end;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      goto end;
-    }
-
-  do
-    {
-      /* class_name */
-      error = db_query_get_tuple_value (query_result, 0, &class_name_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      class_name = db_get_string (&class_name_val);
-
-      class_mop = db_find_class (class_name);
-      if (class_mop == NULL)
-	{
-	  error = ER_FAILED;
-          db_value_clear (&class_name_val);
-	  goto end;
-	}
-
+      class_mop = lmops->mops[i];
       error = stats_update_statistics (class_mop, with_fullscan);
-      db_value_clear (&class_name_val);
       if (error != NO_ERROR)
 	{
-	  goto end;
+	  break;
 	}
     }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
 
-end:
-  if (query_result)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
+  locator_free_list_mops (lmops);
 
-  return (error == DB_CURSOR_END) ? NO_ERROR : error;
+  return error;
 }
 
 /*
