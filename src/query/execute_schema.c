@@ -89,16 +89,17 @@
 #define MAX_FUNCTION_EXPRESSION_STRING_LENGTH 1024
 
 /* Returns true if replication option is ON or not specified (default ON).
- * Use with table option node (tbl_opt_replication).
+ * Used during CREATE TABLE parsing to check table option node (tbl_opt_replication).
  */
-#define IS_REPLICATION_ON_OPT(_opt) \
+#define IS_CREATE_STMT_SET_REPL_OPTION(_opt) \
   ( (_opt) == NULL || (_opt)->info.table_option.val->info.value.data_value.i )
 
-/* Returns true if replication node value is ON or not specified (default ON).
- * Use with replication_node (tbl_opt_replication->info.table_option.val).
+/* Returns true if replication option is ON.
+ * Used during ALTER TABLE parsing to check replication option node (replication_node).
  */
-#define IS_REPLICATION_ON_VAL(_node) \
+#define IS_ALTER_STMT_SET_REPL_OPTION(_node) \
   ((_node)->info.value.data_value.i )
+
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -1314,14 +1315,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   vclass = dbt_finish_class (ctemplate);
 
-  // TODO add !HA_DISABELED()
-  if (ha_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
-    {
-      error = ER_HA_FK_CONSTRAINT_VIOLATION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0, "Replication option mismatch for foreign key in HA mode.");
-      return error;
-    }
-
   /* the dbt_finish_class() failed, the template was not freed */
   if (vclass == NULL)
     {
@@ -1332,6 +1325,13 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
+      return error;
+    }
+
+    if (!HA_DISABLED() && ha_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
+    {
+      error = ER_HA_FK_CONSTRAINT_VIOLATION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return error;
     }
 
@@ -8893,24 +8893,6 @@ ha_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
 }
 
 /*
- * has_replication_key_constraint() -
- *   return : true if the class has a UNIQUE constraint
- *   class_obj(in): class object pointer
- */
-bool
-has_replication_key_constraint (DB_OBJECT * class_obj)
-{
-  DB_CONSTRAINT *c = db_get_constraints (class_obj);
-
-  if (c == NULL)
-    {
-      return false;
-    }
-
-  return classobj_has_class_rk_constraint(c);
-}
-
-/*
  * do_create_entity() - Creates a new class/vclass
  *   return: Error code if the class/vclass is not created
  *   parser(in): Parser context
@@ -9292,13 +9274,22 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
 
       /*  
-       * Set the SM_CLASSFLAG_REPLICATION_DATA_OFF flag.  
+       * Set the SM_CLASSFLAG_DATA_REPLICATION_OFF flag.  
        * If the option is omitted, or if the "on|off" value is omitted,  
        * the default is set to "on".  
        */
-      if (!IS_REPLICATION_ON_OPT (tbl_opt_replication))
+      if (IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication))
 	{
-	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REPLICATION_DATA_OFF, TRUE);
+	  if (!HA_DISABLED () && !classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
+	    {
+	      error = ER_HA_REQUIRES_REPLICATION_KEY;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
+	      goto error_exit;
+	    }
+	}
+      else
+	{
+	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -9306,19 +9297,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  do_flush_class_mop = true;
 	}
-          else if (!HA_DISABLED () && !has_replication_key_constraint (class_obj))
-	{
-	  error = ER_HA_REQUIRES_REPLICATION_KEY;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
-	  goto error_exit;
-	}      
   
-        // TODO add !HA_DISABELED()
-        if (ha_fk_replication_violation (class_obj, IS_REPLICATION_ON_OPT (tbl_opt_replication)))
+        if (!HA_DISABLED() && ha_fk_replication_violation (class_obj, IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication)))
 	{
 	  error = ER_HA_FK_CONSTRAINT_VIOLATION;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
-		  "Replication option mismatch for foreign key in HA mode.");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  goto error_exit;
 	}
 
@@ -10741,7 +10724,7 @@ exit:
 }
 
 /*
- * handle_replication_option() - handle the replication option
+ * do_alter_change_replication() - handle the replication option
  *   return: Error code
  *   class_mop(in/out): Class MOP to apply the option
  *   replication_node(in): Parse tree node containing replication option
@@ -10763,10 +10746,8 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
   if (!HA_DISABLED ())
     {
       error = ER_REPLICATION_OPTION_CHANGE_IN_HA_MODE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0,
-	      "Changing the replication option of a class is not allowed in HA mode.");
-
-      return error;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
     }
 
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
@@ -10817,7 +10798,8 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
     }
 
   class_mop = ctemplate->op;
-  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_REPLICATION_DATA_OFF, !IS_REPLICATION_ON_VAL (replication_node));
+  error =
+    sm_set_class_flag (class_mop, SM_CLASSFLAG_DATA_REPLICATION_OFF, !IS_ALTER_STMT_SET_REPL_OPTION (replication_node));
   if (error != NO_ERROR)
     {
       error = er_errid ();

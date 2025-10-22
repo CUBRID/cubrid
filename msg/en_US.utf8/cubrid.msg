@@ -1461,9 +1461,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1367 DBLINK Transaction ABORTED: %1$s
 
-1368 A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode.
+1368 In HA mode, a replication key candidate (PRIMARY KEY or NOT NULL UNIQUE constraint) is required when creating a table. If no replication key candidate is defined, set the REPLICATION option to OFF.
 1369 Changing the replication option of a class is not allowed in HA mode.
-1370 Replication option mismatch for foreign key in HA mode.
+1370 In HA mode, the replication option of a table with a foreign key must match that of its referenced table.
 
 1371 Last Error
 

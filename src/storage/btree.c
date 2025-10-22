@@ -8290,7 +8290,7 @@ btree_get_rkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * rkey_btid)
 	  break;
 	}
 
-      if (or_is_replication_key_candidate (curr_idx))
+      if (or_is_replication_candidate_key (curr_idx))
 	{
 	  BTID_COPY (rkey_btid, &curr_idx->btid);
 	  break;

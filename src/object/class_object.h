@@ -309,7 +309,7 @@ typedef enum
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
   SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16,	/* reserved flag for supplemental log. */
-  SM_CLASSFLAG_REPLICATION_DATA_OFF = 32	/* disables replication of class data (schema still replicated) */
+  SM_CLASSFLAG_DATA_REPLICATION_OFF = 32	/* disables replication of class data (schema still replicated) */
 } SM_CLASS_FLAG;
 
 /*
@@ -965,7 +965,7 @@ extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CON
 
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
 extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints);
-bool classobj_has_class_rk_constraint(SM_CLASS_CONSTRAINT * constraints);
+extern bool classobj_has_class_repl_key_constraint (SM_CLASS_CONSTRAINT * constraints);
 extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
 extern bool classobj_has_function_constraint (SM_CONSTRAINT * constraints);
 extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid, char **shared_cons_name);

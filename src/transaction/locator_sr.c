@@ -8038,8 +8038,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        * Generates the replication log info. for data insert/delete
        * for the update cases, refer to locator_update_force()
        */
+      /*TODO: We need to review a method to record replication logs only when the replication key (RK) has already been determined, instead of checking all RK candidates and handling the replicated flag. 
+         Also, a comprehensive refactoring of replication-related operations and variables, including need_replication, is required(EPIC CBRD-26096). */
       if (need_replication && heap_is_replication_class (thread_p, class_oid) && !replicated
-	  && or_is_replication_key_candidate (index) && error_code == NO_ERROR
+	  && or_is_replication_candidate_key (index) && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
 	  error_code =
@@ -8270,7 +8272,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   HEAP_CACHE_ATTRINFO *old_attrinfo = NULL;
   int new_num_found, old_num_found;
   BTID new_btid, old_btid;
-  int pk_btid_index = -1;
+  int rk_btid_index = -1;
   DB_VALUE *new_key = NULL, *old_key = NULL;
   DB_VALUE *repl_old_key = NULL;
   DB_VALUE new_dbvalue, old_dbvalue;
@@ -8312,7 +8314,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
   int tran_index;
-  bool replicated = false;
 
   assert_release (class_oid != NULL);
   assert_release (!OID_ISNULL (class_oid));
@@ -8418,11 +8419,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   for (i = 0; i < num_btids; i++)
     {
       index = &(new_attrinfo->last_classrepr->indexes[i]);
-      if (pk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
-	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_key_candidate (index)
-	  && !replicated && log_does_allow_replication () == true)
+      if (rk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
+	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_candidate_key (index)
+	  && log_does_allow_replication () == true)
 	{
-	  pk_btid_index = i;
+	  rk_btid_index = i;
 	}
 
       /* check for specified update attributes */
@@ -8728,7 +8729,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 	      tdes = LOG_FIND_TDES (tran_index);
 
-	      if (pk_btid_index == i)
+	      if (rk_btid_index == i)
 		{
 		  /*
 		   * save lsa before it is overwritten by FK action. No need
@@ -8745,7 +8746,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		  goto error;
 		}
 
-	      if (pk_btid_index == i)
+	      if (rk_btid_index == i)
 		{
 		  /* restore repl_insert_lsa */
 		  assert (LSA_ISNULL (&tdes->repl_insert_lsa));
@@ -8754,7 +8755,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	    }
 	}
 
-      if (pk_btid_index == i && repl_old_key == NULL)
+      if (rk_btid_index == i && repl_old_key == NULL)
 	{
 	  repl_old_key = pr_make_ext_value ();
 	  pr_clone_value (old_key, repl_old_key);
@@ -8772,7 +8773,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
     }
 
-  if (pk_btid_index != -1)
+  if (rk_btid_index != -1)
     {
       assert (repl_info != NULL);
 
@@ -8780,7 +8781,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  key_domain = NULL;
 	  repl_old_key =
-	    heap_attrvalue_get_key (thread_p, pk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
+	    heap_attrvalue_get_key (thread_p, rk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
 				    aligned_oldbuf, NULL, &key_domain, oid, false);
 	  if (repl_old_key == NULL)
 	    {
@@ -8809,7 +8810,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  replicated = true;
+	  
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
@@ -8820,7 +8821,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  replicated = true;
+
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
 	}
