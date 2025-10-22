@@ -130,7 +130,7 @@ jobs:
                         else
                           echo "[debug] split tests for parallel execution"
                           echo \$glob_path
-                          circleci tests glob "\$glob_path" | grep -P '/cases/[^/]+\.sql$' \
+                          circleci tests glob "\$glob_path" \
                             | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
                           cat tc.list
                           cat tc.list | wc -l
