@@ -30,7 +30,7 @@ namespace memoize
   using allocator = cubmem::private_allocator<T>;
 
   template <typename T>
-  using pvector = std::vector<T, allocator<T>>;
+  using pvector = std::vector<T, allocator<T>>; /* private-memory vector */
 
   enum class result_code
   {
@@ -49,7 +49,8 @@ namespace memoize
       ~key ();
 
       pvector<DB_VALUE> m_values;
-      allocator<DB_VALUE> *m_allocator_p;
+      size_t m_size;
+      size_t get_size ();
 
       struct hash
       {
@@ -68,17 +69,11 @@ namespace memoize
       value (allocator<DB_VALUE> *allocator_p);
       ~value ();
 
-      pvector<DB_VALUE> m_values;
-      allocator<DB_VALUE> *m_allocator_p;
-  };
+      size_t get_size ();
 
-  using iter = std::unordered_multimap<
-	       key *,
-	       value *,
-	       key::hash,
-	       key::equal,
-	       cubmem::private_allocator<std::pair<key *const, value *>>
-	       >::iterator;
+      pvector<DB_VALUE> m_values;
+      size_t m_size;
+  };
 
   constexpr size_t hash_entry_sz = sizeof (std::pair<key *const, value *>) + sizeof (void *)*3;
 
@@ -118,9 +113,8 @@ namespace memoize
 
       allocator<DB_VALUE *> m_dbval_p_allocator;
       allocator<DB_VALUE> m_dbval_allocator;
+      allocator<value *> m_value_allocator;
       allocator<std::pair<key *const, value *>> m_key_value_allocator;
-      const size_t m_1key_sz;
-      const size_t m_1value_sz;
       size_t m_key_sz;
       size_t m_value_sz;
       size_t m_hash_sz;
@@ -128,9 +122,8 @@ namespace memoize
       pvector<DB_VALUE *> m_keyptr_src;
       std::unordered_multimap<key *, value *, key::hash, key::equal, cubmem::private_allocator<std::pair<key *const, value *>>>
       m_key_value_map;
+      pvector<value *> m_current_value_list;
       bool disabled;
-      iter cur_iter;
-      iter cur_end;
       bool has_range;
       bool key_changed;
       bool current_key_joined;

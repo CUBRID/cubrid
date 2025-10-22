@@ -31,6 +31,74 @@
 
 namespace memoize
 {
+  struct possible_check
+  {
+    bool operator() (ACCESS_SPEC_TYPE *spec, VAL_LIST *val_list) const noexcept
+    {
+      OID cls_oid;
+      switch (spec->type)
+	{
+	case TARGET_CLASS:
+	{
+	  cls_oid = ACCESS_SPEC_CLS_OID (spec);
+	  if (oid_is_system_class (&cls_oid) || mvcc_is_mvcc_disabled_class (&cls_oid))
+	    {
+	      return false;
+	    }
+	  break;
+	}
+	case TARGET_LIST:
+	  break;
+	case TARGET_CLASS_ATTR:
+	case TARGET_SET:
+	case TARGET_JSON_TABLE:
+	case TARGET_METHOD:
+	case TARGET_REGUVAL_LIST:
+	case TARGET_SHOWSTMT:
+	case TARGET_DBLINK:
+	  return false;
+	  break;
+	default:
+	  assert (0);
+	  return false;
+	}
+
+      switch (spec->access)
+	{
+	case ACCESS_METHOD_SEQUENTIAL:
+	case ACCESS_METHOD_INDEX:
+	  break;
+	case ACCESS_METHOD_JSON_TABLE:
+	case ACCESS_METHOD_SCHEMA:
+	case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
+	case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
+	case ACCESS_METHOD_INDEX_KEY_INFO:
+	case ACCESS_METHOD_INDEX_NODE_INFO:
+	case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+	  return false;
+	  break;
+	default:
+	  assert (0);
+	  return false;
+	}
+
+      for (QPROC_DB_VALUE_LIST it = val_list->valp; it!=nullptr; it=it->next)
+	{
+	  switch (it->val->domain.general_info.type)
+	    {
+	    case DB_TYPE_SET:
+	    case DB_TYPE_MULTISET:
+	    case DB_TYPE_SEQUENCE:
+	      return false;
+	      break;
+	    default:
+	      break;
+	    }
+	}
+
+      return true;
+    }
+  } const checker;
   struct key_counter
   {
     int operator() (ACCESS_SPEC_TYPE *spec) const noexcept
@@ -181,7 +249,7 @@ namespace memoize
     {
       return (*this) (sp_node->args);
     }
-  } key_counter;
+  } const key_counter;
 
   struct key_ptr_maker
   {
@@ -337,11 +405,11 @@ namespace memoize
     {
       return (*this) (sp_node->args, key_ptr_src);
     }
-  } key_ptr_maker;
+  } const key_ptr_maker;
 
   key::key (allocator<DB_VALUE> *allocator_p)
-    : m_values (*allocator_p),
-      m_allocator_p (allocator_p)
+    : m_values (*allocator_p)
+    , m_size (0)
   {
   }
   key::~key()
@@ -351,12 +419,28 @@ namespace memoize
 	pr_clear_value (&dbval);
       }
     m_values.clear();
-    m_allocator_p = NULL;
+    m_size = 0;
+  }
+
+  size_t key::get_size ()
+  {
+    if (m_size != 0)
+      {
+	return m_size;
+      }
+    size_t dbval_sz = 0;
+    for (auto &dbval : m_values)
+      {
+	dbval_sz += pr_value_mem_size (&dbval);
+	dbval_sz += sizeof (DB_VALUE);
+      }
+    m_size = sizeof (key) + dbval_sz;
+    return m_size;
   }
 
   value::value (allocator<DB_VALUE> *allocator_p)
     : m_values (*allocator_p),
-      m_allocator_p (allocator_p)
+      m_size (0)
   {
   }
 
@@ -367,7 +451,23 @@ namespace memoize
 	pr_clear_value (&dbval);
       }
     m_values.clear();
-    m_allocator_p = NULL;
+    m_size = 0;
+  }
+
+  size_t value::get_size ()
+  {
+    if (m_size != 0)
+      {
+	return m_size;
+      }
+    size_t dbval_sz = 0;
+    for (auto &dbval : m_values)
+      {
+	dbval_sz += pr_value_mem_size (&dbval);
+	dbval_sz += sizeof (DB_VALUE);
+      }
+    m_size = sizeof (value) + dbval_sz;
+    return m_size;
   }
 
   size_t key::hash::operator() (const key *k) const
@@ -398,10 +498,17 @@ namespace memoize
 				 VAL_LIST *val_list)
   {
     int key_cnt, value_cnt;
-
-
+    if (!checker (spec, val_list))
+      {
+	return nullptr;
+      }
     value_cnt = val_list->val_cnt;
     key_cnt = key_counter (spec);
+
+    if (key_cnt == 0 || value_cnt == 0)
+      {
+	return nullptr;
+      }
 
     storage *storage_p = (storage *) db_private_alloc (thread_p, sizeof (storage));
 
@@ -425,22 +532,21 @@ namespace memoize
     , m_val_list (val_list)
     , m_dbval_p_allocator (thread_p)
     , m_dbval_allocator (thread_p)
+    , m_value_allocator (thread_p)
     , m_key_value_allocator (thread_p)
-    , m_1key_sz (sizeof (key) + sizeof (DB_VALUE) * m_key_cnt)
-    , m_1value_sz (sizeof (value) + sizeof (DB_VALUE) * m_value_cnt)
     , m_key_sz (0)
     , m_value_sz (0)
     , m_hash_sz (0)
     , m_last_key (nullptr)
     , m_keyptr_src (m_dbval_p_allocator)
     , m_key_value_map (m_key_value_allocator)
+    , m_current_value_list (m_value_allocator)
     , disabled (false)
-    , cur_iter ()
-    , cur_end ()
     , has_range (false)
     , key_changed (false)
     , current_key_joined (false)
   {
+    m_current_value_list.reserve (value_cnt);
   }
 
   storage::~storage()
@@ -486,31 +592,32 @@ namespace memoize
 	  {
 	    m_last_key->~key();
 	    db_private_free (m_thread_p, m_last_key);
-	    m_key_sz -= m_1key_sz;
+	    m_current_value_list.clear();
 	  }
 	m_last_key = get_key();
 	key_changed = false;
 
 	auto range = m_key_value_map.equal_range (m_last_key);
-	cur_iter = range.first;
-	cur_end = range.second;
 
-	if (cur_iter == cur_end)
+	if (range.first == range.second)
 	  {
 	    has_range = false;
 	    miss++;
 	    return result_code::NOT_FOUND;
 	  }
-	v = cur_iter->second;
+	for (auto it = range.first; it != range.second; it++)
+	  {
+	    m_current_value_list.push_back (it->second);
+	  }
+	v = m_current_value_list.back();
+	m_current_value_list.pop_back();
 	if (v == nullptr)
 	  {
 	    hit++;
-	    cur_iter++;
 	    return result_code::ENDED;
 	  }
 	hit++;
 	has_range = true;
-	cur_iter++;
 	return set_value (v);
       }
     if (m_last_key == nullptr)
@@ -520,13 +627,13 @@ namespace memoize
 
     if (has_range)
       {
-	if (cur_iter == cur_end)
+	if (m_current_value_list.empty())
 	  {
 	    has_range = false;
 	    return result_code::ENDED;
 	  }
-	v = cur_iter->second;
-	cur_iter++;
+	v = m_current_value_list.back();
+	m_current_value_list.pop_back();
 	return set_value (v);
       }
     else
@@ -546,7 +653,9 @@ namespace memoize
 	  }
 	current_key_joined = true;
 	assert (m_last_key != nullptr);
-	m_key_value_map.insert ({get_key(), get_value()});
+	key *k = get_key();
+	m_key_sz += k->get_size();
+	m_key_value_map.insert ({k, get_value()});
 	m_hash_sz += hash_entry_sz;
 	return result_code::SUCCESS;
       }
@@ -586,8 +695,8 @@ namespace memoize
       {
 	return nullptr;
       }
-    m_key_sz += m_1key_sz;
     k = placement_new (k,&m_dbval_allocator);
+    k->m_values.reserve (m_keyptr_src.size());
     for (auto dbvalp : m_keyptr_src)
       {
 	DB_VALUE v;
@@ -604,14 +713,15 @@ namespace memoize
       {
 	return nullptr;
       }
-    m_value_sz += m_1value_sz;
     v = placement_new (v,&m_dbval_allocator);
+    v->m_values.reserve (m_val_list->val_cnt);
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next)
       {
 	DB_VALUE dbv;
 	pr_clone_value (it->val, &dbv);
 	v->m_values.push_back (dbv);
       }
+    m_value_sz += v->get_size();
     return v;
   }
 
@@ -638,12 +748,12 @@ extern "C"
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
   {
     int storage_size; /* system parameter need*/
-    storage_size = 512*1024*1024;
-    xasl->memoize_storage = storage::new_storage (thread_p, storage_size, xasl->spec_list, xasl->val_list);
-    if (!xasl->memoize_storage)
+    storage_size = 16*1024;
+    if (xasl->memoize_storage != nullptr)
       {
-	return ER_FAILED;
+	clear_memoize_storage (thread_p, xasl);
       }
+    xasl->memoize_storage = storage::new_storage (thread_p, storage_size, xasl->spec_list, xasl->val_list);
     return NO_ERROR;
   }
 
@@ -661,6 +771,7 @@ extern "C"
   {
     result_code ret;
     *is_ended = false;
+    assert (xasl->memoize_storage != nullptr);
     ret = xasl->memoize_storage->get ();
     if (ret == result_code::SUCCESS)
       {
@@ -695,6 +806,7 @@ extern "C"
   int memoize_put (xasl_node *xasl, bool *success)
   {
     *success = true;
+    assert (xasl->memoize_storage != nullptr);
     result_code ret = xasl->memoize_storage->put();
     if (ret == result_code::SUCCESS)
       {

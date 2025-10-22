@@ -8012,7 +8012,9 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 			{
 			  xasl->next_scan_on = false;
 			  qualified = false;
+
 			  memoize_err_code = memoize_get (xasl, &memoize_success, &memoize_ended);
+
 			  if (memoize_err_code == ER_FAILED)
 			    {
 			      return S_ERROR;
@@ -8537,6 +8539,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	}
     }
 #endif
+  if (xasl->memoize_storage)
+    {
+      clear_memoize_storage (thread_p, xasl);
+      new_memoize_storage (thread_p, xasl);
+    }
 
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
