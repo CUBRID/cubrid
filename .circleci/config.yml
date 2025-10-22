@@ -129,8 +129,8 @@ jobs:
                           find \$base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
                         else
                           echo "[debug] split tests for parallel execution"
-                          testcases=\$(circleci tests glob "\$glob_path")
-                          echo "\$testcases" | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+                          circleci tests glob "\$glob_path" | tr ' ' '\n' \
+                            | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
                           echo "[debug] total testcases: \$(wc -l tc.list)"
                           echo "[debug] Remove tests that are not in the list"
                           find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
