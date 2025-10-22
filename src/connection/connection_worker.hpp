@@ -72,6 +72,7 @@ namespace cubconn
 
       enum class timer_latency : uint32_t
       {
+	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint32_t> (1 * 1e5), /* 100 usec */
 	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9) /* 2 sec, default */
       };
