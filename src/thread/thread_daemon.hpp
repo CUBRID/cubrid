@@ -132,7 +132,6 @@ namespace cubthread
 
       waiter m_waiter;        // thread waiter
       looper m_looper;        // thread looper
-      std::function<void (void)> m_func_on_stop;  // callback function to interrupt execution on stop request
 
       std::thread m_thread;   // the actual daemon thread
 
@@ -151,7 +150,6 @@ namespace cubthread
 		  task<Context> *exec, const char *name /* = "" */)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
-    , m_func_on_stop ()
     , m_thread ()
     , m_name (name)
     , m_stats (daemon::create_statset ())
@@ -171,12 +169,6 @@ namespace cubthread
     // create execution context
     Context &context = context_manager_arg->create_context ();
 
-    // now that we have access to context we can set the callback function on stop
-    daemon_arg->m_func_on_stop = [&context_manager_arg, &context]()
-    {
-      context_manager_arg->stop_execution (context);
-    };
-
     daemon_arg->register_stat_start ();
 
     while (!daemon_arg->m_looper.is_stopped ())
@@ -189,6 +181,8 @@ namespace cubthread
 	daemon_arg->pause ();
 	daemon_arg->register_stat_pause ();
       }
+
+    context_manager_arg->stop_execution (context);
 
     // retire execution context
     context_manager_arg->retire_context (context);
