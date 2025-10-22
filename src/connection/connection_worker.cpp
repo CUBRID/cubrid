@@ -126,7 +126,8 @@ namespace cubconn
       }
 
     m_notification = static_cast<uint32_t> (notification_type::HA);
-    if (!this->eventfd_settimer (m_timerfd, 1 /* 1 sec */, 0))
+    if (!this->eventfd_settimer (m_timerfd, 0, 1 * 1e6))
+      //if (!this->eventfd_settimer (m_timerfd, 1 /* 1 sec */, 0))
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to eventfd_settimer\n");
 	assert_release (false);
