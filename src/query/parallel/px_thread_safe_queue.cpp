@@ -163,8 +163,8 @@ namespace parallel_query
   template<typename T>
   void thread_safe_queue<T>::push_last()
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
     m_push_completed.store (true, std::memory_order_release);
+    std::lock_guard<std::mutex> lock (m_mutex);
     m_not_empty.notify_all();
   }
 
