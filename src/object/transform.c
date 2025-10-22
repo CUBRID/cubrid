@@ -293,7 +293,7 @@ static CT_ATTR ct_class_atts[] = {
   {"inst_meth_count", NULL_ATTRID, DB_TYPE_INTEGER},
   {"class_meth_count", NULL_ATTRID, DB_TYPE_INTEGER},
   {"class_attr_count", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"flags", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"is_system_class", NULL_ATTRID, DB_TYPE_INTEGER},
   {"class_type", NULL_ATTRID, DB_TYPE_INTEGER},
   {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
   {"collation_id", NULL_ATTRID, DB_TYPE_INTEGER},
