@@ -10605,8 +10605,8 @@ debug_atomic_print ()
   fprintf (fp, "***************************************************\n");
   fprintf (fp, "***************************************************\n");
   fprintf (fp, "%s\n\t read(H/I)=%" PRId64 "/%" PRId64 "\n"
-	   "\t length(Nh/Ni, Hs/Hi, Ih/Ii)=%" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 "\n"
-	   "\t writh(Nh/Ni, Hs/Hi, Ih/Ii)=%" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 "\n",
+	   "\t length(Nh/Ni, Hh/Hi, Ih/Ii)=%" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 "\n"
+	   "\t write(Nh/Ni, Hh/Hi, Ih/Ii)=%" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 "\n",
 	   name, a_rh, a_ri,
 	   a_ln[0], a_ln[1], a_lh[0], a_lh[1], a_li[0], a_li[1], a_wn[0], a_wn[1], a_wh[0], a_wh[1], a_wi[0], a_wi[1]);
   fprintf (fp, "***************************************************\n");
