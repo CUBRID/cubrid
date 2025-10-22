@@ -106,7 +106,7 @@ jobs:
                             ;;
                           sql)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/cases/*.sql"
                             ;;
                           shell)
                             base_dir="cubrid-testcases-private-ex"
@@ -115,7 +115,7 @@ jobs:
                             ;;
                           *)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/cases/*.sql"
                             ;;
                         esac
 
