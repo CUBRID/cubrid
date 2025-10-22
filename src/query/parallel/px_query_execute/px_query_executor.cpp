@@ -187,8 +187,22 @@ namespace parallel_query_execute
 		    is_interrupt = logtb_is_interrupted_tran (thread_p, true, &continue_checking, thread_p->tran_index);
 		  }
 	      }
-	    cuberr::context::get_thread_local_context ().get_current_error_level ().swap (*m_error_messages.m_error_messages.at (
-			0));
+	    std::lock_guard<std::mutex> lock (m_error_messages.m_mutex);
+	    bool found_error = false;
+	    for (auto *msg : m_error_messages.m_error_messages)
+	      {
+		if (msg->err_id != NO_ERROR && msg->err_id != ER_INTERRUPTED)
+		  {
+		    cuberr::context::get_thread_local_context ().get_current_error_level ().swap (*msg);
+		    found_error = true;
+		    break;
+		  }
+	      }
+	    if (!found_error)
+	      {
+		cuberr::context::get_thread_local_context ().get_current_error_level ().swap (*m_error_messages.m_error_messages.at (
+			    0));
+	      }
 	    err_code = ER_FAILED;
 	  }
 	  break;
