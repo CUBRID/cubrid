@@ -11182,17 +11182,20 @@ db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_date
 {
   time_t sec;
   struct tm tm_val;
-  DB_DATETIME datetime;
+  DB_DATETIME datetime = (DB_DATETIME) { 0, 0 };
 
   sec = (time_t) * db_get_timestamp (src_timestamp);
-  if (localtime_r (&sec, &tm_val) == NULL)
+  if (sec != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSTEM_DATE, 0);
-      return ER_SYSTEM_DATE;
-    }
+      if (localtime_r (&sec, &tm_val) == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SYSTEM_DATE, 0);
+	  return ER_SYSTEM_DATE;
+	}
 
-  db_datetime_encode (&datetime, tm_val.tm_mon + 1, tm_val.tm_mday, tm_val.tm_year + 1900,
-		      tm_val.tm_hour, tm_val.tm_min, tm_val.tm_sec, 0);
+      db_datetime_encode (&datetime, tm_val.tm_mon + 1, tm_val.tm_mday,
+			  tm_val.tm_year + 1900, tm_val.tm_hour, tm_val.tm_min, tm_val.tm_sec, 0);
+    }
   db_make_datetime (result_datetime, &datetime);
 
   return NO_ERROR;
