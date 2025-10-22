@@ -76,7 +76,12 @@
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
 
-#define DB_TRIED_COMPRESSION(value) (db_get_compressed_size(value) != DB_NOT_YET_COMPRESSED)
+// ctshim       
+//#define DB_TRIED_COMPRESSION(value) (db_get_compressed_size(value) != DB_NOT_YET_COMPRESSED)
+#define DB_NEED_COMPRESSION_N(value) (db_get_compressed_size(value) == DB_NOT_YET_COMPRESSED)
+#define DB_NEED_COMPRESSION_H(value) (db_get_compressed_size(value) == DB_NOT_YET_COMPRESSED_H)
+#define DB_NEED_COMPRESSION_I(value) (db_get_compressed_size(value) == DB_NOT_YET_COMPRESSED_I)
+#define DB_TRIED_COMPRESSION(value) (!DB_NEED_COMPRESSION_N((value)) && !DB_NEED_COMPRESSION_H((value)) && !DB_NEED_COMPRESSION_I((value)))
 
   /* Macros from dbval.h */
 

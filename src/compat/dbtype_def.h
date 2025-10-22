@@ -647,6 +647,8 @@ extern "C"
 
 /* Defines the state of a value not being yet prompted for a compression process. */
 #define DB_NOT_YET_COMPRESSED 0
+#define DB_NOT_YET_COMPRESSED_H (-2)	// ctshim
+#define DB_NOT_YET_COMPRESSED_I (-3)	// ctshim
 
 #define DB_INT16_MIN   (-(DB_INT16_MAX)-1)
 #define DB_INT16_MAX   0x7FFF

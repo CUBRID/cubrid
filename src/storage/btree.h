@@ -856,8 +856,10 @@ extern void btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap, i
 extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *datap, int data_size, BTID_INT * btid_int,
 					      BTREE_OBJECT_INFO * first_version, BTREE_OBJECT_INFO * second_version,
 					      OR_BUF * key_buf);
+#if !defined (NDEBUG)
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
+#endif
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
 				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
 
