@@ -1328,7 +1328,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-    if (!HA_DISABLED() && ha_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
+  if (!HA_DISABLED () && ha_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
     {
       error = ER_HA_FK_CONSTRAINT_VIOLATION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -9297,8 +9297,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  do_flush_class_mop = true;
 	}
-  
-        if (!HA_DISABLED() && ha_fk_replication_violation (class_obj, IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication)))
+
+      if (!HA_DISABLED ()
+	  && ha_fk_replication_violation (class_obj, IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication)))
 	{
 	  error = ER_HA_FK_CONSTRAINT_VIOLATION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
