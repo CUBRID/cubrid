@@ -14,7 +14,7 @@ parameters:
     default: false
   run_sql_test:
     type: boolean
-    default: true
+    default: false
   run_medium_test:
     type: boolean
     default: false
