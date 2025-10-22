@@ -990,8 +990,7 @@ numeric_overflow (DB_C_NUMERIC arg, int exp)
 {
   unsigned char narg[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
   DB_C_NUMERIC full_pow10 = numeric_get_pow_of_10 (exp);
-  unsigned char tmp_arg[DB_NUMERIC_BUF_SIZE];
-  memcpy (tmp_arg, full_pow10 + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE), DB_NUMERIC_BUF_SIZE);
+  unsigned char *tmp_arg = full_pow10 + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE);
 
   if (numeric_is_negative (arg))
     {
@@ -1163,10 +1162,6 @@ fp_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, uint8_t * ca
     {
       carry = 0;
       inner_min = last - outer_idx;
-      if (inner_min < 0)
-	{
-	  inner_min = 0;
-	}
 
       for (inner_idx = last; inner_idx >= inner_min; inner_idx--)
 	{
