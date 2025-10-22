@@ -106,7 +106,8 @@ namespace cubconn
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
-    m_timer_latency (timer_latency::NA)
+    m_timer_latency (timer_latency::NA),
+    m_has_retry (false)
   {
     std::size_t i;
 
@@ -435,10 +436,9 @@ retry:
     this->enqueue (queue_type::LAZY, std::move (request));
 
     /* rezily notified */
+    m_has_retry = true;
     m_notification |= static_cast<uint32_t> (notification_type::QUEUE);
-    m_timer_latency_to_be = timer_latency::LOW_LATENCY;
-
-    return true;
+    return this->eventfd_settimer (m_timerfd, timer_latency::LOW_LATENCY);
   }
 
   void connection_worker::ha_close_all_connections ()
@@ -589,6 +589,7 @@ retry:
     /* timer fd */
     if (eventfds[1])
       {
+	_er_log_debug (ARG_FILE_LINE, "[timerfd] notified!\n");
 	eventfds[1] = false;
 
 	if (m_notification & static_cast<uint32_t> (notification_type::QUEUE))
@@ -613,6 +614,11 @@ retry:
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_handler: eventfd_clear failed\n");
 	    return false;
+	  }
+
+	if (!m_has_retry)
+	  {
+	    this->eventfd_settimer (m_timerfd, timer_latency::MEDIUM_LATENCY);
 	  }
       }
 
@@ -1437,8 +1443,8 @@ retry:
 	    er_log_conn (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
 	  }
-	m_timer_latency_to_be = timer_latency::MEDIUM_LATENCY;
 
+	m_has_retry = false;
 	for (i = 0; i < nfds; i++)
 	  {
 	    assert (events[i].data.ptr);
@@ -1497,12 +1503,6 @@ retry:
 		er_log_conn (__FILE__, __LINE__, "connection_worker->run: eventfd_handler failed");
 		return false;
 	      }
-	  }
-
-	/* change the timer latency */
-	if (m_timer_latency != m_timer_latency_to_be)
-	  {
-	    this->eventfd_settimer (m_timerfd, m_timer_latency_to_be);
 	  }
       }
 
