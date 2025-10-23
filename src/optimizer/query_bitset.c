@@ -39,8 +39,6 @@
 #define bitset_malloc(env, size) malloc(size)
 #define bitset_free(ptr)         free_and_init(ptr)
 
-#define BITSET_IS_VALID(p)    ((p)->nwords > 0)
-
 
 /*
  * The number of one bits in a four-bit nibble.
@@ -134,6 +132,32 @@ bitset_assign (BITSET * dst, const BITSET * src)
 
   memcpy (dst->setp, src->setp, NBYTES (src->nwords));
   memset (dst->setp + src->nwords, 0, NBYTES (dst->nwords - src->nwords));
+}
+
+void
+bitset_exchange (BITSET * v1, BITSET * v2)
+{
+  BITSET tmp;
+  assert (BITSET_IS_VALID (v1));
+  assert (BITSET_IS_VALID (v2));
+
+  tmp = *v1;
+  if (v1->setp == v1->set.word)
+    {
+      tmp.setp = tmp.set.word;
+    }
+
+  *v1 = *v2;
+  if (v2->setp == v2->set.word)
+    {
+      v1->setp = v1->set.word;
+    }
+
+  *v2 = tmp;
+  if (tmp.setp == tmp.set.word)
+    {
+      v2->setp = v2->set.word;
+    }
 }
 
 /*
@@ -606,8 +630,11 @@ bitset_delset (BITSET * s)
 {
   if (s->setp != s->set.word)
     {
-      bitset_free (s->setp);
-      assert (s->setp == NULL);
+      if (s->setp)
+	{
+	  bitset_free (s->setp);
+	  assert (s->setp == NULL);
+	}
     }
 
 #if !defined(NDEBUG)
