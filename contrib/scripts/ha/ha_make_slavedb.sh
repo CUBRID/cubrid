@@ -253,25 +253,21 @@ function scp_cubrid_from()
 	scp -P $ssh_port $scp_option -r $cubrid_user@$host:$source $target
 }
 
-function get_output_from_replica
+function get_output_from_replica()
 {
 	if [ $# -ne 1 ]; then
 		error "Invalid get_output_from_replica call. $*"
 	fi
-
-	local remote_output_path=$1
+	
+	output=$1
+	
+	rm -rf $output
+	mkdir $output
 	
 	for replica_host in ${replica_hosts[@]}; do
-		local local_output_file="$ha_temp_home/${replica_host}.output"
-		# Ensure any previous local output file is removed before copying
-		rm -f "$local_output_file"
-		scp_from_expect "$cubrid_user" "$server_password" "$remote_output_path" "$replica_host" "$local_output_file"
-		if [ ! -f "$local_output_file" ]; then
-			error "Failed to copy output file from $replica_host. SCP command might have failed." true
-		fi
+		scp_from_expect "$cubrid_user" "$server_password" $output $replica_host $output/$replica_host 
 	done
 }
-
 
 function check_version()
 {
