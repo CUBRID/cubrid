@@ -4443,7 +4443,7 @@ sm_update_all_statistics (bool with_fullscan)
 /*
  * sm_update_all_catalog_statistics()
  *   return: NO_ERROR on success, non-zero for ERROR
- *   with_fullscan(in): true if WITH FULLSCAN
+ *   with_fullscan(in): true iff WITH FULLSCAN
  */
 
 int
@@ -4475,7 +4475,7 @@ sm_update_all_catalog_statistics (bool with_fullscan)
  * sm_update_catalog_statistics()
  *   return: NO_ERROR on success, non-zero for ERROR
  *   class_name(in):
- *   with_fullscan(in): true if WITH FULLSCAN
+ *   with_fullscan(in): true iff WITH FULLSCAN
  */
 
 int
