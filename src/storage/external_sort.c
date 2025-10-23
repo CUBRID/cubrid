@@ -4473,6 +4473,12 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 
 	  /* init file info */
 	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
+	  if (half_files == 1)
+	    {
+	      /* skip last one file */
+	      continue;
+	    }
+
 	  px_sort_param[i].px_result_file_idx = 0;
 	  px_sort_param[i].half_files = half_files;
 	  px_sort_param[i].tot_tempfiles = half_files * 2;
