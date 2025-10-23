@@ -349,7 +349,7 @@ function init_conf()
 {
 	# init path
 	backup_dest_path=${backup_dest_path:-$ha_temp_home/backup}
-	mkdir -p $ha_temp_home
+	mkdir -p $ha_temp_home $backup_dest_path
 	check_backup_dest_path
  	repl_log_home=${repl_log_home%%/}
 	backup_dest_path=${backup_dest_path%%/}
