@@ -17,18 +17,19 @@
  */
 
 #include "memoize.hpp"
+
 #include "error_code.h"
+#include "memory_hash.h"
 #include "object_primitive.h"
 #include "query_evaluator.h"
 #include "regu_var.hpp"
 #include "system_parameter.h"
-#include "memory_hash.h"
-
-#include "memory_wrapper.hpp"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "xasl.h"
-#include <pthread.h>
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace memoize
 {
@@ -51,7 +52,7 @@ namespace memoize
 	  return false;
 	}
 
-      if (xasl->bptr_list || xasl->fptr_list || xasl->connect_by_ptr)
+      if (xasl->bptr_list || xasl->fptr_list)
 	{
 	  return false;
 	}
