@@ -82,10 +82,17 @@ public class SUConnection {
 
         int responseCode = unpacker.unpackInt();
         if (responseCode != 0) {
+            int errCode;
             ErrorInfo errorInfo = new ErrorInfo(unpacker);
-            String errorMsg = errorInfo.errorString;
+            switch (errorInfo.errorCode) {
+                case CUBRIDServerSideJDBCErrorCode.ER_SP_INVALID_CURSOR:
+                    errCode = errorInfo.errorCode;
+                    break;
+                default:
+                    errCode = CUBRIDServerSideJDBCErrorCode.ER_DBMS;
+            }
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
-                    CUBRIDServerSideJDBCErrorCode.ER_DBMS, errorMsg, null);
+                    errCode, errorInfo.errorString, null);
         }
 
         return unpacker;

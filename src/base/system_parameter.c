@@ -741,6 +741,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
+#define PRM_NAME_PAGE_LATCH_TIMEOUT "page_latch_timeout"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -960,7 +962,6 @@ typedef enum
 #define VACUUM_LOG_BLOCK_PAGES_DEFAULT 0
 #define VACUUM_MAX_WORKER_COUNT 0
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
-
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5099,6 +5100,18 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PAGE_LATCH_TIMEOUT,
+   PRM_NAME_PAGE_LATCH_TIMEOUT,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 300}},
+   {false, {.i = 300}},
+   {false, {.i = 3000}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
