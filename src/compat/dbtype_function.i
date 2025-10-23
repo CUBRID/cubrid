@@ -1008,7 +1008,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->data.ch.medium.size = size;
   value->data.ch.medium.buf = str;
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
   value->domain.general_info.is_null = ((size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 					? 1 : DB_IS_NULL (value));
@@ -1744,7 +1744,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str
   value->data.ch.info.is_max_string = false;
   value->data.ch.info.compressed_need_clear = false;
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
