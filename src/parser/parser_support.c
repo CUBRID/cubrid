@@ -8027,7 +8027,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                 "WHERE "
                         "[a].[object_of] = [c].[class_of] "
                         "AND [a].[object_type] = 0 "
-                        "AND MOD ([c].[flags], 2) = 0 "
+                        "AND MOD ([c].[is_system_class], 2) = 0 "
                         "AND ( "
                         "[a].[grantee].[name] = '%1$s' "
                         "OR "
