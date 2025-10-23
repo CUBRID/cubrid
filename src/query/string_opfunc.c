@@ -25225,7 +25225,6 @@ db_cfile_length (const DB_VALUE * src_value, DB_VALUE * result_value)
   return error_status;
 }
 
-#include "stack_dump.h"
 /*
  * db_bit_to_blob - convert bit string value to blob value
  *   return: NO_ERROR or error code
@@ -25252,15 +25251,7 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
     {
       // TODO: This part should be revised when the TOAST structure is introduced in the future.
       bit_data = db_get_bit (src_value, &bit_length);
-      printf ("---------------%s---------------\n", __func__);
 
-      er_dump_call_stack (stdout);
-      printf ("src : ");
-      db_value_fprint (stdout, src_value);
-      db_make_blob (result_value, DB_MAX_LOB_PRECISION, bit_data, bit_length);
-      printf ("\nresult : ");
-      db_value_fprint (stdout, result_value);
-      printf ("\n--------------------\n");
     }
   else
     {
