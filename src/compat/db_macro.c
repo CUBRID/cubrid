@@ -524,7 +524,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -541,7 +541,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -691,7 +691,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
@@ -708,7 +708,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -846,7 +846,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -860,7 +860,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
