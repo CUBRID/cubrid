@@ -81,7 +81,8 @@ sm_define_view_class_spec (void)
 	    /* CT_PARTITION_NAME */
 	    "ELSE NVL ((SELECT 'YES' FROM [%s] AS [p] WHERE [p].[class_of] = [c] AND [p].[pname] IS NULL), 'NO') "
 	    "END AS [partitioned], "
-	  "CASE WHEN MOD ([c].[flags] / 8, 2) = 1 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
+          /* SM_CLASSFLAG_REUSE_OID */
+	  "CASE WHEN ([c].[flags] & %d) <> 0 THEN 'YES' ELSE 'NO' END AS [is_reuse_oid_class], "
 	  "[coll].[coll_name] AS [collation], "
 	  "[c].[comment] AS [comment], "
           "[c].[created_time] AS [created_time], "
@@ -133,6 +134,7 @@ sm_define_view_class_spec (void)
 		")"
 	    ")",
 	CT_PARTITION_NAME,
+        SM_CLASSFLAG_REUSE_OID,
 	CT_CLASS_NAME,
 	CT_COLLATION_NAME,
 	AU_USER_CLASS_NAME,
