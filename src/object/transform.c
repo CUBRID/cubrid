@@ -299,6 +299,7 @@ static CT_ATTR ct_class_atts[] = {
   {"collation_id", NULL_ATTRID, DB_TYPE_INTEGER},
   {"tde_algorithm", NULL_ATTRID, DB_TYPE_INTEGER},
   {"statistics_strategy", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"flags", NULL_ATTRID, DB_TYPE_INTEGER},
   {"created_time", NULL_ATTRID, DB_TYPE_DATETIME},
   {"updated_time", NULL_ATTRID, DB_TYPE_DATETIME},
   {"checked_time", NULL_ATTRID, DB_TYPE_DATETIME},

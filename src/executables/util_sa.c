@@ -3265,7 +3265,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
       assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
       owner_name = db_get_string (&owner_name_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s\n", class_name);
 	  fprintf (f_stmt, "ALTER TABLE [%s] COLLATE utf8_bin;\n", class_name);
@@ -3439,7 +3439,7 @@ synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bo
       assert (DB_VALUE_TYPE (&index_name_val) == DB_TYPE_STRING);
       index_name = db_get_string (&index_name_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s | %s\n", class_name, index_name);
 	  fprintf (f_stmt, "ALTER TABLE [%s] DROP FOREIGN KEY [%s];\n", class_name, index_name);
@@ -3714,7 +3714,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 		  goto exit_on_error;
 		}
 
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	      if (is_system_class)
 		{
 		  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", class_name);
 		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
@@ -3729,7 +3729,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	    }
 	  else
 	    {
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	      if (is_system_class)
 		{
 		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
 			   attr_data_type);
@@ -3745,7 +3745,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	{
 	  assert (class_type == SM_VCLASS_CT);
 
-	  if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	  if (is_system_class)
 	    {
 	      fprintf (f_stmt, "DROP VIEW [%s];\n", class_name);
 	    }
@@ -3967,7 +3967,7 @@ synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
       need_check = db_get_int (&value);
       db_value_clear (&value);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s | %s\n", view_name, query_spec);
 
@@ -4088,7 +4088,6 @@ synccoll_check_triggers (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool *
 
   do
     {
-      int is_system_class = 0;
       const char *trigger_name = NULL;
       const char *owner_name = NULL;
       const char *trigger_cond = NULL;
@@ -4300,7 +4299,7 @@ synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt
       assert (DB_VALUE_TYPE (&index_func_expr_val) == DB_TYPE_STRING);
       index_func_expr = db_get_string (&index_func_expr_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s | %s | %s\n", class_name, index_name, index_func_expr);
 	  fprintf (f_stmt, "ALTER TABLE [%s] DROP INDEX [%s];\n", class_name, index_name);

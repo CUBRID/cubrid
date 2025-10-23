@@ -427,6 +427,7 @@ namespace cubschema
       {"collation_id", "integer"},
       {"tde_algorithm", "integer"},
       {"statistics_strategy", "integer"},
+      {"flags", "integer"},
       {"sub_classes", format_sequence (CT_CLASS_NAME)},
       {"super_classes", format_sequence (CT_CLASS_NAME)},
       {"inst_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
