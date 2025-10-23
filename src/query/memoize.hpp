@@ -22,6 +22,7 @@
 #include "thread_compat.hpp"
 #include "memory_private_allocator.hpp"
 #include "xasl.h"
+#include "xasl_predicate.hpp"
 #include <unordered_map>
 
 namespace memoize
@@ -82,9 +83,8 @@ namespace memoize
     public:
       storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list);
       ~storage();
-      static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, ACCESS_SPEC_TYPE *spec,
-				   VAL_LIST *val_list);
-      void init (ACCESS_SPEC_TYPE *spec);
+      static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl);
+      void init (pvector<DB_VALUE *> &key_ptr_src);
       result_code get ();
       result_code put();
       result_code put_nullptr();

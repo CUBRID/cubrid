@@ -7705,6 +7705,11 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  SCAN_CODE s_parts = qexec_init_next_partition (thread_p, xasl->curr_spec, xasl);
 	  if (s_parts == S_SUCCESS)
 	    {
+	      if (xasl->memoize_storage)
+		{
+		  clear_memoize_storage (thread_p, xasl);
+		  new_memoize_storage (thread_p, xasl);
+		}
 	      /* successfully moved to the next partition */
 	      continue;
 	    }
@@ -8539,11 +8544,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	}
     }
 #endif
-  if (xasl->memoize_storage)
-    {
-      clear_memoize_storage (thread_p, xasl);
-      new_memoize_storage (thread_p, xasl);
-    }
 
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);

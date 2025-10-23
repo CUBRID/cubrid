@@ -19,6 +19,7 @@
 #include "memoize.hpp"
 #include "error_code.h"
 #include "object_primitive.h"
+#include "query_evaluator.h"
 #include "regu_var.hpp"
 #include "system_parameter.h"
 #include "memory_hash.h"
@@ -33,9 +34,28 @@ namespace memoize
 {
   struct possible_check
   {
-    bool operator() (ACCESS_SPEC_TYPE *spec, VAL_LIST *val_list) const noexcept
+    bool operator() (xasl_node *xasl, int level = 0) const noexcept
     {
       OID cls_oid;
+      ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
+      VAL_LIST *val_list = xasl->val_list;
+      bool subquery_result = true;
+
+      if (spec == nullptr || val_list == nullptr || val_list->val_cnt == 0)
+	{
+	  return false;
+	}
+
+      if (spec->next != nullptr)
+	{
+	  return false;
+	}
+
+      if (xasl->bptr_list || xasl->fptr_list || xasl->connect_by_ptr)
+	{
+	  return false;
+	}
+
       switch (spec->type)
 	{
 	case TARGET_CLASS:
@@ -96,261 +116,381 @@ namespace memoize
 	    }
 	}
 
+      if (xasl->dptr_list)
+	{
+	  for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
+	    {
+	      if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+		{
+		  return false;
+		}
+	      subquery_result = (*this) (dptr, level + 1);
+	      if (!subquery_result)
+		{
+		  return false;
+		}
+	    }
+	}
+
+      if (level >= 1)
+	{
+	  if (xasl->aptr_list)
+	    {
+	      for (XASL_NODE *aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
+		{
+		  subquery_result = (*this) (aptr, level + 1);
+		  if (!subquery_result)
+		    {
+		      return false;
+		    }
+		}
+	    }
+	}
+
       return true;
     }
   } const checker;
-  struct key_counter
-  {
-    int operator() (ACCESS_SPEC_TYPE *spec) const noexcept
-    {
-      int key_cnt = 0;
-      if (spec->where_key)
-	{
-	  key_cnt += (*this) (spec->where_key);
-	}
-      if (spec->where_pred)
-	{
-	  key_cnt += (*this) (spec->where_pred);
-	}
-      if (spec->where_range)
-	{
-	  key_cnt += (*this) (spec->where_range);
-	}
-      return key_cnt;
-    }
-    int operator() (cubxasl::pred_expr *pred_expr) const noexcept
-    {
-      if (pred_expr == NULL)
-	{
-	  return 0;
-	}
-      switch (pred_expr->type)
-	{
-	case T_PRED:
-	  return (*this) (&pred_expr->pe.m_pred);
-	case T_EVAL_TERM:
-	  return (*this) (&pred_expr->pe.m_eval_term);
-	case T_NOT_TERM:
-	  return (*this) (pred_expr->pe.m_not_term);
-	}
-      return 0;
-    }
-    int operator() (cubxasl::pred *pred) const noexcept
-    {
-      return (*this) (pred->lhs) + (*this) (pred->rhs);
-    }
-    int operator() (cubxasl::eval_term *eval_term) const noexcept
-    {
-      switch (eval_term->et_type)
-	{
-	case T_COMP_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_comp);
-	case T_ALSM_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_alsm);
-	case T_LIKE_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_like);
-	case T_RLIKE_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_rlike);
-	}
-      return 0;
-    }
-    int operator() (cubxasl::comp_eval_term *comp_eval_term) const noexcept
-    {
-      return (*this) (comp_eval_term->lhs) + (*this) (comp_eval_term->rhs);
-    }
-    int operator() (cubxasl::alsm_eval_term *alsm_eval_term) const noexcept
-    {
-      return (*this) (alsm_eval_term->elem) + (*this) (alsm_eval_term->elemset);
-    }
-    int operator() (cubxasl::like_eval_term *like_eval_term) const noexcept
-    {
-      return (*this) (like_eval_term->src) + (*this) (like_eval_term->pattern) + (*this) (like_eval_term->esc_char);
-    }
-    int operator() (cubxasl::rlike_eval_term *rlike_eval_term) const noexcept
-    {
-      return (*this) (rlike_eval_term->src) + (*this) (rlike_eval_term->pattern) + (*this) (rlike_eval_term->case_sensitive);
-    }
-    int operator() (regu_variable_node *regu_var) const noexcept
-    {
-      if (regu_var == NULL)
-	{
-	  return 0;
-	}
-      switch (regu_var->type)
-	{
-	case TYPE_CONSTANT:
-	  return 1;
-	  break;
-	case TYPE_INARITH:
-	case TYPE_OUTARITH:
-	  return (*this) (regu_var->value.arithptr);
-	  break;
-	case TYPE_FUNC:
-	  return (*this) (regu_var->value.funcp);
-	  break;
-	case TYPE_REGUVAL_LIST:
-	  return (*this) (regu_var->value.reguval_list);
-	  break;
-	case TYPE_REGU_VAR_LIST:
-	  return (*this) (regu_var->value.regu_var_list);
-	  break;
-	case TYPE_SP:
-	  return (*this) (regu_var->value.sp_ptr);
-	  break;
-	case TYPE_DBVAL:
-	case TYPE_ORDERBY_NUM:
-	case TYPE_ATTR_ID:
-	case TYPE_CLASS_ATTR_ID:
-	case TYPE_SHARED_ATTR_ID:
-	case TYPE_POSITION:
-	case TYPE_LIST_ID:
-	case TYPE_POS_VALUE:
-	case TYPE_OID:
-	case TYPE_CLASSOID:
-	  return 0;
-	  break;
-	default:
-	  assert (false);
-	  return 0;
-	  break;
-	}
-      return 0;
-    }
-    int operator() (ARITH_TYPE *arith) const noexcept
-    {
-      return (*this) (arith->leftptr) + (*this) (arith->rightptr) + (*this) (arith->thirdptr) + (*this) (arith->pred);
-    }
-    int operator() (REGU_VARIABLE_LIST regu_var_list) const noexcept
-    {
-      int key_cnt = 0;
-      while (regu_var_list != NULL)
-	{
-	  key_cnt += (*this) (&regu_var_list->value);
-	  regu_var_list = regu_var_list->next;
-	}
-      return key_cnt;
-    }
-    int operator() (REGU_VALUE_LIST *regu_value_list) const noexcept
-    {
-      int key_cnt = 0;
-      REGU_VALUE_ITEM *regu_value_item = regu_value_list->regu_list;
-      while (regu_value_item != NULL)
-	{
-	  key_cnt += (*this) (regu_value_item->value);
-	  regu_value_item = regu_value_item->next;
-	}
-      return key_cnt;
-    }
-    int operator() (struct function_node *function_node) const noexcept
-    {
-      return (*this) (function_node->operand);
-    }
-    int operator() (cubxasl::sp_node *sp_node) const noexcept
-    {
-      return (*this) (sp_node->args);
-    }
-  } const key_counter;
 
-  struct key_ptr_maker
+  template <TARGET_TYPE target_type>
+  struct key_maker
   {
-    int operator() (ACCESS_SPEC_TYPE *spec, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    int operator() (THREAD_ENTRY *thread_p, xasl_node *xasl,
+		    pvector<DB_VALUE *> &key_ptr_src) const noexcept
     {
-      int key_cnt = 0;
+      allocator<REGU_VARIABLE *> vector_allocator (thread_p);
+      pvector<REGU_VARIABLE *> const_regu_var_vector (vector_allocator);
+      ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
+      PRED_EXPR *if_pred = xasl->if_pred;
+      PRED_EXPR *after_join_pred = xasl->after_join_pred;
       if (spec->where_key)
 	{
-	  key_cnt += (*this) (spec->where_key, key_ptr_src);
+	  (*this) (spec->where_key, const_regu_var_vector);
 	}
       if (spec->where_pred)
 	{
-	  key_cnt += (*this) (spec->where_pred, key_ptr_src);
+	  (*this) (spec->where_pred, const_regu_var_vector);
 	}
       if (spec->where_range)
 	{
-	  key_cnt += (*this) (spec->where_range, key_ptr_src);
+	  (*this) (spec->where_range, const_regu_var_vector);
 	}
-      return key_cnt;
+      if (if_pred)
+	{
+	  (*this) (if_pred, const_regu_var_vector);
+	}
+      if (after_join_pred)
+	{
+	  (*this) (after_join_pred, const_regu_var_vector);
+	}
+      if (xasl->dptr_list)
+	{
+	  for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
+	    {
+	      (*this) (thread_p, dptr, const_regu_var_vector);
+	    }
+	}
+      if constexpr (target_type == TARGET_LIST)
+	{
+	  REGU_VARIABLE_LIST pred = spec->s.list_node.list_regu_list_pred, rest = spec->s.list_node.list_regu_list_rest;
+	  while (pred != NULL)
+	    {
+	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+					   const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == pred->value.vfetch_to;
+	      }), const_regu_var_vector.end());
+	      pred = pred->next;
+	    }
+	  while (rest != NULL)
+	    {
+	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+					   const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == rest->value.vfetch_to;
+	      }), const_regu_var_vector.end());
+	      rest = rest->next;
+	    }
+	}
+      if constexpr (target_type == TARGET_CLASS)
+	{
+	  REGU_VARIABLE_LIST pred = spec->s.cls_node.cls_regu_list_pred, rest = spec->s.cls_node.cls_regu_list_rest,
+			     range = spec->s.cls_node.cls_regu_list_range, key = spec->s.cls_node.cls_regu_list_key;
+	  while (pred != NULL)
+	    {
+	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+					   const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == pred->value.vfetch_to;
+	      }), const_regu_var_vector.end());
+	      pred = pred->next;
+	    }
+	  while (rest != NULL)
+	    {
+	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+					   const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == rest->value.vfetch_to;
+	      }), const_regu_var_vector.end());
+	      rest = rest->next;
+	    }
+	  while (range != NULL)
+	    {
+	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+					   const_regu_var_vector.end(), [range] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == range->value.vfetch_to;
+	      }), const_regu_var_vector.end());
+	      range = range->next;
+	    }
+	  while (key != NULL)
+	    {
+	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+					   const_regu_var_vector.end(), [key] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == key->value.vfetch_to;
+	      }), const_regu_var_vector.end());
+	      key = key->next;
+	    }
+	}
+      for (auto &regu_var : const_regu_var_vector)
+	{
+	  key_ptr_src.push_back (regu_var->value.dbvalptr);
+	}
+      return key_ptr_src.size();
     }
-    int operator() (cubxasl::pred_expr *pred_expr, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+
+    void operator() (THREAD_ENTRY *thread_p, xasl_node *subquery,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+    {
+      if (subquery == NULL)
+	{
+	  return;
+	}
+      allocator<REGU_VARIABLE *> vector_allocator (thread_p);
+      pvector<REGU_VARIABLE *> subquery_const_regu_var_vector (vector_allocator);
+      ACCESS_SPEC_TYPE *spec = subquery->curr_spec ? subquery->curr_spec : subquery->spec_list;
+      PRED_EXPR *if_pred = subquery->if_pred;
+      PRED_EXPR *after_join_pred = subquery->after_join_pred;
+      if (spec->where_key)
+	{
+	  (*this) (spec->where_key, subquery_const_regu_var_vector);
+	}
+      if (spec->where_pred)
+	{
+	  (*this) (spec->where_pred, subquery_const_regu_var_vector);
+	}
+      if (spec->where_range)
+	{
+	  (*this) (spec->where_range, subquery_const_regu_var_vector);
+	}
+      if (if_pred)
+	{
+	  (*this) (if_pred, subquery_const_regu_var_vector);
+	}
+      if (after_join_pred)
+	{
+	  (*this) (after_join_pred, subquery_const_regu_var_vector);
+	}
+      if (subquery->dptr_list)
+	{
+	  for (XASL_NODE *dptr = subquery->dptr_list; dptr != NULL; dptr = dptr->next)
+	    {
+	      (*this) (thread_p, dptr, subquery_const_regu_var_vector);
+	    }
+	}
+      if (subquery->aptr_list)
+	{
+	  for (XASL_NODE *aptr = subquery->aptr_list; aptr != NULL; aptr = aptr->next)
+	    {
+	      (*this) (thread_p, aptr, subquery_const_regu_var_vector);
+	    }
+	}
+      if (subquery->scan_ptr)
+	{
+
+	  (*this) (thread_p, subquery->scan_ptr, subquery_const_regu_var_vector);
+
+	}
+      if (subquery->outptr_list)
+	{
+	  (*this) (subquery->outptr_list->valptrp, subquery_const_regu_var_vector);
+	}
+      if constexpr (target_type == TARGET_LIST)
+	{
+	  REGU_VARIABLE_LIST pred = spec->s.list_node.list_regu_list_pred, rest = spec->s.list_node.list_regu_list_rest;
+	  while (pred != NULL)
+	    {
+	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+						    subquery_const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == pred->value.vfetch_to;
+	      }), subquery_const_regu_var_vector.end());
+	      pred = pred->next;
+	    }
+	  while (rest != NULL)
+	    {
+	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+						    subquery_const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == rest->value.vfetch_to;
+	      }), subquery_const_regu_var_vector.end());
+	      rest = rest->next;
+	    }
+	}
+      if constexpr (target_type == TARGET_CLASS)
+	{
+	  REGU_VARIABLE_LIST pred = spec->s.cls_node.cls_regu_list_pred, rest = spec->s.cls_node.cls_regu_list_rest,
+			     range = spec->s.cls_node.cls_regu_list_range, key = spec->s.cls_node.cls_regu_list_key;
+	  while (pred != NULL)
+	    {
+	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+						    subquery_const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == pred->value.vfetch_to;
+	      }), subquery_const_regu_var_vector.end());
+	      pred = pred->next;
+	    }
+	  while (rest != NULL)
+	    {
+	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+						    subquery_const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == rest->value.vfetch_to;
+	      }), subquery_const_regu_var_vector.end());
+	      rest = rest->next;
+	    }
+	  while (range != NULL)
+	    {
+	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+						    subquery_const_regu_var_vector.end(), [range] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == range->value.vfetch_to;
+	      }), subquery_const_regu_var_vector.end());
+	      range = range->next;
+	    }
+	  while (key != NULL)
+	    {
+	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+						    subquery_const_regu_var_vector.end(), [key] (regu_variable_node *regu_var)
+	      {
+		return regu_var->value.dbvalptr == key->value.vfetch_to;
+	      }), subquery_const_regu_var_vector.end());
+	      key = key->next;
+	    }
+	}
+
+      for (auto &regu_var : subquery_const_regu_var_vector)
+	{
+	  const_regu_var_vector.push_back (regu_var);
+	}
+    }
+
+    void operator() (cubxasl::pred_expr *pred_expr,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       if (pred_expr == NULL)
 	{
-	  return 0;
+	  return;
 	}
       switch (pred_expr->type)
 	{
 	case T_PRED:
-	  return (*this) (&pred_expr->pe.m_pred, key_ptr_src);
+	  (*this) (&pred_expr->pe.m_pred, const_regu_var_vector);
+	  break;
 	case T_EVAL_TERM:
-	  return (*this) (&pred_expr->pe.m_eval_term, key_ptr_src);
+	  (*this) (&pred_expr->pe.m_eval_term, const_regu_var_vector);
+	  break;
 	case T_NOT_TERM:
-	  return (*this) (pred_expr->pe.m_not_term, key_ptr_src);
+	  (*this) (pred_expr->pe.m_not_term, const_regu_var_vector);
+	  break;
 	}
-      return 0;
+      return;
     }
-    int operator() (cubxasl::pred *pred, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (cubxasl::pred *pred,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (pred->lhs, key_ptr_src) + (*this) (pred->rhs, key_ptr_src);
+      (*this) (pred->lhs, const_regu_var_vector);
+      (*this) (pred->rhs, const_regu_var_vector);
     }
-    int operator() (cubxasl::eval_term *eval_term, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (cubxasl::eval_term *eval_term,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       switch (eval_term->et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_comp, key_ptr_src);
+	  (*this) (&eval_term->et.et_comp, const_regu_var_vector);
+	  break;
 	case T_ALSM_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_alsm, key_ptr_src);
+	  (*this) (&eval_term->et.et_alsm, const_regu_var_vector);
+	  break;
 	case T_LIKE_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_like, key_ptr_src);
+	  (*this) (&eval_term->et.et_like, const_regu_var_vector);
+	  break;
 	case T_RLIKE_EVAL_TERM:
-	  return (*this) (&eval_term->et.et_rlike, key_ptr_src);
+	  (*this) (&eval_term->et.et_rlike, const_regu_var_vector);
+	  break;
 	}
-      return 0;
+      return;
     }
-    int operator() (cubxasl::comp_eval_term *comp_eval_term, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (cubxasl::comp_eval_term *comp_eval_term,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (comp_eval_term->lhs, key_ptr_src) + (*this) (comp_eval_term->rhs, key_ptr_src);
+      (*this) (comp_eval_term->lhs, const_regu_var_vector);
+      (*this) (comp_eval_term->rhs, const_regu_var_vector);
     }
-    int operator() (cubxasl::alsm_eval_term *alsm_eval_term, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (cubxasl::alsm_eval_term *alsm_eval_term,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (alsm_eval_term->elem, key_ptr_src) + (*this) (alsm_eval_term->elemset, key_ptr_src);
+      (*this) (alsm_eval_term->elem, const_regu_var_vector);
+      (*this) (alsm_eval_term->elemset, const_regu_var_vector);
     }
-    int operator() (cubxasl::like_eval_term *like_eval_term, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (cubxasl::like_eval_term *like_eval_term,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (like_eval_term->src, key_ptr_src) + (*this) (like_eval_term->pattern,
-	     key_ptr_src) + (*this) (like_eval_term->esc_char, key_ptr_src);
+      (*this) (like_eval_term->src, const_regu_var_vector);
+      (*this) (like_eval_term->pattern, const_regu_var_vector);
+      (*this) (like_eval_term->esc_char, const_regu_var_vector);
     }
-    int operator() (cubxasl::rlike_eval_term *rlike_eval_term, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (cubxasl::rlike_eval_term *rlike_eval_term,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (rlike_eval_term->src, key_ptr_src) + (*this) (rlike_eval_term->pattern,
-	     key_ptr_src) + (*this) (rlike_eval_term->case_sensitive, key_ptr_src);
+      (*this) (rlike_eval_term->src, const_regu_var_vector);
+      (*this) (rlike_eval_term->pattern, const_regu_var_vector);
+      (*this) (rlike_eval_term->case_sensitive, const_regu_var_vector);
     }
-    int operator() (regu_variable_node *regu_var, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (regu_variable_node *regu_var,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       if (regu_var == NULL)
 	{
-	  return 0;
+	  return;
 	}
       switch (regu_var->type)
 	{
 	case TYPE_CONSTANT:
-	  key_ptr_src.push_back (regu_var->value.dbvalptr);
-	  return 1;
+	  const_regu_var_vector.push_back (regu_var);
+	  return;
 	  break;
 	case TYPE_INARITH:
 	case TYPE_OUTARITH:
-	  return (*this) (regu_var->value.arithptr, key_ptr_src);
+	  (*this) (regu_var->value.arithptr, const_regu_var_vector);
+	  return;
 	  break;
 	case TYPE_FUNC:
-	  return (*this) (regu_var->value.funcp, key_ptr_src);
+	  (*this) (regu_var->value.funcp, const_regu_var_vector);
+	  return;
 	  break;
 	case TYPE_REGUVAL_LIST:
-	  return (*this) (regu_var->value.reguval_list, key_ptr_src);
+	  (*this) (regu_var->value.reguval_list, const_regu_var_vector);
+	  return;
 	  break;
 	case TYPE_REGU_VAR_LIST:
-	  return (*this) (regu_var->value.regu_var_list, key_ptr_src);
+	  (*this) (regu_var->value.regu_var_list, const_regu_var_vector);
+	  return;
 	  break;
 	case TYPE_SP:
-	  return (*this) (regu_var->value.sp_ptr, key_ptr_src);
+	  (*this) (regu_var->value.sp_ptr, const_regu_var_vector);
+	  return;
 	  break;
 	case TYPE_DBVAL:
 	case TYPE_ORDERBY_NUM:
@@ -362,50 +502,60 @@ namespace memoize
 	case TYPE_POS_VALUE:
 	case TYPE_OID:
 	case TYPE_CLASSOID:
-	  return 0;
+	  return;
 	  break;
 	default:
 	  assert (false);
-	  return 0;
+	  return;
 	  break;
 	}
-      return 0;
+      return;
     }
-    int operator() (ARITH_TYPE *arith, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (ARITH_TYPE *arith,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (arith->leftptr, key_ptr_src) + (*this) (arith->rightptr, key_ptr_src) + (*this) (arith->thirdptr,
-	     key_ptr_src) + (*this) (arith->pred, key_ptr_src);
+      (*this) (arith->leftptr, const_regu_var_vector);
+      (*this) (arith->rightptr, const_regu_var_vector);
+      (*this) (arith->thirdptr, const_regu_var_vector);
+      (*this) (arith->pred, const_regu_var_vector);
+      return;
     }
-    int operator() (REGU_VARIABLE_LIST regu_var_list, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (REGU_VARIABLE_LIST regu_var_list,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      int key_cnt = 0;
       while (regu_var_list != NULL)
 	{
-	  key_cnt += (*this) (&regu_var_list->value, key_ptr_src);
+	  (*this) (&regu_var_list->value, const_regu_var_vector);
 	  regu_var_list = regu_var_list->next;
 	}
-      return key_cnt;
+      return;
     }
-    int operator() (REGU_VALUE_LIST *regu_value_list, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (REGU_VALUE_LIST *regu_value_list,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      int key_cnt = 0;
       REGU_VALUE_ITEM *regu_value_item = regu_value_list->regu_list;
       while (regu_value_item != NULL)
 	{
-	  key_cnt += (*this) (regu_value_item->value, key_ptr_src);
+	  (*this) (regu_value_item->value, const_regu_var_vector);
 	  regu_value_item = regu_value_item->next;
 	}
-      return key_cnt;
+      return;
     }
-    int operator() (struct function_node *function_node, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (struct function_node *function_node,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (function_node->operand, key_ptr_src);
+      (*this) (function_node->operand, const_regu_var_vector);
+      return;
     }
-    int operator() (cubxasl::sp_node *sp_node, pvector<DB_VALUE *> &key_ptr_src) const noexcept
+    void operator() (cubxasl::sp_node *sp_node,
+		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
-      return (*this) (sp_node->args, key_ptr_src);
+      (*this) (sp_node->args, const_regu_var_vector);
+      return;
     }
-  } const key_ptr_maker;
+  };
+  key_maker<TARGET_CLASS> const cls_key_maker;
+  key_maker<TARGET_LIST> const list_key_maker;
 
   key::key (allocator<DB_VALUE> *allocator_p)
     : m_values (*allocator_p)
@@ -494,16 +644,31 @@ namespace memoize
     return true;
   }
 
-  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, ACCESS_SPEC_TYPE *spec,
-				 VAL_LIST *val_list)
+  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl)
   {
+    ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
+    VAL_LIST *val_list = xasl->val_list;
     int key_cnt, value_cnt;
-    if (!checker (spec, val_list))
+    allocator<DB_VALUE *> vector_allocator (thread_p);
+    pvector<DB_VALUE *> key_ptr_src (vector_allocator);
+    if (!checker (xasl))
       {
 	return nullptr;
       }
     value_cnt = val_list->val_cnt;
-    key_cnt = key_counter (spec);
+    if (spec->type == TARGET_CLASS)
+      {
+	key_cnt = cls_key_maker (thread_p, xasl, key_ptr_src);
+      }
+    else if (spec->type == TARGET_LIST)
+      {
+	key_cnt = list_key_maker (thread_p, xasl, key_ptr_src);
+      }
+    else
+      {
+	assert (false);
+	return nullptr;
+      }
 
     if (key_cnt == 0 || value_cnt == 0)
       {
@@ -517,7 +682,7 @@ namespace memoize
 	return NULL;
       }
     storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list);
-    storage_p->init (spec);
+    storage_p->init (key_ptr_src);
 
     return storage_p;
   }
@@ -571,10 +736,12 @@ namespace memoize
     m_key_value_map.clear();
   }
 
-  void storage::init (ACCESS_SPEC_TYPE *spec)
+  void storage::init (pvector<DB_VALUE *> &arg_key_ptr_src)
   {
-    int ret = key_ptr_maker (spec, m_keyptr_src);
-    assert (ret == m_key_cnt);
+    for (auto &dbval : arg_key_ptr_src)
+      {
+	m_keyptr_src.push_back (dbval);
+      }
   }
 
   result_code storage::get ()
@@ -748,12 +915,12 @@ extern "C"
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
   {
     int storage_size; /* system parameter need*/
-    storage_size = 16*1024;
+    storage_size = 2*1024*1024;
     if (xasl->memoize_storage != nullptr)
       {
 	clear_memoize_storage (thread_p, xasl);
       }
-    xasl->memoize_storage = storage::new_storage (thread_p, storage_size, xasl->spec_list, xasl->val_list);
+    xasl->memoize_storage = storage::new_storage (thread_p, storage_size, xasl);
     return NO_ERROR;
   }
 
