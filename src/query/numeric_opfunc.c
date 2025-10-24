@@ -176,9 +176,15 @@ static void fp_numeric_mul (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, 
 static void numeric_long_div (DB_C_NUMERIC a1, DB_C_NUMERIC a2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder,
 			      bool is_long_num);
 static void numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUMERIC remainder);
+#if 1				// division algorithm
+/*
+ * the fp_numeric_div() and fp_numeric_knuth_div() functions will be maintained until phase-3.
+ * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
+ */
 static void fp_numeric_double_shift_bit (uint8_t * arg1, uint8_t * arg2, int calc_bytes, uint8_t * lsb, uint8_t * msb);
 static void fp_numeric_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf,
 			    int calc_bytes);
+#else
 static int knuth_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size);
 static unsigned int knuth_count_leading_zero_bits (uint8_t byte_value);
 static void knuth_normalize_left_shift_msb (uint8_t * buffer, int buffer_size, unsigned int k_bit);
@@ -189,6 +195,7 @@ static uint32_t knuth_multiply_and_subtract (uint8_t * u_work, const uint8_t * v
 					     int divisor_bytes, uint32_t trial_quotient);
 static void fp_numeric_knuth_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8_t * rem_buf,
 				  int calc_bytes);
+#endif
 static int numeric_compare (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
 static int fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int prec2, int scale2,
 			       bool arg1_sign, bool arg2_sign);
@@ -1344,6 +1351,11 @@ numeric_div (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, DB_C_NUM
     }
 }
 
+#if 1				// division algorithm
+/*
+ * the fp_numeric_div() and fp_numeric_knuth_div() functions will be maintained until phase-3.
+ * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
+ */
 static void
 fp_numeric_double_shift_bit (uint8_t * arg1, uint8_t * arg2, int calc_bytes, uint8_t * lsb, uint8_t * msb)
 {
@@ -1403,6 +1415,7 @@ fp_numeric_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf, uint8
     }
 }
 
+#else
 /*
  * knuth_find_first_nz_idx_msb() - Find the index of the first non-zero byte in an MSB-first buffer
  *   return        : Index of the first non-zero byte,
@@ -1425,15 +1438,14 @@ static int
 knuth_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size)
 {
   int i = 0, j = 0;
-  uint64_t word;
+  char zero_buf[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
   /* scan 8-byte blocks */
   for (; i + 8 <= buffer_size; i += 8)
     {
-      memcpy (&word, buffer + i, 8);
-      if (word != 0)
+      if (memcmp (zero_buf, buffer + i, 8) != 0)
 	{
-	  /* narrow down to find only the first non-zero byte within the block (max 8 iterations) */
+	  /* found non-zero block, find exact position within this block */
 	  for (j = 0; j < 8; j++)
 	    {
 	      if (buffer[i + j])
@@ -1468,20 +1480,11 @@ knuth_find_first_nz_idx_msb (const uint8_t * buffer, int buffer_size)
 static unsigned int
 knuth_count_leading_zero_bits (uint8_t byte_value)
 {
-  unsigned int leading_zeros = 0;
-  if ((byte_value & 0xF0) == 0)
+  static const int leading_zero_cnt[16] = { 4, 3, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0 };
+  int leading_zeros = leading_zero_cnt[byte_value >> 4];
+  if (leading_zeros == 4)
     {
-      leading_zeros += 4;
-      byte_value <<= 4;
-    }
-  if ((byte_value & 0xC0) == 0)
-    {
-      leading_zeros += 2;
-      byte_value <<= 2;
-    }
-  if ((byte_value & 0x80) == 0)
-    {
-      leading_zeros += 1;
+      leading_zeros += leading_zero_cnt[byte_value & 0x0F];
     }
   return leading_zeros;
 }
@@ -1823,6 +1826,7 @@ fp_numeric_knuth_div (uint8_t * dbv1_buf, uint8_t * dbv2_buf, uint8_t * quo_buf,
       rem_buf[out_rem_idx + i] = u_work[quo_total_byte_count + i];
     }
 }
+#endif
 
 /*
  * numeric_is_longnum_value ()
@@ -1983,7 +1987,11 @@ fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int p
   int common_prec, common_scale;
   int scale_adjust1, scale_adjust2;
   int calc_bytes;
+  int pad;
   int cmp_rez = 0;
+
+  /* this comparison function requires that arg1 and arg2 always have the same sign. */
+  assert (arg1_sign == arg2_sign);
 
   common_scale = MAX (scale1, scale2);
   common_prec = MAX (prec1 - scale1, prec2 - scale2) + common_scale;
@@ -1999,8 +2007,26 @@ fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int p
   uint8_t arg1_buf[calc_bytes];
   uint8_t arg2_buf[calc_bytes];
 
-  (void) fp_numeric_pad_abs (arg1, DB_NUMERIC_BUF_SIZE, arg1_buf, calc_bytes, arg1_sign);
-  (void) fp_numeric_pad_abs (arg2, DB_NUMERIC_BUF_SIZE, arg2_buf, calc_bytes, arg2_sign);
+  pad = calc_bytes - DB_NUMERIC_BUF_SIZE;
+  if (arg1_sign)
+    {
+      memset (arg1_buf, 0xff, calc_bytes);
+    }
+  else
+    {
+      memset (arg1_buf, 0, calc_bytes);
+    }
+
+  if (arg2_sign)
+    {
+      memset (arg2_buf, 0xff, calc_bytes);
+    }
+  else
+    {
+      memset (arg2_buf, 0, calc_bytes);
+    }
+  memcpy (arg1_buf + pad, arg1, DB_NUMERIC_BUF_SIZE);
+  memcpy (arg2_buf + pad, arg2, DB_NUMERIC_BUF_SIZE);
 
   if (scale_adjust1)
     {
@@ -2011,6 +2037,7 @@ fp_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, int p
       fp_numeric_mul_pow10 (arg2_buf, calc_bytes, scale_adjust2);
     }
 
+  /* since we don't convert to absolute values when comparing negative numbers, there's no need to invert the result again */
   cmp_rez = fp_numeric_operation_compare (arg1_buf, arg2_buf, calc_bytes);
 
   return cmp_rez;
@@ -3371,10 +3398,16 @@ fp_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE 
     }
 
   /* 8) division */
+#if 1				// division algorithm
+  /*
+   * the fp_numeric_div() and fp_numeric_knuth_div() functions will be maintained until phase-3.
+   * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
+   */
   fp_numeric_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
-
+#else
   /* knuth division */
-  //fp_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+  fp_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+#endif
 
   last_digit = fp_numeric_div_pow10 (quotient_work, calc_bytes);
   if (last_digit >= 5)
@@ -3553,37 +3586,22 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       arg1_sign = numeric_is_negative (dbv1_copy);
       arg2_sign = numeric_is_negative (dbv2_copy);
 
-      if (arg1_sign == false && arg2_sign == true)
+      if (arg1_sign != arg2_sign)
 	{
-	  /* 2) positive vs negative (positive is always greater) */
-	  cmp_rez = 1;
-	  db_make_int (answer, cmp_rez);
-	  return NO_ERROR;
-	}
-      else if (arg1_sign == true && arg2_sign == false)
-	{
-	  /* 3) negative vs positive (negative is always less) */
-	  cmp_rez = -1;
-	  db_make_int (answer, cmp_rez);
+	  db_make_int (answer, (arg1_sign ? -1 : 1));
 	  return NO_ERROR;
 	}
       else
 	{
-	  /* 4) positive vs positive, negative vs negative */
-	  /* 
-	   * 4-1) 함수 내부에서 scale 보정 후 비교
+	  /* positive vs positive, negative vs negative
+	   * 
+	   * compare after scale correction inside the function
 	   * ex) result :
 	   *      if(arg1 < arg2) = -1
 	   *      if(arg1 = arg2) = 0
 	   *      if(arg1 > arg2) = 1
 	   */
 	  cmp_rez = fp_numeric_compare (dbv1_copy, dbv2_copy, prec1, scale1, prec2, scale2, arg1_sign, arg2_sign);
-
-	  /* 4-3) restore sign (if either arg1_sign or arg2_sign is negative, it is true.) */
-	  if (arg1_sign)
-	    {
-	      cmp_rez = -cmp_rez;
-	    }
 	}
 
       db_make_int (answer, cmp_rez);
@@ -4329,11 +4347,17 @@ fp_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VA
       fp_numeric_mul_pow10 (divisor_work, calc_bytes, divisor_exponent);
     }
 
+#if 1				// division algorithm
+  /*
+   * the fp_numeric_div() and fp_numeric_knuth_div() functions will be maintained until phase-3.
+   * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
+   */
   /* 8) division */
   fp_numeric_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
-
+#else
   /* knuth division */
-  //fp_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+  fp_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
+#endif
 
   /* 9) check and recalculate precision/scale of the remainder result */
   result_prec = fp_numeric_get_decimal_digit (remainder_work, calc_bytes);
@@ -5515,30 +5539,33 @@ compare_mantissa_same_exponent (const uint8_t * dividend_buf, const uint8_t * di
 {
   int i = 0;
   int prec_diff = prec1 - prec2;
-  uint8_t dividend_buf_copy[DB_NUMERIC_BUF_SIZE * 2] = { 0 };
-  uint8_t divisor_buf_copy[DB_NUMERIC_BUF_SIZE * 2] = { 0 };
+  uint8_t buf_copy[DB_NUMERIC_BUF_SIZE * 2] = { 0 };
+  uint8_t *p1, *p2;
   int work_bytes = buf_bytes;
-
-  memcpy (dividend_buf_copy, dividend_buf, work_bytes);
-  memcpy (divisor_buf_copy, divisor_buf, work_bytes);
+  p1 = (uint8_t *) dividend_buf;
+  p2 = (uint8_t *) divisor_buf;
 
   /* to avoid buffer overflow, use divide by 10 */
   if (prec_diff > 0)
     {
+      memcpy (buf_copy, dividend_buf, work_bytes);
+      p1 = buf_copy;
       for (i = 0; i < prec_diff; i++)
 	{
-	  (void) fp_numeric_div_pow10 (dividend_buf_copy, work_bytes);
+	  (void) fp_numeric_div_pow10 (buf_copy, work_bytes);
 	}
     }
   else if (prec_diff < 0)
     {
+      memcpy (buf_copy, divisor_buf, work_bytes);
+      p2 = buf_copy;
       for (i = 0; i < -prec_diff; i++)
 	{
-	  (void) fp_numeric_div_pow10 (divisor_buf_copy, work_bytes);
+	  (void) fp_numeric_div_pow10 (buf_copy, work_bytes);
 	}
     }
 
-  return fp_numeric_operation_compare (dividend_buf_copy, divisor_buf_copy, work_bytes);
+  return fp_numeric_operation_compare (p1, p2, work_bytes);
 }
 
 /*
