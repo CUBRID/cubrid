@@ -11584,6 +11584,9 @@ qo_check_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * plan)
       return (qo_check_like_recompile_candidate (parser, plan->plan_un.join.outer)
 	      || qo_check_like_recompile_candidate (parser, plan->plan_un.join.inner));
 
+    case QO_PLANTYPE_SORT:
+      return qo_check_like_recompile_candidate (parser, plan->plan_un.sort.subplan);
+
     default:
       return false;
     }
