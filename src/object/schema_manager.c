@@ -16776,7 +16776,7 @@ set_checked_time_with_strategy (MOP _db_class, const char *class_name, CLASS_STA
       goto end;
     }
 
-  db_make_int(&statistics_strategy_val, with_fullscan);
+  db_make_int (&statistics_strategy_val, with_fullscan);
   error = obj_set (inst, "statistics_strategy", &statistics_strategy_val);
   if (error != NO_ERROR)
     {
