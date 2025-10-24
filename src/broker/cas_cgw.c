@@ -1462,7 +1462,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 			 SQL_HANDLE_DESC,
 			 err_code =
 			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE,
-					   (SQLPOINTER) (uintptr_t) value_list->ns_val.scale, 0));
+					  (SQLPOINTER) (uintptr_t) value_list->ns_val.scale, 0));
 
 	    SQL_CHK_ERR (hdesc,
 			 SQL_HANDLE_DESC,
