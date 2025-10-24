@@ -1537,7 +1537,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	{
 	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_check_not_null_constraint (parser, from, node_prior))
 	    {
-	      db_make_int (&value, 1);
+	      db_make_int (&value, true);
 	    }
 	  else
 	    {
