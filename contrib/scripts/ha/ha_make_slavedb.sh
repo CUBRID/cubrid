@@ -338,7 +338,6 @@ function check_db_name() {
     db_name="$first_db_found"
 
     # If multiple DBs were in the original input, issue a warning.
-    # The check is only performed if the original string was not empty.
     if [[ -n "$original_input" && "$db_count" -gt 1 ]]; then
         echo "WARNING: Multiple DBs were specified: '$original_input'."
         echo "         Only the first valid DB ('$db_name') will be used. Others are ignored."
