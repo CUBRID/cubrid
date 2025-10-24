@@ -16753,7 +16753,7 @@ set_checked_time_with_strategy (MOP _db_class, const char *class_name, CLASS_STA
   int error = NO_ERROR;
   DB_VALUE class_name_val;
   int save;
-  DB_VALUE timestamp_val, current_datetime_val;
+  DB_VALUE timestamp_val, current_datetime_val, statistics_strategy_val;
 
   AU_DISABLE (save);
   db_make_string (&class_name_val, class_name);
@@ -16770,12 +16770,19 @@ set_checked_time_with_strategy (MOP _db_class, const char *class_name, CLASS_STA
     {
       goto end;
     }
-
   error = obj_set (inst, "checked_time", &current_datetime_val);
   if (error != NO_ERROR)
     {
       goto end;
     }
+
+  db_make_int(&statistics_strategy_val, with_fullscan);
+  error = obj_set (inst, "statistics_strategy", &statistics_strategy_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   error = locator_flush_instance (inst);
 
 end:
