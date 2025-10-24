@@ -32,39 +32,68 @@
 
 namespace parallel_query
 {
+#if !defined (NDEBUG)
+  thread_local std::vector<worker_manager *> m_tl_worker_managers;
+  thread_local std::mutex m_tl_worker_managers_mutex;
+#endif
+
   worker_manager::worker_manager()
   {
     m_reserved_workers = 0;
     m_working_workers = 0;
+#if !defined (NDEBUG)
+    std::lock_guard<std::mutex> lock (m_tl_worker_managers_mutex);
+    m_tl_worker_managers.push_back (this);
+#endif
   }
 
   worker_manager::~worker_manager()
   {
     assert (m_reserved_workers == 0);
+#if !defined (NDEBUG)
+    std::lock_guard<std::mutex> lock (m_tl_worker_managers_mutex);
+    m_tl_worker_managers.erase (std::find (m_tl_worker_managers.begin (), m_tl_worker_managers.end (), this));
+#endif
   }
 
-  bool worker_manager::try_reserve_workers (int parallelism)
+#if !defined (NDEBUG)
+  void assertion_all_workers_released()
   {
-    bool result = worker_manager_global::get_manager().try_reserve_workers (parallelism);
+    assert (m_tl_worker_managers.empty ());
+  }
+#endif
+
+  worker_manager *worker_manager::try_reserve_workers (int n_workers)
+  {
+    bool result = worker_manager_global::get_manager().try_reserve_workers (n_workers);
+    worker_manager *manager = nullptr;
     if (result)
       {
-	m_reserved_workers += parallelism;
+	manager = new worker_manager();
+	manager->m_reserved_workers = n_workers;
+	return manager;
       }
-    return result;
+    else
+      {
+	return nullptr;
+      }
   }
 
-  void worker_manager::release_workers ()
+  void worker_manager::release_workers (int n_workers)
   {
     if (m_reserved_workers == 0)
       {
+	delete this;
 	return;
       }
-    while (m_working_workers.load () > 0)
+    while (m_working_workers.load () > m_reserved_workers - n_workers)
       {
 	thread_sleep (1);
       }
-    worker_manager_global::get_manager().release_workers (m_reserved_workers);
-    m_reserved_workers = 0;
+    worker_manager_global::get_manager().release_workers (n_workers);
+    m_reserved_workers -= n_workers;
+    assert (m_reserved_workers == 0);
+    delete this;
   }
 
   void worker_manager::push_task (cubthread::entry_task *task)

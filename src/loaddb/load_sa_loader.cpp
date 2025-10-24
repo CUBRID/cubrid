@@ -2741,7 +2741,7 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_size = 0;
+  val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
@@ -2812,7 +2812,7 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_size = 0;
+  val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
