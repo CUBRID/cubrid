@@ -1581,12 +1581,18 @@ knuth_estimate_quotient_digit (const uint8_t * u_work, const uint8_t * v_work, i
   const unsigned int BASE = 256u;
   uint32_t u_high;
   uint32_t u_next;
-  uint32_t u_next2;
   uint32_t v_high;
-  uint32_t v_next;
   uint32_t dividend_16;
-  uint32_t trial_quotient;
-  uint32_t trial_remainder;
+  /*
+   * although the calculations never exceed the 32-bit range
+   * and can be safely handled with uint32_t,
+   * these variables are declared as uint64_t to avoid
+   * repeated type casting inside the loop and improve code readability.
+   */
+  uint64_t u_next2;
+  uint64_t v_next;
+  uint64_t trial_quotient;
+  uint64_t trial_remainder;
 
   /* extract the top 3 bytes from U and top 2 bytes from V */
   u_high = u_work[window_offset];
@@ -1604,9 +1610,7 @@ knuth_estimate_quotient_digit (const uint8_t * u_work, const uint8_t * v_work, i
   if (divisor_bytes > 1)
     {
       /* D3: quotient correction */
-      while ((trial_quotient == BASE)
-	     || ((uint64_t) trial_quotient * (uint64_t) v_next >
-		 ((uint64_t) trial_remainder * BASE + (uint64_t) u_next2)))
+      while ((trial_quotient == BASE) || (trial_quotient * v_next > (trial_remainder * BASE + u_next2)))
 	{
 	  --trial_quotient;
 	  trial_remainder += v_high;
@@ -1622,7 +1626,7 @@ knuth_estimate_quotient_digit (const uint8_t * u_work, const uint8_t * v_work, i
       trial_quotient = BASE - 1;	// clamp trial quotient to BASE - 1(255)
     }
 
-  *out_trial_remainder = trial_remainder;
+  *out_trial_remainder = (uint32_t) trial_remainder;
   return trial_quotient;
 }
 
@@ -1660,10 +1664,10 @@ knuth_multiply_and_subtract (uint8_t * u_work, const uint8_t * v_work, int windo
   uint32_t product;
   uint32_t subtrahend;
   uint32_t minuend;
-  uint32_t diff;
+  uint32_t sub_result;
   uint32_t subtrahend_top;
   uint32_t minuend_top;
-  uint32_t diff_top;
+  uint32_t sub_result_top;
 
   /* D4: multiply & subtract */
   for (i = divisor_bytes - 1; i >= 0; i--)
@@ -1673,10 +1677,10 @@ knuth_multiply_and_subtract (uint8_t * u_work, const uint8_t * v_work, int windo
 
       subtrahend = (product & 0xFFu) + borrow_from_sub;
       minuend = (uint32_t) u_work[window_offset + i + 1];
-      diff = minuend - subtrahend;
+      sub_result = minuend - subtrahend;
 
       borrow_from_sub = (minuend < subtrahend);
-      u_work[window_offset + i + 1] = (uint8_t) diff;
+      u_work[window_offset + i + 1] = (uint8_t) sub_result;
     }
 
   /*
@@ -1687,10 +1691,10 @@ knuth_multiply_and_subtract (uint8_t * u_work, const uint8_t * v_work, int windo
   {
     subtrahend_top = product_carry + borrow_from_sub;
     minuend_top = (uint32_t) u_work[window_offset];
-    diff_top = minuend_top - subtrahend_top;
+    sub_result_top = minuend_top - subtrahend_top;
 
     borrow_from_sub = (minuend_top < subtrahend_top);
-    u_work[window_offset] = (uint8_t) diff_top;
+    u_work[window_offset] = (uint8_t) sub_result_top;
   }
 
   /* D5: add-back correction */
