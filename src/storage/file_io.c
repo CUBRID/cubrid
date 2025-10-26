@@ -9446,10 +9446,10 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	    {
 	      char save_time1[64];
 
-	      fileio_ctime (&match_backup_creation_time, io_timeval);
+	      fileio_ctime (&backup_header_p->start_time, io_timeval);
 	      strcpy (save_time1, io_timeval);
 
-	      fileio_ctime (&backup_header_p->start_time, io_timeval);
+	      fileio_ctime (&match_backup_creation_time, io_timeval);
 	      if (asprintf (&error_message_p,
 			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_TIME_MISMATCH),
 			    session_p->bkup.vlabel, save_time1, io_timeval) < 0)
