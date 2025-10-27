@@ -9843,13 +9843,6 @@ pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_N
 
   switch (expr->info.expr.op)
     {
-    case PT_AND:
-    case PT_OR:
-      {
-	need_recompile = pt_check_removable_like_condition (parser, from, arg1)
-	  || pt_check_removable_like_condition (parser, from, arg2);
-	break;
-      }
     case PT_LIKE:
       {
 	if (!arg1 || !pt_check_not_null_constraint (parser, from, arg1))
@@ -9937,6 +9930,56 @@ pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_N
     }
 
   return need_recompile;
+}
+
+PT_NODE *
+pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE **spec_list = (PT_NODE **) arg;
+  PT_NODE *arg1, *arg2;
+  if (tree == NULL)
+    {
+      return NULL;
+    }
+
+  switch (tree->node_type)
+    {
+    case PT_SPEC:
+      if (!pt_find_entity (parser, *spec_list, tree->info.spec.id))
+	{
+	  *spec_list = parser_append_node (tree, *spec_list);
+	}
+      break;
+    case PT_EXPR:
+      if (pt_check_removable_like_condition (parser, *spec_list, tree))
+	{
+	  tree->info.expr.flag |= PT_EXPR_INFO_REMOVABLE;
+	}
+      break;
+    }
+  return tree;
+}
+
+
+PT_NODE *
+pt_check_removable_expr_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *is_removable = (bool *) arg;
+
+  if (tree == NULL)
+    {
+      return NULL;
+    }
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_LIKE))
+    {
+      if (PT_EXPR_INFO_IS_FLAGED (tree, PT_EXPR_INFO_REMOVABLE))
+	{
+	  *is_removable = true;
+	}
+    }
+
+  return tree;
 }
 
 /*
@@ -10523,13 +10566,9 @@ end:
 bool
 pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
 {
-  PT_NODE *cnf_node, *dnf_node, *where, *on_cond = NULL, *link, *spec, *expr;
-  bool need_recompile = false;
 
-//   PT_NODE *spec_list = NULL;
-//   select_node =
-//     parser_walk_tree (parser, select_node, pt_check_removable_expr_pre, &spec_list, pt_check_removable_expr_post,
-//                    &is_removable);
+  PT_NODE *spec_list = NULL;
+  bool is_removable = false;
 
   if (statement->node_type != PT_SELECT)
     {
@@ -10541,61 +10580,10 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
       return false;
     }
 
-  for (spec = statement->info.query.q.select.from; spec; spec = spec->next)
-    {
-      if (spec->info.spec.on_cond != NULL)
-	{
-	  on_cond = parser_append_node (spec->info.spec.on_cond, on_cond);
-	}
-    }
+  parser_walk_tree (parser, statement, pt_check_removable_expr_pre, &spec_list, pt_check_removable_expr_post,
+		    &is_removable);
 
-  where = statement->info.query.q.select.where;
-
-  for (link = where; link && link->next; link = link->next)
-    {
-      ;
-    }
-  if (link)
-    {
-      expr = where;
-      link->next = on_cond;
-    }
-  else
-    {
-      expr = on_cond;
-    }
-
-  for (cnf_node = expr; cnf_node != NULL; cnf_node = cnf_node->next)
-    {
-      if (cnf_node->or_next == NULL)
-	{
-	  if (pt_check_removable_like_condition (parser, statement->info.query.q.select.from, cnf_node))
-	    {
-	      need_recompile = true;
-	      goto end;
-	    }
-	}
-      else
-	{
-	  for (dnf_node = cnf_node; dnf_node != NULL; dnf_node = dnf_node->or_next)
-	    {
-	      if (pt_check_removable_like_condition (parser, statement->info.query.q.select.from, dnf_node))
-		{
-		  need_recompile = true;
-		  goto end;
-		}
-	    }
-	}
-    }
-
-end:
-  /* un-link */
-  if (link)
-    {
-      link->next = NULL;
-    }
-
-  return need_recompile;
+  return is_removable;
 }
 
 /*
