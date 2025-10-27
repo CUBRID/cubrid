@@ -155,7 +155,6 @@ static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
 					  bool add_offset);
-static int pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val);
 static bool pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
@@ -9763,7 +9762,7 @@ cleanup:
  * expr (in) : expression
  * expr_val (in/out) : expression value
  */
-static int
+int
 pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val)
 {
   int save_set_host_var;
@@ -10526,6 +10525,11 @@ pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statemen
 {
   PT_NODE *cnf_node, *dnf_node, *where, *on_cond = NULL, *link, *spec, *expr;
   bool need_recompile = false;
+
+//   PT_NODE *spec_list = NULL;
+//   select_node =
+//     parser_walk_tree (parser, select_node, pt_check_removable_expr_pre, &spec_list, pt_check_removable_expr_post,
+//                    &is_removable);
 
   if (statement->node_type != PT_SELECT)
     {

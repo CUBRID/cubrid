@@ -669,6 +669,7 @@ extern "C"
 						 CURSOR_ID * cursor_p);
   extern PT_NODE *pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax,
 						PT_NODE * like_or_where_expr);
+  extern int pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val);
 
   extern PT_NODE *pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_find_op_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
