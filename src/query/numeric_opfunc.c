@@ -522,7 +522,7 @@ numeric_get_pow_of_2 (int exp)
 static void
 numeric_init_pow_of_10_helper (void)
 {
-  int i, j, k;
+  int i, j;
   uint32_t carry, temp;
   int significant_bytes;
   int current_byte_size = 1;
@@ -539,28 +539,24 @@ numeric_init_pow_of_10_helper (void)
   for (i = 1; i < POW10_MAX_INDEX + 1; i++)
     {
       carry = 0;
+      significant_bytes = 0;
       for (j = POW10_BUF_SIZE - 1; j >= 0; j--)
 	{
 	  temp = (uint32_t) powers_of_10[i - 1][j] * 10 + carry;
 	  powers_of_10[i][j] = (uint8_t) (temp & 0xFF);
 	  carry = temp >> 8;
-	}
 
-      /* Calculate and store the number of significant bytes */
-      significant_bytes = 0;
-      for (k = 0; k < POW10_BUF_SIZE; k++)
-	{
-	  if (powers_of_10[i][k] != 0)
+	  /* calculate and store the number of significant bytes */
+	  if (powers_of_10[i][j] != 0)
 	    {
-	      significant_bytes = POW10_BUF_SIZE - k;
-	      break;
+	      significant_bytes = POW10_BUF_SIZE - j;
 	    }
 	}
 
       if (significant_bytes > current_byte_size)
 	{
 	  current_byte_size = significant_bytes;
-	  if (current_byte_size - 1 < POW10_BUF_SIZE && current_byte_size - 1 >= 0)
+	  if (current_byte_size - 1 < POW10_BUF_SIZE)
 	    {
 	      _gv_powers_of_10_significant_bytes[current_byte_size - 1] = i;
 	    }
