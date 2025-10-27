@@ -237,12 +237,7 @@
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
 
-// ctshim
-//#define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
-#define DB_NEED_COMPRESSION_N(value) (db_get_compressed_size(value) == DB_NOT_YET_COMPRESSED)
-#define DB_NEED_COMPRESSION_H(value) (db_get_compressed_size(value) == DB_NOT_YET_COMPRESSED_H)
-#define DB_NEED_COMPRESSION_I(value) (db_get_compressed_size(value) == DB_NOT_YET_COMPRESSED_I)
-#define DB_TRIED_COMPRESSION(value) (!DB_NEED_COMPRESSION_N((value)) && !DB_NEED_COMPRESSION_H((value)) && !DB_NEED_COMPRESSION_I((value)))
+#define DB_TRIED_COMPRESSION(value) (DB_GET_COMPRESSED_SIZE(value) != DB_NOT_YET_COMPRESSED)
 
 #ifdef __cplusplus
 extern "C"

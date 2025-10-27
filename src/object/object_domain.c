@@ -719,10 +719,6 @@ tp_final (void)
   TP_DOMAIN *dlist, *d, *next, *prev;
   int i;
 
-  // ctshim
-  extern void debug_atomic_print ();
-  debug_atomic_print ();
-
   if (!tp_Initialized)
     {
       assert (tp_Domain_area == NULL);

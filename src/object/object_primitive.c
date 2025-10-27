@@ -22,7 +22,6 @@
  *                      the disk representation.
  */
 
-#include <cstdint>		// ctshim
 #ident "$Id$"
 
 #include "config.h"
@@ -10547,78 +10546,6 @@ mr_data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int 
   return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
 }
 
-// ctshim
-/* *INDENT-OFF* */
-static std::atomic <int64_t>  atomic_r_h = 0;
-static std::atomic <int64_t>  atomic_r_i = 0;
-static std::atomic <int64_t>  atomic_ln[2] = {0, 0};
-static std::atomic <int64_t>  atomic_lh[2] = {0, 0};
-static std::atomic <int64_t>  atomic_li[2] = {0, 0};
-static std::atomic <int64_t>  atomic_wn[2] = {0, 0};
-static std::atomic <int64_t>  atomic_wh[2] = {0, 0};
-static std::atomic <int64_t>  atomic_wi[2] = {0, 0};
-/* *INDENT-ON* */
-
-void
-debug_atomic_print ()
-{
-  int64_t a_rh = atomic_r_h;
-  int64_t a_ri = atomic_r_i;
-  int64_t a_ln[2];
-  int64_t a_lh[2];
-  int64_t a_li[2];
-  int64_t a_wn[2];
-  int64_t a_wh[2];
-  int64_t a_wi[2];
-  FILE *fp = stdout;
-  char fnm[1024];
-#ifdef SERVER_MODE
-  const char *name = "[SERVER] ";
-  strcpy (fnm, "/home/cubrid/my_cub_server.log");
-  fp = fopen ("/home/cubrid/my_cub_server.log", "a+t");
-#elif SA_MODE
-  const char *name = "[SA] ";
-  sprintf (fnm, "/home/cubrid/my_cub_sa_%d.log", getpid ());
-#else
-  const char *name = "[CLIENT] ";
-  sprintf (fnm, "/home/cubrid/my_cub_client_%d.log", getpid ());
-#endif
-
-  a_ln[0] = atomic_ln[0];
-  a_ln[1] = atomic_ln[1];
-  a_lh[0] = atomic_lh[0];
-  a_lh[1] = atomic_lh[1];
-
-  a_li[0] = atomic_li[0];
-  a_li[1] = atomic_li[1];
-  a_wn[0] = atomic_wn[0];
-  a_wn[1] = atomic_wn[1];
-
-  a_wh[0] = atomic_wh[0];
-  a_wh[1] = atomic_wh[1];
-  a_wi[0] = atomic_wi[0];
-  a_wi[1] = atomic_wi[1];
-
-
-  fp = fopen (fnm, "a+t");
-
-  fprintf (fp, "***************************************************\n");
-  fprintf (fp, "***************************************************\n");
-  fprintf (fp, "%s\n\t read(H/I)=%" PRId64 "/%" PRId64 "\n"
-	   "\t length(Nh/Ni, Hh/Hi, Ih/Ii)=%" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 "\n"
-	   "\t write(Nh/Ni, Hh/Hi, Ih/Ii)=%" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 "\n",
-	   name, a_rh, a_ri,
-	   a_ln[0], a_ln[1], a_lh[0], a_lh[1], a_li[0], a_li[1], a_wn[0], a_wn[1], a_wh[0], a_wh[1], a_wi[0], a_wi[1]);
-  fprintf (fp, "***************************************************\n");
-  fprintf (fp, "***************************************************\n");
-
-#ifdef SERVER_MODE
-  fclose (fp);
-#endif
-
-}
-
-
 /*
  * Ignoring precision as byte size is really the only important thing for
  * varchar.
@@ -10656,29 +10583,8 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
       /* Test and try compression. */
       if (!DB_TRIED_COMPRESSION (value))
 	{
-	  // ctshim      
-	  int pos = (align == INT_ALIGNMENT) ? 0 : 1;
-	  int type = 0;
-	  if (DB_NEED_COMPRESSION_N (value))
-	    type = 0;
-	  else if (DB_NEED_COMPRESSION_H (value))
-	    type = 1;
-	  else
-	    type = 2;
-
 	  /* It means that the value has never passed through a compression process. */
 	  rc = pr_do_db_value_string_compression (value);
-
-	  // ctshim
-	  if (db_get_compressed_size (value) > 0)
-	    {
-	      if (type == 0)
-		atomic_ln[pos]++;
-	      else if (type == 1)
-		atomic_lh[pos]++;
-	      else
-		atomic_li[pos]++;
-	    }
 	}
       /* We are now sure that the value has been through the process of compression */
       compressed_size = db_get_compressed_size (value);
@@ -10749,27 +10655,8 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
       /* Test for possible compression. */
       if (!DB_TRIED_COMPRESSION (value))
 	{
-	  int pos = (align == INT_ALIGNMENT) ? 0 : 1;
-	  int type = 0;
-	  if (DB_NEED_COMPRESSION_N (value))
-	    type = 0;
-	  else if (DB_NEED_COMPRESSION_H (value))
-	    type = 1;
-	  else
-	    type = 2;
-
 	  /* It means that the value has never passed through a compression process. */
 	  rc = pr_do_db_value_string_compression (value);
-
-	  if (db_get_compressed_size (value) > 0)
-	    {
-	      if (type == 0)
-		atomic_wn[pos]++;
-	      else if (type == 1)
-		atomic_wh[pos]++;
-	      else
-		atomic_wi[pos]++;
-	    }
 	}
 
       if (rc != NO_ERROR)
@@ -10813,303 +10700,6 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
     }
   return rc;
 }
-
-#if 0				// ********************************************************************
-static int
-mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			    int copy_buf_len, int align)
-{
-  int pad, precision;
-  char *new_ = NULL, *start = NULL;
-  int str_length;
-  int rc = NO_ERROR;
-  int compressed_size = 0, expected_decompressed_size = 0;
-  char *decompressed_string = NULL, *string = NULL, *compressed_string = NULL;
-  int decompressed_size = 0;
-  bool compressed_need_clear = false;
-
-  if (value == NULL)
-    {
-      if (size == -1)
-	{
-	  rc = or_skip_varchar (buf, align);
-	}
-      else
-	{
-	  if (size)
-	    {
-	      rc = or_advance (buf, size);
-	    }
-	}
-    }
-  else
-    {
-      if (domain != NULL)
-	{
-	  precision = domain->precision;
-	}
-      else
-	{
-	  precision = DB_MAX_VARCHAR_PRECISION;
-	}
-
-      if (size == 0)
-	{
-	  /* its NULL */
-	  db_value_domain_init (value, DB_TYPE_VARCHAR, precision, 0);
-	}
-      else if (!copy)
-	{
-	  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      assert (false);
-	      return ER_FAILED;
-	    }
-	  /* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
-	   * towards the data stored in the buffer */
-	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
-
-	  if (compressed_size > 0)
-	    {
-	      str_length = compressed_size;
-
-	      string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
-	      if (string == NULL)
-		{
-		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto cleanup;
-		}
-
-	      start = buf->ptr;
-
-	      rc = pr_get_compressed_data_from_buffer (buf, string, compressed_size, expected_decompressed_size);
-	      if (rc != NO_ERROR)
-		{
-		  goto cleanup;
-		}
-	      string[expected_decompressed_size] = '\0';
-	      db_make_varchar (value, precision, string, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
-	      value->need_clear = true;
-
-	      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
-	      if (compressed_string == NULL)
-		{
-		  rc = ER_OUT_OF_VIRTUAL_MEMORY;
-		  goto cleanup;
-		}
-
-	      memcpy (compressed_string, start, compressed_size);
-	      compressed_string[compressed_size] = '\0';
-
-	      db_set_compressed_string (value, compressed_string, compressed_size, true);
-	    }
-	  else
-	    {
-	      assert (compressed_size == 0);
-
-	      str_length = expected_decompressed_size;
-	      db_make_varchar (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
-	      value->need_clear = false;
-	      db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
-	    }
-
-	  or_skip_varchar_remainder (buf, str_length, align);
-	}
-      else			/* if (!copy) */
-	{
-	  assert (size != 0);
-
-	  if (size == -1)
-	    {
-	      /* Standard packed varchar with a size prefix */
-	      ;			/* do nothing */
-	    }
-	  else
-	    {			/* size != -1 */
-	      /* Standard packed varchar within an area of fixed size, usually this means we're looking at the disk
-	       * representation of an attribute. Just like the -1 case except we advance past the additional
-	       * padding. */
-	      start = buf->ptr;
-	    }			/* size != -1 */
-
-	  /* Get the length of the string, be it compressed or uncompressed. */
-	  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
-	  if (rc != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  if (compressed_size <= 0)
-	    {
-	      assert (compressed_size == 0);
-	      str_length = expected_decompressed_size;
-	    }
-	  else
-	    {
-	      str_length = compressed_size;
-	    }
-
-	  if (copy_buf && copy_buf_len >= str_length + 1)
-	    {
-	      /* read buf image into the copy_buf */
-	      new_ = copy_buf;
-	    }
-	  else
-	    {
-	      /*
-	       * Allocate storage for the string including the kludge
-	       * NULL terminator
-	       */
-	      new_ = (char *) db_private_alloc (NULL, str_length + 1);
-	    }
-
-	  if (new_ == NULL)
-	    {
-	      /* need to be able to return errors ! */
-	      if (domain)
-		{
-		  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
-		}
-	      return ER_FAILED;
-	    }
-	  else
-	    {
-	      if (align == INT_ALIGNMENT)
-		{
-		  /* read the kludge NULL terminator */
-		  rc = or_get_data (buf, new_, str_length + 1);
-
-		  /* round up to a word boundary */
-		  if (rc == NO_ERROR)
-		    {
-		      rc = or_get_align32 (buf);
-		    }
-		}
-	      else
-		{
-		  rc = or_get_data (buf, new_, str_length);
-		}
-
-	      if (rc != NO_ERROR)
-		{
-		  if (new_ != copy_buf)
-		    {
-		      db_private_free_and_init (NULL, new_);
-		    }
-		  return ER_FAILED;
-		}
-
-	      /* Handle decompression if there was any */
-	      if (compressed_size > 0)
-		{
-		  /* String was compressed */
-		  assert (expected_decompressed_size > 0);
-
-		  decompressed_size = 0;
-
-		  /* Handle decompression */
-		  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
-		  if (decompressed_string == NULL)
-		    {
-		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
-		      goto cleanup;
-		    }
-
-		  /* decompressing the string */
-		  decompressed_size =
-		    LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
-		  if (decompressed_size < 0)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
-		      rc = ER_IO_LZ4_DECOMPRESS_FAIL;
-		      goto cleanup;
-		    }
-		  assert (decompressed_size == expected_decompressed_size);
-
-		  compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
-		  if (compressed_string == NULL)
-		    {
-		      rc = ER_OUT_OF_VIRTUAL_MEMORY;
-		      goto cleanup;
-		    }
-
-		  memcpy (compressed_string, new_, compressed_size);
-		  compressed_string[compressed_size] = '\0';
-		  compressed_need_clear = true;
-
-		  if (new_ != copy_buf)
-		    {
-		      db_private_free_and_init (NULL, new_);
-		    }
-
-		  new_ = decompressed_string;
-		  str_length = expected_decompressed_size;
-		}
-
-	      new_[str_length] = '\0';	/* append the kludge NULL terminator */
-	      if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
-		{
-		  rc = ER_FAILED;
-		  goto cleanup;
-		}
-
-	      db_make_varchar (value, precision, new_, str_length, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
-	      value->need_clear = (new_ != copy_buf) ? true : false;
-
-	      if (compressed_string == NULL)
-		{
-		  compressed_size = DB_UNCOMPRESSABLE;
-		  compressed_need_clear = false;
-		}
-
-	      db_set_compressed_string (value, compressed_string, compressed_size, compressed_need_clear);
-
-	      if (size == -1)
-		{
-		  /* Standard packed varchar with a size prefix */
-		  ;		/* do nothing */
-		}
-	      else
-		{		/* size != -1 */
-		  /* Standard packed varchar within an area of fixed size, usually this means we're looking at the
-		   * disk representation of an attribute. Just like the -1 case except we advance past the
-		   * additional padding. */
-		  pad = size - (int) (buf->ptr - start);
-		  if (pad > 0)
-		    {
-		      rc = or_advance (buf, pad);
-		    }
-		}		/* size != -1 */
-	    }			/* else */
-	}
-    }
-
-cleanup:
-  if (new_ != NULL && new_ != copy_buf && rc != NO_ERROR)
-    {
-      db_private_free_and_init (NULL, new_);
-    }
-
-  if (decompressed_string != NULL && rc != NO_ERROR)
-    {
-      db_private_free_and_init (NULL, decompressed_string);
-    }
-
-  if (rc != NO_ERROR && compressed_string != NULL)
-    {
-      db_private_free_and_init (NULL, compressed_string);
-    }
-
-  return rc;
-}
-
-#else //#if 0 // ********************************************************************
 
 static int
 mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
@@ -11187,22 +10777,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
       value->need_clear = (decompressed_string != copy_buf) ? true : false;
 
-#if 1
-      //db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
-
-      if (align == INT_ALIGNMENT)
-	{
-	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED_H, false);
-	  atomic_r_h++;
-	}
-      else
-	{
-	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED_I, false);
-	  atomic_r_i++;
-	}
-
-#else
-#if !defined(CS_MODE)
+#if defined(CS_MODE)
       db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
 #else
       compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
@@ -11215,7 +10790,6 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
       memcpy (compressed_string, buf->ptr, compressed_size);
       compressed_string[compressed_size] = '\0';
       db_set_compressed_string (value, compressed_string, compressed_size, true);
-#endif
 #endif
     }
   else
@@ -11258,8 +10832,6 @@ cleanup:
 
   return rc;
 }
-
-#endif // #if 0 // ********************************************************************
 
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 /* data_readval_string() was written separately to read varchar columns 
@@ -16797,10 +16369,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Make sure the value has not been through a compression before */
-  //if (value->data.ch.medium.compressed_size != 0)
-  if (value->data.ch.medium.compressed_size != 0
-      && value->data.ch.medium.compressed_size != DB_NOT_YET_COMPRESSED_H
-      && value->data.ch.medium.compressed_size != DB_NOT_YET_COMPRESSED_I)
+  if (value->data.ch.medium.compressed_size != 0)
     {
       return rc;
     }
