@@ -2005,7 +2005,7 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     {
       /* view for single table + left outer join can be merged */
       if (pt_length_of_list (subquery->info.query.q.select.from) != 1 || !MQ_IS_LEFT_JOIN_SPEC (class_spec)
-	  || mq_is_right_outer_join_spec (parser, class_spec))
+	  || mq_is_right_outer_join_spec (parser, class_spec) || pt_has_path_expr (parser, subquery))
 	{
 	  /* not pushable */
 	  return NON_PUSHABLE;
