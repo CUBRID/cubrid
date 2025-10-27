@@ -2665,7 +2665,6 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 
 	      src_p = p + 1;
 	    }
-	  assert (false);	// heexoo_test
 	  break;
 
 	case DB_TYPE_OID:
