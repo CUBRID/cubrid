@@ -11275,34 +11275,34 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	  break;		/* give up */
 	}
 
-      if (QO_SEG_FUNC_INDEX (seg) == true)
+      if (col_type)
 	{
-	  asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
-	  col_type = col_type->next;
-	}
-      else
-	{
-	  if (col_type)
+	  if (QO_SEG_FUNC_INDEX (seg) == true)
+	    {
+	      asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
+	      col_type = col_type->next;
+	    }
+	  else
 	    {
 	      asc_or_desc = (col_type->is_desc) ? PT_DESC : PT_ASC;
 	      col_type = col_type->next;
-	    }
 
-	  /* skip segment of const eq term */
-	  terms = &(QO_SEG_INDEX_TERMS (seg));
-	  is_const_eq_term = false;
-	  for (j = bitset_iterate (terms, &bi); j != -1; j = bitset_next_member (&bi))
-	    {
-	      expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
-	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
-		  && (PT_IS_CONST (expr->info.expr.arg1) || PT_IS_CONST (expr->info.expr.arg2)))
+	      /* skip segment of const eq term */
+	      terms = &(QO_SEG_INDEX_TERMS (seg));
+	      is_const_eq_term = false;
+	      for (j = bitset_iterate (terms, &bi); j != -1; j = bitset_next_member (&bi))
 		{
-		  is_const_eq_term = true;
+		  expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, j));
+		  if (PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_EQ)
+		      && (PT_IS_CONST (expr->info.expr.arg1) || PT_IS_CONST (expr->info.expr.arg2)))
+		    {
+		      is_const_eq_term = true;
+		    }
 		}
-	    }
-	  if (is_const_eq_term)
-	    {
-	      continue;
+	      if (is_const_eq_term)
+		{
+		  continue;
+		}
 	    }
 	}
 
