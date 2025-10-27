@@ -25645,6 +25645,8 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
 	{
 	  goto error;
 	}
+
+      result_value->need_clear = true;
     }
   else
     {
