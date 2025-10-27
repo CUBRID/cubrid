@@ -731,8 +731,18 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
       extern int dblink_get_cipher_master_key ();	// declared in "network_interface_cl.c"
       if ((err = dblink_get_cipher_master_key ()) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	  return err;
+	  if (err != ER_TDE_CIPHER_IS_NOT_LOADED)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	      return err;
+	    }
+
+	  /* TODO: 
+	   * We need to analyze why er_errid() returns -1 even though no error was set. 
+	   * Until then, let's clear the error. 
+	   * err = er_errid();
+	   */
+	  er_clearid ();	/* er_clear() */
 	}
     }
 #endif
