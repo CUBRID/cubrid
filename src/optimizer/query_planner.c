@@ -11278,7 +11278,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       if (QO_SEG_FUNC_INDEX (seg) == true)
 	{
 	  asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
-          col_type = col_type->next;
+	  col_type = col_type->next;
 	}
       else
 	{
