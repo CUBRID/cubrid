@@ -915,13 +915,17 @@ extern "C"
   using namespace memoize;
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
   {
-    int storage_size; /* system parameter need*/
-    storage_size = 2*1024*1024;
+    UINT64 storage_size; /* system parameter need*/
+    storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
+    if (storage_size == 0)
+      {
+	return NO_ERROR;
+      }
     if (xasl->memoize_storage != nullptr)
       {
 	clear_memoize_storage (thread_p, xasl);
       }
-    xasl->memoize_storage = storage::new_storage (thread_p, storage_size, xasl);
+    xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl);
     return NO_ERROR;
   }
 
