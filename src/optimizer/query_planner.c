@@ -11279,12 +11279,17 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       if (QO_SEG_FUNC_INDEX (seg) == true)
 	{
 	  asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
+	  if (col_type)
+	    {
+	      col_type = col_type->next;
+	    }
 	}
       else
 	{
 	  if (col_type)
 	    {
 	      asc_or_desc = (col_type->is_desc) ? PT_DESC : PT_ASC;
+	      col_type = col_type->next;
 	    }
 
 	  /* skip segment of const eq term */
@@ -11303,11 +11308,6 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	    {
 	      continue;
 	    }
-	}
-
-      if (col_type)
-	{
-	  col_type = col_type->next;
 	}
 
       /* is for order_by skip */
