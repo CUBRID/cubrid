@@ -3344,8 +3344,8 @@ pt_is_path_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *contin
 
   if (pt_is_attr (node) && node->node_type == PT_DOT_)
     {
-	  *is_path_expr = true;
-	  *continue_walk = PT_STOP_WALK;
+      *is_path_expr = true;
+      *continue_walk = PT_STOP_WALK;
     }
 
   return node;
