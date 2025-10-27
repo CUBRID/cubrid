@@ -10655,12 +10655,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
       /* handle is a where parts of view sub-querys */
       if (specptr)
 	{
-	  spec = *specptr;
-	  while (spec && class_->info.name.spec_id != spec->info.spec.id)
-	    {
-	      specptr = &spec->next;
-	      spec = *specptr;
-	    }
 	  if (spec)
 	    {
 	      SPEC_RESET_INFO spec_reset;
@@ -10797,12 +10791,6 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 
       if (specptr)
 	{
-	  spec = *specptr;
-	  while (spec && class_->info.name.spec_id != spec->info.spec.id)
-	    {
-	      specptr = &spec->next;
-	      spec = *specptr;
-	    }
 	  if (spec)
 	    {
 	      SPEC_RESET_INFO spec_reset;
