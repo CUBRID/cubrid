@@ -58,7 +58,7 @@ char es_base_dir[PATH_MAX] = { 0 };
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
-static void es_rename_path (char *src, char *tgt);
+static void es_rename_path (const char *src, char *tgt);
 
 static int es_abs_open (const char *abs_path, int flags);
 static int es_abs_open (const char *abs_path, int flags, mode_t mode);
@@ -165,9 +165,10 @@ retry:
  * tgt(out): target path
  */
 static void
-es_rename_path (char *src, char *tgt)
+es_rename_path (const char *src, char *tgt)
 {
-  char *s, *t;
+  const char *s;
+  char *t;
 
   /*
    * src: /.../ces_000/ces_tmp.123456789
@@ -593,7 +594,10 @@ xes_posix_copy_file (const char *src_path, char *new_path)
   LOB_DIR_ID cur_lob_id = { {{-1, -1}, -1}, -1 };
 #if defined (SERVER_MODE) || defined (SA_MODE)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  cur_lob_id = thread_p->lob_id;
+  const int volid = thread_p->lob_id.hfid.vfid.volid;
+  const int fileid = thread_p->lob_id.hfid.vfid.fileid;
+  const int pageid = thread_p->lob_id.hfid.hpgid;
+  const int attrid = thread_p->lob_id.attrid;
 #endif
 
   /* open a source file */
@@ -615,7 +619,7 @@ retry:
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
 #elif defined (SERVER_MODE) || defined (SA_MODE)
-  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d_id%d%c%s%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, cur_lob_id.attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);	// ex) 0_4288_4289_id1/ces_xxx/file
+  n = snprintf (new_path, PATH_MAX - 1, "%d_%d_%d_id%d%c%s%c%s", volid, fileid, pageid, attrid, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);	// ex) 0_4288_4289_id1/ces_xxx/file
 #else
   /* default */
 #endif
@@ -636,7 +640,7 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d_id%d%c%s", cur_lob_id.hfid.vfid.volid, cur_lob_id.hfid.vfid.fileid, cur_lob_id.hfid.hpgid, cur_lob_id.attrid, PATH_SEPARATOR, dirname1);	// ex) 0_4288_4289_id1/ces_xxx
+	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d_id%d%c%s", volid, fileid, pageid, attrid, PATH_SEPARATOR, dirname1);	// ex) 0_4288_4289_id1/ces_xxx
 	  ret = es_make_dirs (new_dir, dirname2);
 	  if (ret != NO_ERROR)
 	    {

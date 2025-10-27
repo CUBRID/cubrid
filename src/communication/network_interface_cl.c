@@ -11369,20 +11369,19 @@ tdes_reset_query_start_info (PT_NODE * node)
 #endif
 }
 
-/* manage_lob_dir - create or delete lob dir
+/* create_lob_dir - create lob dir
  *
  * return:
  *
  *   hfid(in): separate lob dir by table
  *   attrid_arr(in): separate lob dir by column
  *   attrid_arr_length(in): number of LOB-type columns
- *   mode(in): separate create or delete mode
  *
  * NOTE:
- * manage_lob_dir - request to server to create or delete lob dir
+ * create_lob_dir - request to server to create lob dir
  */
 int
-manage_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length, LOB_DIR_MANAGE_MODE mode)
+create_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -11396,11 +11395,10 @@ manage_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length, LOB_DIR_MAN
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_pack_hfid (request, hfid);
-  ptr = or_pack_int (ptr, (int) mode);
   ptr = or_pack_int_array (ptr, attrid_arr_length, attrid_arr);
 
   req_error =
-    net_client_request (NET_SERVER_MANAGE_LOB_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+    net_client_request (NET_SERVER_CREATE_LOB_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
@@ -11413,7 +11411,56 @@ manage_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length, LOB_DIR_MAN
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xmanage_lob_dir (hfid, attrid_arr, attrid_arr_length, mode);
+  error = xcreate_lob_dir (thread_p, hfid, attrid_arr, attrid_arr_length);
+
+  exit_server (*thread_p);
+
+  return error;
+#endif /* !CS_MODE */
+}
+
+/* remove_lob_dir - remove lob dir
+ *
+ * return:
+ *
+ *   hfid(in): separate lob dir by table
+ *   attrid(in): separate lob dir by column id
+ *
+ * NOTE:
+ * remove_lob_dir - request to server to remove lob dir
+ */
+int
+remove_lob_dir (HFID * hfid, int attrid)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  char *ptr;
+  OR_ALIGNED_BUF (4096) a_request;
+  char *request, *reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_hfid (request, hfid);
+  ptr = or_pack_int (ptr, attrid);
+
+  req_error =
+    net_client_request (NET_SERVER_REMOVE_LOB_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+      ptr = or_unpack_hfid (ptr, hfid);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int error = NO_ERROR;
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  error = xremove_lob_dir (thread_p, hfid, attrid);
 
   exit_server (*thread_p);
 
