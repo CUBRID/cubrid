@@ -25234,11 +25234,11 @@ db_cfile_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 int
 db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
-  const unsigned char *bitp = NULL;
-  unsigned char *buf = NULL;
+  DB_CONST_C_BIT bit_data = NULL;
+  void *buf = NULL;
   DB_TYPE src_type = DB_TYPE_NULL;
   int length = 0;
-  int err = 0;
+  int error_status = NO_ERROR;
 
   assert (src_value != NULL && result_value != NULL);
 
@@ -25246,40 +25246,50 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
   if (src_type == DB_TYPE_NULL)
     {
       db_make_null (result_value);
-      return NO_ERROR;
+      goto success;
     }
 
   if (!(QSTR_IS_BIT (src_type) && !QSTR_IS_LOB (src_type)))
     {
       // TODO: This part should be revised when the TOAST structure is introduced in the future.
-      err = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      return err;
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
     }
 
-  bitp = (const unsigned char *) db_get_bit (src_value, &length);
-
-  buf = (unsigned char *) db_private_alloc (NULL, length > 0 ? length : 1);
-  if (buf == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
+  bit_data = db_get_bit (src_value, &length);
 
   if (length > 0)
     {
-      memcpy (buf, bitp, length);
+      buf = db_private_alloc (NULL, length);
+      if (buf == NULL)
+	{
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      memcpy (buf, bit_data, length);
     }
 
-  err = db_make_blob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) buf, length);
-  if (err != NO_ERROR)
+  error_status = db_make_blob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) buf, length);
+  if (error_status != NO_ERROR)
     {
-      db_private_free_and_init (NULL, buf);
-      return err;
+      goto error;
     }
 
   result_value->need_clear = true;
 
-  return NO_ERROR;
+success:
+  return error_status;
+
+error:
+  if (buf != NULL)
+    {
+      db_private_free_and_init (NULL, buf);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+
+  return error_status;
 }
 
 
@@ -25292,9 +25302,10 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 int
 db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
-  DB_TYPE src_type;
   DB_CONST_C_CHAR char_data = NULL;
-  int char_length = 0;
+  void *buf = NULL;
+  DB_TYPE src_type = DB_TYPE_NULL;
+  int length = 0;
   int error_status = NO_ERROR;
 
   assert (src_value != NULL && result_value != NULL);
@@ -25303,20 +25314,51 @@ db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
   if (src_type == DB_TYPE_NULL)
     {
       db_make_null (result_value);
-      return NO_ERROR;
+      goto success;
     }
 
   if (QSTR_IS_ANY_CHAR (src_type))
     {
       // TODO: This part should be revised when the TOAST structure is introduced in the future.
-      char_data = db_get_char (src_value, &char_length);
-      db_make_blob (result_value, DB_MAX_LOB_PRECISION, char_data, char_length);
+      char_data = db_get_string (src_value);
+      length = db_get_string_size (src_value);
+
+      if (length > 0)
+	{
+	  buf = db_private_alloc (NULL, length);
+	  if (buf == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+
+	  memcpy (buf, char_data, length);
+	}
+
+      error_status = db_make_blob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, length);
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      result_value->need_clear = true;
     }
   else
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
     }
+
+success:
+  return error_status;
+
+error:
+  if (buf != NULL)
+    {
+      db_private_free_and_init (NULL, buf);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 
   return error_status;
 }
@@ -25331,11 +25373,13 @@ db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 int
 db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VALUE * result_value)
 {
-  int error_status = NO_ERROR;
-  DB_TYPE src_type, length_type;
-  int blob_length = 0;
-  int max_length = 0;
   DB_CONST_C_BIT blob_data = NULL;
+  void *buf = NULL;
+  DB_TYPE src_type = DB_TYPE_NULL;
+  DB_TYPE length_type = DB_TYPE_NULL;
+  int length = 0;
+  int max_length = 0;
+  int error_status = NO_ERROR;
 
   assert (src_value != NULL && result_value != NULL);
 
@@ -25350,23 +25394,54 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VA
       length_type = DB_VALUE_DOMAIN_TYPE (length_value);
       max_length = db_get_int (length_value);
     }
+
   if (src_type == DB_TYPE_NULL)
     {
       db_make_null (result_value);
-      return NO_ERROR;
+      goto success;
     }
 
   if (src_type == DB_TYPE_BLOB && length_type == DB_TYPE_INTEGER)
     {
       // TODO: This part should be revised when the TOAST structure is introduced in the future.
-      blob_data = db_get_bit (src_value, &blob_length);
-      db_make_varbit (result_value, max_length, blob_data, blob_length);
+      blob_data = db_get_bit (src_value, &length);
+
+      if (length > 0)
+	{
+	  buf = db_private_alloc (NULL, length);
+	  if (buf == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+
+	  memcpy (buf, blob_data, length);
+	}
+
+      error_status = db_make_varbit (result_value, max_length, (DB_CONST_C_BIT) buf, length);
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      result_value->need_clear = true;
     }
   else
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
     }
+
+success:
+  return error_status;
+
+error:
+  if (buf != NULL)
+    {
+      db_private_free_and_init (NULL, buf);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 
   return error_status;
 }
@@ -25444,13 +25519,13 @@ db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 int
 db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
-  const char *str = NULL;
-  char *buf = NULL;
+  DB_CONST_C_CHAR char_data = NULL;
+  void *buf = NULL;
   DB_TYPE src_type = DB_TYPE_NULL;
   INTL_CODESET codeset = INTL_CODESET_NONE;
   int collation = LANG_COLL_DEFAULT;
   int length = 0;
-  int err = NO_ERROR;
+  int error_status = NO_ERROR;
 
   assert (src_value != NULL && result_value != NULL);
 
@@ -25458,40 +25533,52 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
   if (src_type == DB_TYPE_NULL)
     {
       db_make_null (result_value);
-      return NO_ERROR;
+      goto success;
     }
 
   if (!QSTR_IS_ANY_CHAR (src_type))
     {
-      err = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-      return err;
+      error_status = ER_QSTR_INVALID_DATA_TYPE;
+      goto error;
     }
 
-  str = db_get_char (src_value, &length);
+  char_data = db_get_string (src_value);
+  length = db_get_string_size (src_value);
   codeset = db_get_string_codeset (src_value);
   collation = db_get_string_collation (src_value);
 
-  buf = (char *) db_private_alloc (NULL, length > 0 ? length : 1);
-  if (buf == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
   if (length > 0)
     {
-      memcpy (buf, str, length);
+      buf = db_private_alloc (NULL, length);
+      if (buf == NULL)
+	{
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      memcpy (buf, char_data, length);
     }
 
-  err = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, length, codeset, collation);
-  if (err != NO_ERROR)
+  error_status = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, length, codeset, collation);
+  if (error_status != NO_ERROR)
     {
-      db_private_free_and_init (NULL, buf);
-      return err;
+      goto error;
     }
 
   result_value->need_clear = true;
 
-  return NO_ERROR;
+success:
+  return error_status;
+
+error:
+  if (buf != NULL)
+    {
+      db_private_free_and_init (NULL, buf);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+
+  return error_status;
 }
 
 /*
@@ -25504,12 +25591,13 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
 int
 db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_VALUE * result_value)
 {
+  DB_TYPE src_type = DB_TYPE_NULL;
+  DB_CONST_C_CHAR clob_data = NULL;
+  void *buf = NULL;
+  int codeset = LANG_SYS_CODESET;
+  int length = 0;
+  int collation = LANG_COLL_DEFAULT;
   int error_status = NO_ERROR;
-  DB_TYPE src_type;
-  int max_length;
-  int cs = LANG_SYS_CODESET;
-  DB_CONST_C_CHAR clob_str = NULL;
-  int clob_len = 0;
 
   assert (src_value != NULL && result_value != NULL);
 
@@ -25517,45 +25605,63 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
     {
       assert (DB_VALUE_DOMAIN_TYPE (codeset_value) == DB_TYPE_INTEGER);
 
-      cs = db_get_int (codeset_value);
-      if (cs != INTL_CODESET_UTF8 && cs != INTL_CODESET_ISO88591 && cs != INTL_CODESET_KSC5601_EUC)
+      codeset = db_get_int (codeset_value);
+      if (codeset != INTL_CODESET_UTF8 && codeset != INTL_CODESET_ISO88591 && codeset != INTL_CODESET_KSC5601_EUC)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  return error_status;
+	  goto error;
 	}
     }
+
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
-
-  max_length = -1;
-
   if (src_type == DB_TYPE_NULL)
     {
       db_make_null (result_value);
-      return NO_ERROR;
+      goto success;
     }
 
   if (src_type == DB_TYPE_CLOB)
     {
-      int byte_size = 0;
+      clob_data = db_get_string (src_value);
+      length = db_get_string_size (src_value);
+      collation = db_get_string_collation (src_value);
 
-      clob_str = db_get_string (src_value);
-      clob_len = db_get_string_length (src_value);
 
-      if (clob_str == NULL)
+      if (length > 0)
 	{
-	  db_make_null (result_value);
+	  buf = db_private_alloc (NULL, length);
+	  if (buf == NULL)
+	    {
+	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+
+	  memcpy (buf, clob_data, length);
 	}
 
-      intl_char_size ((unsigned char *) clob_str, clob_len, db_get_string_codeset (src_value), &byte_size);
-
-      db_make_varchar (result_value, clob_len, clob_str, byte_size, cs, db_get_string_collation (src_value));
+      error_status =
+	db_make_varchar (result_value, DB_MAX_VARCHAR_PRECISION, (DB_CONST_C_CHAR) buf, length, codeset, collation);
+      if (error_status != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   else
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      goto error;
     }
+
+success:
+  return error_status;
+
+error:
+  if (buf != NULL)
+    {
+      db_private_free_and_init (NULL, buf);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 
   return error_status;
 }
