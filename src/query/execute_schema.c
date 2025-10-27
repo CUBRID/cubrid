@@ -1328,7 +1328,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  if (!HA_DISABLED () && ha_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
+  if (!HA_DISABLED () && ha_check_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
     {
       error = ER_HA_FK_CONSTRAINT_VIOLATION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -8867,23 +8867,20 @@ but when adding a constraint to a column with ALTER TABLE, it has to be retrieve
 If the time required to patch the SM is small, the same patch-based approach can be applied consistently. 
 */
 bool
-ha_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
+ha_check_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
 {
-  DB_CONSTRAINT *constraints, *tmp_c;
-  MOP ref_clsop = NULL;
+  DB_CONSTRAINT *tmp_c;
 
   assert (class_obj != NULL);
 
-  constraints = db_get_constraints (class_obj);
-  for (tmp_c = constraints; tmp_c; tmp_c = db_constraint_next (tmp_c))
+  for (tmp_c = db_get_constraints (class_obj); tmp_c; tmp_c = db_constraint_next (tmp_c))
     {
       if (tmp_c->type != SM_CONSTRAINT_FOREIGN_KEY)
 	{
 	  continue;
 	}
 
-      ref_clsop = ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL);
-      if (repl != sm_is_replication_class (ref_clsop))
+      if (repl != sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
 	{
 	  return true;
 	}
@@ -9299,7 +9296,7 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       if (!HA_DISABLED ()
-	  && ha_fk_replication_violation (class_obj, IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication)))
+	  && ha_check_fk_replication_violation (class_obj, IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication)))
 	{
 	  error = ER_HA_FK_CONSTRAINT_VIOLATION;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
