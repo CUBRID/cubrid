@@ -543,6 +543,9 @@ static void qexec_end_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spe
 static SCAN_CODE qexec_next_merge_block (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE ** spec);
 static SCAN_CODE qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static SCAN_CODE qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static SCAN_CODE qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_succeed,
+						    XASL_NODE * xasl, XASL_STATE * xasl_state,
+						    QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
 static SCAN_CODE qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
 static SCAN_CODE qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -7915,6 +7918,129 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_execute_nljoin_with_memoize () -
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   thread_p(in)           : Thread entry
+ *   is_memoize_succeed(out): Whether memoization succeeded
+ *   xasl(in)               : XASL Tree block
+ *   xasl_state(in)         : XASL tree state information
+ *   ignore(in)             : Tuple record to ignore
+ *   next_scan_fnc(in)      : Function to interpret following scan block
+ *
+ * Note: This routine executes nested loop join operations with memoization
+ * (caching) support. It first attempts to retrieve cached results via
+ * memoize_get(). If memoization succeeds and cached data is available,
+ * it uses the cached results to avoid redundant computations. If the
+ * cache is exhausted (is_memoize_ended), it returns S_END. Otherwise,
+ * it processes the cached data and executes following scan procedures
+ * if present. The function iteratively processes memoized tuples and
+ * invokes next_scan_fnc for each tuple. If an error occurs during
+ * memoization or scan execution, it returns S_ERROR. When all cached
+ * results are successfully processed, it returns S_SUCCESS.
+ *
+ * Note: This function optimizes nested loop joins by caching inner table
+ * results for the same join key, significantly reducing redundant table
+ * accesses in nested loop join operations.
+ */
+
+static SCAN_CODE
+qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_succeed,
+				   XASL_NODE * xasl, XASL_STATE * xasl_state,
+				   QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+{
+  int memoize_err_code;
+  SCAN_CODE xs_scan;
+  bool is_memoize_ended = false;
+  memoize_err_code = memoize_get (xasl, is_memoize_succeed, &is_memoize_ended);
+  if (memoize_err_code == ER_FAILED)
+    {
+      return S_ERROR;
+    }
+  if (*is_memoize_succeed)
+    {
+      if (is_memoize_ended)
+	{
+	  if (xasl->curr_spec->s_id.direction == S_FORWARD)
+	    {
+	      xasl->curr_spec->s_id.position = S_AFTER;
+	    }
+	  else
+	    {
+	      xasl->curr_spec->s_id.position = S_BEFORE;
+	    }
+	  return S_END;
+	}
+      else
+	{
+	  if (!xasl->scan_ptr)
+	    {
+	      /* no scan procedure block */
+	      return S_SUCCESS;
+	    }
+	  else
+	    {
+	      while (1)
+		{
+		  /* current scan block has at least one qualified item */
+		  xasl->curr_spec->s_id.qualified_block = true;
+
+		  /* start following scan procedure */
+		  xasl->scan_ptr->next_scan_on = false;
+		  if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+
+		  if (xasl->scan_ptr->memoize_storage)
+		    {
+		      xasl->scan_ptr->memoize_storage->set_key_changed ();
+		    }
+
+		  xasl->next_scan_on = true;
+		  /* execute following scan procedure */
+		  xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+		  if (xs_scan == S_END)
+		    {
+		      xasl->next_scan_on = false;
+
+		      memoize_err_code = memoize_get (xasl, is_memoize_succeed, &is_memoize_ended);
+
+		      if (memoize_err_code == ER_FAILED)
+			{
+			  return S_ERROR;
+			}
+		      if (*is_memoize_succeed)
+			{
+			  if (is_memoize_ended)
+			    {
+			      if (xasl->curr_spec->s_id.direction == S_FORWARD)
+				{
+				  xasl->curr_spec->s_id.position = S_AFTER;
+				}
+			      else
+				{
+				  xasl->curr_spec->s_id.position = S_BEFORE;
+				}
+			      return S_END;
+			    }
+			  else
+			    {
+			      continue;
+			    }
+			}
+		    }
+		  else
+		    {
+		      return xs_scan;
+		    }
+		}
+	    }
+	}
+    }
+  return S_SUCCESS;
+}
+
+/*
  * qexec_execute_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   xasl(in)   : XASL Tree block
@@ -7944,11 +8070,12 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   XASL_NODE *xptr;
   SCAN_CODE sc_scan;
   SCAN_CODE xs_scan;
+  SCAN_CODE memoize_scan;
   DB_LOGICAL ev_res;
   int qualified;
   SCAN_OPERATION_TYPE scan_operation_type;
   int memoize_err_code;
-  bool memoize_success = true, memoize_key_ended, memoize_put_success, memoize_ended;
+  bool memoize_success = true, memoize_key_ended, memoize_put_success;
 
   /* check if further scan procedure are still active */
   if (xasl->scan_ptr && xasl->next_scan_on)
@@ -7962,97 +8089,14 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       xasl->next_scan_on = false;
     }
 
-  /* check memoize */
   if (xasl->memoize_storage)
     {
-      memoize_err_code = memoize_get (xasl, &memoize_success, &memoize_ended);
-      if (memoize_err_code == ER_FAILED)
+      memoize_scan =
+	qexec_execute_nljoin_with_memoize (thread_p, &memoize_success, xasl, xasl_state, ignore, next_scan_fnc);
+
+      if (memoize_scan != S_SUCCESS || memoize_success)
 	{
-	  return S_ERROR;
-	}
-      if (memoize_success)
-	{
-	  if (memoize_ended)
-	    {
-	      if (xasl->curr_spec->s_id.direction == S_FORWARD)
-		{
-		  xasl->curr_spec->s_id.position = S_AFTER;
-		}
-	      else
-		{
-		  xasl->curr_spec->s_id.position = S_BEFORE;
-		}
-	      return S_END;
-	    }
-	  else
-	    {
-	      if (!xasl->scan_ptr)
-		{
-		  /* no scan procedure block */
-		  return S_SUCCESS;
-		}
-	      else
-		{
-		  while (1)
-		    {
-		      /* current scan block has at least one qualified item */
-		      xasl->curr_spec->s_id.qualified_block = true;
-
-		      /* start following scan procedure */
-		      xasl->scan_ptr->next_scan_on = false;
-		      if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
-			{
-			  return S_ERROR;
-			}
-
-		      if (xasl->scan_ptr->memoize_storage)
-			{
-			  xasl->scan_ptr->memoize_storage->set_key_changed ();
-			}
-
-		      xasl->next_scan_on = true;
-		      /* execute following scan procedure */
-		      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
-		      if (xs_scan == S_END)
-			{
-			  xasl->next_scan_on = false;
-			  qualified = false;
-
-			  memoize_err_code = memoize_get (xasl, &memoize_success, &memoize_ended);
-
-			  if (memoize_err_code == ER_FAILED)
-			    {
-			      return S_ERROR;
-			    }
-			  if (memoize_success)
-			    {
-			      if (memoize_ended)
-				{
-				  if (xasl->curr_spec->s_id.direction == S_FORWARD)
-				    {
-				      xasl->curr_spec->s_id.position = S_AFTER;
-				    }
-				  else
-				    {
-				      xasl->curr_spec->s_id.position = S_BEFORE;
-				    }
-				  return S_END;
-				}
-			      else
-				{
-				  continue;
-				}
-			    }
-			}
-		      else
-			{
-			  return xs_scan;
-			}
-		    }
-
-		}
-	    }
-
+	  return memoize_scan;
 	}
     }
 
