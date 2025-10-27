@@ -231,8 +231,8 @@ static int date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str
 			 DB_VALUE * result_str, const TP_DOMAIN * domain);
 static int number_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_VALUE * number_lang,
 			   DB_VALUE * result_str, const TP_DOMAIN * domain);
-static int lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_value, DB_TYPE lob_type);
 static int lob_to_bit_char (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob_type, int max_length);
+static int lob_from_file (const char *path, const DB_VALUE * src_value, DB_VALUE * lob_value, DB_TYPE lob_type);
 static int lob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 
 static int make_number_to_char (const INTL_LANG lang, char *num_string, char *format_str, int *length,

@@ -1550,13 +1550,20 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
       return ptr;
     }
 
-  *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
-  if (*number_array)
+  if (n > 0)
     {
-      ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-      for (i = 0; i < n; i++)
+      *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
+      if (*number_array)
 	{
-	  ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+	  for (i = 0; i < n; i++)
+	    {
+	      ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	    }
+	}
+      else
+	{
+	  ptr = NULL;
 	}
     }
   else
@@ -5770,6 +5777,8 @@ or_pack_int_array (char *buffer, int count, int *int_array)
 {
   int i;
   char *ptr;
+
+  count = (count >= 0) ? count : 0;
 
   if (!int_array)
     {

@@ -340,8 +340,13 @@ net_server_init (void)
   req_p->processing_function = sfile_apply_tde_to_class_files;
 
   /* lob */
-  req_p = &net_Requests[NET_SERVER_MANAGE_LOB_DIR];
-  req_p->processing_function = smanage_lob_dir;
+  req_p = &net_Requests[NET_SERVER_CREATE_LOB_DIR];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = screate_lob_dir;
+
+  req_p = &net_Requests[NET_SERVER_REMOVE_LOB_DIR];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sremove_lob_dir;
 
   /* dblink */
   req_p = &net_Requests[NET_SERVER_DBLINK_GET_CRYPT_KEY];
