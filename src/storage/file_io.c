@@ -11948,8 +11948,6 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
   return is_formatted;
 }
 
-#define	MAX_INTEGER_DISPLAY_LENGTH	  11
-#define	MAX_SHORT_DISPLAY_LENGTH	  6
 /*
  * xcreate_lob_dir () - create lob dir
  *
