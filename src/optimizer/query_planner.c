@@ -11530,6 +11530,10 @@ qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg)
     {
       termp = QO_ENV_TERM (env, term_idx);
       expr = QO_TERM_PT_EXPR (termp);
+      if (expr == NULL)
+	{
+	  continue;
+	}
 
       bitset_init (&temp_segs_set, env);
 

@@ -7780,7 +7780,7 @@ pt_set_flag_do_not_fold_for_dblink (PARSER_CONTEXT * parser, PT_NODE * expr, voi
 }
 
 static PT_NODE *
-pt_set_flag_removable_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
+pt_set_expr_removable_flag (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
 {
   if (expr->node_type == PT_EXPR)
     {
@@ -7863,7 +7863,7 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
 		  if (num_logical_chars == 1 && num_match_many == 1)
 		    {
-		      parser_walk_tree (parser, node, pt_set_flag_removable_expr, NULL, NULL, NULL);
+		      parser_walk_tree (parser, node, pt_set_expr_removable_flag, NULL, NULL, NULL);
 		    }
 		}
 	    }

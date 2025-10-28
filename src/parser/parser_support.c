@@ -9924,9 +9924,9 @@ pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
   switch (tree->node_type)
     {
     case PT_SPEC:
-      if (!pt_find_entity (parser, *spec_list, tree->info.spec.id))
+      if (PT_SPEC_IS_ENTITY (tree) && !pt_find_entity (parser, *spec_list, tree->info.spec.id))
 	{
-	  *spec_list = parser_append_node (tree, *spec_list);
+	  *spec_list = parser_append_node (parser_copy_tree (parser, tree), *spec_list);
 	}
       break;
     case PT_EXPR:
