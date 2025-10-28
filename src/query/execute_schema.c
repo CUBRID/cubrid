@@ -4117,13 +4117,13 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
-
-	  error =
-	    sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF,
-			       !sm_is_replication_class (pinfo->root_op));
-	  if (error != NO_ERROR)
+	  if (!sm_is_replication_class (pinfo->root_op))
 	    {
-	      goto end_create;
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
 	    }
 
 	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
@@ -4350,13 +4350,15 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
-	  error =
-	    sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF,
-			       !sm_is_replication_class (pinfo->root_op));
-	  if (error != NO_ERROR)
+	  if (!sm_is_replication_class (pinfo->root_op))
 	    {
-	      goto end_create;
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
 	    }
+
 	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
 	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
@@ -7019,6 +7021,17 @@ do_promote_partition (SM_CLASS * class_)
       /* make attributes point to the subclass, not the parent */
       smattr->class_mop = subclass_mop;
     }
+  /* Ensure that attributes belonging to a partition are not copied.  
+   * However, according to EPIC CBRD-26096, primary key (PK) constraints and 
+   * NOT NULL UNIQUE properties must be preserved and reflected properly. */
+  for (smattr = ctemplate->attributes; smattr != NULL; smattr = (SM_ATTRIBUTE *) smattr->header.next)
+    {
+      /* reset flags that belong to the root partitioned table */
+      smattr->auto_increment = NULL;
+      smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
+      smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
+      smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
+    }
 
   ctemplate->inheritance = NULL;
   ctemplate->methods = NULL;
@@ -7034,6 +7047,11 @@ do_promote_partition (SM_CLASS * class_)
   ctemplate->triggers = NULL;
   classobj_free_partition_info (ctemplate->partition);
   ctemplate->partition = NULL;
+
+  if (ctemplate->properties != NULL)
+    {
+      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
+    }
 
   if (dbt_finish_class (ctemplate) == NULL)
     {
