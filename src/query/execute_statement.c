@@ -4480,8 +4480,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (class_type == SM_CLASS_CT)
 	    {
-	      error = sm_update_statistics (class_mop, (statement->info.update_stats.with_fullscan
-							? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+	      error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
 	    }
 	}
 

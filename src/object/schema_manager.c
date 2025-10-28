@@ -443,7 +443,8 @@ static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, in
 
 static void sm_free_resident_classes_virtual_query_cache (void);
 static int sm_set_class_timestamps (SM_CLASS * class_);
-static int set_checked_time_with_strategy (MOP op, bool with_fullscan);
+static int set_checked_time_with_strategy (MOP _db_class, const char *class_name, CLASS_STATS * stats,
+					   bool with_fullscan);
 
 
 /*
@@ -4210,6 +4211,8 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
+  MOP _db_class;
+  const char *class_name = NULL;
 
   assert_release (classop != NULL);
 
@@ -4226,7 +4229,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
     }
   if (is_class > 0)
     {
-
       /* make sure the workspace is flushed before calculating stats */
       if (locator_flush_all_instances (classop, DONT_DECACHE) != NO_ERROR)
 	{
@@ -4234,7 +4236,14 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (classop, (with_fullscan ? 1 : 0));
+      _db_class = sm_find_class_with_purpose (CT_CLASS_NAME, true);
+      if (_db_class == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      error = stats_update_statistics (classop, with_fullscan);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -4266,10 +4275,15 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      return error;
 		    }
 
-		  error = set_checked_time_with_strategy (classop, with_fullscan);
-		  if (error != NO_ERROR)
+		  /* class_->stats is NULL if class doesn't have attributes. */
+		  if (class_->stats != NULL)
 		    {
-		      return error;
+		      class_name = sm_ch_name ((MOBJ) class_);
+		      error = set_checked_time_with_strategy (_db_class, class_name, class_->stats, with_fullscan);
+		      if (error != NO_ERROR)
+			{
+			  return error;
+			}
 		    }
 		}
 	    }
@@ -4362,6 +4376,8 @@ sm_update_all_statistics (bool with_fullscan)
   int error = NO_ERROR;
   DB_OBJLIST *cl;
   SM_CLASS *class_;
+  MOP _db_class;
+  const char *class_name = NULL;
 
   /* make sure the workspace is flushed before calculating stats */
   if (locator_all_flush () != NO_ERROR)
@@ -4370,7 +4386,14 @@ sm_update_all_statistics (bool with_fullscan)
       return er_errid ();
     }
 
-  error = stats_update_all_statistics ((with_fullscan ? 1 : 0));
+  _db_class = sm_find_class_with_purpose (CT_CLASS_NAME, true);
+  if (_db_class == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = stats_update_all_statistics (with_fullscan);
   if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
@@ -4399,10 +4422,15 @@ sm_update_all_statistics (bool with_fullscan)
 		      return error;
 		    }
 
-		  error = set_checked_time_with_strategy (cl->op, with_fullscan);
-		  if (error != NO_ERROR)
+		  /* class_->stats is NULL if class doesn't have attributes. */
+		  if (class_->stats != NULL)
 		    {
-		      return error;
+		      class_name = sm_ch_name ((MOBJ) class_);
+		      error = set_checked_time_with_strategy (_db_class, class_name, class_->stats, with_fullscan);
+		      if (error != NO_ERROR)
+			{
+			  return error;
+			}
 		    }
 		}
 	    }
@@ -16719,38 +16747,47 @@ sm_update_class_timestamp (SM_CLASS * class_)
 }
 
 static int
-set_checked_time_with_strategy (MOP op, bool with_fullscan)
+set_checked_time_with_strategy (MOP _db_class, const char *class_name, CLASS_STATS * stats, bool with_fullscan)
 {
-  SM_CLASS *class_ = NULL;
-  time_t sec;
-  DB_VALUE timestamp, current_datetime;
-  DB_DATETIME checked_time = (DB_DATETIME) { 0, 0 };
+  MOP inst;
+  int error = NO_ERROR;
+  DB_VALUE class_name_val;
+  int save;
+  DB_VALUE timestamp_val, current_datetime_val, statistics_strategy_val;
 
-  if (au_fetch_class_force (op, &class_, AU_FETCH_UPDATE) != NO_ERROR)
+  AU_DISABLE (save);
+  db_make_string (&class_name_val, class_name);
+  inst = db_find_unique (_db_class, "unique_name", &class_name_val);
+  if (inst == NULL)
     {
-      return ER_FAILED;
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
-  if (class_->stats != NULL && class_->stats->time_stamp != 0)
+  db_make_timestamp (&timestamp_val, stats->time_stamp);
+  error = db_timestamp_to_datetime (&timestamp_val, &current_datetime_val);
+  if (error != NO_ERROR)
     {
-      sec = (time_t) class_->stats->time_stamp;
-      db_make_timestamp (&timestamp, (DB_TIMESTAMP) sec);
-      if (db_timestamp_to_datetime (&timestamp, &current_datetime) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      checked_time = *db_get_datetime (&current_datetime);
+      goto end;
+    }
+  error = obj_set (inst, "checked_time", &current_datetime_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
-  class_->checked_time = checked_time;
-  class_->statistics_strategy = (int) with_fullscan;
-
-  if (locator_flush_class (op) != NO_ERROR)
+  db_make_int (&statistics_strategy_val, with_fullscan);
+  error = obj_set (inst, "statistics_strategy", &statistics_strategy_val);
+  if (error != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      goto end;
     }
 
-  return NO_ERROR;
+  error = locator_flush_instance (inst);
+
+end:
+  db_value_clear (&class_name_val);
+  AU_ENABLE (save);
+
+  return error;
 }
