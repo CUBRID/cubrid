@@ -15769,6 +15769,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
       error = remove_lob_dir (insts_hfid, -1);
       if (error != NO_ERROR)
 	{
+          free (lob_attrid_arr);
 	  return error;
 	}
     }
@@ -15779,18 +15780,31 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = locator_flush_class (class_mop);
   if (error != NO_ERROR)
     {
+      if (attrid_arr_length)
+        {
+          free (lob_attrid_arr);
+        }
       return error;
     }
 
   /* Create a new heap */
   error = heap_create (insts_hfid, oid, reuse_oid);
+  if (error != NO_ERROR)
+    {
+      if (attrid_arr_length)
+        {
+          free (lob_attrid_arr);
+        }
+      return error;
+    }
+
   /* Create the lob dir if need */
   if (attrid_arr_length)
     {
       HFID lob_hfid = *insts_hfid;
       error = create_lob_dir (&lob_hfid, lob_attrid_arr, attrid_arr_length);
+      free (lob_attrid_arr);
     }
-  free (lob_attrid_arr);
 
   if (error != NO_ERROR)
     {

@@ -652,8 +652,15 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      {
 		HFID lob_hfid = class_->header.ch_heap;
 		error = create_lob_dir (&lob_hfid, lob_attrid_arr, arr_length);
+                free (lob_attrid_arr);
+
+                if (error != NO_ERROR)
+                  {
+                    dbt_abort_class (ctemplate);
+                    tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                    return error;
+                  }
 	      }
-	    free (lob_attrid_arr);
 	  }
 
 	break;
@@ -807,6 +814,13 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	}
 		    error = remove_lob_dir (&lob_hfid, attr.id);
+                    if (error != NO_ERROR)
+                      {
+                        free (lob_attrid_arr);
+
+                        dbt_abort_class (ctemplate);
+                        return error;
+                      }
 		  }
 	      }
 	  }
