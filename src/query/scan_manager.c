@@ -51,7 +51,7 @@
 #include "xasl.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
-#include "px_heap_scan_manager.hpp"
+#include "px_heap_scan.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
