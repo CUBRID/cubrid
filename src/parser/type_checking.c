@@ -7780,6 +7780,16 @@ pt_set_flag_do_not_fold_for_dblink (PARSER_CONTEXT * parser, PT_NODE * expr, voi
 }
 
 static PT_NODE *
+pt_set_flag_removable_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
+{
+  if (expr->node_type == PT_EXPR)
+    {
+      PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_REMOVABLE);
+    }
+  return expr;
+}
+
+static PT_NODE *
 pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_NODE **spec_list = (PT_NODE **) arg;
@@ -7804,7 +7814,7 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
     case PT_SPEC:
       if (PT_SPEC_IS_ENTITY (node) && !pt_find_entity (parser, *spec_list, node->info.spec.id))
 	{
-	  *spec_list = parser_append_node (node, *spec_list);
+	  *spec_list = parser_append_node (parser_copy_tree (parser, node), *spec_list);
 	}
       break;
     case PT_FUNCTION:
@@ -7853,8 +7863,7 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
 		  if (num_logical_chars == 1 && num_match_many == 1)
 		    {
-		      parser_free_node (parser, node->info.expr.arg2);
-		      node->info.expr.arg2 = pt_dbval_to_value (parser, &where_val);
+		      parser_walk_tree (parser, node, pt_set_flag_removable_expr, NULL, NULL, NULL);
 		    }
 		}
 	    }
@@ -17946,7 +17955,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   DB_VALUE dummy, dbval_res, *arg1, *arg2, *arg3;
   PT_OP_TYPE op;
   PT_NODE *expr_next;
-  int line, column;
+  int line, column, save_set_host_var;
   short location;
   const char *alias_print;
   unsigned is_hidden_column;
@@ -17971,6 +17980,9 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       return expr;
     }
+
+  save_set_host_var = parser->flag.set_host_var;
+  parser->flag.set_host_var = PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_REMOVABLE) ? 1 : save_set_host_var;
 
   location = expr->info.expr.location;
 
@@ -18247,6 +18259,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       goto end;
     }
 
+  if (opd1 && opd1->node_type == PT_HOST_VAR)
+    {
+      arg1 = pt_value_to_db (parser, opd1);
+      if (!DB_IS_NULL (arg1))
+	{
+	  opd1 = pt_dbval_to_value (parser, arg1);
+	  result->info.expr.arg1 = (op == PT_LIKE_ESCAPE) ? opd1 : result->info.expr.arg1;
+	}
+    }
+
   if (opd1 && opd1->node_type == PT_VALUE)
     {
       arg1 = pt_value_to_db (parser, opd1);
@@ -18272,6 +18294,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   else
     {
       opd2 = expr->info.expr.arg2;
+    }
+
+  if (opd2 && opd2->node_type == PT_HOST_VAR)
+    {
+      arg2 = pt_value_to_db (parser, opd2);
+      if (!DB_IS_NULL (arg2))
+	{
+	  opd2 = pt_dbval_to_value (parser, arg2);
+	  result->info.expr.arg2 = (op == PT_LIKE) ? opd2 : result->info.expr.arg2;
+	}
     }
 
   if (opd2 && opd2->node_type == PT_VALUE)
@@ -18506,6 +18538,15 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   else
     {
       opd3 = expr->info.expr.arg3;
+    }
+
+  if (opd3 && opd3->node_type == PT_HOST_VAR)
+    {
+      arg3 = pt_value_to_db (parser, opd3);
+      if (!DB_IS_NULL (arg3))
+	{
+	  opd3 = pt_dbval_to_value (parser, arg3);
+	}
     }
 
   if (opd3 && opd3->node_type == PT_VALUE)
@@ -18872,6 +18913,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 end:
   pr_clear_value (&dbval_res);
+  parser->flag.set_host_var = save_set_host_var;
 
   if (has_error)
     {

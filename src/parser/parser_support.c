@@ -9956,6 +9956,8 @@ pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 	  tree->info.expr.flag |= PT_EXPR_INFO_REMOVABLE;
 	}
       break;
+    default:
+      break;
     }
   return tree;
 }
