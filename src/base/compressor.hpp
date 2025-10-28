@@ -20,8 +20,8 @@
  * compressor.hpp
  */
 
-#ifndef _BASE_COMPRESSOR_HPP_
-#define _BASE_COMPRESSOR_HPP_
+#ifndef _COMPRESSOR_HPP_
+#define _COMPRESSOR_HPP_
 
 #include "lz4.h"
 #include "error_manager.h"
@@ -37,6 +37,9 @@ namespace cubcompress
   /* options */
   struct lz4_options
   {
+    /* accel must be a value between 1 and LZ4_ACCELERATION_MAX (usually 65537).  */
+    /* trade-off: accel ≈ 1 = best compression ratio.				  */
+    /*		  larger accel = higher throughput.				  */
     int accel = 1;
   };
   /* add here */

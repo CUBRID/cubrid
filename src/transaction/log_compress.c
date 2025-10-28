@@ -27,7 +27,6 @@
 #include <string.h>
 #include <assert.h>
 
-#include "compressor.hpp"
 #include "log_compress.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
@@ -79,9 +78,12 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
   /* save original data length */
   memcpy (log_zip->log_data, &length, sizeof (LOG_ZIP_SIZE_T));
 
+  // *INDENT-OFF*
   zip_len =
-    cubcompress::compress < cubcompress::LZ4 > (data, length, log_zip->log_data + sizeof (LOG_ZIP_SIZE_T),
-						buf_size - sizeof (LOG_ZIP_SIZE_T));
+    cubcompress::compress<cubcompress::LZ4> (data, length, log_zip->log_data + sizeof (LOG_ZIP_SIZE_T),
+					     buf_size - sizeof (LOG_ZIP_SIZE_T));
+  // *INDENT-ON*
+
   if (zip_len > 0)
     {
       log_zip->data_length = (LOG_ZIP_SIZE_T) zip_len + sizeof (LOG_ZIP_SIZE_T);
@@ -140,9 +142,11 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, const void *data)
 
   decompressed = false;
 
+  // *INDENT-OFF*
   unzip_len =
-    cubcompress::decompress < cubcompress::LZ4 > ((const char *) data + sizeof (LOG_ZIP_SIZE_T), length,
-						  (char *) log_unzip->log_data, buf_size);
+    cubcompress::decompress<cubcompress::LZ4> ((const char *) data + sizeof (LOG_ZIP_SIZE_T), length,
+					       (char *) log_unzip->log_data, buf_size);
+  // *INDENT-ON*
   if (unzip_len >= 0)
     {
       log_unzip->data_length = (LOG_ZIP_SIZE_T) unzip_len;

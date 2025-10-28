@@ -7480,7 +7480,9 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
     {
     case FILEIO_ZIP_LZ4_METHOD:
       assert (size <= LZ4_MAX_INPUT_SIZE);
-      buf_size = cubcompress::bound < cubcompress::LZ4 > (size);
+      // *INDENT-OFF*
+      buf_size = cubcompress::bound<cubcompress::LZ4> (size);
+      // *INDENT-ON*
       zip_info_size = offsetof (FILEIO_ZIP_INFO, zip_page) + sizeof (int) + buf_size;
       node_p->zip_info = (FILEIO_ZIP_INFO *) malloc (zip_info_size);
       if (node_p->zip_info == NULL)
@@ -7628,9 +7630,11 @@ fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup
     {
     case FILEIO_ZIP_LZ4_METHOD:
       /* The alternative is compress faster - best speed, but, require more memory alloc */
+      // *INDENT-OFF*
       local_buf_len =
-	cubcompress::compress < cubcompress::LZ4 > ((char *) node_p->area, (int) node_p->nread, zip_page->buf,
-						    node_p->zip_info->buf_size);
+	cubcompress::compress<cubcompress::LZ4> ((char *) node_p->area, (int) node_p->nread, zip_page->buf,
+						 node_p->zip_info->buf_size);
+      // *INDENT-ON*
       if (local_buf_len <= 0)
 	{
 	  /* best reduction */
@@ -10123,9 +10127,11 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	      }
 
 	    /* decompress - use safe decompressor as data might be corrupted during a file transfer */
+	    // *INDENT-OFF*
 	    unzip_len =
-	      cubcompress::decompress < cubcompress::LZ4 > ((const char *) zip_page->buf, zip_page->buf_len,
-							    (char *) session_p->dbfile.area, nbytes);
+	      cubcompress::decompress<cubcompress::LZ4> ((const char *) zip_page->buf, zip_page->buf_len,
+							 (char *) session_p->dbfile.area, nbytes);
+	    // *INDENT-ON*
 
 	    if (unzip_len < 0 || unzip_len != nbytes)
 	      {

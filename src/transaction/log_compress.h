@@ -28,7 +28,6 @@
 
 #ident "$Id$"
 
-#include "lz4.h"
 #include "compressor.hpp"
 
 #define MAKE_ZIP_LEN(length)                                                  \
