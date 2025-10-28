@@ -1974,7 +1974,7 @@ pr_clear_value (DB_VALUE * value)
 		  db_private_free_and_init (NULL, compressed_str);
 		}
 	    }
-	  db_set_compressed_string (value, NULL, 0, false);
+	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
 	}
       else if (db_type == DB_TYPE_CHAR)
 	{
@@ -14384,7 +14384,7 @@ pr_clear_compressed_string (DB_VALUE * value)
       db_private_free_and_init (NULL, data);
     }
 
-  db_set_compressed_string (value, NULL, 0, false);
+  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
 
   return NO_ERROR;
 }
@@ -14420,7 +14420,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Make sure the value has not been through a compression before */
-  if (value->data.ch.medium.compressed_size != 0)
+  if (value->data.ch.medium.compressed_size != DB_NOT_YET_COMPRESSED)
     {
       return rc;
     }
@@ -14432,7 +14432,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     {
       /* Either compression was disabled or the source size is less than the compression threshold. */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = -1;
+      value->data.ch.medium.compressed_size = DB_UNCOMPRESSABLE;
       return rc;
     }
 
@@ -14461,7 +14461,7 @@ pr_do_db_value_string_compression (DB_VALUE * value)
   else
     {
       /* Compression failed */
-      db_set_compressed_string (value, NULL, -1, false);
+      db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
       goto error;
     }
 

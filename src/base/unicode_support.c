@@ -38,6 +38,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(SA_MODE)
 
 #define UNICODEDATA_FILE "unicodedata.txt"
 
@@ -1109,6 +1110,77 @@ exit:
   return err_status;
 }
 
+/*
+ * comp_func_unicode_cp_mapping() - compare function for sorting a group of
+ *				    unicode decompositions starting with the
+ *				    same codepoint
+ *
+ * Returns: compare result
+ * arg1(in) :
+ * arg2(in) :
+ */
+static int
+comp_func_unicode_cp_mapping (const void *arg1, const void *arg2)
+{
+  UNICODE_CP_MAPPING *um1, *um2;
+  int min_size, result;
+
+  um1 = (UNICODE_CP_MAPPING *) arg1;
+  um2 = (UNICODE_CP_MAPPING *) arg2;
+
+  min_size = (um1->size < um2->size) ? um1->size : um2->size;
+  result = memcmp (um1->map, um2->map, min_size * sizeof (uint32));
+  /* Result will be reverted to obtain reverse ordering */
+  if (result == 0)
+    {
+      if (um1->size > min_size)
+	{
+	  return -1;
+	}
+      if (um2->size > min_size)
+	{
+	  return 1;
+	}
+      if (um1->cp < um2->cp)
+	{
+	  return -1;
+	}
+      return 1;
+    }
+
+  return -result;
+}
+
+/*
+ * comp_func_grouping_unicode_cp_mapping() - compare function for sorting
+ *				    all decompositions
+ *
+ * Returns: compare result
+ * arg1(in) :
+ * arg2(in) :
+ */
+static int
+comp_func_grouping_unicode_cp_mapping (const void *arg1, const void *arg2)
+{
+  UNICODE_CP_MAPPING *um1, *um2;
+  int result;
+
+  um1 = (UNICODE_CP_MAPPING *) arg1;
+  um2 = (UNICODE_CP_MAPPING *) arg2;
+
+  if (um1->map[0] > um2->map[0])
+    {
+      result = 1;
+    }
+  else
+    {
+      result = -1;
+    }
+
+  return result;
+}
+#endif //#if defined(SA_MODE)
+
 #if !defined (SERVER_MODE)
 /*
  * unicode_string_need_compose() - Checks if a string needs composition
@@ -1399,72 +1471,3 @@ unicode_decompose_string (const char *str_in, const int size_in, char *str_out, 
   *size_out = CAST_STRLEN (dest_cursor - str_out);
 }
 #endif /* SERVER_MODE */
-/*
- * comp_func_unicode_cp_mapping() - compare function for sorting a group of
- *				    unicode decompositions starting with the
- *				    same codepoint
- *
- * Returns: compare result
- * arg1(in) :
- * arg2(in) :
- */
-static int
-comp_func_unicode_cp_mapping (const void *arg1, const void *arg2)
-{
-  UNICODE_CP_MAPPING *um1, *um2;
-  int min_size, result;
-
-  um1 = (UNICODE_CP_MAPPING *) arg1;
-  um2 = (UNICODE_CP_MAPPING *) arg2;
-
-  min_size = (um1->size < um2->size) ? um1->size : um2->size;
-  result = memcmp (um1->map, um2->map, min_size * sizeof (uint32));
-  /* Result will be reverted to obtain reverse ordering */
-  if (result == 0)
-    {
-      if (um1->size > min_size)
-	{
-	  return -1;
-	}
-      if (um2->size > min_size)
-	{
-	  return 1;
-	}
-      if (um1->cp < um2->cp)
-	{
-	  return -1;
-	}
-      return 1;
-    }
-
-  return -result;
-}
-
-/*
- * comp_func_grouping_unicode_cp_mapping() - compare function for sorting
- *				    all decompositions
- *
- * Returns: compare result
- * arg1(in) :
- * arg2(in) :
- */
-static int
-comp_func_grouping_unicode_cp_mapping (const void *arg1, const void *arg2)
-{
-  UNICODE_CP_MAPPING *um1, *um2;
-  int result;
-
-  um1 = (UNICODE_CP_MAPPING *) arg1;
-  um2 = (UNICODE_CP_MAPPING *) arg2;
-
-  if (um1->map[0] > um2->map[0])
-    {
-      result = 1;
-    }
-  else
-    {
-      result = -1;
-    }
-
-  return result;
-}
