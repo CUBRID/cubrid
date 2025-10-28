@@ -356,6 +356,11 @@ event_log_print_client_info (int tran_index, int indent)
     {
       fprintf (event_Fp, "%*c", indent, ' ');
     }
+  fprintf (event_Fp, "tran index: %d\n", tran_index);
+  if (indent > 0)
+    {
+      fprintf (event_Fp, "%*c", indent, ' ');
+    }
   fprintf (event_Fp, "client: %s@%s|%s(%d)\n", user, host, prog, pid);
 }
 
