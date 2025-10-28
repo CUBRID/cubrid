@@ -10667,7 +10667,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	      specptr = &spec->next;
 	      spec = *specptr;
 	    }
-          if (spec)
+	  if (spec)
 	    {
 	      SPEC_RESET_INFO spec_reset;
 	      PT_NODE *subpaths;
@@ -10809,7 +10809,7 @@ mq_class_lambda (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * class_,
 	      specptr = &spec->next;
 	      spec = *specptr;
 	    }
-          if (spec)
+	  if (spec)
 	    {
 	      SPEC_RESET_INFO spec_reset;
 	      PT_NODE *subpaths;
