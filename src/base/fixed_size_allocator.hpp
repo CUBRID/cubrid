@@ -28,8 +28,8 @@ namespace cubmem
   {
     template <typename T>
     using private_vector = std::vector<T, private_allocator<T>>;
-    constexpr size_t align_size = 4;
-    constexpr size_t allocate_node_unit = 1024;
+    constexpr size_t align_size = 16;
+    constexpr size_t allocate_node_unit = 256;
     template <typename T, bool is_private>
     class allocator
     {
