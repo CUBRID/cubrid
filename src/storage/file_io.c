@@ -11973,12 +11973,10 @@ xcreate_lob_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 
   for (int i = 0; i < attrid_arr_length; i++)
     {
-      snprintf (rv_path, (MAX_INTEGER_DISPLAY_LENGTH * 3 + MAX_SHORT_DISPLAY_LENGTH), "%d_%d_%d_id%d/",
+      sprintf (rv_path, "%d_%d_%d_id%d/",
 		hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, (strlen (rv_path) + 1), &rv_path);
 
-      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, strlen (rv_path), &rv_path);
-
-      rv_path[strlen (rv_path)] = '\0';
       snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
       dirbuf[strlen (dirbuf)] = '\0';
 
@@ -12179,6 +12177,11 @@ fileio_remove_lob_dir (char *path_key)
 	}
 
       result = sub_result;
+    }
+
+  if (strcmp (base_dir, es_base_dir) != 0)
+    {
+      rmdir (base_dir);
     }
 
   closedir (dir_p);
