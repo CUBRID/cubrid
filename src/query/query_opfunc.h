@@ -19,6 +19,7 @@
 #ifndef _QUERY_OPFUNC_H_
 #define _QUERY_OPFUNC_H_
 
+#include "xasl.h"
 #ident "$Id$"
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
@@ -82,7 +83,11 @@ extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node
 				       qfile_tuple_value_type_list * type_list);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
 				    QFILE_TUPLE tpl);
-
+extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,
+					 qfile_tuple_value_type_list * type_list);
+extern int qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_record * tplrec);
+extern int qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * type_list,
+				    qfile_tuple_record * tplrec, VAL_LIST * val_list);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void regu_set_error_with_one_args (int err_type, const char *infor);
