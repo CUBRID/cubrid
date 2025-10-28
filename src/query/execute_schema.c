@@ -816,11 +816,11 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    error = remove_lob_dir (&lob_hfid, attr.id);
                     if (error != NO_ERROR)
                       {
-                        free (lob_attrid_arr);
-
                         dbt_abort_class (ctemplate);
                         return error;
                       }
+
+                    break;
 		  }
 	      }
 	  }
