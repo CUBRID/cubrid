@@ -24,6 +24,7 @@
 #include "xasl.h"
 #include "xasl_predicate.hpp"
 #include <unordered_map>
+#include "fixed_size_allocator.hpp"
 
 namespace memoize
 {
@@ -32,6 +33,9 @@ namespace memoize
 
   template <typename T>
   using pvector = std::vector<T, allocator<T>>; /* private-memory vector */
+
+  template <typename T>
+  using fixed_allocator = cubmem::fixed_size_alloc::allocator<T, true>;
 
   enum class result_code
   {
@@ -115,6 +119,7 @@ namespace memoize
       allocator<DB_VALUE> m_dbval_allocator;
       allocator<value *> m_value_allocator;
       allocator<std::pair<key *const, value *>> m_key_value_allocator;
+      fixed_allocator<key> m_key_fixed_allocator;
       size_t m_key_sz;
       size_t m_value_sz;
       size_t m_hash_sz;

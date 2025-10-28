@@ -163,6 +163,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
+  ${BASE_DIR}/fixed_size_allocator.hpp
 )
 
 set(HEAPLAYER_SOURCES

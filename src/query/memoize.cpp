@@ -700,6 +700,7 @@ namespace memoize
     , m_dbval_allocator (thread_p)
     , m_value_allocator (thread_p)
     , m_key_value_allocator (thread_p)
+    , m_key_fixed_allocator (thread_p)
     , m_key_sz (0)
     , m_value_sz (0)
     , m_hash_sz (0)
@@ -720,7 +721,7 @@ namespace memoize
     if (m_last_key != nullptr)
       {
 	m_last_key->~key();
-	db_private_free (m_thread_p, m_last_key);
+	m_key_fixed_allocator.deallocate (m_last_key);
 	m_last_key = nullptr;
       }
     for (auto it = m_key_value_map.begin(); it != m_key_value_map.end(); it++)
@@ -731,7 +732,7 @@ namespace memoize
 	    it->second->~value();
 	    db_private_free (m_thread_p, it->second);
 	  }
-	db_private_free (m_thread_p, it->first);
+	m_key_fixed_allocator.deallocate (it->first);
       }
     m_keyptr_src.clear();
     m_key_value_map.clear();
@@ -759,7 +760,7 @@ namespace memoize
 	if (m_last_key != nullptr)
 	  {
 	    m_last_key->~key();
-	    db_private_free (m_thread_p, m_last_key);
+	    m_key_fixed_allocator.deallocate (m_last_key);
 	    m_current_value_list.clear();
 	  }
 	m_last_key = get_key();
@@ -858,7 +859,7 @@ namespace memoize
 
   key *storage::get_key()
   {
-    key *k = (key *)db_private_alloc (m_thread_p, sizeof (key));
+    key *k = reinterpret_cast<key *> (m_key_fixed_allocator.allocate());
     if (k==nullptr)
       {
 	return nullptr;
