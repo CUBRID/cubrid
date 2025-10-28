@@ -58,7 +58,7 @@ char es_base_dir[PATH_MAX] = { 0 };
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
 static int es_make_dirs (const char *dirname1, const char *dirname2);
-static void es_rename_path (const char *src, char *tgt);
+static void es_rename_path (const char *src, char *tgt, char *metaname);
 
 static int es_abs_open (const char *abs_path, int flags);
 static int es_abs_open (const char *abs_path, int flags, mode_t mode);
@@ -165,10 +165,12 @@ retry:
  * tgt(out): target path
  */
 static void
-es_rename_path (const char *src, char *tgt)
+es_rename_path (const char *src, char *tgt, char *metaname)
 {
   const char *s;
   char *t;
+
+  assert (metaname != NULL);
 
   /*
    * src: /.../ces_000/ces_tmp.123456789
@@ -201,7 +203,7 @@ es_rename_path (const char *src, char *tgt)
       return;
     }
 
-  sprintf (t, "lob%s", s);
+  sprintf (t, "%s%s", metaname, s);
 }
 
 /*
@@ -582,7 +584,7 @@ xes_posix_delete_file (const char *path)
  * new_path(out): file path newly created
  */
 int
-xes_posix_copy_file (const char *src_path, char *new_path)
+xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
 {
 #define ES_POSIX_COPY_BUFSIZE		(4096 * 4)	/* 16K */
 
@@ -629,7 +631,7 @@ retry:
       return ER_ES_INVALID_PATH;
     }
 
-  es_log ("xes_posix_copy_file(%s): %s\n", src_path, new_path);
+  es_log ("xes_posix_copy_file(%s, %s): %s\n", src_path, metaname, new_path);
 
 #if defined (WINDOWS)
   wr_fd = es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, S_IRWXU);
@@ -701,17 +703,17 @@ retry:
  *
  * return: error code, ER_ES_GENERAL or NO_ERRROR
  * src_path(in): file path to rename
- * metapath(in) : meta name combined with src_path
+ * metaname(in) : meta name combined with src_path
  * new_path(out): new file path
  */
 int
-xes_posix_rename_file (const char *src_path, char *new_path)
+xes_posix_rename_file (const char *src_path, const char *metaname, char *new_path)
 {
   int ret;
 
-  es_rename_path ((char *) src_path, new_path);
+  es_rename_path ((char *) src_path, new_path, (char *) metaname);
 
-  es_log ("xes_posix_rename_file(%s): %s\n", src_path, new_path);
+  es_log ("xes_posix_rename_file(%s, %s): %s\n", src_path, metaname, new_path);
 
   ret = es_os_rename_file_abs (src_path, new_path);
 

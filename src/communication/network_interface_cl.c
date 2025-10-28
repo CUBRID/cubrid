@@ -9677,21 +9677,22 @@ es_posix_delete_file (const char *path)
  *
  * return :error code
  * src_path(in):
+ * metaname(in):
  * new_path(out):
  */
 int
-es_posix_copy_file (const char *src_path, char *new_path)
+es_posix_copy_file (const char *src_path, const char *metaname, char *new_path)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
-  int req_error, request_size, path_size, srclen;
+  int req_error, request_size, path_size, srclen, metalen;
   char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (src_path, &srclen);
+  request_size = length_const_string (src_path, &srclen) + length_const_string (metaname, &metalen);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -9701,6 +9702,7 @@ es_posix_copy_file (const char *src_path, char *new_path)
     }
 
   ptr = pack_const_string_with_length (request, src_path, srclen);
+  ptr = pack_const_string_with_length (ptr, metaname, metalen);
 
   req_error =
     net_client_request2_no_malloc (NET_SERVER_ES_COPY_FILE, request, request_size, reply,
@@ -9724,21 +9726,22 @@ es_posix_copy_file (const char *src_path, char *new_path)
  *
  * return :error code
  * src_path(in):
+ * metaname(in):
  * new_path(out):
  */
 int
-es_posix_rename_file (const char *src_path, char *new_path)
+es_posix_rename_file (const char *src_path, const char *metaname, char *new_path)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
-  int req_error, request_size, path_size, srclen;
+  int req_error, request_size, path_size, srclen, metalen;
   char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *ptr;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = length_const_string (src_path, &srclen);
+  request_size = length_const_string (src_path, &srclen) + length_const_string (metaname, &metalen);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -9747,6 +9750,7 @@ es_posix_rename_file (const char *src_path, char *new_path)
     }
 
   ptr = pack_const_string_with_length (request, src_path, srclen);
+  ptr = pack_const_string_with_length (ptr, metaname, metalen);
 
   req_error =
     net_client_request2_no_malloc (NET_SERVER_ES_RENAME_FILE, request, request_size, reply,

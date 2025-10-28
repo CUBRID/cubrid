@@ -8679,15 +8679,16 @@ ses_posix_delete_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request,
 void
 ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *src_path, new_path[PATH_MAX];
+  char *src_path, *metaname, new_path[PATH_MAX];
   int path_size = 0, ret;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   ptr = or_unpack_string_nocopy (request, &src_path);
+  ptr = or_unpack_string_nocopy (ptr, &metaname);
 
-  ret = xes_posix_copy_file (src_path, new_path);
+  ret = xes_posix_copy_file (src_path, metaname, new_path);
   if (ret != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -8717,15 +8718,16 @@ ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 void
 ses_posix_rename_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  char *src_path, new_path[PATH_MAX];
+  char *src_path, *metaname, new_path[PATH_MAX];
   int path_size = 0, ret;
   OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
   ptr = or_unpack_string_nocopy (request, &src_path);
+  ptr = or_unpack_string_nocopy (ptr, &metaname);
 
-  ret = xes_posix_rename_file (src_path, new_path);
+  ret = xes_posix_rename_file (src_path, metaname, new_path);
   if (ret != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
