@@ -11389,25 +11389,25 @@ create_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
-  int req_error;
+  int req_error, request_size;
   char *ptr;
-  OR_ALIGNED_BUF (4096) a_request;
   char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
-  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * attrid_arr_length);
+  request = (char *) malloc (request_size);
 
   ptr = or_pack_hfid (request, hfid);
   ptr = or_pack_int_array (ptr, attrid_arr_length, attrid_arr);
 
   req_error =
-    net_client_request (NET_SERVER_CREATE_LOB_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+    net_client_request (NET_SERVER_CREATE_LOB_DIR, request, request_size, reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
-      ptr = or_unpack_hfid (ptr, hfid);
     }
 
   return error;
@@ -11440,7 +11440,7 @@ remove_lob_dir (HFID * hfid, int attrid)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
   char *ptr;
-  OR_ALIGNED_BUF (4096) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
   char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -11456,7 +11456,6 @@ remove_lob_dir (HFID * hfid, int attrid)
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
-      ptr = or_unpack_hfid (ptr, hfid);
     }
 
   return error;
