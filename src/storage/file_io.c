@@ -12108,7 +12108,7 @@ fileio_remove_lob_dir (char *path_key)
     }
   else
     {
-      snprintf (base_dir, strlen (base_dir), "%s", es_base_dir);
+      snprintf (base_dir, (strlen (es_base_dir) + 1), "%s", es_base_dir);
       keyword = path_key;
     }
 
