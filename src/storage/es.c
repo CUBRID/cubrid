@@ -391,10 +391,10 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
     {
       memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
-      ret = es_posix_copy_file (ES_POSIX_PATH_POS (in_uri), ES_POSIX_PATH_POS (out_uri));
+      ret = es_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
-      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), ES_POSIX_PATH_POS (out_uri));
+      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), (char *) metaname, ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
@@ -455,10 +455,10 @@ es_rename_file (const char *in_uri, const char *metaname, char *out_uri)
     {
       memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
 #if defined (CS_MODE)
-      ret = es_posix_rename_file (ES_POSIX_PATH_POS (in_uri), ES_POSIX_PATH_POS (out_uri));
+      ret = es_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
-      ret = xes_posix_rename_file (ES_POSIX_PATH_POS (in_uri), ES_POSIX_PATH_POS (out_uri));
+      ret = xes_posix_rename_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
