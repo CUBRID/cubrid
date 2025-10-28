@@ -3044,8 +3044,6 @@ exit:
 bool
 xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final)
 {
-  char *p = NULL;
-
   if (!BO_IS_SERVER_RESTARTED ())
     {
       return true;
