@@ -1461,7 +1461,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	}
 
       node_prior = pt_get_first_arg_ignore_prior (node);
-      if (!pt_is_cast_wrapped_attr (node_prior))
+      if (!pt_is_attr (node_prior) && !qo_is_cast_attr (node_prior) && !pt_is_function_index_expression (node_prior))
 	{
 	  /* LHS is not an attribute */
 	  prev = prev ? prev->next : node;
@@ -1535,7 +1535,9 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	}
       else
 	{
-	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_check_not_null_constraint (parser, from, node_prior))
+	  if (node->info.expr.op == PT_IS_NOT_NULL
+	      && (pt_check_not_null_constraint (parser, from, node_prior)
+		  || pt_is_function_index_expression (node_prior)))
 	    {
 	      db_make_int (&value, true);
 	    }
@@ -2471,7 +2473,8 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	    }
 
 	  compared_expr = pt_get_first_arg_ignore_prior (crt_expr);
-	  if (!pt_is_cast_wrapped_attr (compared_expr) && !pt_is_function_index_expr (parser, compared_expr, false))
+	  if (!pt_is_attr (compared_expr) && !qo_is_cast_attr (compared_expr)
+	      && !pt_is_function_index_expression (compared_expr))
 	    {
 	      /* LHS is not an attribute or an expression supported as function index so it cannot currently have an
 	       * index. The transformation could still be useful as it might provide faster execution time in some

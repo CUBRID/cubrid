@@ -7942,7 +7942,7 @@ pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE *
       break;
 
     case PT_EXPR:
-      if (node->info.expr.op == PT_CAST && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
+      if (node->info.expr.op == PT_CAST)
 	{
 	  return pt_check_not_null_constraint (parser, from, node->info.expr.arg1);
 	}

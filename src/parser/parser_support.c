@@ -1577,27 +1577,6 @@ pt_is_attr (PT_NODE * node)
 }
 
 /*
- * pt_is_cast_wrapped_attr () - check if the node is a cast wrapped attribute
- *   return:
- *   node(in/out):
- */
-int
-pt_is_cast_wrapped_attr (PT_NODE * node)
-{
-  if (node == NULL)
-    {
-      return false;
-    }
-
-  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_CAST) && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP))
-    {
-      return pt_is_cast_wrapped_attr (node->info.expr.arg1);
-    }
-
-  return pt_is_attr (node);
-}
-
-/*
  * pt_is_function_index_expression () - check for function index expression
  *   return: true if function index expression, false otherwise
  *   node(in/out): PT_EXPR node
