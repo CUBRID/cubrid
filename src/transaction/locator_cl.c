@@ -5773,10 +5773,10 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	{
 	  HFID lob_hfid = *hfid;
 	  if (create_lob_dir (&lob_hfid, lob_attrid_arr, attrid_arr_length) != NO_ERROR)
-            {
-              free (lob_attrid_arr);
-              return NULL;
-            }
+	    {
+	      free (lob_attrid_arr);
+	      return NULL;
+	    }
 	}
       free (lob_attrid_arr);
 

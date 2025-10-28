@@ -15769,7 +15769,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
       error = remove_lob_dir (insts_hfid, -1);
       if (error != NO_ERROR)
 	{
-          free (lob_attrid_arr);
+	  free (lob_attrid_arr);
 	  return error;
 	}
     }
@@ -15781,9 +15781,9 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (error != NO_ERROR)
     {
       if (attrid_arr_length)
-        {
-          free (lob_attrid_arr);
-        }
+	{
+	  free (lob_attrid_arr);
+	}
       return error;
     }
 
@@ -15792,9 +15792,9 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (error != NO_ERROR)
     {
       if (attrid_arr_length)
-        {
-          free (lob_attrid_arr);
-        }
+	{
+	  free (lob_attrid_arr);
+	}
       return error;
     }
 
