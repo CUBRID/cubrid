@@ -11971,8 +11971,7 @@ xcreate_lob_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 
   for (int i = 0; i < attrid_arr_length; i++)
     {
-      sprintf (rv_path, "%d_%d_%d_id%d/",
-		hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+      sprintf (rv_path, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
       log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, (strlen (rv_path) + 1), &rv_path);
 
       snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
