@@ -27082,9 +27082,14 @@ pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XAS
       return NO_ERROR;
     }
 
-  if (qo_check_like_recompile_candidate (parser, qo_plan))
+  bool is_candidate = false;
+
+  if (qo_has_like_recompile_candidate (qo_plan, &is_candidate) == NO_ERROR)
     {
-      xasl->header.xasl_flag |= LIKE_RECOMPILE_CANDIDATE;
+      if (is_candidate)
+	{
+	  xasl->header.xasl_flag |= LIKE_RECOMPILE_CANDIDATE;
+	}
     }
 
   return NO_ERROR;

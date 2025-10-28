@@ -260,6 +260,7 @@ static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
+static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
 static json_t *qo_plan_scan_print_json (QO_PLAN * plan);
 static json_t *qo_plan_sort_print_json (QO_PLAN * plan);
@@ -11505,93 +11506,61 @@ qo_has_sort_limit_subplan (QO_PLAN * plan)
  * parser (in) : parser
  * plan (in) : plan to check
  */
-bool
-qo_check_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * plan)
+static int
+qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg)
 {
-  BITSET terms_set, nodes_set;
-  int term_idx, node_idx;
-  BITSET_ITERATOR terms_iter, nodes_iter;
+  BITSET terms_set, temp_segs_set;
+  int term_idx, seg_idx;
+  BITSET_ITERATOR terms_iter;
   QO_ENV *env;
   QO_TERM *termp;
-  PT_NODE *arg1, *arg2, *expr, *spec, *spec_list = NULL;
+  PT_NODE *expr;
+  QO_SEGMENT *seg;
 
-  if (plan == NULL)
-    {
-      return false;
-    }
+  bool *result = (bool *) arg;
 
   env = (plan->info)->env;
   bitset_init (&terms_set, env);
 
-  switch (plan->plan_type)
+  bitset_assign (&terms_set, &(plan->sarged_terms));
+  bitset_union (&terms_set, &(plan->plan_un.scan.terms));
+  bitset_union (&terms_set, &(plan->plan_un.scan.kf_terms));
+
+  for (term_idx = bitset_iterate (&terms_set, &terms_iter); term_idx != -1; term_idx = bitset_next_member (&terms_iter))
     {
-    case QO_PLANTYPE_SCAN:
-      {
-	bitset_assign (&terms_set, &(plan->sarged_terms));
-	bitset_union (&terms_set, &(plan->plan_un.scan.terms));
-	bitset_union (&terms_set, &(plan->plan_un.scan.kf_terms));
+      termp = QO_ENV_TERM (env, term_idx);
+      expr = QO_TERM_PT_EXPR (termp);
 
-	for (term_idx = bitset_iterate (&terms_set, &terms_iter); term_idx != -1;
-	     term_idx = bitset_next_member (&terms_iter))
-	  {
-	    spec_list = NULL;
-	    termp = QO_ENV_TERM (env, term_idx);
-	    expr = QO_TERM_PT_EXPR (termp);
+      bitset_init (&temp_segs_set, env);
 
-	    bitset_init (&nodes_set, env);
-	    bitset_assign (&nodes_set, &QO_TERM_NODES (termp));
+      if (expr->info.expr.op != PT_LIKE)
+	{
+	  continue;
+	}
 
-	    for (node_idx = bitset_iterate (&nodes_set, &nodes_iter); node_idx != -1;
-		 node_idx = bitset_next_member (&nodes_iter))
-	      {
-		spec = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, node_idx));
-		if (spec && PT_SPEC_IS_ENTITY (spec) && !pt_find_entity (parser, spec_list, spec->info.spec.id))
-		  {
-		    spec_list = parser_append_node (spec, spec_list);
-		  }
-	      }
+      qo_expr_segs (env, pt_left_part (expr), &temp_segs_set);
+      seg_idx = bitset_first_member (&temp_segs_set);
+      if (seg_idx == -1)
+	{
+	  assert (false);
+	  continue;
+	}
 
-	    if (expr && PT_IS_EXPR_NODE_WITH_OPERATOR (expr, PT_LIKE))
-	      {
-		arg1 = PT_EXPR_ARG1 (expr);
-		arg2 = PT_EXPR_ARG2 (expr);
-
-		if (arg2 && PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
-		  {
-		    return false;
-		  }
-
-		if (!pt_check_not_null_constraint (parser, spec_list, arg1))
-		  {
-		    return false;
-		  }
-
-		int type_arg[2];
-
-		type_arg[0] = PT_HOST_VAR;
-		type_arg[1] = 0;
-
-		(void) parser_walk_tree (parser, arg2, pt_find_node_type_pre, type_arg, NULL, NULL);
-		if (type_arg[1] != 0)
-		  {
-		    return true;
-		  }
-	      }
-	  }
-	return false;
-      }
-    case QO_PLANTYPE_JOIN:
-      return (qo_check_like_recompile_candidate (parser, plan->plan_un.join.outer)
-	      || qo_check_like_recompile_candidate (parser, plan->plan_un.join.inner));
-
-    case QO_PLANTYPE_SORT:
-      return qo_check_like_recompile_candidate (parser, plan->plan_un.sort.subplan);
-
-    default:
-      return false;
+      seg = QO_ENV_SEG (env, seg_idx);
+      if (seg->is_not_null)
+	{
+	  *result = true;
+	  return NO_ERROR;
+	}
     }
 
-  return false;
+  return NO_ERROR;
+}
+
+int
+qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg)
+{
+  return qo_walk_plan_tree (plan, qo_check_like_recompile_candidate, arg);
 }
 
 /*
