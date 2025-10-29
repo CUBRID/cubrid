@@ -26,6 +26,17 @@
 #include "json_table_def.h"
 #include "parser.h"
 
+#if 1
+/* TODO: 
+ *  PT_TYPE_NCHAR and PT_TYPE_VARNCHAR are no longer supported.
+ *  However, the input syntax is maintained temporarily, 
+ * and for this purpose it is replaced by PT_TYPE_CHAR and PT_TYPE_VARCHAR respectively.
+ *  Even the Syntax needs to be cleaned up in the future.
+*/
+#define PT_TYPE_VARNCHAR   PT_TYPE_VARCHAR
+#define PT_TYPE_NCHAR      PT_TYPE_CHAR
+#endif
+
 /*
  * The default YYLTYPE structure is extended so that locations can hold
  * context information
@@ -21032,12 +21043,8 @@ of_cast_data_type
 
 			if (l != -1)
 			  {
-			    int maxlen = (typ == PT_TYPE_NCHAR)
-			      ? DB_MAX_NCHAR_PRECISION : DB_MAX_CHAR_PRECISION;
-			    PT_ERRORmf3 (this_parser, len,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_INV_PREC,
-					 l, -1, maxlen);
+                            PT_ERRORmf3 (this_parser, len, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC,
+					 l, -1, DB_MAX_CHAR_PRECISION);
 			  }
 
 			dt = parser_new_node (this_parser, PT_DATA_TYPE);
@@ -21047,26 +21054,21 @@ of_cast_data_type
 
 			    dt->type_enum = typ;
 			    dt->info.data_type.precision = l;
-			    switch (typ)
-			      {
-			      case PT_TYPE_CHAR:
-			      case PT_TYPE_NCHAR:
-				if (pt_check_grammar_charset_collation
-				    (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
-				  {
-				    dt->info.data_type.units = charset;
-				    dt->info.data_type.collation_id = coll_id;
-				  }
-				 else
-				  {
-				    dt->info.data_type.units = -1;
-				    dt->info.data_type.collation_id = -1;
-				  }
-				break;
 
-			      default:
-				break;
-			      }
+                            if (typ == PT_TYPE_CHAR)
+                            {
+			      if (pt_check_grammar_charset_collation
+			          (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+			       {
+			          dt->info.data_type.units = charset;
+			          dt->info.data_type.collation_id = coll_id;
+			       }
+			      else
+			       {
+			          dt->info.data_type.units = -1;
+			          dt->info.data_type.collation_id = -1;
+			       }			
+			     }
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -21655,14 +21657,6 @@ primitive_type
                                         maxlen = DB_MAX_VARCHAR_PRECISION;
                                         break;
 
-                                case PT_TYPE_NCHAR:
-                                        maxlen = DB_MAX_NCHAR_PRECISION;
-                                        break;
-
-                                case PT_TYPE_VARNCHAR:
-                                        maxlen = DB_MAX_VARNCHAR_PRECISION;
-                                        break;
-
                                 case PT_TYPE_BIT:
                                         maxlen = DB_MAX_BIT_PRECISION;
                                         break;
@@ -21696,17 +21690,12 @@ primitive_type
                                 switch (typ)
                                 {
                                 case PT_TYPE_CHAR:
-                                case PT_TYPE_NCHAR:
                                 case PT_TYPE_BIT:
                                         l = 1;
                                         break;
 
                                 case PT_TYPE_VARCHAR:
                                         l = DB_MAX_VARCHAR_PRECISION;
-                                        break;
-
-                                case PT_TYPE_VARNCHAR:
-                                        l = DB_MAX_VARNCHAR_PRECISION;
                                         break;
 
                                 case PT_TYPE_VARBIT:
@@ -21729,8 +21718,6 @@ primitive_type
                                 {
                                 case PT_TYPE_CHAR:
                                 case PT_TYPE_VARCHAR:
-                                case PT_TYPE_NCHAR:
-                                case PT_TYPE_VARNCHAR:
                                         if (pt_check_grammar_charset_collation
                                         (this_parser, charset_node,
                                         coll_node, &charset, &coll_id) == NO_ERROR)
@@ -26287,8 +26274,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
       char *lang_str;
       if (arg3->node_type == PT_VALUE)
 	{
-	  if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR)
-	      && arg3->info.value.data_value.str != NULL)
+	  if (arg3->type_enum == PT_TYPE_CHAR && arg3->info.value.data_value.str != NULL)
 	    {
 	      date_lang = parser_new_node (this_parser, PT_VALUE);
 	      if (!date_lang)
@@ -27888,15 +27874,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
-
-        if (char_type == PT_TYPE_NCHAR)
-          {
-            node->info.value.string_type = 'N';
-          }
-        else
-          {
-            node->info.value.string_type = ' ';
-          }
+        node->info.value.string_type = ' ';
 
         PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
       }

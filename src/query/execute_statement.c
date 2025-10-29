@@ -5267,9 +5267,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, db_get_int (&val2));
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  cost = db_get_string (&val2);
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, (int) cost[0]);
 	  break;
@@ -5508,8 +5506,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
 const static char *
 get_savepoint_name_from_db_value (DB_VALUE * val)
 {
-  if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR
-      && DB_VALUE_TYPE (val) != DB_TYPE_NCHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARNCHAR)
+  if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR)
     {
       if (tp_value_cast (val, val, tp_domain_resolve_default (DB_TYPE_VARCHAR), false) != DOMAIN_COMPATIBLE)
 	{
