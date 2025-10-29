@@ -53,7 +53,6 @@ namespace cubthread
   daemon::daemon (const looper &loop_pattern_arg, task_without_context *exec_arg, const char *name)
     : m_waiter ()
     , m_looper (loop_pattern_arg)
-    , m_func_on_stop ()
     , m_thread ()
     , m_name (name)
     , m_stats (daemon::create_statset ())
@@ -84,12 +83,6 @@ namespace cubthread
       {
 	// already stopped
 	return;
-      }
-
-    if (m_func_on_stop)
-      {
-	// to interrupt execution context
-	m_func_on_stop ();
       }
 
     // make sure thread will wakeup

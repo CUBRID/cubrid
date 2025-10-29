@@ -553,16 +553,6 @@ extern "C"
 /* The maximum precision that can be specified for a CHARACTER VARYING domain.*/
 #define DB_MAX_VARCHAR_PRECISION DB_MAX_STRING_LENGTH
 
-/* The maximum precision that can be specified for a NATIONAL CHAR(n) domain. This probably isn't restrictive enough.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_NCHAR_PRECISION (DB_MAX_STRING_LENGTH/2)
-
-/* The maximum precision that can be specified for a NATIONAL CHARACTER VARYING domain. This probably isn't restrictive enough.
- * We may need to define this functionally as the maximum precision will depend on the size multiplier of the codeset.
- */
-#define DB_MAX_VARNCHAR_PRECISION DB_MAX_NCHAR_PRECISION
-
 /* The maximum precision that can be specified for a BIT domain. */
 #define DB_MAX_BIT_PRECISION DB_MAX_BIT_LENGTH
 
@@ -719,8 +709,14 @@ extern "C"
     DB_TYPE_BIT = 23,		/* SQL BIT(n) values */
     DB_TYPE_VARBIT = 24,	/* SQL BIT(n) VARYING values */
     DB_TYPE_CHAR = 25,		/* SQL CHAR(n) values */
-    DB_TYPE_NCHAR = 26,		/* SQL NATIONAL CHAR(n) values */
-    DB_TYPE_VARNCHAR = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+
+    /* TODO:
+     * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+     * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+     */
+    DB_TYPE_NCHAR_DEPRECATED = 26,	/* SQL NATIONAL CHAR(n) values */
+    DB_TYPE_VARNCHAR_DEPRECATED = 27,	/* SQL NATIONAL CHAR(n) VARYING values */
+
     DB_TYPE_RESULTSET = 28,	/* internal use only */
     DB_TYPE_MIDXKEY = 29,	/* internal use only */
     DB_TYPE_TABLE = 30,		/* internal use only */
@@ -988,7 +984,7 @@ extern "C"
 
   typedef DB_IDENTIFIER OID;
 
-  /* Structure used for the representation of char, nchar and bit values. */
+  /* Structure used for the representation of char and bit values. */
   typedef struct db_large_string DB_LARGE_STRING;
 
   /* db_char.sm was formerly db_char.small.  small is an (undocumented) reserved word on NT. */
@@ -1034,7 +1030,6 @@ extern "C"
     } large;
   };
 
-  typedef DB_CHAR DB_NCHAR;
   typedef DB_CHAR DB_BIT;
 
   typedef uint64_t DB_RESULTSET;
@@ -1147,8 +1142,6 @@ extern "C"
     DB_TYPE_C_DOUBLE,
     DB_TYPE_C_CHAR,
     DB_TYPE_C_VARCHAR,
-    DB_TYPE_C_NCHAR,
-    DB_TYPE_C_VARNCHAR,
     DB_TYPE_C_BIT,
     DB_TYPE_C_VARBIT,
     DB_TYPE_C_OBJECT,
@@ -1176,8 +1169,6 @@ extern "C"
   typedef double DB_C_DOUBLE;
   typedef char *DB_C_CHAR;
   typedef const char *DB_CONST_C_CHAR;
-  typedef char *DB_C_NCHAR;
-  typedef const char *DB_CONST_C_NCHAR;
   typedef char *DB_C_BIT;
   typedef const char *DB_CONST_C_BIT;
   typedef DB_OBJECT DB_C_OBJECT;
