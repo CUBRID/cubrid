@@ -459,6 +459,13 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
+    if (handle)
+      {
+	std::lock_guard<std::mutex> lock (handle->m);
+	handle->done = true;
+	handle->cv.notify_one ();
+      }
+
     /* release the conneciton */
     css_free_conn (ctx->m_conn);
     /* mark deleted and lazily release this */
@@ -466,13 +473,6 @@ namespace cubconn
     m_removed_context.push_back (ctx);
 
     m_stats.sub (stats::NET_CLIENTS, 1);
-
-    if (handle)
-      {
-	std::lock_guard<std::mutex> lock (handle->m);
-	handle->done = true;
-	handle->cv.notify_one ();
-      }
 
     return true;
 
