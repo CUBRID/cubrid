@@ -100,6 +100,8 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 #define TIMESTAMPTZ_BUF_SIZE	(TIMESTAMP_BUF_SIZE + TIMEZONE_BUF_SIZE)
 #define DATETIMETZ_BUF_SIZE	(DATETIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
 
+#define QSTR_DATETIME_LENGTH 26
+
 /*
  *  For the trim operation, db_string_trim(), this operand specifies
  *  that the trim character should be removed from the front, back

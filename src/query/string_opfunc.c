@@ -149,7 +149,6 @@ typedef enum
 #define QSTR_DATE_LENGTH 10
 #define QSTR_TIME_LENGTH 11
 #define QSTR_TIME_STAMPLENGTH 22
-#define QSTR_DATETIME_LENGTH 26
 /* multiplier ratio for TO_CHAR function : estimate result len/size based on
  * format string len/size : maximum multiplier is given by:
  * - format element : DAY (3)
