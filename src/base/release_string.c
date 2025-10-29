@@ -476,6 +476,7 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
  */
 static REL_VERSION net_incompatible_versions[] = {
   {10, 0, 0},
+  {10, 2, 16},
 
   /* PLEASE APPEND HERE versions that are incompatible with existing ones. */
   /* NOTE that versions are kept as ascending order. */
