@@ -2819,7 +2819,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 
       if (TP_IS_CHAR_TYPE (hv_dom->type->id))
 	{
-	  if (hv_dom->type->id != typ && (typ == DB_TYPE_VARCHAR || typ == DB_TYPE_VARNCHAR))
+	  if (hv_dom->type->id != typ && (typ == DB_TYPE_VARCHAR))
 	    {
 	      db_value_domain_init (hv, typ, prec, 0);
 	    }
