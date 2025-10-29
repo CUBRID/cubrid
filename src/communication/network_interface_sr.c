@@ -11581,7 +11581,6 @@ slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
     }
 
   error = xlob_remove_dir (thread_p, &hfid, attrid);
-
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

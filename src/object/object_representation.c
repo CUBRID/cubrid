@@ -5773,12 +5773,17 @@ or_header_size (char *ptr)
  *    int_array(in): int array
  */
 char *
-or_pack_int_array (char *buffer, int count, int *int_array)
+or_pack_int_array (char *buffer, int count, const int *int_array)
 {
   int i;
   char *ptr;
 
-  count = (count >= 0) ? count : 0;
+  assert(buffer != NULL);
+
+  if (count < 0)
+    {
+      count = 0;
+    }
 
   if (!int_array)
     {
