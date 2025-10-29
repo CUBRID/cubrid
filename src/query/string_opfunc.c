@@ -11181,7 +11181,7 @@ db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_date
 {
   time_t sec;
   struct tm tm_val;
-  DB_DATETIME datetime = (DB_DATETIME) { 0, 0 };
+  DB_DATETIME datetime = DATETIME_NULL_VALUE;
 
   sec = (time_t) * db_get_timestamp (src_timestamp);
   if (sec != 0)

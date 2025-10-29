@@ -4237,6 +4237,12 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
       return 0;
     }
 
+  if (DATETIME_IS_NULL (datetime))
+    {
+      cnt = snprintf (buf, bufsize, "NULL");
+      return (bufsize < cnt) ? 0 : cnt;
+    }
+
   db_datetime_decode (datetime, &mon, &day, &year, &hour, &minute, &second, &millisecond);
   ampm = (hour >= 12) ? "PM" : "AM";
   hour = (hour % 12 == 0) ? 12 : (hour % 12);

@@ -101,6 +101,9 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 #define DATETIMETZ_BUF_SIZE	(DATETIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
 
 #define QSTR_DATETIME_LENGTH 26
+#define DATETIME_NULL_VALUE { UINT_MAX, UINT_MAX }
+#define DATETIME_IS_NULL(dt) \
+  ((dt)->date == UINT_MAX && (dt)->time == UINT_MAX)
 
 /*
  *  For the trim operation, db_string_trim(), this operand specifies
