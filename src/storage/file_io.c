@@ -11949,7 +11949,7 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
 }
 
 /*
- * xcreate_lob_dir () - create lob dir
+ * xlob_create_dir () - create lob dir
  *
  * thread_p (in) : thread_entry.
  * hfid (in) : hfid is used to identify the table.
@@ -11958,7 +11958,7 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
  *
  */
 int
-xcreate_lob_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attrid_arr_length)
+xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attrid_arr_length)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   char dirbuf[PATH_MAX];
@@ -11989,7 +11989,7 @@ xcreate_lob_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 }
 
 /*
- * xremove_lob_dir () - remove a lob dir
+ * xlob_remove_dir () - remove a lob dir
  *
  * thread_p (in) : thread_entry.
  * hfid (in) : hfid is used to identify the table.
@@ -11999,7 +11999,7 @@ xcreate_lob_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
  *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
  */
 int
-xremove_lob_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
+xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   char dirbuf[PATH_MAX];
@@ -12050,13 +12050,13 @@ fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   snprintf (lob_path, (strlen (path) + 1), "%s", path);
 #endif /* SERVER_MODE || SA_MODE */
 
-  error = fileio_remove_lob_dir (lob_path);
+  error = fileio_lob_remove_dir (lob_path);
 
   return error;
 }
 
 /*
- * fileio_remove_lob_dir () - Remove LOB directory(OS level).
+ * fileio_lob_remove_dir () - Remove LOB directory(OS level).
  *
  * return	 : Error code.
  * path_key (in) : Path key for the LOB directory (keyword or path information).
@@ -12070,7 +12070,7 @@ fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *          the function will traverse and delete that specific directory recursively.
  */
 int
-fileio_remove_lob_dir (char *path_key)
+fileio_lob_remove_dir (char *path_key)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   DIR *dir_p;
@@ -12141,7 +12141,7 @@ fileio_remove_lob_dir (char *path_key)
 	      if (S_ISDIR (statbuf.st_mode))
 		{
 		  snprintf (re_path, (strlen (dir_entry->d_name) + 2), "%s/", dir_entry->d_name);
-		  sub_result = fileio_remove_lob_dir (re_path);
+		  sub_result = fileio_lob_remove_dir (re_path);
 
 		  rmdir (full_path);
 		}
@@ -12163,7 +12163,7 @@ fileio_remove_lob_dir (char *path_key)
 	      snprintf (re_path, (strlen (path_key) + 1 + strlen (dir_entry->d_name) + 1), "%s/%s/", path_key,
 			dir_entry->d_name);
 
-	      sub_result = fileio_remove_lob_dir (re_path);
+	      sub_result = fileio_lob_remove_dir (re_path);
 
 	      rmdir (full_path);
 	    }
