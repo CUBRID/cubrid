@@ -2123,6 +2123,12 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
       snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
 
+      if (csql_Is_time_on)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
+	}
+
       csql_Row_count = 0;
       switch (stmt_type)
 	{
@@ -2204,9 +2210,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_Is_time_on)
 	{
 	  char time[100];
-
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
 	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
