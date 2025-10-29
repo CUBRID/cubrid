@@ -291,7 +291,7 @@ namespace cubconn
     pthread_mutex_unlock (&m_entry->tran_index_lock);
   }
 
-  bool connection_worker::handle_connection_close (context *ctx)
+  bool connection_worker::handle_connection_close (context *ctx, bool retry)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     message request;
@@ -329,6 +329,8 @@ namespace cubconn
       {
 	if (this->is_wait_required (ctx))
 	  {
+	    pthread_mutex_unlock (&m_entry->tran_index_lock);
+
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection_worker->handle_connection_close: wait for transaction index. conn = %d, fd = %d\n", ctx->m_conn,
 			 ctx->m_conn->fd);
@@ -338,12 +340,15 @@ namespace cubconn
 	    /* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
 	    thread_sleep (50);
 
+	    pthread_mutex_lock (&m_entry->tran_index_lock);
+
 	    tran_index = ctx->m_conn->get_tran_index ();
 	    client_id = ctx->m_conn->client_id;
 	  }
       }
 
     pthread_mutex_unlock (&m_entry->tran_index_lock);
+
 
     /* stop the sessions associated with conn */
 
@@ -355,9 +360,12 @@ namespace cubconn
 	ssession_stop_attached_threads (m_entry, ctx->m_conn->session_p);
       }
 
-    /* interrupt and wake up */
+    if (!retry)
+      {
+	/* interrupt and wake up */
 
-    net_server_wakeup_workers (m_entry, tran_index, client_id);
+	net_server_wakeup_workers (m_entry, tran_index, client_id);
+      }
 
     /* retry until the worker related to the connection is complete */
 
@@ -431,6 +439,7 @@ retry:
     request.type = message_type::SHUTDOWN_CLIENT;
     request.conn = ctx->m_conn;
     request.ignore = ctx->m_ignore;
+    request.retry = true;
 
     /* this request must be handled as razily */
     this->enqueue (queue_type::LAZY, std::move (request));
@@ -452,7 +461,7 @@ retry:
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->ha_close_all_connections: close fd = %d, conn = %p\n",
 			 ctx->m_conn->fd, ctx->m_conn);
-	    this->handle_connection_close (ctx);
+	    this->handle_connection_close (ctx, false);
 	  }
       }
 
@@ -543,6 +552,8 @@ retry:
 	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_settimer: %s\n", strerror (errno));
 	return false;
       }
+    _er_log_debug (ARG_FILE_LINE, "eventfd_settimer: index = %d, set sec = %d, nsec = %d\n", m_index, sec, nsec);
+
     return true;
   }
 
@@ -552,6 +563,9 @@ retry:
 
     if (m_timer_latency == latency)
       {
+	_er_log_debug (ARG_FILE_LINE, "eventfd_settimer: index = %d, skipped m_timer_latency = %d, latency = %d\n", m_index,
+		       m_timer_latency,
+		       latency);
 	/* no need to change */
 	return true;
       }
@@ -589,9 +603,10 @@ retry:
     /* timer fd */
     if (eventfds[1])
       {
-	_er_log_debug (ARG_FILE_LINE, "[timerfd] notified!\n");
+	_er_log_debug (ARG_FILE_LINE, "[timerfd] notified\n");
 	eventfds[1] = false;
 
+	m_has_retry = false;
 	if (m_notification & static_cast<uint32_t> (notification_type::QUEUE))
 	  {
 	    m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
@@ -690,6 +705,8 @@ retry:
 #if !defined (NDEBUG)
 	er_log_conn (__FILE__, __LINE__, "fully sent. message_id = %lld, fd = %d in the worker = %d\n", item.message_id,
 		     ctx->m_conn->fd, m_index);
+#else
+	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
 #endif
 
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
@@ -813,7 +830,7 @@ retry:
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
 
-    this->handle_connection_close (ctx);
+    this->handle_connection_close (ctx, item.retry);
 
     return true;
   }
@@ -945,7 +962,7 @@ retry:
     /* ctx will be forcibly removed */
     ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-    this->handle_connection_close (ctx);
+    this->handle_connection_close (ctx, false);
   }
 
   result connection_worker::handle_error_packet (context *ctx, cubbase::span<std::byte> &packet)
@@ -1243,7 +1260,7 @@ retry:
     if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
       {
 	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
-	this->handle_connection_close (ctx);
+	this->handle_connection_close (ctx, false);
 	return result::ClosedConnection;
       }
     rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
@@ -1253,7 +1270,7 @@ retry:
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
 	ctx->m_send.m_transmitter.empty ();
-	this->handle_connection_close (ctx);
+	this->handle_connection_close (ctx, false);
 	return status;
       }
 
@@ -1297,7 +1314,7 @@ retry:
 	      {
 		return result::Error;
 	      }
-	    this->handle_connection_close (ctx);
+	    this->handle_connection_close (ctx, false);
 	    return status;
 	  }
       }
@@ -1326,7 +1343,7 @@ retry:
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-	this->handle_connection_close (ctx);
+	this->handle_connection_close (ctx, false);
 	return status;
       }
 
@@ -1339,7 +1356,7 @@ retry:
 	  {
 	    rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 	    /* this transmission is the last handling on this connection */
-	    this->handle_connection_close (ctx);
+	    this->handle_connection_close (ctx, false);
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
 	    return result::ClosedConnection;
@@ -1353,7 +1370,7 @@ retry:
 	    /* ctx will be forcibly removed */
 	    ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-	    this->handle_connection_close (ctx);
+	    this->handle_connection_close (ctx, false);
 	    return result::Error;
 	  }
 	ctx->m_send.m_transmitter.clear ();
@@ -1395,7 +1412,7 @@ retry:
     for (auto &ctx : contexts)
       {
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
-	this->handle_connection_close (ctx);
+	this->handle_connection_close (ctx, false);
       }
 
     while (!m_context.empty ())
@@ -1444,7 +1461,6 @@ retry:
 	    assert_release (false);
 	  }
 
-	m_has_retry = false;
 	for (i = 0; i < nfds; i++)
 	  {
 	    assert (events[i].data.ptr);

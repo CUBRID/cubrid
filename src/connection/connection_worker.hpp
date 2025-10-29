@@ -73,7 +73,7 @@ namespace cubconn
       enum class timer_latency : uint32_t
       {
 	NA = 0, /* off */
-	LOW_LATENCY = static_cast<uint32_t> (1 * 1e5), /* 100 usec */
+	LOW_LATENCY = static_cast<uint32_t> (1 * 1e6), /* 1 msec */
 	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9) /* 2 sec, default */
       };
 
@@ -88,7 +88,8 @@ namespace cubconn
 	public:
 	  message () :
 	    conn (nullptr),
-	    ignore (ignore_level::DONT_IGNORE)
+	    ignore (ignore_level::DONT_IGNORE),
+	    retry (false)
 	  {
 	  }
 	  ~message () = default;
@@ -109,6 +110,7 @@ namespace cubconn
 	  std::function<void ()> deleter;
 	  /* shutdown client */
 	  ignore_level ignore;
+	  bool retry;
 
 	  /* debug purpose */
 #if !defined (NDEBUG)
@@ -229,7 +231,7 @@ namespace cubconn
       std::pair<int, int> start_connection_close (context *ctx);
       void end_connection_close ();
 
-      bool handle_connection_close (context *ctx);
+      bool handle_connection_close (context *ctx, bool retry);
 
       /* --------------------------------------------------------------------------- */
       /* HA									     */
