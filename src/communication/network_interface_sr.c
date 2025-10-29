@@ -11525,10 +11525,10 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0);
 }
 
-/* screate_lob_dir - create lob dir */
+/* slob_create_dir - create lob dir */
 
 void
-screate_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -11547,7 +11547,7 @@ screate_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
       return;
     }
 
-  error = xcreate_lob_dir (thread_p, &hfid, attrid_arr, attrid_arr_length);
+  error = xlob_create_dir (thread_p, &hfid, attrid_arr, attrid_arr_length);
 
   if (error != NO_ERROR)
     {
@@ -11560,10 +11560,10 @@ screate_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
- /* sremove_lob_dir - remove lob dir */
+ /* slob_remove_dir - remove lob dir */
 
 void
-sremove_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -11580,7 +11580,7 @@ sremove_lob_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
       return;
     }
 
-  error = xremove_lob_dir (thread_p, &hfid, attrid);
+  error = xlob_remove_dir (thread_p, &hfid, attrid);
 
   if (error != NO_ERROR)
     {

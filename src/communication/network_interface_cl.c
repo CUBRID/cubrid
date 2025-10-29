@@ -11373,7 +11373,7 @@ tdes_reset_query_start_info (PT_NODE * node)
 #endif
 }
 
-/* create_lob_dir - create lob dir
+/* lob_create_dir - create lob dir
  *
  * return:
  *
@@ -11382,10 +11382,10 @@ tdes_reset_query_start_info (PT_NODE * node)
  *   attrid_arr_length(in): number of LOB-type columns
  *
  * NOTE:
- * create_lob_dir - request to server to create lob dir
+ * lob_create_dir - request to server to create lob dir
  */
 int
-create_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
+lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -11403,7 +11403,7 @@ create_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
   ptr = or_pack_int_array (ptr, attrid_arr_length, attrid_arr);
 
   req_error =
-    net_client_request (NET_SERVER_CREATE_LOB_DIR, request, request_size, reply,
+    net_client_request (NET_SERVER_LOB_CREATE_DIR, request, request_size, reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
@@ -11415,7 +11415,7 @@ create_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xcreate_lob_dir (thread_p, hfid, attrid_arr, attrid_arr_length);
+  error = xlob_create_dir (thread_p, hfid, attrid_arr, attrid_arr_length);
 
   exit_server (*thread_p);
 
@@ -11423,7 +11423,7 @@ create_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
 #endif /* !CS_MODE */
 }
 
-/* remove_lob_dir - remove lob dir
+/* xlob_remove_dir - remove lob dir
  *
  * return:
  *
@@ -11431,10 +11431,10 @@ create_lob_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
  *   attrid(in): separate lob dir by column id
  *
  * NOTE:
- * remove_lob_dir - request to server to remove lob dir
+ * xlob_remove_dir - request to server to remove lob dir
  */
 int
-remove_lob_dir (HFID * hfid, int attrid)
+xlob_remove_dir (HFID * hfid, int attrid)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -11451,7 +11451,7 @@ remove_lob_dir (HFID * hfid, int attrid)
   ptr = or_pack_int (ptr, attrid);
 
   req_error =
-    net_client_request (NET_SERVER_REMOVE_LOB_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+    net_client_request (NET_SERVER_LOB_REMOVE_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
@@ -11463,7 +11463,7 @@ remove_lob_dir (HFID * hfid, int attrid)
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xremove_lob_dir (thread_p, hfid, attrid);
+  error = xlob_remove_dir (thread_p, hfid, attrid);
 
   exit_server (*thread_p);
 

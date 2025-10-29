@@ -15766,7 +15766,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (attrid_arr_length)
     {
       HFID lob_hfid = *insts_hfid;
-      error = remove_lob_dir (insts_hfid, -1);
+      error = lob_remove_dir (insts_hfid, -1);
       if (error != NO_ERROR)
 	{
 	  free (lob_attrid_arr);
@@ -15802,7 +15802,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (attrid_arr_length)
     {
       HFID lob_hfid = *insts_hfid;
-      error = create_lob_dir (&lob_hfid, lob_attrid_arr, attrid_arr_length);
+      error = lob_create_dir (&lob_hfid, lob_attrid_arr, attrid_arr_length);
       free (lob_attrid_arr);
     }
 

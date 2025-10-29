@@ -2569,7 +2569,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
 
       /* remove lob ces temp dir */
-      error_code = fileio_remove_lob_dir ((char *) LOB_TEMPDIR_PREFIX);
+      error_code = fileio_lob_remove_dir ((char *) LOB_TEMPDIR_PREFIX);
 
       if (error_code != NO_ERROR)
 	{
@@ -3070,7 +3070,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
   /* remove lob ces temp dir */
-  (void) fileio_remove_lob_dir ((char *) LOB_TEMPDIR_PREFIX);
+  (void) fileio_lob_remove_dir ((char *) LOB_TEMPDIR_PREFIX);
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
@@ -5257,7 +5257,7 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
 
   /* remove lob ces temp dir */
-  error_code = fileio_remove_lob_dir ((char *) LOB_TEMPDIR_PREFIX);
+  error_code = fileio_lob_remove_dir ((char *) LOB_TEMPDIR_PREFIX);
   if (error_code != NO_ERROR)
     {
       goto error_rem_allvols;
