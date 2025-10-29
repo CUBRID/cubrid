@@ -11405,7 +11405,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
   req_error =
     net_client_request (NET_SERVER_LOB_CREATE_DIR, request, request_size, reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
+  if (req_error == NO_ERROR)
     {
       ptr = or_unpack_errcode (reply, &error);
     }
