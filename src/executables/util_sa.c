@@ -1982,8 +1982,6 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 		    case DB_TYPE_VARBIT:
 		    case DB_TYPE_CHAR:
 		    case DB_TYPE_VARCHAR:
-		    case DB_TYPE_NCHAR:
-		    case DB_TYPE_VARNCHAR:
 		      /* Do not override any information in Avg_key_size with precision information. Just make sure the
 		       * input makes sense for these cases.  */
 		      if (avg_key_size > domain->precision)
@@ -3546,10 +3544,6 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	    "WHEN 4 THEN IF ([d].[prec] < 0, 'VARCHAR', CONCAT ('VARCHAR(', [d].[prec], ')')) "
 	    /* CHAR */
 	    "WHEN 25 THEN CONCAT ('CHAR(', [d].[prec], ')') "
-	    /* NCHAR */
-	    "WHEN 26 THEN CONCAT ('NCHAR(', [d].[prec], ')') "
-	    /* NCHAR VARYING */
-	    "WHEN 27 THEN IF ([d].[prec] < 0, 'NCHAR VARYING', CONCAT ('NCHAR VARYING(', [d].[prec], ')')) "
 	    /* ENUM */
 	    "WHEN 35 THEN ("
 		"SELECT "
