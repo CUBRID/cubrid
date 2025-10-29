@@ -2573,7 +2573,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
       if (error_code != NO_ERROR)
 	{
-	  assert (false);
 	  goto error;
 	}
     }
