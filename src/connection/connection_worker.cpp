@@ -209,6 +209,30 @@ namespace cubconn
     return true;
   }
 
+  bool connection_worker::enqueue_and_notify (queue_type type, message &&item, bool need_wait)
+  {
+    std::shared_ptr<message_blocker> handle;
+    std::unique_lock<std::mutex> lock;
+
+    if (need_wait)
+      {
+	/* acquire the lock to prevent a lost wakeup */
+	handle = std::make_shared<message_blocker> ();
+	handle->done = false;
+
+	lock = std::unique_lock<std::mutex> (handle->m);
+	item.waiter_handle = handle;
+      }
+
+    this->enqueue (type, std::move (item));
+    this->notify ();
+
+    if (need_wait)
+      {
+	handle->cv.wait (lock, [&] { return handle->done; });
+      }
+  }
+
   void connection_worker::stats ()
   {
     int i;
@@ -291,7 +315,7 @@ namespace cubconn
     pthread_mutex_unlock (&m_entry->tran_index_lock);
   }
 
-  bool connection_worker::handle_connection_close (context *ctx, bool retry)
+  bool connection_worker::handle_connection_close (context *ctx, bool retry, std::shared_ptr<message_blocker> handle)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     message request;
@@ -428,6 +452,13 @@ namespace cubconn
 
     m_stats.sub (stats::NET_CLIENTS, 1);
 
+    if (handle)
+      {
+	std::lock_guard<std::mutex> lock (handle->m);
+	handle->done = true;
+	handle->cv.notify_one ();
+      }
+
     return true;
 
 retry:
@@ -440,6 +471,7 @@ retry:
     request.conn = ctx->m_conn;
     request.ignore = ctx->m_ignore;
     request.retry = true;
+    request.waiter_handle = handle;
 
     /* this request must be handled as razily */
     this->enqueue (queue_type::LAZY, std::move (request));
@@ -461,7 +493,7 @@ retry:
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection_worker->ha_close_all_connections: close fd = %d, conn = %p\n",
 			 ctx->m_conn->fd, ctx->m_conn);
-	    this->handle_connection_close (ctx, false);
+	    this->handle_connection_close (ctx);
 	  }
       }
 
@@ -830,7 +862,7 @@ retry:
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
 
-    this->handle_connection_close (ctx, item.retry);
+    this->handle_connection_close (ctx, item.retry, item.waiter_handle);
 
     return true;
   }
@@ -962,7 +994,7 @@ retry:
     /* ctx will be forcibly removed */
     ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-    this->handle_connection_close (ctx, false);
+    this->handle_connection_close (ctx);
   }
 
   result connection_worker::handle_error_packet (context *ctx, cubbase::span<std::byte> &packet)
@@ -1260,7 +1292,7 @@ retry:
     if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
       {
 	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
-	this->handle_connection_close (ctx, false);
+	this->handle_connection_close (ctx);
 	return result::ClosedConnection;
       }
     rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
@@ -1270,7 +1302,7 @@ retry:
       {
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
 	ctx->m_send.m_transmitter.empty ();
-	this->handle_connection_close (ctx, false);
+	this->handle_connection_close (ctx);
 	return status;
       }
 
@@ -1314,7 +1346,7 @@ retry:
 	      {
 		return result::Error;
 	      }
-	    this->handle_connection_close (ctx, false);
+	    this->handle_connection_close (ctx);
 	    return status;
 	  }
       }
@@ -1343,7 +1375,7 @@ retry:
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-	this->handle_connection_close (ctx, false);
+	this->handle_connection_close (ctx);
 	return status;
       }
 
@@ -1356,7 +1388,7 @@ retry:
 	  {
 	    rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 	    /* this transmission is the last handling on this connection */
-	    this->handle_connection_close (ctx, false);
+	    this->handle_connection_close (ctx);
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
 	    return result::ClosedConnection;
@@ -1370,7 +1402,7 @@ retry:
 	    /* ctx will be forcibly removed */
 	    ctx->m_ignore = ignore_level::IGNORE_ALL;
 
-	    this->handle_connection_close (ctx, false);
+	    this->handle_connection_close (ctx);
 	    return result::Error;
 	  }
 	ctx->m_send.m_transmitter.clear ();
@@ -1412,7 +1444,7 @@ retry:
     for (auto &ctx : contexts)
       {
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
-	this->handle_connection_close (ctx, false);
+	this->handle_connection_close (ctx);
       }
 
     while (!m_context.empty ())
