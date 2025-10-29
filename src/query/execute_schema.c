@@ -392,6 +392,9 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
+static int check_ha_repl_constraint (DB_OBJECT * class_obj);
+static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
+
 int ib_thread_count = 0;
 
 /*
@@ -1328,7 +1331,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  if (!HA_DISABLED () && ha_check_fk_replication_violation (vclass, sm_is_replication_class (vclass)))
+  if (!HA_DISABLED () && !check_ha_repl_fk_ref_all_replicated (vclass))
     {
       error = ER_HA_FK_CONSTRAINT_VIOLATION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -8862,12 +8865,19 @@ error_exit:
   return error;
 }
 
+/*
+ * check_ha_repl_fk_ref_all_replicated() - Check if all referenced tables (FK targets)
+ *                                         are replicated.
+ *   return    : true if all referenced tables are replicated, false otherwise
+ *   class_obj(in): The class object being validated
+ *
+ */
 /* TODO: When creating a table, replication information can be obtained from the parse tree (PT), 
 but when adding a constraint to a column with ALTER TABLE, it has to be retrieved from the schema manager (SM). 
 If the time required to patch the SM is small, the same patch-based approach can be applied consistently. 
 */
 bool
-ha_check_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
+check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
 {
   DB_CONSTRAINT *tmp_c;
 
@@ -8880,13 +8890,47 @@ ha_check_fk_replication_violation (DB_OBJECT * class_obj, bool repl)
 	  continue;
 	}
 
-      if (repl != sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
+      if (!sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
 	{
-	  return true;
+	  return false;
 	}
     }
 
-  return false;
+  return true;
+}
+
+/*
+ * check_ha_repl_constraint() - Validate replication-related constraints in HA mode.
+ *   return  : Error code (NO_ERROR if valid)
+ *   class_obj(in) : The class object being created or altered
+ *   repl_opt(in)  : Replication option (true = ON, false = OFF)
+ *
+ * RULE 1: In HA mode, a replicated table must have a replication key (RK).
+ *          This ensures that each row can be uniquely identified during replication.
+ *
+ * RULE 2: In HA mode, if a replicated table has a foreign key (FK),
+ *          its referenced (PK) table must also be a replicated table.
+ *          This prevents replication inconsistency across FK relationships.
+ */
+int
+check_ha_repl_constraint (DB_OBJECT * class_obj)
+{
+  if (HA_DISABLED ())
+    {
+      return NO_ERROR;
+    }
+
+  if (!classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
+    {
+      return ER_HA_REQUIRES_REPLICATION_KEY;
+    }
+
+  if (!check_ha_repl_fk_ref_all_replicated (class_obj))
+    {
+      return ER_HA_FK_CONSTRAINT_VIOLATION;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -9269,18 +9313,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-
-      /*  
-       * Set the SM_CLASSFLAG_DATA_REPLICATION_OFF flag.  
-       * If the option is omitted, or if the "on|off" value is omitted,  
-       * the default is set to "on".  
-       */
       if (IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication))
 	{
-	  if (!HA_DISABLED () && !classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
+	  error = check_ha_repl_constraint (class_obj);
+	  if (error != NO_ERROR)
 	    {
-	      error = ER_HA_REQUIRES_REPLICATION_KEY;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	      goto error_exit;
 	    }
 	}
@@ -9293,14 +9331,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  do_flush_class_mop = true;
-	}
-
-      if (!HA_DISABLED ()
-	  && ha_check_fk_replication_violation (class_obj, IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication)))
-	{
-	  error = ER_HA_FK_CONSTRAINT_VIOLATION;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	  goto error_exit;
 	}
 
       if (tbl_opt_encrypt)
