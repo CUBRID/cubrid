@@ -1368,7 +1368,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
-					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), true);
+					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), true, true);
 		}
 	      break;
 	    }
@@ -3098,7 +3098,7 @@ css_get_argv (void)
 }
 
 void
-css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry)
+css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, bool wait)
 {
   cubconn::connection_worker::message request;
   int r;
@@ -3127,15 +3127,15 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry)
       return;
     }
 
-  conn->worker->enqueue (cubconn::connection_worker::queue_type::LAZY, std::move (request));
-  if (!conn->worker->notify ())
+  auto func =[conn] ()noexcept {
+    /* unlock */
+    rmutex_unlock (NULL, &conn->cmutex);
+  };
+
+  if (!conn->worker->enqueue_and_notify (cubconn::connection_worker::queue_type::LAZY, std::move (request), func, wait))
     {
       assert_release (false);
     }
-
-  /* unlock */
-  r = rmutex_unlock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
 }
 
 void

@@ -32,6 +32,7 @@
 
 #include <atomic>
 #include <thread>
+#include <functional>
 #include <unordered_set>
 #include <condition_variable>
 #include <cstring>
@@ -188,7 +189,8 @@ namespace cubconn
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
       bool notify ();
-      bool enqueue_and_notify (queue_type type, message &&item, bool need_wait = false);
+      bool enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func = nullptr,
+			       bool need_wait = false);
 
       /* statistics */
       void stats ();

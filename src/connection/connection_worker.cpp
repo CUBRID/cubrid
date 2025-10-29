@@ -209,7 +209,8 @@ namespace cubconn
     return true;
   }
 
-  bool connection_worker::enqueue_and_notify (queue_type type, message &&item, bool need_wait)
+  bool connection_worker::enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func,
+      bool need_wait)
   {
     std::shared_ptr<message_blocker> handle;
     std::unique_lock<std::mutex> lock;
@@ -225,12 +226,26 @@ namespace cubconn
       }
 
     this->enqueue (type, std::move (item));
-    this->notify ();
+    if (!this->notify ())
+      {
+	if (func)
+	  {
+	    func ();
+	  }
+	return false;
+      }
+
+    if (func)
+      {
+	func ();
+      }
 
     if (need_wait)
       {
 	handle->cv.wait (lock, [&] { return handle->done; });
       }
+
+    return true;
   }
 
   void connection_worker::stats ()
