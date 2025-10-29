@@ -1436,9 +1436,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		{
 #if !defined(NDEBUG)
 		  DB_TYPE db_value_type_local = db_value_type (&db_value_default_expr_format);
-		  assert (db_value_type_local == DB_TYPE_NULL || db_value_type_local == DB_TYPE_CHAR
-			  || db_value_type_local == DB_TYPE_NCHAR || db_value_type_local == DB_TYPE_VARCHAR
-			  || db_value_type_local == DB_TYPE_VARNCHAR);
+		  assert (db_value_type_local == DB_TYPE_NULL
+			  || db_value_type_local == DB_TYPE_CHAR || db_value_type_local == DB_TYPE_VARCHAR);
 #endif
 		  assert (DB_VALUE_TYPE (&db_value_default_expr_format) == DB_TYPE_STRING);
 		  def_expr_format_string = db_get_string (&db_value_default_expr_format);

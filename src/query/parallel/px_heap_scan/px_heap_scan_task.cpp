@@ -20,334 +20,295 @@
  * px_heap_scan_task.cpp - derived from cubthread::entry_task
  */
 
-
 #include "px_heap_scan_task.hpp"
-#include "px_heap_scan_misc.hpp"
-#include "error_context.hpp"
-#include <memory>
-#include "thread_entry.hpp"
-#include "perf_monitor.h"
-#include "page_buffer.h"
-
-#define PARALLEL_HEAP_SCAN_LOG 0
-#if PARALLEL_HEAP_SCAN_LOG
-#include <unistd.h>
-#include <sys/syscall.h>
-#include "error_manager.h"
-#endif
+#include "error_code.h"
+#include "storage_common.h"
+#include "xasl.h"
+#include "xasl_cache.h"
+#include "xasl_iteration.hpp"
+#include "query_executor.h"
+#include "stream_to_xasl.h"
+#include "xasl_unpack_info.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_heap_scan
 {
-  task::task (std::shared_ptr<context> context,
-	      std::shared_ptr<memory_mapper> memory_mapper, std::shared_ptr<list_stream> list_stream,
-	      std::shared_ptr<list_id_wrapper> list_id_wrapper, mergable_list_writer *mergable_list_writer,
-	      parallel_query::worker_manager *worker_manager)
-    : m_context (context)
-    , m_memory_mapper (memory_mapper)
-    , m_list_stream (list_stream)
-    , m_list_id_wrapper (list_id_wrapper)
-    , m_mergable_list_writer (mergable_list_writer)
-    , m_worker_manager (worker_manager)
+  template <RESULT_TYPE result_type>
+  void task<result_type>::execute (cubthread::entry &thread_ref)
   {
-  }
-
-  task::~task()
-  {
-
-  }
-
-  SCAN_CODE task::page_next (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, HFID *hfid, VPID *vpid)
-  {
-    std::unique_lock<std::mutex> lock (m_context->m_locked_vpid.mutex);
-    HEAP_SCANCACHE *scan_cache = &scan_id->s.hsid.scan_cache;
-    SCAN_CODE page_scan_code;
-    if (m_context->m_locked_vpid.is_ended)
+    int err_code;
+    err_code = initialize (thread_ref);
+    if (err_code != NO_ERROR)
       {
-	if (m_old_page_watcher.pgptr != NULL)
-	  {
-	    pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
-	  }
-	return S_END;
-      }
-    if (VPID_ISNULL (&m_context->m_locked_vpid.vpid))
-      {
-	/* first page, not fixed, set to first page and go to fix */
-	m_context->m_locked_vpid.vpid.pageid = hfid->hpgid;
-	m_context->m_locked_vpid.vpid.volid = hfid->vfid.volid;
-      }
-    VPID_COPY (vpid, &m_context->m_locked_vpid.vpid);
-    if (scan_cache->page_watcher.pgptr != NULL)
-      {
-	pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &m_old_page_watcher);
-      }
-    page_scan_code = heap_page_next_fix_old (thread_p, hfid, &m_context->m_locked_vpid.vpid, scan_cache);
-    if (m_old_page_watcher.pgptr != NULL)
-      {
-	pgbuf_ordered_unfix (thread_p, &m_old_page_watcher);
-      }
-
-    if (page_scan_code == S_END)
-      {
-	m_context->m_locked_vpid.is_ended = true;
-	/* should read this last page (fixed) */
-	page_scan_code = S_SUCCESS;
-      }
-    assert (vpid->pageid != NULL_PAGEID);
-    return page_scan_code;
-  }
-
-  void
-  task::execute (cubthread::entry &thread_ref)
-  {
-    int ret = NO_ERROR;
-    THREAD_ENTRY *thread_p = &thread_ref;
-    SCAN_ID *scan_id = m_memory_mapper->get_scan_id();
-    SCAN_ID *orig_scan_id = m_context->m_scan_id;
-    PARALLEL_HEAP_SCAN_ID *phsidp = &orig_scan_id->s.phsid;
-    SCAN_CODE page_scan_code, rec_scan_code;
-    int orig_tran_index = thread_p->tran_index;
-    css_conn_entry *orig_conn_entry = thread_p->conn_entry;
-    VPID vpid;
-    HFID hfid;
-    TSC_TICKS start_tick, end_tick;
-    TSC_TICKS t1, t2;
-    TSCTIMEVAL tv_diff;
-    UINT64 old_fetches = 0, old_ioreads = 0;
-    memory_mapper::px_stats *stats = &m_memory_mapper->stats;
-    list_id_data data;
-    OUTPTR_LIST *outptr_list;
-    bool resolved_dbval_stored = !m_context->m_is_domain_resolve_needed;
-    bool open_succeeded = false;
-    int writer_error_code = NO_ERROR;
-    bool is_list_merge = m_mergable_list_writer != nullptr;
-    bool on_trace = thread_is_on_trace (m_context->m_orig_thread_p);
-    if (m_context->has_error())
-      {
-	m_context->add_tasks_scan_ended();
-	m_context->add_tasks_executed();
-	m_context->add_tasks_list_opened();
 	return;
       }
-    HL_HEAPID orig_heap_id = db_change_private_heap (thread_p, 0);
-    HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
-    thread_p->tran_index = m_context->m_orig_thread_p->tran_index;
-    thread_p->conn_entry = m_context->m_orig_thread_p->conn_entry;
-    thread_p->on_trace = m_context->m_orig_thread_p->on_trace;
-    thread_p->m_px_orig_thread_entry = m_context->m_orig_thread_p;
+    loop (thread_ref);
+    finalize (thread_ref);
+  }
 
-    if (on_trace)
+  template <RESULT_TYPE result_type>
+  void task<result_type>::retire()
+  {
+    m_worker_manager->pop_task();
+    delete this;
+  }
+
+  template <RESULT_TYPE result_type>
+  task<result_type>::~task()
+  {
+  }
+
+  template <RESULT_TYPE result_type>
+  int task<result_type>::initialize (cubthread::entry &thread_ref)
+  {
+    int err_code = NO_ERROR;
+    HEAP_SCAN_ID *hsidp;
+    access_spec_node *spec;
+    CLS_SPEC_TYPE *cls;
+
+    thread_ref.m_px_orig_thread_entry = m_parent_thread_p;
+    thread_ref.conn_entry = m_parent_thread_p->conn_entry;
+    thread_ref.tran_index = m_parent_thread_p->tran_index;
+    thread_ref.on_trace = m_parent_thread_p->on_trace;
+
+    if (thread_ref.on_trace)
       {
-	tsc_getticks (&start_tick);
-	perfmon_initialize_parallel_stats (thread_p);
+	perfmon_initialize_parallel_stats (&thread_ref);
+	tsc_getticks (&m_start_tick);
       }
-#if PARALLEL_HEAP_SCAN_LOG
-    er_log_debug (ARG_FILE_LINE, "task thread : %ld", syscall (SYS_gettid));
-#endif
-    if (is_list_merge)
+
+    err_code = clone_xasl (thread_ref);
+    if (err_code != NO_ERROR)
       {
-	open_succeeded = m_mergable_list_writer->open (thread_p, phsidp, hsidp->scan_pred.regu_list, hsidp->rest_regu_list,
-			 scan_id->vd);
-	outptr_list = m_memory_mapper->get_outptr_list();
-	assert (outptr_list);
+	return err_code;
+      }
+    hsidp = &m_scan_id->s.hsid;
+    m_scan_id->vd = m_vd;
+    spec = m_xasl->spec_list;
+    cls = &spec->s.cls_node;
+
+    scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
+			 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
+			 m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
+			 cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
+			 cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
+			 cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
+			 S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved, false);
+    err_code = scan_start_scan (&thread_ref, m_scan_id);
+    if (err_code != NO_ERROR)
+      {
+	return err_code;
+      }
+    m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
+    m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
+    m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->val_list, m_vd);
+
+    return NO_ERROR;
+  }
+
+  template <RESULT_TYPE result_type>
+  int task<result_type>::finalize (cubthread::entry &thread_ref)
+  {
+    THREAD_ENTRY *main_thread_p = m_parent_thread_p;
+    if (thread_ref.on_trace)
+      {
+	TSC_TICKS end_tick;
+	TSCTIMEVAL tv_diff;
+	struct timeval elapsed_time = {0, 0};
+	tsc_getticks (&end_tick);
+	tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
+	TSC_ADD_TIMEVAL (elapsed_time, tv_diff);
+	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
+				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
+				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
+				    m_scan_id->scan_stats.read_rows,
+				    m_scan_id->scan_stats.qualified_rows,
+				    elapsed_time);
+	perfmon_destroy_parallel_stats (&thread_ref);
+      }
+    m_result_handler->write_finalize (&thread_ref);
+    m_input_handler->finalize (&thread_ref);
+    m_slot_iterator.finalize (&thread_ref);
+    scan_end_scan (&thread_ref, m_scan_id);
+    scan_close_scan (&thread_ref, m_scan_id);
+
+    for (int i = 0; i < m_vd->dbval_cnt; i++)
+      {
+	pr_clear_value (&m_vd->dbval_ptr[i]);
+      }
+
+    db_private_free (&thread_ref, m_vd->dbval_ptr);
+    db_private_free (&thread_ref, m_vd);
+    qexec_clear_xasl (&thread_ref, m_xasl, true);
+
+    while (main_thread_p->m_px_orig_thread_entry != main_thread_p)
+      {
+	main_thread_p = main_thread_p->m_px_orig_thread_entry;
+      }
+
+    pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+    if (m_uses_xasl_clone)
+      {
+	xcache_retire_clone (&thread_ref, m_xasl_cache_entry, &m_xasl_clone);
+	xcache_unfix (&thread_ref, m_xasl_cache_entry);
       }
     else
       {
-	open_succeeded = m_list_id_wrapper->open (thread_p);
+	if (m_xasl_unpack_info)
+	  {
+	    /* free the XASL tree */
+	    free_xasl_unpack_info (&thread_ref, m_xasl_unpack_info);
+	  }
       }
-    if (!open_succeeded)
+    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+
+    return NO_ERROR;
+  }
+
+  template <RESULT_TYPE result_type>
+  int task<result_type>::clone_xasl (cubthread::entry &thread_ref)
+  {
+    THREAD_ENTRY *main_thread_p = m_parent_thread_p;
+    int err_code = NO_ERROR;
+    int i;
+    while (main_thread_p->m_px_orig_thread_entry != main_thread_p)
       {
-	/* maybe interrupted */
-	db_change_private_heap (thread_p, orig_heap_id);
-	thread_p->tran_index = orig_tran_index;
-	thread_p->conn_entry = orig_conn_entry;
-	m_context->add_tasks_scan_ended();
-	m_context->add_tasks_executed();
-	m_context->add_tasks_list_opened();
-	return;
+	main_thread_p = main_thread_p->m_px_orig_thread_entry;
       }
-    m_context->add_tasks_list_opened();
 
-    list_writer writer (m_list_stream, m_list_id_wrapper.get());
-    scan_open_heap_scan (thread_p, scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type,
-			 scan_id->fixed, scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval,
-			 scan_id->val_list, scan_id->vd, &hsidp->cls_oid, &hsidp->hfid,
-			 hsidp->scan_pred.regu_list, hsidp->scan_pred.pred_expr, hsidp->rest_regu_list,
-			 hsidp->pred_attrs.num_attrs, hsidp->pred_attrs.attr_ids, hsidp->pred_attrs.attr_cache,
-			 hsidp->rest_attrs.num_attrs, hsidp->rest_attrs.attr_ids, hsidp->rest_attrs.attr_cache,
-			 S_HEAP_SCAN, hsidp->cache_recordinfo, hsidp->recordinfo_regu_list, false);
-    std::unique_lock<std::mutex> lock (m_context->m_open_list_mutex);
-    ret = scan_start_scan (thread_p, scan_id);
-    /* lock because of mvcc_snapshot */
-    lock.unlock();
-    PGBUF_INIT_WATCHER (&m_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
-    hfid = phsidp->hfid;
-    OID_SET_NULL (&hsidp->curr_oid);
-    VPID_SET_NULL (&vpid);
-    while (TRUE)
+    if (m_uses_xasl_clone)
       {
-	if (m_context->has_error() || m_context->is_scan_internal_ended || m_context->is_scan_external_ended)
+	pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	err_code = xcache_find_xasl_id_for_execute (&thread_ref, &m_query_entry->xasl_id, &m_xasl_cache_entry, &m_xasl_clone);
+	if (err_code != NO_ERROR)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    return err_code;
+	  }
+	m_xasl = xasl_find_by_id (m_xasl_clone.xasl, m_xasl_id);
+	if (m_xasl == nullptr)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return ER_FAILED;
+	  }
+	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+      }
+    else
+      {
+	pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	err_code = stx_map_stream_to_xasl (&thread_ref, &m_xasl_tree, false, main_thread_p->xasl_unpack_info_ptr->packed_xasl,
+					   main_thread_p->xasl_unpack_info_ptr->packed_size, &m_xasl_unpack_info);
+	if (err_code != NO_ERROR)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    return err_code;
+	  }
+	m_xasl = xasl_find_by_id (m_xasl_tree, m_xasl_id);
+	if (m_xasl == nullptr)
+	  {
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return ER_FAILED;
+	  }
+	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+      }
+
+    m_scan_id = &m_xasl->spec_list->s_id;
+    m_vd = (val_descr *) db_private_alloc (&thread_ref, sizeof (val_descr));
+    memcpy (m_vd, m_orig_vd, sizeof (val_descr));
+    if (m_orig_vd->dbval_cnt > 0)
+      {
+	m_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (&thread_ref, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
+	for (i = 0; i < m_orig_vd->dbval_cnt; i++)
+	  {
+	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &m_vd->dbval_ptr[i]);
+	  }
+      }
+    return NO_ERROR;
+  }
+
+  template <RESULT_TYPE result_type>
+  void task<result_type>::loop (cubthread::entry &thread_ref)
+  {
+    result_handler<result_type> *result_handler_p = m_result_handler;
+    SCAN_CODE scan_code;
+    VPID vpid;
+    int err_code;
+    bool stop = false;
+    bool is_interrupt;
+    bool dummy = false;
+    while (!stop)
+      {
+	if (m_interrupt->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	  {
 	    break;
 	  }
-#if WITH_PARALLEL_DETAIL_INFO
-	if (on_trace)
+	is_interrupt= logtb_get_check_interrupt (&thread_ref)
+		      && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
+	if (is_interrupt)
 	  {
-	    tsc_getticks (&t2);
-	  }
-#endif
-	page_scan_code = page_next (thread_p, scan_id, &hfid, &vpid);
-#if WITH_PARALLEL_DETAIL_INFO
-	if (on_trace)
-	  {
-	    tsc_getticks (&t1);
-	    tsc_elapsed_time_usec (&tv_diff, t1, t2);
-	    TSC_ADD_TIMEVAL (stats->elapsed_page_lock, tv_diff);
-	  }
-#endif
-	if (page_scan_code == S_END)
-	  {
-	    m_context->is_scan_internal_ended = true;
+	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
+	      }
 	    break;
 	  }
-
-	if (page_scan_code == S_ERROR)
+	scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
+	if (scan_code == S_END)
 	  {
-	    if (m_context->has_error())
-	      {
-		break;
-	      }
-	    m_context->set_has_error();
-	    m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	    break;
 	  }
-
-	while (TRUE)
+	if (scan_code == S_ERROR)
 	  {
-	    if (m_context->has_error() || m_context->is_scan_external_ended)
+	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	      {
-		break;
-	      }
-#if WITH_PARALLEL_DETAIL_INFO
-	    if (on_trace)
-	      {
-		tsc_getticks (&t2);
-	      }
-#endif
-	    rec_scan_code = scan_next_heap_scan_1page_internal (thread_p, scan_id, &vpid);
-#if WITH_PARALLEL_DETAIL_INFO
-	    if (on_trace)
-	      {
-		tsc_getticks (&t1);
-		tsc_elapsed_time_usec (&tv_diff, t1, t2);
-		TSC_ADD_TIMEVAL (stats->elapsed_scan, tv_diff);
-	      }
-#endif
-	    if (rec_scan_code == S_ERROR)
-	      {
-		if (m_context->has_error())
+		err_code = m_err_messages->move_top_error_message_to_this();
+		if (err_code == ER_INTERRUPTED)
 		  {
-		    break;
-		  }
-		m_context->set_has_error();
-		m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
-		break;
-	      }
-	    else if (rec_scan_code == S_END)
-	      {
-		break;
-	      }
-	    else if (rec_scan_code == S_SUCCESS)
-	      {
-#if WITH_PARALLEL_DETAIL_INFO
-		if (on_trace)
-		  {
-		    tsc_getticks (&t1);
-		  }
-#endif
-		if (is_list_merge)
-		  {
-		    if (m_context->has_error() || m_context->is_scan_external_ended)
-		      {
-			break;
-		      }
-		    writer_error_code = m_mergable_list_writer->write (thread_p);
-		    if (!resolved_dbval_stored)
-		      {
-			resolved_dbval_stored = m_memory_mapper->add_resolved_dbval_all();
-		      }
-
-		    if (writer_error_code != NO_ERROR)
-		      {
-			m_context->set_has_error();
-			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
-			break;
-		      }
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
 		  }
 		else
 		  {
-		    writer_error_code = writer.write (thread_p, scan_id, data);
-		    if (writer_error_code != NO_ERROR)
-		      {
-			m_context->set_has_error();
-			m_context->set_error (cuberr::context::get_thread_local_context ().get_current_error_level ());
-			break;
-		      }
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		  }
-#if WITH_PARALLEL_DETAIL_INFO
-		if (on_trace)
-		  {
-		    tsc_getticks (&t2);
-		    tsc_elapsed_time_usec (&tv_diff, t2, t1);
-		    TSC_ADD_TIMEVAL (stats->elapsed_enqueue, tv_diff);
-		  }
-#endif
+	      }
+	    break;
+	  }
+	m_slot_iterator.set_page (&thread_ref, &vpid);
+	while (!stop)
+	  {
+	    scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);
+	    if (scan_code == S_END)
+	      {
+		break;
+	      }
+	    if (scan_code == S_ERROR)
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		break;
+	      }
+
+	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+	      {
+		result_handler_p->write (&thread_ref, m_xasl->outptr_list);
+	      }
+	    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
+	      {
+		result_handler_p->write (&thread_ref, m_xasl->val_list);
 	      }
 	  }
       }
-    if (on_trace)
-      {
-	perfmon_merge_child_stats_to_parent_stats (thread_p);
-	perfmon_destroy_parallel_stats (thread_p);
-      }
-    if (is_list_merge)
-      {
-	m_mergable_list_writer->close (thread_p);
-      }
-    else
-      {
-	writer.close (data);
-	m_list_id_wrapper->close();
-      }
-    m_context->add_tasks_scan_ended();
-    if (on_trace)
-      {
-	tsc_getticks (&end_tick);
-	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-	TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_scan, tv_diff);
-      }
-    if (hsidp->scan_cache.page_watcher.pgptr != NULL)
-      {
-	pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
-      }
-    scan_end_scan (thread_p, scan_id);
-    scan_close_scan (thread_p, scan_id);
-    db_change_private_heap (thread_p, orig_heap_id);
-    thread_p->conn_entry = orig_conn_entry;
-    thread_p->m_px_stats = NULL;
-#if PARALLEL_HEAP_SCAN_LOG
-    er_log_debug (ARG_FILE_LINE, "task thread ended: %ld", syscall (SYS_gettid));
-#endif
-    m_context->add_tasks_executed();
   }
 
-  void
-  task::retire ()
-  {
-    parallel_query::worker_manager *worker_manager_p = m_worker_manager;
-    cubthread::entry_task::retire();
-    worker_manager_p->pop_task();
-  }
+  // Explicit template instantiations
+  template class task<RESULT_TYPE::MERGEABLE_LIST>;
+  template class task<RESULT_TYPE::XASL_SNAPSHOT>;
+
 }

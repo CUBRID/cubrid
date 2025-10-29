@@ -292,12 +292,65 @@ function check_args()
 	fi
 }
 
+function check_backup_dest_path()
+{
+    # Check Directory backup_dest_path
+    if [ ! -d "$backup_dest_path" ]; then
+		error "The backup path ‘$backup_dest_path’ does not exist or is not a directory. Please create the path or specify a valid path."
+    fi
+}
+
+function check_db_name() {
+    # It updates the global 'db_name' to be only the first valid database name found.
+    local original_input="$db_name"
+    local first_db_found=""
+
+    # e.g., db_name='"db1, db2"' becomes `db1, db2`
+    original_input="$(echo "$original_input")"
+
+    # To handle the last item correctly, append a comma
+    local temp_input="${original_input},"
+    local db_count=0
+    while [[ -n "$temp_input" ]]; do
+        # Extract part before the first comma
+        local part="${temp_input%%,*}"
+        # Remove the extracted part from the beginning
+        temp_input="${temp_input#*,}"
+
+        # Trim leading and trailing whitespace (pure bash)
+        part="${part#"${part%%[![:space:]]*}"}" # leading
+        part="${part%"${part##*[![:space:]]}"}" # trailing
+
+        # If the part is not empty after trimming, it's a valid DB name.
+        if [[ -n "$part" ]]; then
+            # Check if the part is a case-insensitive "null" string.
+            if [[ "${part,,}" == "null" ]]; then
+                # Treat "null" as an invalid name and skip it.
+                continue
+            fi
+            ((db_count++))
+            # Store the first valid DB name found.
+            [ -z "$first_db_found" ] && first_db_found="$part"
+        fi
+    done
+
+    # Update the global db_name variable
+    db_name="$first_db_found"
+
+    # If multiple DBs were in the original input, issue a warning.
+    if [[ -n "$original_input" && "$db_count" -gt 1 ]]; then
+        echo "WARNING: Multiple DBs were specified: '$original_input'."
+        echo "         Only the first valid DB ('$db_name') will be used. Others are ignored."
+    fi
+}
+
 function init_conf()
 {
 	# init path
 	backup_dest_path=${backup_dest_path:-$ha_temp_home/backup}
 	mkdir -p $ha_temp_home $backup_dest_path
-	repl_log_home=${repl_log_home%%/}
+	check_backup_dest_path
+ 	repl_log_home=${repl_log_home%%/}
 	backup_dest_path=${backup_dest_path%%/}
 	backup_dest_path=$(readlink -f $backup_dest_path)
 	
@@ -306,7 +359,6 @@ function init_conf()
 		error "Cannot find cubrid_ha.conf in $CUBRID/conf."
 	fi
 	
-	node_index=1
 	while read line
 	do
 		if [[ "${line:0:1}" != "#" && "${line:0:1}" != "" ]]; then
@@ -319,23 +371,23 @@ function init_conf()
 					hosts=$(echo ${conf[1]} | cut -d '@' -f 2)
 					master_host=$(echo $hosts | cut -d ':' -f 1)
 					slave_host=$(echo $hosts | cut -d ':' -f 2)
-					if [ "$slave_host" == "$target_host" ]; then
-						node_index=2
-					fi
 					;;
 				"ha_replica_list") replica_hosts=$(echo ${conf[1]} | cut -d '@' -f 2);;
 				"ha_db_list")
-					if [ -z $db_name ]; then
+					if [ -z "$db_name" ]; then
 						db_name=${conf[1]}
-						db_name=$(echo $db_name | cut -d ',' -f 1)
+						echo "INFO: 'db_name' is not specified. Using DB list from ha_db_list in cubrid_ha.conf: '$db_name'"
 					fi
 					;;
 			esac
 		fi
 	done < $CUBRID/conf/cubrid_ha.conf
 
+	# Sanitize the db_name, extracting the first valid one if multiple are given.
+	check_db_name
+
 	if [ -z $db_name ]; then
-		error "The db_name is null."
+		error "The db_name is null. Please specify 'db_name' variable or set 'ha_db_list' in cubrid_ha.conf."
 	fi
 	
 	# check the master and slave host is valid
@@ -841,7 +893,7 @@ function copy_active_log_from_master()
 
 	# 2. copy all transaction logs from master.
 	echo -ne "\n - 2. copy all transaction logs from master.\n\n"
-	execute "cub_admin copylogdb -L ${repl_log_path} -m async --start-page-id=-1 ${db_name}@${master_host}"
+	execute "cubrid copylogdb -L ${repl_log_path} -m async --start-page-id=-1 ${db_name}@${master_host}"
 }
 
 function show_complete()
