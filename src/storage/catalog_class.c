@@ -64,6 +64,9 @@
 
 #define CATCLS_OID_TABLE_SIZE   1024
 
+/* SM_CLASSFLAG_SYSTEM is defined in a client-side header (class_object.h). Keep in sync with the shared definition. */
+#define SM_CLASSFLAG_SYSTEM (1)
+
 typedef struct or_value OR_VALUE;
 typedef struct catcls_entry CATCLS_ENTRY;
 typedef struct catcls_property CATCLS_PROPERTY;
@@ -997,6 +1000,7 @@ static int
 catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p)
 {
   OR_VALUE *attrs;
+  DB_VALUE flags_val;
   DB_VALUE *attr_val_p;
   OR_VARINFO *vars = NULL;
   int size;
@@ -1005,6 +1009,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   const char *dot = NULL;
   const char *class_name = NULL;
   int error = NO_ERROR;
+  int flags;
 
   error = catcls_expand_or_value_by_def (value_p, &ct_Class);
   if (error != NO_ERROR)
@@ -1049,7 +1054,11 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_CLASS_ATTR_COUNT_INDEX].value, NULL, -1, true, NULL, 0);
 
   /* flags */
-  tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_FLAGS_INDEX].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &flags_val, NULL, -1, true, NULL, 0);
+  /* split legacy packed flags: bit0 -> is_system_class (0/1), others -> flags; recombine on write for compatibility. */
+  flags = db_get_int (&flags_val);
+  db_make_int (&attrs[CT_CLASS_IS_SYSTEM_CLASS_INDEX].value, flags & SM_CLASSFLAG_SYSTEM);
+  db_make_int (&attrs[CT_CLASS_FLAGS_INDEX].value, flags & ~SM_CLASSFLAG_SYSTEM);
 
   /* class_type */
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_CLASS_TYPE_INDEX].value, NULL, -1, true, NULL, 0);
@@ -1064,7 +1073,7 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_TDE_ALGORITHM_INDEX].value, NULL, -1, true, NULL, 0);
 
   /* statistics_strategy */
-  tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_GATHERING_STRATEGY_INDEX].value, NULL, -1, true, NULL, 0);
+  tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_STATISTICS_STRATEGY_INDEX].value, NULL, -1, true, NULL, 0);
 
   /* created_time */
   tp_Datetime.data_readval (buf_p, &attrs[CT_CLASS_CREATED_TIME_INDEX].value, NULL, -1, true, NULL, 0);
