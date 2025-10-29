@@ -11439,7 +11439,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
  * xlob_remove_dir - request to server to remove lob dir
  */
 int
-xlob_remove_dir (HFID * hfid, int attrid)
+lob_remove_dir (HFID * hfid, int attrid)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;

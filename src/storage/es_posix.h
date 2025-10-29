@@ -26,6 +26,7 @@
 #include <sys/types.h>
 
 #include "es_common.h"
+#include "porting.h"
 
 #if defined (WINDOWS)
 #define ES_PATH_SEPARATOR    "\\"
@@ -38,10 +39,6 @@
 
 extern int es_posix_init (const char *base_path);
 extern void es_posix_final (void);
-
-#if !defined PATH_MAX
-#define PATH_MAX	256
-#endif
 
 #if defined (SA_MODE) || defined (SERVER_MODE)
 extern char es_base_dir[PATH_MAX];
