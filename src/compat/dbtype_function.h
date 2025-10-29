@@ -160,13 +160,6 @@
         db_make_varchar(value, max_char_length, str, char_str_byte_size, codeset, collation)
 
 #define DB_MAKE_STRING(value, str) db_make_string(value, str)
-
-#define DB_MAKE_NCHAR(value, nchar_length, str, nchar_str_byte_size, codeset, collation) \
-        db_make_nchar(value, nchar_length, str, nchar_str_byte_size, codeset, collation)
-
-#define DB_MAKE_VARNCHAR(value, max_nchar_length, str, nchar_str_byte_size, codeset, collation) \
-        db_make_varnchar(value, max_nchar_length, str, nchar_str_byte_size, codeset, collation)
-
 #define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
 	db_make_enumeration(value, index, str, size, codeset, collation)
 
@@ -203,7 +196,7 @@
 #define DB_GET_NUMERIC(v) db_get_numeric(v)
 #define DB_GET_BIT(v, l) db_get_bit(v, l)
 #define DB_GET_CHAR(v, l) db_get_char(v, l)
-#define DB_GET_NCHAR(v, l) db_get_nchar(v, l)
+
 #define DB_GET_STRING_SIZE(v) db_get_string_size(v)
 #define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
 #define DB_GET_ENUM_STRING(v) db_get_enum_string(v)
@@ -321,7 +314,7 @@ extern "C"
   extern DB_C_NUMERIC db_get_numeric (const DB_VALUE * value);
   extern DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length);
   extern DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length);
-  extern DB_CONST_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length);
+
   extern int db_get_string_size (const DB_VALUE * value);
   extern unsigned short db_get_enum_short (const DB_VALUE * value);
   extern DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value);
@@ -364,10 +357,7 @@ extern "C"
 			   const int codeset, const int collation_id);
   extern int db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
 			      const int char_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str,
-			    const int nchar_str_byte_size, const int codeset, const int collation_id);
-  extern int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
-			       const int nchar_str_byte_size, const int codeset, const int collation_id);
+
   extern int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				  unsigned char codeset, const int collation_id);
   extern int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle);

@@ -525,8 +525,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
       name = lambda_arg->name;
 
       /* check for variable string type */
-      if (tree->type_enum == PT_TYPE_VARCHAR || tree->type_enum == PT_TYPE_VARNCHAR
-	  || tree->type_enum == PT_TYPE_VARBIT)
+      if (tree->type_enum == PT_TYPE_VARCHAR || tree->type_enum == PT_TYPE_VARBIT)
 	{
 	  switch (tree_or_name->info.expr.op)
 	    {
@@ -3452,8 +3451,6 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "lock timeout";
     case PT_CHAR_STRING:
       return "";
-    case PT_NCHAR_STRING:
-      return "";
     case PT_BIT_STRING:
       return "";
     case PT_HEX_STRING:
@@ -4187,10 +4184,6 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "char";
     case PT_TYPE_VARCHAR:
       return "varchar";
-    case PT_TYPE_NCHAR:
-      return "nchar";
-    case PT_TYPE_VARNCHAR:
-      return "nchar varying";
     case PT_TYPE_BIT:
       return "bit";
     case PT_TYPE_VARBIT:
@@ -6725,8 +6718,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
       break;
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
     case PT_TYPE_BIT:
@@ -6742,7 +6733,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	  switch (p->type_enum)
 	    {
 	    case PT_TYPE_CHAR:
-	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_BIT:
 	      /* fixed data type: always show parameter */
 	      show_precision = true;
@@ -6756,10 +6746,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	      else if (p->type_enum == PT_TYPE_VARCHAR)
 		{
 		  show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
-		}
-	      else if (p->type_enum == PT_TYPE_VARNCHAR)
-		{
-		  show_precision = (precision != DB_MAX_VARNCHAR_PRECISION);
 		}
 	      else if (p->type_enum == PT_TYPE_VARBIT)
 		{
@@ -8688,8 +8674,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
 
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       if (parser->flag.is_parsing_unload_schema)
@@ -8701,12 +8685,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	      break;
 	    case PT_TYPE_VARCHAR:
 	      q = pt_append_nulstring (parser, q, "character varying");
-	      break;
-	    case PT_TYPE_NCHAR:
-	      q = pt_append_nulstring (parser, q, "national character");
-	      break;
-	    case PT_TYPE_VARNCHAR:
-	      q = pt_append_nulstring (parser, q, "national character varying");
 	      break;
 	    default:
 	      assert (false);
@@ -8729,7 +8707,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	switch (p->type_enum)
 	  {
 	  case PT_TYPE_CHAR:
-	  case PT_TYPE_NCHAR:
 	  case PT_TYPE_BIT:
 	    /* fixed data type: always show parameter */
 	    show_precision = true;
@@ -8743,10 +8720,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	    else if (p->type_enum == PT_TYPE_VARCHAR)
 	      {
 		show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
-	      }
-	    else if (p->type_enum == PT_TYPE_VARNCHAR)
-	      {
-		show_precision = (precision != DB_MAX_VARNCHAR_PRECISION);
 	      }
 	    else if (p->type_enum == PT_TYPE_VARBIT)
 	      {
@@ -16634,7 +16607,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TYPE_CHAR:
-    case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
       if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
@@ -16711,7 +16683,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_VARBIT:
       if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
@@ -18136,8 +18107,7 @@ pt_is_const_expr_node (PT_NODE * node)
 bool
 pt_is_ascii_string_value_node (const PT_NODE * const node)
 {
-  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum)
-	  && !PT_IS_NATIONAL_CHAR_STRING_TYPE (node->type_enum));
+  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum));
 }
 
 /*

@@ -206,50 +206,6 @@ classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, in
 }
 
 /*
- * or_Type_sizes
- *    This is used primarily on the server but can be used on the client
- *    as well.  Given a type identifier, return the disk size of values
- *    of this type, if they are fixed size.  A value of -1 indicates that
- *    the values are of variable size.
- *    Must be kept in sync with the DB_TYPE enumeration in orh
- *    This information is duplicated in the const PR_TYPE structures
- *    for use on the client.  Should consider using this on the client
- *    side as well to avoid the duplication.
- *
- */
-int or_Type_sizes[] = {
-
-  0,				/* null */
-  OR_INT_SIZE,			/* integer */
-  OR_FLOAT_SIZE,		/* float */
-  OR_DOUBLE_SIZE,		/* double */
-  -1,				/* string */
-  OR_OID_SIZE,			/* object */
-  -1,				/* set */
-  -1,				/* multiset */
-  -1,				/* sequence */
-  -1,				/* elo */
-  OR_TIME_SIZE,			/* time */
-  OR_UTIME_SIZE,		/* utime */
-  OR_DATE_SIZE,			/* date */
-  OR_MONETARY_SIZE,		/* monetary */
-  -1,				/* variable */
-  -1,				/* substructure */
-  0,				/* pointer */
-  0,				/* error */
-  OR_INT_SIZE,			/* short */
-  -1,				/* virtual obj */
-  OR_OID_SIZE,			/* oid */
-  0,				/* last */
-  -1,				/* numeric */
-  -1,				/* bit */
-  -1,				/* varbit */
-  -1,				/* char */
-  -1,				/* nchar */
-  -1,				/* varnchar */
-};
-
-/*
  * RECDES DECODING FUNCTIONS
  */
 
@@ -2623,8 +2579,6 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	    }
 	  break;
 
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  /* collation id */
@@ -2649,7 +2603,6 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	   * chunk of code can be removed.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
 	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
@@ -2814,8 +2767,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  break;
 
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  has_collation = true;
@@ -2839,7 +2790,6 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	   * in or_packed_domain_size above.
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
-	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
 	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
 	    {
 	      precision = 0;
@@ -3122,8 +3072,6 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      scale = (carrier & OR_DOMAIN_SCALE_MASK) >> OR_DOMAIN_SCALE_SHIFT;
 	      break;
 
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      has_collation = true;
@@ -3141,10 +3089,6 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 		  if (type == DB_TYPE_VARCHAR)
 		    {
 		      precision = DB_MAX_VARCHAR_PRECISION;
-		    }
-		  else if (type == DB_TYPE_VARNCHAR)
-		    {
-		      precision = DB_MAX_VARNCHAR_PRECISION;
 		    }
 		  else if (type == DB_TYPE_VARBIT)
 		    {
@@ -3479,8 +3423,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	      dom = tp_domain_find_numeric (type, precision, scale, is_desc);
 	      break;
 
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
 	    case DB_TYPE_CHAR:
 	    case DB_TYPE_VARCHAR:
 	      collation_storage = or_get_int (buf, &rc);
@@ -3527,10 +3469,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		  if (type == DB_TYPE_VARCHAR)
 		    {
 		      precision = DB_MAX_VARCHAR_PRECISION;
-		    }
-		  else if (type == DB_TYPE_VARNCHAR)
-		    {
-		      precision = DB_MAX_VARNCHAR_PRECISION;
 		    }
 		  else if (type == DB_TYPE_VARBIT)
 		    {
@@ -3699,8 +3637,6 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      dom->json_validator = NULL;
 		    }
 		  break;
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
 		  dom->collation_id = collation_id;
