@@ -242,7 +242,7 @@ namespace cubconn
 
     if (need_wait)
       {
-	handle->cv.wait (lock, [&] { return handle->done; });
+	handle->cv.wait_for (lock, std::chrono::seconds (10), [&] { return handle->done; });
       }
 
     return true;
