@@ -68,9 +68,6 @@
 
 #define	SYS_CONNECT_BY_PATH_MEM_STEP	256
 
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
-
 static bool qdata_is_zero_value_date (DB_VALUE * dbval_p);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);
@@ -507,6 +504,110 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   /* now that we know the tuple size, set it. */
   QFILE_PUT_TUPLE_LENGTH (tuple_record_p->tpl, tlen);
 
+  return NO_ERROR;
+}
+
+int
+qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_record * tuple_record_p)
+{
+  QPROC_DB_VALUE_LIST val_list_iterator;
+  int val_list_index;
+  DB_VALUE *dbval_p;
+  char *tuple_p;
+  int tval_size, tlen, tpl_size;
+  int n_size, toffset;
+  int flags;
+  bool clear_compressed_string = false;
+
+  tpl_size = 0;
+  tlen = QFILE_TUPLE_LENGTH_SIZE;
+  toffset = 0;
+
+  tuple_p = (char *) (tuple_record_p->tpl) + tlen;
+  toffset += tlen;
+
+  val_list_iterator = val_list->valp;
+  for (val_list_index = 0; val_list_iterator; val_list_iterator = val_list_iterator->next, val_list_index++)
+    {
+      dbval_p = val_list_iterator->val;
+      n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
+      if (n_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      if (unlikely ((tuple_record_p->size - toffset) < n_size))
+	{
+	  /* no space left in tuple to put next item, increase the tuple size by the max of n_size and DB_PAGE_SIZE
+	   * since we can't compute the actual tuple size without re-evaluating the expressions.  This guarantees
+	   * that we can at least get the next value into the tuple. */
+	  tpl_size = MAX (tuple_record_p->size, QFILE_TUPLE_LENGTH_SIZE);
+	  tpl_size += MAX (n_size, DB_PAGESIZE);
+	  if (tuple_record_p->size == 0)
+	    {
+	      tuple_record_p->tpl = (char *) db_private_alloc (thread_p, tpl_size);
+	      if (tuple_record_p->tpl == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	  else
+	    {
+	      tuple_record_p->tpl = (char *) db_private_realloc (thread_p, tuple_record_p->tpl, tpl_size);
+	      if (tuple_record_p->tpl == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	  tuple_record_p->size = tpl_size;
+	  tuple_p = (char *) (tuple_record_p->tpl) + toffset;
+	}
+      if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      tlen += tval_size;
+      tuple_p += tval_size;
+      toffset += tval_size;
+    }
+  QFILE_PUT_TUPLE_LENGTH (tuple_record_p->tpl, tlen);
+  return NO_ERROR;
+}
+
+extern int
+qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * type_list, qfile_tuple_record * tplrec,
+			 VAL_LIST * val_list)
+{
+  QPROC_DB_VALUE_LIST val_list_iterator;
+  int val_list_index;
+  OR_BUF iterator, buf;
+  int err_code;
+  QFILE_TUPLE_VALUE_FLAG flag;
+
+  or_init (&iterator, tplrec->tpl, QFILE_GET_TUPLE_LENGTH (tplrec->tpl));
+  or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
+
+  for (val_list_iterator = val_list->valp, val_list_index = 0; val_list_iterator
+       && val_list_index < val_list->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
+    {
+      qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+
+      pr_clear_value (val_list_iterator->val);
+
+      if (flag == V_UNBOUND)
+	{
+	  db_make_null (val_list_iterator->val);
+	  continue;
+	}
+
+      err_code = type_list->domp[val_list_index]->type->data_readval (&buf, val_list_iterator->val,
+								      type_list->domp[val_list_index],
+								      -1, false /* Don't copy */ ,
+								      NULL, 0);
+      if (err_code != NO_ERROR)
+	{
+	  return err_code;
+	}
+    }
   return NO_ERROR;
 }
 
@@ -6444,6 +6545,43 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
 	}
 
       reg_var_p = reg_var_p->next;
+    }
+
+  return NO_ERROR;
+}
+
+int
+qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfile_tuple_value_type_list * type_list_p)
+{
+  QPROC_DB_VALUE_LIST val_list_iterator;
+  int val_list_index;
+
+  if (type_list_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1);
+      assert (false);
+      return ER_FAILED;
+    }
+
+  type_list_p->type_cnt = val_list->val_cnt;
+  if (type_list_p->type_cnt == 0)
+    {
+      type_list_p->domp = NULL;
+      return NO_ERROR;
+    }
+
+  type_list_p->domp = (TP_DOMAIN **) malloc (sizeof (TP_DOMAIN *) * type_list_p->type_cnt);
+  if (type_list_p->domp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (TP_DOMAIN *) * type_list_p->type_cnt);
+      return ER_FAILED;
+    }
+
+  for (val_list_iterator = val_list->valp, val_list_index = 0; val_list_iterator != NULL;
+       val_list_iterator = val_list_iterator->next, val_list_index++)
+    {
+      type_list_p->domp[val_list_index] = val_list_iterator->dom;
     }
 
   return NO_ERROR;
