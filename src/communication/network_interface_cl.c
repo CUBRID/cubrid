@@ -11398,6 +11398,11 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
 
   request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * attrid_arr_length);
   request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
   ptr = or_pack_hfid (request, hfid);
   ptr = or_pack_int_array (ptr, attrid_arr_length, attrid_arr);
