@@ -5156,7 +5156,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 3}},
 #endif
    {false, {.i = 8192}},
-   {false, {.i = 0}},
+   {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
