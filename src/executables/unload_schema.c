@@ -1777,6 +1777,11 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	      output_ctx (" DONT_REUSE_OID");
 	    }
 
+	  if (class_ != NULL)
+	    {
+	      output_ctx (", COLLATE %s", lang_get_collation_name (class_->collation_id));
+	    }
+
 	  if (sm_is_replication_class (cl->op))
 	    {
 	      output_ctx (", REPLICATION=ON");
@@ -1784,11 +1789,6 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	  else
 	    {
 	      output_ctx (", REPLICATION=OFF");
-	    }
-
-	  if (class_ != NULL)
-	    {
-	      output_ctx (", COLLATE %s", lang_get_collation_name (class_->collation_id));
 	    }
 
 	  if (class_ != NULL)
