@@ -33,10 +33,11 @@
 #include <atomic>
 #include <thread>
 #include <unordered_set>
+#include <condition_variable>
 #include <cstring>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
-#include <fcntl.h>
 
 namespace cubconn
 {
@@ -83,13 +84,21 @@ namespace cubconn
 	IGNORE_ALL
       };
 
+      struct message_blocker
+      {
+	std::mutex m;
+	std::condition_variable cv;
+	bool done;
+      };
+
       struct message
       {
 	public:
 	  message () :
 	    conn (nullptr),
 	    ignore (ignore_level::DONT_IGNORE),
-	    retry (false)
+	    retry (false),
+	    waiter_handle (nullptr)
 	  {
 	  }
 	  ~message () = default;
@@ -111,6 +120,9 @@ namespace cubconn
 	  /* shutdown client */
 	  ignore_level ignore;
 	  bool retry;
+
+	  /* waiter handle */
+	  std::shared_ptr<message_blocker> waiter_handle;
 
 	  /* debug purpose */
 #if !defined (NDEBUG)
@@ -176,6 +188,7 @@ namespace cubconn
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
       bool notify ();
+      bool enqueue_and_notify (queue_type type, message &&item, bool need_wait = false);
 
       /* statistics */
       void stats ();
@@ -231,7 +244,7 @@ namespace cubconn
       std::pair<int, int> start_connection_close (context *ctx);
       void end_connection_close ();
 
-      bool handle_connection_close (context *ctx, bool retry);
+      bool handle_connection_close (context *ctx, bool retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 
       /* --------------------------------------------------------------------------- */
       /* HA									     */
