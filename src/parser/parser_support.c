@@ -9552,7 +9552,6 @@ PT_NODE *
 pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   PT_NODE **spec_list = (PT_NODE **) arg;
-  PT_NODE *arg1, *arg2;
   if (tree == NULL)
     {
       return NULL;

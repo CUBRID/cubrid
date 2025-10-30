@@ -7495,7 +7495,6 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   int num_match_one = 0;
   bool has_escape_char = false;
   const char *escape_str = NULL;
-  INTL_CODESET codeset;
 
   if (node == NULL)
     {
