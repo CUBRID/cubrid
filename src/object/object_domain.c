@@ -7526,7 +7526,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    }
 
 	  pr_clear_value (&src_replacement);
-	  assert (false);	// heexoo_test
 	  return DOMAIN_INCOMPATIBLE;
 	}
     }
