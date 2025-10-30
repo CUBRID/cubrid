@@ -449,6 +449,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/file_manager.c
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
+  ${STORAGE_DIR}/oos_file.cpp
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
