@@ -2763,10 +2763,8 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->comment = NULL;
   new_->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
   new_->index_status = SM_NO_INDEX;
-  // *INDENT-OFF*
-  new_->created_time = (DB_DATETIME){0, 0};
-  new_->updated_time = (DB_DATETIME){0, 0};
-  // *INDENT-ON*
+  new_->created_time = DATETIME_NULL_VALUE;
+  new_->updated_time = DATETIME_NULL_VALUE;
 
   return new_;
 }
