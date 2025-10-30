@@ -4232,7 +4232,7 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
   const char *ampm;
   int cnt = 0;
 
-  if (buf == NULL || bufsize < QSTR_DATETIME_LENGTH + 1)
+  if (buf == NULL || bufsize <= QSTR_DATETIME_LENGTH)
     {
       return 0;
     }
