@@ -933,6 +933,7 @@ qo_top_plan_new (QO_PLAN * plan)
 {
   QO_ENV *env;
   PT_NODE *tree, *group_by, *order_by, *orderby_for;
+  bool ordbynum_flag = false;
   PT_MISC_TYPE all_distinct;
   PARSER_CONTEXT *parser;
 
@@ -969,26 +970,29 @@ qo_top_plan_new (QO_PLAN * plan)
   order_by = tree->info.query.order_by;
   orderby_for = tree->info.query.orderby_for;
 
+  if (order_by)
+    {
+      (void) parser_walk_leaves (parser, tree, pt_check_orderbynum_pre, NULL, pt_check_orderbynum_post, &ordbynum_flag);
+    }
+
   if (group_by || (all_distinct == PT_DISTINCT || order_by))
     {
 
       bool groupby_skip, orderby_skip, is_index_w_prefix;
       bool found_instnum;
       int t;
-      BITSET_ITERATOR iter;
-      QO_TERM *term;
 
       groupby_skip = orderby_skip = false;	/* init */
 
-      for (t = bitset_iterate (&(plan->sarged_terms), &iter); t != -1; t = bitset_next_member (&iter))
+      found_instnum = false;
+      for (t = 0; t < (signed) plan->info->planner->T; t++)
 	{
-	  term = QO_ENV_TERM (env, t);
-	  if (QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+	  if (QO_TERM_CLASS (&plan->info->planner->term[t]) == QO_TC_TOTALLY_AFTER_JOIN)
 	    {
-	      break;		/* found inst_num() */
+	      found_instnum = true;
+	      break;
 	    }
-	}			/* for (t = ...) */
-      found_instnum = (t == -1) ? false : true;
+	}
 
       plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
 
@@ -1081,7 +1085,7 @@ qo_top_plan_new (QO_PLAN * plan)
 		    }
 		  else
 		    {		/* non group_by */
-		      if (found_instnum && orderby_for)
+		      if (found_instnum && (orderby_for || ordbynum_flag))
 			{
 			  /* at here, we can not merge orderby_num pred with inst_num pred */
 			  ;	/* give up; DO NOT DELETE ME - need future work */
