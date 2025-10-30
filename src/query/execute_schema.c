@@ -734,8 +734,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
       for (;
 	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
-	       || path->type_enum == PT_TYPE_VARNCHAR); p = p->next)
+	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR); p = p->next)
 	{
 	  mthd_file = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_drop_method_file (ctemplate, mthd_file);
@@ -1730,10 +1729,7 @@ error_exit:
 
 #define IS_NAME(n)      ((n)->node_type == PT_NAME)
 #define IS_STRING(n)    ((n)->node_type == PT_VALUE &&          \
-                         ((n)->type_enum == PT_TYPE_VARCHAR  || \
-                          (n)->type_enum == PT_TYPE_CHAR     || \
-                          (n)->type_enum == PT_TYPE_VARNCHAR || \
-                          (n)->type_enum == PT_TYPE_NCHAR))
+                         ((n)->type_enum == PT_TYPE_VARCHAR  || (n)->type_enum == PT_TYPE_CHAR))
 #define GET_NAME(n)     ((char *) (n)->info.name.original)
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
@@ -7133,30 +7129,12 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		    }
 		  break;
 
-		case PT_TYPE_NCHAR:
-		  if (p != DB_DEFAULT_PRECISION
-		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_NCHAR_PRECISION))
-		    {
-		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NCHAR_PRECISION);
-		    }
-		  break;
-
 		case PT_TYPE_VARCHAR:
 		  if (p != DB_DEFAULT_PRECISION
 		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_VARCHAR_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
 				   DB_MAX_VARCHAR_PRECISION);
-		    }
-		  break;
-
-		case PT_TYPE_VARNCHAR:
-		  if (p != DB_DEFAULT_PRECISION
-		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_VARNCHAR_PRECISION))
-		    {
-		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_VARNCHAR_PRECISION);
 		    }
 		  break;
 
@@ -8338,8 +8316,7 @@ do_add_method_files (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   for (mf = method_files; mf && error == NO_ERROR; mf = mf->next)
     {
       if (mf->node_type == PT_FILE_PATH && (path = mf->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	  && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
-	      || path->type_enum == PT_TYPE_VARNCHAR))
+	  && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR))
 	{
 	  method_file_name = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_add_method_file (ctemplate, method_file_name);
@@ -8912,25 +8889,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto error_exit;
 	    }
 
-	  switch (column->domain->type->id)
+	  if (column->domain->type->id == DB_TYPE_VARCHAR)
 	    {
-	    case DB_TYPE_VARCHAR:
 	      if (column->domain->precision == DB_DEFAULT_PRECISION)
 		{
 		  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
 		}
-	      break;
-	    case DB_TYPE_VARNCHAR:
-	      if (column->domain->precision == DB_DEFAULT_PRECISION)
-		{
-		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-		}
-	      else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
-		{
-		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-		}
-	    default:
-	      break;
 	    }
 	}
     }
@@ -11689,22 +11653,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  assert (req_prec >= 0);
 	}
     }
-  else if (new_type == DB_TYPE_VARNCHAR)
-    {
-      if (req_prec == DB_MAX_VARNCHAR_PRECISION)
-	{
-	  is_req_max_prec = true;
-	}
-      else if (req_prec == TP_FLOATING_PRECISION_VALUE)
-	{
-	  req_prec = DB_MAX_VARNCHAR_PRECISION;
-	  is_req_max_prec = true;
-	}
-      else
-	{
-	  assert (req_prec >= 0);
-	}
-    }
   else
     {
       assert (is_req_max_prec == false);
@@ -11733,9 +11681,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	    }
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_DIGITS_FOR_SHORT + 1)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11778,9 +11724,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	    }
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_DIGITS_FOR_INTEGER + 1)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11818,9 +11762,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	    }
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_DIGITS_FOR_BIGINT + 1)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11876,9 +11818,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= cur_prec + 2)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11902,12 +11842,10 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_NUMERIC:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (is_req_max_prec)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11936,12 +11874,10 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_NUMERIC:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (is_req_max_prec)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11969,12 +11905,10 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_NUMERIC:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (is_req_max_prec)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11997,9 +11931,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIME)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12030,9 +11962,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATE)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12066,9 +11996,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATETIME)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12102,9 +12030,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATETIMETZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12138,9 +12064,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATETIMETZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12174,9 +12098,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12210,9 +12132,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12246,9 +12166,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12345,87 +12263,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  break;
 	default:
 	  assert (new_type != DB_TYPE_VARCHAR);
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_NCHAR:
-      switch (new_type)
-	{
-	case DB_TYPE_SHORT:
-	case DB_TYPE_INTEGER:
-	case DB_TYPE_BIGINT:
-	case DB_TYPE_NUMERIC:
-	case DB_TYPE_FLOAT:
-	case DB_TYPE_DOUBLE:
-	case DB_TYPE_MONETARY:
-	case DB_TYPE_DATE:
-	case DB_TYPE_TIME:
-	case DB_TYPE_DATETIME:
-	case DB_TYPE_DATETIMETZ:
-	case DB_TYPE_DATETIMELTZ:
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPTZ:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= cur_prec)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
-		{
-		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
-		}
-	      else
-		{
-		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-		}
-	    }
-	  break;
-	default:
-	  assert (new_type != DB_TYPE_NCHAR);
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      switch (new_type)
-	{
-	case DB_TYPE_SHORT:
-	case DB_TYPE_INTEGER:
-	case DB_TYPE_BIGINT:
-	case DB_TYPE_NUMERIC:
-	case DB_TYPE_FLOAT:
-	case DB_TYPE_DOUBLE:
-	case DB_TYPE_MONETARY:
-	case DB_TYPE_DATE:
-	case DB_TYPE_TIME:
-	case DB_TYPE_DATETIME:
-	case DB_TYPE_DATETIMETZ:
-	case DB_TYPE_DATETIMELTZ:
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPTZ:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	case DB_TYPE_NCHAR:
-	  if (req_prec >= cur_prec)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	    }
-	  break;
-	default:
-	  assert (new_type != DB_TYPE_VARNCHAR);
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	  break;
 	}
@@ -13394,7 +13231,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
 {
   static const char *zero = "0";
   static const char *empty_str = "''";
-  static const char *empty_n_str = "N''";
   static const char *empty_bit = "b'0'";
   static const char *empty_date = "DATE '01/01/0001'";
   static const char *empty_time = "TIME '00:00'";
@@ -13443,10 +13279,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       return empty_str;
-
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
-      return empty_n_str;
 
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:

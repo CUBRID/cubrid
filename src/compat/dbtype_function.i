@@ -48,7 +48,7 @@ STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS
 STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_CONST_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+
 STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -102,12 +102,7 @@ STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, DB_CONS
 STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
 				   const int char_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str,
-				 const int nchar_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
-				    const int nchar_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
+
 STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
@@ -638,18 +633,6 @@ db_get_char (const DB_VALUE * value, int *length)
 }
 
 /*
- * db_get_nchar() -
- * return :
- * value(in):
- * length(out):
- */
-DB_CONST_C_NCHAR
-db_get_nchar (const DB_VALUE * value, int *length)
-{
-  return db_get_char (value, length);
-}
-
-/*
  * db_get_string_size() -
  * return :
  * value(in):
@@ -917,8 +900,6 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_VARBIT:
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       return value->domain.char_info.length;
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:
@@ -1008,7 +989,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->data.ch.medium.size = size;
   value->data.ch.medium.buf = str;
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
   value->domain.general_info.is_null = ((size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 					? 1 : DB_IS_NULL (value));
@@ -1665,60 +1646,6 @@ db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR st
 }
 
 /*
- * db_make_nchar() -
- * return :
- * value(out) :
- * nchar_length(in):
- * str(in):
- * nchar_str_byte_size(in):
- */
-int
-db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
-	       const int codeset, const int collation_id)
-{
-  int error;
-
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  error = db_value_domain_init (value, DB_TYPE_NCHAR, nchar_length, 0);
-  if (error == NO_ERROR)
-    {
-      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
-    }
-
-  return error;
-}
-
-/*
- * db_make_varnchar() -
- * return :
- * value(out) :
- * max_nchar_length(in):
- * str(in):
- * nchar_str_byte_size(in):
- */
-int
-db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
-		  const int codeset, const int collation_id)
-{
-  int error;
-
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  error = db_value_domain_init (value, DB_TYPE_VARNCHAR, max_nchar_length, 0);
-  if (error == NO_ERROR)
-    {
-      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
-    }
-
-  return error;
-}
-
-/*
  * db_make_enumeration() -
  * return :
  * value(out):
@@ -1744,7 +1671,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str
   value->data.ch.info.is_max_string = false;
   value->data.ch.info.compressed_need_clear = false;
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
@@ -2142,8 +2069,7 @@ db_get_compressed_size (DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
-
+  assert (type == DB_TYPE_VARCHAR);
   return value->data.ch.medium.compressed_size;
 }
 
@@ -2167,7 +2093,7 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR);
+  assert (type == DB_TYPE_VARCHAR);
 
   value->data.ch.medium.compressed_buf = compressed_string;
   value->data.ch.medium.compressed_size = compressed_size;

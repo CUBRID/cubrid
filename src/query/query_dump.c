@@ -32,7 +32,7 @@
 #include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#include "px_heap_scan_perf_monitor.hpp"
+#include "px_heap_scan_trace_handler.hpp"
 #include "px_query_executor.hpp"
 #endif // SERVER_MODE
 #include "xasl.h"
@@ -1212,10 +1212,6 @@ qdump_data_type_string (DB_TYPE type)
       return "VARBIT";
     case DB_TYPE_CHAR:
       return "CHAR";
-    case DB_TYPE_NCHAR:
-      return "NCHAR";
-    case DB_TYPE_VARNCHAR:
-      return "VARNCHAR";
     case DB_TYPE_DB_VALUE:
       return "DB_VALUE";
     case DB_TYPE_RESULTSET:
@@ -3068,15 +3064,15 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 #if !WINDOWS
       if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
 	{
-	  if (spec->s_id.s.phsid.perf_monitor != NULL)
+	  if (spec->s_id.s.phsid.trace_storage != NULL)
 	    {
 	      if (!spec->s_id.scan_stats.noscan)
 		{
-		  spec->s_id.s.phsid.perf_monitor->print_json (scan, class_name,
-							       (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
+		  spec->s_id.s.phsid.trace_storage->dump_stats_json (scan, class_name);
 		}
-	      delete spec->s_id.s.phsid.perf_monitor;
-	      spec->s_id.s.phsid.perf_monitor = NULL;
+	      spec->s_id.s.phsid.trace_storage->~accumulative_trace_storage ();
+	      free (spec->s_id.s.phsid.trace_storage);
+	      spec->s_id.s.phsid.trace_storage = NULL;
 	    }
 	}
 #endif
@@ -3448,28 +3444,19 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		    }
 		}
 	    }
-#if !WINDOWS
-	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
-	    {
-	      if (spec->s_id.s.phsid.perf_monitor && spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
-		{
-		  spec->s_id.s.phsid.perf_monitor->add_scan_stats (&spec->s_id);
-		}
-	    }
-#endif
 	  scan_print_stats_text (fp, &spec->s_id);
 #if !WINDOWS
 	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	    {
-	      if (spec->s_id.s.phsid.perf_monitor)
+	      if (spec->s_id.s.phsid.trace_storage)
 		{
 		  if (!spec->s_id.scan_stats.noscan)
 		    {
-		      spec->s_id.s.phsid.perf_monitor->print_text (fp, multi_spec_indent, class_name,
-								   (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
+		      spec->s_id.s.phsid.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
 		    }
-		  delete spec->s_id.s.phsid.perf_monitor;
-		  spec->s_id.s.phsid.perf_monitor = NULL;
+		  spec->s_id.s.phsid.trace_storage->~accumulative_trace_storage ();
+		  free (spec->s_id.s.phsid.trace_storage);
+		  spec->s_id.s.phsid.trace_storage = NULL;
 		}
 	    }
 #endif

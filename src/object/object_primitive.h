@@ -213,8 +213,7 @@ extern const PR_TYPE tp_Numeric;
 extern const PR_TYPE tp_Bit;
 extern const PR_TYPE tp_VarBit;
 extern const PR_TYPE tp_Char;
-extern const PR_TYPE tp_NChar;
-extern const PR_TYPE tp_VarNChar;
+
 extern const PR_TYPE tp_ResultSet;
 extern const PR_TYPE tp_Bigint;
 extern const PR_TYPE tp_Enumeration;
@@ -253,13 +252,12 @@ extern const PR_TYPE *tp_Type_numeric;
 extern const PR_TYPE *tp_Type_bit;
 extern const PR_TYPE *tp_Type_varbit;
 extern const PR_TYPE *tp_Type_char;
-extern const PR_TYPE *tp_Type_nchar;
-extern const PR_TYPE *tp_Type_varnchar;
 extern const PR_TYPE *tp_Type_resultset;
 extern const PR_TYPE *tp_Type_midxkey;
 extern const PR_TYPE *tp_Type_bigint;
 extern const PR_TYPE *tp_Type_datetime;
 extern const PR_TYPE *tp_Type_json;
+
 
 extern const PR_TYPE *tp_Type_id_map[];
 
@@ -404,12 +402,11 @@ STATIC_INLINE int
 pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 {
   /*
-   * variable types except VARCHAR, VARNCHAR, and VARBIT
+   * variable types except VARCHAR and VARBIT
    * cannot be a member of midxkey
    */
   assert (!(domain->type->variable_p
-	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARNCHAR
-		 || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
+	    && !(TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT)));
 
   return domain->type->get_index_size_of_mem (mem, domain);
 }
