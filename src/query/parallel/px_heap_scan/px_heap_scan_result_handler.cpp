@@ -473,7 +473,7 @@ namespace parallel_heap_scan
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
 		  if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 		    {
-		      return S_SUCCESS;
+		      goto error_exit;
 		    }
 		}
 	    }
@@ -521,6 +521,14 @@ namespace parallel_heap_scan
 	m_.result_p = nullptr;
 	/* immediately return false to stop the reader */
 	return S_END;
+error_exit:
+	for (QFILE_LIST_ID *list_id : m_.writer_results)
+	  {
+	    qfile_destroy_list (thread_p, list_id);
+	  }
+	m_.writer_results.clear();
+	m_.result_p = nullptr;
+	return S_ERROR;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {

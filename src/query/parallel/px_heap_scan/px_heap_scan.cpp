@@ -504,6 +504,7 @@ namespace parallel_heap_scan
 	    for (int i=0; i<m_xasl->val_list->val_cnt; i++)
 	      {
 		pr_clone_value (&dbval_container[i], valp->val);
+		pr_clear_value (&dbval_container[i]);
 		valp = valp->next;
 	      }
 
