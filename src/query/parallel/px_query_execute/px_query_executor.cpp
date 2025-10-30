@@ -77,6 +77,8 @@ namespace parallel_query_execute
   {
     if (m_is_root_executor)
       {
+	m_interrupt.set_code (interrupt::interrupt_code::USER_INTERRUPTED_FROM_MAIN_THREAD);
+	m_job_execution_queue->push_last();
 	delete m_job_execution_queue;
 	delete m_is_task_running_p;
 	if (m_worker_manager_p != nullptr)
