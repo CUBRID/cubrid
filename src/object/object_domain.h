@@ -246,7 +246,6 @@ typedef enum tp_match
    ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR)|| \
    ((typeid) == DB_TYPE_CLOB))
 
-
 #define TP_IS_LOBFILE_TYPE(typeid) \
   (((typeid) == DB_TYPE_BFILE)  || ((typeid) == DB_TYPE_CFILE))
 
@@ -297,6 +296,48 @@ typedef enum tp_match
 #define TP_IS_DISCRETE_NUMBER_TYPE(typeid) \
   (((typeid) == DB_TYPE_INTEGER) || ((typeid) == DB_TYPE_SMALLINT) \
    || ((typeid) == DB_TYPE_BIGINT))
+
+#define TP_IS_DATETIME_TYPE(typeid)     TP_IS_DATE_OR_TIME_TYPE (typeid)
+
+#define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type) \
+  tp_implicit_coercion_not_allowed(src_type, dest_type)
+
+/* Returns true if 'dest' is an implicitly allowed target type
+ * when the source type is a character string.
+ */
+static inline bool
+tp_is_string_implicit_target_allowed (DB_TYPE dest)
+{
+  return TP_IS_CHAR_TYPE (dest) || TP_IS_DATETIME_TYPE (dest) || TP_IS_NUMERIC_TYPE (dest)
+    || dest == DB_TYPE_ENUMERATION;
+}
+
+/* Returns true if implicit coercion is not allowed for (src -> dest). */
+static inline bool
+tp_implicit_coercion_not_allowed (DB_TYPE src, DB_TYPE dest)
+{
+  /* Block both LOBFILE (BFILE/CFILE) and LOB (BLOB/CLOB). */
+  if (TP_IS_LOBFILE_TYPE (src) || TP_IS_LOBFILE_TYPE (dest) || TP_IS_LOB_TYPE (src) || TP_IS_LOB_TYPE (dest))
+    {
+      return true;
+    }
+
+  /* From a character string, only these targets are implicitly allowed:
+   * character string, datetime, numeric, or ENUM. Otherwise, disallow. */
+  if (TP_IS_CHAR_TYPE (src))
+    {
+      return !tp_is_string_implicit_target_allowed (dest);
+    }
+
+  /* From a non-string (and not ENUM) to a character string is not allowed. */
+  if (src != DB_TYPE_ENUMERATION && TP_IS_CHAR_TYPE (dest))
+    {
+      return true;
+    }
+
+  /* Otherwise, implicit coercion is allowed by this rule set. */
+  return false;
+}
 
 /*
  * Precision for non-parameterized predefined types

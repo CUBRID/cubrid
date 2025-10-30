@@ -5919,24 +5919,6 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 
 #define ROUND(x)		  ((x) > 0 ? ((x) + .5) : ((x) - .5))
 #define SECONDS_IN_A_DAY	  (long)(86400)	/* 24L * 60L * 60L */
-#define TP_IS_CHAR_STRING(db_val_type)					\
-    (db_val_type == DB_TYPE_CHAR || db_val_type == DB_TYPE_VARCHAR ||	\
-     db_val_type == DB_TYPE_NCHAR || db_val_type == DB_TYPE_VARNCHAR || \
-     db_val_type == DB_TYPE_CLOB )
-
-#define TP_IS_LOBFILE(db_val_type)                                          \
-    (db_val_type == DB_TYPE_BFILE || db_val_type == DB_TYPE_CFILE)
-
-#define TP_IS_DATETIME_TYPE(db_val_type) TP_IS_DATE_OR_TIME_TYPE (db_val_type)
-
-#define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type)		\
-   ((TP_IS_CHAR_STRING(src_type) && !(TP_IS_CHAR_STRING(dest_type) ||	\
-				      TP_IS_DATETIME_TYPE(dest_type) || \
-				      TP_IS_NUMERIC_TYPE(dest_type) ||	\
-				      dest_type == DB_TYPE_ENUMERATION)) ||\
-    (!TP_IS_CHAR_STRING(src_type) && src_type != DB_TYPE_ENUMERATION &&	\
-     TP_IS_CHAR_STRING(dest_type)) ||					\
-    (TP_IS_LOBFILE(src_type) || TP_IS_LOBFILE(dest_type)))
 
 /*
  * tp_value_string_to_double - Coerce a string to a double.
@@ -5954,7 +5936,7 @@ tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result)
   int ret;
   DB_TYPE type = DB_VALUE_TYPE (value);
 
-  if (!TP_IS_CHAR_STRING (type))
+  if (!TP_IS_CHAR_TYPE (type))
     {
       db_make_double (result, 0);
       return ER_FAILED;
