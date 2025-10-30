@@ -552,6 +552,8 @@ thread_suspend_timeout_wakeup (cubthread::entry *thread_p, struct timespec *time
 
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
 
+  thread_p->m_status = old_status;
+
   if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
     {
       usecs = std::chrono::duration_cast < std::chrono::microseconds > (thread_clock_type::now () - start_time_pt);
@@ -561,24 +563,13 @@ thread_suspend_timeout_wakeup (cubthread::entry *thread_p, struct timespec *time
 
   if (r != 0 && r != ETIMEDOUT)
     {
-      thread_p->m_status = old_status;
-
       error = ER_CSS_PTHREAD_COND_TIMEDWAIT;
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-
-      return error;
     }
-
-  if (r == ETIMEDOUT)
+  else if (r == ETIMEDOUT)
     {
-      thread_p->m_status = old_status;
-
       error = ER_CSS_PTHREAD_COND_TIMEDOUT;
-
-      return error;
     }
-
-  thread_p->m_status = old_status;
 
   return error;
 }

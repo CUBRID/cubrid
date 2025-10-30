@@ -6588,8 +6588,8 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
       thread_lock_entry (cur_thrd_entry);
       PGBUF_BCB_UNLOCK (bufptr);
 
-      thread_suspend_wakeup (thread_p, THREAD_PGBUF_SUSPENDED);
-      thread_unlock_entry (thread_p);
+      thread_suspend_wakeup (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
+      thread_unlock_entry (cur_thrd_entry);
 
       if (cur_thrd_entry->resume_status != THREAD_PGBUF_RESUMED)
 	{
