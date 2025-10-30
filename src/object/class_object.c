@@ -49,6 +49,7 @@
 #endif
 #include "dbtype.h"
 #include "printer.hpp"
+#include "string_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -7045,11 +7046,9 @@ classobj_make_class (const char *name)
   class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
   class_->statistics_strategy = -1;
 
-  // *INDENT-OFF*
-  class_->created_time = (DB_DATETIME){0, 0};
-  class_->updated_time = (DB_DATETIME){0, 0};
-  class_->checked_time = (DB_DATETIME){0, 0};
-  // *INDENT-ON*
+  class_->created_time = DATETIME_NULL_VALUE;
+  class_->updated_time = DATETIME_NULL_VALUE;
+  class_->checked_time = DATETIME_NULL_VALUE;
 
   if (name != NULL)
     {
