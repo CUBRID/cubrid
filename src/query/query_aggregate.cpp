@@ -2398,7 +2398,6 @@ void
 qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list, bool copy_vals)
 {
   int i = 0;
-  DB_TYPE db_type;
 
   if (value == NULL)
     {
@@ -2447,15 +2446,13 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
 
 	      /* reset accumulator values. */
 	      value->accumulators[i].value->need_clear = false;
-	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value);
-	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+	      if (DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value) == DB_TYPE_VARCHAR)
 		{
 		  value->accumulators[i].value->data.ch.info.compressed_need_clear = false;
 		}
 
 	      value->accumulators[i].value2->need_clear = false;
-	      db_type = DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2);
-	      if (db_type == DB_TYPE_VARCHAR || db_type == DB_TYPE_VARNCHAR)
+	      if (DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2) == DB_TYPE_VARCHAR)
 		{
 		  value->accumulators[i].value2->data.ch.info.compressed_need_clear = false;
 		}

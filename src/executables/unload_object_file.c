@@ -770,10 +770,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 			 (tout, NULL, 0, "%s%.*f", intl_get_money_esc_ISO_symbol (db_get_monetary (value)->type), 2,
 			  db_get_monetary (value)->amount));
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      CHECK_PRINT_ERROR (text_print (tout, "N", 1, NULL));
-      [[fallthrough]];
+
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       str_ptr = db_get_string (value);

@@ -134,7 +134,6 @@ namespace cubload
     LDR_NULL,
     LDR_INT,
     LDR_STR,
-    LDR_NSTR,
     LDR_NUMERIC,                 /* Default real */
     LDR_DOUBLE,                  /* Reals specified with scientific notation, 'e', or 'E' */
     LDR_FLOAT,                   /* Reals specified with 'f' or 'F' notation */

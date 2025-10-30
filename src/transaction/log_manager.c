@@ -12728,12 +12728,6 @@ cdc_get_attribute_size (DB_VALUE * value)
     case DB_TYPE_VARCHAR:
       size = db_get_string_size (value);
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      /* size of string "N''" is 4
-       * e.g. N'string' */
-      size = db_get_string_size (value) + 3;
-      break;
     case DB_TYPE_TIME:
       /* precision in data types related to DATE/TIME means the size the string converted from the date/time data */
       size = DB_TIME_PRECISION;
@@ -13766,42 +13760,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (new_value));
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	int size = 0;
-	int length = 0;
-	char *result = NULL;
-	const char *temp_string = NULL;
-
-	temp_string = db_get_nchar (new_value, &length);
-	size = db_get_string_size (new_value);
-
-	if (temp_string != NULL)
-	  {
-	    result = (char *) malloc (size + 4);
-	    if (result == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size + 4);
-		return ER_OUT_OF_VIRTUAL_MEMORY;
-	      }
-
-	    snprintf (result, size + 3, "N'%s", temp_string);
-	    result[size + 2] = '\'';
-	    result[size + 3] = '\0';
-	  }
-
-	func_type = 7;
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, result);
-
-	if (result != NULL)
-	  {
-	    free_and_init (result);
-	  }
-
-	break;
-      }
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       db_make_char (&format, strlen (time_format), time_format,
