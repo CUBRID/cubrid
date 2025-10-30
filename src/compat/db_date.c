@@ -4232,7 +4232,7 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
   const char *ampm;
   int cnt = 0;
 
-  if (buf == NULL || bufsize <= QSTR_DATETIME_LENGTH)
+  if (buf == NULL || bufsize < QSTR_DATETIME_LENGTH + 1)
     {
       return 0;
     }
@@ -4245,7 +4245,7 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
     snprintf (buf, bufsize, "%02d:%02d:%02d.%03d %s %02d/%02d/%04d", hour, minute, second, millisecond, ampm, mon, day,
 	      year);
 
-  return (bufsize < cnt) ? 0 : cnt;
+  return (cnt < 0 || cnt >= bufsize) ? 0 : cnt;
 }
 
 /*
