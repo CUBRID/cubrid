@@ -460,10 +460,6 @@ using thread_clock_type = std::chrono::system_clock;
 
 static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 				    bool had_mutex);
-static void thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
-    thread_resume_suspend_status resume_reason,
-    thread_resume_suspend_status suspend_reason,
-    bool had_mutex);
 
 // todo - remove timeval and use std::chrono
 static void
@@ -611,22 +607,17 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
 }
 
 /*
- * thread_check_suspend_reason_and_wakeup_internal () -
- *   return:
+ * thread_check_suspend_reason_and_wakeup () -
  *   thread_p(in):
  *   resume_reason:
  *   suspend_reason:
- *   had_mutex:
  */
 static void
-thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
+thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p,
     thread_resume_suspend_status resume_reason,
-    thread_resume_suspend_status suspend_reason, bool had_mutex)
+    thread_resume_suspend_status suspend_reason)
 {
-  if (had_mutex == false)
-    {
-      thread_lock_entry (thread_p);
-    }
+  thread_lock_entry (thread_p);
 
   if (thread_p->resume_status != suspend_reason)
     {
@@ -653,12 +644,6 @@ thread_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_r
   thread_wakeup_internal (thread_p, resume_reason, false);
 }
 
-void
-thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
-					thread_resume_suspend_status suspend_reason)
-{
-  thread_check_suspend_reason_and_wakeup_internal (thread_p, resume_reason, suspend_reason, false);
-}
 
 /*
  * thread_wakeup_already_had_mutex () -
