@@ -36,6 +36,7 @@ namespace parallel_query_execute
       using queue = parallel_query::thread_safe_queue<job>;
       using interrupt = parallel_query::interrupt;
       using worker_manager = parallel_query::worker_manager;
+      using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
       THREAD_ENTRY *m_parent_thread_p;
       queue *m_job_execution_queue_p;
@@ -73,6 +74,7 @@ namespace parallel_query_execute
       using queue = parallel_query::thread_safe_queue<job>;
       using interrupt = parallel_query::interrupt;
       using worker_manager = parallel_query::worker_manager;
+      using err_messages_with_lock = parallel_query::err_messages_with_lock;
     public:
       task (THREAD_ENTRY *parent_thread_p, queue *job_execution_queue_p, err_messages_with_lock *error_messages_p,
 	    interrupt *interrupt_p, worker_manager *worker_manager_p);
@@ -89,6 +91,7 @@ namespace parallel_query_execute
   };
 
   using interrupt = parallel_query::interrupt;
+  using err_messages_with_lock = parallel_query::err_messages_with_lock;
 
   int execute_job_internal (THREAD_ENTRY *cur_thread_p, THREAD_ENTRY *parent_thread_p, XASL_NODE *xasl,
 			    XASL_STATE *xasl_state, err_messages_with_lock *error_messages_p, interrupt *interrupt_p, join_context *join_context_p,

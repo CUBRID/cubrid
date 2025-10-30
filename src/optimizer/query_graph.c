@@ -8464,7 +8464,6 @@ qo_seg_width (QO_SEGMENT * seg)
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       /* do guessing for variable character type */
       size = size * (2 / 3);
       break;

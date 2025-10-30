@@ -35,41 +35,12 @@ struct xasl_state;
 
 namespace parallel_query_execute
 {
-  class err_messages_with_lock
-  {
-      using er_message = cuberr::er_message;
-    public:
-      std::mutex m_mutex;
-      std::vector<er_message *> m_error_messages;
-      err_messages_with_lock()
-	:m_mutex (),
-	 m_error_messages ()
-      {}
-      ~err_messages_with_lock()
-      {
-	for (auto *msg : m_error_messages)
-	  {
-	    delete msg;
-	  }
-	m_error_messages.clear();
-      }
-      inline int move_top_error_message_to_this ()
-      {
-	int err_id = NO_ERROR;
-	std::lock_guard<std::mutex> lock (m_mutex);
-	m_error_messages.push_back (new cuberr::er_message (false));
-	err_id = cuberr::context::get_thread_local_context ().get_current_error_level ().err_id;
-	m_error_messages.back()->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
-	return err_id;
-      }
-  };
-
   using query_executor_stats = XASL_STATS;
   class query_executor
   {
       using queue = parallel_query::thread_safe_queue<job>;
       using worker_manager = parallel_query::worker_manager;
-
+      using err_messages_with_lock = parallel_query::err_messages_with_lock;
       using interrupt = parallel_query::interrupt;
     public:
       query_executor (THREAD_ENTRY *root_thread_p, worker_manager *worker_manager_p, int parallelism, int estimated_jobs,
