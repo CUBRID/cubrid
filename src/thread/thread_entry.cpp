@@ -605,8 +605,8 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
  */
 static void
 thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p,
-    thread_resume_suspend_status resume_reason,
-    thread_resume_suspend_status suspend_reason)
+					thread_resume_suspend_status resume_reason,
+					thread_resume_suspend_status suspend_reason)
 {
   thread_lock_entry (thread_p);
 
