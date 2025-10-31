@@ -11952,8 +11952,9 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
  * xlob_create_dir () - create lob dir
  *
  * thread_p (in) : thread_entry.
- * hfid (in) : hfid is used to identify the table.
- * attrid_arr (in)	 : Array containing attr_id values of LOB-type columns.
+ * hfid (in) : hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
+ * attrid_arr (in): An array that stores LOB attribute ids of the table.
+                    When creating the LOB directory, each LOB attribute is distinguished by its id
  * attrid_arr_length (in)	 : Length of the attrid_arr array
  *
  */
@@ -11972,7 +11973,7 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
   for (int i = 0; i < attrid_arr_length; i++)
     {
       sprintf (rv_path, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
-      log_append_undo_data (thread_p, RVFL_LOB_DIR_DESTROY, &addr, (strlen (rv_path) + 1), &rv_path);
+      log_append_undo_data (thread_p, RVFL_LOB_ROMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
       snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
       dirbuf[strlen (dirbuf)] = '\0';
@@ -11989,11 +11990,11 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 }
 
 /*
- * xlob_remove_dir () - remove a lob dir
+ * xlob_remove_dir () - remove a lob directory
  *
- * thread_p (in) : thread_entry.
- * hfid (in) : hfid is used to identify the table.
- * attrid (in)	 : attr_id of LOB-type columns.
+ * thread_p (in) : thread_entry
+ * hfid (in) : Used to identify the table when removing the LOB directory
+ * attrid (in)	 : Used to identify the table's LOB attribute when removing the LOB directory
  *
  * NOTE: A LOB directory is created immediately,
  *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
@@ -12013,12 +12014,12 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
   if (attrid == -1)		/* DROP TABLE */
     {
       snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
+      log_append_postpone (thread_p, RVFL_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
     }
   else				/* DROP LOB COLUMN */
     {
       snprintf (rv_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
-      log_append_postpone (thread_p, RVFL_LOB_DIR_DESTROY, &addr, sizeof (rv_path), rv_path);
+      log_append_postpone (thread_p, RVFL_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
     }
 
   return ret;
@@ -12027,7 +12028,7 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
 }
 
 /*
- * fileio_lob_rv_destroy () - Recovery function for LOB directories.
+ * fileio_lob_rv_remove_dir () - Recovery function for LOB directories.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -12040,7 +12041,7 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
  *       committed, this function will be called to actually remove the directory.
  */
 int
-fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+fileio_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   const char *path = rcv->data;
   char lob_path[PATH_MAX];
