@@ -12248,18 +12248,18 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  if (!pt_has_error (parser))
 	    {
-	      /* remove unnecessary variable */
-	      printf ("##### 1 %s:\n", __func__);
+	      // /* remove unnecessary variable */
+	      // printf ("##### 1 %s:\n", __func__);
 
-	      auto s = parser_print_tree (parser, node);
-	      printf ("%s\n", s);
+	      // auto s = parser_print_tree (parser, node);
+	      // printf ("%s\n", s);
 
 	      node = parser_walk_tree (parser, node, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
 
-	      printf ("##### 2 %s:\n", __func__);
+	      // printf ("##### 2 %s:\n", __func__);
 
-	      s = parser_print_tree (parser, node);
-	      printf ("%s\n", s);
+	      // s = parser_print_tree (parser, node);
+	      // printf ("%s\n", s);
 
 	      if (!pt_has_error (parser))
 		{
