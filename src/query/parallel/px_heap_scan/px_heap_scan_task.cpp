@@ -141,7 +141,7 @@ namespace parallel_heap_scan
 
     db_private_free (&thread_ref, m_vd->dbval_ptr);
     db_private_free (&thread_ref, m_vd);
-    qexec_clear_xasl (&thread_ref, m_xasl, true);
+    qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     while (main_thread_p->m_px_orig_thread_entry != main_thread_p)
       {

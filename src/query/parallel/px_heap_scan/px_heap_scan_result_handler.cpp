@@ -475,7 +475,7 @@ namespace parallel_heap_scan
 		    {
 		      for (QFILE_LIST_ID *list_id : m_.writer_results)
 			{
-			  if (list_id->type_list.type_cnt > 0)
+			  if (list_id != nullptr && list_id->type_list.type_cnt > 0)
 			    {
 			      qfile_destroy_list (thread_p, list_id);
 			    }
