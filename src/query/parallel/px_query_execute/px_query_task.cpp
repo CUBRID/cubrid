@@ -98,6 +98,7 @@ namespace parallel_query_execute
     bool uses_px_stats = false;
     QFILE_LIST_ID list_id;
     UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
+    XASL_STATE *new_xasl_state;
     /* check interrupt */
     if (interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
       {
@@ -119,6 +120,8 @@ namespace parallel_query_execute
     cur_thread_p->on_trace = parent_thread_p->on_trace;
     cur_thread_p->m_px_orig_thread_entry = parent_thread_p;
     is_on_root_thread = cur_thread_p == parent_thread_p;
+    new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state);
+    assert (new_xasl_state != nullptr);
     if (on_trace)
       {
 	px_stats = cur_thread_p->m_px_stats;
@@ -130,7 +133,7 @@ namespace parallel_query_execute
 		  syscall (SYS_gettid), xasl->header.id);
 #endif
     /* job execution */
-    err_code = qexec_execute_mainblock (cur_thread_p, xasl, xasl_state, NULL);
+    err_code = qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
 
     /* check error */
     if (err_code != NO_ERROR)
@@ -216,6 +219,7 @@ namespace parallel_query_execute
     cur_thread_p->on_trace = on_trace;
     cur_thread_p->m_px_orig_thread_entry = px_orig_thread_entry;
     cur_thread_p->m_uses_px_stats = uses_px_stats;
+    qexec_free_xasl_state (cur_thread_p, new_xasl_state);
 #if !defined(NDEBUG)
     er_log_debug (ARG_FILE_LINE, "thread %8ld ends xasl : %3d",
 		  syscall (SYS_gettid), xasl->header.id);
