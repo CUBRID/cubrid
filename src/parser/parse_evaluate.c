@@ -1230,9 +1230,14 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  domain = pt_node_to_db_domain (parser, tree, NULL);
 	  domain = tp_domain_cache (domain);
 
+	  int type_arg[2];
+	  type_arg[0] = PT_HOST_VAR;
+	  type_arg[1] = 0;
+
+	  (void) parser_walk_tree (parser, tree, pt_find_node_type_pre, type_arg, NULL, NULL);
+
 	  /* recheck type of expr for host_var */
-	  if (domain && domain->type && domain->type->id == DB_TYPE_NULL
-	      && (pt_is_hostvar (arg1) || pt_is_hostvar (arg2) || pt_is_hostvar (arg3)))
+	  if (domain && domain->type && domain->type->id == DB_TYPE_NULL && (type_arg[1] != 0))
 	    {
 	      common_type = pt_common_type (type1, type2);
 	      if (type3 != PT_TYPE_NONE)

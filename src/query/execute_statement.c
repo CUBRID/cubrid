@@ -14600,6 +14600,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else if (stream.xasl_id != NULL)
 	{
+	  if (pt_recompile_for_like_optimizations (parser, statement, stream.xasl_header->xasl_flag))
+	    {
+	      contextp->recompile_xasl = true;
+	      if (stream.xasl_id != NULL)
+		{
+		  free_and_init (stream.xasl_id);
+		}
+	    }
 	  /* check xasl header */
 	  /* TODO: we can treat the different cases of MRO by hacking query string. */
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
