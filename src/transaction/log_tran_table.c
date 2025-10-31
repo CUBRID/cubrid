@@ -5865,11 +5865,6 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
   if (kill_type == KILLSTMT_TRAN)
     {
 #if defined (SERVER_MODE)
-      if (css_shutdown_conn_by_tran_index (tran_index) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
       is_trx_exists = false;
       if (log_Gl.trantable.area != NULL)
 	{
@@ -5878,6 +5873,11 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
 	    {
 	      is_trx_exists = true;
 	    }
+	}
+
+      if (css_shutdown_conn_by_tran_index (tran_index) != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
 #else
       is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
