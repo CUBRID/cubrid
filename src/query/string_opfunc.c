@@ -146,7 +146,6 @@ typedef enum
 #define QSTR_DATE_LENGTH 10
 #define QSTR_TIME_LENGTH 11
 #define QSTR_TIME_STAMPLENGTH 22
-#define QSTR_DATETIME_LENGTH 26
 /* multiplier ratio for TO_CHAR function : estimate result len/size based on
  * format string len/size : maximum multiplier is given by:
  * - format element : DAY (3)
@@ -10608,7 +10607,7 @@ db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_date
 {
   time_t sec;
   struct tm tm_val;
-  DB_DATETIME datetime = (DB_DATETIME) { 0, 0 };
+  DB_DATETIME datetime = DATETIME_NULL_VALUE;
 
   sec = (time_t) * db_get_timestamp (src_timestamp);
   if (sec != 0)

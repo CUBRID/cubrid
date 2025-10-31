@@ -41,8 +41,9 @@
 #include "locator_cl.h"
 #include "transaction_cl.h"
 #include "execute_statement.h"
-
 #include "dbtype.h"
+#include "string_opfunc.h"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -403,10 +404,8 @@ tr_make_trigger (void)
   trigger->temp_refname = NULL;
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
-  // *INDENT-OFF*
-  trigger->created_time = (DB_DATETIME){0, 0};
-  trigger->updated_time = (DB_DATETIME){0, 0};
-  // *INDENT-ON*
+  trigger->created_time = DATETIME_NULL_VALUE;
+  trigger->updated_time = DATETIME_NULL_VALUE;
 
   return trigger;
 }

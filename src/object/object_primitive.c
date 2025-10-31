@@ -3981,7 +3981,14 @@ mr_data_readval_datetime (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
       rc = or_get_datetime (buf, &datetime);
       if (rc == NO_ERROR)
 	{
-	  db_make_datetime (value, &datetime);
+	  if (DATETIME_IS_NULL (&datetime))
+	    {
+	      db_make_null (value);
+	    }
+	  else
+	    {
+	      db_make_datetime (value, &datetime);
+	    }
 	}
       value->need_clear = false;
     }
