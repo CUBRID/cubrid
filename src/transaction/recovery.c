@@ -36,7 +36,6 @@
 #include "overflow_file.h"
 #include "replication.h"
 #include "system_catalog.h"
-#include "file_io.h"
 
 #include <stdio.h>
 
@@ -836,10 +835,10 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
-  {RVFL_LOB_DIR_DESTROY,
-   "RVFL_LOB_DIR_DESTROY",
-   fileio_lob_rv_destroy,
-   fileio_lob_rv_destroy,
+  {RVFL_LOB_ROMOVE_DIR,
+   "RVFL_LOB_ROMOVE_DIR",
+   fileio_lob_rv_remove_dir,
+   fileio_lob_rv_remove_dir,
    NULL,
    NULL},
 };

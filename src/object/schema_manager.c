@@ -15709,7 +15709,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   DB_OBJLIST *subs;
   SM_ATTRIBUTE *attr;
   int *lob_attrid_arr = NULL;
-  int attrid_arr_length = 0;
+  int lob_attrid_arr_length = 0;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15751,7 +15751,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     {
       if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
 	{
-	  lob_attrid_arr[attrid_arr_length++] = attr->id;
+	  lob_attrid_arr[lob_attrid_arr_length++] = attr->id;
 	}
     }
 
@@ -15763,9 +15763,8 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     }
 
   /* Destroy the lob dir if need */
-  if (attrid_arr_length)
+  if (lob_attrid_arr_length)
     {
-      HFID lob_hfid = *insts_hfid;
       error = lob_remove_dir (insts_hfid, -1);
       if (error != NO_ERROR)
 	{
@@ -15780,7 +15779,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = locator_flush_class (class_mop);
   if (error != NO_ERROR)
     {
-      if (attrid_arr_length)
+      if (lob_attrid_arr_length)
 	{
 	  free (lob_attrid_arr);
 	}
@@ -15791,7 +15790,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = heap_create (insts_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
-      if (attrid_arr_length)
+      if (lob_attrid_arr_length)
 	{
 	  free (lob_attrid_arr);
 	}
@@ -15799,10 +15798,9 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     }
 
   /* Create the lob dir if need */
-  if (attrid_arr_length)
+  if (lob_attrid_arr_length)
     {
-      HFID lob_hfid = *insts_hfid;
-      error = lob_create_dir (&lob_hfid, lob_attrid_arr, attrid_arr_length);
+      error = lob_create_dir (insts_hfid, lob_attrid_arr, lob_attrid_arr_length);
       free (lob_attrid_arr);
     }
 

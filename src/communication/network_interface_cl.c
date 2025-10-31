@@ -11373,16 +11373,14 @@ tdes_reset_query_start_info (PT_NODE * node)
 #endif
 }
 
-/* lob_create_dir - create lob dir
+/* lob_create_dir - create external lob directory
  *
  * return:
  *
- *   hfid(in): separate lob dir by table
- *   attrid_arr(in): separate lob dir by column
- *   attrid_arr_length(in): number of LOB-type columns
- *
- * NOTE:
- * lob_create_dir - request to server to create lob dir
+ *   hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
+ *   attrid_arr (in): An array that stores LOB attribute ids of the table.
+                      When creating the LOB directory, each LOB attribute is distinguished by its id
+ *   attrid_arr_length(in): length of attrid_arr
  */
 int
 lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
@@ -11430,18 +11428,15 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
   exit_server (*thread_p);
 
   return error;
-#endif /* !CS_MODE */
+#endif /* CS_MODE */
 }
 
-/* xlob_remove_dir - remove lob dir
+/* lob_remove_dir - remove lob directory
  *
  * return:
  *
- *   hfid(in): separate lob dir by table
- *   attrid(in): separate lob dir by column id
- *
- * NOTE:
- * xlob_remove_dir - request to server to remove lob dir
+ *   hfid(in): Used to identify the table when removing the LOB directory
+ *   attrid(in): Used to identify the table's LOB attribute when removing the LOB directory
  */
 int
 lob_remove_dir (HFID * hfid, int attrid)
@@ -11478,5 +11473,5 @@ lob_remove_dir (HFID * hfid, int attrid)
   exit_server (*thread_p);
 
   return error;
-#endif /* !CS_MODE */
+#endif /* CS_MODE */
 }

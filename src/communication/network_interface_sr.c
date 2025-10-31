@@ -11525,8 +11525,15 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0);
 }
 
-/* slob_create_dir - create lob dir */
-
+/*
+ * slob_create_dir - Called when a request is sent from the client to the server.
+                     Invokes xlob_create_dir() to create the LOB directory
+ *
+ *   thread_p(in): the thread pointer
+ *   rid(in): the request id
+ *   request(in): the request
+ *   reqlen(in): the request length
+ */
 void
 slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -11560,8 +11567,15 @@ slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
- /* slob_remove_dir - remove lob dir */
-
+/*
+ * slob_remove_dir - Called when a request is sent from the client to the server.
+                     Invokes xlob_remove_dir() to remove the LOB directory
+ *
+ *   thread_p(in): the thread pointer
+ *   rid(in): the request id
+ *   request(in): the request
+ *   reqlen(in): the request length
+ */
 void
 slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -11587,5 +11601,6 @@ slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
     }
 
   ptr = or_pack_errcode (reply, error);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

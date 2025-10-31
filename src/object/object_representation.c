@@ -1544,12 +1544,6 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 {
   int i;
 
-  if (n <= 0)
-    {
-      ptr = NULL;
-      return ptr;
-    }
-
   if (n > 0)
     {
       *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));

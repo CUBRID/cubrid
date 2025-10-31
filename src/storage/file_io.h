@@ -634,6 +634,6 @@ extern void fileio_page_hexa_dump (const char *data, int length);
 extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page);
 
 /* lob_dir */
-extern int fileio_lob_rv_destroy (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int fileio_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int fileio_lob_remove_dir (char *lob_path);
 #endif /* _FILE_IO_H_ */
