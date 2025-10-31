@@ -103,8 +103,14 @@ namespace parallel_heap_scan
       }
     m_slot_iterator.initialize (&thread_ref, m_scan_id, m_vd);
     m_input_handler->initialize (&thread_ref, &hsidp->hfid, m_scan_id);
-    m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->val_list, m_vd);
-
+    if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
+      {
+	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->proc.buildvalue.agg_list, m_vd, m_xasl);
+      }
+    else
+      {
+	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->val_list, m_vd);
+      }
     return NO_ERROR;
   }
 
@@ -303,6 +309,10 @@ namespace parallel_heap_scan
 	      {
 		result_handler_p->write (&thread_ref, m_xasl->val_list);
 	      }
+	    else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
+	      {
+		result_handler_p->write (&thread_ref);
+	      }
 	  }
       }
   }
@@ -310,5 +320,5 @@ namespace parallel_heap_scan
   // Explicit template instantiations
   template class task<RESULT_TYPE::MERGEABLE_LIST>;
   template class task<RESULT_TYPE::XASL_SNAPSHOT>;
-
+  template class task<RESULT_TYPE::COUNT_DISTINCT>;
 }
