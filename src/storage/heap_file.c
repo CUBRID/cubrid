@@ -12358,6 +12358,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
   int *num_btids;
   OR_INDEX *indexp;
 
+
   idx_info->has_single_col = false;
   idx_info->has_multi_col = false;
   idx_info->num_btids = 0;
