@@ -800,19 +800,20 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		if (attr.type->id == DB_TYPE_CLOB || attr.type->id == DB_TYPE_BLOB)
 		  {
 		    HFID lob_hfid = class_->header.ch_heap;
-      p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
-      for (;
-	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR); p = p->next)
-	{
-	  mthd_file = (char *) path->info.value.data_value.str->bytes;
-	  error = dbt_drop_method_file (ctemplate, mthd_file);
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      return error;
-	    }
-	}
+		    p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
+		    for (;
+			 p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
+			 && path->node_type == PT_VALUE && (path->type_enum == PT_TYPE_VARCHAR
+							    || path->type_enum == PT_TYPE_CHAR); p = p->next)
+		      {
+			mthd_file = (char *) path->info.value.data_value.str->bytes;
+			error = dbt_drop_method_file (ctemplate, mthd_file);
+			if (error != NO_ERROR)
+			  {
+			    dbt_abort_class (ctemplate);
+			    return error;
+			  }
+		      }
 		    error = lob_remove_dir (&lob_hfid, attr.id);
 		    if (error != NO_ERROR)
 		      {

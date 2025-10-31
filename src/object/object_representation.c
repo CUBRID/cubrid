@@ -5778,7 +5778,7 @@ or_pack_int_array (char *buffer, int count, const int *int_array)
   int i;
   char *ptr;
 
-  assert(buffer != NULL);
+  assert (buffer != NULL);
 
   if (count < 0)
     {
