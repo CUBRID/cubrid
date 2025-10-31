@@ -868,9 +868,9 @@ namespace func_type
 	    auto arg2 = arg1->next;
 	    if (arg2 != NULL)
 	      {
-		if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
-		    || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum)
-			&& PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)))
+		if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum)) ||
+		    (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)) ||
+		    (PT_IS_LOB_TYPE (arg1->type_enum) || PT_IS_LOB_TYPE (arg2->type_enum)))
 		  {
 		    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
 				  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
@@ -1651,6 +1651,12 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
 		       fcode_get_lowercase_name (fcode), pt_show_type_enum (sep_type));
 	  break;
+	}
+
+      if (PT_IS_LOB_TYPE (arg_type) || PT_IS_LOB_TYPE (sep_type))
+	{
+	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (sep_type));
 	}
 
       if ((sep_type == PT_TYPE_NCHAR || sep_type == PT_TYPE_VARNCHAR) && arg_type != PT_TYPE_NCHAR

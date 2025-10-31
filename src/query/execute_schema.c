@@ -7167,7 +7167,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		    PT_NODE *elem;
 		    for (elem = dtyp; elem != NULL; elem = elem->next)
 		      {
-			if (PT_IS_LOBFILE_TYPE (elem->type_enum))
+			if (PT_IS_LOBFILE_TYPE (elem->type_enum) || PT_IS_LOB_TYPE (elem->type_enum))
 			  {
 			    PT_ERRORmf2 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
 					 MSGCAT_SEMANTIC_INVALID_SET_ELEMENT, pt_show_type_enum (attribute->type_enum),
@@ -7442,7 +7442,7 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
       TP_DOMAIN *elem;
       for (elem = column->domain->setdomain; elem != NULL; elem = elem->next)
 	{
-	  if (TP_DOMAIN_TYPE (elem) == DB_TYPE_BFILE || TP_DOMAIN_TYPE (elem) == DB_TYPE_CFILE)
+	  if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (elem)) || TP_IS_LOBFILE_TYPE (TP_DOMAIN_TYPE (elem)))
 	    {
 	      PT_TYPE_ENUM elem_type, set_type;
 	      elem_type = pt_db_to_type_enum (TP_DOMAIN_TYPE (elem));

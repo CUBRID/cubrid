@@ -15739,7 +15739,7 @@ pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func)
 	  continue;
 	}
 
-      if (PT_IS_LOBFILE_TYPE (r->type_enum))
+      if (PT_IS_LOBFILE_TYPE (r->type_enum) || PT_IS_LOB_TYPE (r->type_enum))
 	{
 	  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_ORDERBY_ALLOWED,
 		      pt_short_print (parser, r));

@@ -5715,7 +5715,7 @@ pt_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * col_lis
 
 	  /* we allow variable domain but no host var */
 	}
-      else if (dom_type == DB_TYPE_BFILE || dom_type == DB_TYPE_CFILE
+      else if (TP_IS_LOB_TYPE (dom_type) || TP_IS_LOBFILE_TYPE (dom_type)
 	       || (node->info.sort_spec.expr->node_type == PT_HOST_VAR && dom_type == DB_TYPE_VARIABLE))
 	{
 	  if (sort_mode == SORT_LIST_ORDERBY)
