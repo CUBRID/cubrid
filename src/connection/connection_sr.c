@@ -2850,6 +2850,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		    {
 		      assert (thrd->resume_status == THREAD_CSS_QUEUE_RESUMED);
 		    }
+
 		  thread_unlock_entry (thrd);
 		}
 

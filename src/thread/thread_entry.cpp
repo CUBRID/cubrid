@@ -561,14 +561,17 @@ thread_suspend_timeout_wakeup (cubthread::entry *thread_p, struct timespec *time
       thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
     }
 
-  if (r != 0 && r != ETIMEDOUT)
+  if (r != 0)
     {
-      error = ER_CSS_PTHREAD_COND_TIMEDWAIT;
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-    }
-  else if (r == ETIMEDOUT)
-    {
-      error = ER_CSS_PTHREAD_COND_TIMEDOUT;
+      if (r != ETIMEDOUT)
+	{
+	  error = ER_CSS_PTHREAD_COND_TIMEDWAIT;
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      else
+	{
+	  error = ER_CSS_PTHREAD_COND_TIMEDOUT;
+	}
     }
 
   return error;
