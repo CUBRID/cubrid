@@ -3439,6 +3439,44 @@ qexec_get_xasl_list_id (xasl_node * xasl)
   return list_id;
 }
 
+extern xasl_state *
+qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
+{
+  xasl_state *new_xasl_state = (xasl_state *) db_private_alloc (thread_p, sizeof (xasl_state));
+  if (new_xasl_state == NULL)
+    {
+      return NULL;
+    }
+  memcpy (new_xasl_state, xasl_state_p, sizeof (xasl_state));
+  new_xasl_state->vd.xasl_state = new_xasl_state;
+  new_xasl_state->vd.dbval_ptr =
+    (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * xasl_state_p->vd.dbval_cnt);
+  if (new_xasl_state->vd.dbval_ptr == NULL)
+    {
+      free (new_xasl_state);
+      return NULL;
+    }
+
+  for (int i = 0; i < xasl_state_p->vd.dbval_cnt; i++)
+    {
+      pr_clone_value (&xasl_state_p->vd.dbval_ptr[i], &new_xasl_state->vd.dbval_ptr[i]);
+    }
+
+  new_xasl_state->vd.xasl_state = new_xasl_state;
+  return new_xasl_state;
+}
+
+extern void
+qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state)
+{
+  for (int i = 0; i < xasl_state->vd.dbval_cnt; i++)
+    {
+      pr_clear_value (&xasl_state->vd.dbval_ptr[i]);
+    }
+  db_private_free (thread_p, xasl_state->vd.dbval_ptr);
+  db_private_free (thread_p, xasl_state);
+}
+
 /*
  * qexec_eval_ordbynum_pred () -
  *   return:
@@ -15055,7 +15093,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 			      dpool *px_worker_manager_p = dpool::try_reserve_workers (n_workers_to_reserve);
 			      if (px_worker_manager_p == nullptr || make_parallel_query_executor_recursively
-				  (thread_p, xasl, px_worker_manager_p, n_workers_to_reserve) != true)
+				  (thread_p, xasl, px_worker_manager_p, n_workers_to_reserve, xasl_state) != true)
 				{
 				  xasl->executed_parallelism = 0;
 				}
