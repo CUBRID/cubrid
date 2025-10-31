@@ -360,6 +360,10 @@ extern "C" {
 	worker_manager_p->release_workers (parallelism);
 	return false;
       }
+    if (executor_p->m_xasl_state == nullptr)
+      {
+	return false;
+      }
     return true;
   }
 }

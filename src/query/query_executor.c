@@ -3442,38 +3442,60 @@ qexec_get_xasl_list_id (xasl_node * xasl)
 extern xasl_state *
 qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
 {
+  if (!thread_p || !xasl_state_p)
+    {
+      return NULL;
+    }
   xasl_state *new_xasl_state = (xasl_state *) db_private_alloc (thread_p, sizeof (xasl_state));
   if (new_xasl_state == NULL)
     {
       return NULL;
     }
-  memcpy (new_xasl_state, xasl_state_p, sizeof (xasl_state));
+  new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
+  new_xasl_state->query_id = xasl_state_p->query_id;
   new_xasl_state->vd.xasl_state = new_xasl_state;
-  new_xasl_state->vd.dbval_ptr =
-    (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * xasl_state_p->vd.dbval_cnt);
-  if (new_xasl_state->vd.dbval_ptr == NULL)
+  new_xasl_state->vd.dbval_cnt = xasl_state_p->vd.dbval_cnt;
+  new_xasl_state->vd.drand = xasl_state_p->vd.drand;
+  new_xasl_state->vd.lrand = xasl_state_p->vd.lrand;
+  new_xasl_state->vd.sys_datetime = xasl_state_p->vd.sys_datetime;
+  new_xasl_state->vd.sys_epochtime = xasl_state_p->vd.sys_epochtime;
+  if (new_xasl_state->vd.dbval_cnt > 0)
     {
-      free (new_xasl_state);
-      return NULL;
+      new_xasl_state->vd.dbval_ptr =
+	(DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * xasl_state_p->vd.dbval_cnt);
+      if (new_xasl_state->vd.dbval_ptr == NULL)
+	{
+	  db_private_free (thread_p, new_xasl_state);
+	  return NULL;
+	}
+    }
+  else
+    {
+      new_xasl_state->vd.dbval_ptr = NULL;
     }
 
   for (int i = 0; i < xasl_state_p->vd.dbval_cnt; i++)
     {
       pr_clone_value (&xasl_state_p->vd.dbval_ptr[i], &new_xasl_state->vd.dbval_ptr[i]);
     }
-
-  new_xasl_state->vd.xasl_state = new_xasl_state;
   return new_xasl_state;
 }
 
 extern void
 qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state)
 {
+  if (!thread_p || !xasl_state)
+    {
+      return;
+    }
   for (int i = 0; i < xasl_state->vd.dbval_cnt; i++)
     {
       pr_clear_value (&xasl_state->vd.dbval_ptr[i]);
     }
-  db_private_free (thread_p, xasl_state->vd.dbval_ptr);
+  if (xasl_state->vd.dbval_ptr)
+    {
+      db_private_free (thread_p, xasl_state->vd.dbval_ptr);
+    }
   db_private_free (thread_p, xasl_state);
 }
 

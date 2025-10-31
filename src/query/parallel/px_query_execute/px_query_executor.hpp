@@ -64,7 +64,9 @@ namespace parallel_query_execute
       queue *m_job_execution_queue;
       bool *m_is_task_running_p;
       int m_parallelism;
+    public:
       xasl_state *m_xasl_state;
+    private:
       /* child's own */
       query_executor_stats m_stats;
       join_context m_join_context;
