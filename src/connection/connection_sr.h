@@ -163,7 +163,7 @@ extern void css_register_handler_routines (css_error_code (*connect_handler) (CS
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern int css_get_session_ids_for_active_connections (SESSION_ID ** ids, int *count);
-extern void css_shutdown_conn_by_tran_index (int tran_index);
+extern int css_shutdown_conn_by_tran_index (int tran_index);
 
 extern int css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id);
 extern int css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header);
