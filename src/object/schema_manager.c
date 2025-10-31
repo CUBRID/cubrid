@@ -15746,6 +15746,11 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   assert (!HFID_IS_NULL (insts_hfid));
 
   lob_attrid_arr = (int *) malloc (sizeof (int) * class_->att_count);
+  if (lob_attrid_arr == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      return error;
+    }
 
   for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
     {

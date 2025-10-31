@@ -636,6 +636,13 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    new_att_count = class_->att_count;
 	    lob_attrid_arr = (int *) malloc (sizeof (int) * (new_att_count - old_att_count));
+	    if (lob_attrid_arr == NULL)
+	      {
+		dbt_abort_class (ctemplate);
+		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		return error;
+	      }
 
 	    for (int i = old_att_count; i < new_att_count; i++)
 	      {
