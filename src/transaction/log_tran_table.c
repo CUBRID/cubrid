@@ -5830,10 +5830,13 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
 int
 xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_dba_group_member, bool interrupt_only)
 {
-  int error;
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes;
+#endif
   bool interrupt, has_authorization;
   bool is_trx_exists;
   KILLSTMT_TYPE kill_type;
+  int error;
   size_t i;
 
   if (tran_index == LOG_SYSTEM_TRAN_INDEX)
@@ -5858,8 +5861,6 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
 	}
     }
 
-  is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-
   kill_type = interrupt_only ? KILLSTMT_QUERY : KILLSTMT_TRAN;
   if (kill_type == KILLSTMT_TRAN)
     {
@@ -5868,7 +5869,23 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
 	{
 	  return ER_FAILED;
 	}
-#endif // SERVER_MODE
+
+      is_trx_exists = false;
+      if (log_Gl.trantable.area != NULL)
+	{
+	  tdes = LOG_FIND_TDES (tran_index);
+	  if (tdes != NULL && tdes->trid != NULL_TRANID)
+	    {
+	      is_trx_exists = true;
+	    }
+	}
+#else
+      is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+#endif
+    }
+  else
+    {
+      is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
     }
 
   for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES; i++)
