@@ -5864,7 +5864,10 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
   if (kill_type == KILLSTMT_TRAN)
     {
 #if defined (SERVER_MODE)
-      css_shutdown_conn_by_tran_index (tran_index);
+      if (css_shutdown_conn_by_tran_index (tran_index) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
 #endif // SERVER_MODE
     }
 

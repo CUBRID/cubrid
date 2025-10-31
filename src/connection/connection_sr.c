@@ -1345,13 +1345,14 @@ error_return:
 /*
  * css_shutdown_conn_by_tran_index() - shutdown connection having given
  *                                     transaction id
- *   return: void
+ *   return: error code
  *   tran_index(in): transaction id
  */
-void
+int
 css_shutdown_conn_by_tran_index (int tran_index)
 {
   CSS_CONN_ENTRY *conn = NULL;
+  int error = ER_FAILED;
   int r;
 
   if (css_Active_conn_anchor != NULL)
@@ -1369,6 +1370,8 @@ css_shutdown_conn_by_tran_index (int tran_index)
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
 					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), true, true);
+
+		  error = NO_ERROR;
 		}
 	      break;
 	    }
@@ -1376,6 +1379,8 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
       END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
     }
+
+  return error;
 }
 
 /*
