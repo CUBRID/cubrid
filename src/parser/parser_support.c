@@ -155,6 +155,7 @@ static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
 					  bool add_offset);
+static bool pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
@@ -9371,6 +9372,234 @@ cleanup:
 }
 
 /*
+ * pt_get_query_expr_value () - get the value of an expression
+ * return : error code or NO_ERROR
+ * parser (in) : parser context
+ * expr (in) : expression
+ * expr_val (in/out) : expression value
+ */
+int
+pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val)
+{
+  int save_set_host_var;
+  int error = NO_ERROR;
+  int type_arg[2];
+
+  type_arg[0] = PT_HOST_VAR;	/* type */
+  type_arg[1] = 0;		/* found */
+
+  db_make_null (expr_val);
+
+  if (expr == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  (void) parser_walk_tree (parser, expr, pt_find_node_type_pre, type_arg, NULL, NULL);
+  if (type_arg[1] == 0)
+    {
+      return NO_ERROR;
+    }
+
+  save_set_host_var = parser->flag.set_host_var;
+  parser->flag.set_host_var = 1;
+
+  pt_evaluate_tree (parser, expr, expr_val, 1);
+  if (pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (DB_IS_NULL (expr_val))
+    {
+      goto cleanup;
+    }
+
+cleanup:
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (expr_val);
+      db_make_null (expr_val);
+    }
+
+  parser->flag.set_host_var = save_set_host_var;
+  return error;
+}
+
+/*
+ * pt_check_removable_like_condition () - check if LIKE condition is removable
+ * return : true/false
+ * parser (in) : parser context
+ * from (in) : from clause
+ * expr (in) : expression
+ */
+static bool
+pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr)
+{
+  PT_NODE *arg1, *arg2;
+  PT_NODE *pattern = NULL, *escape = NULL;
+  DB_VALUE where_val, compressed_pattern;
+  int num_logical_chars = 0;
+  int last_safe_logical_pos = 0;
+  int num_match_many = 0;
+  int num_match_one = 0;
+  bool need_recompile = false;
+  bool has_escape_char = false;
+  const char *escape_str = NULL;
+  INTL_CODESET codeset;
+
+  if (expr->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  arg1 = PT_EXPR_ARG1 (expr);
+  arg2 = PT_EXPR_ARG2 (expr);
+
+  switch (expr->info.expr.op)
+    {
+    case PT_LIKE:
+      {
+	if (!arg1 || !pt_check_not_null_constraint (parser, from, arg1))
+	  {
+	    break;
+	  }
+
+	if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+	  {
+	    pattern = PT_EXPR_ARG1 (arg2);
+	    escape = PT_EXPR_ARG2 (arg2);
+	    assert (escape != NULL);
+	  }
+	else
+	  {
+	    pattern = arg2;
+	    escape = NULL;
+	  }
+
+	if (escape != NULL)
+	  {
+	    if (PT_IS_NULL_NODE (escape))
+	      {
+		has_escape_char = true;
+		escape_str = "\\";
+	      }
+	    else
+	      {
+		int esc_char_len = 0;
+
+		assert (pt_is_ascii_string_value_node (escape));
+
+		escape_str = (const char *) escape->info.value.data_value.str->bytes;
+		codeset = db_get_string_codeset (&pattern->info.value.db_value);
+
+		intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
+				 &esc_char_len);
+		if (esc_char_len != 1)
+		  {
+		    PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
+		    return false;
+		  }
+		has_escape_char = true;
+	      }
+	  }
+	else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
+	  {
+	    assert (escape == NULL);
+	    assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+	    has_escape_char = true;
+	    escape_str = "\\";
+	  }
+	else
+	  {
+	    has_escape_char = false;
+	    escape_str = NULL;
+	  }
+
+	if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
+	  {
+	    if (!DB_IS_NULL (&where_val))
+	      {
+		db_make_null (&compressed_pattern);
+
+		db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
+
+		db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
+						   &num_logical_chars, &last_safe_logical_pos,
+						   &num_match_many, &num_match_one);
+
+		if (num_logical_chars == 1 && num_match_many == 1)
+		  {
+		    need_recompile = true;
+		  }
+
+		/* If num_logical_chars is greater than 0 and both num_match_many and num_match_one are 0, 
+		 * the PT_LIKE can be replaced with PT_EQ instead.
+		 * See: qo_rewrite_one_like_term() */
+	      }
+	  }
+      }
+
+    default:
+      break;
+    }
+
+  return need_recompile;
+}
+
+PT_NODE *
+pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE **spec_list = (PT_NODE **) arg;
+  if (tree == NULL)
+    {
+      return NULL;
+    }
+
+  switch (tree->node_type)
+    {
+    case PT_SPEC:
+      if (PT_SPEC_IS_ENTITY (tree) && !pt_find_entity (parser, *spec_list, tree->info.spec.id))
+	{
+	  *spec_list = parser_append_node (parser_copy_tree (parser, tree), *spec_list);
+	}
+      break;
+    case PT_EXPR:
+      if (pt_check_removable_like_condition (parser, *spec_list, tree))
+	{
+	  tree->info.expr.flag |= PT_EXPR_INFO_REMOVABLE;
+	}
+      break;
+    default:
+      break;
+    }
+  return tree;
+}
+
+
+PT_NODE *
+pt_check_removable_expr_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *is_removable = (bool *) arg;
+
+  if (tree == NULL)
+    {
+      return NULL;
+    }
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_LIKE))
+    {
+      if (PT_EXPR_INFO_IS_FLAGED (tree, PT_EXPR_INFO_REMOVABLE))
+	{
+	  *is_removable = true;
+	}
+    }
+
+  return tree;
+}
+
+/*
  * pt_get_query_limit_value () - get the limit value from a query
  * return : error code or NO_ERROR
  * parser (in)	      : parser context
@@ -9942,6 +10171,36 @@ end:
     }
 
   return err;
+}
+
+/*
+ * pt_recompile_for_like_optimizations () - check if query should be recompiled due to removal of unnecessary LIKE condition
+ * return : true/false
+ * parser (in) : parser context
+ * statement (in) : statement
+ * xasl_flag (in) : xasl flag
+ */
+bool
+pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
+{
+
+  PT_NODE *spec_list = NULL;
+  bool is_removable = false;
+
+  if (statement->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  if (!(xasl_flag & LIKE_RECOMPILE_CANDIDATE) || !prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING))
+    {
+      return false;
+    }
+
+  parser_walk_tree (parser, statement, pt_check_removable_expr_pre, &spec_list, pt_check_removable_expr_post,
+		    &is_removable);
+
+  return is_removable;
 }
 
 /*

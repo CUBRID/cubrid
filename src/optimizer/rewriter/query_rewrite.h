@@ -123,7 +123,7 @@ PT_NODE *qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * no
 void qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* optimize terms */
-void qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms);
+void qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms);
 void qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep);
 PT_NODE *qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 int qo_is_reduceable_const (PT_NODE * expr);
