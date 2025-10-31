@@ -1369,7 +1369,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
-					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), true, true);
+					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, true);
 
 		  error = NO_ERROR;
 		}
