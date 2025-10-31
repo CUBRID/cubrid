@@ -617,6 +617,7 @@ static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NO
 						  int *continue_walk);
 static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p);
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
 static int pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * assign_list);
@@ -17014,6 +17015,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
     }
 
+  if (pt_set_like_recompile_candidate (parser, qo_plan, xasl) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   if (pt_set_limit_optimization_flags (parser, qo_plan, xasl) != NO_ERROR)
     {
       goto exit_on_error;
@@ -27043,6 +27049,27 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
   regu->value.regu_var_list = regu_var_list;
 
   return regu;
+}
+
+static int
+pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl)
+{
+  if (qo_plan == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  bool is_candidate = false;
+
+  if (qo_has_like_recompile_candidate (qo_plan, &is_candidate) == NO_ERROR)
+    {
+      if (is_candidate)
+	{
+	  xasl->header.xasl_flag |= LIKE_RECOMPILE_CANDIDATE;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
