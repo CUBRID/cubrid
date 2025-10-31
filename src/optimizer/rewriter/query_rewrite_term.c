@@ -30,7 +30,7 @@ static void qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** where
 static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
-static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep);
+static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -43,7 +43,7 @@ static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
  *   Verify correctness before modifying previous steps
  */
 void
-qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms)
+qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms)
 {
   if (*terms)
     {
@@ -52,9 +52,10 @@ qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms)
       qo_rewrite_like_terms (parser, terms);
       qo_convert_to_range (parser, terms);
       qo_apply_range_intersection (parser, terms);
-      qo_fold_is_and_not_null (parser, terms);
+      qo_fold_is_and_not_null (parser, nodes, terms);
     }
 }
+
 
 /*
  * qo_collect_name_spec () -
@@ -1440,7 +1441,7 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
  *   wherep(in): pointer to WHERE list
  */
 static void
-qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
+qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep)
 {
   PT_NODE *node, *sibling, *prev, *fold;
   DB_VALUE value;
@@ -1460,7 +1461,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	}
 
       node_prior = pt_get_first_arg_ignore_prior (node);
-      if (!pt_is_attr (node_prior))
+      if (!pt_is_attr (node_prior) && !qo_is_cast_attr (node_prior))
 	{
 	  /* LHS is not an attribute */
 	  prev = prev ? prev->next : node;
@@ -1531,30 +1532,43 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 
 	  db_make_int (&value, truefalse);
-	  fold = pt_dbval_to_value (parser, &value);
-	  if (fold == NULL)
+	}
+      else
+	{
+	  if (node->info.expr.op == PT_IS_NOT_NULL && pt_check_not_null_constraint (parser, from, node_prior))
 	    {
-	      return;
-	    }
-
-	  fold->type_enum = node->type_enum;
-	  fold->info.value.location = node->info.expr.location;
-	  pr_clear_value (&value);
-	  /* replace IS NULL/IS NOT NULL node with newly created VALUE node */
-	  if (prev)
-	    {
-	      prev->next = fold;
+	      db_make_int (&value, true);
 	    }
 	  else
 	    {
-	      *wherep = fold;
+	      prev = prev ? prev->next : node;
+	      continue;
 	    }
-	  fold->next = node->next;
-	  node->next = NULL;
-	  /* node->or_next == NULL */
-	  parser_free_tree (parser, node);
-	  node = fold->next;
 	}
+
+      fold = pt_dbval_to_value (parser, &value);
+      if (fold == NULL)
+	{
+	  return;
+	}
+
+      fold->type_enum = node->type_enum;
+      fold->info.value.location = node->info.expr.location;
+      pr_clear_value (&value);
+      /* replace IS NULL/IS NOT NULL node with newly created VALUE node */
+      if (prev)
+	{
+	  prev->next = fold;
+	}
+      else
+	{
+	  *wherep = fold;
+	}
+      fold->next = node->next;
+      node->next = NULL;
+      /* node->or_next == NULL */
+      parser_free_tree (parser, node);
+      node = fold->next;
 
       prev = prev ? prev->next : node;
     }
@@ -2457,7 +2471,8 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
 	    }
 
 	  compared_expr = pt_get_first_arg_ignore_prior (crt_expr);
-	  if (!pt_is_attr (compared_expr) && !pt_is_function_index_expr (parser, compared_expr, false))
+	  if (!pt_is_attr (compared_expr) && !qo_is_cast_attr (compared_expr)
+	      && !pt_is_function_index_expr (parser, compared_expr, false))
 	    {
 	      /* LHS is not an attribute or an expression supported as function index so it cannot currently have an
 	       * index. The transformation could still be useful as it might provide faster execution time in some
