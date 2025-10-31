@@ -2121,14 +2121,13 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  goto error;
 	}
 
-      snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
-
       if (csql_Is_time_on)
 	{
 	  tsc_getticks (&end_tick);
 	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 	}
 
+      snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
       csql_Row_count = 0;
       switch (stmt_type)
 	{
