@@ -1466,7 +1466,13 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
 	      (void) return_error_to_client (thread_p, rid);
 	    }
 
-	  auto deleter = [conn = thread_p->conn_entry, packed_desc, packed_size]() noexcept
+	  if (!packed_desc_size && packed_desc)
+	    {
+	      thread_p->conn_entry->release_packet (packed_desc);
+	      packed_desc = NULL;
+	    }
+
+	  auto deleter = [conn = thread_p->conn_entry, packed_desc]() noexcept
 	  {
 	    if (packed_desc)
 	      {
@@ -1602,6 +1608,22 @@ slocator_fetch_lockset (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 	}
       else
 	{
+	  if (!send_size && packed)
+	    {
+	      locator_free_packed (packed, packed_size);
+	      packed = NULL;
+	    }
+	  if (!desc_size && desc_ptr)
+	    {
+	      free_and_init (desc_ptr);
+	    }
+	  if (!content_size && copy_area)
+	    {
+	      locator_free_copy_area (copy_area);
+	      copy_area = NULL;
+	      content_ptr = NULL;
+	    }
+
 	  auto deleter = [packed = lockset->packed, packed_size = lockset->packed_size, copy_area, desc_ptr]() noexcept
 	  {
 	    if (packed)
@@ -1730,6 +1752,23 @@ slocator_fetch_all_reference_lockset (THREAD_ENTRY *thread_p, unsigned int rid, 
     }
   else
     {
+      if (!send_size && lockset)
+	{
+	  locator_free_lockset (lockset);
+	  lockset = NULL;
+	  packed = NULL;
+	}
+      if (!desc_size && desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
+      if (!content_size && copy_area)
+	{
+	  locator_free_copy_area (copy_area);
+	  copy_area = NULL;
+	  content_ptr = NULL;
+	}
+
       auto deleter = [copy_area, desc_ptr, lockset]() noexcept
       {
 	if (copy_area)
