@@ -3029,6 +3029,7 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   //       consequence, lock waiters may wait longer or even indefinitely if we are really unlucky.
   //
   conn_ref.add_pending_request ();
+  conn_ref.add_working_task ();
 
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
                                             static_cast<size_t> (conn_ref.idx), conn_ref.in_method);
@@ -3043,8 +3044,12 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 void
 css_server_task::execute (context_type &thread_ref)
 {
+  session_state *session_p;
+
   thread_ref.conn_entry = &m_conn;
-  session_state *session_p = thread_ref.conn_entry->session_p;
+  session_p = thread_ref.conn_entry->session_p;
+
+  m_conn.start_request ();
 
   if (session_p != NULL)
     {
@@ -3065,7 +3070,7 @@ css_server_task::execute (context_type &thread_ref)
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 
-  if (m_conn.end_request () == 0 && m_conn.status == CONN_CLOSING)
+  if (m_conn.end_working_task () == 0 && m_conn.status == CONN_CLOSING)
     {
       css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, false);
     }
