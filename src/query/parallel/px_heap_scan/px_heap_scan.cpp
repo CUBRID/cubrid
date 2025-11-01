@@ -161,9 +161,8 @@ extern "C"
 	      {
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (sizeof (
 		    accumulative_trace_storage));
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)
-						 scan_id->s.phsid.trace_storage, manager_p->get_result_type() ==
-						 RESULT_TYPE::MERGEABLE_LIST);
+		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)scan_id->s.phsid.trace_storage,
+						 manager_p->get_result_type());
 	      }
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
@@ -180,9 +179,8 @@ extern "C"
 	      {
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (sizeof (
 		    accumulative_trace_storage));
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)
-						 scan_id->s.phsid.trace_storage, manager_p->get_result_type() ==
-						 RESULT_TYPE::MERGEABLE_LIST);
+		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)scan_id->s.phsid.trace_storage,
+						 manager_p->get_result_type());
 	      }
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
@@ -200,8 +198,7 @@ extern "C"
 		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (sizeof (
 		    accumulative_trace_storage));
 		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)
-						 scan_id->s.phsid.trace_storage, manager_p->get_result_type() ==
-						 RESULT_TYPE::MERGEABLE_LIST);
+						 scan_id->s.phsid.trace_storage, manager_p->get_result_type());
 	      }
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }

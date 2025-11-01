@@ -76,19 +76,10 @@ namespace parallel_heap_scan
 	    }
 	}
       AGGREGATE_TYPE *it = xasl->proc.buildvalue.agg_list;
-      if (it->function != PT_COUNT_STAR)
-	{
-	  return false;
-	}
-      agg_cnt++;
 
-      for (it = it->next; it; it = it->next)
+      for (; it; it = it->next)
 	{
-	  if (it->function != PT_COUNT)
-	    {
-	      return false;
-	    }
-	  if (it->option != Q_DISTINCT)
+	  if (it->function != PT_COUNT_STAR && it->function != PT_COUNT)
 	    {
 	      return false;
 	    }
