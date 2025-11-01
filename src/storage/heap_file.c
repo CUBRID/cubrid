@@ -681,6 +681,8 @@ static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class, size_t * offset_size_ptr);
 static size_t heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr);
 
@@ -743,7 +745,7 @@ static SCAN_CODE heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread
 							   int header_size, int lob_create_flag);
 static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							 OR_BUF * buf, int offset_size, bool is_mvcc_class,
-							 bool has_prev);
+							 bool is_update);
 
 // *INDENT-OFF*
 static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
@@ -11772,8 +11774,14 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+/*
+ * heap_attrinfo_get_record_payload_size ()
+ *
+ *   return: size of the payload size of record
+ *   attr_info(in/out): the attribute information structure
+ */
 static int
-heap_attrinfo_total_column_size (HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
 {
   HEAP_ATTRVALUE *value;
   int size;
@@ -11797,9 +11805,17 @@ heap_attrinfo_total_column_size (HEAP_CACHE_ATTRINFO * attr_info)
   return size;
 }
 
+/*
+ * heap_attrinfo_get_record_header_size ()
+ *
+ *   return: size of the header size of record
+ *   attr_info(in/out): the attribute information structure
+ *   column_size(in): the size of payload (raw format of colmuns)
+ *   is_mvcc_class(in): true, if MVCC class
+ *   offset_size_ptr(out): offset size
+ */
 static int
-heap_attrinfo_get_header_size (HEAP_CACHE_ATTRINFO * attr_info, int column_size, bool is_mvcc_class,
-			       size_t * offset_size_ptr)
+heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class, size_t * offset_size_ptr)
 {
   int header_size;
 
@@ -11809,13 +11825,13 @@ heap_attrinfo_get_header_size (HEAP_CACHE_ATTRINFO * attr_info, int column_size,
   header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
   header_size += OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable);
 
-  if (*offset_size_ptr == OR_BYTE_SIZE && header_size + column_size > OR_MAX_BYTE)
+  if (*offset_size_ptr == OR_BYTE_SIZE && header_size + payload_size > OR_MAX_BYTE)
     {
       header_size -= OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
       *offset_size_ptr = OR_SHORT_SIZE;	/* 2 byte */
       header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
     }
-  if (*offset_size_ptr == OR_SHORT_SIZE && header_size + column_size > OR_MAX_SHORT)
+  if (*offset_size_ptr == OR_SHORT_SIZE && header_size + payload_size > OR_MAX_SHORT)
     {
       header_size -= OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
       *offset_size_ptr = OR_INT_SIZE;	/* 4 byte */
@@ -11842,8 +11858,8 @@ heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_
   int column_total_size, header_size;
 
   /* calcuate the entire size of columns */
-  column_total_size = heap_attrinfo_total_column_size (attr_info);
-  header_size = heap_attrinfo_get_header_size (attr_info, column_total_size, is_mvcc_class, offset_size_ptr);
+  column_total_size = heap_attrinfo_get_record_payload_size (attr_info);
+  header_size = heap_attrinfo_get_record_header_size (attr_info, column_total_size, is_mvcc_class, offset_size_ptr);
 
   return header_size + column_total_size;
 }
@@ -11902,7 +11918,7 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
  */
 static SCAN_CODE
 heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
-					int offset_size, bool is_mvcc_class, bool has_prev)
+					int offset_size, bool is_mvcc_class, bool is_update)
 {
   unsigned int repid_bits;
 
@@ -11927,7 +11943,7 @@ heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTR
 
   if (is_mvcc_class)
     {
-      if (!has_prev)
+      if (!is_update)
 	{
 	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
 	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE) > buf->endptr)
@@ -12289,11 +12305,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag)
 {
   OR_BUF buf;
-  bool is_mvcc_class;
-  size_t expected_size;
+  size_t expected_size, mvcc_extra;
   size_t record_size, header_size, offset_size;
-  size_t mvcc_extra;
   SCAN_CODE status;
+  bool is_mvcc_class, is_update;
   // *INDENT-OFF*
   std::set<int> incremented_attrids;
   // *INDENT-ON*
@@ -12312,6 +12327,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
+  /* a previous version of the record exists */
+  is_update = old_recdes != NULL;
+
   /* start transforming the dbvalues into disk values for the object */
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
 
@@ -12324,7 +12342,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     {
       header_size = OR_MVCC_INSERT_HEADER_SIZE;
       mvcc_extra = OR_MVCC_DELETE_ID_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
-      if (old_recdes)
+
+      /* update case, reserve space for previous version LSA. */
+      if (is_update)
 	{
 	  header_size = OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
 	  mvcc_extra = OR_MVCC_DELETE_ID_SIZE;
@@ -12340,12 +12360,14 @@ resize_and_start:
   or_init (&buf, new_recdes->get_data_for_modify (), (int) expected_size);
 
   /* build header */
-  status = heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, old_recdes);
+  status = heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, is_update);
   if (status == S_DOESNT_FIT)
     {
       expected_size += DB_PAGESIZE;
       goto resize_and_start;
     }
+
+  assert (status == S_SUCCESS);
 
   /* build columns */
   status =
