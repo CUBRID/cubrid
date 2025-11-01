@@ -1459,7 +1459,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   std::byte * mem_reply = nullptr;
 
   assert (conn != NULL);
-  assert(!!buffer == !!buffer_size);
+  assert (!!buffer == !!buffer_size);
 
   rmutex_lock (NULL, &conn->rmutex);
   if (conn->status != CONN_OPEN)
@@ -1628,8 +1628,8 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 
   assert (conn != NULL);
   assert (reply && reply_size > 0);
-  assert(!!buffer1 == !!buffer1_size);
-  assert(!!buffer2 == !!buffer2_size);
+  assert (!!buffer1 == !!buffer1_size);
+  assert (!!buffer2 == !!buffer2_size);
 
   rmutex_lock (NULL, &conn->rmutex);
   if (conn->status != CONN_OPEN)
@@ -1742,9 +1742,9 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 
   assert (conn != NULL);
   assert (reply && reply_size > 0);
-  assert(!!buffer1 == !!buffer1_size);
-  assert(!!buffer2 == !!buffer2_size);
-  assert(!!buffer3 == !!buffer3_size);
+  assert (!!buffer1 == !!buffer1_size);
+  assert (!!buffer2 == !!buffer2_size);
+  assert (!!buffer3 == !!buffer3_size);
 
   rmutex_lock (NULL, &conn->rmutex);
   if (conn->status == CONN_CLOSED)
