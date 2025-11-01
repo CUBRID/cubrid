@@ -825,27 +825,36 @@ retry:
 	return false;
       }
     ctx->m_conn = item.conn;
-    /* there is no need to hold the mutex now */
+
+    rmutex_lock (NULL, &ctx->m_conn->cmutex);
     ctx->m_conn->worker = this;
     ctx->m_conn->context = ctx;
+
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
 	delete ctx;
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
     if (!m_context.insert (ctx).second)
       {
-	m_events.remove_descriptor (ctx->m_conn->fd);
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	m_events.remove_descriptor (ctx->m_conn->fd);
+
 	delete ctx;
 	er_log_conn (__FILE__, __LINE__,
 		     "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
 	return false;
       }
+
+    rmutex_unlock (NULL, &ctx->m_conn->cmutex);
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
     return true;
   }
