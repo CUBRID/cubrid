@@ -2801,7 +2801,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 	       * data */
 	      if (waitsec < 0)
 		{
-		  thread_suspend_wakeup (thrd, THREAD_CSS_QUEUE_SUSPENDED);
+		  thread_suspend (thrd, THREAD_CSS_QUEUE_SUSPENDED);
 		  thread_unlock_entry (thrd);
 
 		  if (thrd->resume_status != THREAD_CSS_QUEUE_RESUMED)

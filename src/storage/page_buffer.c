@@ -6587,8 +6587,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
       /* is it safe to use infinite wait instead of timed sleep? */
       thread_lock_entry (cur_thrd_entry);
       PGBUF_BCB_UNLOCK (bufptr);
-
-      thread_suspend_wakeup (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
+      thread_suspend (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
       thread_unlock_entry (cur_thrd_entry);
 
       if (cur_thrd_entry->resume_status != THREAD_PGBUF_RESUMED)
@@ -10857,7 +10856,7 @@ pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p)
   thread_lock_entry (thread_p);
   pthread_mutex_unlock (mutex_p);
 
-  thread_suspend_wakeup (thread_p, THREAD_PGBUF_SUSPENDED);
+  thread_suspend (thread_p, THREAD_PGBUF_SUSPENDED);
   thread_unlock_entry (thread_p);
 }
 
