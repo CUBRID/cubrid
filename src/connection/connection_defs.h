@@ -492,9 +492,14 @@ struct css_conn_entry
 
   // request count manipulation
   void add_pending_request ();
-  size_t end_request ();
+  size_t start_request ();
   bool has_pending_request () const;
   void init_pending_request ();
+
+  // working task count manipulation
+  void add_working_task ();
+  size_t end_working_task ();
+  void init_working_task ();
 
   void release_packet (void *buffer);
 
@@ -503,6 +508,7 @@ private:
   int transaction_id;
   // *INDENT-OFF*
   std::atomic<size_t> pending_request_count;
+  std::atomic<size_t> working_task_count;
   // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;

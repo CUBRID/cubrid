@@ -3081,7 +3081,7 @@ css_conn_entry::add_pending_request ()
 }
 
 size_t
-css_conn_entry::end_request ()
+css_conn_entry::start_request ()
 {
   return --pending_request_count;
 }
@@ -3096,6 +3096,24 @@ void
 css_conn_entry::init_pending_request ()
 {
   pending_request_count = 0;
+}
+
+void
+css_conn_entry::add_working_task ()
+{
+  ++pending_request_count;
+}
+
+size_t
+css_conn_entry::end_working_task ()
+{
+  return --pending_request_count;
+}
+
+void
+css_conn_entry::init_working_task ()
+{
+  working_task_count = 0;
 }
 
 void
