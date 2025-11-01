@@ -733,12 +733,26 @@ slocator_fetch (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
     }
   else
     {
-      auto deleter = [copy_area, desc_ptr]() noexcept
+      if (!desc_size && desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
+      if (!content_size && copy_area)
+	{
+	  locator_free_copy_area (copy_area);
+	  copy_area = NULL;
+	  content_ptr = NULL;
+	}
+
+      auto deleter = [desc_ptr, copy_area]() noexcept
       {
-	locator_free_copy_area (copy_area);
 	if (desc_ptr)
 	  {
 	    free (desc_ptr);
+	  }
+	if (copy_area)
+	  {
+	    locator_free_copy_area (copy_area);
 	  }
       };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
@@ -946,12 +960,34 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
   else
     {
+      /* desc_ptr points a memory address somewhere in copy_area if encode_endian is 0 */
+      if (!desc_size && desc_ptr)
+	{
+	  if (encode_endian)
+	    {
+	      free (desc_ptr);
+	    }
+	  desc_ptr = NULL;
+	}
+      if (!content_size && copy_area)
+	{
+	  if (encode_endian || (!encode_endian && !desc_ptr))
+	    {
+	      locator_free_copy_area (copy_area);
+	      copy_area = NULL;
+	    }
+	  content_ptr = NULL;
+	}
+
       auto deleter = [copy_area, encode_endian, desc_ptr]() noexcept
       {
-	locator_free_copy_area (copy_area);
 	if (encode_endian && desc_ptr)
 	  {
 	    free (desc_ptr);
+	  }
+	if (copy_area)
+	  {
+	    locator_free_copy_area (copy_area);
 	  }
       };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
@@ -1230,7 +1266,7 @@ slocator_repl_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	    {
 	      free_and_init (desc_ptr);
 	    }
-	  if (!content_size && reply_content_ptr)
+	  if (!content_size && reply_copy_area)
 	    {
 	      locator_free_copy_area (reply_copy_area);
 	      reply_copy_area = NULL;
