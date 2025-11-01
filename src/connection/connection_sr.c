@@ -2826,7 +2826,7 @@ css_return_queued_data_timeout (CSS_CONN_ENTRY * conn, unsigned short rid,
 		  abstime.tv_sec = (int) time (NULL) + waitsec;
 		  abstime.tv_nsec = 0;
 
-		  r = thread_suspend_timeout_wakeup (thrd, &abstime, THREAD_CSS_QUEUE_SUSPENDED);
+		  r = thread_timed_suspend (thrd, &abstime, THREAD_CSS_QUEUE_SUSPENDED);
 		  thread_unlock_entry (thrd);
 
 		  if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)

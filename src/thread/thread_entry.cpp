@@ -522,14 +522,14 @@ thread_suspend_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status 
 }
 
 /*
- * thread_suspend_timeout_wakeup() -
+ * thread_timed_suspend() -
  *   return:
  *   thread_p(in):
  *   time_p(in):
  *   suspended_reason(in):
  */
 int
-thread_suspend_timeout_wakeup (cubthread::entry *thread_p, struct timespec *time_p,
+thread_timed_suspend (cubthread::entry *thread_p, struct timespec *time_p,
 			       thread_resume_suspend_status suspended_reason)
 {
   int r;
