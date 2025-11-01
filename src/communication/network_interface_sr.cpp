@@ -832,12 +832,26 @@ slocator_get_class (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
   else
     {
+      if (!desc_size && desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
+      if (!content_size && copy_area)
+	{
+	  locator_free_copy_area (copy_area);
+	  copy_area = NULL;
+	  content_ptr = NULL;
+	}
+
       auto deleter = [copy_area, desc_ptr]() noexcept
       {
-	locator_free_copy_area (copy_area);
 	if (desc_ptr)
 	  {
 	    free (desc_ptr);
+	  }
+	if (copy_area)
+	  {
+	    locator_free_copy_area (copy_area);
 	  }
       };
       css_send_reply_and_2_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), desc_ptr,
@@ -1073,9 +1087,23 @@ slocator_does_exist (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     }
   else
     {
+      if (!desc_size && desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
+      if (!content_size && copy_area)
+	{
+	  locator_free_copy_area (copy_area);
+	  copy_area = NULL;
+	  content_ptr = NULL;
+	}
+
       auto deleter = [copy_area, desc_ptr]() noexcept
       {
-	locator_free_copy_area (copy_area);
+	if (copy_area)
+	  {
+	    locator_free_copy_area (copy_area);
+	  }
 	if (desc_ptr)
 	  {
 	    free (desc_ptr);
@@ -1148,9 +1176,23 @@ slocator_notify_isolation_incons (THREAD_ENTRY *thread_p, unsigned int rid, char
     }
   else
     {
+      if (!desc_size && desc_ptr)
+	{
+	  free_and_init (desc_ptr);
+	}
+      if (!content_size && copy_area)
+	{
+	  locator_free_copy_area (copy_area);
+	  copy_area = NULL;
+	  content_ptr = NULL;
+	}
+
       auto deleter = [copy_area, desc_ptr]() noexcept
       {
-	locator_free_copy_area (copy_area);
+	if (copy_area)
+	  {
+	    locator_free_copy_area (copy_area);
+	  }
 	if (desc_ptr)
 	  {
 	    free (desc_ptr);
