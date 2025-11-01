@@ -3101,13 +3101,13 @@ css_conn_entry::init_pending_request ()
 void
 css_conn_entry::add_working_task ()
 {
-  ++pending_request_count;
+  ++working_task_count;
 }
 
 size_t
 css_conn_entry::end_working_task ()
 {
-  return --pending_request_count;
+  return --working_task_count;
 }
 
 void
