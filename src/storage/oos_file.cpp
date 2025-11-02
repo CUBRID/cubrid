@@ -2,7 +2,7 @@
 #include <optional>
 
 [[nodiscard]] OosInitResult
-oos_init (const THREAD_ENTRY &thread_entry, const HFID &hfid)
+oos_init (const THREAD_ENTRY *thread_entry, const HFID &hfid)
 {
   printf ("oos_init called\n");
   fflush (stdout);
@@ -12,7 +12,7 @@ oos_init (const THREAD_ENTRY &thread_entry, const HFID &hfid)
 }
 
 [[nodiscard]] OosInsertResult
-oos_insert (const THREAD_ENTRY &thread_entry, const std::vector<DB_VALUE *> &db_values)
+oos_insert (const THREAD_ENTRY *thread_entry, const std::vector<DB_VALUE *> &db_values)
 {
   return OosInsertResult{0, {}};
 }

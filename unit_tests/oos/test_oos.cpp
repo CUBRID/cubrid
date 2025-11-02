@@ -5,67 +5,27 @@
 #include "db_client_type.hpp"
 #include "dbi.h"
 #include "authenticate.h"
-#include "heap_file.h"
-#include "page_buffer.h"
 #include "util_support.h"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
 #include "locator_sr.h"
 #include "oos_file.hpp"
 
-int initialize_oos_test_environment()
-{
-  int res;
-  THREAD_ENTRY *thread_p = NULL;
 
-  // lang_init();
-  // tp_init();
-  // er_init (NULL, ER_NEVER_EXIT);
-  // lang_set_charset_lang ("en_US.iso88591");
-
-  // cubthread::initialize (thread_p);
-  // res = cubthread::initialize_thread_entries();
-  // pgbuf_initialize();
-
-  // heap_initialize_hfid_table();
-  printf ("pgbuf initialized\n");
-
-  if (res != NO_ERROR)
-    {
-      ASSERT_ERROR();
-      return res;
-    }
-  return NO_ERROR;
-}
-
-TEST (HelloTest, BasicAssertions)
+TEST (BasicTest, Hello)
 {
   EXPECT_STRNE ("Hello", "World");
   EXPECT_EQ (7 * 6, 42);
 }
 
-TEST (OOSTest, OOSAdd)
+TEST (BasicTest, Addition)
 {
-  // int ret = oos_add (1, 2);
-  // EXPECT_EQ (ret, 3);
+  int ret = 1 + 2;
+  EXPECT_EQ (ret, 3);
 }
 
-TEST (OverflowTest, OverflowInsert)
+TEST (OosTest, page_fix_unfix)
 {
-  // VFID ovf_vfid;
-  // VPID ovf_vpid;
-  // RECDES recdes;
-  // int ret = initialize_oos_test_environment();
-  // printf ("Environment initialized with return code: %d\n", ret);
-  // fflush (stdout);
-  // assert (ret == NO_ERROR);
-  // THREAD_ENTRY &thread = cubthread::get_entry();
-  // THREAD_ENTRY *thread_p = &thread;
-  //
-  // // qmgr_initialize (thread_p);
-  //
-  // const HFID *hfid;
-  /* Read the header page */
   auto db_name = "testdb";
   auto error = db_restart ("unit_test", TRUE, db_name);
   EXPECT_EQ (error, NO_ERROR);
@@ -85,7 +45,7 @@ TEST (OverflowTest, OverflowInsert)
   fflush (stdout);
 
   HFID hfid;
-  auto [x, y, z] = oos_init(*thread_p, hfid);
+  auto [x, y, z] = oos_init (thread_p, hfid);
   printf ("############## oos_init called\n");
   fflush (stdout);
 
@@ -213,28 +173,3 @@ error_exit:
 
 }
 
-// int main (void)
-// {
-//   VFID ovf_vfid;
-//   VPID ovf_vpid;
-//   RECDES recdes;
-//   int ret = initialize_oos_test_environment ();
-//   assert (ret == NO_ERROR);
-//   THREAD_ENTRY &thread = cubthread::get_entry ();
-//   THREAD_ENTRY *thread_p = &thread;
-//
-//   const HFID *hfid;
-//
-//   // VFID *ret_vfid = heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, true,
-//   PGBUF_UNCONDITIONAL_LATCH);
-//
-//   // overflow_insert (&thread, &ovf_vfid, &ovf_vpid, &recdes,
-//   FILE_MULTIPAGE_OBJECT_HEAP); std::cout << "OOS unit tests placeholder." <<
-//   std::endl; std::cout << "2 + 3 = " << add (2, 3) << std::endl; return 0;
-// }
-//
-// int add (int a, int b)
-// {
-//   return a + b;
-// }
-//
