@@ -44,7 +44,7 @@ namespace parallel_query_execute
       using interrupt = parallel_query::interrupt;
     public:
       query_executor (THREAD_ENTRY *root_thread_p, worker_manager *worker_manager_p, int parallelism, int estimated_jobs,
-		      bool on_trace);
+		      bool on_trace, xasl_state *xasl_state);
       query_executor (query_executor *parent_executor_p);
       ~query_executor();
       bool add_job (THREAD_ENTRY *thread_p, xasl_node *xasl, xasl_state *xasl_state);
@@ -64,6 +64,9 @@ namespace parallel_query_execute
       queue *m_job_execution_queue;
       bool *m_is_task_running_p;
       int m_parallelism;
+    public:
+      xasl_state *m_xasl_state;
+    private:
       /* child's own */
       query_executor_stats m_stats;
       join_context m_join_context;
@@ -80,7 +83,7 @@ namespace parallel_query_execute
 
 extern "C" {
   bool make_parallel_query_executor_recursively (THREAD_ENTRY *thread_p, xasl_node *xasl,
-      parallel_query::worker_manager *worker_manager_p, int parallelism);
+      parallel_query::worker_manager *worker_manager_p, int parallelism, xasl_state *xasl_state);
 }
 
 #endif /* _PX_QUERY_EXECUTOR_HPP_ */
