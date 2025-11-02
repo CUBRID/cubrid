@@ -36,9 +36,16 @@ add_executable(test_oos
 
 target_link_libraries(test_oos LINK_PRIVATE ${EP_LIBS})
 target_compile_options(test_oos PRIVATE ${compile_warning_flags})
+# target_compile_definitions(test_oos PRIVATE
+#   ${COMMON_DEFS} SERVER_MODE
+#   )
 target_compile_definitions(test_oos PRIVATE
-  ${COMMON_DEFS} SERVER_MODE
+  ${COMMON_DEFS} SA_MODE
   )
+target_link_libraries(test_oos PRIVATE
+  cubridsa
+  )
+
 target_include_directories(test_oos PRIVATE
   ${TEST_INCLUDES}
   )
@@ -46,4 +53,19 @@ add_dependencies(test_oos
   ${CATCH2_TARGET} ${EP_TARGETS}
   )
 
-add_test(NAME test_oos COMMAND test_oos)
+# target_link_libraries(test_oos PRIVATE
+#   cubrid
+#   )
+#
+# target_link_libraries(test_oos PRIVATE
+#   cubridcs
+#   )
+#
+
+target_link_libraries(test_oos PRIVATE GTest::gtest_main)
+
+include(GoogleTest)
+gtest_discover_tests(test_oos)
+
+# disabled for gtest
+# add_test(NAME test_oos COMMAND test_oos)
