@@ -7474,8 +7474,28 @@ pt_set_flag_do_not_fold_for_dblink (PARSER_CONTEXT * parser, PT_NODE * expr, voi
 }
 
 static PT_NODE *
+pt_set_expr_removable_flag (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg, int *continue_walk)
+{
+  if (expr->node_type == PT_EXPR)
+    {
+      PT_EXPR_INFO_SET_FLAG (expr, PT_EXPR_INFO_REMOVABLE);
+    }
+  return expr;
+}
+
+static PT_NODE *
 pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  PT_NODE **spec_list = (PT_NODE **) arg;
+  PT_NODE *arg1, *arg2;
+  DB_VALUE where_val, compressed_pattern;
+  int num_logical_chars = 0;
+  int last_safe_logical_pos = 0;
+  int num_match_many = 0;
+  int num_match_one = 0;
+  bool has_escape_char = false;
+  const char *escape_str = NULL;
+
   if (node == NULL)
     {
       return node;
@@ -7484,6 +7504,12 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   // check if constant folding for sub-tree should be suppressed
   switch (node->node_type)
     {
+    case PT_SPEC:
+      if (PT_SPEC_IS_ENTITY (node) && !pt_find_entity (parser, *spec_list, node->info.spec.id))
+	{
+	  *spec_list = parser_append_node (parser_copy_tree (parser, node), *spec_list);
+	}
+      break;
     case PT_FUNCTION:
       if (node->info.function.function_type == F_BENCHMARK)
 	{
@@ -7496,6 +7522,45 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	{
 	  parser_walk_tree (parser, node, pt_set_flag_do_not_fold_for_dblink, NULL, NULL, NULL);
 	}
+
+      if (node->info.expr.op == PT_LIKE && prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING))
+	{
+	  arg1 = PT_EXPR_ARG1 (node);
+	  if (!pt_check_not_null_constraint (parser, *spec_list, arg1))
+	    {
+	      return node;
+	    }
+
+	  arg2 = PT_EXPR_ARG2 (node);
+	  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node->info.expr.arg2, PT_LIKE_ESCAPE))
+	    {
+	      arg2 = PT_EXPR_ARG1 (node->info.expr.arg2);
+	    }
+
+	  int type_arg[2];
+	  type_arg[0] = PT_HOST_VAR;
+	  type_arg[1] = 0;
+
+	  (void) parser_walk_tree (parser, arg2, pt_find_node_type_pre, type_arg, NULL, NULL);
+	  if (type_arg[1] != 0 && pt_get_query_expr_value (parser, arg2, &where_val) == NO_ERROR)
+	    {
+	      if (!DB_IS_NULL (&where_val))
+		{
+		  db_make_null (&compressed_pattern);
+
+		  db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
+
+		  db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
+						     &num_logical_chars, &last_safe_logical_pos,
+						     &num_match_many, &num_match_one);
+
+		  if (num_logical_chars == 1 && num_match_many == 1)
+		    {
+		      parser_walk_tree (parser, node, pt_set_expr_removable_flag, NULL, NULL, NULL);
+		    }
+		}
+	    }
+	}
       break;
     default:
       // nope
@@ -7503,6 +7568,84 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
     }
 
   return node;
+}
+
+bool
+pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * node)
+{
+  MOP cls;
+  SM_CLASS *class_;
+  SM_CLASS_CONSTRAINT *consp;
+  SM_ATTRIBUTE *attr, **consp_attrs;
+  PT_NODE *entity = NULL;
+  const char *entity_name = NULL;
+
+  if (node == NULL || from == NULL)
+    {
+      return false;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_DOT_:
+      node = pt_get_end_path_node (node);
+      [[fallthrough]];
+
+    case PT_NAME:
+      entity = pt_find_entity (parser, from, node->info.name.spec_id);
+      if (entity == NULL)
+	{
+	  return false;
+	}
+
+      entity_name = pt_get_name (entity->info.spec.entity_name);
+      cls = sm_find_class (entity_name);
+      if (er_errid () == ER_LC_UNKNOWN_CLASSNAME || er_errid () == ER_SM_INVALID_ARGUMENTS)
+	{
+	  er_clear ();
+	  return false;
+	}
+      else
+	{
+	  consp = sm_class_constraints (cls);
+
+	  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+	  attr = classobj_find_attribute (class_, node->info.name.original, 0);
+	  if (attr == NULL)
+	    {
+	      return false;
+	    }
+
+	  for (; consp != NULL; consp = consp->next)
+	    {
+	      consp_attrs = consp->attributes;
+
+	      for (int i = 0; consp_attrs != NULL && consp_attrs[i] != NULL; i++)
+		{
+		  if (consp_attrs[i]->id == attr->id)
+		    {
+		      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (consp->type))
+			{
+			  return true;
+			}
+		    }
+		}
+	    }
+	}
+      break;
+
+    case PT_EXPR:
+      if (node->info.expr.op == PT_CAST)
+	{
+	  return pt_check_not_null_constraint (parser, from, node->info.expr.arg1);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return false;
 }
 
 /*
@@ -17407,7 +17550,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   DB_VALUE dummy, dbval_res, *arg1, *arg2, *arg3;
   PT_OP_TYPE op;
   PT_NODE *expr_next;
-  int line, column;
+  int line, column, save_set_host_var;
   short location;
   const char *alias_print;
   unsigned is_hidden_column;
@@ -17432,6 +17575,10 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       return expr;
     }
+
+  save_set_host_var = parser->flag.set_host_var;
+  parser->flag.set_host_var = (prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING)
+			       && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_REMOVABLE)) ? 1 : save_set_host_var;
 
   location = expr->info.expr.location;
 
@@ -17706,6 +17853,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       goto end;
     }
 
+  if (opd1 && opd1->node_type == PT_HOST_VAR && opd1->info.host_var.index < parser->host_var_count)
+    {
+      arg1 = pt_value_to_db (parser, opd1);
+      if (!DB_IS_NULL (arg1))
+	{
+	  opd1 = pt_dbval_to_value (parser, arg1);
+	  result->info.expr.arg1 = (op == PT_LIKE_ESCAPE) ? opd1 : result->info.expr.arg1;
+	}
+    }
+
   if (opd1 && opd1->node_type == PT_VALUE)
     {
       arg1 = pt_value_to_db (parser, opd1);
@@ -17731,6 +17888,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   else
     {
       opd2 = expr->info.expr.arg2;
+    }
+
+  if (opd2 && opd2->node_type == PT_HOST_VAR && opd2->info.host_var.index < parser->host_var_count)
+    {
+      arg2 = pt_value_to_db (parser, opd2);
+      if (!DB_IS_NULL (arg2))
+	{
+	  opd2 = pt_dbval_to_value (parser, arg2);
+	  result->info.expr.arg2 = (op == PT_LIKE) ? opd2 : result->info.expr.arg2;
+	}
     }
 
   if (opd2 && opd2->node_type == PT_VALUE)
@@ -17965,6 +18132,15 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
   else
     {
       opd3 = expr->info.expr.arg3;
+    }
+
+  if (opd3 && opd3->node_type == PT_HOST_VAR && opd3->info.host_var.index < parser->host_var_count)
+    {
+      arg3 = pt_value_to_db (parser, opd3);
+      if (!DB_IS_NULL (arg3))
+	{
+	  opd3 = pt_dbval_to_value (parser, arg3);
+	}
     }
 
   if (opd3 && opd3->node_type == PT_VALUE)
@@ -18331,6 +18507,7 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 
 end:
   pr_clear_value (&dbval_res);
+  parser->flag.set_host_var = save_set_host_var;
 
   if (has_error)
     {
@@ -18910,8 +19087,9 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
   /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
   if (!parser->flag.is_parsing_static_sql)
     {
+      PT_NODE *spec_list = NULL;
       /* do constant folding */
-      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, NULL, pt_fold_constants_post, sc_info_ptr);
+      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, &spec_list, pt_fold_constants_post, sc_info_ptr);
       if (pt_has_error (parser))
 	{
 	  tree = NULL;

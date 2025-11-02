@@ -473,7 +473,16 @@ namespace parallel_heap_scan
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
 		  if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 		    {
-		      return S_SUCCESS;
+		      for (QFILE_LIST_ID *list_id : m_.writer_results)
+			{
+			  if (list_id != nullptr && list_id->type_list.type_cnt > 0)
+			    {
+			      qfile_destroy_list (thread_p, list_id);
+			    }
+			}
+		      m_.writer_results.clear();
+		      m_.result_p = nullptr;
+		      return S_ERROR;
 		    }
 		}
 	    }

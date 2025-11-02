@@ -246,6 +246,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HOSTVAR_LATE_BINDING "hostvar_late_binding"
 
+#define PRM_NAME_HOSTVAR_PEEKING "hostvar_peeking"
+
 #define PRM_NAME_ENABLE_HISTO "communication_histogram"
 
 #define PRM_NAME_MUTEX_BUSY_WAITING_CNT "mutex_busy_waiting_cnt"
@@ -5109,6 +5111,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 300}},
    {false, {.i = 3000}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HOSTVAR_PEEKING,
+   PRM_NAME_HOSTVAR_PEEKING,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
