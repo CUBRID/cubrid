@@ -11973,7 +11973,7 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
   for (int i = 0; i < attrid_arr_length; i++)
     {
       sprintf (rv_path, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
-      log_append_undo_data (thread_p, RVFL_LOB_ROMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
+      log_append_undo_data (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
       snprintf (dirbuf, (strlen (es_base_dir) + 1 + strlen (rv_path) + 1), "%s/%s", es_base_dir, rv_path);
       dirbuf[strlen (dirbuf)] = '\0';
@@ -12014,46 +12014,17 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
   if (attrid == -1)		/* DROP TABLE */
     {
       snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      log_append_postpone (thread_p, RVFL_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+      log_append_postpone (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
     }
   else				/* DROP LOB COLUMN */
     {
       snprintf (rv_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
-      log_append_postpone (thread_p, RVFL_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+      log_append_postpone (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
     }
 
   return ret;
 #endif /* SERVER_MODE || SA_MODE */
   return NO_ERROR;
-}
-
-/*
- * fileio_lob_rv_remove_dir () - Recovery function for LOB directories.
- *
- * return	 : Error code.
- * thread_p (in) : Thread entry.
- * rcv (in)	 : Recovery data.
- *
- * NOTE: This function is called when creating or deleting a LOB directory.
- *       If a LOB directory is created and the transaction is rolled back, this
- *       function will be called to remove the created directory.
- *       If a LOB directory deletion command is issued and the transaction is
- *       committed, this function will be called to actually remove the directory.
- */
-int
-fileio_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  const char *path = rcv->data;
-  char lob_path[PATH_MAX];
-  int error = NO_ERROR;
-
-#if defined(SERVER_MODE) || defined(SA_MODE)
-  snprintf (lob_path, (strlen (path) + 1), "%s", path);
-#endif /* SERVER_MODE || SA_MODE */
-
-  error = fileio_lob_remove_dir (lob_path);
-
-  return error;
 }
 
 /*
