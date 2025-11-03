@@ -1677,7 +1677,7 @@ sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       return error;
     }
 
-  if (sort_param->tot_runs > 1 || SORT_IS_PARALLEL (sort_param))
+  if (sort_param->tot_runs > 1)
     {
       assert (sort_param->tot_runs > 0);
       /* Create output temporary files make file and temporary volume page count estimates */
