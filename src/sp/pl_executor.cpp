@@ -224,8 +224,6 @@ namespace cubpl
       case DB_TYPE_MONETARY:
       case DB_TYPE_NUMERIC:
       case DB_TYPE_CHAR:
-      case DB_TYPE_NCHAR:
-      case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       case DB_TYPE_DATE:
       case DB_TYPE_TIME:

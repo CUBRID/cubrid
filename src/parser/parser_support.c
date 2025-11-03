@@ -155,6 +155,7 @@ static int pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE
 						bool * has_limit);
 static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALUE * limit_val,
 					  bool add_offset);
+static bool pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
 static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
@@ -5033,9 +5034,6 @@ pt_fixup_column_type (PT_NODE * col)
     {
       switch (col->type_enum)
 	{
-	  /* for NCHAR(3) type column, we reserve only 3bytes. precision and length for NCHAR(n) type is n */
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
 	  if (col->info.value.data_value.str != NULL)
@@ -5084,19 +5082,14 @@ pt_fixup_column_type (PT_NODE * col)
 	}
     }
 
-  /* Convert char(max) to varchar(max), nchar(max) to varnchar(max), bit(max) to varbit(max) */
-  if ((col->type_enum == PT_TYPE_CHAR || col->type_enum == PT_TYPE_NCHAR || col->type_enum == PT_TYPE_BIT)
+  /* Convert char(max) to varchar(max), bit(max) to varbit(max) */
+  if ((col->type_enum == PT_TYPE_CHAR || col->type_enum == PT_TYPE_BIT)
       && col->data_type != NULL && (col->data_type->info.data_type.precision == TP_FLOATING_PRECISION_VALUE))
     {
       if (col->type_enum == PT_TYPE_CHAR)
 	{
 	  col->type_enum = PT_TYPE_VARCHAR;
 	  col->data_type->type_enum = PT_TYPE_VARCHAR;
-	}
-      else if (col->type_enum == PT_TYPE_NCHAR)
-	{
-	  col->type_enum = PT_TYPE_VARNCHAR;
-	  col->data_type->type_enum = PT_TYPE_VARNCHAR;
 	}
       else
 	{
@@ -5801,361 +5794,6 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
   query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
 
   return query;
-}
-
-
-/*
- * pt_make_field_type_expr_node() - builds the node required to print the type
- *                                  of column in SHOW COLUMNS
- *
- *    CONCAT(type_name, IF (prec > 0
- *			    AND (type_id=27 OR
- *			      type_id=26 OR
- *			      type_id=25 OR
- *			      type_id=24 OR
- *			      type_id=23 OR
- * 			      type_id=4  OR
- *			      type_id=22),
- *			    CONCAT( '(',
- *				    prec ,
- *				    IF (type_id=22,
- *					CONCAT( ',',
- *						scale,
- *						')' )
- *					,')')
- *				   ) ,
- *			    IF ( type_id = 6 OR
- *				    type_id = 7 OR
- *				    type_id=8 ,
- *				  CONCAT( ' OF ',
- *					  Types_t.Composed_types),
- *				  IF (type_id = 35,
- *				      CONCAT('(',
- *				      SELECT GROUP_CONCAT(CONCAT('''', EV.a, '''') SEPARATOR ', ')
- *				      FROM TABLE(D.enumeration) as EV(a), ')'), ''))
- *			  )
- *	      ) AS Type
- *
- *  - type_id values are defined in dbtype.h in DB_TYPE
- *
- *
- *   return: newly build node (PT_NODE)
- *   parser(in): Parser context
- */
-static PT_NODE *
-pt_make_field_type_expr_node (PARSER_CONTEXT * parser)
-{
-  PT_NODE *concat_node = NULL;
-  PT_NODE *if_node = NULL;
-  PT_NODE *if_node_types = NULL;
-  PT_NODE *if_node_enum = NULL;
-
-  /* CONCAT(',',scale,')') */
-  {
-    PT_NODE *concat_arg_list = NULL;
-    PT_NODE *concat_arg = NULL;
-
-    concat_arg = pt_make_string_value (parser, ",");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_name (parser, "scale");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_string_value (parser, ")");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_node = parser_keyword_func ("concat", concat_arg_list);
-    if (concat_node == NULL)
-      {
-	return NULL;
-      }
-  }
-
-  /* IF( type_id=22 , CONCAT(',',scale,')') , ')' ) */
-  {
-    PT_NODE *pred_for_if = NULL;
-    PT_NODE *val1_node = NULL;
-    PT_NODE *val2_node = NULL;
-
-    pred_for_if = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
-    assert (concat_node != NULL);
-    val1_node = concat_node;
-    val2_node = pt_make_string_value (parser, ")");
-
-    if_node = parser_make_expression (parser, PT_IF, pred_for_if, val1_node, val2_node);
-    if (if_node == NULL)
-      {
-	return NULL;
-      }
-    concat_node = NULL;
-  }
-
-  /* CONCAT( '(' , prec , IF(..) ) */
-  {
-    PT_NODE *concat_arg_list = NULL;
-    PT_NODE *concat_arg = NULL;
-
-    concat_arg = pt_make_string_value (parser, "(");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_name (parser, "prec");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    assert (if_node != NULL);
-    concat_arg = if_node;
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_node = parser_keyword_func ("concat", concat_arg_list);
-    if (concat_node == NULL)
-      {
-	return NULL;
-      }
-
-    if_node = NULL;
-  }
-
-  /* IF (prec > 0 AND (type_id=27 OR type_id=26 OR type_id=25 OR type_id=24 OR type_id=23 OR type_id=4 or type_id=22),
-   * CONCAT(...) , '' ) */
-  {
-    PT_NODE *cond_item1 = NULL;
-    PT_NODE *cond_item2 = NULL;
-    PT_NODE *val1_node = NULL;
-    PT_NODE *val2_node = NULL;
-    PT_NODE *pred_for_if = NULL;
-
-    /* VARNCHAR and CHAR */
-    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* CHAR */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* VARBIT */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 24);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* BIT */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 23);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* VARCHAR */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 4);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* NUMERIC */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 22);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    cond_item1->info.expr.paren_type = 1;
-
-    /* prec */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_GT, "prec", 0);
-    cond_item1 = parser_make_expression (parser, PT_AND, cond_item2, cond_item1, NULL);
-
-    pred_for_if = cond_item1;
-    assert (concat_node != NULL);
-    val1_node = concat_node;
-    val2_node = pt_make_string_value (parser, "");
-
-    if_node = parser_make_expression (parser, PT_IF, pred_for_if, val1_node, val2_node);
-    if (if_node == NULL)
-      {
-	return NULL;
-      }
-
-    concat_node = NULL;
-  }
-
-  /* CONCAT(' OF ',Types_t.Composed_types) */
-  {
-    PT_NODE *concat_arg_list = NULL;
-    PT_NODE *concat_arg = NULL;
-
-    concat_arg = pt_make_string_value (parser, " OF ");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_arg = pt_make_dotted_identifier (parser, "Types_t.Composed_types");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_node = parser_keyword_func ("concat", concat_arg_list);
-    if (concat_node == NULL)
-      {
-	return NULL;
-      }
-  }
-
-  /* IF (type_id = 35, CONCAT('(', SELECT GROUP_CONCAT(CONCAT('''', EV.a, '''') SEPARATOR ', ') FROM TABLE
-   * (D.enumeration) as EV(a), ')' ), '') */
-  {
-    PT_NODE *node1 = parser_new_node (parser, PT_FUNCTION);
-    PT_NODE *node2 = NULL;
-    PT_NODE *node3 = NULL;
-
-    if (node1 == NULL)
-      {
-	return NULL;
-      }
-
-    /* CONCAT('''', EV.a, '''') */
-    node2 = pt_make_string_value (parser, "'");
-    node3 = pt_make_dotted_identifier (parser, "EV.a");
-    node2 = parser_append_node (node3, node2);
-    node3 = pt_make_string_value (parser, "'");
-    node2 = parser_append_node (node3, node2);
-    node2 = parser_keyword_func ("concat", node2);
-
-    /* GROUP_CONCAT(EV.a SEPARATOR ', ') */
-    node1->info.function.function_type = PT_GROUP_CONCAT;
-    node1->info.function.all_or_distinct = PT_ALL;
-
-    node3 = pt_make_string_value (parser, ", ");
-    node1->info.function.arg_list = parser_append_node (node3, node2);
-    node1->info.function.order_by = NULL;
-
-    /* TABLE(D.enumeration) as EV(a) */
-    node2 = parser_new_node (parser, PT_SPEC);
-    if (node2 == NULL)
-      {
-	return NULL;
-      }
-    node2->info.spec.derived_table = pt_make_dotted_identifier (parser, "D.enumeration");
-    node2->info.spec.derived_table_type = PT_IS_SET_EXPR;
-    node2->info.spec.range_var = pt_name (parser, "EV");
-    node2->info.spec.as_attr_list = pt_name (parser, "a");
-
-    /* SELECT GROUP_CONCAT(EV.a SEPARATOR ', ') FROM TABLE(D.enumeration) as EV(a) */
-    node3 = parser_new_node (parser, PT_SELECT);
-    if (node3 == NULL)
-      {
-	return NULL;
-      }
-    node3->info.query.q.select.list = node1;
-    node3->info.query.q.select.from = node2;
-
-    /* CONCAT('(', SELECT ..., ')') */
-    node1 = pt_make_string_value (parser, "(");
-    node1 = parser_append_node (node3, node1);
-    node1 = parser_append_node (pt_make_string_value (parser, ")"), node1);
-    node2 = parser_keyword_func ("concat", node1);
-
-    /* IF (type_id = 35, CONCAT('(', SELECT ..., ')'), '') */
-    node1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 35);
-    node3 = pt_make_string_value (parser, "");
-    if_node_enum = parser_make_expression (parser, PT_IF, node1, node2, node3);
-    if (if_node_enum == NULL)
-      {
-	return NULL;
-      }
-  }
-
-  /* IF ( type_id = 6 OR type_id = 7 OR type_id=8 , CONCAT( .. ),'') */
-  {
-    PT_NODE *cond_item1 = NULL;
-    PT_NODE *cond_item2 = NULL;
-    PT_NODE *val1_node = NULL;
-    PT_NODE *val2_node = NULL;
-    PT_NODE *pred_for_if = NULL;
-
-    /* SET and MULTISET */
-    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 6);
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 7);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* SEQUENCE */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 8);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-
-    pred_for_if = cond_item1;
-    assert (concat_node != NULL);
-    val1_node = concat_node;
-    val2_node = if_node_enum;
-
-    assert (pred_for_if != NULL && val1_node != NULL && val2_node != NULL);
-
-    if_node_types = parser_make_expression (parser, PT_IF, pred_for_if, val1_node, val2_node);
-    if (if_node_types == NULL)
-      {
-	return NULL;
-      }
-  }
-
-  /* CONCAT( type_name, IF(...) , IF (...) ) */
-  {
-    PT_NODE *concat_arg_list = NULL;
-    PT_NODE *concat_arg = NULL;
-
-    concat_arg = pt_name (parser, "type_name");
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    assert (if_node != NULL);
-    concat_arg = if_node;
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    assert (if_node_types != NULL);
-    concat_arg = if_node_types;
-    concat_arg_list = parser_append_node (concat_arg, concat_arg_list);
-
-    concat_node = parser_keyword_func ("concat", concat_arg_list);
-    if (concat_node == NULL)
-      {
-	return NULL;
-      }
-  }
-
-  concat_node->alias_print = pt_append_string (parser, NULL, "Type");
-
-  return concat_node;
-}
-
-
-/*
- * pt_make_collation_expr_node() - builds the node required to print the
- *                                 collation of column in SHOW COLUMNS
- *
- *    (IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=4,
- *	   CL.coll_name, NULL)) AS Collation
- *
- *   return: newly build node (PT_NODE)
- *   parser(in): Parser context
- */
-static PT_NODE *
-pt_make_collation_expr_node (PARSER_CONTEXT * parser)
-{
-  PT_NODE *collation_name = NULL;
-  PT_NODE *null_expr = NULL;
-  PT_NODE *if_node = NULL;
-
-  collation_name = pt_make_dotted_identifier (parser, "CL.coll_name");
-
-  null_expr = parser_new_node (parser, PT_VALUE);
-  if (null_expr)
-    {
-      null_expr->type_enum = PT_TYPE_NULL;
-    }
-
-  /* IF (type_id=27 OR type_id=26 OR type_id=25 OR type_id=4, CL.name , NULL ) */
-  {
-    PT_NODE *cond_item1 = NULL;
-    PT_NODE *cond_item2 = NULL;
-    PT_NODE *pred_for_if = NULL;
-
-    /* VARNCHAR and CHAR */
-    cond_item1 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 27);
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 26);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* CHAR */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 25);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-    /* STRING */
-    cond_item2 = pt_make_pred_name_int_val (parser, PT_EQ, "type_id", 4);
-    cond_item1 = parser_make_expression (parser, PT_OR, cond_item1, cond_item2, NULL);
-
-    pred_for_if = cond_item1;
-
-    if_node = parser_make_expression (parser, PT_IF, pred_for_if, collation_name, null_expr);
-
-    if (if_node != NULL)
-      {
-	if_node->alias_print = pt_append_string (parser, NULL, "Collation");
-      }
-  }
-
-  return if_node;
 }
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -9455,7 +9093,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       /* IF (charset_id = 4, 'euckr', 'other') */
       PT_NODE *pred = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 4);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 4);	// INTL_CODESET_KSC5601_EUC
       if_node4 = pt_make_if_with_strings (parser, pred, "euckr", "other", NULL);
     }
 
@@ -9464,7 +9102,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       PT_NODE *pred = NULL;
       PT_NODE *string_node = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 2);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 2);	// INTL_CODESET_RAW_BYTES
       string_node = pt_make_string_value (parser, "binary");
 
       if_node3 = pt_make_if_with_expressions (parser, pred, string_node, if_node4, NULL);
@@ -9475,7 +9113,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       PT_NODE *pred = NULL;
       PT_NODE *string_node = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 5);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 5);	// INTL_CODESET_UTF8
       string_node = pt_make_string_value (parser, "utf8");
 
       if_node2 = pt_make_if_with_expressions (parser, pred, string_node, if_node3, NULL);
@@ -9486,7 +9124,7 @@ pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax, PT
       PT_NODE *pred = NULL;
       PT_NODE *string_node = NULL;
 
-      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 3);
+      pred = pt_make_pred_name_int_val (parser, PT_EQ, "charset_id", 3);	// INTL_CODESET_ISO88591
       string_node = pt_make_string_value (parser, "iso88591");
 
       if_node1 = pt_make_if_with_expressions (parser, pred, string_node, if_node2, "Charset");
@@ -9731,6 +9369,234 @@ cleanup:
 
   parser->flag.set_host_var = save_set_host_var;
   return error;
+}
+
+/*
+ * pt_get_query_expr_value () - get the value of an expression
+ * return : error code or NO_ERROR
+ * parser (in) : parser context
+ * expr (in) : expression
+ * expr_val (in/out) : expression value
+ */
+int
+pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val)
+{
+  int save_set_host_var;
+  int error = NO_ERROR;
+  int type_arg[2];
+
+  type_arg[0] = PT_HOST_VAR;	/* type */
+  type_arg[1] = 0;		/* found */
+
+  db_make_null (expr_val);
+
+  if (expr == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  (void) parser_walk_tree (parser, expr, pt_find_node_type_pre, type_arg, NULL, NULL);
+  if (type_arg[1] == 0)
+    {
+      return NO_ERROR;
+    }
+
+  save_set_host_var = parser->flag.set_host_var;
+  parser->flag.set_host_var = 1;
+
+  pt_evaluate_tree (parser, expr, expr_val, 1);
+  if (pt_has_error (parser))
+    {
+      error = ER_FAILED;
+      goto cleanup;
+    }
+
+  if (DB_IS_NULL (expr_val))
+    {
+      goto cleanup;
+    }
+
+cleanup:
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (expr_val);
+      db_make_null (expr_val);
+    }
+
+  parser->flag.set_host_var = save_set_host_var;
+  return error;
+}
+
+/*
+ * pt_check_removable_like_condition () - check if LIKE condition is removable
+ * return : true/false
+ * parser (in) : parser context
+ * from (in) : from clause
+ * expr (in) : expression
+ */
+static bool
+pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr)
+{
+  PT_NODE *arg1, *arg2;
+  PT_NODE *pattern = NULL, *escape = NULL;
+  DB_VALUE where_val, compressed_pattern;
+  int num_logical_chars = 0;
+  int last_safe_logical_pos = 0;
+  int num_match_many = 0;
+  int num_match_one = 0;
+  bool need_recompile = false;
+  bool has_escape_char = false;
+  const char *escape_str = NULL;
+  INTL_CODESET codeset;
+
+  if (expr->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  arg1 = PT_EXPR_ARG1 (expr);
+  arg2 = PT_EXPR_ARG2 (expr);
+
+  switch (expr->info.expr.op)
+    {
+    case PT_LIKE:
+      {
+	if (!arg1 || !pt_check_not_null_constraint (parser, from, arg1))
+	  {
+	    break;
+	  }
+
+	if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+	  {
+	    pattern = PT_EXPR_ARG1 (arg2);
+	    escape = PT_EXPR_ARG2 (arg2);
+	    assert (escape != NULL);
+	  }
+	else
+	  {
+	    pattern = arg2;
+	    escape = NULL;
+	  }
+
+	if (escape != NULL)
+	  {
+	    if (PT_IS_NULL_NODE (escape))
+	      {
+		has_escape_char = true;
+		escape_str = "\\";
+	      }
+	    else
+	      {
+		int esc_char_len = 0;
+
+		assert (pt_is_ascii_string_value_node (escape));
+
+		escape_str = (const char *) escape->info.value.data_value.str->bytes;
+		codeset = db_get_string_codeset (&pattern->info.value.db_value);
+
+		intl_char_count ((unsigned char *) escape_str, escape->info.value.data_value.str->length, codeset,
+				 &esc_char_len);
+		if (esc_char_len != 1)
+		  {
+		    PT_ERRORm (parser, escape, MSGCAT_SET_ERROR, -(ER_QSTR_INVALID_ESCAPE_SEQUENCE));
+		    return false;
+		  }
+		has_escape_char = true;
+	      }
+	  }
+	else if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER))
+	  {
+	    assert (escape == NULL);
+	    assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
+	    has_escape_char = true;
+	    escape_str = "\\";
+	  }
+	else
+	  {
+	    has_escape_char = false;
+	    escape_str = NULL;
+	  }
+
+	if (pt_get_query_expr_value (parser, pattern, &where_val) == NO_ERROR)
+	  {
+	    if (!DB_IS_NULL (&where_val))
+	      {
+		db_make_null (&compressed_pattern);
+
+		db_compress_like_pattern (&where_val, &compressed_pattern, has_escape_char, escape_str);
+
+		db_get_info_for_like_optimization (&compressed_pattern, has_escape_char, escape_str,
+						   &num_logical_chars, &last_safe_logical_pos,
+						   &num_match_many, &num_match_one);
+
+		if (num_logical_chars == 1 && num_match_many == 1)
+		  {
+		    need_recompile = true;
+		  }
+
+		/* If num_logical_chars is greater than 0 and both num_match_many and num_match_one are 0, 
+		 * the PT_LIKE can be replaced with PT_EQ instead.
+		 * See: qo_rewrite_one_like_term() */
+	      }
+	  }
+      }
+
+    default:
+      break;
+    }
+
+  return need_recompile;
+}
+
+PT_NODE *
+pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE **spec_list = (PT_NODE **) arg;
+  if (tree == NULL)
+    {
+      return NULL;
+    }
+
+  switch (tree->node_type)
+    {
+    case PT_SPEC:
+      if (PT_SPEC_IS_ENTITY (tree) && !pt_find_entity (parser, *spec_list, tree->info.spec.id))
+	{
+	  *spec_list = parser_append_node (parser_copy_tree (parser, tree), *spec_list);
+	}
+      break;
+    case PT_EXPR:
+      if (pt_check_removable_like_condition (parser, *spec_list, tree))
+	{
+	  tree->info.expr.flag |= PT_EXPR_INFO_REMOVABLE;
+	}
+      break;
+    default:
+      break;
+    }
+  return tree;
+}
+
+
+PT_NODE *
+pt_check_removable_expr_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *is_removable = (bool *) arg;
+
+  if (tree == NULL)
+    {
+      return NULL;
+    }
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_LIKE))
+    {
+      if (PT_EXPR_INFO_IS_FLAGED (tree, PT_EXPR_INFO_REMOVABLE))
+	{
+	  *is_removable = true;
+	}
+    }
+
+  return tree;
 }
 
 /*
@@ -10281,7 +10147,7 @@ pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt)
 	{
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (domain->type->id == DB_TYPE_CHAR || domain->type->id == DB_TYPE_NCHAR);
+	      ti = (domain->type->id == DB_TYPE_CHAR);
 	    }
 
 	  if (QSTR_COMPARE (domain->collation_id, node->info.value.data_value.str->bytes,
@@ -10305,6 +10171,36 @@ end:
     }
 
   return err;
+}
+
+/*
+ * pt_recompile_for_like_optimizations () - check if query should be recompiled due to removal of unnecessary LIKE condition
+ * return : true/false
+ * parser (in) : parser context
+ * statement (in) : statement
+ * xasl_flag (in) : xasl flag
+ */
+bool
+pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag)
+{
+
+  PT_NODE *spec_list = NULL;
+  bool is_removable = false;
+
+  if (statement->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  if (!(xasl_flag & LIKE_RECOMPILE_CANDIDATE) || !prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING))
+    {
+      return false;
+    }
+
+  parser_walk_tree (parser, statement, pt_check_removable_expr_pre, &spec_list, pt_check_removable_expr_post,
+		    &is_removable);
+
+  return is_removable;
 }
 
 /*

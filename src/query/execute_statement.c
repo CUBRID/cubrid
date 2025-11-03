@@ -5267,9 +5267,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, db_get_int (&val2));
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  cost = db_get_string (&val2);
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, (int) cost[0]);
 	  break;
@@ -5508,8 +5506,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
 const static char *
 get_savepoint_name_from_db_value (DB_VALUE * val)
 {
-  if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR
-      && DB_VALUE_TYPE (val) != DB_TYPE_NCHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARNCHAR)
+  if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR)
     {
       if (tp_value_cast (val, val, tp_domain_resolve_default (DB_TYPE_VARCHAR), false) != DOMAIN_COMPATIBLE)
 	{
@@ -14603,6 +14600,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else if (stream.xasl_id != NULL)
 	{
+	  if (pt_recompile_for_like_optimizations (parser, statement, stream.xasl_header->xasl_flag))
+	    {
+	      contextp->recompile_xasl = true;
+	      if (stream.xasl_id != NULL)
+		{
+		  free_and_init (stream.xasl_id);
+		}
+	    }
 	  /* check xasl header */
 	  /* TODO: we can treat the different cases of MRO by hacking query string. */
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
@@ -21711,11 +21716,10 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   char *upper_case_name = NULL;
   size_t name_size;
   char *owner_name = NULL;
-  char *server_name = NULL;
   char query[2048];
-  char name_buf[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
+  char server_name_lwr[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
 
-  sm_downcase_name ((char *) node_server->info.name.original, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
+  sm_downcase_name ((char *) node_server->info.name.original, server_name_lwr, SERVER_ATTR_LINK_NAME_BUF_SIZE);
   if (node_owner)
     {
       owner_name = (char *) node_owner->info.name.original;
@@ -21741,16 +21745,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   assert (owner_name);
   sprintf (query,
 	   "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
-	   name_buf, owner_name);
-
-  if (owner_name == upper_case_name)
-    {
-      free (upper_case_name);
-    }
-  else
-    {
-      db_string_free ((char *) owner_name);
-    }
+	   server_name_lwr, owner_name);
 
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
@@ -21759,13 +21754,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   int rec_cnt = 0;
   int saved_opt_level;
 
-  server_name = (char *) node_server->info.name.original;
-  owner_name = (char *) (node_owner ? node_owner->info.name.original : NULL);
-
   PARSER_CONTEXT *parser = parser_create_parser ();
   if (parser == NULL)
     {
-      return NULL;
+      // return NULL;
+      goto clear_and_return;
     }
 
   db_make_null (&values[0]);
@@ -21833,15 +21826,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 
   if (rec_cnt != 1)
     {
+      char owner_name_lwr[DB_MAX_USER_LENGTH + 1];
       server_obj = NULL;
-      if (owner_name)
-	{
-	  sprintf (query, "[%s].[%s]", owner_name, server_name);
-	}
-      else
-	{
-	  sprintf (query, "[%s]", server_name);
-	}
+
+      sm_downcase_name (owner_name, owner_name_lwr, sizeof (owner_name_lwr));
+      sprintf (query, "[%s].[%s]", owner_name_lwr, server_name_lwr);
 
       if (rec_cnt == 0)
 	{
@@ -21864,6 +21853,16 @@ err:
     {
       db_value_clear (&values[0]);
       db_value_clear (&values[1]);
+    }
+
+clear_and_return:
+  if (owner_name == upper_case_name)
+    {
+      free (upper_case_name);
+    }
+  else
+    {
+      db_string_free ((char *) owner_name);
     }
 
   return server_obj;

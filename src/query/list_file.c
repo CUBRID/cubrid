@@ -3132,6 +3132,7 @@ int
 qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id)
 {
   PAGE_PTR base_last_page = NULL, append_first_page = NULL;
+  QFILE_LIST_ID *base_last;
 
   assert (thread_p != NULL);
   assert (base_list_id != NULL);
@@ -3183,8 +3184,11 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
   base_list_id->last_offset = append_list_id->last_offset;
   base_list_id->lasttpl_len = append_list_id->lasttpl_len;
 
-  append_list_id->dependent_list_id = base_list_id->dependent_list_id;
-  base_list_id->dependent_list_id = append_list_id;
+  for (base_last = base_list_id; base_last->dependent_list_id != NULL; base_last = base_last->dependent_list_id)
+    {
+      ;
+    }
+  base_last->dependent_list_id = append_list_id;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;

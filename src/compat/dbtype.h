@@ -63,9 +63,7 @@
 #define DB_IS_NULL(value)               db_value_is_null(value)
 
 #define DB_IS_STRING(value)       (db_value_type(value) == DB_TYPE_VARCHAR  || \
-                                   db_value_type(value) == DB_TYPE_CHAR     || \
-                                   db_value_type(value) == DB_TYPE_VARNCHAR || \
-                                   db_value_type(value) == DB_TYPE_NCHAR)
+                                   db_value_type(value) == DB_TYPE_CHAR)
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
@@ -83,13 +81,10 @@
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
-	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR) \
-		 && (v)->data.ch.info.compressed_need_clear != 0))))
+	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR) && (v)->data.ch.info.compressed_need_clear != 0))))
 
 #define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) \
-	? NULL : (v)->data.ch.medium.compressed_buf)
-
+      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) ? NULL : (v)->data.ch.medium.compressed_buf)
 
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)
@@ -124,8 +119,6 @@
 	|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
        : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
 	  (v)->data.ch.medium.buf))
@@ -237,7 +230,8 @@ extern "C"
       }
 
     DB_TYPE type = db_value_domain_type (src);
-    if (type == DB_TYPE_STRING || type == DB_TYPE_VARNCHAR)
+
+    if (type == DB_TYPE_STRING)
       {
 	dst->data.ch.info.compressed_need_clear = false;
       }

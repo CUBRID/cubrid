@@ -20,7 +20,9 @@
 #define _PX_INTERRUPT_HPP_
 
 #include <atomic>
-
+#include <mutex>
+#include <vector>
+#include "error_context.hpp"
 namespace parallel_query
 {
   class interrupt
@@ -77,8 +79,34 @@ namespace parallel_query
 	return m_is_instnum_set?m_current_tuple_cnt.fetch_add (1) >= m_destination_tuple_cnt:false;
       }
   };
-
-
+  class err_messages_with_lock
+  {
+      using er_message = cuberr::er_message;
+    public:
+      std::mutex m_mutex;
+      std::vector<er_message *> m_error_messages;
+      err_messages_with_lock()
+	:m_mutex (),
+	 m_error_messages ()
+      {}
+      ~err_messages_with_lock()
+      {
+	for (auto *msg : m_error_messages)
+	  {
+	    delete msg;
+	  }
+	m_error_messages.clear();
+      }
+      inline int move_top_error_message_to_this ()
+      {
+	int err_id = 0;
+	std::lock_guard<std::mutex> lock (m_mutex);
+	m_error_messages.push_back (new cuberr::er_message (false));
+	err_id = cuberr::context::get_thread_local_context ().get_current_error_level ().err_id;
+	m_error_messages.back()->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
+	return err_id;
+      }
+  };
 }
 
 #endif
