@@ -3,7 +3,7 @@
 #include "file_manager.h"
 
 int
-oos_create (THREAD_ENTRY *thread_p, const HFID &hfid, VFID &oos_vfid)
+oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
   // TODO: check if it is already created
   // with something like hfid or vfid

@@ -25,10 +25,9 @@ TEST (OosTest, OosCreateAndDestroy)
   EXPECT_NE (thread_p, nullptr);
 
   int err;
-  HFID hfid{};
 
   VFID oos_vfid;
-  err = oos_create (thread_p, hfid, oos_vfid);
+  err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
   auto [fileid, volid] = oos_vfid;
@@ -59,15 +58,14 @@ TEST (OosTest, OosCreateAndCreateAgain)
   EXPECT_NE (thread_p, nullptr);
 
   int err;
-  HFID common_hfid{};
 
   VFID oos_vfid;
-  err = oos_create (thread_p, common_hfid, oos_vfid);
+  err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
   VFID oos_vfid2;
-  err = oos_create (thread_p, common_hfid, oos_vfid2);
-  EXPECT_EQ (err, NO_ERROR); // TODO: this should return error
+  err = oos_create (thread_p, oos_vfid2);
+  EXPECT_EQ (err, NO_ERROR);
 
   auto [fileid1, volid1] = oos_vfid;
   auto [fileid2, volid2] = oos_vfid2;
@@ -77,9 +75,6 @@ TEST (OosTest, OosCreateAndCreateAgain)
 
   // either volid is different or fileid is different
   EXPECT_TRUE ( (fileid1 != fileid2) || (volid1 != volid2) );
-
-  // TODO: if given hfid is identical, should return error
-  // EXPECT_EQ (oos_create_err_2, ER_OOS_FILE_ALREADY_EXISTS);
 
   err = db_shutdown();
   EXPECT_EQ (err, NO_ERROR);
@@ -94,10 +89,9 @@ TEST (OosTest, OosInsertAndGet)
   EXPECT_NE (thread_p, nullptr);
 
   int err;
-  HFID hfid{};
   VFID oos_vfid;
 
-  err = oos_create (thread_p, hfid, oos_vfid);
+  err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
   RECDES rec;
@@ -130,10 +124,9 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   EXPECT_NE (thread_p, nullptr);
 
   int err;
-  HFID hfid{};
   VFID oos_vfid;
 
-  err = oos_create (thread_p, hfid, oos_vfid);
+  err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
   // TODO: // constexpr int larger_than_page_size = DB_PAGESIZE * 1.5;
