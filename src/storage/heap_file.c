@@ -7576,8 +7576,7 @@ try_again:
   /* Output record type. */
   context->record_type = slot_p->record_type;
 
-  if (context->fwd_page_watcher.pgptr != NULL && slot_p->record_type != REC_RELOCATION
-      && slot_p->record_type != REC_BIGONE)
+  if (context->fwd_page_watcher.pgptr != NULL && slot_p->record_type != REC_RELOCATION)
     {
       /* Forward page no longer required. */
       pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
@@ -7620,37 +7619,6 @@ try_again:
 			  context->forward_oid.pageid);
 		}
 
-	      goto error;
-	    }
-	  return S_SUCCESS;
-	}
-
-      goto error;
-
-    case REC_BIGONE:
-      /* Need to get forward_oid and forward_page (first overflow page). */
-      scan = spage_get_record (thread_p, context->home_page_watcher.pgptr, context->oid_p->slotid, &peek_recdes, PEEK);
-      if (scan != S_SUCCESS)
-	{
-	  /* Unexpected. */
-	  assert_release (false);
-	  goto error;
-	}
-      /* Output forward_oid. */
-      COPY_OID (&context->forward_oid, (OID *) peek_recdes.data);
-
-      /* Fix overflow page. Since overflow pages should be always accessed with their home pages latched, unconditional
-       * latch should work; However, we need to use the same ordered_fix approach. */
-      PGBUF_WATCHER_RESET_RANK (&context->fwd_page_watcher, PGBUF_ORDERED_HEAP_OVERFLOW);
-      PGBUF_WATCHER_COPY_GROUP (&context->fwd_page_watcher, &context->home_page_watcher);
-      ret = heap_prepare_object_page (thread_p, &context->forward_oid, &context->fwd_page_watcher, context->latch_mode);
-      if (ret == NO_ERROR)
-	{
-	  /* Pages successfully fixed. */
-	  if (context->home_page_watcher.page_was_unfixed)
-	    {
-	      /* This is not expected. */
-	      assert (false);
 	      goto error;
 	    }
 	  return S_SUCCESS;
@@ -21608,6 +21576,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       return ER_FAILED;
     }
 
+  assert_release (!heap_is_big_length (forward_recdes.length + OR_MVCCID_SIZE));
+
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   if (is_mvcc_op)
@@ -21622,7 +21592,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       bool update_old_home = false;
       bool update_old_forward = false;
       bool remove_old_forward = false;
-      bool is_adjusted_size_big = false;
       int delid_offset, repid_and_flag_bits, mvcc_flags;
       char *build_recdes_data;
       bool use_optimization;
@@ -21640,34 +21609,21 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       if (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID))
 	{
 	  adjusted_size += OR_MVCCID_SIZE;
-	  is_adjusted_size_big = heap_is_big_length (adjusted_size);
-	  if (is_adjusted_size_big)
-	    {
-	      /* Rare case, do not optimize it now. */
-	      use_optimization = false;
-	    }
 	}
       else
 	{
 	  /* Rare case, do not optimize it now. */
-	  is_adjusted_size_big = false;
 	  use_optimization = false;
 	}
 
-#if !defined(NDEBUG)
-      if (is_adjusted_size_big)
-	{
-	  /* not exactly necessary, but we'll be able to compare sizes */
-	  adjusted_size = forward_recdes.length - mvcc_header_size_lookup[mvcc_flags] + OR_MVCC_MAX_HEADER_SIZE;
-	}
-#endif
+      assert (!heap_is_big_length (adjusted_size));
 
       /* fix header if necessary */
       fits_in_home =
 	spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, adjusted_size);
       fits_in_forward =
 	spage_is_updatable (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid, adjusted_size);
-      if (is_adjusted_size_big || (!fits_in_forward && !fits_in_home))
+      if (!fits_in_forward && !fits_in_home)
 	{
 	  /* fix header page */
 	  rc = heap_fix_header_page (thread_p, context);
@@ -21686,22 +21642,13 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		  return ER_FAILED;
 		}
 
-	      /* Recomputes the header size, do not recomputes is_adjusted_size_big. */
+	      /* recomputes the header size */
 	      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data);
 	      if (mvcc_flags != ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK))
 		{
-		  /* Rare case - disable optimization, in case that the flags was modified meanwhile. */
+		  /* rare case - disable optimization, in case that the flags was modified meanwhile. */
 		  mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 		  use_optimization = false;
-
-#if !defined(NDEBUG)
-		  if (is_adjusted_size_big)
-		    {
-		      /* not exactly necessary, but we'll be able to compare sizes */
-		      adjusted_size = forward_recdes.length - mvcc_header_size_lookup[mvcc_flags]
-			+ OR_MVCC_MAX_HEADER_SIZE;
-		    }
-#endif
 		}
 	    }
 	}
@@ -21757,7 +21704,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	      return ER_FAILED;
 	    }
 	  assert (forward_rec_header.mvcc_flag == mvcc_flags);
-	  heap_delete_adjust_header (&forward_rec_header, mvcc_id, is_adjusted_size_big);
+	  heap_delete_adjust_header (&forward_rec_header, mvcc_id, false);
 	  or_mvcc_add_header (&new_forward_recdes, &forward_rec_header, OR_GET_BOUND_BIT_FLAG (forward_recdes.data),
 			      OR_GET_OFFSET_SIZE (forward_recdes.data));
 
@@ -21769,24 +21716,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	}
 
       /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
-      if (is_adjusted_size_big)
-	{
-	  /* insert new overflow record */
-	  if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, &new_forward_recdes) == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  /* home record descriptor will be an overflow OID and will be placed in original home page */
-	  heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
-
-	  /* remove old forward record */
-	  remove_old_forward = true;
-	  update_old_home = true;
-
-	  perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_BIG_DELETES);
-	}
-      else if (fits_in_home)
+      if (fits_in_home)
 	{
 	  /* updated forward record fits in home page */
 	  new_home_recdes = new_forward_recdes;
@@ -22103,6 +22033,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
     }
 
+  assert_release (!heap_is_big_length (context->home_recdes.length + OR_MVCCID_SIZE));
+
   /* operation */
   if (is_mvcc_op)
     {
@@ -22114,7 +22046,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       MVCCID mvcc_id = logtb_get_current_mvccid (thread_p);
       char data_buffer[IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE + MAX_ALIGNMENT];
       int adjusted_size;
-      bool is_adjusted_size_big = false;
       int delid_offset, repid_and_flag_bits, mvcc_flags;
       char *build_recdes_data;
       bool use_optimization;
@@ -22129,27 +22060,12 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID))
 	{
 	  adjusted_size += OR_MVCCID_SIZE;
-	  is_adjusted_size_big = heap_is_big_length (adjusted_size);
-	  if (is_adjusted_size_big)
-	    {
-	      /* Rare case, do not optimize it now. */
-	      use_optimization = false;
-	    }
 	}
       else
 	{
-	  /* Rare case, do not optimize it now. */
-	  is_adjusted_size_big = false;
+	  /* rare case, do not optimize it now. */
 	  use_optimization = false;
 	}
-
-#if !defined(NDEBUG)
-      if (is_adjusted_size_big)
-	{
-	  /* not exactly necessary, but we'll be able to compare sizes */
-	  adjusted_size = context->home_recdes.length - mvcc_header_size_lookup[mvcc_flags] + OR_MVCC_MAX_HEADER_SIZE;
-	}
-#endif
 
       /* Build the new record. */
       HEAP_SET_RECORD (&built_recdes, IO_DEFAULT_PAGE_SIZE + OR_MVCC_MAX_HEADER_SIZE, 0, REC_UNKNOWN,
@@ -22207,7 +22123,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	    }
 	  assert (record_header.mvcc_flag == mvcc_flags);
 
-	  heap_delete_adjust_header (&record_header, mvcc_id, is_adjusted_size_big);
+	  heap_delete_adjust_header (&record_header, mvcc_id, false);
 	  or_mvcc_add_header (&built_recdes, &record_header, OR_GET_BOUND_BIT_FLAG (context->home_recdes.data),
 			      OR_GET_OFFSET_SIZE (context->home_recdes.data));
 	  header_size = mvcc_header_size_lookup[mvcc_flags];
@@ -22218,12 +22134,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
 
       /* determine type */
-      if (is_adjusted_size_big)
-	{
-	  built_recdes.type = REC_BIGONE;
-	}
-      else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
-				    built_recdes.length))
+      if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, built_recdes.length))
 	{
 	  built_recdes.type = REC_NEWHOME;
 	}
@@ -22235,41 +22146,25 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /* check whether relocation is necessary */
-      if (built_recdes.type == REC_BIGONE || built_recdes.type == REC_NEWHOME)
+      if (built_recdes.type == REC_NEWHOME)
 	{
 	  /*
 	   * Relocation necessary
 	   */
 	  LOG_DATA_ADDR rec_address;
 
-	  /* insertion of built record */
-	  if (built_recdes.type == REC_BIGONE)
+	  /* new record is relocated - REC_NEWHOME case */
+	  forwarding_recdes.type = REC_RELOCATION;
+
+	  /* insert NEWHOME record */
+	  error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid, NULL);
+	  if (error_code != NO_ERROR)
 	    {
-	      /* new record is overflow record - REC_BIGONE case */
-	      forwarding_recdes.type = REC_BIGONE;
-	      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid, &built_recdes) == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (error_code);
-		  return error_code;
-		}
-
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_BIG_DELETES);
+	      ASSERT_ERROR ();
+	      return error_code;
 	    }
-	  else
-	    {
-	      /* new record is relocated - REC_NEWHOME case */
-	      forwarding_recdes.type = REC_RELOCATION;
 
-	      /* insert NEWHOME record */
-	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid, NULL);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_DELETES);
-	    }
+	  perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_DELETES);
 
 	  /* build forwarding rebuild_record */
 	  heap_build_forwarding_recdes (&forwarding_recdes, forwarding_recdes.type, &forward_oid);
@@ -22337,7 +22232,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      log_append_supplemental_undo_record (thread_p, &built_recdes);
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
-
 	}
 
       /* update home page and check operation result */
@@ -23423,6 +23317,9 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   assert (context->recdes_p != NULL);
   assert (!HFID_IS_NULL (&context->hfid));
 
+  /* OOS handling for the new record must be completed by the caller */
+  assert_release (!heap_is_big_length (context->recdes_p->length));
+
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
 
@@ -23530,7 +23427,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 				context->recdes_p, is_mvcc_op, context->is_redistribute_insert_with_delid);
 
       /* redo lsa for SUPPLEMENT_INSERT log */
-      if (context->do_supplemental_log && context->recdes_p->type != REC_BIGONE)
+      if (context->do_supplemental_log)
 	{
 	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
@@ -23741,10 +23638,6 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    */
   switch (context->record_type)
     {
-    case REC_BIGONE:
-      rc = heap_delete_bigone (thread_p, context, is_mvcc_op);
-      break;
-
     case REC_RELOCATION:
       rc = heap_delete_relocation (thread_p, context, is_mvcc_op);
       break;
@@ -23818,7 +23711,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (!OID_ISNULL (&context->class_oid));
 
   /* OOS handling for the new record must be completed by the caller */
-  assert_release (!heap_is_big_length (context->recdes_p->length));
+  assert_release (!heap_is_big_length (context->recdes_p->length + OR_MVCCID_SIZE));
 
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
