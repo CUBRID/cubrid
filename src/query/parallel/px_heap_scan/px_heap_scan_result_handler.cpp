@@ -860,6 +860,24 @@ namespace parallel_heap_scan
 	    return S_ERROR;
 	  }
       }
+    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+      {
+	if (orig_agg_p->function == PT_COUNT_STAR)
+	  {
+	    ;
+	  }
+	else if (orig_agg_p->function == PT_COUNT)
+	  {
+	    if (orig_agg_p->option == Q_DISTINCT)
+	      {
+		;
+	      }
+	    else
+	      {
+		db_make_bigint (orig_agg_p->accumulator.value, orig_agg_p->accumulator.curr_cnt);
+	      }
+	  }
+      }
     return S_END;
   }
 
@@ -896,7 +914,7 @@ namespace parallel_heap_scan
 		  {
 		    return;
 		  }
-		type_list.domp[0] = agg_node->domain;
+		type_list.domp[0] = agg_node->operands->value.domain;
 		agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
 		db_private_free_and_init (thread_p, type_list.domp);
 		if (agg_node->list_id == nullptr)
