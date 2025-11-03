@@ -1618,8 +1618,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	   */
 	  if (DB_IS_NULL (&last_key))
 	    {
-	      /* is the first leaf When the types of leaf node are char, nchar, bit, the type that is saved on non-leaf
-	       * node is different. non-leaf spec (char -> varchar, nchar -> varnchar, bit -> varbit) hence it should
+	      /* is the first leaf When the types of leaf node are char, bit, the type that is saved on non-leaf
+	       * node is different. non-leaf spec (char -> varchar, bit -> varbit) hence it should
 	       * be configured by using setval of nonleaf_key_type. */
 	      ret = load_args->btid->nonleaf_key_type->type->setval (&prefix_key, &first_key, true);
 	      if (ret != NO_ERROR)

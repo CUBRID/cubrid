@@ -2633,8 +2633,6 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       error = qdata_add_chars_to_dbval (dbval1_p, dbval2_p, result_p);
@@ -2793,8 +2791,6 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       val_size = db_get_string_size (dbval2_p);
@@ -6041,8 +6037,6 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (dbval_p, &cast_value, &res_type);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && res_type != DB_TYPE_DOUBLE))
@@ -6241,8 +6235,6 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_NULL:
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       if (dbval1_p != NULL && dbval2_p != NULL)
@@ -8529,8 +8521,7 @@ qdata_elt (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_
     }
 
   /*
-   * operand should already be cast to the right type (CHAR
-   * or NCHAR VARYING)
+   * operand should already be cast to the right type (CHAR)
    */
   error_status = pr_clone_value (operand_value, function_p->value);
 

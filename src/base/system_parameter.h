@@ -507,8 +507,10 @@ enum param_id
 
   PRM_ID_MEMOIZE_MEMORY_LIMIT,
 
+  PRM_ID_HOSTVAR_PEEKING,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_MEMOIZE_MEMORY_LIMIT
+  PRM_LAST_ID = PRM_ID_HOSTVAR_PEEKING
 };
 typedef enum param_id PARAM_ID;
 

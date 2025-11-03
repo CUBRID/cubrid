@@ -18,9 +18,6 @@ parameters:
   run_medium_test:
     type: boolean
     default: false
-  run_plcsql_test:
-    type: boolean
-    default: false
   run_all_test:
     type: boolean
     default: false
@@ -35,7 +32,6 @@ jobs:
     environment:
       RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
       RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
-      RUN_PLCSQL_TEST: << pipeline.parameters.run_plcsql_test >>
       RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
       RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
       BASELINE: << pipeline.parameters.baseline >>
@@ -47,7 +43,6 @@ jobs:
             echo "Pipeline parameters:"
             echo "RUN_MEDIUM_TEST: $RUN_MEDIUM_TEST"
             echo "RUN_SQL_TEST: $RUN_SQL_TEST"
-            echo "RUN_PLCSQL_TEST: $RUN_PLCSQL_TEST"
             echo "RUN_SHELL_TEST: $RUN_SHELL_TEST"
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
@@ -73,9 +68,6 @@ jobs:
               run_medium_test:
                 type: boolean
                 default: << pipeline.parameters.run_medium_test >>
-              run_plcsql_test:
-                type: boolean
-                default: << pipeline.parameters.run_plcsql_test >>
               run_all_test:
                 type: boolean
                 default: << pipeline.parameters.run_all_test >>
@@ -104,15 +96,9 @@ jobs:
                             echo "TEST_SUITE is none"
                             exit 1
                             ;;
-                          plcsql)
-                            TEST_SUITE="sql"
-                            base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/sql/{_05_plcsql,_35_fig_cake/plcsql}"
-                            ;;
                           sql)
                             base_dir="cubrid-testcases"
-                            rm -rf \$base_dir/sql/_05_plcsql \$base_dir/sql/_35_fig_cake/plcsql
-                            glob_path="\$base_dir/\$TEST_SUITE/_*"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
                             ;;
                           shell)
                             base_dir="cubrid-testcases-private-ex"
@@ -121,7 +107,7 @@ jobs:
                             ;;
                           *)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
                             ;;
                         esac
 
@@ -132,12 +118,14 @@ jobs:
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] total testcases: \$(wc -l tc_dirs.list)"
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir -name "cases" -type d | grep -v -f tc_dirs.list | xargs -r rm -rf
+                          find \$base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
                         else
                           echo "[debug] split tests for parallel execution"
-                          circleci tests glob "\$glob_path" | circleci tests split --split-by=name | tee tc.list
+                          circleci tests glob "\$glob_path" | grep -P '/cases/[^/]+\.sql$' \
+                            | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=timings --timings-type=file
+                          echo "[debug] total testcases: \$(wc -l tc.list)"
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d -print0 | grep -vzZ -f tc.list | xargs -0 rm -rf
+                          find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
                         fi
 
                         echo "[debug] Run the tests"
@@ -290,29 +278,6 @@ jobs:
                       paths:
                         - cubrid-testcases
                       
-              test_plcsql:
-                executor: cubrid-default
-                resource_class: medium
-                parallelism: 1
-                environment:
-                  TEST_SUITE: "plcsql"
-                steps:
-                  - restore_cache:
-                      keys:
-                        - "cubrid-testcases-develop-${TC_SHA}"
-                        - "cubrid-testcases-develop-"
-                  - attach-and-run-tests
-                  - run:
-                      name: Clean up tc before save_cache
-                      command: |
-                        cd cubrid-testcases
-                        git clean -fd
-                        git reset --hard
-                  - save_cache:
-                      key: "cubrid-testcases-develop-${TC_SHA}"
-                      paths:
-                        - cubrid-testcases
-                      
               test_shell:
                 executor: cubrid-test-shell
                 parallelism: 50
@@ -335,7 +300,6 @@ jobs:
             echo "[debug] Conditionally add test jobs based on parameters"
             [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium: {requires: [build]}" >> .circleci/continue.yml
             [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:    {requires: [build]}" >> .circleci/continue.yml
-            [ "$RUN_PLCSQL_TEST"  = "true" ] && echo "      - test_plcsql: {requires: [build]}" >> .circleci/continue.yml
             [ "$RUN_SHELL_TEST"   = "true" ] && echo "      - test_shell:  {requires: [build]}" >> .circleci/continue.yml
             
             echo "[debug] Output generated configuration (.circleci/continue.yml)"

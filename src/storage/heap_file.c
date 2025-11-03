@@ -17754,15 +17754,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	{
 	  /* If destination is char/varchar, we need to first cast the value to a string with no precision, then to
 	   * destination type with the desired precision. */
-	  TP_DOMAIN *string_dom;
-	  if (TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_NCHAR || TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_VARNCHAR)
-	    {
-	      string_dom = tp_domain_resolve_default (DB_TYPE_VARNCHAR);
-	    }
-	  else
-	    {
-	      string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-	    }
+	  TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), string_dom, false)) != DOMAIN_COMPATIBLE)
 	    {
 	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), string_dom);
@@ -17822,8 +17814,6 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
 		  {
 		    const char *str = db_get_string (&(value->dbvalue));
 		    const char *str_end = str + db_get_string_length (&(value->dbvalue));
