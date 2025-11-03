@@ -11857,13 +11857,13 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
 static size_t
 heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr)
 {
-  int column_total_size, header_size;
+  int payload_size, header_size;
 
   /* calcuate the entire size of columns */
-  column_total_size = heap_attrinfo_get_record_payload_size (attr_info);
-  header_size = heap_attrinfo_get_record_header_size (attr_info, column_total_size, is_mvcc_class, offset_size_ptr);
+  payload_size = heap_attrinfo_get_record_payload_size (attr_info);
+  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
 
-  return header_size + column_total_size;
+  return header_size + payload_size;
 }
 
 /*
