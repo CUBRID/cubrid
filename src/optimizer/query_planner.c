@@ -11514,7 +11514,7 @@ qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg)
   BITSET_ITERATOR terms_iter;
   QO_ENV *env;
   QO_TERM *termp;
-  PT_NODE *expr;
+  PT_NODE *expr, *left;
   QO_SEGMENT *seg;
 
   bool *result = (bool *) arg;
@@ -11542,7 +11542,18 @@ qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg)
 	  continue;
 	}
 
-      qo_expr_segs (env, pt_left_part (expr), &temp_segs_set);
+      left = pt_left_part (expr);
+      while (left && left->node_type == PT_EXPR && left->info.expr.op == PT_CAST && left->info.expr.arg1)
+	{
+	  left = pt_left_part (left);
+	}
+
+      if (!pt_is_attr (left))
+	{
+	  continue;
+	}
+
+      qo_expr_segs (env, left, &temp_segs_set);
       seg_idx = bitset_first_member (&temp_segs_set);
       if (seg_idx == -1)
 	{
