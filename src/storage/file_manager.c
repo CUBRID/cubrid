@@ -3071,6 +3071,8 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "QUERY_AREA";
     case FILE_TEMP:
       return "TEMPORARILY";
+    case FILE_OOS:
+      return "OUT_OF_LINE_OVERFLOW_STORAGE";
     case FILE_UNKNOWN_TYPE:
       return "UNKNOWN";
     case FILE_HEAP_REUSE_SLOTS:
