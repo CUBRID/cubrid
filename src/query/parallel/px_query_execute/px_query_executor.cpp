@@ -38,12 +38,13 @@
 namespace parallel_query_execute
 {
   query_executor::query_executor (THREAD_ENTRY *root_thread_p, worker_manager *worker_manager_p, int parallelism,
-				  int estimated_jobs, bool on_trace)
+				  int estimated_jobs, bool on_trace, xasl_state *xasl_state)
     :m_root_thread_p (root_thread_p),
      m_worker_manager_p (worker_manager_p),
      m_job_execution_queue (new queue (estimated_jobs)),
      m_is_task_running_p (new bool (false)),
      m_parallelism (parallelism),
+     m_xasl_state (qexec_deep_copy_xasl_state (root_thread_p, xasl_state)),
      m_join_context (),
      m_interrupt (),
      m_error_messages(),
@@ -53,6 +54,7 @@ namespace parallel_query_execute
      m_has_job (false),
      m_on_trace (on_trace)
   {
+    assert (m_xasl_state != nullptr);
     m_stats = {{0, 0}, 0, 0, 0};
   }
 
@@ -62,6 +64,7 @@ namespace parallel_query_execute
      m_job_execution_queue (parent_executor_p->m_job_execution_queue),
      m_is_task_running_p (parent_executor_p->m_is_task_running_p),
      m_parallelism (parent_executor_p->m_parallelism),
+     m_xasl_state (parent_executor_p->m_xasl_state),
      m_join_context (),
      m_interrupt (),
      m_error_messages(),
@@ -71,12 +74,15 @@ namespace parallel_query_execute
      m_has_job (false),
      m_on_trace (parent_executor_p->m_on_trace)
   {
+    assert (m_xasl_state != nullptr);
     m_stats = {{0, 0}, 0, 0, 0};
   }
   query_executor::~query_executor()
   {
     if (m_is_root_executor)
       {
+	m_interrupt.set_code (interrupt::interrupt_code::USER_INTERRUPTED_FROM_MAIN_THREAD);
+	m_job_execution_queue->push_last();
 	delete m_job_execution_queue;
 	delete m_is_task_running_p;
 	if (m_worker_manager_p != nullptr)
@@ -84,6 +90,7 @@ namespace parallel_query_execute
 	    m_worker_manager_p->release_workers (m_parallelism);
 	    m_worker_manager_p = nullptr;
 	  }
+	qexec_free_xasl_state (m_root_thread_p, m_xasl_state);
       }
     if (m_on_trace)
       {
@@ -95,12 +102,12 @@ namespace parallel_query_execute
   {
     if (!m_has_job)
       {
-	m_job = job (xasl, xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr);
+	m_job = job (xasl, m_xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr);
 	m_join_context.add_running_jobs();
 	m_has_job = true;
 	return true;
       }
-    m_job_execution_queue->push (job (xasl, xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr),
+    m_job_execution_queue->push (job (xasl, m_xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr),
 				 m_interrupt);
     m_join_context.add_running_jobs();
     return true;
@@ -270,7 +277,7 @@ namespace parallel_query_execute
 
 extern "C" {
   bool make_parallel_query_executor_recursively (THREAD_ENTRY *thread_p, xasl_node *xasl,
-      parallel_query::worker_manager *worker_manager_p, int parallelism)
+      parallel_query::worker_manager *worker_manager_p, int parallelism, xasl_state *xasl_state)
   {
     if (!xcache_uses_clones())
       {
@@ -312,7 +319,7 @@ extern "C" {
     cubxasl::iterate_xasl_tree (xasl, estimated_jobs_iter, true);
 
     std::function<bool (xasl_node *)> executor_iter = [thread_p, worker_manager_p,
-						parallelism, estimated_jobs, &on_trace, &executor_p] (xasl_node *xasl_p) -> bool
+						parallelism, estimated_jobs, &on_trace, &executor_p, xasl_state] (xasl_node *xasl_p) -> bool
     {
       if (xasl_p->px_executor == NULL && !XASL_IS_FLAGED (xasl_p, XASL_NO_PARALLEL_SUBQUERY) && (xasl_p->type == BUILDLIST_PROC || xasl_p->type == BUILDVALUE_PROC || xasl_p->type == UNION_PROC
 	  || xasl_p->type == INTERSECTION_PROC || xasl_p->type == DIFFERENCE_PROC || xasl_p->type == HASHJOIN_PROC || xasl_p->type == MERGELIST_PROC))
@@ -336,7 +343,7 @@ extern "C" {
 	    {
 	      if (executor_p == NULL)
 		{
-		  executor_p = new query_executor (thread_p, worker_manager_p, parallelism, estimated_jobs, on_trace);
+		  executor_p = new query_executor (thread_p, worker_manager_p, parallelism, estimated_jobs, on_trace, xasl_state);
 		  xasl_p->px_executor = executor_p;
 		}
 	      else
@@ -351,6 +358,10 @@ extern "C" {
     if (!executor_p)
       {
 	worker_manager_p->release_workers (parallelism);
+	return false;
+      }
+    if (executor_p->m_xasl_state == nullptr)
+      {
 	return false;
       }
     return true;

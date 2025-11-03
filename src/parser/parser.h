@@ -628,6 +628,7 @@ extern "C"
 					  PT_NODE * arg3);
   extern PT_NODE *parser_keyword_func (const char *name, PT_NODE * args);
 
+  extern bool pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * node);
   extern PT_NODE *pt_convert_to_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool use_parens_inside,
 					      bool use_parens_outside);
   extern bool pt_is_operator_logical (PT_OP_TYPE op);
@@ -668,6 +669,10 @@ extern "C"
   extern PT_NODE *pt_make_query_show_collation (PARSER_CONTEXT * parser, int like_where_syntax,
 						PT_NODE * like_or_where_expr);
 
+  extern int pt_get_query_expr_value (PARSER_CONTEXT * parser, PT_NODE * expr, DB_VALUE * expr_val);
+  extern PT_NODE *pt_check_removable_expr_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+  extern PT_NODE *pt_check_removable_expr_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+
   extern PT_NODE *pt_find_node_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern PT_NODE *pt_find_op_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern int pt_get_query_limit_value (PARSER_CONTEXT * parser, PT_NODE * query, DB_VALUE * limit_val, bool add_offset);
@@ -681,7 +686,7 @@ extern "C"
   extern void pt_free_statement_xasl_id (PT_NODE * statement);
   extern int pt_check_enum_data_type (PARSER_CONTEXT * parser, PT_NODE * dt);
   extern bool pt_recompile_for_limit_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
-
+  extern bool pt_recompile_for_like_optimizations (PARSER_CONTEXT * parser, PT_NODE * statement, int xasl_flag);
   extern PT_NODE *pt_make_query_show_trace (PARSER_CONTEXT * parser);
 
   extern void insert_rewrite_names_in_value_clauses (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
