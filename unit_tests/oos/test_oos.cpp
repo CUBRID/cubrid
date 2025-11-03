@@ -22,6 +22,21 @@ TEST (BasicTest, Addition)
   EXPECT_EQ (ret, 3);
 }
 
+TEST (OosTest, OosCreateAndCreateAgain)
+{
+  auto error = db_restart ("unit_test", TRUE, "testdb");
+  EXPECT_EQ (error, NO_ERROR);
+  auto thread_p = thread_get_thread_entry_info();
+  EXPECT_NE (thread_p, nullptr);
+
+  HFID hfid{};
+  auto [oos_create_err, oss_vfid] = oos_create (thread_p, hfid);
+  EXPECT_EQ (oos_create_err, NO_ERROR);
+
+  auto [oos_create_err_2,_] = oos_create (thread_p, hfid);
+  EXPECT_EQ (oos_create_err_2, ER_OOS_FILE_ALREADY_EXISTS);
+}
+
 TEST (OosTest, OosCreateAndDestroy)
 {
   auto error = db_restart ("unit_test", TRUE, "testdb");
