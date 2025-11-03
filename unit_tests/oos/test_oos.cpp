@@ -1,13 +1,8 @@
 #include "gtest/gtest.h"
-#include <gtest/gtest.h>
 
-#include "db_client_type.hpp"
 #include "dbi.h"
-#include "authenticate.h"
 #include "thread_manager.hpp"
-#include "page_buffer.h"
 #include "oos_file.hpp"
-#include "utility.h"
 
 
 TEST (BasicTest, Hello)
@@ -22,16 +17,19 @@ TEST (BasicTest, Addition)
   EXPECT_EQ (ret, 3);
 }
 
-TEST (OosTest, OosCreate)
+TEST (OosTest, OosCreateAndDestroy)
 {
   auto error = db_restart ("unit_test", TRUE, "testdb");
   EXPECT_EQ (error, NO_ERROR);
   auto thread_p = thread_get_thread_entry_info();
   EXPECT_NE (thread_p, nullptr);
 
+  int err;
   HFID hfid{};
-  auto [oos_create_err, oos_vfid] = oos_create (thread_p, hfid);
-  EXPECT_EQ (oos_create_err, NO_ERROR);
+
+  VFID oos_vfid;
+  err = oos_create (thread_p, hfid, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
 
   auto [fileid, volid] = oos_vfid;
 
@@ -42,6 +40,15 @@ TEST (OosTest, OosCreate)
   EXPECT_NE (fileid, NULL_FILEID);
   EXPECT_NE (volid, NULL_VOLID);
 
+  err = oos_destroy (thread_p, oos_vfid);
+  auto [fileid_after_destroy, volid_after_destroy] = oos_vfid;
+
+  EXPECT_EQ (err, NO_ERROR);
+  EXPECT_EQ (fileid_after_destroy, NULL_FILEID);
+  EXPECT_EQ (volid_after_destroy, NULL_VOLID);
+
+  err = db_shutdown();
+  EXPECT_EQ (err, NO_ERROR);
 }
 
 TEST (OosTest, OosCreateAndCreateAgain)
@@ -51,13 +58,18 @@ TEST (OosTest, OosCreateAndCreateAgain)
   auto thread_p = thread_get_thread_entry_info();
   EXPECT_NE (thread_p, nullptr);
 
-  HFID hfid{};
-  auto [oos_create_err, oss_vfid] = oos_create (thread_p, hfid);
-  EXPECT_EQ (oos_create_err, NO_ERROR);
+  int err;
+  HFID common_hfid{};
 
-  auto [oos_create_err_2,oos_vfid2] = oos_create (thread_p, hfid);
+  VFID oos_vfid;
+  err = oos_create (thread_p, common_hfid, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
 
-  auto [fileid1, volid1] = oss_vfid;
+  VFID oos_vfid2;
+  err = oos_create (thread_p, common_hfid, oos_vfid2);
+  EXPECT_EQ (err, NO_ERROR); // TODO: this should return error
+
+  auto [fileid1, volid1] = oos_vfid;
   auto [fileid2, volid2] = oos_vfid2;
 
   printf ("First oos_vfid: fileid=%d, volid=%d\n", fileid1, volid1);
@@ -69,22 +81,9 @@ TEST (OosTest, OosCreateAndCreateAgain)
   // TODO: if given hfid is identical, should return error
   // EXPECT_EQ (oos_create_err_2, ER_OOS_FILE_ALREADY_EXISTS);
 
-}
+  err = db_shutdown();
+  EXPECT_EQ (err, NO_ERROR);
 
-TEST (OosTest, OosCreateAndDestroy)
-{
-  auto error = db_restart ("unit_test", TRUE, "testdb");
-  EXPECT_EQ (error, NO_ERROR);
-  auto thread_p = thread_get_thread_entry_info();
-  EXPECT_NE (thread_p, nullptr);
-
-  HFID hfid{};
-  auto [oos_create_err, oos_vfid] = oos_create (thread_p, hfid);
-  EXPECT_EQ (oos_create_err, NO_ERROR);
-
-  // TODO: oos_destroy should work under recovery
-  // auto ret = oos_destroy (thread_p, oos_vfid);
-  // EXPECT_EQ (ret, NO_ERROR);
 }
 
 TEST (OosTest, OosInsertAndGet)
@@ -94,61 +93,74 @@ TEST (OosTest, OosInsertAndGet)
   auto thread_p = thread_get_thread_entry_info();
   EXPECT_NE (thread_p, nullptr);
 
-  auto [oos_create_err, oos_vfid] = oos_create (thread_p, * (new HFID()));
-  EXPECT_EQ (oos_create_err, NO_ERROR);
+  int err;
+  HFID hfid{};
+  VFID oos_vfid;
 
-  auto inserted_recs = std::vector<RECDES> {};
-  auto [oos_insert_err, oos_recdeses ] = oos_insert (thread_p, oos_vfid, inserted_recs);
+  err = oos_create (thread_p, hfid, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
 
-  EXPECT_EQ (oos_insert_err, NO_ERROR);
-  EXPECT_EQ (oos_recdeses.size(), inserted_recs.size());
+  RECDES rec;
+  err = recdes_allocate_data_area (&rec, 100);
+  EXPECT_EQ (err, NO_ERROR);
 
-  auto first_oid = OID{};
-  auto result_recdes = RECDES{};
-  auto error_code = oos_get (thread_p, oos_vfid, first_oid, result_recdes);
-  oos_get (thread_p, oos_vfid, first_oid, result_recdes);
+  strncpy (&rec.data[0], "This is a test OOS record.", 100 - 1);
+  rec.length = strlen (&rec.data[0]) + 1;
 
-  EXPECT_EQ (error_code, NO_ERROR);
+  OID oid;
+  err = oos_insert (thread_p, oos_vfid, rec, oid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  RECDES result_recdes;
+  err = oos_read (thread_p, oos_vfid, oid, result_recdes);
+  EXPECT_EQ (err, NO_ERROR);
+
+  // TODO: EXPECT_EQ (result_recdes.length, rec.length);
+  // TODO: EXPECT_STREQ (result_recdes.data, rec.data);
+
+  err = db_shutdown();
+  EXPECT_EQ (err, NO_ERROR);
 }
 
-
-// TEST (OosTest, PrintOos)
-// {
-//   auto error = db_restart ("unit_test", TRUE, "testdb");
-//   EXPECT_EQ (error, NO_ERROR);
-//   auto thread_p = thread_get_thread_entry_info();
-//   EXPECT_NE (thread_p, nullptr);
-// }
-
-TEST (OosTest, PageFixUnfix)
+TEST (OosTest, OosInsertLargerThanPageSize)
 {
-  auto db_name = "testdb";
-  auto error = db_restart ("unit_test", TRUE, db_name);
+  auto error = db_restart ("unit_test", TRUE, "testdb");
   EXPECT_EQ (error, NO_ERROR);
-
   auto thread_p = thread_get_thread_entry_info();
+  EXPECT_NE (thread_p, nullptr);
 
-  VPID vpid;
-  vpid.volid = 0;
-  vpid.pageid = 220;
-  auto pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  int err;
+  HFID hfid{};
+  VFID oos_vfid;
 
-  printf ("Page fixed: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
-  printf ("pgptr=%p\n", pgptr);
+  err = oos_create (thread_p, hfid, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
 
-  (void) pgbuf_check_page_ptype (thread_p, pgptr, PAGE_HEAP);
-  printf ("Page type is PAGE_HEAP\n");
-  fflush (stdout);
+  // TODO: // constexpr int larger_than_page_size = DB_PAGESIZE * 1.5;
+  constexpr int larger_than_page_size = 5;
 
-  HFID hfid;
-  auto [x, y] = oos_create (thread_p, hfid);
-  printf ("############## oos_init called\n");
-  fflush (stdout);
+  RECDES rec;
+  err = recdes_allocate_data_area (&rec, larger_than_page_size);
+  EXPECT_EQ (err, NO_ERROR);
 
-  // EXPECT_EQ(1, 2);
+  const auto large_data = std::string (larger_than_page_size - 1, 'A');
+  rec.length = larger_than_page_size;
+  rec.data[rec.length - 1] = '\0';
+  strncpy (rec.data, large_data.c_str(), larger_than_page_size - 1);
+  EXPECT_EQ (strlen (rec.data), rec.length - 1);
+  EXPECT_STREQ (rec.data, large_data.c_str());
 
-  pgbuf_unfix (thread_p, pgptr);
-  db_shutdown();
+  OID oid;
+  err = oos_insert (thread_p, oos_vfid, rec, oid);
+  EXPECT_EQ (err, NO_ERROR);
 
+  RECDES result_recdes;
+  err = oos_read (thread_p, oos_vfid, oid, result_recdes);
+  EXPECT_EQ (err, NO_ERROR);
+  EXPECT_STREQ (result_recdes.data, rec.data);
+  EXPECT_STREQ (result_recdes.data, large_data.c_str());
+
+  err = db_shutdown();
+  EXPECT_EQ (err, NO_ERROR);
 }
 
