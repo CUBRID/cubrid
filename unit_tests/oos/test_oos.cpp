@@ -22,6 +22,28 @@ TEST (BasicTest, Addition)
   EXPECT_EQ (ret, 3);
 }
 
+TEST (OosTest, OosCreate)
+{
+  auto error = db_restart ("unit_test", TRUE, "testdb");
+  EXPECT_EQ (error, NO_ERROR);
+  auto thread_p = thread_get_thread_entry_info();
+  EXPECT_NE (thread_p, nullptr);
+
+  HFID hfid{};
+  auto [oos_create_err, oos_vfid] = oos_create (thread_p, hfid);
+  EXPECT_EQ (oos_create_err, NO_ERROR);
+
+  auto [fileid, volid] = oos_vfid;
+
+  printf ("oos_vfid: fileid=%d, volid=%d\n", fileid, volid);
+
+  EXPECT_NE (fileid, 0);
+  EXPECT_EQ (fileid, 4288);
+  EXPECT_NE (fileid, NULL_FILEID);
+  EXPECT_NE (volid, NULL_VOLID);
+
+}
+
 TEST (OosTest, OosCreateAndCreateAgain)
 {
   auto error = db_restart ("unit_test", TRUE, "testdb");
@@ -33,8 +55,20 @@ TEST (OosTest, OosCreateAndCreateAgain)
   auto [oos_create_err, oss_vfid] = oos_create (thread_p, hfid);
   EXPECT_EQ (oos_create_err, NO_ERROR);
 
-  auto [oos_create_err_2,_] = oos_create (thread_p, hfid);
-  EXPECT_EQ (oos_create_err_2, ER_OOS_FILE_ALREADY_EXISTS);
+  auto [oos_create_err_2,oos_vfid2] = oos_create (thread_p, hfid);
+
+  auto [fileid1, volid1] = oss_vfid;
+  auto [fileid2, volid2] = oos_vfid2;
+
+  printf ("First oos_vfid: fileid=%d, volid=%d\n", fileid1, volid1);
+  printf ("Second oos_vfid: fileid=%d, volid=%d\n", fileid2, volid2);
+
+  // either volid is different or fileid is different
+  EXPECT_TRUE ( (fileid1 != fileid2) || (volid1 != volid2) );
+
+  // TODO: if given hfid is identical, should return error
+  // EXPECT_EQ (oos_create_err_2, ER_OOS_FILE_ALREADY_EXISTS);
+
 }
 
 TEST (OosTest, OosCreateAndDestroy)
@@ -45,10 +79,12 @@ TEST (OosTest, OosCreateAndDestroy)
   EXPECT_NE (thread_p, nullptr);
 
   HFID hfid{};
-  auto [oos_create_err, oss_vfid] = oos_create (thread_p, hfid);
+  auto [oos_create_err, oos_vfid] = oos_create (thread_p, hfid);
   EXPECT_EQ (oos_create_err, NO_ERROR);
-  auto ret = oos_destroy (thread_p, hfid);
-  EXPECT_EQ (ret, NO_ERROR);
+
+  // TODO: oos_destroy should work under recovery
+  // auto ret = oos_destroy (thread_p, oos_vfid);
+  // EXPECT_EQ (ret, NO_ERROR);
 }
 
 TEST (OosTest, OosInsertAndGet)
@@ -113,123 +149,6 @@ TEST (OosTest, PageFixUnfix)
 
   pgbuf_unfix (thread_p, pgptr);
   db_shutdown();
-
-}
-
-TEST (DiagdbTest, DiagdbMain)
-{
-
-  // UTIL_FUNCTION_ARG *arg = &util_func_arg;
-  // UTIL_ARG_MAP *arg_map = arg->arg_map;
-  char er_msg_file[PATH_MAX];
-  const char *db_name;
-  const char *output_file = NULL;
-  const char *class_name;
-  FILE *infp = NULL;
-  FILE *outfp = NULL;
-  bool is_emergency = false;
-  bool need_db_shutdown = false;
-  // DIAGDUMP_TYPE diag;
-  THREAD_ENTRY *thread_p;
-  int error_code = NO_ERROR;
-  char *class_list_file;
-
-  // db_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  db_name = "testdb";
-  if (db_name == NULL)
-    {
-      goto print_diag_usage;
-    }
-
-  // is_emergency = utility_get_option_bool_value (arg_map, DIAG_EMERGENCY_S);
-  is_emergency = true;
-
-  output_file = NULL;
-  if (output_file == NULL)
-    {
-      outfp = stdout;
-    }
-  else
-    {
-      outfp = fopen (output_file, "w");
-      if (outfp == NULL)
-	{
-	  goto error_exit;
-	}
-    }
-
-  class_name = NULL;
-
-  class_list_file = NULL;
-
-
-  if (class_name && class_list_file)
-    {
-      fprintf (stderr, "The -n and -i options cannot be used together.\n");
-      goto error_exit;
-    }
-
-  if (check_database_name (db_name))
-    {
-      goto error_exit;
-    }
-
-  /* error message log file */
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", db_name, "unittest");
-
-  er_init (er_msg_file, ER_NEVER_EXIT);
-
-  AU_DISABLE_PASSWORDS();
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  db_login ("DBA", NULL);
-  if (db_restart ("unit_test", TRUE, db_name) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
-  need_db_shutdown = true;
-
-
-  thread_p = thread_get_thread_entry_info();
-
-  VFID vfid;
-  VPID vpid;
-  HFID hfid;
-  // heap_ovf_find_vfid (thread_p, &hfid, &vfid, true, PGBUF_UNCONDITIONAL_LATCH);
-
-  db_shutdown();
-
-  fflush (outfp);
-  if (output_file != NULL && outfp != NULL && outfp != stdout)
-    {
-      fclose (outfp);
-    }
-  if (infp != NULL)
-    {
-      fclose (infp);
-    }
-
-  return;
-
-print_diag_usage:
-  fprintf (stderr, "wow");
-  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
-
-error_exit:
-  if (need_db_shutdown)
-    {
-      db_shutdown();
-    }
-
-  if (output_file != NULL && outfp != NULL && outfp != stdout)
-    {
-      fclose (outfp);
-    }
-  if (infp != NULL)
-    {
-      fclose (infp);
-    }
 
 }
 

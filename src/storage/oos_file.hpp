@@ -17,13 +17,15 @@ struct OosCreateResult
  * contains error_code in case of error
  * contains output oos_vfid and oos_vpid in case of success
  */
-[[nodiscard]] OosCreateResult oos_create (const THREAD_ENTRY *thread_p, const HFID &hfid);
+[[nodiscard]] OosCreateResult oos_create (THREAD_ENTRY *thread_p, const HFID &hfid);
 
 /*
  * oos_destroy ()
  * return error code: int
  */
-[[nodiscard]] int oos_destroy (const THREAD_ENTRY *thread_p, const HFID &hfid);
+[[nodiscard]] int oos_destroy (THREAD_ENTRY *thread_p, const HFID &hfid);
+
+[[nodiscard]] int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 
 struct OosInsertResult
 {
