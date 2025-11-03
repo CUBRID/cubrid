@@ -21115,6 +21115,8 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
   assert (parent_context != NULL);
   assert (parent_context->type == HEAP_OPERATION_DELETE || parent_context->type == HEAP_OPERATION_UPDATE);
 
+  assert (!heap_is_big_length (parent_context->recdes_p->length));
+
   /* build insert context */
   heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL);
 
@@ -22724,6 +22726,8 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
 
+  assert (!heap_is_big_length (context->recdes_p->length));
+
   if (context->do_supplemental_log)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -22771,31 +22775,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
-  if (heap_is_big_length (context->recdes_p->length))
-    {
-      /* insert new overflow record */
-      if (heap_ovf_insert (thread_p, &context->hfid, &new_forward_oid, context->recdes_p) == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (rc);
-	  goto exit;
-	}
-
-      /* redo lsa for SUPPLEMENT_UPDATE log : relocation to bigone */
-      if (context->do_supplemental_log)
-	{
-	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
-	}
-
-      /* home record descriptor will be an overflow OID and will be placed in original home page */
-      heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
-
-      /* remove old forward record */
-      remove_old_forward = true;
-      update_old_home = true;
-
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_REL_TO_BIG_UPDATES);
-    }
-  else if (!fits_in_forward && !fits_in_home)
+  if (!fits_in_forward && !fits_in_home)
     {
       /* insert a new forward record */
 
@@ -22899,8 +22879,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
   if (remove_old_forward)
     {
       assert (context->forward_page_watcher_p != NULL && context->forward_page_watcher_p->pgptr != NULL);
-      if ((new_home_recdes.type == REC_RELOCATION || new_home_recdes.type == REC_BIGONE)
-	  && context->forward_page_watcher_p->page_was_unfixed)
+      if (new_home_recdes.type == REC_RELOCATION && context->forward_page_watcher_p->page_was_unfixed)
 	{
 	  /*
 	   * Need to get the record again, since the record may have changed by other concurrent
@@ -23045,6 +23024,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   assert (context->home_page_watcher_p->pgptr != NULL);
   assert (context->forward_page_watcher_p != NULL);
 
+  assert (!heap_is_big_length (context->recdes_p->length));
+
   if (context->do_supplemental_log)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -23079,39 +23060,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       undo_rcvindex = RVHF_UPDATE;
     }
 
-  if (heap_is_big_length (context->recdes_p->length))
-    {
-      /* fix header page */
-      error_code = heap_fix_header_page (thread_p, context);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
-
-      /* insert new overflow record */
-      HEAP_PERF_TRACK_PREPARE (thread_p, context);
-      if (heap_ovf_insert (thread_p, &context->hfid, &forward_oid, context->recdes_p) == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto exit;
-	}
-      /* redo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_BIGONE case */
-      if (context->do_supplemental_log)
-	{
-	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
-	}
-
-      /* forwarding record is REC_BIGONE */
-      heap_build_forwarding_recdes (&forwarding_recdes, REC_BIGONE, &forward_oid);
-
-      /* we'll be updating home with forwarding record */
-      home_page_updated_recdes_p = &forwarding_recdes;
-
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_BIG_UPDATES);
-    }
-  else if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
-				context->recdes_p->length))
+  if (!spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+			   context->recdes_p->length))
     {
       /* insert new home */
 
@@ -23167,8 +23117,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-  if ((home_page_updated_recdes_p->type == REC_RELOCATION || home_page_updated_recdes_p->type == REC_BIGONE)
-      && context->home_page_watcher_p->page_was_unfixed)
+  if (home_page_updated_recdes_p->type == REC_RELOCATION && context->home_page_watcher_p->page_was_unfixed)
     {
       /*
        * Need to get the record again, since record may have changed
@@ -23536,15 +23485,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   CUBRID_OBJ_INSERT_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
-  /*
-   * Handle multipage object
-   */
-  if (heap_insert_handle_multipage_record (thread_p, context) != NO_ERROR)
-    {
-      rc = ER_FAILED;
-      goto error;
-    }
-
   if (context->is_bulk_op)
     {
       // In case of bulk insert we need to skip the IX lock on class and make sure that we have BU_LOCK acquired.
@@ -23635,10 +23575,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   if (context->recdes_p->type == REC_HOME)
     {
       perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_INSERTS);
-    }
-  else if (context->recdes_p->type == REC_BIGONE)
-    {
-      perfmon_inc_stat (thread_p, PSTAT_HEAP_BIG_INSERTS);
     }
   else
     {
@@ -23881,6 +23817,9 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (!OID_ISNULL (&context->oid));
   assert (!OID_ISNULL (&context->class_oid));
 
+  /* OOS handling for the new record must be completed by the caller */
+  assert_release (!heap_is_big_length (context->recdes_p->length));
+
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
 
@@ -24025,10 +23964,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
     case REC_RELOCATION:
       rc = heap_update_relocation (thread_p, context, is_mvcc_op);
-      break;
-
-    case REC_BIGONE:
-      rc = heap_update_bigone (thread_p, context, is_mvcc_op);
       break;
 
     case REC_ASSIGN_ADDRESS:
@@ -25742,34 +25677,6 @@ heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WA
 	}
 
       pgbuf_set_dirty (thread_p, fwd_pg_watcher->pgptr, DONT_FREE);
-    }
-  else if (recdes.type == REC_BIGONE)
-    {
-      forward_oid = *((OID *) recdes.data);
-
-      VPID_GET_FROM_OID (&fwd_vpid, &forward_oid);
-      PGBUF_INIT_WATCHER (&overflow_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
-      PGBUF_WATCHER_COPY_GROUP (&overflow_pg_watcher, home_pg_watcher);
-      if (pgbuf_ordered_fix (thread_p, &fwd_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &overflow_pg_watcher) != NO_ERROR)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto end;
-	}
-
-      forward_recdes.data = overflow_get_first_page_data (overflow_pg_watcher.pgptr);
-      forward_recdes.length = OR_HEADER_SIZE (forward_recdes.data);
-
-      error_code = or_mvcc_set_log_lsa_to_record (&forward_recdes, prev_version_lsa);
-
-      /* unfix overflow page; it is used only locally */
-      pgbuf_set_dirty (thread_p, overflow_pg_watcher.pgptr, DONT_FREE);
-      pgbuf_ordered_unfix (thread_p, &overflow_pg_watcher);
-
-      if (error_code != NO_ERROR)
-	{
-	  assert (false);
-	  goto end;
-	}
     }
   else
     {
