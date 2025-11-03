@@ -370,8 +370,14 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_BIT,		/* 23 */
   CCI_U_TYPE_VARBIT,		/* 24 */
   CCI_U_TYPE_CHAR,		/* 25 */
-  CCI_U_TYPE_NCHAR,		/* 26 */
-  CCI_U_TYPE_VARNCHAR,		/* 27 */
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  CCI_U_TYPE_NCHAR_DEPRECATED,	/* 26 */
+  CCI_U_TYPE_VARNCHAR_DEPRECATED,	/* 27 */
+
   CCI_U_TYPE_RESULTSET,		/* 28 */
   0, 0,				/* 29 - 30 */
   CCI_U_TYPE_BIGINT,		/* 31 */
@@ -4255,9 +4261,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       break;
 
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	int def_size = db_get_string_size (def);
 	const char *def_str_p = db_get_string (def);
@@ -4360,10 +4364,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       if (desired_type == DB_TYPE_NUMERIC)
 	{
 	  type = CCI_U_TYPE_NUMERIC;
-	}
-      else if (desired_type == DB_TYPE_NCHAR || desired_type == DB_TYPE_VARNCHAR)
-	{
-	  type = CCI_U_TYPE_NCHAR;
 	}
       else if (desired_type == DB_TYPE_JSON)
 	{
@@ -4475,61 +4475,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
 	  }
-      }
-      break;
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
-      {
-	char *value, *invalid_pos = NULL;
-	int val_size;
-	int val_length;
-	bool is_composed = false;
-	int composed_size;
-
-	net_arg_get_str (&value, &val_size, net_value);
-
-	val_size--;
-
-	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
-	  {
-	    char msg[12];
-	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
-	    snprintf (msg, sizeof (msg), "%llu", (long long unsigned int) p);
-	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR, DBMS_ERROR_INDICATOR, msg);
-	  }
-
-	if (lang_get_client_charset () == INTL_CODESET_UTF8
-	    && unicode_string_need_compose (value, val_size, &composed_size, lang_get_generic_unicode_norm ()))
-	  {
-	    char *composed = NULL;
-
-	    composed = (char *) malloc (composed_size + 1);
-	    if (composed == NULL)
-	      {
-		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	      }
-
-	    unicode_compose_string (value, val_size, composed, &composed_size, &is_composed,
-				    lang_get_generic_unicode_norm ());
-	    assert (composed_size <= val_size);
-	    composed[composed_size] = '\0';
-
-	    if (is_composed)
-	      {
-		value = composed;
-		val_size = composed_size;
-	      }
-	    else
-	      {
-		free (composed);
-	      }
-	  }
-
-	intl_char_count ((unsigned char *) value, val_size, LANG_COERCIBLE_CODESET, &val_length);
-	err_code =
-	  db_make_nchar (&db_val, val_length, value, val_size, lang_get_client_charset (),
-			 lang_get_client_collation ());
-	db_val.need_clear = is_composed;
       }
       break;
     case CCI_U_TYPE_BIT:
@@ -5035,57 +4980,6 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	  }
 
 	add_res_data_string (net_buf, str, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
-
-	if (decomposed != NULL)
-	  {
-	    FREE (decomposed);
-	    decomposed = NULL;
-	  }
-      }
-      break;
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-      {
-	DB_CONST_C_NCHAR nchar;
-	int dummy = 0;
-	int bytes_size = 0;
-	int decomp_size;
-	char *decomposed = NULL;
-	bool need_decomp = false;
-
-	nchar = db_get_nchar (val, &dummy);
-	bytes_size = db_get_string_size (val);
-	if (max_col_size > 0)
-	  {
-	    bytes_size = MIN (bytes_size, max_col_size);
-	  }
-
-	if (db_get_string_codeset (val) == INTL_CODESET_UTF8)
-	  {
-	    need_decomp =
-	      unicode_string_need_decompose (nchar, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
-	  }
-
-	if (need_decomp)
-	  {
-	    decomposed = (char *) MALLOC (decomp_size * sizeof (char));
-	    if (decomposed != NULL)
-	      {
-		unicode_decompose_string (nchar, bytes_size, decomposed, &decomp_size,
-					  lang_get_generic_unicode_norm ());
-
-		nchar = decomposed;
-		bytes_size = decomp_size;
-	      }
-	    else
-	      {
-		/* set error indicator and send empty string */
-		ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-		bytes_size = 0;
-	      }
-	  }
-
-	add_res_data_string (net_buf, nchar, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -11314,21 +11208,10 @@ convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 
   val_type = db_value_type (value);
 
-  if (val_type == DB_TYPE_NCHAR || val_type == DB_TYPE_VARNCHAR)
+  err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
+  if (err >= 0)
     {
-      err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARNCHAR));
-      if (err >= 0)
-	{
-	  val_str = db_get_nchar (value_string, &len);
-	}
-    }
-  else
-    {
-      err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
-      if (err >= 0)
-	{
-	  val_str = db_get_char (value_string, &len);
-	}
+      val_str = db_get_char (value_string, &len);
     }
 
   return val_str;

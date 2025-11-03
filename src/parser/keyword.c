@@ -360,7 +360,7 @@ static KEYWORD_RECORD keywords[] = {
   {NAMES, "NAMES", 0},
   {NATIONAL, "NATIONAL", 0},
   {NATURAL, "NATURAL", 0},
-  {NCHAR, "NCHAR", 0},
+  {NCHAR, "NCHAR", 0},		// TODO: remove this
   {NESTED, "NESTED", 1},
   {NEXT, "NEXT", 0},
   {NO, "NO", 0},

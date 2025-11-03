@@ -156,8 +156,6 @@ static int rv;
 
 #define HEAP_SCAN_ORDERED_HFID(scan) \
   (((scan) != NULL) ? (&(scan)->node.hfid) : (PGBUF_ORDERED_NULL_HFID))
-#define likely(x)   __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
 typedef enum
 {
   HEAP_FINDSPACE_FOUND,
@@ -10437,14 +10435,15 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   else
     {
       attrepr = value->read_attrepr;
+      prefetch (attrepr, PREFETCH_WRITE, PREFETCH_CACHE_L1);
       /* Is it a fixed size attribute ? */
-      if (value->read_attrepr->is_fixed != 0)
+      if (attrepr->is_fixed != 0)
 	{
 	  /*
 	   * A fixed attribute.
 	   */
 	  if (!OR_FIXED_ATT_IS_UNBOUND (recdes->data, attr_info->read_classrepr->n_variable,
-					attr_info->read_classrepr->fixed_length, value->read_attrepr->position))
+					attr_info->read_classrepr->fixed_length, attrepr->position))
 	    {
 	      /*
 	       * The fixed attribute is bound. Access its information
@@ -10452,9 +10451,8 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	      disk_data =
 		((char *) recdes->data
 		 + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (recdes->data,
-						      attr_info->read_classrepr->n_variable)
-		 + value->read_attrepr->location);
-	      disk_length = tp_domain_disk_size (value->read_attrepr->domain);
+						      attr_info->read_classrepr->n_variable) + attrepr->location);
+	      disk_length = tp_domain_disk_size (attrepr->domain);
 	      disk_bound = true;
 	    }
 	}
@@ -10463,13 +10461,13 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	  /*
 	   * A variable attribute
 	   */
-	  if (!OR_VAR_IS_NULL (recdes->data, value->read_attrepr->location))
+	  if (!OR_VAR_IS_NULL (recdes->data, attrepr->location))
 	    {
 	      /*
 	       * The variable attribute is bound.
 	       * Find its location through the variable offset attribute table.
 	       */
-	      disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, value->read_attrepr->location));
+	      disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
 
 	      disk_bound = true;
 	      switch (TP_DOMAIN_TYPE (attrepr->domain))
@@ -10479,8 +10477,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 		case DB_TYPE_SET:	/* it may be just a little bit fast */
 		case DB_TYPE_MULTISET:
 		case DB_TYPE_SEQUENCE:
-		  OR_VAR_LENGTH (disk_length, recdes->data, value->read_attrepr->location,
-				 attr_info->read_classrepr->n_variable);
+		  OR_VAR_LENGTH (disk_length, recdes->data, attrepr->location, attr_info->read_classrepr->n_variable);
 		  break;
 		default:
 		  disk_length = -1;	/* remains can read without disk_length */
@@ -17757,15 +17754,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	{
 	  /* If destination is char/varchar, we need to first cast the value to a string with no precision, then to
 	   * destination type with the desired precision. */
-	  TP_DOMAIN *string_dom;
-	  if (TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_NCHAR || TP_DOMAIN_TYPE (dest_dom) == DB_TYPE_VARNCHAR)
-	    {
-	      string_dom = tp_domain_resolve_default (DB_TYPE_VARNCHAR);
-	    }
-	  else
-	    {
-	      string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-	    }
+	  TP_DOMAIN *string_dom = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), string_dom, false)) != DOMAIN_COMPATIBLE)
 	    {
 	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), string_dom);
@@ -17825,8 +17814,6 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
 		case DB_TYPE_CHAR:
 		case DB_TYPE_VARCHAR:
-		case DB_TYPE_NCHAR:
-		case DB_TYPE_VARNCHAR:
 		  {
 		    const char *str = db_get_string (&(value->dbvalue));
 		    const char *str_end = str + db_get_string_length (&(value->dbvalue));

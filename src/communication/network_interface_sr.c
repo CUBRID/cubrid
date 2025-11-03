@@ -5074,7 +5074,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
       pr_type = domains[i]->type;
       assert (pr_type != NULL);
 
-      if (pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR)
+      if (pr_type->id == DB_TYPE_VARCHAR)
 	{
 	  found_compressible_string_domain = true;
 	  break;
@@ -5114,7 +5114,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
 	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
 
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR))
+	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR))
 	    {
 	      buf.ptr = tuple_p;
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);

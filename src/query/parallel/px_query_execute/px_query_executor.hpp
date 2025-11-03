@@ -35,45 +35,16 @@ struct xasl_state;
 
 namespace parallel_query_execute
 {
-  class err_messages_with_lock
-  {
-      using er_message = cuberr::er_message;
-    public:
-      std::mutex m_mutex;
-      std::vector<er_message *> m_error_messages;
-      err_messages_with_lock()
-	:m_mutex (),
-	 m_error_messages ()
-      {}
-      ~err_messages_with_lock()
-      {
-	for (auto *msg : m_error_messages)
-	  {
-	    delete msg;
-	  }
-	m_error_messages.clear();
-      }
-      inline int move_top_error_message_to_this ()
-      {
-	int err_id = NO_ERROR;
-	std::lock_guard<std::mutex> lock (m_mutex);
-	m_error_messages.push_back (new cuberr::er_message (false));
-	err_id = cuberr::context::get_thread_local_context ().get_current_error_level ().err_id;
-	m_error_messages.back()->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
-	return err_id;
-      }
-  };
-
   using query_executor_stats = XASL_STATS;
   class query_executor
   {
       using queue = parallel_query::thread_safe_queue<job>;
       using worker_manager = parallel_query::worker_manager;
-
+      using err_messages_with_lock = parallel_query::err_messages_with_lock;
       using interrupt = parallel_query::interrupt;
     public:
       query_executor (THREAD_ENTRY *root_thread_p, worker_manager *worker_manager_p, int parallelism, int estimated_jobs,
-		      bool on_trace);
+		      bool on_trace, xasl_state *xasl_state);
       query_executor (query_executor *parent_executor_p);
       ~query_executor();
       bool add_job (THREAD_ENTRY *thread_p, xasl_node *xasl, xasl_state *xasl_state);
@@ -93,6 +64,9 @@ namespace parallel_query_execute
       queue *m_job_execution_queue;
       bool *m_is_task_running_p;
       int m_parallelism;
+    public:
+      xasl_state *m_xasl_state;
+    private:
       /* child's own */
       query_executor_stats m_stats;
       join_context m_join_context;
@@ -109,7 +83,7 @@ namespace parallel_query_execute
 
 extern "C" {
   bool make_parallel_query_executor_recursively (THREAD_ENTRY *thread_p, xasl_node *xasl,
-      parallel_query::worker_manager *worker_manager_p, int parallelism);
+      parallel_query::worker_manager *worker_manager_p, int parallelism, xasl_state *xasl_state);
 }
 
 #endif /* _PX_QUERY_EXECUTOR_HPP_ */

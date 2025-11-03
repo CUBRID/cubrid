@@ -20,6 +20,9 @@
  * px_worker_manager.cpp - module that manages parallel worker threads.
  */
 
+#include "thread_manager.hpp"
+#include "memory_alloc.h"
+#include <chrono>
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
@@ -32,44 +35,28 @@
 
 namespace parallel_query
 {
-#if !defined (NDEBUG)
-  thread_local std::vector<worker_manager *> m_tl_worker_managers;
-  thread_local std::mutex m_tl_worker_managers_mutex;
-#endif
 
   worker_manager::worker_manager()
   {
     m_reserved_workers = 0;
     m_working_workers = 0;
-#if !defined (NDEBUG)
-    std::lock_guard<std::mutex> lock (m_tl_worker_managers_mutex);
-    m_tl_worker_managers.push_back (this);
-#endif
   }
 
   worker_manager::~worker_manager()
   {
     assert (m_reserved_workers == 0);
-#if !defined (NDEBUG)
-    std::lock_guard<std::mutex> lock (m_tl_worker_managers_mutex);
-    m_tl_worker_managers.erase (std::find (m_tl_worker_managers.begin (), m_tl_worker_managers.end (), this));
-#endif
   }
-
-#if !defined (NDEBUG)
-  void assertion_all_workers_released()
-  {
-    assert (m_tl_worker_managers.empty ());
-  }
-#endif
 
   worker_manager *worker_manager::try_reserve_workers (int n_workers)
   {
     bool result = worker_manager_global::get_manager().try_reserve_workers (n_workers);
     worker_manager *manager = nullptr;
+    THREAD_ENTRY *thread_p;
     if (result)
       {
-	manager = new worker_manager();
+	thread_p = thread_get_thread_entry_info();
+	manager = (worker_manager *) db_private_alloc (thread_p, sizeof (worker_manager));
+	manager = placement_new (manager);
 	manager->m_reserved_workers = n_workers;
 	return manager;
       }
@@ -81,24 +68,29 @@ namespace parallel_query
 
   void worker_manager::release_workers (int n_workers)
   {
+    THREAD_ENTRY *thread_p;
+    thread_p = thread_get_thread_entry_info();
     if (m_reserved_workers == 0)
       {
-	delete this;
+	this->~worker_manager();
+	db_private_free (thread_p, this);
 	return;
       }
-    while (m_working_workers.load () > m_reserved_workers - n_workers)
+
+    while (m_working_workers.load () > 0)
       {
-	thread_sleep (1);
+	;
       }
     worker_manager_global::get_manager().release_workers (n_workers);
     m_reserved_workers -= n_workers;
     assert (m_reserved_workers == 0);
-    delete this;
+    this->~worker_manager();
+    db_private_free (thread_p, this);
   }
 
   void worker_manager::push_task (cubthread::entry_task *task)
   {
-    m_working_workers.fetch_add (1);
+    m_working_workers.fetch_add (1, std::memory_order_release);
     worker_manager_global::get_manager().push_task (task);
     assert (m_working_workers.load () <= m_reserved_workers);
   }

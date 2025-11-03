@@ -216,6 +216,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   int header_size;
   int offset;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
+  XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
   if (!xasl_tree || !xasl_stream || !xasl_unpack_info_ptr || xasl_stream_size <= 0)
     {
@@ -263,7 +264,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -293,6 +294,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   int header_size;
   int offset;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
+  XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
   if (!pred || !pred_stream || pred_stream_size <= 0)
     {
@@ -327,7 +329,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -350,6 +352,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   int header_size;
   int offset;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
+  XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
   if (!xasl || !xasl_stream || !xasl_unpack_info_ptr || xasl_stream_size <= 0)
     {
@@ -384,7 +387,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
-  set_xasl_unpack_info_ptr (thread_p, NULL);
+  set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
@@ -5432,6 +5435,14 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
 	    }
 	  assert (value_list[i].val->need_clear == false);
 	}
+
+      ptr = or_unpack_domain (ptr, &value_list[i].dom, NULL);
+      if (value_list[i].dom == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      value_list[i].dom = tp_domain_cache (value_list[i].dom);
 
       if (i < val_list->val_cnt - 1)
 	{

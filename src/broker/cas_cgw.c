@@ -1272,47 +1272,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 						  sql_bind_type, out_length, 0, (SQLWCHAR *) out_string, 0, NULL));
       }
       break;
-      /* Not Support Type */
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
-      {
-	char *value;
-	int val_size;
-	wchar_t *out_string = NULL;
-	size_t out_length = 0;
 
-	net_arg_get_str (&value, &val_size, net_value);
-
-	c_data_type = SQL_C_WCHAR;
-	sql_bind_type = SQL_WVARCHAR;
-
-	out_length = (strlen (value) + 1) * sizeof (wchar_t);
-	out_string = (wchar_t *) malloc (out_length);
-	if (out_string == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	    return ER_INTERFACE_NO_MORE_MEMORY;
-	  }
-
-	err_code = cgw_utf8_to_unicode (value, out_string, out_length);
-
-	if (err_code < 0)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_SQL_CONV_ERROR, 0);
-	    goto ODBC_ERROR;
-	  }
-
-	value_list->wchar_val = out_string;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type, out_length, 0, (SQLWCHAR *) out_string, 0, NULL));
-      }
-      break;
     case CCI_U_TYPE_NULL:
       {
 	char *value;
@@ -2618,11 +2578,7 @@ cgw_utype_to_string (int type)
     case CCI_U_TYPE_CHAR:
       return (char *) "char";
     case CCI_U_TYPE_STRING:
-      return (char *) "char";
-    case CCI_U_TYPE_NCHAR:
-      return (char *) "nchar";
-    case CCI_U_TYPE_VARNCHAR:
-      return (char *) "nchar varying";
+      return (char *) "char varying";
     case CCI_U_TYPE_NUMERIC:
       return (char *) "numeric";
     case CCI_U_TYPE_BIGINT:
@@ -2687,7 +2643,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
   int length;
   unsigned char *in_string = (unsigned char *) in_src;
 
-  if (in_string == NULL || out_length == NULL || out_length == NULL)
+  if (in_string == NULL || out_length == NULL)
     {
       return (-1);
     }
@@ -2725,7 +2681,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
   size_t outlen_org = CONV_STRING_BUF_SIZE;
   size_t outlen = CONV_STRING_BUF_SIZE;
 
-  if (iconv_in == NULL || out_length == NULL || out_length == NULL)
+  if (iconv_in == NULL || out_length == NULL)
     {
       return (-1);
     }
