@@ -474,7 +474,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
   // add all usecs to tv_usec
   tv.tv_usec += (long) usec.count ();
   // move seconds from tv_usec to tv_sec
-  tv.tv_sec = tv.tv_usec / ratio;
+  tv.tv_sec += tv.tv_usec / ratio;
   tv.tv_usec = tv.tv_usec % ratio;
 }
 
@@ -540,6 +540,8 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
 {
   int r;
   cubthread::entry::status old_status;
+  thread_clock_type::time_point start_time_pt;
+  std::chrono::microseconds usecs;
   int error = NO_ERROR;
 
   assert (thread_p->m_status == cubthread::entry::status::TS_RUN
@@ -549,7 +551,19 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
 
   thread_p->resume_status = suspended_reason;
 
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      start_time_pt = thread_clock_type::now ();
+    }
+
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
+
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      usecs = std::chrono::duration_cast < std::chrono::microseconds > (thread_clock_type::now () - start_time_pt);
+
+      thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
+    }
 
   if (r != 0 && r != ETIMEDOUT)
     {
