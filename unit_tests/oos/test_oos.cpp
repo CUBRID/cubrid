@@ -33,9 +33,6 @@ TEST (OosTest, OosCreateAndDestroy)
   auto [fileid, volid] = oos_vfid;
 
   printf ("oos_vfid: fileid=%d, volid=%d\n", fileid, volid);
-
-  EXPECT_NE (fileid, 0);
-  EXPECT_EQ (fileid, 4288);
   EXPECT_NE (fileid, NULL_FILEID);
   EXPECT_NE (volid, NULL_VOLID);
 

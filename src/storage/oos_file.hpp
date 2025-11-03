@@ -12,5 +12,5 @@ int
 oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const RECDES &recdes, OID &oid);
 
 int
-oos_read (THREAD_ENTRY *threnad_entry, const VFID &oos_vfid, const OID &oid, RECDES &recdes);
+oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes);
 
