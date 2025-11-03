@@ -1126,11 +1126,11 @@ void object_printer::describe_class (struct db_object *class_op)
   /* replication */
   if (sm_is_replication_class (class_op))
     {
-      m_buf (" REPLICATION=ON");
+      m_buf (", REPLICATION=ON");
     }
   else
     {
-      m_buf (" REPLICATION=OFF");
+      m_buf (", REPLICATION=OFF");
     }
 
   /* tde_algorithm */
