@@ -1,15 +1,13 @@
 #include "gtest/gtest.h"
 #include <gtest/gtest.h>
 
-#include "test_oos.hpp"
 #include "db_client_type.hpp"
 #include "dbi.h"
 #include "authenticate.h"
-#include "util_support.h"
 #include "thread_manager.hpp"
-#include "xserver_interface.h"
-#include "locator_sr.h"
+#include "page_buffer.h"
 #include "oos_file.hpp"
+#include "utility.h"
 
 
 TEST (BasicTest, Hello)
@@ -24,7 +22,54 @@ TEST (BasicTest, Addition)
   EXPECT_EQ (ret, 3);
 }
 
-TEST (OosTest, page_fix_unfix)
+TEST (OosTest, OosCreateAndDestroy)
+{
+  auto error = db_restart ("unit_test", TRUE, "testdb");
+  EXPECT_EQ (error, NO_ERROR);
+  auto thread_p = thread_get_thread_entry_info();
+  EXPECT_NE (thread_p, nullptr);
+
+  HFID hfid{};
+  auto [oos_create_err, oss_vfid] = oos_create (thread_p, hfid);
+  EXPECT_EQ (oos_create_err, NO_ERROR);
+  auto ret = oos_destroy (thread_p, hfid);
+  EXPECT_EQ (ret, NO_ERROR);
+}
+
+TEST (OosTest, OosInsertAndGet)
+{
+  auto error = db_restart ("unit_test", TRUE, "testdb");
+  EXPECT_EQ (error, NO_ERROR);
+  auto thread_p = thread_get_thread_entry_info();
+  EXPECT_NE (thread_p, nullptr);
+
+  auto [oos_create_err, oos_vfid] = oos_create (thread_p, * (new HFID()));
+  EXPECT_EQ (oos_create_err, NO_ERROR);
+
+  auto inserted_recs = std::vector<RECDES> {};
+  auto [oos_insert_err, oos_recdeses ] = oos_insert (thread_p, oos_vfid, inserted_recs);
+
+  EXPECT_EQ (oos_insert_err, NO_ERROR);
+  EXPECT_EQ (oos_recdeses.size(), inserted_recs.size());
+
+  auto first_oid = OID{};
+  auto result_recdes = RECDES{};
+  auto error_code = oos_get (thread_p, oos_vfid, first_oid, result_recdes);
+  oos_get (thread_p, oos_vfid, first_oid, result_recdes);
+
+  EXPECT_EQ (error_code, NO_ERROR);
+}
+
+
+// TEST (OosTest, PrintOos)
+// {
+//   auto error = db_restart ("unit_test", TRUE, "testdb");
+//   EXPECT_EQ (error, NO_ERROR);
+//   auto thread_p = thread_get_thread_entry_info();
+//   EXPECT_NE (thread_p, nullptr);
+// }
+
+TEST (OosTest, PageFixUnfix)
 {
   auto db_name = "testdb";
   auto error = db_restart ("unit_test", TRUE, db_name);
@@ -45,7 +90,7 @@ TEST (OosTest, page_fix_unfix)
   fflush (stdout);
 
   HFID hfid;
-  auto [x, y, z] = oos_init (thread_p, hfid);
+  auto [x, y] = oos_create (thread_p, hfid);
   printf ("############## oos_init called\n");
   fflush (stdout);
 

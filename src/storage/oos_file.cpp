@@ -1,26 +1,29 @@
 #include "oos_file.hpp"
-#include <optional>
 
-[[nodiscard]] OosInitResult
-oos_init (const THREAD_ENTRY *thread_entry, const HFID &hfid)
+[[nodiscard]] OosCreateResult
+oos_create (const THREAD_ENTRY *thread_entry, const HFID &hfid)
 {
-  printf ("oos_init called\n");
+  printf ("oos_create called\n");
   fflush (stdout);
-  OosInitResult result{};
+  OosCreateResult result{};
   result.error_code = 0;
   return result;
 }
 
+int oos_destroy (const THREAD_ENTRY *thread_entry, const HFID &hfid)
+{
+  return 0;
+}
+
 [[nodiscard]] OosInsertResult
-oos_insert (const THREAD_ENTRY *thread_entry, const std::vector<DB_VALUE *> &db_values)
+oos_insert (const THREAD_ENTRY *thread_entry, const VFID &oos_vfid, const std::vector<RECDES> &db_values)
 {
   return OosInsertResult{0, {}};
 }
 
 [[nodiscard]] int
-oos_get (const OID &oid, const RECDES &recdes)
+oos_get (const THREAD_ENTRY *threnad_entry, const VFID &oos_vfid, const OID &oid, RECDES &recdes)
 {
   return 0;
 }
-
 

@@ -5,20 +5,25 @@
 #include "thread_compat.hpp"
 #include <vector>
 
-struct OosInitResult
+struct OosCreateResult
 {
-  VFID oos_vfid;
-  VPID oos_vpid;
   int error_code;
+  VFID oos_vfid;
 };
 
 /*
- * oos_init ()
- * return OosInitResult
+ * oos_create ()
+ * return OosCreateResult
  * contains error_code in case of error
  * contains output oos_vfid and oos_vpid in case of success
  */
-[[nodiscard]] OosInitResult oos_init (const THREAD_ENTRY *thread_entry, const HFID &hfid);
+[[nodiscard]] OosCreateResult oos_create (const THREAD_ENTRY *thread_entry, const HFID &hfid);
+
+/*
+ * oos_destroy ()
+ * return error code: int
+ */
+[[nodiscard]] int oos_destroy (const THREAD_ENTRY *thread_entry, const HFID &hfid);
 
 struct OosInsertResult
 {
@@ -33,12 +38,11 @@ struct OosInsertResult
  * contains vector of OIDs of inserted objects in case of success
  */
 [[nodiscard]] OosInsertResult
-oos_insert (THREAD_ENTRY *thread_entry, const std::vector<DB_VALUE *> &db_values);
+oos_insert (const THREAD_ENTRY *thread_entry, const VFID &oos_vfid, const std::vector<RECDES> &inserted_recs);
 
 /* oos_get
  * return error code
  */
 [[nodiscard]] int
-oos_get (const OID &oid, RECDES &recdes);
-
+oos_get (const THREAD_ENTRY *threnad_entry, const VFID &oos_vfid, const OID &oid, RECDES &recdes);
 
