@@ -392,9 +392,6 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
-static int check_ha_repl_constraint (DB_OBJECT * class_obj);
-static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
-
 int ib_thread_count = 0;
 
 /*
@@ -437,7 +434,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *slist;
   PT_TYPE_ENUM pt_desired_type;
   PT_NODE *temp_val, *def_val, *initial_def_val = NULL;
-
 #if 0
   HFID *hfid;
 #endif
@@ -1328,13 +1324,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
-      return error;
-    }
-
-  if (!HA_DISABLED () && !check_ha_repl_fk_ref_all_replicated (vclass))
-    {
-      error = ER_HA_FK_CONSTRAINT_VIOLATION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return error;
     }
 
@@ -8866,74 +8855,6 @@ error_exit:
 }
 
 /*
- * check_ha_repl_fk_ref_all_replicated() - Check if all referenced tables (FK targets)
- *                                         are replicated.
- *   return    : true if all referenced tables are replicated, false otherwise
- *   class_obj(in): The class object being validated
- *
- */
-/* TODO: When creating a table, replication information can be obtained from the parse tree (PT), 
-but when adding a constraint to a column with ALTER TABLE, it has to be retrieved from the schema manager (SM). 
-If the time required to patch the SM is small, the same patch-based approach can be applied consistently. 
-*/
-bool
-check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
-{
-  DB_CONSTRAINT *tmp_c;
-
-  assert (class_obj != NULL);
-
-  for (tmp_c = db_get_constraints (class_obj); tmp_c; tmp_c = db_constraint_next (tmp_c))
-    {
-      if (tmp_c->type != SM_CONSTRAINT_FOREIGN_KEY)
-	{
-	  continue;
-	}
-
-      if (!sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
-	{
-	  return false;
-	}
-    }
-
-  return true;
-}
-
-/*
- * check_ha_repl_constraint() - Validate replication-related constraints in HA mode.
- *   return  : Error code (NO_ERROR if valid)
- *   class_obj(in) : The class object being created or altered
- *   repl_opt(in)  : Replication option (true = ON, false = OFF)
- *
- * RULE 1: In HA mode, a replicated table must have a replication key (RK).
- *          This ensures that each row can be uniquely identified during replication.
- *
- * RULE 2: In HA mode, if a replicated table has a foreign key (FK),
- *          its referenced (PK) table must also be a replicated table.
- *          This prevents replication inconsistency across FK relationships.
- */
-int
-check_ha_repl_constraint (DB_OBJECT * class_obj)
-{
-  if (HA_DISABLED ())
-    {
-      return NO_ERROR;
-    }
-
-  if (!classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
-    {
-      return ER_HA_REQUIRES_REPLICATION_KEY;
-    }
-
-  if (!check_ha_repl_fk_ref_all_replicated (class_obj))
-    {
-      return ER_HA_FK_CONSTRAINT_VIOLATION;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * do_create_entity() - Creates a new class/vclass
  *   return: Error code if the class/vclass is not created
  *   parser(in): Parser context
@@ -9313,12 +9234,17 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
+      /*  
+       * Set the SM_CLASSFLAG_DATA_REPLICATION_OFF flag.  
+       * If the option is omitted, or if the "on|off" value is omitted,  
+       * the default is set to "on".  
+       */
       if (IS_CREATE_STMT_SET_REPL_OPTION (tbl_opt_replication))
 	{
-	  error = check_ha_repl_constraint (class_obj);
-	  if (error != NO_ERROR)
+	  if (!HA_DISABLED () && !classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      error = ER_HA_REQUIRES_REPLICATION_KEY;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
 	      goto error_exit;
 	    }
 	}

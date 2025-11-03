@@ -1463,9 +1463,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1368 In HA mode, a replication key candidate (PRIMARY KEY or NOT NULL UNIQUE constraint) is required when creating a table. If no replication key candidate is defined, set the REPLICATION option to OFF.
 1369 Changing the replication option of a class is not allowed in HA mode.
-1370 HA replication constraint violation: A table with a foreign key must have the same replication option as its referenced table.
 
-1371 Last Error
+1370 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
