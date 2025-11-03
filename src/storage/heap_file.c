@@ -26739,3 +26739,32 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 }
 
 // *INDENT-ON*
+
+/*
+ * heap_lob_rv_remove_dir () - Recovery function for LOB directories.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ *
+ * NOTE: This function is called when creating or deleting a LOB directory.
+ *       If a LOB directory is created and the transaction is rolled back, this
+ *       function will be called to remove the created directory.
+ *       If a LOB directory deletion command is issued and the transaction is
+ *       committed, this function will be called to actually remove the directory.
+ */
+int
+heap_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  const char *path = rcv->data;
+  char lob_path[PATH_MAX];
+  int error = NO_ERROR;
+
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  snprintf (lob_path, (strlen (path) + 1), "%s", path);
+#endif /* SERVER_MODE || SA_MODE */
+
+  error = fileio_lob_remove_dir (lob_path);
+
+  return error;
+}
