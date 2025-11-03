@@ -3901,6 +3901,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   size_t buf_size;
   SM_CLASS *smclass;
   bool reuse_oid = false;
+  bool replication_opt;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   CHECK_MODIFICATION_ERROR ();
@@ -3973,6 +3974,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
   tde_algo = (TDE_ALGORITHM) smclass->tde_algorithm;
+  replication_opt = sm_is_replication_class (pinfo->root_op);
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name = parser_new_node (parser, PT_NAME);
@@ -4117,7 +4119,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
-	  if (!sm_is_replication_class (pinfo->root_op))
+	  if (!replication_opt)
 	    {
 	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
 	      if (error != NO_ERROR)
@@ -4350,7 +4352,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
-	  if (!sm_is_replication_class (pinfo->root_op))
+	  if (!replication_opt)
 	    {
 	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
 	      if (error != NO_ERROR)
