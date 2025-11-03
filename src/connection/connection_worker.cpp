@@ -499,10 +499,8 @@ retry:
 
   void connection_worker::ha_close_all_connections ()
   {
-    std::vector<context *> contexts (m_context.begin (), m_context.end ());
-
     /* alive context */
-    for (auto &ctx : contexts)
+    for (auto &ctx : m_context)
       {
 	if (!ctx->m_conn->in_transaction)
 	  {
@@ -1462,10 +1460,8 @@ retry:
 
   void connection_worker::finalize ()
   {
-    std::vector<context *> contexts (m_context.begin (), m_context.end ());
-
     /* alive context */
-    for (auto &ctx : contexts)
+    for (auto &ctx : m_context)
       {
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 	this->handle_connection_close (ctx);
