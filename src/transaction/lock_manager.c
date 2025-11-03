@@ -2215,8 +2215,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   lock_event_set_tran_wait_entry (entry_ptr->tran_index, entry_ptr);
 
   /* suspend the worker thread (transaction) */
-  thread_suspend (entry_ptr->thrd_entry, THREAD_LOCK_SUSPENDED);
-  thread_unlock_entry (entry_ptr->thrd_entry);
+  thread_suspend_and_unlock_entry (entry_ptr->thrd_entry, THREAD_LOCK_SUSPENDED);
 
   lk_Gl.deadlock_and_timeout_detector--;
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
@@ -3575,8 +3574,7 @@ start:
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  is_res_mutex_locked = false;
 
-	  thread_suspend (thrd_entry, THREAD_LOCK_SUSPENDED);
-	  thread_unlock_entry (thrd_entry);
+	  thread_suspend_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
 
 	  if (entry_ptr)
 	    {
@@ -3785,8 +3783,7 @@ lock_tran_lk_entry:
       pthread_mutex_unlock (&res_ptr->res_mutex);
       is_res_mutex_locked = false;
 
-      thread_suspend (thrd_entry, THREAD_LOCK_SUSPENDED);
-      thread_unlock_entry (thrd_entry);
+      thread_suspend_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
 
       if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	{
