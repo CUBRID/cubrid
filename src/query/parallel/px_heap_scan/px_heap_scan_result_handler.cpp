@@ -839,7 +839,6 @@ namespace parallel_heap_scan
     m_interrupt_p = interrupt_p;
     m_err_messages_p = err_messages_p;
     m_orig_agg_list = orig_agg_list;
-    m_is_first_ended_thread = true;
   }
 
   void result_handler<RESULT_TYPE::COUNT_DISTINCT>::read_initialize (THREAD_ENTRY *thread_p)
@@ -850,7 +849,7 @@ namespace parallel_heap_scan
 	orig_agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	if (orig_agg_p->list_id != nullptr)
 	  {
-	    qfile_destroy_list (thread_p, orig_agg_p->list_id);
+	    qfile_close_list (thread_p, orig_agg_p->list_id);
 	  }
       }
   }
@@ -1007,9 +1006,12 @@ namespace parallel_heap_scan
 	      }
 	    else
 	      {
+		if (DB_IS_NULL (agg_node->operands->value.value.dbvalptr))
+		  {
+		    continue;
+		  }
 		agg_node->accumulator.curr_cnt ++;
 	      }
-
 	  }
       }
     return true;
@@ -1017,10 +1019,7 @@ namespace parallel_heap_scan
   void result_handler<RESULT_TYPE::COUNT_DISTINCT>::write_finalize (THREAD_ENTRY *thread_p)
   {
     {
-      bool is_first_thread;
       std::lock_guard<std::mutex> lock (writer_results_mutex);
-      is_first_thread = m_is_first_ended_thread;
-      m_is_first_ended_thread = false;
       AGGREGATE_TYPE *orig_agg_p, *cur_agg_p = tl_xasl_p->proc.buildvalue.agg_list;
       for (orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
 	{
@@ -1036,38 +1035,34 @@ namespace parallel_heap_scan
 	      assert (orig_agg_p->function == PT_COUNT);
 	      if (orig_agg_p->option == Q_DISTINCT)
 		{
-		  if (is_first_thread)
+		  qfile_close_list (thread_p, cur_agg_p->list_id);
+		  if (cur_agg_p->list_id->tuple_cnt == 0)
 		    {
-		      if (cur_agg_p->list_id->tuple_cnt > 0)
-			{
-			  qfile_close_list (thread_p, cur_agg_p->list_id);
-			  qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
-			  qfile_clear_list_id (cur_agg_p->list_id);
-			}
-		      else
-			{
-			  qfile_destroy_list (thread_p, cur_agg_p->list_id);
-			}
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
+
+		  if (orig_agg_p->list_id->tuple_cnt > 0)
+		    {
+		      QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *)malloc (sizeof (QFILE_LIST_ID));
+		      qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		      qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p);
+		      qfile_clear_list_id (cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
+		  else if (orig_agg_p->list_id->type_list.type_cnt > 0)
+		    {
+		      qfile_clear_list_id (orig_agg_p->list_id);
 		    }
 		  else
 		    {
-		      if (cur_agg_p->list_id->tuple_cnt > 0)
-			{
-			  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *)malloc (sizeof (QFILE_LIST_ID));
-			  if (list_id_p == nullptr)
-			    {
-			      return;
-			    }
-			  qfile_close_list (thread_p, cur_agg_p->list_id);
-			  qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
-			  qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p);
-			  qfile_clear_list_id (cur_agg_p->list_id);
-			}
-		      else
-			{
-			  qfile_destroy_list (thread_p, cur_agg_p->list_id);
-			}
+		      QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
 		    }
+
+		  qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		  qfile_clear_list_id (cur_agg_p->list_id);
 		}
 	      else
 		{

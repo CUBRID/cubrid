@@ -38,6 +38,10 @@ namespace parallel_heap_scan
   {
     bool operator() (xasl_node *xasl) const
     {
+      if (xasl == nullptr)
+	{
+	  return false;
+	}
       if (xasl->type != BUILDVALUE_PROC)
 	{
 	  return false;

@@ -240,7 +240,6 @@ namespace parallel_heap_scan
       interrupt *m_interrupt_p; /* for interrupt */
       err_messages_with_lock *m_err_messages_p; /* for error messages */
       AGGREGATE_TYPE *m_orig_agg_list;
-      bool m_is_first_ended_thread;
       std::mutex writer_results_mutex;
       thread_local static AGGREGATE_TYPE *tl_agg_p;
       thread_local static OUTPTR_LIST *tl_outptr_list_p;
