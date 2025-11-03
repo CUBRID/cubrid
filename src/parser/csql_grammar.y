@@ -2905,6 +2905,12 @@ create_stmt
 
 			    const char* metric_name = metric_node->info.name.original;
 			    enum DB_VECTOR_DISTANCE_METRIC metric = string_to_vector_distance_metric (metric_name);
+				if (metric == METRIC_UNKNOWN)
+				  {
+				PT_ERRORm (this_parser, metric_node,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_INVALID_VECTOR_DISTANCE_METRIC);
+				  }
 			    node->info.index.vector_index.metric = metric;
 
 			    if (node->info.index.unique)
@@ -25715,10 +25721,7 @@ vector_distance_metric
 		{{ DBG_TRACE_GRAMMAR(vector_distance_metric,  : identifier );
 
 			PT_NODE *identifier = $1;
-			if (identifier == NULL) 
-			  {
-			    assert(false);
-			  }
+			assert (identifier);
 
 			// Convert identifier (PT_NAME) to PT_VALUE manually.
 			// This is a hack to map vector metric name to an ENUM value.
@@ -25746,9 +25749,8 @@ vector_distance_metric
 			  }
 			else
 			  {
-			    assert(false);
+				metric = METRIC_UNKNOWN;
 			  }
-
 
 			PT_NODE *ret = parser_new_node (this_parser, PT_VALUE);
 			if (ret)
