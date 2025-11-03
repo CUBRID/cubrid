@@ -17,13 +17,13 @@ struct OosCreateResult
  * contains error_code in case of error
  * contains output oos_vfid and oos_vpid in case of success
  */
-[[nodiscard]] OosCreateResult oos_create (const THREAD_ENTRY *thread_entry, const HFID &hfid);
+[[nodiscard]] OosCreateResult oos_create (const THREAD_ENTRY *thread_p, const HFID &hfid);
 
 /*
  * oos_destroy ()
  * return error code: int
  */
-[[nodiscard]] int oos_destroy (const THREAD_ENTRY *thread_entry, const HFID &hfid);
+[[nodiscard]] int oos_destroy (const THREAD_ENTRY *thread_p, const HFID &hfid);
 
 struct OosInsertResult
 {
@@ -38,7 +38,7 @@ struct OosInsertResult
  * contains vector of OIDs of inserted objects in case of success
  */
 [[nodiscard]] OosInsertResult
-oos_insert (const THREAD_ENTRY *thread_entry, const VFID &oos_vfid, const std::vector<RECDES> &inserted_recs);
+oos_insert (const THREAD_ENTRY *thread_p, const VFID &oos_vfid, const std::vector<RECDES> &inserted_recs);
 
 /* oos_get
  * return error code
