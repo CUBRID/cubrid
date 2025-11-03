@@ -10391,8 +10391,8 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
  *   recdes(in): Record
  *   attr_info(in): The attribute information structure
  *   attrepr(in): The attribute structure
- *   data(in): Disk value pointer
- *   length(in): Disk vlaue length
+ *   data(out): Disk value pointer
+ *   length(out): Disk value length
  *
  */
 static void
@@ -10420,8 +10420,8 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
  *   recdes(in): Record
  *   attr_info(in): The attribute information structure
  *   attrepr(in): The attribute structure
- *   data(in): Disk value pointer
- *   length(in): Disk vlaue length
+ *   data(out): Disk value pointer
+ *   length(out): Disk value length
  *
  */
 static void
@@ -10459,7 +10459,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *   value(in): Disk value attribute information
  *   attrepr(in): The attribute structure
  *   data(in): Disk value pointer
- *   length(in): Disk vlaue length
+ *   length(in): Disk value length
  *
  */
 static int
@@ -10568,7 +10568,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
     }
 
-  /* the data pointer will point to either a current value in recdes or a defualt one in attrepr */
+  /* the data pointer will point to either a current value in recdes or a default one in attrepr */
   return heap_attrvalue_transform_to_dbvalue (value, attrepr, disk_data, disk_length);
 }
 
