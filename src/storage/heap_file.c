@@ -12355,40 +12355,41 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     }
 
   record_size = 0;
-
-resize_and_start:
-  /* build record buffer */
-  new_recdes->resize_buffer (expected_size);
-  or_init (&buf, new_recdes->get_data_for_modify (), (int) expected_size);
-
-  /* build header */
-  status = heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, is_update);
-  if (status == S_DOESNT_FIT)
+  do
     {
-      expected_size += DB_PAGESIZE;
-      goto resize_and_start;
+      /* build record buffer */
+      new_recdes->resize_buffer (expected_size);
+      or_init (&buf, new_recdes->get_data_for_modify (), (int) expected_size);
+
+      /* build header */
+      status =
+	heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, is_update);
+      if (status == S_DOESNT_FIT)
+	{
+	  expected_size += DB_PAGESIZE;
+	  continue;
+	}
+
+      assert (status == S_SUCCESS);
+
+      /* build columns */
+      status =
+	heap_attrinfo_transform_columns_to_disk (thread_p, attr_info, &buf, &incremented_attrids, offset_size,
+						 header_size, mvcc_extra, lob_create_flag, &record_size);
+      if (status == S_DOESNT_FIT)
+	{
+	  expected_size += DB_PAGESIZE;
+	}
+    }
+  while (status == S_DOESNT_FIT);
+
+  if (status == S_SUCCESS)
+    {
+      /* record the length of the object */
+      new_recdes->set_record_length (record_size);
     }
 
-  assert (status == S_SUCCESS);
-
-  /* build columns */
-  status =
-    heap_attrinfo_transform_columns_to_disk (thread_p, attr_info, &buf, &incremented_attrids, offset_size, header_size,
-					     mvcc_extra, lob_create_flag, &record_size);
-  if (status == S_DOESNT_FIT)
-    {
-      expected_size += DB_PAGESIZE;
-      goto resize_and_start;
-    }
-  else if (status == S_ERROR)
-    {
-      return S_ERROR;
-    }
-
-  /* record the length of the object */
-  new_recdes->set_record_length (record_size);
-
-  return S_SUCCESS;
+  return status;
 }
 
 /*
