@@ -2,7 +2,7 @@
 #include "error_code.h"
 #include "file_manager.h"
 
-[[nodiscard]] int
+int
 oos_create (THREAD_ENTRY *thread_p, const HFID &hfid, VFID &oos_vfid)
 {
   // TODO: check if it is already created
@@ -19,7 +19,7 @@ oos_create (THREAD_ENTRY *thread_p, const HFID &hfid, VFID &oos_vfid)
   return 0;
 }
 
-[[nodiscard]] int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
+int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
   return 1;
 }
@@ -30,7 +30,7 @@ int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const RECDES &recd
   return 1;
 }
 
-[[nodiscard]] int
+int
 oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes)
 {
   return 1;
