@@ -874,7 +874,8 @@ namespace parallel_heap_scan
 	      }
 	    else
 	      {
-		db_make_bigint (orig_agg_p->accumulator.value, orig_agg_p->accumulator.curr_cnt);
+		db_make_bigint (orig_agg_p->accumulator.value,
+				db_get_bigint (orig_agg_p->accumulator.value) + (INT64) orig_agg_p->accumulator.curr_cnt);
 	      }
 	  }
       }
@@ -899,7 +900,7 @@ namespace parallel_heap_scan
       {
 	if (agg_node->function == PT_COUNT_STAR)
 	  {
-	    ;
+	    agg_node->accumulator.curr_cnt = 0;
 	  }
 	else
 	  {
@@ -924,7 +925,7 @@ namespace parallel_heap_scan
 	      }
 	    else
 	      {
-		;
+		agg_node->accumulator.curr_cnt = 0;
 	      }
 	  }
       }

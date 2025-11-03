@@ -1942,6 +1942,10 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
+		    case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >
+			*)p->s_id.s.phsid.manager)->close ();
+		      break;
 		    default:
 		      assert (false);
 		      break;
@@ -8520,6 +8524,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	  if (spec->flags & ACCESS_SPEC_FLAG_MERGEABLE_LIST)
 	    {
 	      result_get_method = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
+	    }
+	  else if (spec->flags & ACCESS_SPEC_FLAG_COUNT_DISTINCT)
+	    {
+	      result_get_method = parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT;
 	    }
 	  error =
 	    scan_open_parallel_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed,
