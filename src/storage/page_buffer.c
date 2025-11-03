@@ -6771,7 +6771,7 @@ try_again:
     }
 
   thread_p->resume_status = THREAD_PGBUF_SUSPENDED;
-  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
+  r = thread_timed_suspend_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
   if (thread_p->type == TT_WORKER)
     {
