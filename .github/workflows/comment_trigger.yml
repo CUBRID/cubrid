@@ -7,19 +7,25 @@ on:
 jobs:
   run_test:
     name: Run test on CircleCI
-    if: |
-      ${{
-        github.event.issue.pull_request != null &&
-        (
-          startsWith(toLower(github.event.comment.body), '/run all') ||
-          startsWith(toLower(github.event.comment.body), '/run shell') ||
-          startsWith(toLower(github.event.comment.body), '/run sql') ||
-          startsWith(toLower(github.event.comment.body), '/run medium')
-        )
-      }}
+    if: ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run') }}
     runs-on: ubuntu-24.04
     steps:
+      - name: Validate Command
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          echo "[debug] Comment: $COMMENT"
+          
+          # 정규식: /run 뒤에 공백 하나 + all/shell/sql/medium 만 허용
+          if ! [[ "$COMMENT" =~ ^/run[[:space:]](all|shell|sql|medium)$ ]]; then
+            echo "[info] Ignored invalid command: $COMMENT"
+            exit 0
+          fi
+          
+          echo "[debug] Valid command: $COMMENT"
+          echo "VALID_RUN=true" >> $GITHUB_ENV
+
       - name: Get Branch Name and Test Type
+        if: ${{ env.VALID_RUN == 'true' }}
         run: |         
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
@@ -55,6 +61,7 @@ jobs:
           echo "[debug] Test Parameters: $TEST_JSON"
 
       - name: Trigger CircleCI Test
+        if: ${{ env.VALID_RUN == 'true' }}
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
           BRANCH_NAME: pull/${{ github.event.issue.number }}/head
