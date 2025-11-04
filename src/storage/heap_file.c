@@ -12199,6 +12199,9 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       else
 	{
 	  pr_type->data_writeval (buf, dbvalue);
+
+	  assert_release (!(((uint64_t) buf->ptr) & 0x3));
+
 	  *ptr_varvals = buf->ptr;
 	}
     }
