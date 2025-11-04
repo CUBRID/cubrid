@@ -11698,6 +11698,12 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	  if (spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
+	      /* to skip aliased name at rewriting for mariadb and etc. */
+	      if (spec->info.spec.entity_name
+		  && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
+		{
+		  spec->info.spec.range_var = NULL;
+		}
 	    }
 
 	  t_name = (char *) target->info.name.original;
