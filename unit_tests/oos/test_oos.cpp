@@ -1,4 +1,5 @@
 #include "gtest/gtest.h"
+#include <cstdio>
 
 #include "dbi.h"
 #include "thread_manager.hpp"
@@ -179,6 +180,7 @@ class ServerEnv : public ::testing::Environment
       printf ("##### Stopping Server #####\n");
       auto err = db_shutdown();
       EXPECT_EQ (err, NO_ERROR);
+      fflush(stdout);
     }
 };
 
