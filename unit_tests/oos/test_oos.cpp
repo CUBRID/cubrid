@@ -154,3 +154,44 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   EXPECT_EQ (err, NO_ERROR);
 }
 
+TEST (OosTest, OosFindBestSpace)
+{
+  auto error = db_restart ("unit_test", TRUE, "testdb");
+  EXPECT_EQ (error, NO_ERROR);
+  auto thread_p = thread_get_thread_entry_info();
+  EXPECT_NE (thread_p, nullptr);
+
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create (thread_p, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  const auto data1 = std::string ("this is a random data 1");
+
+  RECDES rec;
+  auto rec_length = data1.size() + 1;
+  err = recdes_allocate_data_area (&rec, rec_length);
+  EXPECT_EQ (err, NO_ERROR);
+  rec.length = rec_length;
+  rec.data[rec.length - 1] = '\0';
+  strncpy (rec.data, data1.c_str(), rec_length - 1);
+  EXPECT_EQ (strlen (rec.data), rec.length - 1);
+  EXPECT_STREQ (rec.data, data1.c_str());
+
+  VPID vpid{};
+  err = oos_find_best_page (thread_p, oos_vfid, rec.length, vpid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  printf ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+
+  err = db_shutdown();
+  EXPECT_EQ (err, NO_ERROR);
+}
+
+int main (int argc, char **argv)
+{
+  ::testing::InitGoogleTest (&argc, argv);
+  // ::testing::AddGlobalTestEnvironment(new ServerEnv());
+  return RUN_ALL_TESTS();
+}
