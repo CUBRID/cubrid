@@ -5931,7 +5931,7 @@ stats_update_all_statistics (int with_fullscan)
   MOP class_mop = NULL;
   LIST_MOPS *lmops = NULL;
 
-  lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
+  lmops = locator_get_all_class_mops (DB_FETCH_WRITE, is_top_level_class);
   if (lmops == NULL)
     {
       return ER_FAILED;
