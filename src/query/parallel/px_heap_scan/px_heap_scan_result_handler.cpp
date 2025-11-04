@@ -947,30 +947,6 @@ namespace parallel_heap_scan
 	  {
 	    return false;
 	  }
-	/*
-	for (REGU_VARIABLE_LIST out_list_val = tl_outptr_list_p->valptrp; out_list_val != NULL;
-	     out_list_val = out_list_val->next)
-	  {
-	    assert (out_list_val->value.domain != NULL);
-
-	    if (out_list_val->value.type != TYPE_CONSTANT
-		|| (TP_DOMAIN_TYPE (out_list_val->value.domain) != DB_TYPE_VARIABLE
-		    && TP_DOMAIN_COLLATION_FLAG (out_list_val->value.domain) == TP_DOMAIN_COLL_NORMAL))
-	      {
-		continue;
-	      }
-
-	    for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
-	      {
-		if (out_list_val->value.value.dbvalptr == agg_node->accumulator.value
-		    && TP_DOMAIN_TYPE (agg_node->domain) != DB_TYPE_NULL)
-		  {
-		    assert (agg_node->domain != NULL);
-		    assert (TP_DOMAIN_COLLATION_FLAG (agg_node->domain) == TP_DOMAIN_COLL_NORMAL);
-		    out_list_val->value.domain = agg_node->domain;
-		  }
-	      }
-	  }*/
       }
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
