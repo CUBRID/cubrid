@@ -684,10 +684,10 @@ static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid
 static int heap_attrinfo_get_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, int *offset_size_ptr);
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					char **data, int *length);
+					RECDES * raw);
 static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					   char **data, int *length);
-static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, char *data, int length);
+					   RECDES * raw);
+static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
@@ -10396,8 +10396,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
  *
  */
 static void
-heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-			    char **data, int *length)
+heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw)
 {
   if (OR_FIXED_ATT_IS_UNBOUND (recdes->data, attr_info->read_classrepr->n_variable,
 			       attr_info->read_classrepr->fixed_length, attrepr->position))
@@ -10407,10 +10406,10 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
     }
 
   /* the fixed value is bound. access its information */
-  *data = ((char *) recdes->data
-	   + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (recdes->data,
-						attr_info->read_classrepr->n_variable) + attrepr->location);
-  *length = tp_domain_disk_size (attrepr->domain);
+  raw->data = ((char *) recdes->data
+	       + OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ (recdes->data,
+						    attr_info->read_classrepr->n_variable) + attrepr->location);
+  raw->length = tp_domain_disk_size (attrepr->domain);
 }
 
 /*
@@ -10425,8 +10424,7 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
  *
  */
 static void
-heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-			       char **data, int *length)
+heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw)
 {
   if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
     {
@@ -10436,7 +10434,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 
   /* the variable attribute is bound. */
   /* find its location through the variable offset attribute table. */
-  *data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
+  raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
 
   switch (TP_DOMAIN_TYPE (attrepr->domain))
     {
@@ -10445,10 +10443,10 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
     case DB_TYPE_SET:		/* it may be just a little bit fast */
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      OR_VAR_LENGTH (*length, recdes->data, attrepr->location, attr_info->read_classrepr->n_variable);
+      OR_VAR_LENGTH (raw->length, recdes->data, attrepr->location, attr_info->read_classrepr->n_variable);
       break;
     default:
-      *length = -1;		/* remains can read without disk_length */
+      raw->length = -1;		/* remains can read without disk_length */
     }
 }
 
@@ -10463,7 +10461,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *
  */
 static int
-heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, char *data, int length)
+heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -10478,7 +10476,7 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
     }
 
   /* make the dbvalue according to the disk data value */
-  if (data == NULL)
+  if (raw->data == NULL)
     {
       /* Unbound attribute, set it to null value */
       rv = db_value_domain_init (&value->dbvalue, attrepr->type, attrepr->domain->precision, attrepr->domain->scale);
@@ -10490,13 +10488,13 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
     }
   else
     {
-      or_init (&buf, data, length);
+      or_init (&buf, raw->data, raw->length);
 
       /* read the value according to disk information that was found */
       pr_type = pr_type_from_id (attrepr->type);
       if (pr_type)
 	{
-	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, length, false, NULL, 0);
+	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, false, NULL, 0);
 	}
       value->state = HEAP_READ_ATTRVALUE;
       if (rv != NO_ERROR)
@@ -10524,9 +10522,8 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 static int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
+  RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   OR_ATTRIBUTE *attrepr;
-  char *disk_data;
-  int disk_length;
 
   if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
     {
@@ -10534,10 +10531,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
        * Therefore, the read operation is skipped and success is returned. */
       return NO_ERROR;
     }
-
-  /* initialize disk value information */
-  disk_data = NULL;
-  disk_length = -1;
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
@@ -10547,10 +10540,10 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       /* does not exist in this disk representation, or we do not have    */
       /* the disk object (recdes), get default value if any...            */
       attrepr = value->last_attrepr;
-      disk_length = value->last_attrepr->default_value.val_length;
-      if (disk_length > 0)
+      raw.length = value->last_attrepr->default_value.val_length;
+      if (raw.length > 0)
 	{
-	  disk_data = (char *) value->last_attrepr->default_value.value;
+	  raw.data = (char *) value->last_attrepr->default_value.value;
 	}
     }
   else
@@ -10560,16 +10553,16 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       /* Is it a fixed size attribute ? */
       if (attrepr->is_fixed != 0)
 	{
-	  heap_attrvalue_point_fixed (recdes, attr_info, attrepr, &disk_data, &disk_length);
+	  heap_attrvalue_point_fixed (recdes, attr_info, attrepr, &raw);
 	}
       else
 	{
-	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &disk_data, &disk_length);
+	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw);
 	}
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  return heap_attrvalue_transform_to_dbvalue (value, attrepr, disk_data, disk_length);
+  return heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw);
 }
 
 /*
