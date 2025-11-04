@@ -4,6 +4,7 @@
 #include "thread_manager.hpp"
 #include "oos_file.hpp"
 
+cubthread::entry *thread_p;
 
 TEST (BasicTest, Hello)
 {
@@ -19,11 +20,6 @@ TEST (BasicTest, Addition)
 
 TEST (OosTest, OosCreateAndDestroy)
 {
-  auto error = db_restart ("unit_test", TRUE, "testdb");
-  EXPECT_EQ (error, NO_ERROR);
-  auto thread_p = thread_get_thread_entry_info();
-  EXPECT_NE (thread_p, nullptr);
-
   int err;
 
   VFID oos_vfid;
@@ -43,17 +39,10 @@ TEST (OosTest, OosCreateAndDestroy)
   EXPECT_EQ (fileid_after_destroy, NULL_FILEID);
   EXPECT_EQ (volid_after_destroy, NULL_VOLID);
 
-  err = db_shutdown();
-  EXPECT_EQ (err, NO_ERROR);
 }
 
 TEST (OosTest, OosCreateAndCreateAgain)
 {
-  auto error = db_restart ("unit_test", TRUE, "testdb");
-  EXPECT_EQ (error, NO_ERROR);
-  auto thread_p = thread_get_thread_entry_info();
-  EXPECT_NE (thread_p, nullptr);
-
   int err;
 
   VFID oos_vfid;
@@ -73,18 +62,10 @@ TEST (OosTest, OosCreateAndCreateAgain)
   // either volid is different or fileid is different
   EXPECT_TRUE ( (fileid1 != fileid2) || (volid1 != volid2) );
 
-  err = db_shutdown();
-  EXPECT_EQ (err, NO_ERROR);
-
 }
 
 TEST (OosTest, OosInsertAndGet)
 {
-  auto error = db_restart ("unit_test", TRUE, "testdb");
-  EXPECT_EQ (error, NO_ERROR);
-  auto thread_p = thread_get_thread_entry_info();
-  EXPECT_NE (thread_p, nullptr);
-
   int err;
   VFID oos_vfid;
 
@@ -109,17 +90,10 @@ TEST (OosTest, OosInsertAndGet)
   // TODO: EXPECT_EQ (result_recdes.length, rec.length);
   // TODO: EXPECT_STREQ (result_recdes.data, rec.data);
 
-  err = db_shutdown();
-  EXPECT_EQ (err, NO_ERROR);
 }
 
 TEST (OosTest, OosInsertLargerThanPageSize)
 {
-  auto error = db_restart ("unit_test", TRUE, "testdb");
-  EXPECT_EQ (error, NO_ERROR);
-  auto thread_p = thread_get_thread_entry_info();
-  EXPECT_NE (thread_p, nullptr);
-
   int err;
   VFID oos_vfid;
 
@@ -150,17 +124,10 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   EXPECT_STREQ (result_recdes.data, rec.data);
   EXPECT_STREQ (result_recdes.data, large_data.c_str());
 
-  err = db_shutdown();
-  EXPECT_EQ (err, NO_ERROR);
 }
 
 TEST (OosTest, OosFindBestSpace)
 {
-  auto error = db_restart ("unit_test", TRUE, "testdb");
-  EXPECT_EQ (error, NO_ERROR);
-  auto thread_p = thread_get_thread_entry_info();
-  EXPECT_NE (thread_p, nullptr);
-
   int err;
   VFID oos_vfid;
 
@@ -185,13 +152,39 @@ TEST (OosTest, OosFindBestSpace)
 
   printf ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
 
-  err = db_shutdown();
-  EXPECT_EQ (err, NO_ERROR);
 }
+
+class ServerEnv : public ::testing::Environment
+{
+  public:
+    void SetUp() override
+    {
+      StartServer();
+    }
+    void TearDown() override
+    {
+      StopServer();
+    }
+  private:
+    void StartServer()
+    {
+      printf ("##### Starting Server #####\n");
+      auto err = db_restart ("unit_test", TRUE, "testdb");
+      EXPECT_EQ (err, NO_ERROR);
+      thread_p = thread_get_thread_entry_info();
+      EXPECT_NE (thread_p, nullptr);
+    }
+    void StopServer()
+    {
+      printf ("##### Stopping Server #####\n");
+      auto err = db_shutdown();
+      EXPECT_EQ (err, NO_ERROR);
+    }
+};
 
 int main (int argc, char **argv)
 {
   ::testing::InitGoogleTest (&argc, argv);
-  // ::testing::AddGlobalTestEnvironment(new ServerEnv());
+  ::testing::AddGlobalTestEnvironment (new ServerEnv());
   return RUN_ALL_TESTS();
 }

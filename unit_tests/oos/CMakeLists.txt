@@ -62,10 +62,12 @@ add_dependencies(test_oos
 #   )
 #
 
-target_link_libraries(test_oos PRIVATE GTest::gtest_main)
+# prefer gtest over gtest_main to have custom main function
+target_link_libraries(test_oos PRIVATE GTest::gtest)
+# target_link_libraries(test_oos PRIVATE GTest::gtest_main)
 
 include(GoogleTest)
 gtest_discover_tests(test_oos)
 
-# disabled for gtest
+# if not using gtest, this adds test_oos to ctest
 # add_test(NAME test_oos COMMAND test_oos)
