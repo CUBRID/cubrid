@@ -21,7 +21,8 @@ oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 
 int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
-  return 1;
+  // TODO: actually destroy the OOS file
+  return 0;
 }
 
 [[nodiscard]]
