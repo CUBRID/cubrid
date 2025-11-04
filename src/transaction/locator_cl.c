@@ -5763,7 +5763,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 
       for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
 	{
-	  if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+	  if (TP_IS_LOB_TYPE (attr->type->id))
 	    {
 	      lob_attrid_arr[attrid_arr_length++] = attr->id;
 	    }
@@ -5906,8 +5906,10 @@ int
 locator_remove_class (MOP class_mop)
 {
   MOBJ class_obj;		/* The class object */
-  const char *classname;	/* The classname */
   HFID *insts_hfid;		/* Heap of instances of the class */
+  SM_CLASS *class_;		/* class info for checking LOB attributes */
+  SM_ATTRIBUTE *attr;		/* attribute info for checking LOB attributes */
+  const char *classname;	/* The classname */
   int error_code = NO_ERROR;
 
   class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5932,10 +5934,20 @@ locator_remove_class (MOP class_mop)
 	  goto error;
 	}
 
-      error_code = lob_remove_dir (insts_hfid, -1);
-      if (error_code != NO_ERROR)
+      au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
+
+      for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
 	{
-	  goto error;
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      error_code = lob_remove_dir (insts_hfid, -1);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      break;
+	    }
 	}
     }
 
