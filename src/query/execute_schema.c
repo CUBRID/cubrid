@@ -649,7 +649,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		attr = &class_->attributes[i];
 		type_id = attr->type->id;
 
-		if (type_id == DB_TYPE_CLOB || type_id == DB_TYPE_BLOB)
+		if (TP_IS_LOB_TYPE (type_id))
 		  {
 		    lob_attrid_arr[arr_length++] = attr->id;
 		  }
@@ -803,7 +803,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    if (strcmp (attr.header.name, attr_mthd_name) == 0)
 	      {
-		if (attr.type->id == DB_TYPE_CLOB || attr.type->id == DB_TYPE_BLOB)
+		if (TP_IS_LOB_TYPE (attr.type->id))
 		  {
 		    HFID lob_hfid = class_->header.ch_heap;
 		    p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;

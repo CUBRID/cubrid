@@ -15754,7 +15754,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
     {
-      if (attr->type->id == DB_TYPE_BLOB || attr->type->id == DB_TYPE_CLOB)
+      if (TP_IS_LOB_TYPE (attr->type->id))
 	{
 	  lob_attrid_arr[lob_attrid_arr_length++] = attr->id;
 	}

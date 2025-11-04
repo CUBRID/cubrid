@@ -6177,7 +6177,8 @@ boot_after_copydb (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 }
 
-static int boot_lob_remove_temp_dir ()
+static int
+boot_lob_remove_temp_dir ()
 {
   return fileio_lob_remove_dir ((char *) LOB_TEMPDIR_PREFIX);
 }
