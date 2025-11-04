@@ -14,9 +14,8 @@ jobs:
         run: |
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
-          
-          # 정규식: /run 뒤에 공백 하나 + all/shell/sql/medium 만 허용
-          if ! [[ "$COMMENT" =~ ^/run[[:space:]](all|shell|sql|medium)$ ]]; then
+
+          if ! [[ "$COMMENT" =~ ^/run(\s+(all|shell|sql|medium)){1,4}$ ]]; then
             echo "[info] Ignored invalid command: $COMMENT"
             exit 0
           fi
@@ -26,14 +25,14 @@ jobs:
 
       - name: Get Branch Name and Test Type
         if: ${{ env.VALID_RUN == 'true' }}
-        run: |         
+        run: |
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
           
           TEST_TYPES="shell sql medium"
           TEST_JSON="{"
-          
-          if [[ "$COMMENT" == "/run all" ]]; then
+
+          if [[ "$COMMENT" =~ (^|[[:space:]])all($|[[:space:]]) ]]; then
             echo "[debug] Running all tests"
             for test in $TEST_TYPES; do
               TEST_JSON+="\"run_${test}_test\":true,"
@@ -41,14 +40,14 @@ jobs:
             TEST_JSON+="\"run_all_test\":true,"
           else
             for test in $TEST_TYPES; do
-              if [[ "$COMMENT" == "/run $test" ]]; then
+              if [[ "$COMMENT" =~ (^|[[:space:]])$test($|[[:space:]]) ]]; then
                 echo "[debug] Will run $test test"
                 TEST_JSON+="\"run_${test}_test\":true,"
               fi
             done
             TEST_JSON+="\"run_all_test\":false,"
           fi
-          
+
           BASELINE=$(echo "$COMMENT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+' || echo "")
           if [ -n "$BASELINE" ]; then
             echo "[debug] Baseline Version: $BASELINE"
@@ -56,6 +55,7 @@ jobs:
           else
             TEST_JSON+="\"baseline\":\"none\"}"
           fi
+
           TEST_JSON=$(echo $TEST_JSON | sed 's/,}/}/')
           echo "TEST_JSON=$TEST_JSON" >> $GITHUB_ENV
           echo "[debug] Test Parameters: $TEST_JSON"
