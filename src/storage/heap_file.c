@@ -681,11 +681,14 @@ static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info);
+
+// *INDENT-OFF*
+static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size);
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
-static size_t heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
-						size_t * offset_size_ptr);
+static size_t heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
+						   size_t * offset_size_ptr, std::vector<bool> * oos_columns);
+// *INDENT-ON*
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					RECDES * raw);
@@ -747,8 +750,9 @@ static SCAN_CODE heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p,
 							int index, std::set<int> *incremented_attrids, char *bitmap_bound);
 // *INDENT-ON*
 static SCAN_CODE heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							   OR_BUF * buf, char **ptr_varvals, int index, int offset_size,
-							   int header_size, int lob_create_flag);
+							   OR_BUF * buf, char **ptr_varvals, bool is_oos, OID * oos_oid,
+							   int index, int offset_size, int header_size,
+							   int lob_create_flag);
 static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							 OR_BUF * buf, int offset_size, bool is_mvcc_class,
 							 bool is_update);
@@ -11774,8 +11778,10 @@ exit_on_error:
  *   return: size of the payload size of record
  *   attr_info(in/out): the attribute information structure
  */
+// *INDENT-OFF*
 static int
-heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size)
+// *INDENT-ON*
 {
   HEAP_ATTRVALUE *value;
   int size;
@@ -11788,11 +11794,13 @@ heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
 
       if (value->last_attrepr->is_fixed != 0)
 	{
-	  size += tp_domain_disk_size (value->last_attrepr->domain);
+	  (*column_size)[i] = tp_domain_disk_size (value->last_attrepr->domain);
+	  size += (*column_size)[i];
 	}
       else
 	{
-	  size += pr_data_writeval_disk_size (&value->dbvalue);
+	  (*column_size)[i] = pr_data_writeval_disk_size (&value->dbvalue);
+	  size += (*column_size)[i];
 	}
     }
 
@@ -11847,16 +11855,70 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
  * Note: Find the disk size needed to transform the object represented
  * by the attribute information structure.
  */
+// *INDENT-OFF*
 static size_t
-heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr)
+heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
+				     std::vector<bool> * oos_columns)
+// *INDENT-ON*
 {
+// *INDENT-OFF*
+  std::vector<int> column_size (attr_info->num_values);
+// *INDENT-ON*
   int payload_size, header_size;
+  int mvcc_extra;
+  int i;
 
   /* calcuate the entire size of columns */
-  payload_size = heap_attrinfo_get_record_payload_size (attr_info);
+  payload_size = heap_attrinfo_get_record_payload_size (attr_info, &column_size);
   header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+  mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
+
+  /* TODO: change the statistics */
+  /* make columns go to OOS */
+  if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 8)
+    {
+      /* re-calculate the payload size */
+      for (i = 0; i < attr_info->num_values; i++)
+	{
+	  /* only variable value can be oos column */
+	  (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ ;
+
+	  payload_size -= column_size[i];
+	  payload_size += OR_OID_SIZE;
+	}
+
+      /* re-calculate the header size */
+      header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+    }
 
   return header_size + payload_size;
+}
+
+// *INDENT-OFF*
+static SCAN_CODE
+heap_attrinfo_insert_to_oos (HEAP_CACHE_ATTRINFO * attr_info, std::vector<bool> * oos_columns)
+// *INDENT-ON*
+
+{
+  int i;
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      /* is this oos column ? */
+      if ((*oos_columns)[i])
+	{
+	  assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
+	  assert (attr_info->values[i].last_attrepr->is_fixed != 0);
+
+	  /* insert the attr_info->values[i].dbvalue (DB_VALUE) into OOS module */
+	  /* here: add the code */
+	}
+    }
+
+  /* here: or vectorize the DB_VALUEs and insert at once */
+
+  /* return error code */
+  return S_SUCCESS;
 }
 
 /*
@@ -12095,14 +12157,15 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
  */
 static SCAN_CODE
 heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
-					  char **ptr_varvals, int index, int offset_size, int header_size,
-					  int lob_create_flag)
+					  char **ptr_varvals, bool is_oos, OID * oos_oid, int index, int offset_size,
+					  int header_size, int lob_create_flag)
 {
   HEAP_ATTRVALUE *value;
   DB_VALUE *dbvalue;
   const PR_TYPE *pr_type;
   DB_ELO dest_elo, *elo_p;
   char *save_meta_data, *new_meta_data;
+  int length;
   int rv;
 
   value = &attr_info->values[index];
@@ -12136,10 +12199,30 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
     }
   else
     {
-      or_put_offset_internal (buf, CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size), offset_size);
+      length = CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size);
+      if (is_oos)
+	{
+	  assert (dbvalue != NULL && db_value_is_null (dbvalue) != true);
+
+	  /* use 2-bit of offset value as flags */
+	  length = OR_SET_VAR_OOS (length);
+	}
+      or_put_offset_internal (buf, length, offset_size);
     }
 
-  if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
+  if (is_oos)
+    {
+      if (buf->ptr + OR_OID_SIZE > buf->endptr)
+	{
+	  return S_DOESNT_FIT;
+	}
+      else
+	{
+	  or_put_oid (buf, oos_oid);
+	  *ptr_varvals = buf->ptr;
+	}
+    }
+  else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
     {
       /* now write the value and remember the current pointer */
       /* to variable value array for the next element.        */
@@ -12218,14 +12301,15 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 // *INDENT-OFF*
 static SCAN_CODE
 heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
+					 std::vector<bool> * oos_columns, std::vector<OID> * oos_oids,
 					 std::set<int> * incremented_attrids, int offset_size, int header_size,
 					 size_t mvcc_extra, int lob_create_flag, size_t * record_size)
 // *INDENT-ON*
-
 {
   char *bitmap_bound, *ptr_varvals;
   SCAN_CODE status;
-  int i;
+  OID *oos_oid;
+  int i, j;
 
   bitmap_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
 				    attr_info->last_classrepr->fixed_length);
@@ -12233,7 +12317,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 		 + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes
 				       - attr_info->last_classrepr->n_variable));
 
-  for (i = 0; i < attr_info->num_values; i++)
+  for (i = 0, j = 0; i < attr_info->num_values; i++)
     {
       if (attr_info->values[i].last_attrepr->is_fixed != 0)
 	{
@@ -12242,9 +12326,14 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	}
       else
 	{
+	  if ((*oos_columns)[i])
+	    {
+	      oos_oid = &(*oos_oids)[i];
+	    }
+
 	  status =
-	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, i, offset_size,
-						      header_size, lob_create_flag);
+	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, (*oos_columns)[i],
+						      oos_oid, i, offset_size, header_size, lob_create_flag);
 	}
       if (status != S_SUCCESS)
 	{
@@ -12305,6 +12394,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   SCAN_CODE status;
   bool is_mvcc_class, is_update;
   // *INDENT-OFF*
+  std::vector<bool> oos_columns (attr_info->num_values);
+  std::vector<OID> oos_oids (attr_info->num_values);
   std::set<int> incremented_attrids;
   // *INDENT-ON*
 
@@ -12328,9 +12419,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   /* start transforming the dbvalues into disk values for the object */
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
 
-  /* determine the size */
-  expected_size = heap_attrinfo_determine_disksize (attr_info, is_mvcc_class, &offset_size);
-
+  /* determine the layout and the size */
+  expected_size = heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_columns);
   mvcc_extra = 0;
   header_size = OR_NON_MVCC_HEADER_SIZE;
   if (is_mvcc_class)
@@ -12345,6 +12435,13 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  mvcc_extra = OR_MVCC_DELETE_ID_SIZE;
 	}
       expected_size += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
+    }
+
+  /* insert big columns to OOS */
+  status = heap_attrinfo_insert_to_oos (attr_info, &oos_columns);
+  if (status != S_SUCCESS)
+    {
+      return S_ERROR;
     }
 
   record_size = 0;
@@ -12367,8 +12464,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       /* build columns */
       status =
-	heap_attrinfo_transform_columns_to_disk (thread_p, attr_info, &buf, &incremented_attrids, offset_size,
-						 header_size, mvcc_extra, lob_create_flag, &record_size);
+	heap_attrinfo_transform_columns_to_disk (thread_p, attr_info, &buf, &oos_columns, &oos_oids,
+						 &incremented_attrids, offset_size, header_size, mvcc_extra,
+						 lob_create_flag, &record_size);
       if (status == S_DOESNT_FIT)
 	{
 	  expected_size += DB_PAGESIZE;
