@@ -8656,8 +8656,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	pgbuf_fix (thread_p, &fhead->vpid_last_temp_alloc, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
@@ -8673,7 +8677,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, fhead->volid_last_expand, 1, &partsect_new.vsid);
       if (error_code != NO_ERROR)
 	{
-	  assert_release (false);
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
 
@@ -8778,8 +8787,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       page_ftab = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
