@@ -54,7 +54,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
   bool call_auto_parameterize = false;
 
   /* Initialize pointers to prevent segmentation faults. */
-  dummy = NULL;
+  dummy = NULL, spec = NULL;
   wherep = havingp = startwithp = connectbyp = aftercbfilterp =
     merge_upd_wherep = merge_ins_wherep = merge_del_wherep = orderby_for_p = show_argp = &dummy;
 
@@ -473,14 +473,14 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, merge_del_wherep);
 	}
 
-      qo_rewrite_terms (parser, wherep);
-      qo_rewrite_terms (parser, havingp);
-      qo_rewrite_terms (parser, startwithp);
-      qo_rewrite_terms (parser, connectbyp);
-      qo_rewrite_terms (parser, aftercbfilterp);
-      qo_rewrite_terms (parser, merge_upd_wherep);
-      qo_rewrite_terms (parser, merge_ins_wherep);
-      qo_rewrite_terms (parser, merge_del_wherep);
+      qo_rewrite_terms (parser, spec, wherep);
+      qo_rewrite_terms (parser, spec, havingp);
+      qo_rewrite_terms (parser, spec, startwithp);
+      qo_rewrite_terms (parser, spec, connectbyp);
+      qo_rewrite_terms (parser, spec, aftercbfilterp);
+      qo_rewrite_terms (parser, spec, merge_upd_wherep);
+      qo_rewrite_terms (parser, spec, merge_ins_wherep);
+      qo_rewrite_terms (parser, spec, merge_del_wherep);
 
       /* rewrite select queries */
       if (node->node_type == PT_SELECT)

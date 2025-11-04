@@ -3609,8 +3609,6 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	char *return_string = NULL;
 	char str_buf[NUMERIC_MAX_STRING_SIZE];
@@ -3635,14 +3633,6 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	else if (type == DB_TYPE_VARCHAR)
 	  {
 	    db_make_varchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	  }
-	else if (type == DB_TYPE_NCHAR)
-	  {
-	    db_make_nchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
-	  }
-	else if (type == DB_TYPE_VARNCHAR)
-	  {
-	    db_make_varnchar (dest, size, return_string, size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
 	  }
 	dest->need_clear = true;
 	break;
