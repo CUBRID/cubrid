@@ -102,7 +102,7 @@ TEST (OosTest, OosInsertAndGet)
   err = oos_insert (thread_p, oos_vfid, rec, oid);
   EXPECT_EQ (err, NO_ERROR);
 
-  RECDES result_recdes;
+  RECDES result_recdes{};
   err = oos_read (thread_p, oos_vfid, oid, result_recdes);
   EXPECT_EQ (err, NO_ERROR);
 
@@ -144,7 +144,7 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   err = oos_insert (thread_p, oos_vfid, rec, oid);
   EXPECT_EQ (err, NO_ERROR);
 
-  RECDES result_recdes;
+  RECDES result_recdes{};
   err = oos_read (thread_p, oos_vfid, oid, result_recdes);
   EXPECT_EQ (err, NO_ERROR);
   EXPECT_STREQ (result_recdes.data, rec.data);
