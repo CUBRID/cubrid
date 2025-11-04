@@ -68,7 +68,7 @@ TEST (OosTest, OosCreateAndCreateAgain)
 
 }
 
-TEST (OosTest, DISABLED_OosInsertAndGet)
+TEST (OosTest, OosInsertAndRead)
 {
   int err;
   VFID oos_vfid;
@@ -77,26 +77,32 @@ TEST (OosTest, DISABLED_OosInsertAndGet)
   EXPECT_EQ (err, NO_ERROR);
 
   RECDES rec;
-  err = recdes_allocate_data_area (&rec, 100);
+  rec.type = REC_HOME;
+  auto alloc_size = 100;
+  err = recdes_allocate_data_area (&rec, alloc_size);
   EXPECT_EQ (err, NO_ERROR);
 
-  strncpy (&rec.data[0], "This is a test OOS record.", 100 - 1);
-  rec.length = strlen (&rec.data[0]) + 1;
+  const auto random_data = std::string ("This is a test OOS data.");
+  std::memcpy (&rec.data[0], random_data.c_str(), random_data.size()+1);
+  rec.length = static_cast<int> (random_data.size()+1);
 
-  OID oid;
+  OID oid = OID_INITIALIZER;
   err = oos_insert (thread_p, oos_vfid, rec, oid);
   EXPECT_EQ (err, NO_ERROR);
+  EXPECT_NE (oid.pageid, NULL_PAGEID);
+  EXPECT_NE (oid.volid, NULL_VOLID);
+  EXPECT_NE (oid.slotid, NULL_SLOTID);
 
-  RECDES result_recdes{};
-  err = oos_read (thread_p, oos_vfid, oid, result_recdes);
+  RECDES rec_out{};
+  err = oos_read (thread_p, oos_vfid, oid, rec_out);
   EXPECT_EQ (err, NO_ERROR);
 
-  // TODO: EXPECT_EQ (result_recdes.length, rec.length);
-  // TODO: EXPECT_STREQ (result_recdes.data, rec.data);
-
+  EXPECT_EQ (rec_out.length, rec.length);
+  EXPECT_STREQ (rec_out.data, rec.data);
+  EXPECT_STREQ (rec_out.data, random_data.c_str());
 }
 
-TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
+TEST (OosTest, OosInsertLargerThanPageSize)
 {
   int err;
   VFID oos_vfid;
@@ -112,6 +118,7 @@ TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
   EXPECT_EQ (err, NO_ERROR);
 
   const auto large_data = std::string (larger_than_page_size - 1, 'A');
+  rec.type = REC_HOME;
   rec.length = larger_than_page_size;
   rec.data[rec.length - 1] = '\0';
   strncpy (rec.data, large_data.c_str(), larger_than_page_size - 1);
@@ -179,7 +186,8 @@ TEST (OosTest, OosInitializePage)
   auto page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   EXPECT_NE (page_ptr, nullptr);
 
-  spage_initialize (thread_p, page_ptr, ANCHORED_DONT_REUSE_SLOTS, MAX_ALIGNMENT, false);
+  // now already being initialized by oos_find_best_page
+  // spage_initialize (thread_p, page_ptr, ANCHORED_DONT_REUSE_SLOTS, MAX_ALIGNMENT, false);
 
   pgbuf_unfix (thread_p, page_ptr);
 
@@ -214,7 +222,8 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
 
   // prepare insert data
   RECDES rec{};
-  const auto insert_data = std::string ("this is a data to be insterted!");
+  rec.type = REC_HOME;
+  const auto insert_data = std::string ("this is a data to be inserted!");
   err = recdes_allocate_data_area (&rec, insert_data.size() + 1);
   EXPECT_EQ (err, NO_ERROR);
 
