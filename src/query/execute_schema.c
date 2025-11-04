@@ -6985,7 +6985,10 @@ do_promote_partition (SM_CLASS * class_)
   DB_CTMPL *ctemplate = NULL;
   SM_ATTRIBUTE *smattr = NULL;
   bool has_pk = false;
+  bool has_non_unique = false;
 
+  DB_CONSTRAINT *tmp; 
+  SM_CLASS_CONSTRAINT *c;
   CHECK_1ARG_ERROR (class_);
 
   if (class_->partition == NULL)
@@ -7001,12 +7004,6 @@ do_promote_partition (SM_CLASS * class_)
       return er_errid ();
     }
     
-  error = check_ha_repl_constraint(subclass_mop);
-  if(error != NO_ERROR)
-  {
-    return error;
-  }
-
   ctemplate = dbt_edit_class (subclass_mop);
   if (ctemplate == NULL)
     {
@@ -7040,6 +7037,7 @@ do_promote_partition (SM_CLASS * class_)
       /* make attributes point to the subclass, not the parent */
       smattr->class_mop = subclass_mop;
     }
+
   /* Ensure that attributes belonging to a partition are not copied.  
    * However, according to EPIC CBRD-26096, primary key (PK) constraints and 
    * NOT NULL UNIQUE properties must be preserved and reflected properly. */
@@ -7047,6 +7045,29 @@ do_promote_partition (SM_CLASS * class_)
     {
       /* reset flags that belong to the root partitioned table */
       smattr->auto_increment = NULL;
+      if (!(smattr->flags & SM_ATTFLAG_UNIQUE && smattr->flags & SM_ATTFLAG_NON_NULL))
+      {
+        smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
+        smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+        has_non_unique = true;
+      }
+      /*if (HA_DISABLED())
+      {
+        if ((smattr->flags & SM_ATTFLAG_PRIMARY_KEY) != 0)
+          {
+            smattr->flags &= ~(SM_ATTFLAG_PRIMARY_KEY);
+            smattr->flags &= ~(SM_ATTFLAG_NON_NULL);
+            has_pk = true;
+          }
+        smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
+        smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+      }else{
+        if (smattr->flags != SM_ATTFLAG_UNIQUE && smattr->flags != SM_ATTFLAG_NON_NULL)
+        {
+          smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
+          smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+        }
+      }*/
       smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
       smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
@@ -7069,7 +7090,19 @@ do_promote_partition (SM_CLASS * class_)
 
   if (ctemplate->properties != NULL)
     {
+      if (has_pk)
+	{
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PRIMARY_KEY);
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_NOT_NULL);
+	}
+      if (has_non_unique){
+       //classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
+        classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
+        classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);  
+      }
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
+      //classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
+      //classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
     }
 
   if (dbt_finish_class (ctemplate) == NULL)
