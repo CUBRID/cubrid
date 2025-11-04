@@ -11,27 +11,32 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Validate Command
+        shell: bash
         run: |
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
 
-          if ! [[ "$COMMENT" =~ ^/run(\s+(all|shell|sql|medium)){1,4}$ ]]; then
+          # Allowed commands: /run all, /run shell, /run sql, /run medium
+          # Or any combination of them (up to 4)
+          if ! [[ "$COMMENT" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
             echo "[info] Ignored invalid command: $COMMENT"
             exit 0
           fi
-          
+
           echo "[debug] Valid command: $COMMENT"
           echo "VALID_RUN=true" >> $GITHUB_ENV
 
       - name: Get Branch Name and Test Type
         if: ${{ env.VALID_RUN == 'true' }}
+        shell: bash
         run: |
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
-          
+
           TEST_TYPES="shell sql medium"
           TEST_JSON="{"
 
+          # If 'all' is included, run all tests
           if [[ "$COMMENT" =~ (^|[[:space:]])all($|[[:space:]]) ]]; then
             echo "[debug] Running all tests"
             for test in $TEST_TYPES; do
@@ -39,6 +44,7 @@ jobs:
             done
             TEST_JSON+="\"run_all_test\":true,"
           else
+            # Detect each combined test type separately
             for test in $TEST_TYPES; do
               if [[ "$COMMENT" =~ (^|[[:space:]])$test($|[[:space:]]) ]]; then
                 echo "[debug] Will run $test test"
@@ -53,6 +59,7 @@ jobs:
             echo "[debug] Baseline Version: $BASELINE"
             TEST_JSON+="\"baseline\":\"$BASELINE\"}"
           else
+            echo "[debug] No Baseline Version provided. Will use latest from DB."
             TEST_JSON+="\"baseline\":\"none\"}"
           fi
 
@@ -68,13 +75,15 @@ jobs:
           TEST_JSON: ${{ env.TEST_JSON }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
+        shell: bash
         run: |
           DATA=$(echo '{"branch": "'"$BRANCH_NAME"'", "parameters": '"$TEST_JSON"'}')
           echo "[debug] DATA: $DATA"
           echo "[debug] REPO_OWNER: $REPO_OWNER"
           echo "[debug] REPO_NAME: $REPO_NAME"
+
           curl --request POST \
-            --url https://circleci.com/api/v2/project/gh/$REPO_OWNER/$REPO_NAME/pipeline \
+            --url "https://circleci.com/api/v2/project/gh/$REPO_OWNER/$REPO_NAME/pipeline" \
             --header "Circle-Token: $CIRCLECI_TOKEN" \
             --header "Content-Type: application/json" \
             --data "$DATA"
