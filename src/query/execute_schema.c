@@ -6989,6 +6989,12 @@ do_promote_partition (SM_CLASS * class_)
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
+    
+  error = check_ha_repl_constraint(subclass_mop);
+  if(error != NO_ERROR)
+  {
+    return error;
+  }
 
   ctemplate = dbt_edit_class (subclass_mop);
   if (ctemplate == NULL)
