@@ -37,15 +37,15 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
 }
 
 int
-oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, int rec_length, VPID &vpid)
+oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid)
 {
   int err = 0;
-  VPID oos_vpid;
   PAGE_TYPE page_type = PAGE_OOS;
-  err = file_alloc(thread_p, &oos_vfid, file_init_page_type, &page_type, &oos_vpid, nullptr);
-  if (err) {
+  err = file_alloc (thread_p, &oos_vfid, file_init_page_type, &page_type, &vpid, nullptr);
+  if (err)
+    {
       return err;
-  }
+    }
 
   return 0;
 }

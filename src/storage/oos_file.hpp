@@ -15,4 +15,4 @@ int
 oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes);
 
 int
-oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, int rec_length, VPID &vpid);
+oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);

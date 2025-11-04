@@ -148,10 +148,14 @@ TEST (OosTest, OosFindBestSpace)
   EXPECT_STREQ (rec.data, data1.c_str());
 
   VPID vpid{};
+  vpid.volid = NULL_VOLID;
+  vpid.pageid = NULL_PAGEID;
   err = oos_find_best_page (thread_p, oos_vfid, rec.length, vpid);
   EXPECT_EQ (err, NO_ERROR);
 
   printf ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+  EXPECT_NE (vpid.volid, NULL_VOLID);
+  EXPECT_NE (vpid.pageid, NULL_PAGEID);
 
 }
 
@@ -180,7 +184,7 @@ class ServerEnv : public ::testing::Environment
       printf ("##### Stopping Server #####\n");
       auto err = db_shutdown();
       EXPECT_EQ (err, NO_ERROR);
-      fflush(stdout);
+      fflush (stdout);
     }
 };
 
