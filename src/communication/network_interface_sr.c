@@ -11564,14 +11564,20 @@ slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
       goto error_end;
     }
 
-  db_private_free (thread_p, attrid_arr);
+  if (attrid_arr != NULL)
+    {
+      db_private_free_and_init (thread_p, attrid_arr);
+    }
 
   ptr = or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   return;
 
 error_end:
-  db_private_free (thread_p, attrid_arr);
+  if (attrid_arr != NULL)
+    {
+      db_private_free_and_init (thread_p, attrid_arr);
+    }
 
   (void) return_error_to_client (thread_p, rid);
   return;
