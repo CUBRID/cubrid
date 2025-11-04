@@ -38,6 +38,9 @@
 
 #include "subquery_cache.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /**************************************************************************************/
 
 /* Static functions for sq_cache hash table. */
@@ -198,12 +201,14 @@ sq_unpack_val (SQ_VAL * v, REGU_VARIABLE * retp)
 
       if (retp->value.srlist_id)
 	{
-	  qfile_copy_list_id (retp->value.srlist_id->list_id, v->val.srlist_id->list_id, true);
+	  qfile_copy_list_id (retp->value.srlist_id->list_id, v->val.srlist_id->list_id, true,
+			      QFILE_PROHIBIT_DEPENDENT);
 	  retp->value.srlist_id->sorted = v->val.srlist_id->sorted;
 	}
       else
 	{
-	  retp->value.srlist_id->list_id = qfile_clone_list_id (v->val.srlist_id->list_id, true);
+	  retp->value.srlist_id->list_id =
+	    qfile_clone_list_id (v->val.srlist_id->list_id, true, QFILE_PROHIBIT_DEPENDENT);
 	}
       break;
 

@@ -467,7 +467,7 @@ struct t_proxy_info
   int cur_client;
   int max_context;
 
-  char appl_server;		/* APPL_SERVER_CAS | APPL_SERVER_CAS_MYSQL | APPL_SERVER_CAS_ORACLE */
+  char appl_server;
 
   /* MOVE FROM T_APPL_SERVER_INFO */
 #if defined(WINDOWS)
@@ -613,8 +613,6 @@ struct t_shm_appl_server
   int appl_server_hard_limit;
   int session_timeout;
   int query_timeout;
-  int mysql_read_timeout;
-  int mysql_keepalive_interval;
   int num_appl_server;
   int max_string_length;
   int job_queue_size;

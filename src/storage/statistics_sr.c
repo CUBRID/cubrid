@@ -979,14 +979,6 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  fprintf (fpp, "DB_TYPE_CHAR \n");
 	  break;
 
-	case DB_TYPE_NCHAR:
-	  fprintf (fpp, "DB_TYPE_NCHAR \n");
-	  break;
-
-	case DB_TYPE_VARNCHAR:
-	  fprintf (fpp, "DB_TYPE_VARNCHAR \n");
-	  break;
-
 	default:
 	  break;
 	}

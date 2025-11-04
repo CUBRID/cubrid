@@ -23,6 +23,7 @@
 #ifndef _PX_WORKER_MANAGER_HPP_
 #define _PX_WORKER_MANAGER_HPP_
 
+#include <atomic>
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
@@ -34,25 +35,20 @@ namespace parallel_query
   class worker_manager
   {
     public:
-      static worker_manager &get_manager()
-      {
-	thread_local static worker_manager instance;
-	return instance;
-      }
-
-      bool try_reserve_workers (int parallelism);
-      void release_workers ();
+      static worker_manager *try_reserve_workers (int n_workers);
+      void release_workers (int n_workers);
       void push_task (cubthread::entry_task *task);
       void pop_task ()
       {
-	m_working_workers--;
+	m_working_workers.fetch_sub (1, std::memory_order_release);
       }
+
+      worker_manager();
+      ~worker_manager();
 
     private:
       int m_reserved_workers;
       std::atomic<int> m_working_workers;
-      worker_manager();
-      ~worker_manager();
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
   };
@@ -81,6 +77,27 @@ namespace parallel_query
       ~worker_manager_with_dedicated_pool();
       worker_manager_with_dedicated_pool (const worker_manager_with_dedicated_pool &) = delete;
       worker_manager_with_dedicated_pool &operator= (const worker_manager_with_dedicated_pool &) = delete;
+  };
+
+  class worker_manager_reserver
+  {
+    public:
+      static worker_manager_reserver &get_manager()
+      {
+	thread_local static worker_manager_reserver instance;
+	return instance;
+      }
+
+      bool try_reserve_workers (int parallelism);
+      void release_workers ();
+
+    private:
+      int m_reserved_workers;
+
+      worker_manager_reserver();
+      ~worker_manager_reserver();
+      worker_manager_reserver (const worker_manager_reserver &) = delete;
+      worker_manager_reserver &operator= (const worker_manager_reserver &) = delete;
   };
 }
 

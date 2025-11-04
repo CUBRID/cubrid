@@ -617,6 +617,7 @@ static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NO
 						  int *continue_walk);
 static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p);
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
 static int pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * assign_list);
@@ -1901,23 +1902,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		    PT_NODE *node = pt_make_string_value (parser, "\\");
 
 		    assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
-
-		    switch (arg1->type_enum)
-		      {
-		      case PT_TYPE_MAYBE:
-			if (!PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
-			  {
-			    break;
-			  }
-			[[fallthrough]];
-		      case PT_TYPE_NCHAR:
-		      case PT_TYPE_VARNCHAR:
-			node->type_enum = PT_TYPE_NCHAR;
-			node->info.value.string_type = 'N';
-			break;
-		      default:
-			break;
-		      }
 
 		    regu_escape = pt_to_regu_variable (parser, node, UNBOX_AS_VALUE);
 		    parser_free_node (parser, node);
@@ -3286,9 +3270,7 @@ pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_IND
 	      assert (ref_node != NULL);
 
 	      /* need to check zero-length empty string */
-	      if (ref_node != NULL
-		  && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARNCHAR
-		      || ref_node->type_enum == PT_TYPE_VARBIT))
+	      if (ref_node != NULL && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARBIT))
 		{
 		  pred_nodes = parser_append_node (ref_node, pred_nodes);
 		}
@@ -7342,16 +7324,8 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
       dt->info.data_type.precision = DB_MAX_CHAR_PRECISION;
       break;
 
-    case PT_TYPE_NCHAR:
-      dt->info.data_type.precision = DB_MAX_NCHAR_PRECISION;
-      break;
-
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
-      break;
-
-    case PT_TYPE_VARNCHAR:
-      dt->info.data_type.precision = DB_MAX_VARNCHAR_PRECISION;
       break;
 
     case PT_TYPE_BIT:
@@ -14622,10 +14596,7 @@ pt_to_hashjoin_proc (PARSER_CONTEXT * parser, XASL_NODE * outer_xasl, XASL_NODE 
   xasl = regu_xasl_node_alloc (HASHJOIN_PROC);
   if (xasl == NULL)
     {
-      if (er_errid () == NO_ERROR)
-	{
-	  assert_release (false);
-	}
+      assert_release_error (er_errid () != NO_ERROR);
       return NULL;
     }
 
@@ -17044,6 +17015,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
     }
 
+  if (pt_set_like_recompile_candidate (parser, qo_plan, xasl) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   if (pt_set_limit_optimization_flags (parser, qo_plan, xasl) != NO_ERROR)
     {
       goto exit_on_error;
@@ -17074,6 +17050,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   return xasl;
 
@@ -17303,6 +17281,8 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   return xasl;
 
@@ -19694,7 +19674,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   PT_HINT_ENUM hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
-    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH;
+    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_HEAP_SCAN |
+    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
@@ -19856,6 +19837,21 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	    }
 	}
       select_stmt->info.query.q.select.use_hash = arg;
+    }
+
+  if (hint_flags & PT_HINT_PARALLEL)
+    {
+      switch (node->node_type)
+	{
+	case PT_DELETE:
+	  select_stmt->info.query.q.select.num_parallel_threads = node->info.delete_.num_parallel_threads;
+	  break;
+	case PT_UPDATE:
+	  select_stmt->info.query.q.select.num_parallel_threads = node->info.update.num_parallel_threads;
+	  break;
+	default:
+	  break;
+	}
     }
 
   return NO_ERROR;
@@ -25466,7 +25462,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 PT_NODE *
 pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MERGE_INFO * info)
 {
-  PT_NODE *statement, *where, *group_by, *oid, *save_next;
+  PT_NODE *statement, *where, *group_by, *oid, *save_next, *arg = NULL;
 
   statement = parser_new_node (parser, PT_SELECT);
   if (!statement)
@@ -25597,7 +25593,51 @@ pt_to_merge_update_query (PARSER_CONTEXT * parser, PT_NODE * select_list, PT_MER
   /* set index hint */
   if (info->hint & PT_HINT_USE_UPDATE_IDX)
     {
-      statement->info.query.q.select.using_index = parser_copy_tree_list (parser, info->update.index_hint);
+      arg = info->update.index_hint;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.using_index = arg;
+    }
+
+  if (info->hint & PT_HINT_NO_USE_HASH)
+    {
+      statement->info.query.q.select.hint |= PT_HINT_NO_USE_HASH;
+
+      arg = info->no_use_hash;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.no_use_hash = arg;
+    }
+
+  if (info->hint & PT_HINT_USE_HASH)
+    {
+      statement->info.query.q.select.hint |= PT_HINT_USE_HASH;
+
+      arg = info->use_hash;
+      if (arg != NULL)
+	{
+	  arg = parser_copy_tree_list (parser, arg);
+	  if (arg == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+      statement->info.query.q.select.use_hash = arg;
     }
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
@@ -27011,6 +27051,27 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
   return regu;
 }
 
+static int
+pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl)
+{
+  if (qo_plan == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  bool is_candidate = false;
+
+  if (qo_has_like_recompile_candidate (qo_plan, &is_candidate) == NO_ERROR)
+    {
+      if (is_candidate)
+	{
+	  xasl->header.xasl_flag |= LIKE_RECOMPILE_CANDIDATE;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * pt_set_limit_optimization_flags () - setup XASL flags according to
  *					query limit optimizations applied
@@ -28100,7 +28161,23 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 
       for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
 	{
-	  char *str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	  char *str_group = NULL;
+
+	  if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
+	    {
+	      /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
+	      int tmp_paren_type = -1;
+	      tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
+	      groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
+
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	      groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
+	    }
+	  else
+	    {
+	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	    }
 
 	  /* brute method, compare printed trees */
 	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)

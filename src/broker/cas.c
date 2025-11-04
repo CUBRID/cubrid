@@ -51,19 +51,8 @@
 #include "cas_util.h"
 #include "broker_filename.h"
 #include "cas_execute.h"
-
-#if defined(CAS_FOR_ORACLE)
-#include "cas_oracle.h"
-#include "cas_error_log.h"
-#elif defined(CAS_FOR_MYSQL)
-#include "cas_mysql.h"
-#include "cas_error_log.h"
-#endif /* CAS_FOR_MYSQL */
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "connection_support.h"
 #include "perf_monitor.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if !defined(WINDOWS)
 #include "broker_recv_fd.h"
@@ -76,9 +65,7 @@
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
 #include "dbtype.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "error_manager.h"
 #include "ddl_log.h"
 
@@ -117,9 +104,9 @@ static int cas_init_shm (void);
 static int cas_register_to_proxy (SOCKET proxy_sock_fd);
 static int net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info);
 static int get_graceful_down_timeout (void);
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 static void set_db_parameter (void);
-#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW) */
+#endif /* !CAS_FOR_CGW */
 
 static int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info);
 static int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header);
@@ -175,63 +162,14 @@ SOCKET new_req_sock_fd = INVALID_SOCKET;
 int cas_default_isolation_level = 0;
 int cas_default_lock_timeout = -1;
 bool cas_default_ansi_quotes = true;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 bool cas_default_no_backslash_escapes = true;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 int cas_send_result_flag = TRUE;
 int cas_info_size = CAS_INFO_SIZE;
 char prev_cas_info[CAS_INFO_SIZE];
 
 T_ERROR_INFO err_info;
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-static T_SERVER_FUNC server_fn_table[] = {
-  fn_end_tran,			/* CAS_FC_END_TRAN */
-  fn_prepare,			/* CAS_FC_PREPARE */
-  fn_execute,			/* CAS_FC_EXECUTE */
-  fn_not_supported,		/* CAS_FC_GET_DB_PARAMETER */
-  fn_not_supported,		/* CAS_FC_SET_DB_PARAMETER */
-  fn_close_req_handle,		/* CAS_FC_CLOSE_REQ_HANDLE */
-  fn_not_supported,		/* CAS_FC_CURSOR */
-  fn_fetch,			/* CAS_FC_FETCH */
-  fn_not_supported,		/* CAS_FC_SCHEMA_INFO */
-  fn_not_supported,		/* CAS_FC_OID_GET */
-  fn_not_supported,		/* CAS_FC_OID_SET */
-  fn_not_supported,		/* CAS_FC_DEPRECATED1 */
-  fn_not_supported,		/* CAS_FC_DEPRECATED2 */
-  fn_not_supported,		/* CAS_FC_DEPRECATED3 */
-  fn_get_db_version,		/* CAS_FC_GET_DB_VERSION */
-  fn_not_supported,		/* CAS_FC_GET_CLASS_NUM_OBJS */
-  fn_not_supported,		/* CAS_FC_OID_CMD */
-  fn_not_supported,		/* CAS_FC_COLLECTION */
-  fn_not_supported,		/* CAS_FC_NEXT_RESULT */
-  fn_not_supported,		/* CAS_FC_EXECUTE_BATCH */
-  fn_execute_array,		/* CAS_FC_EXECUTE_ARRAY */
-  fn_not_supported,		/* CAS_FC_CURSOR_UPDATE */
-  fn_not_supported,		/* CAS_FC_GET_ATTR_TYPE_STR */
-  fn_not_supported,		/* CAS_FC_GET_QUERY_INFO */
-  fn_not_supported,		/* CAS_FC_DEPRECATED4 */
-  fn_not_supported,		/* CAS_FC_SAVEPOINT */
-  fn_not_supported,		/* CAS_FC_PARAMETER_INFO */
-  fn_not_supported,		/* CAS_FC_XA_PREPARE */
-  fn_not_supported,		/* CAS_FC_XA_RECOVER */
-  fn_not_supported,		/* CAS_FC_XA_END_TRAN */
-  fn_con_close,			/* CAS_FC_CON_CLOSE */
-  fn_check_cas,			/* CAS_FC_CHECK_CAS */
-  fn_make_out_rs,		/* CAS_FC_MAKE_OUT_RS */
-  fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
-  fn_not_supported,		/* CAS_FC_LOB_NEW */
-  fn_not_supported,		/* CAS_FC_LOB_WRITE */
-  fn_not_supported,		/* CAS_FC_LOB_READ */
-  fn_not_supported,		/* CAS_FC_END_SESSION */
-  fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
-  fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
-  fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
-  fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
-  fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
-};
-#elif defined(CAS_FOR_CGW)
+#if defined(CAS_FOR_CGW)
 static T_SERVER_FUNC server_fn_table[] = {
   fn_end_tran,			/* CAS_FC_END_TRAN */
   fn_prepare,			/* CAS_FC_PREPARE */
@@ -278,7 +216,7 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
   fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
 };
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+#else /* CAS_FOR_CGW */
 static T_SERVER_FUNC server_fn_table[] = {
   fn_end_tran,			/* CAS_FC_END_TRAN */
   fn_prepare,			/* CAS_FC_PREPARE */
@@ -325,8 +263,7 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
   fn_set_cas_change_mode	/* CAS_FC_SET_CAS_CHANGE_MODE */
 };
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
+#endif /* CAS_FOR_CGW */
 
 static const char *server_func_name[] = {
   "end_tran",
@@ -381,9 +318,7 @@ static T_REQ_INFO req_info;
 static SOCKET srv_sock_fd;
 static int cas_req_count = 0;
 
-
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 static void
 cas_make_session_for_driver (char *out)
 {
@@ -424,7 +359,7 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       db_set_session_id (DB_EMPTY_SESSION);
     }
 }
-#endif
+#endif /* !CAS_FOR_CGW */
 
 static void
 cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
@@ -434,11 +369,11 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd
   char sessid[DRIVER_SESSION_SIZE];
   int v;
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
   cas_make_session_for_driver (sessid);
 #else
   memset (sessid, 0, DRIVER_SESSION_SIZE);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V4))
     {
@@ -477,11 +412,11 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd
     }
   else
     {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
       v = htonl (db_get_session_id ());
 #else
       v = 0;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
       memcpy (p, &v, SESSION_ID_SIZE);
       p += SESSION_ID_SIZE;
     }
@@ -527,15 +462,11 @@ main (int argc, char *argv[])
       return 0;
     }
 #else /* !WINDOWS */
-#if defined(CAS_FOR_ORACLE)
-  program_name = APPL_SERVER_CAS_ORACLE_NAME;
-#elif defined(CAS_FOR_MYSQL)
-  program_name = APPL_SERVER_CAS_MYSQL_NAME;
-#elif defined(CAS_FOR_CGW)
+#if defined(CAS_FOR_CGW)
   program_name = APPL_SERVER_CAS_CGW_NAME;
 #else
   program_name = APPL_SERVER_CAS_NAME;
-#endif /* CAS_FOR_MYSQL */
+#endif /* CAS_FOR_CGW */
 #endif /* !WINDOWS */
 
   memset (&req_info, 0, sizeof (req_info));
@@ -605,9 +536,6 @@ conn_retry:
   cas_log_open (broker_name);
   cas_slow_log_open (broker_name);
   cas_log_write_and_end (0, true, "CAS STARTED pid %d", getpid ());
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  cas_error_log_open (broker_name);
-#endif
 
   /* This is a only use in proxy-cas internal message */
   req_info.client_version = CAS_PROTO_CURRENT_VER;
@@ -617,12 +545,8 @@ conn_retry:
   gettimeofday (&cas_start_time, NULL);
 
   int ret;
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH - 1, "%s", shm_appl->shard_conn_info[shm_shard_id].db_name);
-#else
   ret = snprintf (cas_db_name, MAX_HA_DBINFO_LENGTH - 1, "%s@%s", shm_appl->shard_conn_info[shm_shard_id].db_name,
 		  shm_appl->shard_conn_info[shm_shard_id].db_host);
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
   if (ret < 0)
     {
@@ -655,9 +579,9 @@ conn_retry:
 	    goto finish_cas;
 	  }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	ux_set_default_setting ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
 	cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name, cas_db_user);
       }
@@ -734,9 +658,9 @@ conn_retry:
 
     for (;;)
       {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	cas_log_error_handler_begin ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 	fn_ret = FN_KEEP_CONN;
 	as_info->con_status = CON_STATUS_OUT_TRAN;
 
@@ -747,9 +671,9 @@ conn_retry:
 #endif /* !WINDOWS */
 
 	    fn_ret = process_request (proxy_sock_fd, &net_buf, &req_info);
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	    cas_log_error_handler_clear ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 #if !defined(WINDOWS)
 	    signal (SIGUSR1, SIG_IGN);
 #endif /* !WINDOWS */
@@ -776,7 +700,7 @@ conn_retry:
 	    ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
 	  }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	if (fn_ret != FN_KEEP_SESS)
 	  {
 	    ux_end_session ();
@@ -790,9 +714,9 @@ conn_retry:
 	    cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	  }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	cas_log_error_handler_end ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && ! CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
       finish_cas:
 #if defined(WINDOWS)
 	as_info->close_flag = 1;
@@ -804,9 +728,6 @@ conn_retry:
 	cas_log_close (true);
 	cas_slow_log_close ();
 	sql_log2_end (true);
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-	cas_error_log_close (true);
-#endif
 
 	cas_req_count++;
 	CLOSE_SOCKET (proxy_sock_fd);
@@ -846,9 +767,9 @@ cas_main (void)
   char err_msg[1024] = { 0, };
   int err_code;
   char *db_name, *db_user, *db_passwd, *db_sessionid;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
   SESSION_ID session_id = DB_EMPTY_SESSION;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
   int one = 1, db_info_size;
 #if defined(WINDOWS)
   int new_port;
@@ -881,12 +802,6 @@ cas_main (void)
   char errplog_path[BROKER_PATH_MAX] = { 0, };
   char errlog_file[BROKER_PATH_MAX] = { 0, };
 #endif
-
-#if defined(CAS_FOR_ORACLE)
-  cas_bi_set_dbms_type (CAS_DBMS_ORACLE);
-#elif defined(CAS_FOR_MYSQL)
-  cas_bi_set_dbms_type (CAS_DBMS_MYSQL);
-#endif /* CAS_FOR_MYSQL */
 
 #if defined(WINDOWS)
   if (shm_appl->as_port > 0)
@@ -1044,9 +959,6 @@ cas_main (void)
 	cas_slow_log_open (broker_name);
 	as_info->cur_sql_log2 = shm_appl->sql_log2;
 	sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, false);
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-	cas_error_log_open (broker_name);
-#else
 	if (as_info->cas_err_log_reset == CAS_LOG_RESET_REOPEN)
 	  {
 	    set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
@@ -1058,7 +970,6 @@ cas_main (void)
 	    er_init (NULL, ER_NEVER_EXIT);
 	    as_info->cas_err_log_reset = 0;
 	  }
-#endif
 
 	ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), (unsigned char *) (&client_ip_addr));
 	cas_log_write_and_end (0, false, "CLIENT IP %s", client_ip_str);
@@ -1201,7 +1112,7 @@ cas_main (void)
 			  CAS_VER_TO_PATCH (req_info.client_version));
 	      }
 	    cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
 	    cas_set_session_id ((T_CAS_PROTOCOL) req_info.client_version, db_sessionid);
 	    if (db_get_session_id () != DB_EMPTY_SESSION)
@@ -1212,7 +1123,7 @@ cas_main (void)
 	      {
 		is_new_connection = true;
 	      }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
 	    set_hang_check_time ();
 
@@ -1334,7 +1245,7 @@ cas_main (void)
 #if defined (CAS_FOR_CGW)
 		err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 		db_err_msg = (char *) db_error_string (1);
-#endif /* !CAS_FOR_CGW */
+#endif /* CAS_FOR_CGW */
 		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
 				 err_info.err_indicator, err_info.err_number, db_err_msg);
 
@@ -1385,7 +1296,7 @@ cas_main (void)
 
 	    set_hang_check_time ();
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	    session_id = db_get_session_id ();
 	    as_info->session_id = session_id;
 
@@ -1401,12 +1312,11 @@ cas_main (void)
 #else
 	    cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s", db_name,
 				   shm_appl->cgw_link_server_ip, db_user, odbc_resolved_url);
+#endif /* !CAS_FOR_CGW */
 
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	    ux_set_default_setting ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
 	    as_info->auto_commit_mode = FALSE;
 	    cas_log_write_and_end (0, false, "DEFAULT isolation_level %d, " "lock_timeout %d",
@@ -1415,7 +1325,7 @@ cas_main (void)
 	    as_info->cur_keep_con = shm_appl->keep_connection;
 #if defined(CAS_FOR_CGW)
 	    cas_bi_set_dbms_type (dbms_type);
-#endif /* CAS_FOR_MYSQL */
+#endif /* CAS_FOR_CGW */
 
 	    cas_bi_set_statement_pooling (shm_appl->statement_pooling);
 	    if (shm_appl->statement_pooling)
@@ -1446,9 +1356,9 @@ cas_main (void)
 	    tran_timeout = 0;
 	    query_timeout = 0;
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	    cas_log_error_handler_begin ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
 	    con_status_before_check_cas = -1;
 	    is_first_request = true;
@@ -1465,9 +1375,9 @@ cas_main (void)
 
 		is_first_request = false;
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 		cas_log_error_handler_clear ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 #if !defined(WINDOWS)
 		signal (SIGUSR1, SIG_IGN);
 #endif /* !WINDOWS */
@@ -1489,14 +1399,12 @@ cas_main (void)
 		  }
 	      }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	    if (fn_ret != FN_KEEP_SESS)
 	      {
 		ux_end_session ();
 	      }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 
-#if !defined(CAS_FOR_CGW)
 	    if (is_xa_prepared ())
 	      {
 		ux_database_shutdown (true);
@@ -1509,11 +1417,8 @@ cas_main (void)
 		as_info->reset_flag = FALSE;
 		cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
 	      }
-#endif /* CAS_FOR_CGW */
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 	    cas_log_error_handler_end ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 	  }
 
 	CLOSE_SOCKET (client_sock_fd);
@@ -1543,9 +1448,6 @@ cas_main (void)
 	cas_log_close (true);
 	cas_slow_log_close ();
 	sql_log2_end (true);
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-	cas_error_log_close (true);
-#endif
 	cas_req_count++;
 
 	unset_hang_check_time ();
@@ -1622,7 +1524,7 @@ unset_hang_check_time (void)
 bool
 check_server_alive (const char *db_name, const char *db_host)
 {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
   int i, u_index;
   char *unusable_db_name;
   char *unusable_db_host;
@@ -1656,7 +1558,7 @@ check_server_alive (const char *db_name, const char *db_host)
 	    }
 	}
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
   return true;
 }
@@ -1820,9 +1722,6 @@ cas_free (bool from_sighandler)
   cas_log_close (true);
   cas_slow_log_close ();
   logddl_destroy ();
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  cas_error_log_close (true);
-#endif
 
 #ifdef MEM_DEBUG
   fd = open ("mem_debug.log", O_CREAT | O_TRUNC | O_WRONLY, 0666);
@@ -1853,14 +1752,8 @@ query_cancel (int signo)
 {
 #if !defined(WINDOWS)
   struct timespec ts;
-#if defined(CAS_FOR_ORACLE)
-  signal (signo, SIG_IGN);
-  cas_oracle_query_cancel ();
-#elif defined(CAS_FOR_MYSQL)
-#else /* CAS_FOR_CUBRID */
   signal (signo, SIG_IGN);
   db_set_interrupt (1);
-#endif /* CAS_FOR_ORACLE */
   as_info->num_interrupts %= MAX_DIAG_DATA_VALUE;
   as_info->num_interrupts++;
 
@@ -1872,7 +1765,6 @@ query_cancel (int signo)
   assert (0);
 #endif /* !WINDOWS */
 }
-
 
 static FN_RETURN
 process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -1955,9 +1847,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 		  return FN_CLOSE_CONN;
 		}
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 	      ux_set_default_setting ();
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
 	      cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name, cas_db_user);
 	    }
@@ -1965,7 +1857,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     }
   else
     {
-
       unset_hang_check_time ();
       if (as_info->cur_keep_con == KEEP_CON_AUTO)
 	{
@@ -1988,7 +1879,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
 	  fn_ret = FN_CLOSE_CONN;
 
-
 	  if (as_info->reset_flag)
 	    {
 	      cas_log_msg = "RESET";
@@ -2007,7 +1897,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	    {
 	      if (is_net_timed_out ())
 		{
-
 		  if (as_info->reset_flag == TRUE)
 		    {
 		      cas_log_msg = "CONNECTION RESET";
@@ -2027,21 +1916,20 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
     }
 
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 #if !defined(WINDOWS)
   /* Before start to execute a new request, try to reset a previous interrupt request we might have. The interrupt
    * request arrived too late to interrupt the previous request and still remains. */
   db_set_interrupt (0);
 #endif /* !WINDOWS */
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW) */
+#endif /* !CAS_FOR_CGW) */
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
   if (cas_shard_flag == ON)
     {
       set_db_parameter ();
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW) */
+#endif /* !CAS_FOR_CGW) */
 
   if (shm_appl->session_timeout < 0)
     net_timeout_set (NET_DEFAULT_TIMEOUT);
@@ -2087,7 +1975,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
-
 
   /* PROTOCOL_V2 is used only 9.0.0 */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
@@ -2137,9 +2024,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 
-
   server_fn = server_fn_table[func_code - 1];
-
 
   if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
     {
@@ -2158,13 +2043,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 #endif /* end for debug */
     }
 
-
-
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
   cas_send_result_flag = TRUE;
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* for 9.0 driver */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
     {
@@ -2185,7 +2067,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       ux_set_utype_for_json (CCI_U_TYPE_STRING);
     }
-#endif
 
   as_info->fn_status = FN_STATUS_BUSY;
 
@@ -2194,7 +2075,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   /* set back original utype for enum, date-time, JSON */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
     {
@@ -2215,8 +2095,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
-#endif
-
 
   cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
 		 err_info.err_number);
@@ -2396,7 +2274,6 @@ exit_on_end:
   return fn_ret;
 }
 
-
 static int
 cas_init ()
 {
@@ -2415,13 +2292,13 @@ cas_init ()
   as_pid_file_create (broker_name, as_info->as_id);
   as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)  && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
   if (cas_shard_flag == OFF)
     {
       css_register_check_server_alive_fn (check_server_alive);
       css_register_server_timeout_fn (set_hang_check_time);
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_CGW */
   return 0;
 }
 
@@ -2446,16 +2323,6 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 	  timeout = as_info->proxy_conn_wait_timeout;
 	  is_proxy_conn_wait_timeout = true;
 	}
-#if defined(CAS_FOR_MYSQL)
-      if (timeout > 0)
-	{
-	  timeout = MIN (timeout, cas_mysql_get_mysql_wait_timeout ());
-	}
-      else
-	{
-	  timeout = cas_mysql_get_mysql_wait_timeout ();
-	}
-#endif
 
       remained_timeout = timeout;
     }
@@ -2508,15 +2375,6 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 		{
 		  continue;
 		}
-
-#if defined (CAS_FOR_MYSQL)
-	      /* execute dummy query to reset wait_timeout of MySQL */
-	      if (cas_mysql_execute_dummy () >= 0)
-		{
-		  remained_timeout = timeout;
-		  continue;
-		}
-#endif /* CAS_FOR_MYSQL */
 
 	      if (is_proxy_conn_wait_timeout)
 		{
@@ -2578,9 +2436,6 @@ static int
 net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
-#if defined(CAS_FOR_MYSQL)
-  int timeout = 0, remained_timeout = 0;
-#endif /* CAS_FOR_MYSQL */
 
   if (as_info->con_status == CON_STATUS_IN_TRAN)
     {
@@ -2590,11 +2445,6 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
   else
     {
       net_timeout_set (DEFAULT_CHECK_INTERVAL);
-
-#if defined(CAS_FOR_MYSQL)
-      timeout = cas_mysql_get_mysql_wait_timeout ();
-      remained_timeout = timeout;
-#endif /* CAS_FOR_MYSQL */
 
       new_req_sock_fd = srv_sock_fd;
     }
@@ -2619,12 +2469,6 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 	{
 	  break;
 	}
-#if defined (CAS_FOR_MYSQL)
-      else if (as_info->con_status == CON_STATUS_OUT_TRAN)
-	{
-	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
-	}
-#endif /* CAS_FOR_MYSQL */
 
       if (net_read_header (clt_sock_fd, client_msg_header) < 0)
 	{
@@ -2649,21 +2493,6 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 		  ret_value = -1;
 		  break;
 		}
-
-#if defined (CAS_FOR_MYSQL)
-	      /* this is not real timeout. try again. */
-	      if (remained_timeout > 0)
-		{
-		  continue;
-		}
-
-	      /* execute dummy query to reset wait_timeout of MySQL */
-	      if (cas_mysql_execute_dummy () >= 0)
-		{
-		  remained_timeout = timeout;
-		  continue;
-		}
-#endif /* CAS_FOR_MYSQL */
 	    }
 	}
       else
@@ -2804,11 +2633,7 @@ need_database_reconnect (void)
     {
       return true;
     }
-#if defined(CAS_FOR_MYSQL)
-  if (strcmp (cas_db_user, as_info->database_user))
-#else /* CAS_FOR_MYSQL */
   if (strcasecmp (cas_db_user, as_info->database_user))
-#endif /* CAS_FOR_MYSQL */
     {
       return true;
     }
@@ -3049,7 +2874,7 @@ get_graceful_down_timeout (void)
   return 1 * 60;		/* 1 min */
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 static void
 set_db_parameter (void)
 {
@@ -3083,7 +2908,7 @@ set_db_parameter (void)
       cas_log_write_and_end (0, false, "set_db_parameter isolation_level %d", isolation_level);
     }
 }
-#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
+#endif /* !CAS_FOR_CGW */
 
 
 int

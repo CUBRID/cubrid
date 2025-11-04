@@ -501,7 +501,7 @@ ansi_string :
 nchar_string :
   NQuote SQS_String_Body
   {
-    $$ = m_driver.get_semantic_helper ().make_constant (LDR_NSTR, $2);
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_STR, $2);
   }
   ;
 

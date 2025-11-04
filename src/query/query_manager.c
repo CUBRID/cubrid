@@ -290,6 +290,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
     {
       tran_entry_p->free_query_entry_list_p = query_p->next;
       pthread_mutex_unlock (&tran_entry_p->mutex);
+      query_p->alloc_no++;
     }
   else
     {
@@ -308,6 +309,7 @@ qmgr_allocate_query_entry (THREAD_ENTRY * thread_p, QMGR_TRAN_ENTRY * tran_entry
 	    }
 
 	  query_p->list_id = NULL;
+	  query_p->alloc_no = 1;
 
 	  tran_entry_p->num_query_entries++;
 	}
@@ -1211,6 +1213,8 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 	}
     }
 
+  set_xasl_unpack_info_ptr (thread_p, xasl_buf_info);
+
   query_p->includes_tde_class = XASL_IS_FLAGED (xasl_p, XASL_INCLUDES_TDE_CLASS);
 
   tde_er_log ("qmgr_process_query(): includes_tde_class = %d\n", query_p->includes_tde_class);
@@ -1241,7 +1245,7 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
 
   /* allocate new QFILE_LIST_ID to be returned as the result and copy from the query result; the caller is responsible
    * to free this */
-  list_id = qfile_clone_list_id (query_p->list_id, false);
+  list_id = qfile_clone_list_id (query_p->list_id, false, QFILE_SKIP_DEPENDENT);
   if (list_id == NULL)
     {
       goto exit_on_error;
@@ -1539,7 +1543,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       /* allocate new QFILE_LIST_ID to be stored in the query entry cloning from the QFILE_LIST_ID of the found list
        * cache entry */
-      query_p->list_id = qfile_clone_list_id (&list_cache_entry_p->list_id, false);
+      query_p->list_id = qfile_clone_list_id (&list_cache_entry_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
       if (query_p->list_id == NULL)
 	{
 	  goto exit_on_error;
@@ -1548,7 +1552,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 
       /* allocate new QFILE_LIST_ID to be returned as the result and copy from the query result; the caller is
        * responsible to free this */
-      list_id_p = qfile_clone_list_id (query_p->list_id, false);
+      list_id_p = qfile_clone_list_id (query_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
       if (list_id_p == NULL)
 	{
 	  goto exit_on_error;	/* maybe, memory allocation error */
@@ -1941,13 +1945,12 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   /* allocate a new query entry */
   query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
-#endif
-
   if (query_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
       goto exit_on_error;
     }
+#endif
 
   /* initialize query entry */
   XASL_ID_SET_NULL (&query_p->xasl_id);
@@ -2295,7 +2298,7 @@ qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool is_tran_d
       return;
     }
 
-  bool is_pl_session_running = session_has_pl_session (thread_p);
+  bool is_pl_session_running = session_is_pl_session_running (thread_p);
 #if defined (SERVER_MODE) && !defined (NDEBUG)
   /* there should be no active query */
   for (query_p = tran_entry_p->query_entry_list_p; query_p != NULL; query_p = query_p->next)

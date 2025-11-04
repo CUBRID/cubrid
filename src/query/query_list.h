@@ -441,6 +441,7 @@ struct qfile_list_id
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
   bool is_domain_resolved;	/* domains for host var is resolved or not */
   bool is_result_cached;	/* for subquery result cache */
+  QFILE_LIST_ID *dependent_list_id;	/* Linked as dependent by qfile_connect_list; cleared together. */
 };
 
 #define QFILE_CLEAR_LIST_ID(list_id) \
@@ -475,6 +476,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.merge_info = NULL; \
       (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
+      (list_id)->dependent_list_id = NULL; \
     } \
   while (0)
 
@@ -554,23 +556,24 @@ typedef enum
 
 enum
 {
-  NOT_FROM_RESULT_CACHE = 0x0001,
-  RESULT_CACHE_REQUIRED = 0x0002,
-  RESULT_CACHE_INHIBITED = 0x0004,
-  RESULT_HOLDABLE = 0x0008,
-  DONT_COLLECT_EXEC_STATS = 0x0010,
-  MRO_CANDIDATE = 0x0020,
-  MRO_IS_USED = 0x0040,
-  SORT_LIMIT_CANDIDATE = 0x0080,
-  SORT_LIMIT_USED = 0x0100,
-  XASL_TRACE_TEXT = 0x0200,
-  XASL_TRACE_JSON = 0x0400,
-  TRIGGER_IS_INVOLVED = 0x0800,
-  RETURN_GENERATED_KEYS = 0x1000,
-  XASL_CACHE_PINNED_REFERENCE = 0x2000,
-  EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x4000,
-  EXECUTE_QUERY_WITH_COMMIT = 0x8000,
-  TRAN_AUTO_COMMIT = 0x000010000
+  NOT_FROM_RESULT_CACHE = 0x1 << 0,
+  RESULT_CACHE_REQUIRED = 0x1 << 1,
+  RESULT_CACHE_INHIBITED = 0x1 << 2,
+  RESULT_HOLDABLE = 0x1 << 3,
+  DONT_COLLECT_EXEC_STATS = 0x1 << 4,
+  MRO_CANDIDATE = 0x1 << 5,
+  MRO_IS_USED = 0x1 << 6,
+  SORT_LIMIT_CANDIDATE = 0x1 << 7,
+  SORT_LIMIT_USED = 0x1 << 8,
+  XASL_TRACE_TEXT = 0x1 << 9,
+  XASL_TRACE_JSON = 0x1 << 10,
+  TRIGGER_IS_INVOLVED = 0x1 << 11,
+  RETURN_GENERATED_KEYS = 0x1 << 12,
+  XASL_CACHE_PINNED_REFERENCE = 0x1 << 13,
+  EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x1 << 14,
+  EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
+  TRAN_AUTO_COMMIT = 0x1 << 16,
+  LIKE_RECOMPILE_CANDIDATE = 0x1 << 17
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)

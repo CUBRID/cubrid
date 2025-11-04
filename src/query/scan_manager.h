@@ -122,8 +122,8 @@ struct heap_scan_id
 
 namespace parallel_heap_scan
 {
-  class manager;		// forward declaration
-  class perf_monitor;		// forward declaration
+  enum class RESULT_TYPE;
+  class accumulative_trace_storage;	// forward declaration
 }
 
 typedef struct parallel_heap_scan_id PARALLEL_HEAP_SCAN_ID;
@@ -146,8 +146,9 @@ struct parallel_heap_scan_id
   sampling_info sampling;	/* for sampling statistics */
   // *INDENT-OFF*
   #if !WINDOWS
-  parallel_heap_scan::manager * manager;
-  parallel_heap_scan::perf_monitor * perf_monitor;
+  parallel_heap_scan::RESULT_TYPE result_type;
+  void * manager;
+  parallel_heap_scan::accumulative_trace_storage * trace_storage;
   #endif
   // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */
@@ -531,10 +532,6 @@ extern void scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_l
 				  MVCC_SNAPSHOT * mvcc_snapshot);
 extern int scan_initialize (void);
 extern void scan_finalize (void);
-extern void scan_init_filter_info (FILTER_INFO * filter_info_p, SCAN_PRED * scan_pred, SCAN_ATTRS * scan_attrs,
-				   val_list_node * val_list, val_descr * val_descr, OID * class_oid,
-				   int btree_num_attrs, ATTR_ID * btree_attr_ids, int *num_vstr_ptr,
-				   ATTR_ID * vstr_ids);
 
 extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
