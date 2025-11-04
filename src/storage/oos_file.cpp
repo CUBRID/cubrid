@@ -31,7 +31,6 @@ int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
   return 0;
 }
 
-[[nodiscard]]
 int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
 

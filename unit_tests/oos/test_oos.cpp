@@ -16,12 +16,6 @@ TEST (BasicTest, Hello)
   EXPECT_EQ (7 * 6, 42);
 }
 
-TEST (BasicTest, Addition)
-{
-  int ret = 1 + 2;
-  EXPECT_EQ (ret, 3);
-}
-
 TEST (OosTest, OosCreateAndDestroy)
 {
   int err;
@@ -161,7 +155,7 @@ TEST (OosTest, OosFindBestSpace)
   EXPECT_NE (vpid.pageid, NULL_PAGEID);
 }
 
-TEST (OosTest, OosInitializePage)
+TEST (OosTest, OosFixAndUnfixPage)
 {
   int err;
   VFID oos_vfid;
@@ -182,15 +176,11 @@ TEST (OosTest, OosInitializePage)
   EXPECT_NE (vpid.volid, NULL_VOLID);
   EXPECT_NE (vpid.pageid, NULL_PAGEID);
 
-  // manual intialize page
-  auto page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  // manually initialize page
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   EXPECT_NE (page_ptr, nullptr);
 
-  // now already being initialized by oos_find_best_page
-  // spage_initialize (thread_p, page_ptr, ANCHORED_DONT_REUSE_SLOTS, MAX_ALIGNMENT, false);
-
   pgbuf_unfix (thread_p, page_ptr);
-
 }
 
 TEST (OosTest, OosManualSlottedPageInsertAndGet)
@@ -217,8 +207,6 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   // manual initialize page
   auto page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   EXPECT_NE (page_ptr, nullptr);
-
-  spage_initialize (thread_p, page_ptr, ANCHORED_DONT_REUSE_SLOTS, MAX_ALIGNMENT, false);
 
   // prepare insert data
   RECDES rec{};
