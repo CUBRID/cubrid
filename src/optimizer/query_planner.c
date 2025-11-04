@@ -11514,7 +11514,7 @@ qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg)
   BITSET_ITERATOR terms_iter;
   QO_ENV *env;
   QO_TERM *termp;
-  PT_NODE *expr, *left;
+  PT_NODE *expr;
   QO_SEGMENT *seg;
 
   bool *result = (bool *) arg;
