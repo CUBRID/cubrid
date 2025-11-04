@@ -5123,7 +5123,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.bi = 2 * 1024 * 1024 /* 2 MB */ }},
    {false, {.bi = 2 * 1024 * 1024 /* 2 MB */ }},
-   {false, {.bi = 128 * 1024 * 1024 /* 128 MB */ }},
+   NULL_SYSPRM_PARAM_VALUE,
    {false, {.bi = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
