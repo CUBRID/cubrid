@@ -25721,7 +25721,7 @@ vector_distance_metric
 		{{ DBG_TRACE_GRAMMAR(vector_distance_metric,  : identifier );
 
 			PT_NODE *identifier = $1;
-			assert (identifier);
+			assert (identifier != NULL);
 
 			// Convert identifier (PT_NAME) to PT_VALUE manually.
 			// This is a hack to map vector metric name to an ENUM value.
