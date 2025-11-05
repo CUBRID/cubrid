@@ -45,7 +45,7 @@ static int oos_prepend_record_header (RECDES &rec_in, RECDES &rec_out)
 {
   int err;
   OOS_RECORD_HEADER oos_header;
-  err = recdes_allocate_data_area (&rec_out, rec_in.length + sizeof (OOS_RECORD_HEADER));
+  err = recdes_allocate_data_area (&rec_out, rec_in.length + (int)sizeof (OOS_RECORD_HEADER));
   if (err != NO_ERROR)
     {
       return err;
@@ -54,18 +54,18 @@ static int oos_prepend_record_header (RECDES &rec_in, RECDES &rec_out)
   oos_header.total_size = rec_in.length;
   oos_header.chunk_count = 1;
   rec_out.type = REC_HOME;
-  rec_out.length = rec_in.length + sizeof (OOS_RECORD_HEADER);
-  std::memcpy (rec_out.data, &oos_header, sizeof (OOS_RECORD_HEADER));
-  std::memcpy (rec_out.data + sizeof (OOS_RECORD_HEADER), rec_in.data, rec_in.length);
+  rec_out.length = rec_in.length + (int)sizeof (OOS_RECORD_HEADER);
+  std::memcpy (rec_out.data, &oos_header, (int)sizeof (OOS_RECORD_HEADER));
+  std::memcpy (rec_out.data + (int)sizeof (OOS_RECORD_HEADER), rec_in.data, rec_in.length);
   return err;
 }
 
 static void oos_remove_record_header (RECDES &rec_in, RECDES &rec_out)
 {
   assert (rec_in.length >= (int)sizeof (OOS_RECORD_HEADER));
-  rec_out.length = rec_in.length - sizeof (OOS_RECORD_HEADER);
+  rec_out.length = rec_in.length - (int)sizeof (OOS_RECORD_HEADER);
   rec_out.type = REC_HOME;
-  rec_out.data = rec_in.data + sizeof (OOS_RECORD_HEADER);
+  rec_out.data = rec_in.data + (int)sizeof (OOS_RECORD_HEADER);
 }
 
 int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
@@ -83,7 +83,7 @@ int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OI
       return err;
     }
 
-  if (oos_rec.length > spage_max_record_size () - (int) sizeof (SPAGE_SLOT))
+  if (oos_rec.length > spage_max_record_size () - (int)sizeof (SPAGE_SLOT))
     {
       return oos_insert_large (thread_p, oos_vfid, oos_rec, oid);
     }
@@ -97,7 +97,7 @@ int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OI
 static int oos_insert_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
   // split the recdes to multiple chunks and insert them one by one
-  int chunk_size = spage_max_record_size () - sizeof (SPAGE_SLOT);
+  int chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT);
   assert (recdes.length > chunk_size);
 
   int required_page_nums = (recdes.length + chunk_size - 1) / chunk_size;
