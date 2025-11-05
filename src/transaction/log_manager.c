@@ -11141,7 +11141,8 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
 	}
 
-      LSA_COPY (&cur_log_rec_lsa, &cdc_Gl.producer.next_extraction_lsa);
+      assert (!LSA_ISNULL (&process_lsa));
+      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
 
       pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
