@@ -23,7 +23,8 @@
 #include "slotted_page.h"
 #include "storage_common.h"
 #include "oos_file.hpp"
-#include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
