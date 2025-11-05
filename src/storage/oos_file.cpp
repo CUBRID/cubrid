@@ -62,7 +62,6 @@ static int oos_prepend_record_header (RECDES &rec_in, RECDES &rec_out)
 
 static void oos_remove_record_header (RECDES &rec_in, RECDES &rec_out)
 {
-
   assert (rec_in.length >= (int)sizeof (OOS_RECORD_HEADER));
   rec_out.length = rec_in.length - sizeof (OOS_RECORD_HEADER);
   rec_out.type = REC_HOME;
@@ -84,7 +83,7 @@ int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OI
       return err;
     }
 
-  if (oos_rec.length > spage_max_record_size ())
+  if (oos_rec.length > spage_max_record_size () - (int) sizeof (SPAGE_SLOT))
     {
       return oos_insert_large (thread_p, oos_vfid, oos_rec, oid);
     }
@@ -99,10 +98,10 @@ static int oos_insert_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDE
 {
   // split the recdes to multiple chunks and insert them one by one
   int chunk_size = spage_max_record_size () - sizeof (SPAGE_SLOT);
-
   assert (recdes.length > chunk_size);
 
   int required_page_nums = (recdes.length + chunk_size - 1) / chunk_size;
+  assert (required_page_nums > 1);
 
   // create a vector of RECDES that each contains chunk_size data
   std::vector<RECDES> recdes_chunks{required_page_nums};
