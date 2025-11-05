@@ -3125,6 +3125,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   json_t *func;
   xasl_node *xptr;
   json_t *sq_cache;
+  json_t *memoize;
 
   if (xasl_p == NULL || parent == NULL)
     {
@@ -3252,6 +3253,23 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   else if (xasl_p->merge_spec != NULL)
     {
       scan = qdump_print_access_spec_stats_json (xasl_p->merge_spec);
+    }
+
+  if (xasl_p->memoize_storage)
+    {
+      memoize = json_object ();
+      json_object_set_new (memoize, "hit", json_integer (xasl_p->memoize_storage->hit));
+      json_object_set_new (memoize, "miss", json_integer (xasl_p->memoize_storage->miss));
+      json_object_set_new (memoize, "size", json_integer (xasl_p->memoize_storage->get_current_size () / 1024));
+      if (xasl_p->memoize_storage->is_disabled ())
+	{
+	  json_object_set_new (memoize, "status", json_string ("disabled"));
+	}
+      else
+	{
+	  json_object_set_new (memoize, "status", json_string ("enabled"));
+	}
+      json_object_set_new (proc, "MEMOIZE", memoize);
     }
 
   if (scan != NULL)
