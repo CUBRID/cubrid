@@ -3117,7 +3117,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
   json_t *proc, *scan = NULL;
-  json_t *subquery, *groupby, *orderby;
+  json_t *subquery, *groupby, *orderby, *parallel;
   json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
@@ -3340,6 +3340,19 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
 
       json_object_set_new (proc, "ORDERBY", orderby);
+      if (ostats->parallel_num > 0)
+	{
+	  parallel = json_object ();
+	  json_object_set_new (parallel, "parallel workers", json_integer (ostats->parallel_num));
+	  json_object_set_new (parallel, "min time", json_integer (ostats->px_min_orderby_time));
+	  json_object_set_new (parallel, "max time", json_integer (ostats->px_max_orderby_time));
+	  json_object_set_new (parallel, "min pages", json_integer (ostats->px_min_orderby_pages));
+	  json_object_set_new (parallel, "max pages", json_integer (ostats->px_max_orderby_pages));
+	  json_object_set_new (parallel, "min ioreads", json_integer (ostats->px_min_orderby_ioreads));
+	  json_object_set_new (parallel, "max ioreads", json_integer (ostats->px_max_orderby_ioreads));
+	  json_object_set_new (proc, "PARALLEL ORDERBY", parallel);
+	}
+
     }
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
@@ -3775,6 +3788,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, ", sort: true");
 	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) ostats->orderby_pages,
 		   (long long int) ostats->orderby_ioreads);
+	  if (ostats->parallel_num > 0)
+	    {
+	      fprintf (fp, ")\n");
+	      fprintf (fp, "%*c", indent + 8, ' ');
+	      fprintf (fp, "(parallel workers: %d", ostats->parallel_num);
+	      fprintf (fp, ", time: %lu..%lu", ostats->px_min_orderby_time, ostats->px_max_orderby_time);
+	      fprintf (fp, ", page: %lu..%lu", ostats->px_min_orderby_pages, ostats->px_max_orderby_pages);
+	      fprintf (fp, ", ioread: %lu..%lu", ostats->px_min_orderby_ioreads, ostats->px_max_orderby_ioreads);
+	    }
 	}
       else if (ostats->orderby_topnsort)
 	{
