@@ -758,8 +758,9 @@ static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p
 							 bool is_update);
 
 // *INDENT-OFF*
-static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-							  OR_BUF * buf, std::set<int> * incremented_attrids, int offset_size, int header_size,
+static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf, 
+							  std::vector<bool> * oos_columns, std::vector<OID> * oos_oids,
+							  std::set<int> * incremented_attrids, int offset_size, int header_size,
 							  size_t mvcc_extra, int lob_create_flag, size_t * record_size);
 // *INDENT-ON*
 
@@ -11882,9 +11883,11 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	{
 	  /* only variable value can be oos column */
 	  (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ ;
-
-	  payload_size -= column_size[i];
-	  payload_size += OR_OID_SIZE;
+	  if ((*oos_columns)[i])
+	    {
+	      payload_size -= column_size[i];
+	      payload_size += OR_OID_SIZE;
+	    }
 	}
 
       /* re-calculate the header size */
@@ -11908,7 +11911,7 @@ heap_attrinfo_insert_to_oos (HEAP_CACHE_ATTRINFO * attr_info, std::vector<bool> 
       if ((*oos_columns)[i])
 	{
 	  assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
-	  assert (attr_info->values[i].last_attrepr->is_fixed != 0);
+	  assert (!attr_info->values[i].last_attrepr->is_fixed);
 
 	  /* insert the attr_info->values[i].dbvalue (DB_VALUE) into OOS module */
 	  /* here: add the code */
@@ -12218,6 +12221,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
       else
 	{
+	  buf->ptr = *ptr_varvals;
 	  or_put_oid (buf, oos_oid);
 	  *ptr_varvals = buf->ptr;
 	}
@@ -12328,7 +12332,11 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	{
 	  if ((*oos_columns)[i])
 	    {
-	      oos_oid = &(*oos_oids)[i];
+	      oos_oid = &(*oos_oids)[j++];
+	    }
+	  else
+	    {
+	      oos_oid = NULL;
 	    }
 
 	  status =
