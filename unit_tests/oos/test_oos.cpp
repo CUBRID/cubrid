@@ -104,7 +104,7 @@ std::string generate_large_string (int size)
   std::string large_data;
   large_data.reserve (size - 1);
 
-  for (size_t i = 0; i < size - 1; ++i)
+  for (int i = 0; i < size - 1; ++i)
     {
       large_data.push_back (pattern[i % pattern.size()]);
     }
@@ -148,12 +148,49 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   err = oos_read (thread_p, oos_vfid, oid, result_recdes);
   EXPECT_EQ (err, NO_ERROR);
   EXPECT_STREQ (result_recdes.data, rec_in.data);
-  EXPECT_EQ (strlen (result_recdes.data),large_data.size());
+  EXPECT_EQ (strlen (result_recdes.data),strlen (large_data.c_str()));
 
   recdes_free_data_area (&rec_in);
   recdes_free_data_area (&result_recdes);
   EXPECT_EQ (rec_in.data, nullptr);
   EXPECT_EQ (result_recdes.data, nullptr);
+}
+
+TEST (OosTest, OosInsertAndReadLargeSizeAroundPageSize)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create (thread_p, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  const auto chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER);
+
+  for (int large_size = chunk_size - 5; large_size <= chunk_size + 5; large_size++)
+    {
+      printf ("OosInsertAndReadLargeSizeAroundPageSize: testing large_size=%d\n", large_size);
+      auto large_data = generate_large_string (large_size);
+
+      RECDES rec_in{};
+      err = generate_record_from_string (large_data, rec_in);
+      EXPECT_EQ (err, NO_ERROR);
+
+      OID oid;
+      err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+      EXPECT_EQ (err, NO_ERROR);
+
+      RECDES result_recdes{};
+      err = oos_read (thread_p, oos_vfid, oid, result_recdes);
+      EXPECT_EQ (err, NO_ERROR);
+      // EXPECT_STREQ (result_recdes.data, rec_in.data);
+      EXPECT_EQ (strlen (result_recdes.data),strlen (large_data.c_str()));
+
+      recdes_free_data_area (&rec_in);
+      recdes_free_data_area (&result_recdes);
+      EXPECT_EQ (rec_in.data, nullptr);
+      EXPECT_EQ (result_recdes.data, nullptr);
+    }
+
 }
 
 TEST (OosTest, OosFindBestSpace)

@@ -6,14 +6,6 @@
 #include "storage_common.h"
 #include "oos_file.hpp"
 
-struct oos_record_header
-{
-  int total_size;
-  int chunk_index;
-  OID next_chunk_oid;
-};
-using OOS_RECORD_HEADER = struct oos_record_header;
-
 static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 static int oos_insert_small (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
@@ -206,6 +198,8 @@ static int oos_read_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const O
   assert (first_chunk_header.chunk_index == 0);
   assert (total_size > spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER));
 
+  printf ("oos_read_large: total_size=%d\n", total_size);
+
   err = recdes_allocate_data_area (&recdes, total_size);
   if (err != NO_ERROR)
     {
@@ -282,8 +276,6 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
   // check if we need to read all the chunks
   if (first_chunk_header.total_size > DB_PAGESIZE - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER))
     {
-      printf ("oos_read_internal: need to read large object, total_size=%d, first_chunk_size=%d\n",
-	      first_chunk_header.total_size, recdes.length);
       err = oos_read_large (thread_p, oos_vfid, oid, first_chunk_header, recdes);
       recdes_free_data_area (&first_chunk_recdes);
     }
