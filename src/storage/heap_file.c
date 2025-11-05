@@ -12371,6 +12371,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	  if ((*oos_columns)[i])
 	    {
 	      oos_oid = &(*oos_oids)[j++];
+	      assert (!OID_ISNULL (oos_oid));
 	    }
 	  else
 	    {
