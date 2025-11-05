@@ -31,7 +31,7 @@ cubthread::entry *thread_p;
 
 std::string generate_large_string (int size)
 {
-  const std::string pattern = "ABCDEFGHIJ";
+  const std::string pattern = "ABCDEFGHIJK"; // pattern size is 11
   if (size <= 0)
     return {};
 
@@ -176,7 +176,7 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   EXPECT_EQ (rec_out.data, nullptr);
 }
 
-TEST (OosTest, OosInsertAndRead100LargeSizesAroundPageSize)
+TEST (OosTest, OosInsertLarge160KBString)
 {
   int err;
   VFID oos_vfid;
@@ -184,6 +184,39 @@ TEST (OosTest, OosInsertAndRead100LargeSizesAroundPageSize)
   err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
+  const int large_size = 160 * 1024; // 160 KB
+
+  auto large_data = generate_large_string (large_size);
+
+  RECDES rec_in{};
+  err = generate_record_from_string (large_data, rec_in);
+  EXPECT_EQ (err, NO_ERROR);
+
+  OID oid;
+  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  RECDES rec_out{};
+  err = oos_read (thread_p, oos_vfid, oid, rec_out);
+  EXPECT_EQ (err, NO_ERROR);
+  EXPECT_STREQ (rec_out.data, rec_in.data);
+  EXPECT_EQ (strlen (rec_out.data),strlen (large_data.c_str()));
+
+  recdes_free_data_area (&rec_in);
+  recdes_free_data_area (&rec_out);
+  EXPECT_EQ (rec_in.data, nullptr);
+  EXPECT_EQ (rec_out.data, nullptr);
+}
+
+TEST (OosTest, OosInsertAndRead100LargeStringsAroundMaxOosChunkSize)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create (thread_p, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  // max chunk size that can be stored in a single OOS slotted page
   const auto chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER);
 
   for (int large_size = chunk_size - 50; large_size <= chunk_size + 50; large_size++)
