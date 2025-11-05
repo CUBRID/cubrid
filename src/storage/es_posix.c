@@ -44,7 +44,6 @@ typedef int mode_t;
 #include "system_parameter.h"
 #include "error_code.h"
 #include "es_posix.h"
-#include "storage_common.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
@@ -581,10 +580,11 @@ xes_posix_delete_file (const char *path)
  *
  * return: error code, ER_ES_GENERAL or NO_ERRROR
  * src_path(in): file path to be copied
+ * suffix(in): suffix of new_path
  * new_path(out): file path newly created
  */
 int
-xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
+xes_posix_copy_file (const char *src_path, char *metaname, char *new_path, const char *suffix)
 {
 #define ES_POSIX_COPY_BUFSIZE		(4096 * 4)	/* 16K */
 
@@ -593,14 +593,6 @@ xes_posix_copy_file (const char *src_path, char *metaname, char *new_path)
   char dirname1[NAME_MAX], dirname2[NAME_MAX], filename[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE];
   char new_dir[PATH_MAX];
-  LOB_DIR_ID cur_lob_id = { {{-1, -1}, -1}, -1 };
-#if defined (SERVER_MODE) || defined (SA_MODE)
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  const int volid = thread_p->lob_id.hfid.vfid.volid;
-  const int fileid = thread_p->lob_id.hfid.vfid.fileid;
-  const int pageid = thread_p->lob_id.hfid.hpgid;
-  const int attrid = thread_p->lob_id.attrid;
-#endif
 
   /* open a source file */
 #if defined (WINDOWS)
@@ -620,12 +612,16 @@ retry:
 #if defined (CUBRID_OWFS_POSIX_TWO_DEPTH_DIRECTORY)
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s%c%s", es_base_dir, PATH_SEPARATOR, dirname1, PATH_SEPARATOR,
 		dirname2, PATH_SEPARATOR, filename);
-#elif defined (SERVER_MODE) || defined (SA_MODE)
-  n =
-    snprintf (new_path, PATH_MAX - 1, "%d_%d_%d_id%d%c%s%c%s", volid, fileid, pageid, attrid, PATH_SEPARATOR, dirname1,
-	      PATH_SEPARATOR, filename);
 #else
   /* default */
+  if (suffix != NULL)
+    {
+      n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", suffix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+    }
+  else
+    {
+      n = snprintf (new_path, PATH_MAX - 1, "%s%c%s", dirname1, PATH_SEPARATOR, filename);
+    }
 #endif
   if (n < 0)
     {
@@ -644,9 +640,12 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  snprintf (new_dir, PATH_MAX - 1, "%d_%d_%d_id%d%c%s", volid, fileid, pageid, attrid, PATH_SEPARATOR,
-		    dirname1);
-	  ret = es_make_dirs (new_dir, dirname2);
+	  if (suffix != NULL)
+	    {
+	      snprintf (new_dir, PATH_MAX - 1, "%s%c%s", suffix, PATH_SEPARATOR, dirname1);
+	    }
+
+	  ret = es_make_dirs (suffix ? new_dir : dirname1, dirname2);
 	  if (ret != NO_ERROR)
 	    {
 	      close (rd_fd);
