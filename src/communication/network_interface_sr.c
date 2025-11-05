@@ -8688,7 +8688,7 @@ ses_posix_copy_file (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_unpack_string_nocopy (request, &src_path);
   ptr = or_unpack_string_nocopy (ptr, &metaname);
 
-  ret = xes_posix_copy_file (src_path, metaname, new_path);
+  ret = xes_posix_copy_file (src_path, metaname, new_path, NULL);
   if (ret != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
