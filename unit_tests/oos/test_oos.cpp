@@ -62,7 +62,8 @@ TEST (OosTest, OosCreateAndCreateAgain)
 
 }
 
-TEST (OosTest, DISABLE_OosInsertAndRead)
+//TEST (OosTest, DISABLE_OosInsertAndRead)
+TEST (OosTest, OosInsertAndRead)
 {
   int err;
   VFID oos_vfid;
@@ -97,6 +98,32 @@ TEST (OosTest, DISABLE_OosInsertAndRead)
   EXPECT_STREQ (rec_out.data, random_data.c_str());
 }
 
+std::string generate_large_string (int size)
+{
+  const std::string pattern = "ABCDEFGHIJ";
+  std::string large_data;
+  large_data.reserve (size - 1);
+
+  for (size_t i = 0; i < size - 1; ++i)
+    {
+      large_data.push_back (pattern[i % pattern.size()]);
+    }
+  return large_data;
+}
+
+int generate_record_from_string (const std::string &large_data, RECDES &rec)
+{
+  int err = recdes_allocate_data_area (&rec, large_data.size() + 1);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  rec.type = REC_HOME;
+  rec.length = static_cast<int> (large_data.size() + 1);
+  std::memcpy (&rec.data[0], large_data.c_str(), large_data.size() + 1);
+  return NO_ERROR;
+}
+
 TEST (OosTest, OosInsertLargerThanPageSize)
 {
   int err;
@@ -105,55 +132,27 @@ TEST (OosTest, OosInsertLargerThanPageSize)
   err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
-  const int larger_than_page_size = DB_PAGESIZE + 5;
-  printf ("DB_PAGESIZE=%d, larger_than_page_size=%d\n", DB_PAGESIZE, larger_than_page_size);
+  const int large_size = DB_PAGESIZE + 5;
 
-  const std::string pattern = "ABCDEFGHIJ";
-  std::string large_data;
-  large_data.reserve (larger_than_page_size - 1);
+  auto large_data = generate_large_string (large_size);
 
-  for (int i = 0; i < larger_than_page_size - 1; ++i)
-    {
-      large_data.push_back (pattern[i % pattern.size()]);
-    }
-
-  RECDES rec;
-  err = recdes_allocate_data_area (&rec, larger_than_page_size);
+  RECDES rec_in{};
+  err = generate_record_from_string (large_data, rec_in);
   EXPECT_EQ (err, NO_ERROR);
-  rec.type = REC_HOME;
-  rec.length = larger_than_page_size;
-  std::memcpy (&rec.data[0], large_data.c_str(), large_data.size());
-  EXPECT_EQ (strlen (rec.data), rec.length - 1);
-  EXPECT_STREQ (rec.data, large_data.c_str());
 
   OID oid;
-  err = oos_insert (thread_p, oos_vfid, rec, oid);
+  err = oos_insert (thread_p, oos_vfid, rec_in, oid);
   EXPECT_EQ (err, NO_ERROR);
 
   RECDES result_recdes{};
   err = oos_read (thread_p, oos_vfid, oid, result_recdes);
   EXPECT_EQ (err, NO_ERROR);
-  EXPECT_STREQ (result_recdes.data, rec.data);
-  EXPECT_STREQ (result_recdes.data, large_data.c_str());
-  EXPECT_EQ(strlen(result_recdes.data),large_data.size());
+  EXPECT_STREQ (result_recdes.data, rec_in.data);
+  EXPECT_EQ (strlen (result_recdes.data),large_data.size());
 
-  auto a = std::string (result_recdes.data);
-  auto b= large_data;
-  size_t len = std::max (a.size(), b.size());
-  for (size_t i = 0; i < len; ++i)
-    {
-      if (i >= a.size() || i >= b.size() || a[i] != b[i])
-	{
-	  std::cout << "Diff at " << i << ": '"
-		    << (i < a.size() ? a[i] : '-') << "' vs '"
-		    << (i < b.size() ? b[i] : '-') << "'\n";
-	}
-    }
-
-
-  recdes_free_data_area (&rec);
-  EXPECT_EQ (rec.data, nullptr);
+  recdes_free_data_area (&rec_in);
   recdes_free_data_area (&result_recdes);
+  EXPECT_EQ (rec_in.data, nullptr);
   EXPECT_EQ (result_recdes.data, nullptr);
 }
 
