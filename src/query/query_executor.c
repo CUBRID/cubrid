@@ -15701,9 +15701,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 
-      if (xasl->type != MERGELIST_PROC)
+      if (xasl->type == BUILDLIST_PROC || xasl->type == BUILDVALUE_PROC)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
+	  if (xasl->upd_del_class_cnt == 0)
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
+	    }
 	}
       break;
     }
