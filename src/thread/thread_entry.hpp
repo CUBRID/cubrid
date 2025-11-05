@@ -105,9 +105,9 @@ struct event_stat
   struct timeval lock_waits;
   struct timeval latch_waits;
 
-  /* temp volume expand stats */
-  struct timeval temp_expand_time;
-  int temp_expand_pages;
+  /* volume expand stats */
+  struct timeval extend_time;
+  int extend_pages;
 
   /* save PRM_ID_SQL_TRACE_SLOW_MSECS for performance */
   bool trace_slow_query;
@@ -304,6 +304,7 @@ namespace cubthread
       pthread_mutex_t m_px_stats_mutex;
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
+      bool m_uses_px_stats;
 
       bool m_skip_end_resource_tracks_in_recycle;
 
