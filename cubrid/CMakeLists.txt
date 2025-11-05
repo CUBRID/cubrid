@@ -313,25 +313,23 @@ set(PARALLEL_HASH_JOIN_HEADERS
 )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.hpp
   )
 
 set(PARALLEL_QUERY_SOURCES
@@ -339,6 +337,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
   )
 
@@ -347,6 +346,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   )
@@ -564,6 +564,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 

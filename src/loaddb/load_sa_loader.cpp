@@ -567,8 +567,7 @@ static int ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_
 static int ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
-static int ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -854,7 +853,6 @@ error_exit:
 	  case LDR_DATETIMELTZ:
 	  case LDR_DATETIMETZ:
 	  case LDR_STR:
-	  case LDR_NSTR:
 	  {
 	    string_type *str = (string_type *) c->val;
 
@@ -2651,7 +2649,7 @@ error_exit:
  *
  *  These functions (ldr_str_db_*) are called when quoted strings are
  *  processed by the lexer.  They probably only make sense for char, varchar,
- *  nchar, varnchar, bit, and varbit domains.
+ *  bit, and varbit domains.
  *
  *  WARNING:  these functions cheat and assume a char-is-a-byte model, which
  *  won't work when dealing with non-ASCII (or non-Latin, at least) charsets.
@@ -3007,44 +3005,6 @@ ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
 
 error_exit:
   db_value_clear (&val);
-  return err;
-}
-
-/*
- * ldr_nstr_elem -
- *    return:
- *    context():
- *    str():
- *    len():
- *    val():
- */
-static int
-ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
-{
-
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, str, (int) len, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
-  return NO_ERROR;
-}
-
-/*
- * ldr_nstr_db_varnchar -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
-{
-  int err = NO_ERROR;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_nstr_elem (context, str, len, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
-
-error_exit:
   return err;
 }
 
@@ -5384,11 +5344,6 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       attdesc->setter[LDR_XSTR] = &ldr_xstr_db_varbit;
       break;
 
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      attdesc->setter[LDR_NSTR] = &ldr_nstr_db_varnchar;
-      break;
-
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       attdesc->setter[LDR_ELO_EXT] = &ldr_elo_ext_db_elo;
@@ -6173,7 +6128,6 @@ ldr_init_loader (LDR_CONTEXT *context)
   elem_converter[LDR_COLLECTION] = &ldr_collection_elem;
   elem_converter[LDR_BSTR] = &ldr_bstr_elem;
   elem_converter[LDR_XSTR] = &ldr_xstr_elem;
-  elem_converter[LDR_NSTR] = &ldr_nstr_elem;
   elem_converter[LDR_MONETARY] = &ldr_monetary_elem;
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;

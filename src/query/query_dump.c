@@ -32,7 +32,7 @@
 #include "dbtype.h"
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#include "px_heap_scan_perf_monitor.hpp"
+#include "px_heap_scan_trace_handler.hpp"
 #include "px_query_executor.hpp"
 #endif // SERVER_MODE
 #include "xasl.h"
@@ -1212,10 +1212,6 @@ qdump_data_type_string (DB_TYPE type)
       return "VARBIT";
     case DB_TYPE_CHAR:
       return "CHAR";
-    case DB_TYPE_NCHAR:
-      return "NCHAR";
-    case DB_TYPE_VARNCHAR:
-      return "VARNCHAR";
     case DB_TYPE_DB_VALUE:
       return "DB_VALUE";
     case DB_TYPE_RESULTSET:
@@ -3068,15 +3064,15 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 #if !WINDOWS
       if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
 	{
-	  if (spec->s_id.s.phsid.perf_monitor != NULL)
+	  if (spec->s_id.s.phsid.trace_storage != NULL)
 	    {
 	      if (!spec->s_id.scan_stats.noscan)
 		{
-		  spec->s_id.s.phsid.perf_monitor->print_json (scan, class_name,
-							       (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
+		  spec->s_id.s.phsid.trace_storage->dump_stats_json (scan, class_name);
 		}
-	      delete spec->s_id.s.phsid.perf_monitor;
-	      spec->s_id.s.phsid.perf_monitor = NULL;
+	      spec->s_id.s.phsid.trace_storage->~accumulative_trace_storage ();
+	      free (spec->s_id.s.phsid.trace_storage);
+	      spec->s_id.s.phsid.trace_storage = NULL;
 	    }
 	}
 #endif
@@ -3121,7 +3117,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
   json_t *proc, *scan = NULL;
-  json_t *subquery, *groupby, *orderby;
+  json_t *subquery, *groupby, *orderby, *parallel;
   json_t *outer, *inner;
   json_t *cte_non_recursive_part, *cte_recursive_part;
   json_t *temp;
@@ -3344,6 +3340,19 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
 
       json_object_set_new (proc, "ORDERBY", orderby);
+      if (ostats->parallel_num > 0)
+	{
+	  parallel = json_object ();
+	  json_object_set_new (parallel, "parallel workers", json_integer (ostats->parallel_num));
+	  json_object_set_new (parallel, "min time", json_integer (ostats->px_min_orderby_time));
+	  json_object_set_new (parallel, "max time", json_integer (ostats->px_max_orderby_time));
+	  json_object_set_new (parallel, "min pages", json_integer (ostats->px_min_orderby_pages));
+	  json_object_set_new (parallel, "max pages", json_integer (ostats->px_max_orderby_pages));
+	  json_object_set_new (parallel, "min ioreads", json_integer (ostats->px_min_orderby_ioreads));
+	  json_object_set_new (parallel, "max ioreads", json_integer (ostats->px_max_orderby_ioreads));
+	  json_object_set_new (proc, "PARALLEL ORDERBY", parallel);
+	}
+
     }
 
   if (HAVE_SUBQUERY_PROC (xasl_p) && xasl_p->aptr_list != NULL)
@@ -3448,28 +3457,19 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		    }
 		}
 	    }
-#if !WINDOWS
-	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
-	    {
-	      if (spec->s_id.s.phsid.perf_monitor && spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
-		{
-		  spec->s_id.s.phsid.perf_monitor->add_scan_stats (&spec->s_id);
-		}
-	    }
-#endif
 	  scan_print_stats_text (fp, &spec->s_id);
 #if !WINDOWS
 	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	    {
-	      if (spec->s_id.s.phsid.perf_monitor)
+	      if (spec->s_id.s.phsid.trace_storage)
 		{
 		  if (!spec->s_id.scan_stats.noscan)
 		    {
-		      spec->s_id.s.phsid.perf_monitor->print_text (fp, multi_spec_indent, class_name,
-								   (bool) (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST));
+		      spec->s_id.s.phsid.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
 		    }
-		  delete spec->s_id.s.phsid.perf_monitor;
-		  spec->s_id.s.phsid.perf_monitor = NULL;
+		  spec->s_id.s.phsid.trace_storage->~accumulative_trace_storage ();
+		  free (spec->s_id.s.phsid.trace_storage);
+		  spec->s_id.s.phsid.trace_storage = NULL;
 		}
 	    }
 #endif
@@ -3788,6 +3788,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, ", sort: true");
 	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) ostats->orderby_pages,
 		   (long long int) ostats->orderby_ioreads);
+	  if (ostats->parallel_num > 0)
+	    {
+	      fprintf (fp, ")\n");
+	      fprintf (fp, "%*c", indent + 8, ' ');
+	      fprintf (fp, "(parallel workers: %d", ostats->parallel_num);
+	      fprintf (fp, ", time: %lu..%lu", ostats->px_min_orderby_time, ostats->px_max_orderby_time);
+	      fprintf (fp, ", page: %lu..%lu", ostats->px_min_orderby_pages, ostats->px_max_orderby_pages);
+	      fprintf (fp, ", ioread: %lu..%lu", ostats->px_min_orderby_ioreads, ostats->px_max_orderby_ioreads);
+	    }
 	}
       else if (ostats->orderby_topnsort)
 	{

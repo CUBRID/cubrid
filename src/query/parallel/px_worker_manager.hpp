@@ -23,6 +23,7 @@
 #ifndef _PX_WORKER_MANAGER_HPP_
 #define _PX_WORKER_MANAGER_HPP_
 
+#include <atomic>
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
@@ -39,7 +40,7 @@ namespace parallel_query
       void push_task (cubthread::entry_task *task);
       void pop_task ()
       {
-	m_working_workers--;
+	m_working_workers.fetch_sub (1, std::memory_order_release);
       }
 
       worker_manager();
@@ -51,10 +52,6 @@ namespace parallel_query
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
   };
-
-#if !defined (NDEBUG)
-  void assertion_all_workers_released();
-#endif
 
   class worker_manager_with_dedicated_pool
   {

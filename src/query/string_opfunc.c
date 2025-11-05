@@ -64,9 +64,10 @@
 #if !defined (SERVER_MODE)
 #include "parse_tree.h"
 #include "es_common.h"
+#else
+#include "misctype_def.h"
 #endif /* !defined (SERVER_MODE) */
 
-#include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -81,9 +82,7 @@
                             DB_VALUE_PRECISION(value))
 
 #define QSTR_MAX_PRECISION(str_type)                                         \
-            (QSTR_IS_CHAR(str_type)          ?	DB_MAX_VARCHAR_PRECISION :  \
-	     QSTR_IS_NATIONAL_CHAR(str_type) ?	DB_MAX_VARNCHAR_PRECISION : \
-	                                        DB_MAX_VARBIT_PRECISION)
+            (QSTR_IS_CHAR(str_type) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION)
 
 #define ABS(i) ((i) >= 0 ? (i) : -(i))
 
@@ -103,7 +102,6 @@
  *  string types into function like groups.
  *
  *      DB_STRING and DB_CHAR    become QSTR_CHAR
- *      DB_NCHAR and DB_VARNCHAR become QSTR_NATIONAL_CHAR
  *      DB_BIT and DB_VARBIT     become QSTR_BIT
  *      All others               become QSTR_UNKNOWN, although this
  *                                      categorizations doesn't apply to
@@ -113,7 +111,6 @@ typedef enum
 {
   QSTR_UNKNOWN,
   QSTR_CHAR,
-  QSTR_NATIONAL_CHAR,
   QSTR_BIT
 } QSTR_CATEGORY;
 
@@ -164,14 +161,14 @@ static int db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * 
 static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
 		      const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
-		      INTL_CODESET codeset, unsigned char **res, DB_TYPE * res_type, int *res_length, int *res_size);
+		      INTL_CODESET codeset, unsigned char **res, int *res_length, int *res_size);
 static void trim_leading (const unsigned char *trim_charset_ptr, int trim_charset_size, const unsigned char *src_ptr,
 			  DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset,
 			  unsigned char **lead_trimmed_ptr, int *lead_trimmed_length, int *lead_trimmed_size,
 			  bool skip_spaces);
 static int qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_charset_ptr,
 		     int pad_charset_length, int pad_charset_size, const unsigned char *src_ptr, DB_TYPE src_type,
-		     int src_length, int src_size, INTL_CODESET codeset, unsigned char **result, DB_TYPE * result_type,
+		     int src_length, int src_size, INTL_CODESET codeset, unsigned char **result,
 		     int *result_length, int *result_size);
 static int qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_length, const char *escape,
 			   INTL_CODESET codeset, int coll_id);
@@ -183,8 +180,7 @@ static int qstr_replace (const unsigned char *src_buf, int src_len, int src_size
 			 int repl_str_size, unsigned char **result_buf, int *result_len, int *result_size);
 static int qstr_translate (const unsigned char *src_ptr, DB_TYPE src_type, int src_size, INTL_CODESET codeset,
 			   const unsigned char *from_str_ptr, int from_str_size, const unsigned char *to_str_ptr,
-			   int to_str_size, unsigned char **result_ptr, DB_TYPE * result_type, int *result_len,
-			   int *result_size);
+			   int to_str_size, unsigned char **result_ptr, int *result_len, int *result_size);
 static QSTR_CATEGORY qstr_get_category (const DB_VALUE * s);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static bool is_string (const DB_VALUE * s);
@@ -201,7 +197,7 @@ static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_T
 static int qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size, int s1_precision, DB_TYPE s1_type,
 			     const unsigned char *s2, int s2_length, int s2_size, int s2_precision, DB_TYPE s2_type,
 			     INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
-			     DB_TYPE * result_type, DB_DATA_STATUS * data_status);
+			     DB_DATA_STATUS * data_status);
 static int qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type,
 				 const unsigned char *s2, int s2_length, int s2_precision, DB_TYPE s2_type,
 				 unsigned char **result, int *result_length, int *result_size, DB_TYPE * result_type,
@@ -419,7 +415,6 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
       switch (string1_category)
 	{
 	case QSTR_CHAR:
-	case QSTR_NATIONAL_CHAR:
 
 	  assert (db_get_string_codeset (string1) == db_get_string_codeset (string2));
 
@@ -546,7 +541,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
     {
       result_type = DB_TYPE_VARBIT;
     }
-  else if (!QSTR_IS_CHAR (result_type) && !QSTR_IS_NATIONAL_CHAR (result_type))
+  else if (!QSTR_IS_CHAR (result_type))
     {
       db_make_null (db_result);
 #if defined(CUBRID_DEBUG)
@@ -602,9 +597,8 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       if (!ignore_trailing_space)
 	{
-	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR || db_string1->domain.char_info.type == DB_TYPE_NCHAR)
-	    && (db_string2->domain.char_info.type == DB_TYPE_CHAR
-		|| db_string2->domain.char_info.type == DB_TYPE_NCHAR);
+	  ti = (db_string1->domain.char_info.type == DB_TYPE_CHAR)
+	    && (db_string2->domain.char_info.type == DB_TYPE_CHAR);
 	}
       if (ti)
 	{
@@ -783,10 +777,6 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
     {
       result_type = DB_TYPE_VARCHAR;
     }
-  else if (QSTR_IS_NATIONAL_CHAR (string_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
   else if (QSTR_IS_BIT (string_type))
     {
       result_type = DB_TYPE_VARBIT;
@@ -827,8 +817,7 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 
       /* We need to implicitly trim both strings since we don't want padding for the result (its of varying type) and
        * since padding can mask the logical end of both of the strings.  We need to be careful how the trimming is
-       * done.  Char and varchar can do the normal trim, nchar and varnchar need to worry about codeset and pad chars,
-       * and bit and varbit don't want to trim at all. */
+       * done.  Char and varchar can do the normal trim and bit and varbit don't want to trim at all. */
       if (result_type == DB_TYPE_VARCHAR)
 	{
 	  for (; string1_size && string1[string1_size - 1] == ' '; string1_size--)
@@ -839,63 +828,6 @@ db_string_unique_prefix (const DB_VALUE * db_string1, const DB_VALUE * db_string
 	    {
 	      ;			/* do nothing */
 	    }
-	}
-      else if (result_type == DB_TYPE_VARNCHAR)
-	{
-	  /* This is going to look a lot like qstr_trim_trailing.  We don't call qstr_trim_trailing because he works on
-	   * length of characters and we need to work on length of bytes.  We could calculate the length in characters,
-	   * but that requires a full scan of the strings which is not necessary. */
-	  int i, pad_size, trim_length, cmp_flag, prev_size;
-	  unsigned char *prev_ptr, *current_ptr, pad[2];
-
-	  intl_pad_char (codeset, pad, &pad_size);
-
-	  trim_length = string1_size;
-	  current_ptr = (unsigned char *) (string1 + string1_size);
-	  for (i = 0, cmp_flag = 0; (i < string1_size) && (cmp_flag == 0); i++)
-	    {
-	      prev_ptr = qstr_prev_char (current_ptr, codeset, &prev_size);
-	      if (pad_size == prev_size)
-		{
-		  cmp_flag = memcmp ((char *) prev_ptr, (char *) pad, pad_size);
-
-		  if (cmp_flag == 0)
-		    {
-		      trim_length -= pad_size;
-		    }
-		}
-	      else
-		{
-		  cmp_flag = 1;
-		}
-
-	      current_ptr = prev_ptr;
-	    }
-	  string1_size = trim_length;
-
-	  trim_length = string2_size;
-	  current_ptr = (unsigned char *) (string2 + string2_size);
-	  for (i = 0, cmp_flag = 0; (i < string2_size) && (cmp_flag == 0); i++)
-	    {
-	      prev_ptr = qstr_prev_char (current_ptr, codeset, &prev_size);
-	      if (pad_size == prev_size)
-		{
-		  cmp_flag = memcmp ((char *) prev_ptr, (char *) pad, pad_size);
-
-		  if (cmp_flag == 0)
-		    {
-		      trim_length -= pad_size;
-		    }
-		}
-	      else
-		{
-		  cmp_flag = 1;
-		}
-
-	      current_ptr = prev_ptr;
-	    }
-	  string2_size = trim_length;
-
 	}
 
       /* now find the first byte where the strings differ */
@@ -1103,17 +1035,6 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		  db_value_domain_init (result, DB_TYPE_CHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 		}
 	    }
-	  else if (QSTR_IS_NATIONAL_CHAR (string_type1))
-	    {
-	      if (string_type1 == DB_TYPE_VARNCHAR || string_type2 == DB_TYPE_VARNCHAR)
-		{
-		  db_value_domain_init (result, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-		}
-	      else
-		{
-		  db_value_domain_init (result, DB_TYPE_NCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-		}
-	    }
 	  else
 	    {
 	      if (string_type1 == DB_TYPE_VARBIT || string_type2 == DB_TYPE_VARBIT)
@@ -1227,7 +1148,7 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 					   DB_GET_UCHAR (string2), (int) db_get_string_length ((DB_VALUE *) string2),
 					   (int) db_get_string_size (string2),
 					   (int) QSTR_VALUE_PRECISION (string2), DB_VALUE_DOMAIN_TYPE (string2),
-					   codeset, &r, &r_length, &r_size, &r_type, data_status);
+					   codeset, &r, &r_length, &r_size, data_status);
 
 	  pr_clear_value (&temp);
 
@@ -1241,7 +1162,7 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 	      else
 		{
 		  result_domain_length =
-		    MIN (QSTR_MAX_PRECISION (r_type), DB_VALUE_PRECISION (string1) + DB_VALUE_PRECISION (string2));
+		    MIN (DB_MAX_VARCHAR_PRECISION, DB_VALUE_PRECISION (string1) + DB_VALUE_PRECISION (string2));
 		}
 
 	      if (is_inplace_concat)
@@ -1250,7 +1171,8 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 		  (void) pr_clear_value (result);
 		}
 
-	      qstr_make_typed_string (r_type, result, result_domain_length, (char *) r, r_size, codeset, common_coll);
+	      qstr_make_typed_string (DB_TYPE_VARCHAR, result, result_domain_length, (char *) r, r_size, codeset,
+				      common_coll);
 	      r[r_size] = 0;
 	      result->data.ch.medium.length = r_length;
 	      result->need_clear = true;
@@ -1462,10 +1384,8 @@ db_string_instr (const DB_VALUE * src_string, const DB_VALUE * sub_string, const
     }
   else
     {
-      if ((str1_type != DB_TYPE_STRING && str1_type != DB_TYPE_CHAR && str1_type != DB_TYPE_VARCHAR
-	   && str1_type != DB_TYPE_NCHAR && str1_type != DB_TYPE_VARNCHAR)
-	  || (str2_type != DB_TYPE_STRING && str2_type != DB_TYPE_CHAR && str2_type != DB_TYPE_VARCHAR
-	      && str2_type != DB_TYPE_NCHAR && str2_type != DB_TYPE_VARNCHAR)
+      if ((str1_type != DB_TYPE_STRING && str1_type != DB_TYPE_CHAR && str1_type != DB_TYPE_VARCHAR)
+	  || (str2_type != DB_TYPE_STRING && str2_type != DB_TYPE_CHAR && str2_type != DB_TYPE_VARCHAR)
 	  || (arg3_type != DB_TYPE_INTEGER && arg3_type != DB_TYPE_SHORT && arg3_type != DB_TYPE_BIGINT))
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
@@ -1729,7 +1649,7 @@ db_string_position (const DB_VALUE * sub_string, const DB_VALUE * src_string, DB
       int position;
       DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src_string);
 
-      if (QSTR_IS_CHAR (src_type) || QSTR_IS_NATIONAL_CHAR (src_type))
+      if (QSTR_IS_CHAR (src_type))
 	{
 	  const char *src_str = db_get_string (src_string);
 	  int src_size = db_get_string_size (src_string);
@@ -1821,10 +1741,6 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
     {
       result_type = DB_TYPE_VARCHAR;
     }
-  else if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
   else
     {
       result_type = DB_TYPE_VARBIT;
@@ -1858,7 +1774,7 @@ db_string_substring (const MISC_OPERAND substr_operand, const DB_VALUE * src_str
 	    }
 
 	  /* Initialize the memory manager of the substring */
-	  if (QSTR_IS_CHAR (src_type) || QSTR_IS_NATIONAL_CHAR (src_type))
+	  if (QSTR_IS_CHAR (src_type))
 	    {
 	      int sub_size = 0;
 
@@ -2067,10 +1983,6 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
   if (QSTR_IS_CHAR (src_type))
     {
       result_type = DB_TYPE_VARCHAR;
-    }
-  else if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
     }
 
   src_size = db_get_string_size (src_string);
@@ -2424,10 +2336,10 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
 	  /* return the entire source string */
 
 	  error_status = pr_clone_value ((DB_VALUE *) src_string, result);
-	  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+	  if (src_type == DB_TYPE_CHAR)
 	    {
 	      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	      qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+	      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 				      DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
 				      src_cs, src_coll);
 	      result->need_clear = true;
@@ -2451,10 +2363,7 @@ empty_string:
     {
       src_type = DB_TYPE_VARCHAR;
     }
-  else if (src_type == DB_TYPE_NCHAR)
-    {
-      src_type = DB_TYPE_VARNCHAR;
-    }
+
   error_status = db_string_make_empty_typed_string (result, src_type, TP_FLOATING_PRECISION_VALUE, src_cs, src_coll);
   pr_clear_value (&empty_string1);
   pr_clear_value (&empty_string2);
@@ -3089,10 +2998,10 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
     }
 
   /* force type to variable string */
-  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+  if (src_type == DB_TYPE_CHAR)
     {
       /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-      qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 			      TP_FLOATING_PRECISION_VALUE, db_get_string (result), result_size, src_cs, src_coll);
     }
   else if (src_type == DB_TYPE_BIT)
@@ -3591,7 +3500,6 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
 
   unsigned char *result;
   int result_length, result_size = 0, result_domain_length;
-  DB_TYPE result_type = DB_TYPE_NULL;
 
   const unsigned char *trim_charset_ptr = NULL;
   int trim_charset_length = 0;
@@ -3608,14 +3516,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
   /* if source is NULL, return NULL */
   if (DB_IS_NULL (src_string))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
+      db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return error_status;
     }
 
@@ -3630,14 +3531,7 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
 
       if (DB_IS_NULL (trim_charset))
 	{
-	  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	    {
-	      db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
-	  else
-	    {
-	      db_value_domain_init (trimmed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
+	  db_value_domain_init (trimmed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	  return error_status;
 	}
     }
@@ -3676,12 +3570,12 @@ db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_charset, co
   error_status = qstr_trim (tr_operand, trim_charset_ptr, trim_charset_length, trim_charset_size,
 			    DB_GET_UCHAR (src_string), DB_VALUE_DOMAIN_TYPE (src_string),
 			    db_get_string_length (src_string), db_get_string_size (src_string),
-			    db_get_string_codeset (src_string), &result, &result_type, &result_length, &result_size);
+			    db_get_string_codeset (src_string), &result, &result_length, &result_size);
 
   if (error_status == NO_ERROR && result != NULL)
     {
-      result_domain_length = MIN (QSTR_MAX_PRECISION (result_type), DB_VALUE_PRECISION (src_string));
-      qstr_make_typed_string (result_type, trimmed_string, result_domain_length, (char *) result, result_size,
+      result_domain_length = MIN (DB_MAX_VARCHAR_PRECISION, DB_VALUE_PRECISION (src_string));
+      qstr_make_typed_string (DB_TYPE_VARCHAR, trimmed_string, result_domain_length, (char *) result, result_size,
 			      db_get_string_codeset (src_string), db_get_string_collation (src_string));
       result[result_size] = 0;
       trimmed_string->need_clear = true;
@@ -3772,7 +3666,6 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
       switch (string1_category)
 	{
 	case QSTR_CHAR:
-	case QSTR_NATIONAL_CHAR:
 
 	  assert (db_get_string_codeset (string1) == db_get_string_codeset (string2));
 
@@ -3821,7 +3714,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 static int
 qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int trim_charset_length, int trim_charset_size,
 	   const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size, INTL_CODESET codeset,
-	   unsigned char **result, DB_TYPE * result_type, int *result_length, int *result_size)
+	   unsigned char **result, int *result_length, int *result_size)
 {
   unsigned char pad_char[2], *lead_trimmed_ptr, *trail_trimmed_ptr;
   int lead_trimmed_length, trail_trimmed_length;
@@ -3872,14 +3765,6 @@ qstr_trim (MISC_OPERAND trim_operand, const unsigned char *trim_charset, int tri
   (void) memcpy ((char *) (*result), (char *) trail_trimmed_ptr, trail_trimmed_size);
   (*result)[trail_trimmed_size] = '\0';
 
-  if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      *result_type = DB_TYPE_VARNCHAR;
-    }
-  else
-    {
-      *result_type = DB_TYPE_VARCHAR;
-    }
   *result_length = trail_trimmed_length;
   *result_size = trail_trimmed_size;
 
@@ -4062,7 +3947,6 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
 
   unsigned char *result;
   int result_length = 0, result_size = 0;
-  DB_TYPE result_type;
 
   const unsigned char *pad_charset_ptr = NULL;
   int pad_charset_length = 0;
@@ -4073,14 +3957,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
   assert (src_string != (DB_VALUE *) NULL);
   assert (padded_string != (DB_VALUE *) NULL);
 
-  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-    {
-      db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-  else
-    {
-      db_value_domain_init (padded_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
+  db_value_domain_init (padded_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
   /* if source is NULL, return NULL */
   if (DB_IS_NULL (src_string))
@@ -4130,7 +4007,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
   error_status = qstr_pad (pad_operand, total_length, pad_charset_ptr, pad_charset_length, pad_charset_size,
 			   DB_GET_UCHAR (src_string), DB_VALUE_DOMAIN_TYPE (src_string),
 			   db_get_string_length (src_string), db_get_string_size (src_string),
-			   db_get_string_codeset (src_string), &result, &result_type, &result_length, &result_size);
+			   db_get_string_codeset (src_string), &result, &result_length, &result_size);
 
   if (error_status != NO_ERROR)
     {
@@ -4160,7 +4037,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
       db_private_free_and_init (NULL, result);
       return ER_QPROC_STRING_SIZE_TOO_BIG;
     }
-  qstr_make_typed_string (result_type, padded_string, result_length, (char *) result, result_size,
+  qstr_make_typed_string (DB_TYPE_VARCHAR, padded_string, result_length, (char *) result, result_size,
 			  db_get_string_codeset (src_string), db_get_string_collation (src_string));
   result[result_size] = 0;
   padded_string->need_clear = true;
@@ -4173,7 +4050,7 @@ db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, cons
 static int
 qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_charset_ptr, int pad_charset_length,
 	  int pad_charset_size, const unsigned char *src_ptr, DB_TYPE src_type, int src_length, int src_size,
-	  INTL_CODESET codeset, unsigned char **result, DB_TYPE * result_type, int *result_length, int *result_size)
+	  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size)
 {
   unsigned char def_pad_char[2];
   unsigned char *cur_pad_char_ptr;
@@ -4214,15 +4091,6 @@ qstr_pad (MISC_OPERAND pad_operand, int pad_length, const unsigned char *pad_cha
       intl_char_size ((unsigned char *) pad_charset_ptr, (pad_length - src_length) % pad_charset_length, codeset,
 		      &pad_reminder_size);
       alloc_size = src_size + pad_full_size + pad_reminder_size;
-    }
-
-  if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      *result_type = DB_TYPE_VARNCHAR;
-    }
-  else
-    {
-      *result_type = DB_TYPE_VARCHAR;
     }
 
   *result = (unsigned char *) db_private_alloc (NULL, (size_t) alloc_size + 1);
@@ -5380,7 +5248,7 @@ db_string_regexp_replace (DB_VALUE * result, DB_VALUE * args[], int const num_ar
     memcpy (result_char_string, result_string.c_str (), result_char_size);
     result_char_string[result_char_size] = '\0';
 
-    qstr_make_typed_string ((DB_VALUE_DOMAIN_TYPE (src) == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+    qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 			    result_char_size, result_char_string, result_char_size,
 			    db_get_string_codeset (src), coll_id);
     result->need_clear = true;
@@ -5395,10 +5263,10 @@ exit_copy:
     const DB_VALUE *src = args[0];
     pr_clone_value ((DB_VALUE *) src, result);
     DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
-    if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_NCHAR)
+    if (src_type == DB_TYPE_CHAR)
       {
 	/* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	qstr_make_typed_string ((src_type == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR), result,
+	qstr_make_typed_string (DB_TYPE_VARCHAR, result,
 				DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
 				db_get_string_codeset (src), db_get_string_collation (src));
       }
@@ -5615,7 +5483,7 @@ db_string_regexp_substr (DB_VALUE * result, DB_VALUE * args[], int const num_arg
 	memcpy (result_char_string, result_string.c_str (), result_char_size);
 	result_char_string[result_char_size] = '\0';
 
-	qstr_make_typed_string ((DB_VALUE_DOMAIN_TYPE (src) == DB_TYPE_NCHAR ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR),
+	qstr_make_typed_string (DB_TYPE_VARCHAR,
 				result, result_char_size, result_char_string, result_char_size,
 				db_get_string_codeset (src), coll_id);
 	result->need_clear = true;
@@ -5669,8 +5537,7 @@ exit:
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR, VARNCHAR, BIT or
- *		   VARBIT
+ *		  <src_string> is not CHAR, VARCHAR, BIT or VARBIT
  *
  * Note : result variable must already be created
  *	  operates directly on memory buffer
@@ -5782,7 +5649,7 @@ exit_copy:
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR, VARNCHAR
+ *		  <src_string> is not CHAR, VARCHAR
  *
  * Note : Used in context of GROUP_CONCAT. It is complementary to
  *	  'db_string_limit_size_string' function
@@ -6158,7 +6025,6 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
   int error_status = NO_ERROR;
   unsigned char *result_ptr = NULL;
   int result_length = 0, result_size = 0;
-  DB_TYPE result_type = DB_TYPE_NULL;
   int coll_id, coll_id_tmp;
   DB_VALUE dummy_string;
   int is_repl_string_omitted = false;
@@ -6201,16 +6067,9 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
 	}
       else
 	{
-	  if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	    {
-	      error_status =
-		db_value_domain_init (replaced_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
-	  else
-	    {
-	      error_status =
-		db_value_domain_init (replaced_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	    }
+	  error_status =
+	    db_value_domain_init (replaced_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+
 	  goto exit;
 	}
     }
@@ -6257,8 +6116,6 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
       coll_id = coll_id_tmp;
     }
 
-  result_type = QSTR_IS_NATIONAL_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)) ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR;
-
   if (!is_repl_string_omitted)
     {
       repl_string_ptr = DB_GET_UCHAR (repl_string);
@@ -6273,13 +6130,13 @@ db_string_replace (const DB_VALUE * src_string, const DB_VALUE * srch_string, co
     {
       if (result_length == 0)
 	{
-	  qstr_make_typed_string (result_type, replaced_string,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, replaced_string,
 				  (db_get_string_length (src_string) == 0) ? 1 : db_get_string_length (src_string),
 				  (char *) result_ptr, result_size, db_get_string_codeset (src_string), coll_id);
 	}
       else
 	{
-	  qstr_make_typed_string (result_type, replaced_string, result_length, (char *) result_ptr, result_size,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, replaced_string, result_length, (char *) result_ptr, result_size,
 				  db_get_string_codeset (src_string), coll_id);
 	}
       result_ptr[result_size] = 0;
@@ -6456,15 +6313,7 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 
   if (DB_IS_NULL (src_string) || DB_IS_NULL (from_string) || DB_IS_NULL (to_string))
     {
-      if (QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (src_string)))
-	{
-	  error_status = db_value_domain_init (transed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else
-	{
-	  error_status =
-	    db_value_domain_init (transed_string, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
+      error_status = db_value_domain_init (transed_string, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
       return error_status;
     }
 
@@ -6490,20 +6339,20 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 				 db_get_string_size (src_string), db_get_string_codeset (src_string),
 				 DB_GET_UCHAR (from_string), db_get_string_size (from_string),
 				 DB_GET_UCHAR (to_string), db_get_string_size (to_string), &result_ptr,
-				 &result_type, &result_length, &result_size);
+				 &result_length, &result_size);
 
   if (error_status == NO_ERROR && result_ptr != NULL)
     {
       if (result_length == 0)
 	{
-	  qstr_make_typed_string (result_type, transed_string,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, transed_string,
 				  (db_get_string_length (src_string) == 0) ? 1 : db_get_string_length (src_string),
 				  (char *) result_ptr, result_size, db_get_string_codeset (src_string),
 				  db_get_string_collation (src_string));
 	}
       else
 	{
-	  qstr_make_typed_string (result_type, transed_string, result_length, (char *) result_ptr, result_size,
+	  qstr_make_typed_string (DB_TYPE_VARCHAR, transed_string, result_length, (char *) result_ptr, result_size,
 				  db_get_string_codeset (src_string), db_get_string_collation (src_string));
 	}
       result_ptr[result_size] = 0;
@@ -6519,7 +6368,7 @@ db_string_translate (const DB_VALUE * src_string, const DB_VALUE * from_string, 
 static int
 qstr_translate (const unsigned char *src_ptr, DB_TYPE src_type, int src_size, INTL_CODESET codeset,
 		const unsigned char *from_str_ptr, int from_str_size, const unsigned char *to_str_ptr, int to_str_size,
-		unsigned char **result_ptr, DB_TYPE * result_type, int *result_len, int *result_size)
+		unsigned char **result_ptr, int *result_len, int *result_size)
 {
   int error_status = NO_ERROR;
   int j, offset, offset1, offset2;
@@ -6615,7 +6464,6 @@ loop:
     }
 
   /* evaluate result string length */
-  *result_type = QSTR_IS_NATIONAL_CHAR (src_type) ? DB_TYPE_VARNCHAR : DB_TYPE_VARCHAR;
   *result_ptr = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
   if (*result_ptr == NULL)
     {
@@ -6853,7 +6701,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  *
  * Arguments:
  *       db_val	    : (In/Out) value to make
- *       db_type    : (In) Type of string (char,nchar,bit)
+ *       db_type    : (In) Type of string (char,bit)
  *       precision  : (In)
  *       codeset    : (In)
  *       collation_id  : (In)
@@ -6862,7 +6710,7 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
  *
  * Errors:
  *   ER_QSTR_INVALID_DATA_TYPE
- *      <type> is not one of (char,nchar,bit)
+ *      <type> is not one of (char,bit)
  *   ER_OUT_OF_VIRTUAL_MEMORY
  *      out of memory
  *
@@ -6878,8 +6726,7 @@ db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int
   assert (db_val != NULL);
   assert (precision >= DB_DEFAULT_PRECISION);
 
-  if (db_type != DB_TYPE_BIT && db_type != DB_TYPE_VARBIT && db_type != DB_TYPE_CHAR && db_type != DB_TYPE_VARCHAR
-      && db_type != DB_TYPE_NCHAR && db_type != DB_TYPE_VARNCHAR)
+  if (db_type != DB_TYPE_BIT && db_type != DB_TYPE_VARBIT && db_type != DB_TYPE_CHAR && db_type != DB_TYPE_VARCHAR)
     {
       return ER_QSTR_INVALID_DATA_TYPE;
     }
@@ -7151,8 +6998,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	bool has_zone = false;
 	bool is_explicit_time = false;
@@ -7548,164 +7393,6 @@ db_string_convert_to (const DB_VALUE * src_str_dbval, DB_VALUE * dest_str_dbval,
 
   return NO_ERROR;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * db_string_convert () -
- *
- * Arguments:
- *        src_string:  (In) Source string
- *       dest_string: (Out) Converted string
- *       data_status: (Out) Data status
- *
- * Returns: int
- *
- * Errors:
- *   ER_QSTR_INVALID_DATA_TYPE
- *      <src_string> and <dest_string> are not both national char strings
- *   ER_QSTR_INCOMPATIBLE_CODE_SETS
- *      Conversion not supported between code sets of <src_string>
- *      and <dest_string>
- *
- * Note:
- *   This function converts a national character string from one
- *   set encoding to another.
- *
- *   A new DB_VALUE is created making use of the code set and
- *   memory manager stored in <dest_string>, and converting
- *   the characters in the data portion of <src_string>.
- *
- *   If the source string is fixed-length, the destination will be
- *   fixed-length with pad characters.  If the source string is
- *   variable-length, the result will also be variable length.
- *
- * Assert:
- *
- *   1. src_string  != (DB_VALUE *) NULL
- *   2. dest_value  != (DB_VALUE *) NULL
- *   3. data_status != (DB_DATA_STATUS *) NULL
- *
- */
-
-int
-db_string_convert (const DB_VALUE * src_string, DB_VALUE * dest_string)
-{
-  DB_TYPE src_type, dest_type;
-  int error_status = NO_ERROR;
-
-  /*
-   *  Assert that DB_VALUE structures have been allocated.
-   */
-  assert (src_string != (DB_VALUE *) NULL);
-  assert (dest_string != (DB_VALUE *) NULL);
-
-  /*
-   *  Categorize the two input parameters and check for errors.
-   *    Verify that the parameters are both character strings.
-   */
-  src_type = DB_VALUE_DOMAIN_TYPE (src_string);
-  dest_type = DB_VALUE_DOMAIN_TYPE (dest_string);
-
-  if (!QSTR_IS_NATIONAL_CHAR (src_type) || !QSTR_IS_NATIONAL_CHAR (dest_type))
-    {
-      error_status = ER_QSTR_INVALID_DATA_TYPE;
-    }
-
-  else if (DB_IS_NULL (src_string))
-    {
-      db_value_domain_init (dest_string, DB_VALUE_DOMAIN_TYPE (src_string), 0, 0);
-    }
-  else
-    {
-      unsigned char *src, *dest;
-      int src_length = 0, src_precision;
-      INTL_CODESET src_codeset, dest_codeset;
-      int convert_status;
-      int num_unconverted, cnv_size;
-
-
-      src = (unsigned char *) db_get_nchar (src_string, &src_length);
-      src_precision = QSTR_VALUE_PRECISION (src_string);
-
-      src_codeset = db_get_string_codeset (src_string);
-      dest_codeset = db_get_string_codeset (dest_string);
-
-      /* Fixed-length strings */
-
-      if (QSTR_IS_FIXED_LENGTH (src_type))
-	{
-	  /* Allocate enough room for a fully padded string */
-	  dest = (unsigned char *) db_private_alloc (NULL, (size_t) (2 * src_precision) + 1);
-	  if (dest == NULL)
-	    {
-	      goto mem_error;
-	    }
-
-	  /* Convert the string codeset */
-	  convert_status = intl_convert_charset (src, src_length, src_codeset, dest, dest_codeset, &num_unconverted);
-
-	  /* Pad the result */
-	  if (convert_status == NO_ERROR)
-	    {
-	      intl_char_size (dest, (src_length - num_unconverted), dest_codeset, &cnv_size);
-	      qstr_pad_string ((unsigned char *) &dest[cnv_size], (src_precision - src_length + num_unconverted),
-			       dest_codeset);
-	      dest[src_precision] = 0;
-	      db_make_nchar (dest_string, src_precision, (char *) dest, src_precision);
-	      dest_string->need_clear = true;
-	    }
-	  else
-	    {
-	      db_private_free_and_init (NULL, dest);
-	    }
-	}
-
-      /* Variable-length strings */
-      else
-	{
-	  /* Allocate enough room for the string */
-	  dest = (unsigned char *) db_private_alloc (NULL, (size_t) (2 * src_length) + 1);
-	  if (dest == NULL)
-	    {
-	      goto mem_error;
-	    }
-
-	  /* Convert the string codeset */
-	  convert_status = intl_convert_charset (src, src_length, src_codeset, dest, dest_codeset, &num_unconverted);
-
-	  if (convert_status == NO_ERROR)
-	    {
-	      dest[src_length - num_unconverted] = 0;
-	      db_make_varnchar (dest_string, src_precision, (char *) dest, (src_length - num_unconverted));
-	      dest_string->need_clear = true;
-	    }
-	  else
-	    {
-	      db_private_free_and_init (NULL, dest);
-	    }
-	}
-
-      /*
-       *  If intl_convert_charset() returned an error, map
-       *  to an ER_QSTR_INCOMPATIBLE_CODE_SETS error.
-       */
-      if (convert_status != NO_ERROR)
-	{
-	  error_status = ER_QSTR_INCOMPATIBLE_CODE_SETS;
-	}
-    }
-
-  return error_status;
-
-  /*
-   *  Error handling
-   */
-mem_error:
-  assert (er_errid () != NO_ERROR);
-  error_status = er_errid ();
-  return error_status;
-}
-#endif
 
 /*
  * qstr_pad_string () -
@@ -8139,14 +7826,6 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
       error = db_make_varchar (value, precision, src, s_unit, codeset, collation_id);
       break;
 
-    case DB_TYPE_NCHAR:
-      error = db_make_nchar (value, precision, src, s_unit, codeset, collation_id);
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      error = db_make_varnchar (value, precision, src, s_unit, codeset, collation_id);
-      break;
-
     case DB_TYPE_BIT:
       error = db_make_bit (value, precision, src, s_unit);
       break;
@@ -8181,7 +7860,7 @@ qstr_make_typed_string (const DB_TYPE db_type, DB_VALUE * value, const int preci
  *   Returns the character code set of the string "s."  The character code
  *   set of strings is:
  *
- *       QSTR_CHAR, QSTR_NATIONAL_CHAR, QSTR_BIT
+ *       QSTR_CHAR, QSTR_BIT
  *
  *   as defined in type QSTR_CATEGORY.  A value of QSTR_UNKNOWN is defined
  *   if the string does not fit into one of these categories.  This should
@@ -8200,11 +7879,6 @@ qstr_get_category (const DB_VALUE * s)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       code_set = QSTR_CHAR;
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      code_set = QSTR_NATIONAL_CHAR;
       break;
 
     case DB_TYPE_BIT:
@@ -8238,8 +7912,6 @@ qstr_get_category (const DB_VALUE * s)
  *       DB_TYPE_STRING
  *       DB_TYPE_CHAR
  *       DB_TYPE_VARCHAR
- *       DB_TYPE_NCHAR
- *       DB_TYPE_VARNCHAR
  *       DB_TYPE_BIT
  *       DB_TYPE_VARBIT
  *
@@ -8276,8 +7948,6 @@ is_string (const DB_VALUE * s)
  *       DB_TYPE_STRING
  *       DB_TYPE_VARCHAR
  *       DB_TYPE_CHAR
- *       DB_TYPE_NCHAR
- *       DB_TYPE_VARNCHAR
  *
  *   Returns FALSE otherwise.
  *
@@ -8557,191 +8227,6 @@ char_compare (const unsigned char *string1, int size1, const unsigned char *stri
 #undef SPACE
 #undef ZERO
 }				/* char_compare() */
-
-/*
- * varnchar_compare () - compare two national character strings of
- *                    DB_TYPE_VARNCHAR(tp_VarNChar)
- *
- * Arguments:
- *      string1: 1st national character string
- *        size1: size of 1st string
- *      string2: 2nd national character string
- *        size2: size of 2nd string
- *      codeset: codeset of strings
- *
- * Returns:
- *   Greater than 0 if string1 > string2
- *   Equal to 0     if string1 = string2
- *   Less than 0    if string1 < string2
- *
- * Errors:
- *
- * Note:
- *   This function is identical to qstr_compare() except that it awares
- *   of the codeset.
- *
- */
-
-int
-varnchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2,
-		  INTL_CODESET codeset)
-{
-  int n, i, cmp, pad_size = 0;
-  unsigned char c1, c2, pad[2];
-
-  intl_pad_char (codeset, pad, &pad_size);
-#define PAD pad[i % pad_size]
-#define SPACE PAD		/* smallest character in the collation sequence */
-#define ZERO '\0'		/* space is treated as zero */
-  n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
-    {
-      c1 = *string1++;
-      if (c1 == SPACE)
-	{
-	  c1 = ZERO;
-	}
-      c2 = *string2++;
-      if (c2 == SPACE)
-	{
-	  c2 = ZERO;
-	}
-      cmp = c1 - c2;
-    }
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-  if (size1 == size2)
-    {
-      return cmp;
-    }
-
-  c1 = c2 = ZERO;
-  if (size1 < size2)
-    {
-      n = size2 - size1;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c2 = *string2++;
-	  if (c2 == PAD)
-	    {
-	      c2 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  else
-    {
-      n = size1 - size2;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c1 = *string1++;
-	  if (c1 == PAD)
-	    {
-	      c1 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  return cmp;
-#undef SPACE
-#undef ZERO
-#undef PAD
-}				/* varnchar_compare() */
-
-/*
- * nchar_compare () - compare two national character strings of
- *                 DB_TYPE_NCHAR(tp_NChar)
- *
- * Arguments:
- *      string1: 1st national character string
- *        size1: size of 1st string
- *      string2: 2nd national character string
- *        size2: size of 2nd string
- *      codeset: codeset of strings
- *
- * Returns:
- *   Greater than 0 if string1 > string2
- *   Equal to 0     if string1 = string2
- *   Less than 0    if string1 < string2
- *
- * Errors:
- *
- * Note:
- *   This function is identical to qstr_compare() except that it awares
- *   of the codeset.
- *
- */
-
-int
-nchar_compare (const unsigned char *string1, int size1, const unsigned char *string2, int size2, INTL_CODESET codeset)
-{
-  int n, i, cmp, pad_size = 0;
-  unsigned char c1, c2, pad[2];
-
-  assert (size1 >= 0 && size2 >= 0);
-
-  intl_pad_char (codeset, pad, &pad_size);
-#define PAD pad[i % pad_size]
-#define SPACE PAD		/* smallest character in the collation sequence */
-#define ZERO '\0'		/* space is treated as zero */
-  n = size1 < size2 ? size1 : size2;
-  for (i = 0, cmp = 0; i < n && cmp == 0; i++)
-    {
-      c1 = *string1++;
-      if (c1 == SPACE)
-	{
-	  c1 = ZERO;
-	}
-      c2 = *string2++;
-      if (c2 == SPACE)
-	{
-	  c2 = ZERO;
-	}
-      cmp = c1 - c2;
-    }
-  if (cmp != 0)
-    {
-      return cmp;
-    }
-  if (size1 == size2)
-    {
-      return cmp;
-    }
-
-  c1 = c2 = ZERO;
-  if (size1 < size2)
-    {
-      n = size2 - size1;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c2 = *string2++;
-	  if (c2 == PAD)
-	    {
-	      c2 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  else
-    {
-      n = size1 - size2;
-      for (i = 0; i < n && cmp == 0; i++)
-	{
-	  c1 = *string1++;
-	  if (c1 == PAD)
-	    {
-	      c1 = ZERO;
-	    }
-	  cmp = c1 - c2;
-	}
-    }
-  return cmp;
-#undef SPACE
-#undef ZERO
-#undef PAD
-}				/* nchar_compare() */
 #endif /* ENABLE_UNUSED_FUNCTION */
 /*
  * bit_compare () - compare two bit strings of DB_TYPE_BIT(tp_Bit)
@@ -8843,7 +8328,7 @@ varbit_compare (const unsigned char *string1, int size1, const unsigned char *st
  *
  * Errors:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <src_string> is not CHAR, NCHAR, VARCHAR or VARNCHAR
+ *		  <src_string> is not CHAR, VARCHAR
  *
  * Note : src buffer is not freed, caller should be aware of this;
  *	  Result DB_VALUE must already be created.
@@ -8858,7 +8343,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
   int result_size = 0, src_length = 0, result_domain_length = 0, src_size = 0;
   char *r = NULL;
   int error_status = NO_ERROR;
-  DB_TYPE src_type, result_type;
+  DB_TYPE src_type;
   INTL_CODESET codeset;
 
   assert (src_string != (DB_VALUE *) NULL);
@@ -8871,14 +8356,6 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
   if (!QSTR_IS_ANY_CHAR (src_type) || DB_IS_NULL (src_string))
     {
       return ER_QSTR_INVALID_DATA_TYPE;
-    }
-  if (QSTR_IS_NATIONAL_CHAR (src_type))
-    {
-      result_type = DB_TYPE_VARNCHAR;
-    }
-  else
-    {
-      result_type = DB_TYPE_VARCHAR;
     }
 
   codeset = db_get_string_codeset (src_string);
@@ -8914,7 +8391,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
     {
       memcpy (r, db_get_string (src_string), src_size);
     }
-  qstr_make_typed_string (result_type, result, result_domain_length, r, (int) MIN (result_size, src_size),
+  qstr_make_typed_string (DB_TYPE_VARCHAR, result, result_domain_length, r, (int) MIN (result_size, src_size),
 			  codeset, db_get_string_collation (src_string));
 
   if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true && DB_IS_NULL (result)
@@ -8947,7 +8424,7 @@ qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size)
  *
  * Returns:
  *	ER_QSTR_INVALID_DATA_TYPE:
- *		  <s1> and <s2> are not CHAR, NCHAR, VARCHAR or VARNCHAR
+ *		  <s1> and <s2> are not CHAR, VARCHAR
  *
  * Errors:
  *
@@ -9024,14 +8501,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
 	  *data_status = DATA_STATUS_TRUNCATED;
 	}
 
-      if (QSTR_IS_NATIONAL_CHAR (s1_type))
-	{
-	  *result_size = *result_length * 2;
-	}
-      else
-	{
-	  *result_size = *result_length;
-	}
+      *result_size = *result_length;
 
       /*
        *  Determine how much of s1 is already copied.
@@ -9079,14 +8549,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
        */
       *result_length = MIN ((s1_logical_length + s2_logical_length), QSTR_MAX_PRECISION (s1_type));
 
-      if ((s1_type == DB_TYPE_NCHAR) || (s1_type == DB_TYPE_VARNCHAR))
-	{
-	  *result_size = *result_length * 2;
-	}
-      else
-	{
-	  *result_size = *result_length;
-	}
+      *result_size = *result_length;
 
       /*
        *  Calculate the number of characters from string1 that are already
@@ -9170,7 +8633,7 @@ static int
 qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_precision, DB_TYPE s1_type,
 		  const unsigned char *s2, int s2_length, int s2_size_, int s2_precision, DB_TYPE s2_type,
 		  INTL_CODESET codeset, unsigned char **result, int *result_length, int *result_size,
-		  DB_TYPE * result_type, DB_DATA_STATUS * data_status)
+		  DB_DATA_STATUS * data_status)
 {
   int copy_length, copy_size;
   int pad1_length, pad2_length;
@@ -9249,21 +8712,12 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 
       *result_size = s1_size + s2_size;
 
-      if (QSTR_IS_NATIONAL_CHAR (s1_type))
-	{
-	  *result_type = DB_TYPE_VARNCHAR;
-	}
-      else
-	{
-	  *result_type = DB_TYPE_VARCHAR;
-	}
-
       if (*result_size > (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES))
 	{
 	  goto size_error;
 	}
       /* Allocate storage for the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -9316,15 +8770,6 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
        */
       *result_length = MIN ((s1_logical_length + s2_logical_length), QSTR_MAX_PRECISION (s1_type));
 
-      if ((s1_type == DB_TYPE_NCHAR) || (s1_type == DB_TYPE_VARNCHAR))
-	{
-	  *result_type = DB_TYPE_VARNCHAR;
-	}
-      else
-	{
-	  *result_type = DB_TYPE_VARCHAR;
-	}
-
       if (s1_size == 0)
 	{
 	  s1_size = s1_logical_length;
@@ -9342,7 +8787,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
 	}
 
       /* Allocate the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -9470,25 +8915,8 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
    *  characters are present.  They all will be by the time
    *  we are through.
    */
-  if ((s1_type == DB_TYPE_CHAR) || (s1_type == DB_TYPE_NCHAR))
-    {
-      s1_logical_length = s1_precision;
-    }
-  else
-    {
-      s1_logical_length = s1_length;
-    }
-
-
-  if ((s2_type == DB_TYPE_CHAR) || (s2_type == DB_TYPE_NCHAR))
-    {
-      s2_logical_length = s2_precision;
-    }
-  else
-    {
-      s2_logical_length = s2_length;
-    }
-
+  s1_logical_length = (s1_type == DB_TYPE_CHAR) ? s1_precision : s1_length;
+  s2_logical_length = (s2_type == DB_TYPE_CHAR) ? s2_precision : s2_length;
 
   if ((s1_type == DB_TYPE_BIT) && (s2_type == DB_TYPE_BIT))
     {
@@ -9516,7 +8944,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	}
 
       /* Allocate the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -9581,7 +9009,7 @@ qstr_bit_concatenate (const unsigned char *s1, int s1_length, int s1_precision, 
 	  goto size_error;
 	}
       /* Allocate storage for the result string */
-      *result = (unsigned char *) db_private_alloc (NULL, (size_t) * result_size + 1);
+      *result = (unsigned char *) db_private_alloc (NULL, (size_t) (*result_size) + 1);
       if (*result == NULL)
 	{
 	  goto mem_error;
@@ -10961,9 +10389,7 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
   switch (type)
     {
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATE:
       {
@@ -11789,8 +11215,6 @@ db_round_dbvalue_to_int (const DB_VALUE * src, int *result)
 
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
       {
 	double x;
 	DB_VALUE val;
@@ -13181,8 +12605,6 @@ check_date_lang_on_prepared (const DB_VALUE * date_lang, INTL_LANG * date_lang_i
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       /* We got here because we used HOST_VAR.  And using HOST_VAR means we didn't omit format. */
       if (lang_get_lang_id_from_name (db_get_string (date_lang), date_lang_id))
 	{
@@ -19956,9 +19378,7 @@ db_format (const DB_VALUE * value, const DB_VALUE * decimals, const DB_VALUE * n
   switch (arg1_type)
     {
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	char *c;
 	int len, dot = 0;
@@ -20127,16 +19547,11 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
 	  intl_reverse_string (DB_GET_UCHAR (src_str),
 			       REINTERPRET_CAST (unsigned char *, res), db_get_string_length (src_str),
 			       db_get_string_size (src_str), db_get_string_codeset (src_str));
-	  if (QSTR_IS_CHAR (str_type))
-	    {
-	      db_make_varchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
-			       db_get_string_codeset (src_str), db_get_string_collation (src_str));
-	    }
-	  else
-	    {
-	      db_make_varnchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
-				db_get_string_codeset (src_str), db_get_string_collation (src_str));
-	    }
+
+	  assert (QSTR_IS_CHAR (str_type));
+	  db_make_varchar (result_str, DB_GET_STRING_PRECISION (src_str), res, db_get_string_size (src_str),
+			   db_get_string_codeset (src_str), db_get_string_collation (src_str));
+
 	  result_str->need_clear = true;
 	}
     }
@@ -20533,9 +19948,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
   switch (res_type)
     {
     case DB_TYPE_STRING:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	bool has_explicit_time = false;
 	int str_len = db_get_string_size (date);
@@ -21169,8 +20582,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       error_status = db_string_trim (BOTH, NULL, expr, &trimed_expr);
       if (error_status != NO_ERROR)
 	{
@@ -21223,30 +20634,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   millisec_s[0] = '\0';
   millisec = seconds = minutes = hours = 0;
   days = weeks = months = quarters = years = 0;
-
-#if defined (SERVER_MODE)
-  /* FIXME!! */
-#define PT_MILLISECOND 3087
-#define PT_SECOND (PT_MILLISECOND + 1)
-#define PT_MINUTE (PT_MILLISECOND + 2)
-#define PT_HOUR (PT_MILLISECOND + 3)
-#define PT_DAY (PT_MILLISECOND + 4)
-#define PT_WEEK (PT_MILLISECOND + 5)
-#define PT_MONTH (PT_MILLISECOND + 6)
-#define PT_QUARTER (PT_MILLISECOND + 7)
-#define PT_YEAR (PT_MILLISECOND + 8)
-#define PT_SECOND_MILLISECOND (PT_MILLISECOND + 9)
-#define PT_MINUTE_MILLISECOND (PT_MILLISECOND + 10)
-#define PT_MINUTE_SECOND (PT_MILLISECOND + 11)
-#define PT_HOUR_MILLISECOND (PT_MILLISECOND + 12)
-#define PT_HOUR_SECOND (PT_MILLISECOND + 13)
-#define PT_HOUR_MINUTE (PT_MILLISECOND + 14)
-#define PT_DAY_MILLISECOND (PT_MILLISECOND + 15)
-#define PT_DAY_SECOND (PT_MILLISECOND + 16)
-#define PT_DAY_MINUTE (PT_MILLISECOND + 17)
-#define PT_DAY_HOUR (PT_MILLISECOND + 18)
-#define PT_YEAR_MONTH (PT_MILLISECOND + 19)
-#endif /* SERVER_MODE */
 
   switch (unit)
     {
@@ -21484,30 +20871,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       goto error;
     }
 
-#if defined (SERVER_MODE)
-  /* FIXME!! */
-#undef PT_MILLISECOND
-#undef PT_SECOND
-#undef PT_MINUTE
-#undef PT_HOUR
-#undef PT_DAY
-#undef PT_WEEK
-#undef PT_MONTH
-#undef PT_QUARTER
-#undef PT_YEAR
-#undef PT_SECOND_MILLISECOND
-#undef PT_MINUTE_MILLISECOND
-#undef PT_MINUTE_SECOND
-#undef PT_HOUR_MILLISECOND
-#undef PT_HOUR_SECOND
-#undef PT_HOUR_MINUTE
-#undef PT_DAY_MILLISECOND
-#undef PT_DAY_SECOND
-#undef PT_DAY_MINUTE
-#undef PT_DAY_HOUR
-#undef PT_YEAR_MONTH
-#endif /* SERVER_MODE */
-
   /* we have the sign of the amounts, turn them in absolute value */
   years = ABS (years);
   months = ABS (months);
@@ -21538,8 +20901,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	bool has_explicit_time = false;
 	bool has_zone = false;
@@ -22225,19 +21586,13 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
       break;
 
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	bool check_has_date = false;
 
 	if (dateformat == false)
 	  {
-	    if (res_type == DB_TYPE_NCHAR || res_type == DB_TYPE_VARNCHAR)
-	      {
-		;		// ignore
-	      }
-	    else if (db_check_datetime_format (value_ptr))
+	    if (db_check_datetime_format (value_ptr))
 	      {
 		check_has_date = true;
 	      }
@@ -24157,12 +23512,6 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
 
   switch (type)
     {
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-      db_make_varnchar (result, TP_FLOATING_PRECISION_VALUE, res_s, strlen (res_s),
-			db_get_string_codeset (datetime_value), db_get_string_collation (datetime_value));
-      break;
-
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       db_make_varchar (result, TP_FLOATING_PRECISION_VALUE, res_s, strlen (res_s),
@@ -24196,7 +23545,6 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
 int
 db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN * domain)
 {
-  DB_TYPE type;
   char *res_s;
   int y, m, d, hour, min, sec, ms;
   int error_status = NO_ERROR;
@@ -24210,8 +23558,7 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
 
   y = m = d = 0;
 
-  type = DB_VALUE_DOMAIN_TYPE (date_value);
-  if (type == DB_TYPE_NULL || DB_IS_NULL (date_value))
+  if ((DB_VALUE_DOMAIN_TYPE (date_value) == DB_TYPE_NULL) || DB_IS_NULL (date_value))
     {
       db_make_null (result);
       return NO_ERROR;
@@ -24253,15 +23600,8 @@ db_date_dbval (DB_VALUE * result, const DB_VALUE * date_value, const TP_DOMAIN *
       collation_id = LANG_SYS_COLLATION;
     }
 
-  if (QSTR_IS_NATIONAL_CHAR (type))
-    {
-      db_make_varnchar (result, 10, res_s, 10, codeset, collation_id);
-    }
-  else
-    {
-      db_make_string (result, res_s);
-      db_string_put_cs_and_collation (result, codeset, collation_id);
-    }
+  db_make_string (result, res_s);
+  db_string_put_cs_and_collation (result, codeset, collation_id);
 
   result->need_clear = true;
 
@@ -24434,8 +23774,6 @@ db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_
     {
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_VALUE ts_val;
 	DB_VALUE default_date_lang;
@@ -25244,9 +24582,7 @@ db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, 
   switch (arg_type)
     {
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_DATETIME db_datetime;
 	int str_len;
@@ -25387,9 +24723,7 @@ db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int
       }
 
     case DB_TYPE_STRING:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
       {
 	DB_TIME db_time;
 	int str_len;
@@ -25492,8 +24826,7 @@ db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * db_null_terminate_string () - create a null terminated c string from a
- *				 DB_VALUE of type DB_TYPE_CHAR or
- *				 DB_TYPE_NCHAR
+ *				 DB_VALUE of type DB_TYPE_CHAR
  *    return	    : NO_ERROR or error code
  *    src_value(in) : DB_VALUE containing the string
  *    strp(out)	    : pointer for output
@@ -25515,7 +24848,7 @@ db_null_terminate_string (const DB_VALUE * src_value, char **strp)
   src_size = db_get_string_size (src_value);
   src_type = DB_VALUE_DOMAIN_TYPE (src_value);
 
-  if (src_type != DB_TYPE_CHAR && src_type != DB_TYPE_NCHAR)
+  if (src_type != DB_TYPE_CHAR)
     {
       return ER_FAILED;
     }
@@ -26754,7 +26087,7 @@ coerce_pos:
 	  str_size = db_get_string_size (param);
 
 	  /* remove padding from end of string */
-	  if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
+	  if (param_type == DB_TYPE_CHAR)
 	    {
 	      unsigned char pad_char[2];
 	      int pad_char_size;
@@ -27006,7 +26339,7 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       str_size = db_get_string_size (param);
 
       /* remove padding from end of string */
-      if (param_type == DB_TYPE_CHAR || param_type == DB_TYPE_NCHAR)
+      if (param_type == DB_TYPE_CHAR)
 	{
 	  unsigned char pad_char[2];
 	  int pad_char_size;
@@ -28064,11 +27397,7 @@ db_string_index_prefix (const DB_VALUE * string1, const DB_VALUE * string2, cons
 
   if (DB_IS_NULL (string1) || DB_IS_NULL (string2) || DB_IS_NULL (index_type))
     {
-      if (QSTR_IS_NATIONAL_CHAR (DB_VALUE_DOMAIN_TYPE (string1)))
-	{
-	  error_status = db_value_domain_init (prefix_index, DB_TYPE_VARNCHAR, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	}
-      else if (QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (string1)))
+      if (QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (string1)))
 	{
 	  error_status = db_value_domain_init (prefix_index, DB_TYPE_VARBIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	}
@@ -28424,8 +27753,6 @@ db_string_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	DB_UTIME utime_s;
 	DB_DATETIME datetime_s;

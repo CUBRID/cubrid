@@ -17,25 +17,21 @@
  */
 
 /*
- * px_heap_scan_misc.hpp - miscellaneous functions for parallel heap scan
+ * px_heap_scan_result_type.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_MISC_HPP_
-#define _PX_HEAP_SCAN_MISC_HPP_
-
-#include "regu_var.hpp"
-#include "xasl_predicate.hpp"
-#include "scan_manager.h"
-#include "thread_manager.hpp"
-
-
+#ifndef _PX_HEAP_SCAN_RESULT_TYPE_HPP_
+#define _PX_HEAP_SCAN_RESULT_TYPE_HPP_
 
 namespace parallel_heap_scan
 {
-  int regu_var_list_len (struct regu_variable_list_node   *list);
-  int regu_var_clear (THREAD_ENTRY *thread_p, REGU_VARIABLE *regu_var);
-  int pred_clear (THREAD_ENTRY *thread_p, PRED_EXPR *pred);
-  int arith_list_clear (THREAD_ENTRY *thread_p, ARITH_TYPE *list);
-  SCAN_CODE scan_next_heap_scan_1page_internal (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, VPID *curr_vpid);
+  enum class RESULT_TYPE
+  {
+    NONE = 0x0,
+    MERGEABLE_LIST = 0x1, /* (fast) list-per-thread return, and merge (set dependent) it. */
+    XASL_SNAPSHOT = 0x2, /* (slow) xasl snapshot return (row-by-row) */
+    /* should we handle COUNT(*) ?*/
+  };
 }
-#endif /*_PX_HEAP_SCAN_MISC_HPP_ */
+
+#endif /* _PX_HEAP_SCAN_RESULT_TYPE_HPP_ */
