@@ -123,6 +123,9 @@ static int oos_insert_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDE
 
       // prev_chunk_oid is updated to point at the newly inserted chunk, so that we can copy it to header inside this loop.
       OOS_RECORD_HEADER header{total_size, i, prev_chunk_oid};
+      printf ("insert_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
+	      header.total_size, header.chunk_index,
+	      header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
       err = oos_insert_small (thread_p, oos_vfid, chunk_recdes, header, prev_chunk_oid);
       if (err != NO_ERROR)
 	{
@@ -221,8 +224,13 @@ static int oos_read_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const O
 	  return err;
 	}
 
+      printf ("read_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
+	      header.total_size,
+	      header.chunk_index, header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
+
       std::memcpy (buf, chunk_recdes.data, chunk_recdes.length);
       buf += chunk_recdes.length;
+      printf ("oos_read_large: read chunk index=%d, chunk_size=%d\n", idx, chunk_recdes.length);
       current_chunk_oid = header.next_chunk_oid;
       recdes_free_data_area (&chunk_recdes);
     }
@@ -274,7 +282,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
     }
 
   // check if we need to read all the chunks
-  if (first_chunk_header.total_size > DB_PAGESIZE - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER))
+  if (first_chunk_header.next_chunk_oid.slotid != NULL_SLOTID)
     {
       err = oos_read_large (thread_p, oos_vfid, oid, first_chunk_header, recdes);
       recdes_free_data_area (&first_chunk_recdes);
@@ -283,6 +291,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
     {
       recdes = first_chunk_recdes;
     }
+  printf ("oos_read: read completed, total_size=%d\n", first_chunk_header.total_size);
 
   return err;
 }
