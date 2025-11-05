@@ -19,6 +19,8 @@ static int
 oos_read_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes,
 		   OOS_RECORD_HEADER &out_header);
 
+VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
+
 int
 oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
@@ -182,6 +184,8 @@ static int oos_insert_small (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDE
     }
   assert (slotid != NULL_SLOTID);
 
+  recently_inserted_oos_vpid = vpid;
+
   oid.pageid = vpid.pageid;
   oid.slotid = slotid;
   oid.volid = vpid.volid;
@@ -301,13 +305,37 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 {
   int err = 0;
   PAGE_TYPE page_type = PAGE_OOS;
+
+  if (recently_inserted_oos_vpid.pageid != NULL_PAGEID)
+    {
+      // try the recently inserted page first
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE_IF_IN_BUFFER,
+				     PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == nullptr)
+	{
+	  goto newalloc;
+	}
+
+      int freespace = spage_get_free_space (thread_p, page_ptr);
+
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      if (freespace >= rec_length + (int)sizeof (SPAGE_SLOT))
+	{
+	  printf ("oos_find_best_page: reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
+		  recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
+	  vpid = recently_inserted_oos_vpid;
+	  return NO_ERROR;
+	}
+    }
+
+newalloc:
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid, nullptr);
   if (err)
     {
       return err;
     }
 
-  return 0;
+  return NO_ERROR;
 }
 
 static int

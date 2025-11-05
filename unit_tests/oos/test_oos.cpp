@@ -10,6 +10,40 @@
 
 cubthread::entry *thread_p;
 
+std::string generate_large_string (int size)
+{
+  const std::string pattern = "ABCDEFGHIJ";
+  if (size <= 0)
+    return {};
+
+  std::string large_data;
+  large_data.reserve (size); // reserve full size, not size - 1
+
+  for (int i = 0; i < size; ++i)
+    {
+      large_data.push_back (pattern[i % pattern.size()]);
+    }
+
+  return large_data;
+}
+
+int generate_record_from_string (const std::string &large_data, RECDES &rec)
+{
+  int err = recdes_allocate_data_area (&rec, static_cast<int> (large_data.size() + 1));
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  rec.type = REC_HOME;
+  rec.length = static_cast<int> (large_data.size() + 1);
+
+  // copy data including null terminator
+  std::memcpy (rec.data, large_data.c_str(), large_data.size() + 1);
+  return NO_ERROR;
+}
+
+
 TEST (BasicTest, Hello)
 {
   EXPECT_STRNE ("Hello", "World");
@@ -62,7 +96,6 @@ TEST (OosTest, OosCreateAndCreateAgain)
 
 }
 
-//TEST (OosTest, DISABLED_OosInsertAndRead)
 TEST (OosTest, OosInsertAndRead)
 {
   int err;
@@ -71,15 +104,9 @@ TEST (OosTest, OosInsertAndRead)
   err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
-  RECDES rec;
-  rec.type = REC_HOME;
-  auto alloc_size = 100;
-  err = recdes_allocate_data_area (&rec, alloc_size);
-  EXPECT_EQ (err, NO_ERROR);
-
-  const auto random_data = std::string ("This is a test OOS data.");
-  std::memcpy (&rec.data[0], random_data.c_str(), random_data.size()+1);
-  rec.length = static_cast<int> (random_data.size()+1);
+  RECDES rec{};
+  const std::string random_data = "This is a test OOS data.";
+  generate_record_from_string ("This is a test OOS data.", rec);
 
   OID oid = OID_INITIALIZER;
   err = oos_insert (thread_p, oos_vfid, rec, oid);
@@ -98,41 +125,7 @@ TEST (OosTest, OosInsertAndRead)
   EXPECT_STREQ (rec_out.data, random_data.c_str());
 }
 
-std::string generate_large_string (int size)
-{
-  const std::string pattern = "ABCDEFGHIJ";
-  if (size <= 0)
-    return {};
-
-  std::string large_data;
-  large_data.reserve (size); // reserve full size, not size - 1
-
-  for (int i = 0; i < size; ++i)
-    {
-      large_data.push_back (pattern[i % pattern.size()]);
-    }
-
-  return large_data;
-}
-
-int generate_record_from_string (const std::string &large_data, RECDES &rec)
-{
-  int err = recdes_allocate_data_area (&rec, static_cast<int> (large_data.size() + 1));
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-
-  rec.type = REC_HOME;
-  rec.length = static_cast<int> (large_data.size() + 1);
-
-  // copy data including null terminator
-  std::memcpy (rec.data, large_data.c_str(), large_data.size() + 1);
-  return NO_ERROR;
-}
-
-
-TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
+TEST (OosTest, OosInsertLargerThanPageSize)
 {
   int err;
   VFID oos_vfid;
@@ -152,16 +145,16 @@ TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
   err = oos_insert (thread_p, oos_vfid, rec_in, oid);
   EXPECT_EQ (err, NO_ERROR);
 
-  RECDES result_recdes{};
-  err = oos_read (thread_p, oos_vfid, oid, result_recdes);
+  RECDES rec_out{};
+  err = oos_read (thread_p, oos_vfid, oid, rec_out);
   EXPECT_EQ (err, NO_ERROR);
-  EXPECT_STREQ (result_recdes.data, rec_in.data);
-  EXPECT_EQ (strlen (result_recdes.data),strlen (large_data.c_str()));
+  EXPECT_STREQ (rec_out.data, rec_in.data);
+  EXPECT_EQ (strlen (rec_out.data),strlen (large_data.c_str()));
 
   recdes_free_data_area (&rec_in);
-  recdes_free_data_area (&result_recdes);
+  recdes_free_data_area (&rec_out);
   EXPECT_EQ (rec_in.data, nullptr);
-  EXPECT_EQ (result_recdes.data, nullptr);
+  EXPECT_EQ (rec_out.data, nullptr);
 }
 
 TEST (OosTest, OosInsertAndRead100LargeSizesAroundPageSize)
@@ -174,7 +167,7 @@ TEST (OosTest, OosInsertAndRead100LargeSizesAroundPageSize)
 
   const auto chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER);
 
-    for (int large_size = chunk_size - 50; large_size <= chunk_size + 50; large_size++)
+  for (int large_size = chunk_size - 50; large_size <= chunk_size + 50; large_size++)
     {
       printf ("OosInsertAndReadLargeSizeAroundPageSize: testing large_size=%d\n", large_size);
       auto large_data = generate_large_string (large_size);
@@ -187,16 +180,16 @@ TEST (OosTest, OosInsertAndRead100LargeSizesAroundPageSize)
       err = oos_insert (thread_p, oos_vfid, rec_in, oid);
       EXPECT_EQ (err, NO_ERROR);
 
-      RECDES result_recdes{};
-      err = oos_read (thread_p, oos_vfid, oid, result_recdes);
+      RECDES rec_out{};
+      err = oos_read (thread_p, oos_vfid, oid, rec_out);
       EXPECT_EQ (err, NO_ERROR);
-      EXPECT_EQ (strlen (result_recdes.data),strlen (large_data.c_str()));
-      // EXPECT_STREQ (result_recdes.data, rec_in.data);
+      EXPECT_EQ (strlen (rec_out.data),strlen (large_data.c_str()));
+      EXPECT_STREQ (rec_out.data, rec_in.data);
 
       recdes_free_data_area (&rec_in);
-      recdes_free_data_area (&result_recdes);
+      recdes_free_data_area (&rec_out);
       EXPECT_EQ (rec_in.data, nullptr);
-      EXPECT_EQ (result_recdes.data, nullptr);
+      EXPECT_EQ (rec_out.data, nullptr);
     }
 
 }
@@ -303,6 +296,56 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   pgbuf_unfix (thread_p, page_ptr);
   recdes_free_data_area (&rec);
   EXPECT_EQ (rec.data, nullptr);
+}
+
+TEST (OOS_TEST, ShouldInsertIntoSamePage)
+{
+
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create (thread_p, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  const int large_size = DB_PAGESIZE + 5;
+
+  RECDES rec_in1{};
+  err = generate_record_from_string ("first string", rec_in1);
+  EXPECT_EQ (err, NO_ERROR);
+
+  RECDES rec_in2{};
+  err = generate_record_from_string ("second string again", rec_in2);
+  EXPECT_EQ (err, NO_ERROR);
+
+  OID oid1;
+  err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
+  EXPECT_EQ (err, NO_ERROR);
+
+  OID oid2;
+  err = oos_insert (thread_p, oos_vfid, rec_in2, oid2);
+  EXPECT_EQ (err, NO_ERROR);
+
+  RECDES rec_out1{};
+  err = oos_read (thread_p, oos_vfid, oid1, rec_out1);
+  EXPECT_EQ (err, NO_ERROR);
+  EXPECT_STREQ (rec_out1.data, rec_in1.data);
+  EXPECT_EQ (strlen (rec_out1.data),strlen ("first string"));
+
+  RECDES rec_out2{};
+  err = oos_read (thread_p, oos_vfid, oid2, rec_out2);
+  EXPECT_EQ (err, NO_ERROR);
+  EXPECT_STREQ (rec_out2.data, rec_in2.data);
+  EXPECT_EQ (strlen (rec_out2.data),strlen ("second string again"));
+
+  // rec_out1 and rec_out2 should be in the same page
+  EXPECT_EQ (oid1.pageid, oid2.pageid);
+  EXPECT_EQ (oid1.volid, oid2.volid);
+
+  recdes_free_data_area (&rec_in1);
+  recdes_free_data_area (&rec_in2);
+  recdes_free_data_area (&rec_out1);
+  recdes_free_data_area (&rec_out2);
+
 }
 
 class ServerEnv : public ::testing::Environment
