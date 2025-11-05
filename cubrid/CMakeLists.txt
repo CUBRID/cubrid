@@ -337,6 +337,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
   )
 
@@ -345,6 +346,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   )
@@ -562,6 +564,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
+  ${PARALLEL_QUERY_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
