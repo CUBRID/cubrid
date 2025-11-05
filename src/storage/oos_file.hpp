@@ -3,6 +3,11 @@
 #include "dbtype_def.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+#include "error_manager.h"
+
+#define OOS_LOG 1
+#define oos_log(...) \
+  if (OOS_LOG) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 struct oos_record_header
 {

@@ -2,6 +2,7 @@
 #include <cstdio>
 
 #include "dbi.h"
+#include "error_manager.h"
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
@@ -60,7 +61,7 @@ TEST (OosTest, OosCreateAndDestroy)
 
   auto [fileid, volid] = oos_vfid;
 
-  printf ("oos_vfid: fileid=%d, volid=%d\n", fileid, volid);
+  oos_log ("oos_vfid: fileid=%d, volid=%d\n", fileid, volid);
   EXPECT_NE (fileid, NULL_FILEID);
   EXPECT_NE (volid, NULL_VOLID);
 
@@ -88,8 +89,8 @@ TEST (OosTest, OosCreateAndCreateAgain)
   auto [fileid1, volid1] = oos_vfid;
   auto [fileid2, volid2] = oos_vfid2;
 
-  printf ("First oos_vfid: fileid=%d, volid=%d\n", fileid1, volid1);
-  printf ("Second oos_vfid: fileid=%d, volid=%d\n", fileid2, volid2);
+  oos_log ("First oos_vfid: fileid=%d, volid=%d\n", fileid1, volid1);
+  oos_log ("Second oos_vfid: fileid=%d, volid=%d\n", fileid2, volid2);
 
   // either volid is different or fileid is different
   EXPECT_TRUE ( (fileid1 != fileid2) || (volid1 != volid2) );
@@ -114,7 +115,7 @@ TEST (OosTest, OosInsertAndRead)
   EXPECT_NE (oid.pageid, NULL_PAGEID);
   EXPECT_NE (oid.volid, NULL_VOLID);
   EXPECT_NE (oid.slotid, NULL_SLOTID);
-  printf ("OID: volid=%d, pageid=%d, slotid=%d\n", oid.volid, oid.pageid, oid.slotid);
+  oos_log ("OID: volid=%d, pageid=%d, slotid=%d\n", oid.volid, oid.pageid, oid.slotid);
 
   RECDES rec_out{};
   err = oos_read (thread_p, oos_vfid, oid, rec_out);
@@ -169,7 +170,6 @@ TEST (OosTest, OosInsertAndRead100LargeSizesAroundPageSize)
 
   for (int large_size = chunk_size - 50; large_size <= chunk_size + 50; large_size++)
     {
-      printf ("OosInsertAndReadLargeSizeAroundPageSize: testing large_size=%d\n", large_size);
       auto large_data = generate_large_string (large_size);
 
       RECDES rec_in{};
@@ -209,7 +209,7 @@ TEST (OosTest, OosFindBestSpace)
   err = oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
   EXPECT_EQ (err, NO_ERROR);
 
-  printf ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+  oos_log ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
   EXPECT_NE (vpid.volid, NULL_VOLID);
   EXPECT_NE (vpid.pageid, NULL_PAGEID);
 }
@@ -231,7 +231,7 @@ TEST (OosTest, OosFixAndUnfixPage)
   err = oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
   EXPECT_EQ (err, NO_ERROR);
 
-  printf ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+  oos_log ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
   EXPECT_NE (vpid.volid, NULL_VOLID);
   EXPECT_NE (vpid.pageid, NULL_PAGEID);
 
@@ -259,7 +259,7 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   err = oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
   EXPECT_EQ (err, NO_ERROR);
 
-  printf ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+  oos_log ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
   EXPECT_NE (vpid.volid, NULL_VOLID);
   EXPECT_NE (vpid.pageid, NULL_PAGEID);
 
@@ -363,17 +363,20 @@ class ServerEnv : public ::testing::Environment
     void StartServer()
     {
       printf ("##### Starting Server #####\n");
+      // log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
+      er_init ("./test_oos_log",ER_NEVER_EXIT);
       auto err = db_restart ("unit_test", TRUE, "testdb");
-      EXPECT_EQ (err, NO_ERROR);
+      printf ("will be written at %s\n", er_get_msglog_filename());
+      assert (err == NO_ERROR);
       thread_p = thread_get_thread_entry_info();
-      EXPECT_NE (thread_p, nullptr);
+      assert (thread_p != nullptr);
     }
     void StopServer()
     {
       printf ("##### Stopping Server #####\n");
       auto err = db_shutdown();
-      EXPECT_EQ (err, NO_ERROR);
       fflush (stdout);
+      assert (err == NO_ERROR);
     }
 };
 

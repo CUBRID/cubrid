@@ -5,6 +5,7 @@
 #include "slotted_page.h"
 #include "storage_common.h"
 #include "oos_file.hpp"
+#include "error_manager.h"
 
 static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
@@ -110,7 +111,7 @@ static int oos_insert_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDE
   int required_page_nums = (recdes.length + chunk_size - 1) / chunk_size;
   assert (required_page_nums > 1);
 
-  printf ("oos_insert_large: required_page_nums=%d\n", required_page_nums);
+  oos_log ("oos_insert_large: required_page_nums=%d\n", required_page_nums);
 
   const int total_size = recdes.length;
 
@@ -125,9 +126,9 @@ static int oos_insert_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDE
 
       // prev_chunk_oid is updated to point at the newly inserted chunk, so that we can copy it to header inside this loop.
       OOS_RECORD_HEADER header{total_size, i, prev_chunk_oid};
-      printf ("insert_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
-	      header.total_size, header.chunk_index,
-	      header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
+      oos_log ("insert_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
+	       header.total_size, header.chunk_index,
+	       header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
       err = oos_insert_small (thread_p, oos_vfid, chunk_recdes, header, prev_chunk_oid);
       if (err != NO_ERROR)
 	{
@@ -178,7 +179,7 @@ static int oos_insert_small (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDE
   int sp_status = spage_insert (thread_p, page_ptr, &oos_rec, &slotid);
   if (sp_status != SP_SUCCESS)
     {
-      printf ("oos_insert_small: spage_insert failed with status %d\n", sp_status);
+      oos_log ("oos_insert_small: spage_insert failed with status %d\n", sp_status);
       err = ER_FAILED;
       goto cleanup;
     }
@@ -205,7 +206,7 @@ static int oos_read_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const O
   assert (first_chunk_header.chunk_index == 0);
   assert (total_size > spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER));
 
-  printf ("oos_read_large: total_size=%d\n", total_size);
+  oos_log ("oos_read_large: total_size=%d\n", total_size);
 
   err = recdes_allocate_data_area (&recdes, total_size);
   if (err != NO_ERROR)
@@ -228,13 +229,13 @@ static int oos_read_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const O
 	  return err;
 	}
 
-      printf ("read_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
-	      header.total_size,
-	      header.chunk_index, header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
+      oos_log ("read_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
+	       header.total_size,
+	       header.chunk_index, header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
 
       std::memcpy (buf, chunk_recdes.data, chunk_recdes.length);
       buf += chunk_recdes.length;
-      printf ("oos_read_large: read chunk index=%d, chunk_size=%d\n", idx, chunk_recdes.length);
+      oos_log ("oos_read_large: read chunk index=%d, chunk_size=%d\n", idx, chunk_recdes.length);
       current_chunk_oid = header.next_chunk_oid;
       recdes_free_data_area (&chunk_recdes);
     }
@@ -295,7 +296,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
     {
       recdes = first_chunk_recdes;
     }
-  printf ("oos_read: read completed, total_size=%d\n", first_chunk_header.total_size);
+  oos_log ("oos_read: read completed, total_size=%d\n", first_chunk_header.total_size);
 
   return err;
 }
@@ -321,8 +322,8 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       pgbuf_unfix_and_init (thread_p, page_ptr);
       if (freespace >= rec_length + (int)sizeof (SPAGE_SLOT))
 	{
-	  printf ("oos_find_best_page: reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
-		  recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
+	  oos_log ("oos_find_best_page: reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
+		   recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
 	  vpid = recently_inserted_oos_vpid;
 	  return NO_ERROR;
 	}
