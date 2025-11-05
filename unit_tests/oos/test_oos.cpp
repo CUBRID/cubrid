@@ -362,7 +362,7 @@ class ServerEnv : public ::testing::Environment
   private:
     void StartServer()
     {
-      printf ("##### Starting Server #####\n");
+      printf ("##### Starting Server For OOS Unit Testing #####\n");
       // log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
       er_init ("./test_oos_log",ER_NEVER_EXIT);
       auto err = db_restart ("unit_test", TRUE, "testdb");
@@ -373,7 +373,7 @@ class ServerEnv : public ::testing::Environment
     }
     void StopServer()
     {
-      printf ("##### Stopping Server #####\n");
+      printf ("##### Stopping Server For OOS Unit Testing #####\n");
       auto err = db_shutdown();
       fflush (stdout);
       assert (err == NO_ERROR);
