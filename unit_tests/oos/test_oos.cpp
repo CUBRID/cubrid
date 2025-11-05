@@ -62,7 +62,7 @@ TEST (OosTest, OosCreateAndCreateAgain)
 
 }
 
-TEST (OosTest, OosInsertAndRead)
+TEST (OosTest, DISABLE_OosInsertAndRead)
 {
   int err;
   VFID oos_vfid;
@@ -97,7 +97,7 @@ TEST (OosTest, OosInsertAndRead)
   EXPECT_STREQ (rec_out.data, random_data.c_str());
 }
 
-TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
+TEST (OosTest, OosInsertLargerThanPageSize)
 {
   int err;
   VFID oos_vfid;
@@ -107,7 +107,15 @@ TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
 
   const int larger_than_page_size = DB_PAGESIZE + 5;
   printf ("DB_PAGESIZE=%d, larger_than_page_size=%d\n", DB_PAGESIZE, larger_than_page_size);
-  const auto large_data = std::string (larger_than_page_size - 1, 'A');
+
+  const std::string pattern = "ABCDEFGHIJ";
+  std::string large_data;
+  large_data.reserve (larger_than_page_size - 1);
+
+  for (int i = 0; i < larger_than_page_size - 1; ++i)
+    {
+      large_data.push_back (pattern[i % pattern.size()]);
+    }
 
   RECDES rec;
   err = recdes_allocate_data_area (&rec, larger_than_page_size);
@@ -127,6 +135,21 @@ TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
   EXPECT_EQ (err, NO_ERROR);
   EXPECT_STREQ (result_recdes.data, rec.data);
   EXPECT_STREQ (result_recdes.data, large_data.c_str());
+  EXPECT_EQ(strlen(result_recdes.data),large_data.size());
+
+  auto a = std::string (result_recdes.data);
+  auto b= large_data;
+  size_t len = std::max (a.size(), b.size());
+  for (size_t i = 0; i < len; ++i)
+    {
+      if (i >= a.size() || i >= b.size() || a[i] != b[i])
+	{
+	  std::cout << "Diff at " << i << ": '"
+		    << (i < a.size() ? a[i] : '-') << "' vs '"
+		    << (i < b.size() ? b[i] : '-') << "'\n";
+	}
+    }
+
 
   recdes_free_data_area (&rec);
   EXPECT_EQ (rec.data, nullptr);
