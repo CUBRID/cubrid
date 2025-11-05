@@ -1641,6 +1641,20 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
       TSC_ADD_TIMEVAL (thread_p->event_stats.extend_time, tv_diff); \
       thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
+      if (thread_p->m_px_orig_thread_entry) \
+      { \
+        target_thread_p = thread_p; \
+      while (target_thread_p->m_px_orig_thread_entry != NULL) \
+	{ \
+	  if (target_thread_p->m_px_orig_thread_entry == target_thread_p) \
+	    { \
+	      break; \
+	    } \
+	  target_thread_p = target_thread_p->m_px_orig_thread_entry; \
+	} \
+        assert (target_thread_p != NULL); \
+        target_thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
+      } \
     } \
   while (0)
 #define DISK_EXTEND_COLLECT(nsects) \
@@ -1674,6 +1688,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   bool check_interrupt = logtb_get_check_interrupt (thread_p);
   bool continue_check = false;
   int error_code = NO_ERROR;
+  THREAD_ENTRY *target_thread_p = NULL;
 
   /* How this works:
    * There can be only one expand running for permanent volumes and one for temporary volumes. Any expander must first
