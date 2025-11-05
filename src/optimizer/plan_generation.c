@@ -2295,6 +2295,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    left_list = parser_append_node (left_nlist, left_elist);
 	    left_xasl = make_buildlist_proc (env, left_list);
+	    left_xasl->parallelism = xasl->parallelism;
 	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl);
 	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -2308,6 +2309,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    rght_list = parser_append_node (rght_nlist, rght_elist);
 	    rght_xasl = make_buildlist_proc (env, rght_list);
+	    rght_xasl->parallelism = xasl->parallelism;
 	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl);
 	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);	/* restore */
 
