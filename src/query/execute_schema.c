@@ -6972,6 +6972,38 @@ do_promote_partition_by_name (const char *class_name, const char *part_num, char
 }
 
 /*
+ * need_reset_notnull_unique_flags() - Determine whether NOT NULL/UNIQUE flags need reset
+ *    return: true if reset is required, false otherwise
+ *    smattr(in): attribute to check
+ *
+ * Note:
+ *    The decision is based on both smattr->flags (for NOT NULL)
+ *    and smattr->constraints (for UNIQUE).
+ *    - If the attribute has both NOT NULL and UNIQUE constraints, return false (do not reset)
+ *    - Otherwise, return true (reset required)
+ */
+static bool
+need_reset_notnull_unique_flags (const SM_ATTRIBUTE * smattr)
+{
+  bool has_not_null = false;
+  bool has_unique = false;
+  SM_CONSTRAINT *c;
+
+  has_not_null = (smattr->flags & SM_ATTFLAG_NON_NULL) != 0;
+
+  for (c = smattr->constraints; c != NULL; c = c->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+	{
+	  has_unique = true;
+	  break;
+	}
+    }
+
+  return !(has_not_null && has_unique);
+}
+
+/*
  * do_promote_partition () - promote a partition
  * return : error code or NO_ERROR
  * class_ (in) : class to promote
@@ -6984,10 +7016,9 @@ do_promote_partition (SM_CLASS * class_)
   SM_CLASS *current = NULL;
   DB_CTMPL *ctemplate = NULL;
   SM_ATTRIBUTE *smattr = NULL;
-  bool has_pk = false;
-  bool has_non_unique = false;
+  bool reset_unique_props = false;
 
-  DB_CONSTRAINT *tmp; 
+  DB_CONSTRAINT *tmp;
   SM_CLASS_CONSTRAINT *c;
   CHECK_1ARG_ERROR (class_);
 
@@ -7003,7 +7034,7 @@ do_promote_partition (SM_CLASS * class_)
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
-    
+
   ctemplate = dbt_edit_class (subclass_mop);
   if (ctemplate == NULL)
     {
@@ -7045,30 +7076,13 @@ do_promote_partition (SM_CLASS * class_)
     {
       /* reset flags that belong to the root partitioned table */
       smattr->auto_increment = NULL;
-      if (!(smattr->flags & SM_ATTFLAG_UNIQUE && smattr->flags & SM_ATTFLAG_NON_NULL))
-      {
-        smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
-        smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
-        has_non_unique = true;
-      }
-      /*if (HA_DISABLED())
-      {
-        if ((smattr->flags & SM_ATTFLAG_PRIMARY_KEY) != 0)
-          {
-            smattr->flags &= ~(SM_ATTFLAG_PRIMARY_KEY);
-            smattr->flags &= ~(SM_ATTFLAG_NON_NULL);
-            has_pk = true;
-          }
-        smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
-        smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
-      }else{
-        if (smattr->flags != SM_ATTFLAG_UNIQUE && smattr->flags != SM_ATTFLAG_NON_NULL)
-        {
-          smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
-          smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
-        }
-      }*/
       smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
+      if (need_reset_notnull_unique_flags (smattr))
+	{
+	  smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
+	  smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+	  reset_unique_props = true;
+	}
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
       smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
     }
@@ -7090,19 +7104,12 @@ do_promote_partition (SM_CLASS * class_)
 
   if (ctemplate->properties != NULL)
     {
-      if (has_pk)
+      if (reset_unique_props)
 	{
-	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PRIMARY_KEY);
-	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_NOT_NULL);
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
 	}
-      if (has_non_unique){
-       //classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
-        classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
-        classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);  
-      }
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
-      //classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
-      //classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
     }
 
   if (dbt_finish_class (ctemplate) == NULL)

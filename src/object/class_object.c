@@ -4704,6 +4704,23 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 	   *  maybe regenerate the cache for dest since the information is
 	   *  already in its property list.  - JB
 	   */
+	  SM_CONSTRAINT *src_cons;
+	  for (src_cons = src->constraints; src_cons != NULL; src_cons = (SM_CONSTRAINT *) src_cons->next)
+	    {
+	      /* QUESTION: Can different attributes point to the same BTID?
+	         (The third parameter of the classobj_make_constraint() function) */
+	      SM_CONSTRAINT *dest_new =
+		classobj_make_constraint (src_cons->name, src_cons->type, &src_cons->index, src_cons->has_function);
+	      if (dest->constraints == NULL)
+		{
+		  dest->constraints = dest_new;
+		}
+	      else
+		{
+		  dest_new->next = dest->constraints;
+		  dest->constraints = dest_new;
+		}
+	    }
 	}
 
       /* make a copy of the default value */
