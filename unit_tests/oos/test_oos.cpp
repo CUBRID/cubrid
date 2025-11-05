@@ -316,7 +316,7 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   EXPECT_EQ (rec.data, nullptr);
 }
 
-TEST (OOS_TEST, ShouldInsertIntoSamePage)
+TEST (OosTest, ShouldInsertIntoSamePage)
 {
 
   int err;
