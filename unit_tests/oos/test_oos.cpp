@@ -164,7 +164,7 @@ TEST (OosTest, DISABLED_OosInsertLargerThanPageSize)
   EXPECT_EQ (result_recdes.data, nullptr);
 }
 
-TEST (OosTest, OosInsertAndReadLargeSizeAroundPageSize)
+TEST (OosTest, OosInsertAndRead100LargeSizesAroundPageSize)
 {
   int err;
   VFID oos_vfid;
@@ -174,8 +174,7 @@ TEST (OosTest, OosInsertAndReadLargeSizeAroundPageSize)
 
   const auto chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER);
 
-  for (int large_size = chunk_size - 5 + 9; large_size <= chunk_size - 5 + 9; large_size++)
-    // for (int large_size = chunk_size - 5; large_size <= chunk_size + 5; large_size++)
+    for (int large_size = chunk_size - 50; large_size <= chunk_size + 50; large_size++)
     {
       printf ("OosInsertAndReadLargeSizeAroundPageSize: testing large_size=%d\n", large_size);
       auto large_data = generate_large_string (large_size);
