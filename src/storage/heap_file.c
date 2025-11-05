@@ -10420,6 +10420,11 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 static void
 heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw)
 {
+  OR_BUF buf;
+  OID oos_oid;
+  int offset;
+  int offset_size;
+
   if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
     {
       /* nothing to do */
@@ -10428,19 +10433,52 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 
   /* the variable attribute is bound. */
   /* find its location through the variable offset attribute table. */
-  raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
-
-  switch (TP_DOMAIN_TYPE (attrepr->domain))
+  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  switch (offset_size)
     {
-    case DB_TYPE_BLOB:
-    case DB_TYPE_CLOB:
-    case DB_TYPE_SET:		/* it may be just a little bit fast */
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-      OR_VAR_LENGTH (raw->length, recdes->data, attrepr->location, attr_info->read_classrepr->n_variable);
+    case OR_BYTE_SIZE:
+      offset =
+	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
+      break;
+    case OR_SHORT_SIZE:
+      offset =
+	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR
+		      (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
+      break;
+    case OR_INT_SIZE:
+      offset =
+	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
       break;
     default:
-      raw->length = -1;		/* remains can read without disk_length */
+      assert_release (false);
+      break;
+    }
+
+  raw->data = ((char *) recdes->data + OR_GET_VAR_LENGTH (offset));
+  if (OR_IS_OOS (offset))
+    {
+      buf.ptr = raw->data;
+      buf.endptr = (char *) recdes->data + recdes->length;
+      or_get_oid (&buf, &oos_oid);
+
+      assert (!OID_ISNULL (&oos_oid));
+
+      /* heap_oos_read .. (oos_oid (in), raw (out)) */
+    }
+  else
+    {
+      switch (TP_DOMAIN_TYPE (attrepr->domain))
+	{
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
+	case DB_TYPE_SET:	/* it may be just a little bit fast */
+	case DB_TYPE_MULTISET:
+	case DB_TYPE_SEQUENCE:
+	  OR_VAR_LENGTH (raw->length, recdes->data, attrepr->location, attr_info->read_classrepr->n_variable);
+	  break;
+	default:
+	  raw->length = -1;	/* remains can read without disk_length */
+	}
     }
 }
 
