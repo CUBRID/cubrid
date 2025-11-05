@@ -67,6 +67,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
 /************************************************************************/
@@ -175,8 +176,9 @@ struct file_header
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
 #define FILE_IS_TDE_ENCRYPTED(fh) (((fh)->file_flags & FILE_FLAG_ENCRYPTED_MASK) != 0)
 
-#define FILE_CACHE_LAST_FIND_NTH(fh) \
-  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP)
+#define FILE_CACHE_LAST_FIND_NTH(fh, thread_p) \
+  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP \
+   && thread_p->m_px_orig_thread_entry == NULL /* not parallel thread */)
 
 /* Numerable file types. Currently, we used this property for extensible hashes and sort files. */
 #define FILE_TYPE_CAN_BE_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
@@ -6258,7 +6260,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   file_log ("file_dealloc", "file %d|%d marked vpid %|%d as deleted", VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
 
-  if (FILE_CACHE_LAST_FIND_NTH (fhead))
+  if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p))
     {
       /* reset cached search location */
       VPID_SET_NULL (&fhead->vpid_find_nth_last);
@@ -8256,7 +8258,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   else
     {
-      if (FILE_CACHE_LAST_FIND_NTH (fhead) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
+      if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
 	  && !VPID_EQ (&vpid_fhead, &fhead->vpid_find_nth_last) && nth >= fhead->first_index_find_nth_last)
 	{
 	  /* start searching from last search location */
@@ -8285,7 +8287,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  goto exit;
 	}
 
-      if (FILE_CACHE_LAST_FIND_NTH (fhead))
+      if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p))
 	{
 	  /* note that we consider this file cannot be accessed concurrently. therefore we do not promote to write latch
 	   * and we do not set page dirty to update the cached search location. */

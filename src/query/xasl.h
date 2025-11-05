@@ -949,6 +949,13 @@ struct orderby_stat
   bool orderby_topnsort;
   UINT64 orderby_pages;
   UINT64 orderby_ioreads;
+  int parallel_num;
+  UINT64 px_min_orderby_time;
+  UINT64 px_max_orderby_time;
+  UINT64 px_min_orderby_pages;
+  UINT64 px_max_orderby_pages;
+  UINT64 px_min_orderby_ioreads;
+  UINT64 px_max_orderby_ioreads;
 };
 
 struct groupby_stat
