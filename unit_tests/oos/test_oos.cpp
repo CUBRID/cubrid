@@ -283,10 +283,10 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   EXPECT_EQ (rec.length, insert_data.size() + 1);
 
   // read
-  PGSLOTID slotid_out = -1;
+  PGSLOTID slotid_out = NULL_SLOTID;
   auto sp_error = spage_insert (thread_p, page_ptr, &rec, &slotid_out);
   EXPECT_EQ (sp_error, SP_SUCCESS);
-  EXPECT_NE (slotid_out, -1);
+  EXPECT_NE (slotid_out, NULL_SLOTID);
 
   // prepare record to read data
   RECDES rec_out{};
@@ -299,7 +299,9 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
 
   pgbuf_unfix (thread_p, page_ptr);
   recdes_free_data_area (&rec);
-  EXPECT_EQ (rec.data, nullptr);
+  assert(rec.data == nullptr);
+  // rec_out data area is PEEKed, so no need to free
+  assert(rec_out.data != nullptr);
 }
 
 TEST (OosTest, ShouldInsertIntoSamePage)
