@@ -19,15 +19,11 @@
 #include "gtest/gtest.h"
 #include <cstdio>
 
-#include "dbi.h"
-#include "error_manager.h"
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
-#include "thread_manager.hpp"
 #include "oos_file.hpp"
-
-cubthread::entry *thread_p;
+#include "test_oos_common.hpp"
 
 std::string generate_large_string (int size)
 {
@@ -398,38 +394,6 @@ TEST (OosTest, ShouldInsertIntoSamePage)
   recdes_free_data_area (&rec_out2);
 
 }
-
-class ServerEnv : public ::testing::Environment
-{
-  public:
-    void SetUp() override
-    {
-      StartServer();
-    }
-    void TearDown() override
-    {
-      StopServer();
-    }
-  private:
-    void StartServer()
-    {
-      printf ("##### Starting Server For OOS Unit Testing #####\n");
-      // log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
-      er_init ("./test_oos_log",ER_NEVER_EXIT);
-      auto err = db_restart ("unit_test", TRUE, "testdb");
-      printf ("will be written at %s\n", er_get_msglog_filename());
-      assert (err == NO_ERROR);
-      thread_p = thread_get_thread_entry_info();
-      assert (thread_p != nullptr);
-    }
-    void StopServer()
-    {
-      printf ("##### Stopping Server For OOS Unit Testing #####\n");
-      auto err = db_shutdown();
-      fflush (stdout);
-      assert (err == NO_ERROR);
-    }
-};
 
 int main (int argc, char **argv)
 {

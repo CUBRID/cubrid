@@ -18,16 +18,13 @@
 
 #include "gtest/gtest.h"
 #include <cstdio>
+#include <cstring>
 
-#include "dbi.h"
-#include "error_manager.h"
-#include "page_buffer.h"
-#include "slotted_page.h"
+#include "record_descriptor.hpp"
 #include "storage_common.h"
-#include "thread_manager.hpp"
 #include "oos_file.hpp"
 
-cubthread::entry *thread_p;
+#include "test_oos_common.hpp"
 
 std::string generate_large_string (int size)
 {
@@ -62,44 +59,46 @@ int generate_record_from_string (const std::string &large_data, RECDES &rec)
   return NO_ERROR;
 }
 
-
+// Test writing guide for developers
 TEST (OosTest, Hello)
 {
   EXPECT_STRNE ("Hello", "World");
   EXPECT_EQ (7 * 6, 42);
 }
 
-class ServerEnv : public ::testing::Environment
+TEST (OosTestRecordDescriptor, OosInsertRead)
 {
-  public:
-    void SetUp() override
-    {
-      StartServer();
-    }
-    void TearDown() override
-    {
-      StopServer();
-    }
-  private:
-    void StartServer()
-    {
-      printf ("##### Starting Server For OOS Unit Testing #####\n");
-      // log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
-      er_init ("./test_oos_log",ER_NEVER_EXIT);
-      auto err = db_restart ("unit_test", TRUE, "testdb");
-      printf ("will be written at %s\n", er_get_msglog_filename());
-      assert (err == NO_ERROR);
-      thread_p = thread_get_thread_entry_info();
-      assert (thread_p != nullptr);
-    }
-    void StopServer()
-    {
-      printf ("##### Stopping Server For OOS Unit Testing #####\n");
-      auto err = db_shutdown();
-      fflush (stdout);
-      assert (err == NO_ERROR);
-    }
-};
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create (thread_p, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  RECDES rec{};
+  const std::string random_data = "This is a test OOS data.";
+  generate_record_from_string ("This is a test OOS data.", rec);
+
+  OID oid = OID_INITIALIZER;
+  err = oos_insert (thread_p, oos_vfid, rec, oid);
+  EXPECT_EQ (err, NO_ERROR);
+  EXPECT_NE (oid.pageid, NULL_PAGEID);
+  EXPECT_NE (oid.volid, NULL_VOLID);
+  EXPECT_NE (oid.slotid, NULL_SLOTID);
+  oos_log ("OID: volid=%d, pageid=%d, slotid=%d\n", oid.volid, oid.pageid, oid.slotid);
+
+  RECDES rec_out{};
+  err = oos_read (thread_p, oos_vfid, oid, rec_out);
+  EXPECT_EQ (err, NO_ERROR);
+
+  EXPECT_EQ (rec_out.length, rec.length);
+  EXPECT_STREQ (rec_out.data, rec.data);
+  EXPECT_STREQ (rec_out.data, random_data.c_str());
+
+  {
+    record_descriptor rec_desc_out {rec_out};
+
+  }
+}
 
 int main (int argc, char **argv)
 {
