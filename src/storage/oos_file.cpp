@@ -26,7 +26,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
+std::unordered_map<const VFID *, VPID> oos_recently_inserted_oos_vpid_map;
 
 struct page_auto_unfix
 {
@@ -224,7 +224,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       }
     assert (slotid != NULL_SLOTID);
 
-    recently_inserted_oos_vpid = vpid;
+    oos_recently_inserted_oos_vpid_map.emplace (&oos_vfid, vpid);
 
     oid.pageid = vpid.pageid;
     oid.slotid = slotid;
@@ -359,6 +359,13 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 {
   int err = 0;
   PAGE_TYPE page_type = PAGE_OOS;
+
+  VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
+  auto it = oos_recently_inserted_oos_vpid_map.find (&oos_vfid);
+  if (it != oos_recently_inserted_oos_vpid_map.end ())
+    {
+      recently_inserted_oos_vpid = it->second;
+    }
 
   if (recently_inserted_oos_vpid.pageid != NULL_PAGEID)
     {
