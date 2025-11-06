@@ -17,6 +17,7 @@
  */
 
 #include <cassert>
+#include <memory>
 #include "error_code.h"
 #include "file_manager.h"
 #include "page_buffer.h"
@@ -41,7 +42,8 @@ struct page_auto_unfix
 };
 
 // if used, automatically unfix the page when going out of scope
-using page_unique_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
+using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
+using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
 
 int oos_get_max_chunk_size_within_page ()
 {
@@ -195,40 +197,43 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     }
 
   PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  page_unique_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
-
-  if (page_ptr == nullptr)
+  if (raw_ptr == nullptr)
     {
       return ER_FAILED;
     }
+  auto_unfixed_page_ptr page_ptr {raw_ptr, page_auto_unfix {thread_p} };
+
 
   RECDES oos_rec{};
-  err = oos_prepend_record_header (recdes, header, oos_rec);
-  if (err != NO_ERROR)
-    {
-      err = ER_FAILED;
-      return err;
-    }
+  {
+    err = oos_prepend_record_header (recdes, header, oos_rec);
+    // oos_prepend_record_header allocates data area for oos_rec
+    // therefore, we need to free it after use
+    auto_freed_recdes_ptr oos_rec_will_be_freed (&oos_rec, recdes_free_data_area);
 
-  PGSLOTID slotid = NULL_SLOTID;
-  int sp_status = spage_insert (thread_p, page_ptr.get(), &oos_rec, &slotid);
-  if (sp_status != SP_SUCCESS)
-    {
-      oos_log ("oos_insert_within_page: spage_insert failed with status %d\n", sp_status);
-      err = ER_FAILED;
-      goto cleanup;
-    }
-  assert (slotid != NULL_SLOTID);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
 
-  recently_inserted_oos_vpid = vpid;
+    PGSLOTID slotid = NULL_SLOTID;
+    int sp_status = spage_insert (thread_p, page_ptr.get(), &oos_rec, &slotid);
+    if (sp_status != SP_SUCCESS)
+      {
+	oos_log ("oos_insert_within_page: spage_insert failed with status %d\n", sp_status);
+	return ER_FAILED;
+      }
+    assert (slotid != NULL_SLOTID);
 
-  oid.pageid = vpid.pageid;
-  oid.slotid = slotid;
-  oid.volid = vpid.volid;
+    recently_inserted_oos_vpid = vpid;
 
-cleanup:
-  recdes_free_data_area (&oos_rec);
-  return err;
+    oid.pageid = vpid.pageid;
+    oid.slotid = slotid;
+    oid.volid = vpid.volid;
+  }
+  assert (oos_rec.data == nullptr); // should be freed by auto_freed_recdes_ptr
+
+  return NO_ERROR;
 }
 
 static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
@@ -243,6 +248,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
   oos_log ("oos_read_across_pages: total_size=%d\n", total_size);
 
   err = recdes_allocate_data_area (&recdes, total_size);
+
   if (err != NO_ERROR)
     {
       return err;
@@ -258,43 +264,45 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
     {
       OOS_RECORD_HEADER header;
       RECDES chunk_recdes;
-      int err = oos_read_within_page (thread_p, oos_vfid, current_chunk_oid, chunk_recdes, header);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
+      {
+	int err = oos_read_within_page (thread_p, oos_vfid, current_chunk_oid, chunk_recdes, header);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+	auto_freed_recdes_ptr chunk_recdes_will_be_freed (&chunk_recdes, recdes_free_data_area);
 
-      oos_log ("read_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
-	       header.total_size,
-	       header.chunk_index, header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
+	oos_log ("read_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
+		 header.total_size,
+		 header.chunk_index, header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
 
-      total_read_size += chunk_recdes.length;
-      std::memcpy (buf, chunk_recdes.data, chunk_recdes.length);
-      buf += chunk_recdes.length;
-      oos_log ("oos_read_across_pages: read chunk index=%d, chunk_size=%d\n", idx, chunk_recdes.length);
-      current_chunk_oid = header.next_chunk_oid;
-      recdes_free_data_area (&chunk_recdes);
+	total_read_size += chunk_recdes.length;
+	std::memcpy (buf, chunk_recdes.data, chunk_recdes.length);
+	buf += chunk_recdes.length;
+	oos_log ("oos_read_across_pages: read chunk index=%d, chunk_size=%d\n", idx, chunk_recdes.length);
+	current_chunk_oid = header.next_chunk_oid;
+      }
+      assert (chunk_recdes.data == nullptr); // should be freed by auto_freed_recdes_ptr
     }
 
   assert (total_read_size == total_size);
   assert (buf == total_size + recdes.data);
 
-  return err;
+  return NO_ERROR;
 }
 
 static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes,
 				 OOS_RECORD_HEADER &header_out)
 {
-  int err = NO_ERROR;
   const auto [pageid, slotid, volid] = oid;
   auto vpid = VPID{pageid, volid};
 
   PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  page_unique_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
-  if (page_ptr == nullptr)
+  if (raw_ptr == nullptr)
     {
       return ER_FAILED;
     }
+  auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
 
   RECDES recdes_with_oos_header;
   SCAN_CODE code = spage_get_record (thread_p, page_ptr.get(), slotid, &recdes_with_oos_header, PEEK);
@@ -306,9 +314,20 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
   recdes_allocate_data_area (&recdes, recdes_with_oos_header.length - sizeof (OOS_RECORD_HEADER));
   recdes.length = recdes_with_oos_header.length - sizeof (OOS_RECORD_HEADER);
   oos_pop_record_header (recdes_with_oos_header, header_out, recdes);
-  return err;
+  return NO_ERROR;
 }
 
+/* oos_read -
+ *
+ * return:
+ *
+ *   oos_vfid(in):
+ *   oid(in):
+ *   recdes(out):
+ *
+ *   important notes: recdes.data is allocated inside this function.
+ *   It sholud be freed by the caller using recdes_free_data_area().
+ */
 int
 oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes)
 {
@@ -335,7 +354,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
     }
   oos_log ("oos_read: read completed, total_size=%d\n", first_chunk_header.total_size);
 
-  return err;
+  return NO_ERROR;
 }
 
 int
@@ -349,11 +368,11 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       // try the recently inserted page first
       PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE_IF_IN_BUFFER,
 				    PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      page_unique_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
-      if (page_ptr == nullptr)
+      if (raw_ptr == nullptr)
 	{
 	  goto newalloc;
 	}
+      auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
 
       int freespace = spage_get_free_space (thread_p, page_ptr.get());
 
