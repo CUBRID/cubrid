@@ -28,6 +28,21 @@
 
 VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
 
+struct page_auto_unfix
+{
+  THREAD_ENTRY *thread_p;
+  void operator() (PAGE_PTR p) const noexcept
+  {
+    if (p)
+      {
+	pgbuf_unfix (thread_p, p);
+      }
+  }
+};
+
+// if used, automatically unfix the page when going out of scope
+using page_unique_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
+
 int oos_get_max_chunk_size_within_page ()
 {
   // one additional slot and OOS header are needed within page
@@ -179,7 +194,9 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       return err;
     }
 
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  page_unique_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
+
   if (page_ptr == nullptr)
     {
       return ER_FAILED;
@@ -190,12 +207,11 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   if (err != NO_ERROR)
     {
       err = ER_FAILED;
-      pgbuf_unfix_and_init (thread_p, page_ptr);
       return err;
     }
 
   PGSLOTID slotid = NULL_SLOTID;
-  int sp_status = spage_insert (thread_p, page_ptr, &oos_rec, &slotid);
+  int sp_status = spage_insert (thread_p, page_ptr.get(), &oos_rec, &slotid);
   if (sp_status != SP_SUCCESS)
     {
       oos_log ("oos_insert_within_page: spage_insert failed with status %d\n", sp_status);
@@ -212,7 +228,6 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 
 cleanup:
   recdes_free_data_area (&oos_rec);
-  pgbuf_unfix_and_init (thread_p, page_ptr);
   return err;
 }
 
@@ -274,24 +289,23 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
   const auto [pageid, slotid, volid] = oid;
   auto vpid = VPID{pageid, volid};
 
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  page_unique_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
   if (page_ptr == nullptr)
     {
       return ER_FAILED;
     }
 
   RECDES recdes_with_oos_header;
-  SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &recdes_with_oos_header, PEEK);
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr.get(), slotid, &recdes_with_oos_header, PEEK);
   if (code != S_SUCCESS)
     {
-      pgbuf_unfix_and_init (thread_p, page_ptr);
       return ER_FAILED;
     }
 
   recdes_allocate_data_area (&recdes, recdes_with_oos_header.length - sizeof (OOS_RECORD_HEADER));
   recdes.length = recdes_with_oos_header.length - sizeof (OOS_RECORD_HEADER);
   oos_pop_record_header (recdes_with_oos_header, header_out, recdes);
-  pgbuf_unfix_and_init (thread_p, page_ptr);
   return err;
 }
 
@@ -333,16 +347,16 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   if (recently_inserted_oos_vpid.pageid != NULL_PAGEID)
     {
       // try the recently inserted page first
-      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE_IF_IN_BUFFER,
-				     PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE_IF_IN_BUFFER,
+				    PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      page_unique_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
       if (page_ptr == nullptr)
 	{
 	  goto newalloc;
 	}
 
-      int freespace = spage_get_free_space (thread_p, page_ptr);
+      int freespace = spage_get_free_space (thread_p, page_ptr.get());
 
-      pgbuf_unfix_and_init (thread_p, page_ptr);
       if (freespace >= rec_length + (int)sizeof (SPAGE_SLOT))
 	{
 	  oos_log ("oos_find_best_page: reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
