@@ -4092,7 +4092,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
 
       list_id =
 	qfile_sort_list_with_func (thread_p, list_id, orderby_list, option, ls_flag, NULL, put_fn, NULL, &ordby_info,
-				   limit, true);
+				   limit, true, xasl->parallelism, &xasl->orderby_stats);
       if (list_id == NULL)
 	{
 	  error = ER_FAILED;
@@ -5325,7 +5325,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       /* sort and aggregate partial results */
       if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_hash_gby_get_next, &gbstate,
 			 &qexec_hash_gby_put_next, &gbstate, cmp_fn, &gbstate.agg_hash_context->sort_key, SORT_DUP,
-			 NO_SORT_LIMIT, gbstate.output_file->tfile_vfid->tde_encrypted) != NO_ERROR)
+			 NO_SORT_LIMIT, gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -5406,7 +5406,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
 		     &gbstate, gbstate.cmp_fn, &gbstate.key_info, SORT_DUP, NO_SORT_LIMIT,
-		     gbstate.output_file->tfile_vfid->tde_encrypted) != NO_ERROR)
+		     gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17853,7 +17853,7 @@ qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID
 
 	  list_id =
 	    qfile_sort_list_with_func (thread_p, list_id, orderby_list, Q_ALL, QFILE_FLAG_ALL, NULL, NULL, NULL,
-				       &ordby_info, NO_SORT_LIMIT, true);
+				       &ordby_info, NO_SORT_LIMIT, true, xasl->parallelism, &xasl->orderby_stats);
 
 	  if (ordby_info.ordbynum_pos != ordby_info.reserved)
 	    {
@@ -20664,7 +20664,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_analytic_get_next, &analytic_state,
 		     &qexec_analytic_put_next, &analytic_state, analytic_state.cmp_fn, &analytic_state.key_info,
-		     SORT_DUP, NO_SORT_LIMIT, analytic_state.output_file->tfile_vfid->tde_encrypted) != NO_ERROR)
+		     SORT_DUP, NO_SORT_LIMIT, analytic_state.output_file->tfile_vfid->tde_encrypted,
+		     SORT_ANALYTIC) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
