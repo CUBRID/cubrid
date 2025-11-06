@@ -7016,7 +7016,7 @@ do_promote_partition (SM_CLASS * class_)
   SM_CLASS *current = NULL;
   DB_CTMPL *ctemplate = NULL;
   SM_ATTRIBUTE *smattr = NULL;
-  bool reset_unique_props = false;
+  bool has_notnull_unique = false;
 
   DB_CONSTRAINT *tmp;
   SM_CLASS_CONSTRAINT *c;
@@ -7081,8 +7081,9 @@ do_promote_partition (SM_CLASS * class_)
 	{
 	  smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
 	  smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
-	  reset_unique_props = true;
-	}
+	}else{
+          has_notnull_unique = true;
+        }
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
       smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
     }
@@ -7104,7 +7105,7 @@ do_promote_partition (SM_CLASS * class_)
 
   if (ctemplate->properties != NULL)
     {
-      if (reset_unique_props)
+      if (!has_notnull_unique)
 	{
 	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
 	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
