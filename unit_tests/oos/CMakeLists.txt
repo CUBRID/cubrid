@@ -15,7 +15,7 @@
 #
 #
 
-project(test_oos)
+project(test_oos_project)
 
 #
 # test_oos
@@ -23,6 +23,8 @@ project(test_oos)
 
 set(TEST_OOS_SOURCES
   test_oos.cpp
+  test_oos_persist.cpp
+  test_oos_record_descriptor.cpp
   )
 
 set_source_files_properties(
@@ -31,43 +33,62 @@ set_source_files_properties(
   )
 
 add_executable(test_oos
-  ${TEST_OOS_SOURCES}
+  test_oos.cpp
+  )
+add_executable(test_oos_persist
+  test_oos_persist.cpp
+  )
+add_executable(test_oos_record_descriptor
+  test_oos_record_descriptor.cpp
   )
 
 target_link_libraries(test_oos LINK_PRIVATE ${EP_LIBS})
-target_compile_options(test_oos PRIVATE ${compile_warning_flags})
-# target_compile_definitions(test_oos PRIVATE
-#   ${COMMON_DEFS} SERVER_MODE
-#   )
+target_link_libraries(test_oos_persist LINK_PRIVATE ${EP_LIBS})
+target_link_libraries(test_oos_record_descriptor LINK_PRIVATE ${EP_LIBS})
+
 target_compile_definitions(test_oos PRIVATE
   ${COMMON_DEFS} SA_MODE
   )
+target_compile_definitions(test_oos_persist PRIVATE
+  ${COMMON_DEFS} SA_MODE
+  )
+target_compile_definitions(test_oos_record_descriptor PRIVATE
+  ${COMMON_DEFS} SA_MODE
+  )
+
 target_link_libraries(test_oos PRIVATE
+  cubridsa
+  )
+target_link_libraries(test_oos_persist PRIVATE
+  cubridsa
+  )
+target_link_libraries(test_oos_record_descriptor PRIVATE
   cubridsa
   )
 
 target_include_directories(test_oos PRIVATE
   ${TEST_INCLUDES}
   )
-add_dependencies(test_oos
-  ${CATCH2_TARGET} ${EP_TARGETS}
+target_include_directories(test_oos_persist PRIVATE
+  ${TEST_INCLUDES}
+  )
+target_include_directories(test_oos_record_descriptor PRIVATE
+  ${TEST_INCLUDES}
   )
 
-# target_link_libraries(test_oos PRIVATE
-#   cubrid
-#   )
-#
-# target_link_libraries(test_oos PRIVATE
-#   cubridcs
-#   )
-#
-
 # prefer gtest over gtest_main to have custom main function
-target_link_libraries(test_oos PRIVATE GTest::gtest)
 # target_link_libraries(test_oos PRIVATE GTest::gtest_main)
+target_link_libraries(test_oos PRIVATE GTest::gtest)
+target_link_libraries(test_oos_persist PRIVATE GTest::gtest)
+target_link_libraries(test_oos_record_descriptor PRIVATE GTest::gtest)
 
-include(GoogleTest)
-gtest_discover_tests(test_oos)
+# in order to run each testcases in isolated process, uncomment below
+# include(GoogleTest)
+# gtest_discover_tests(test_oos)
+# gtest_discover_tests(test_oos_persist)
+# gtest_discover_tests(test_oos_record_descriptor)
 
 # if not using gtest, this adds test_oos to ctest
-# add_test(NAME test_oos COMMAND test_oos)
+add_test(NAME test_oos COMMAND test_oos)
+add_test(NAME test_oos_persist COMMAND test_oos_persist)
+add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
