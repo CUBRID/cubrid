@@ -1753,8 +1753,6 @@
 // CAUTION: sync this value with that in CUBRIDServerSideJDBCErrorCode.java
 #define ER_SP_INVALID_CURSOR                        -1368
 
-#define ER_OOS_FILE_ALREADY_EXISTS		    -1400
-
 #define ER_LAST_ERROR                               -1369
 
 
