@@ -6565,6 +6565,18 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 	    }
 	}
 
+#if 1				// used in phase-1, phase-2
+      /*
+       * The client (CAS) side cannot determine whether the domain has been modified,
+       * so when it's a NUMERIC type and the address values differ as shown below,
+       * we must provide the modified value to ensure CAS outputs the correct value
+       */
+      if (TP_DOMAIN_TYPE (list_id_p->type_list.domp[count]) == DB_TYPE_NUMERIC
+	  && list_id_p->type_list.domp[count] != reg_var_p->value.domain)
+	{
+	  list_id_p->type_list.domp[count] = reg_var_p->value.domain;
+	}
+#endif
       if (list_id_p->type_list.domp[count]->collation_flag != TP_DOMAIN_COLL_NORMAL)
 	{
 	  if (reg_var_p->value.domain->collation_flag != TP_DOMAIN_COLL_NORMAL)

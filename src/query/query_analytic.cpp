@@ -377,7 +377,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		   PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain);
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
-	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
+	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, &result_domain) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
@@ -475,7 +475,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 
 	  /* calculate X^2 */
-	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_p) != NO_ERROR)
+	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, &tmp_domain_p) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
@@ -496,20 +496,20 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
       else
 	{
-	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_p) != NO_ERROR)
+	  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, &tmp_domain_p) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
 	    }
 
-	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, tmp_domain_p) != NO_ERROR)
+	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, &tmp_domain_p) != NO_ERROR)
 	    {
 	      pr_clear_value (&sqr_val);
 	      error = ER_FAILED;
 	      goto exit;
 	    }
 
-	  if (qdata_add_dbval (func_p->value2, &sqr_val, func_p->value2, tmp_domain_p) != NO_ERROR)
+	  if (qdata_add_dbval (func_p->value2, &sqr_val, func_p->value2, &tmp_domain_p) != NO_ERROR)
 	    {
 	      pr_clear_value (&sqr_val);
 	      error = ER_FAILED;
@@ -904,7 +904,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			  || func_p->function == PT_STDDEV_SAMP || func_p->function == PT_VARIANCE
 			  || func_p->function == PT_VAR_POP || func_p->function == PT_VAR_SAMP)
 			{
-			  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_ptr) != NO_ERROR)
+			  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, &tmp_domain_ptr) != NO_ERROR)
 			    {
 			      (void) pr_clear_value (&dbval);
 			      qfile_close_scan (thread_p, &scan_id);
@@ -926,7 +926,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			  || func_p->function == PT_STDDEV_SAMP || func_p->function == PT_VARIANCE
 			  || func_p->function == PT_VAR_POP || func_p->function == PT_VAR_SAMP)
 			{
-			  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_ptr) != NO_ERROR)
+			  if (qdata_multiply_dbval (&dbval, &dbval, &sqr_val, &tmp_domain_ptr) != NO_ERROR)
 			    {
 			      (void) pr_clear_value (&dbval);
 			      qfile_close_scan (thread_p, &scan_id);
@@ -935,7 +935,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			      return ER_FAILED;
 			    }
 
-			  if (qdata_add_dbval (func_p->value2, &sqr_val, func_p->value2, tmp_domain_ptr) != NO_ERROR)
+			  if (qdata_add_dbval (func_p->value2, &sqr_val, func_p->value2, &tmp_domain_ptr) != NO_ERROR)
 			    {
 			      (void) pr_clear_value (&dbval);
 			      pr_clear_value (&sqr_val);
@@ -952,7 +952,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			  domain_ptr = NULL;
 			}
 
-		      if (qdata_add_dbval (func_p->value, &dbval, func_p->value, domain_ptr) != NO_ERROR)
+		      if (qdata_add_dbval (func_p->value, &dbval, func_p->value, &domain_ptr) != NO_ERROR)
 			{
 			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
@@ -989,7 +989,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       /* compute AVG(X) = SUM(X)/COUNT(X) */
       db_make_double (&dbval, func_p->curr_cnt);
-      if (qdata_divide_dbval (func_p->value, &dbval, &xavgval, double_domain_ptr) != NO_ERROR)
+      if (qdata_divide_dbval (func_p->value, &dbval, &xavgval, &double_domain_ptr) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1028,26 +1028,26 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  db_make_double (&dbval, func_p->curr_cnt);
 	}
 
-      if (qdata_divide_dbval (func_p->value2, &dbval, &x2avgval, double_domain_ptr) != NO_ERROR)
+      if (qdata_divide_dbval (func_p->value2, &dbval, &x2avgval, &double_domain_ptr) != NO_ERROR)
 	{
 	  goto error;
 	}
 
       /* compute {SUM(X) / (n)} OR {SUM(X) / (n-1)} for xxx_SAMP agg */
-      if (qdata_divide_dbval (func_p->value, &dbval, &xavg_1val, double_domain_ptr) != NO_ERROR)
+      if (qdata_divide_dbval (func_p->value, &dbval, &xavg_1val, &double_domain_ptr) != NO_ERROR)
 	{
 	  goto error;
 	}
 
       /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for xxx_SAMP agg */
-      if (qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val, double_domain_ptr) != NO_ERROR)
+      if (qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val, &double_domain_ptr) != NO_ERROR)
 	{
 	  goto error;
 	}
 
       /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}
        * for xxx_SAMP aggregates */
-      if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, double_domain_ptr) != NO_ERROR)
+      if (qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, &double_domain_ptr) != NO_ERROR)
 	{
 	  goto error;
 	}

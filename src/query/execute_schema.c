@@ -7090,19 +7090,19 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		{
 		case PT_TYPE_FLOAT:
 		case PT_TYPE_DOUBLE:
-		  if (p != DB_DEFAULT_PRECISION && (p < 0 || p > DB_MAX_NUMERIC_PRECISION))
+		  if (p != DB_DEFAULT_PRECISION && (p < 0 || p > DB_MAX_FIXED_NUMERIC_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NUMERIC_PRECISION);
+				   DB_MAX_FIXED_NUMERIC_PRECISION);
 		    }
 		  break;
 
 		case PT_TYPE_NUMERIC:
 		  if (p != DB_DEFAULT_PRECISION
-		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_NUMERIC_PRECISION))
+		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_FIXED_NUMERIC_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NUMERIC_PRECISION);
+				   DB_MAX_FIXED_NUMERIC_PRECISION);
 		    }
 		  break;
 

@@ -40,6 +40,7 @@
 #endif /* ! WINDOWS */
 
 #include "authenticate.h"
+#include "dbtype_def.h"
 #include "error_manager.h"
 #include "parser.h"
 #include "parser_message.h"
@@ -4815,8 +4816,13 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 	  break;
 
 	default:
+#if 0				// used in phase-3
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  scale = DB_DEFAULT_NUMERIC_SCALE;
+#else
 	  precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
+#endif
 	  break;
 	}
       break;
@@ -11456,6 +11462,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
   PT_NODE *dt = NULL;
   bool do_detect_collation = true;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_LEAVE;
+  int phase_1_tmp_max_prec = 38;
 
   if (node->data_type)
     {				/* node has already been resolved */
@@ -11594,6 +11601,15 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	}
       else if (common_type == PT_TYPE_NUMERIC)
 	{
+#if 0				// used in phase-3
+	  /*
+	   * In phase-3, with the introduction of the FP_NUMERIC concept, 
+	   * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
+	   */
+	  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	  dt->info.data_type.units = 0;
+#else
 	  int integral_digits1, integral_digits2;
 
 	  integral_digits1 = arg1_prec - arg1_dec_prec;
@@ -11603,6 +11619,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    (dt->info.data_type.dec_precision + MAX (integral_digits1, integral_digits2) + 1);
 	  dt->info.data_type.units = 0;
 	}
+#endif
       else
 	{
 	  dt->info.data_type.precision = arg1_prec + arg2_prec;
@@ -11707,9 +11724,19 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    }
 	  else
 	    {
+#if 0				// used in phase-3
+	      /*
+	       * In phase-3, with the introduction of the FP_NUMERIC concept, 
+	       * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
+	       */
+	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	      dt->info.data_type.units = 0;
+#else
 	      dt->info.data_type.precision = arg1_prec + arg2_prec + 1;
 	      dt->info.data_type.dec_precision = (arg1_dec_prec + arg2_dec_prec);
 	      dt->info.data_type.units = 0;
+#endif
 	    }
 	}
       break;
@@ -11726,6 +11753,15 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    }
 	  else
 	    {
+#if 0				// used in phase-3
+	      /*
+	       * In phase-3, with the introduction of the FP_NUMERIC concept, 
+	       * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
+	       */
+	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	      dt->info.data_type.units = 0;
+#else
 	      int scaleup = 0;
 
 	      if (arg2_dec_prec > 0)
@@ -11758,6 +11794,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 		    }
 		}
 	    }
+#endif
 	}
       break;
     case PT_TIMEF:
@@ -12171,14 +12208,21 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_PRECISION)
+	  if (dt->info.data_type.precision > phase_1_tmp_max_prec)
 	    {
-	      dt->info.data_type.dec_precision = (dt->info.data_type.dec_precision
-						  - (dt->info.data_type.precision - DB_MAX_NUMERIC_PRECISION));
+	      dt->info.data_type.dec_precision =
+		dt->info.data_type.dec_precision - (dt->info.data_type.precision - phase_1_tmp_max_prec);
+	      dt->info.data_type.precision = phase_1_tmp_max_prec;
 	    }
 
-	  dt->info.data_type.precision = ((dt->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
-					  ? DB_MAX_NUMERIC_PRECISION : dt->info.data_type.precision);
+	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_SCALE)
+	    {
+	      dt->info.data_type.dec_precision = DB_MAX_NUMERIC_SCALE;
+	    }
+	  else if (dt->info.data_type.dec_precision < DB_MIN_NUMERIC_SCALE)
+	    {
+	      dt->info.data_type.dec_precision = DB_MIN_NUMERIC_SCALE;
+	    }
 	  break;
 
 	case PT_TYPE_ENUMERATION:
@@ -12665,8 +12709,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
   TP_DOMAIN_STATUS dom_status;
   PT_NODE *between_ge_lt, *between_ge_lt_arg1, *between_ge_lt_arg2;
   DB_VALUE *width_bucket_arg2 = NULL, *width_bucket_arg3 = NULL;
+  FP_VALUE_TYPE num_op_type = FP_VALUE_TYPE_NAN;
 
   assert (parser != NULL);
+  assert (domain != NULL);
 
   if (!arg1 || !result)
     {
@@ -14051,7 +14097,32 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      if (numeric_db_value_add (arg1, arg2, result) != NO_ERROR)
+#if 1				// used in phase-1, phase-2
+	      {
+		TP_DOMAIN *tmp_domain = domain;
+		if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		  {
+		    PT_ERRORc (parser, o1, er_msg ());
+		    return 0;
+		  }
+		if (num_op_type == FP_VALUE_TYPE_NUMBER
+		    || (tmp_domain->precision < result->domain.numeric_info.precision
+			|| tmp_domain->scale != result->domain.numeric_info.scale))
+		  {
+		    tmp_domain =
+		      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					 result->domain.numeric_info.scale, NULL, 0);
+		  }
+
+		dom_status = tp_value_coerce (result, result, tmp_domain);
+		if (dom_status != DOMAIN_COMPATIBLE)
+		  {
+		    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
+		    return 0;
+		  }
+	      }
+#else // used in phase-3
+	      if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
@@ -14063,6 +14134,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
 		  return 0;
 		}
+#endif
 	      break;
 
 	    case DB_TYPE_MONETARY:
@@ -14730,17 +14802,44 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      if (numeric_db_value_sub (arg1, arg2, result) != NO_ERROR)
+#if 1				// used in phase-1, phase-2
+	      {
+		TP_DOMAIN *tmp_domain = domain;
+		if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		  {
+		    PT_ERRORc (parser, o1, er_msg ());
+		    return 0;
+		  }
+		if (num_op_type == FP_VALUE_TYPE_NUMBER
+		    || (tmp_domain->precision < result->domain.numeric_info.precision
+			|| tmp_domain->scale != result->domain.numeric_info.scale))
+		  {
+		    tmp_domain =
+		      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					 result->domain.numeric_info.scale, NULL, 0);
+		  }
+
+		dom_status = tp_value_coerce (result, result, tmp_domain);
+		if (dom_status != DOMAIN_COMPATIBLE)
+		  {
+		    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
+		    return 0;
+		  }
+	      }
+#else // used in phase-3
+	      if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
+
 	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
 		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
 		  return 0;
 		}
+#endif
 	      break;
 
 	    case DB_TYPE_MONETARY:
@@ -15126,7 +15225,37 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      error = numeric_db_value_mul (arg1, arg2, result);
+#if 1				// used in phase-1, phase-2
+	      {
+		TP_DOMAIN *tmp_domain = domain;
+		error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
+		if (error == ER_IT_DATA_OVERFLOW)
+		  {
+		    goto overflow;
+		  }
+		else if (error != NO_ERROR)
+		  {
+		    PT_ERRORc (parser, o1, er_msg ());
+		    return 0;
+		  }
+		if (num_op_type == FP_VALUE_TYPE_NUMBER
+		    || (tmp_domain->precision < result->domain.numeric_info.precision
+			|| tmp_domain->scale != result->domain.numeric_info.scale))
+		  {
+		    tmp_domain =
+		      tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					 result->domain.numeric_info.scale, NULL, 0);
+		  }
+
+		dom_status = tp_value_coerce (result, result, tmp_domain);
+		if (dom_status != DOMAIN_COMPATIBLE)
+		  {
+		    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
+		    return 0;
+		  }
+	      }
+#else
+	      error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
 	      if (error == ER_IT_DATA_OVERFLOW)
 		{
 		  goto overflow;
@@ -15136,12 +15265,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
 		}
+
 	      dom_status = tp_value_coerce (result, result, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
 		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, domain);
 		  return 0;
 		}
+#endif
 	      break;
 
 	    case DB_TYPE_MONETARY:
@@ -15230,7 +15361,37 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_NUMERIC:
 	      if (!numeric_db_value_is_zero (arg2))
 		{
-		  error = numeric_db_value_div (arg1, arg2, result);
+#if 1				// used in phase-1, phase-2
+		  TP_DOMAIN *tmp_domain = domain;
+		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
+		  if (error == ER_IT_DATA_OVERFLOW)
+		    {
+		      goto overflow;
+		    }
+		  else if (error != NO_ERROR)
+		    {
+		      PT_ERRORc (parser, o1, er_msg ());
+		      return 0;
+		    }
+		  if (num_op_type == FP_VALUE_TYPE_NUMBER
+		      || (tmp_domain->precision < result->domain.numeric_info.precision
+			  || tmp_domain->scale != result->domain.numeric_info.scale))
+		    {
+		      tmp_domain =
+			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, result->domain.numeric_info.precision,
+					   result->domain.numeric_info.scale, NULL, 0);
+		    }
+
+		  dom_status = tp_value_coerce (result, result, tmp_domain);
+		  if (dom_status != DOMAIN_COMPATIBLE)
+		    {
+		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, tmp_domain);
+		      return 0;
+		    }
+
+		  return 1;
+#else // used in phase-3
+		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;
@@ -15249,6 +15410,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		    }
 
 		  return 1;
+#endif
 		}
 	      break;
 

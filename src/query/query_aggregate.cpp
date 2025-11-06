@@ -271,13 +271,13 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
       else if (acc->curr_cnt >= 1 && new_acc->curr_cnt >= 1)
 	{
 	  /* acc.value += new_acc.value */
-	  if (qdata_add_dbval (acc->value, new_acc->value, acc->value, double_domain) != NO_ERROR)
+	  if (qdata_add_dbval (acc->value, new_acc->value, acc->value, &double_domain) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 
 	  /* acc.value2 += new_acc.value2 */
-	  if (qdata_add_dbval (acc->value2, new_acc->value2, acc->value2, double_domain) != NO_ERROR)
+	  if (qdata_add_dbval (acc->value2, new_acc->value2, acc->value2, &double_domain) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -446,7 +446,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
       else
 	{
 	  /* values are added up in acc.value */
-	  if (qdata_add_dbval (acc->value, value, acc->value, domain->value_dom) != NO_ERROR)
+	  if (qdata_add_dbval (acc->value, value, acc->value, &domain->value_dom) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -468,7 +468,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
       if (acc->curr_cnt < 1)
 	{
 	  /* calculate X^2 */
-	  if (qdata_multiply_dbval (value, value, &squared, domain->value2_dom) != NO_ERROR)
+	  if (qdata_multiply_dbval (value, value, &squared, &domain->value2_dom) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -484,20 +484,20 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
       else
 	{
 	  /* compute X^2 */
-	  if (qdata_multiply_dbval (value, value, &squared, domain->value2_dom) != NO_ERROR)
+	  if (qdata_multiply_dbval (value, value, &squared, &domain->value2_dom) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 
 	  /* acc.value += X */
-	  if (qdata_add_dbval (acc->value, value, acc->value, domain->value_dom) != NO_ERROR)
+	  if (qdata_add_dbval (acc->value, value, acc->value, &domain->value_dom) != NO_ERROR)
 	    {
 	      pr_clear_value (&squared);
 	      return ER_FAILED;
 	    }
 
 	  /* acc.value += X^2 */
-	  if (qdata_add_dbval (acc->value2, &squared, acc->value2, domain->value2_dom) != NO_ERROR)
+	  if (qdata_add_dbval (acc->value2, &squared, acc->value2, &domain->value2_dom) != NO_ERROR)
 	    {
 	      pr_clear_value (&squared);
 	      return ER_FAILED;
@@ -1168,7 +1168,7 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 	{
 	case PT_COUNT:
 	  /* add current value to result */
-	  error = qdata_add_dbval (agg_p->accumulator.value, &result, &result, agg_p->domain);
+	  error = qdata_add_dbval (agg_p->accumulator.value, &result, &result, &agg_p->domain);
 	  pr_clear_value (agg_p->accumulator.value);
 	  break;
 	case PT_COUNT_STAR:
@@ -1510,7 +1510,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				  || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VAR_POP
 				  || agg_p->function == PT_STDDEV_SAMP || agg_p->function == PT_VAR_SAMP)
 				{
-				  error = qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_ptr);
+				  error = qdata_multiply_dbval (&dbval, &dbval, &sqr_val, &tmp_domain_ptr);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -1557,7 +1557,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				  || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VAR_POP
 				  || agg_p->function == PT_STDDEV_SAMP || agg_p->function == PT_VAR_SAMP)
 				{
-				  error = qdata_multiply_dbval (&dbval, &dbval, &sqr_val, tmp_domain_ptr);
+				  error = qdata_multiply_dbval (&dbval, &dbval, &sqr_val, &tmp_domain_ptr);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -1569,7 +1569,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				    }
 
 				  error = qdata_add_dbval (agg_p->accumulator.value2, &sqr_val,
-							   agg_p->accumulator.value2, tmp_domain_ptr);
+							   agg_p->accumulator.value2, &tmp_domain_ptr);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -1609,7 +1609,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				    }
 
 				  error = qdata_add_dbval (agg_p->accumulator.value, &dbval,
-							   agg_p->accumulator.value, domain_ptr);
+							   agg_p->accumulator.value, &domain_ptr);
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -1651,7 +1651,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  /* compute AVG(X) = SUM(X)/COUNT(X) */
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
-	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
+	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, &double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -1691,7 +1691,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	    }
 
-	  error = qdata_divide_dbval (agg_p->accumulator.value2, &dbval, &x2avgval, double_domain_ptr);
+	  error = qdata_divide_dbval (agg_p->accumulator.value2, &dbval, &x2avgval, &double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -1699,7 +1699,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 
 	  /* compute {SUM(X) / (n)} OR {SUM(X) / (n-1)} for xxx_SAMP agg */
-	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavg_1val, double_domain_ptr);
+	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavg_1val, &double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -1707,7 +1707,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 
 	  /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for xxx_SAMP agg */
-	  error = qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val, double_domain_ptr);
+	  error = qdata_multiply_dbval (&xavgval, &xavg_1val, &xavg2val, &double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -1716,7 +1716,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) /
 	   * (n-1)} for xxx_SAMP aggregates */
-	  error = qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, double_domain_ptr);
+	  error = qdata_subtract_dbval (&x2avgval, &xavg2val, &varval, &double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
