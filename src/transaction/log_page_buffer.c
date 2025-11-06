@@ -2961,7 +2961,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   if ((bg_arv_info->current_page_id - bg_arv_info->last_sync_pageid) > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive, FILEIO_SYNC_ONLY);
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
       bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
     }
 }
@@ -3708,7 +3708,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
 	  /* System volume. No need to sync DWB. */
-	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;
@@ -3771,7 +3771,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       /* we need to also sync again */
-      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -5828,7 +5828,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
        * Make sure that the whole log archive is in physical storage at this
        * moment. System volume. No need to sync DWB.
        */
-      if (fileio_synchronize (thread_p, vdes, arv_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
 	{
 	  goto error;
 	}
@@ -7232,7 +7232,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
        * due to volume header page modification).
        */
       vdes = fileio_get_volume_descriptor (volid);
-      if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+      if (dwb_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK)) != vdes)
 	{
 	  goto error_cannot_chkpt;
 	}
@@ -7493,7 +7493,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
     }
 
   vdes = fileio_get_volume_descriptor (volid);
-  if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+  if (dwb_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK)) != vdes)
     {
       return ER_FAILED;
     }
@@ -9304,8 +9304,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
       return error_code;
     }
 
-  if (fileio_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK),
-			  FILEIO_SYNC_ALSO_FLUSH_DWB) != from_vdes)
+  if (dwb_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK)) != from_vdes)
     {
       return ER_FAILED;
     }
@@ -9681,7 +9680,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      if (fileio_synchronize (thread_p, to_vdes, to_volname, FILEIO_SYNC_ALSO_FLUSH_DWB) != to_vdes)
+	      if (dwb_synchronize (thread_p, to_vdes, to_volname) != to_vdes)
 		{
 		  fileio_dismount (thread_p, to_vdes);
 		  error_code = ER_FAILED;
@@ -10138,8 +10137,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	{
 	  goto error;
 	}
-      if (fileio_synchronize (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK),
-			      FILEIO_SYNC_ALSO_FLUSH_DWB) == NULL_VOLDES)
+      if (dwb_synchronize (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK)) ==
+	  NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
