@@ -339,8 +339,6 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
     {
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
       is_compatible = true;
@@ -348,10 +346,6 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
       if (common_type == PT_TYPE_CHAR || common_type == PT_TYPE_VARCHAR)
 	{
 	  cinfo->type_enum = PT_TYPE_VARCHAR;
-	}
-      else if (common_type == PT_TYPE_NCHAR || common_type == PT_TYPE_VARNCHAR)
-	{
-	  cinfo->type_enum = PT_TYPE_VARNCHAR;
 	}
       else
 	{
@@ -1222,15 +1216,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
-      if ((PT_IS_NATIONAL_CHAR_STRING_TYPE (arg_type) && PT_IS_SIMPLE_CHAR_STRING_TYPE (cast_type))
-	  || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg_type) && PT_IS_NATIONAL_CHAR_STRING_TYPE (cast_type)))
-	{
-	  cast_is_valid = PT_CAST_INVALID;
-	  break;
-	}
-
       switch (cast_type)
 	{
 	case PT_TYPE_SET:
@@ -1313,8 +1298,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -1342,8 +1325,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	case PT_TYPE_CLOB:
 	case PT_TYPE_ENUMERATION:
 	  break;
@@ -2637,8 +2618,6 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       cinfo->prec = (att->data_type) ? att->data_type->info.data_type.precision : 0;
       cinfo->scale = 0;
       break;
@@ -6187,8 +6166,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_DATETIMELTZ:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  break;
 	default:
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_COLUMN_TYPE);
@@ -6244,8 +6221,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_DATETIMELTZ:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  break;
 	default:
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_COLUMN_TYPE);
@@ -7406,18 +7381,6 @@ pt_is_compatible_type (const PT_TYPE_ENUM arg1_type, const PT_TYPE_ENUM arg2_typ
 	  {
 	  case PT_TYPE_CHAR:
 	  case PT_TYPE_VARCHAR:
-	    is_compatible = true;
-	    break;
-	  default:
-	    break;
-	  }
-	break;
-      case PT_TYPE_NCHAR:
-      case PT_TYPE_VARNCHAR:
-	switch (arg2_type)
-	  {
-	  case PT_TYPE_NCHAR:
-	  case PT_TYPE_VARNCHAR:
 	    is_compatible = true;
 	    break;
 	  default:

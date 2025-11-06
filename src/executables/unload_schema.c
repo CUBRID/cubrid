@@ -1686,6 +1686,10 @@ emit_indexes (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * cl
     {
       emit_query_specs_has_using_index (ctxt, output_ctx, vclass_list_has_using_index);
     }
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
 
   return err_count;
 }
@@ -3957,8 +3961,6 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	    {
 	    case DB_TYPE_VARCHAR:
 	    case DB_TYPE_CHAR:
-	    case DB_TYPE_NCHAR:
-	    case DB_TYPE_VARNCHAR:
 	      has_collation = 1;
 	      [[fallthrough]];
 	    case DB_TYPE_BIT:

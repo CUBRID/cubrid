@@ -285,7 +285,7 @@ pt_add_type_to_set (PARSER_CONTEXT * parser, const PT_NODE * typs, PT_NODE ** se
 			}
 		    }
 		  /* PR) core dumped & deficient character related with CONST CHAR & CHAR in set.  */
-		  else if (typ == PT_TYPE_CHAR || typ == PT_TYPE_NCHAR || typ == PT_TYPE_BIT)
+		  else if (typ == PT_TYPE_CHAR || typ == PT_TYPE_BIT)
 		    {
 		      if (s->info.data_type.precision != typs->data_type->info.data_type.precision)
 			{
@@ -676,22 +676,14 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
 	}
       break;
 
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       bytes = db_get_string (val);
       size = db_get_string_size (val);
       result->info.value.data_value.str = pt_append_bytes (parser, NULL, bytes, size);
       result->info.value.data_value.str->length = size;
-      if (db_type == DB_TYPE_VARNCHAR || db_type == DB_TYPE_NCHAR)
-	{
-	  result->info.value.string_type = 'N';
-	}
-      else
-	{
-	  result->info.value.string_type = ' ';
-	}
+      result->info.value.string_type = ' ';
+
       result->data_type = parser_new_node (parser, PT_DATA_TYPE);
       if (result->data_type == NULL)
 	{
@@ -1108,10 +1100,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
       if (db_value)
 	{
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE
-	      && value->type_enum != PT_TYPE_NUMERIC && value->type_enum != PT_TYPE_CHAR
-	      && value->type_enum != PT_TYPE_NCHAR && value->type_enum != PT_TYPE_BIT
-	      && value->type_enum != PT_TYPE_VARCHAR && value->type_enum != PT_TYPE_VARNCHAR
-	      && value->type_enum != PT_TYPE_VARBIT && (hv_dom = pt_node_to_db_domain (parser, value, NULL)) != NULL)
+	      && value->type_enum != PT_TYPE_NUMERIC
+	      && value->type_enum != PT_TYPE_CHAR && value->type_enum != PT_TYPE_VARCHAR
+	      && value->type_enum != PT_TYPE_BIT && value->type_enum != PT_TYPE_VARBIT
+	      && (hv_dom = pt_node_to_db_domain (parser, value, NULL)) != NULL)
 	    {
 	      /* host_var node "value" has a useful domain for itself so that check compatibility between the "value"
 	       * and the host variable provided by the user */
@@ -1152,7 +1144,6 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 		    {
 
 		      if ((expected_db_type == DB_TYPE_CHAR && val_type == DB_TYPE_VARCHAR)
-			  || (expected_db_type == DB_TYPE_NCHAR && val_type == DB_TYPE_VARNCHAR)
 			  || (expected_db_type == DB_TYPE_BIT && val_type == DB_TYPE_VARBIT))
 			{
 			  /* to prevent padding, skip these cases */
@@ -1292,8 +1283,6 @@ pt_data_type_init_value (const PT_NODE * node, DB_VALUE * value_out)
     {
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       value_out->domain.char_info.length = node_data_type->info.data_type.precision;
@@ -1406,8 +1395,6 @@ pt_string_to_data_type (PARSER_CONTEXT * parser, const char *s, PT_NODE * node)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       node->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:
@@ -1509,12 +1496,6 @@ pt_type_enum_to_db_domain_name (const PT_TYPE_ENUM t)
       name = "sequence";
       break;
 
-    case PT_TYPE_NCHAR:
-      name = "nchar";
-      break;
-    case PT_TYPE_VARNCHAR:
-      name = "nchar varying";
-      break;
     case PT_TYPE_BIT:
       name = "bit";
       break;
@@ -1614,10 +1595,8 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
       break;
 
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_VARBIT:
       /* Note that we assume that some other force is going to come in and repair the precision of the destination of
        * this domain is for the schema manager.  Might be a problem . . . */
@@ -1639,6 +1618,10 @@ pt_type_enum_to_db_domain (const PT_TYPE_ENUM t)
 
     case DB_TYPE_ELO:
       /* obsolete. */
+      assert (false);
+      break;
+
+    default:
       assert (false);
       break;
     }
@@ -1899,8 +1882,6 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       precision = dt->info.data_type.precision;
       codeset = dt->info.data_type.units;
       collation_id = dt->info.data_type.collation_id;
@@ -1944,6 +1925,7 @@ pt_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, const char *cl
       break;
 
     case DB_TYPE_ELO:
+    default:
       /* obsolete */
       assert (false);
       break;
@@ -2125,8 +2107,6 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
       precision = dt->info.data_type.precision;
@@ -2176,6 +2156,9 @@ pt_node_data_type_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * dt, PT_TYPE_E
 
     case DB_TYPE_ELO:
       /* obsolete */
+      assert (false);
+      break;
+    default:
       assert (false);
       break;
     }
@@ -2402,12 +2385,6 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
 
     case PT_TYPE_NUMERIC:
       db_type = DB_TYPE_NUMERIC;
-      break;
-    case PT_TYPE_NCHAR:
-      db_type = DB_TYPE_NCHAR;
-      break;
-    case PT_TYPE_VARNCHAR:
-      db_type = DB_TYPE_VARNCHAR;
       break;
     case PT_TYPE_BIT:
       db_type = DB_TYPE_BIT;
@@ -2679,12 +2656,6 @@ pt_db_to_type_enum (const DB_TYPE t)
     case DB_TYPE_STRING:
       pt_type = PT_TYPE_VARCHAR;
       break;
-    case DB_TYPE_NCHAR:
-      pt_type = PT_TYPE_NCHAR;
-      break;
-    case DB_TYPE_VARNCHAR:
-      pt_type = PT_TYPE_VARNCHAR;
-      break;
     case DB_TYPE_BIT:
       pt_type = PT_TYPE_BIT;
       break;
@@ -2911,8 +2882,6 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
 	}
       break;
 
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:
@@ -3144,7 +3113,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	    }
 	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
 	    {
-	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR || val_type == DB_TYPE_VARNCHAR))
+	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR))
 		{
 		  pr_clone_value (val, hv);
 		}
@@ -3418,24 +3387,6 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
        */
       db_make_monetary (db_value, (DB_CURRENCY) value->info.value.data_value.money.type,
 			value->info.value.data_value.money.amount);
-      break;
-
-    case PT_TYPE_NCHAR:
-      /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_nchar (db_value, TP_FLOATING_PRECISION_VALUE,
-		     REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
-		     value->info.value.data_value.str->length, codeset, collation_id);
-      value->info.value.db_value_is_in_workspace = false;
-      *more_type_info_needed = (value->data_type == NULL);
-      break;
-
-    case PT_TYPE_VARNCHAR:
-      /* for constants, set the precision to TP_FLOATING_PRECISION_VALUE */
-      db_make_varnchar (db_value, TP_FLOATING_PRECISION_VALUE,
-			REINTERPRET_CAST (char *, value->info.value.data_value.str->bytes),
-			value->info.value.data_value.str->length, codeset, collation_id);
-      value->info.value.db_value_is_in_workspace = false;
-      *more_type_info_needed = (value->data_type == NULL);
       break;
 
     case PT_TYPE_BIT:

@@ -50,7 +50,12 @@
 #include "server_support.h"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
-#include "thread_worker_pool.hpp"
+#include "list_file.h"
+#include "query_manager.h"
+#include "object_representation.h"
+#include "px_worker_manager.hpp"
+#include "px_callable_task.hpp"
+#include "px_sort.h"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -65,6 +70,7 @@
  * or total output files at each stage of the merging process.
  */
 #define SORT_MAX_HALF_FILES      4
+#define SORT_MAX_TOT_FILES      SORT_MAX_HALF_FILES * 2
 
 /* Lower limit on the half of the total number of the temporary files.
  * The exact lower limit on total number of temp files is twice this number.
@@ -102,6 +108,7 @@ struct file_contents
   int num_slots;		/* Total number of elements the array has */
   int first_run;		/* The index of the array element keeping the size of the first run of the file. */
   int last_run;			/* The index of the array element keeping the size of the last run of the file. */
+  int start_index;		/* Used when splitting a run in parallel processing. */
 };
 
 typedef struct vol_info VOL_INFO;
@@ -120,36 +127,12 @@ struct vol_list
   VOL_INFO *vol_info;		/* array of volume information */
 };
 
-/* Parallel eXecution and communition node */
-typedef struct px_tree_node PX_TREE_NODE;
-struct px_tree_node
-{
-  int px_id;			/* node ID */
-#if defined(SERVER_MODE)
-  int px_status;		/* node status; access through px_mtx */
-#endif				/* SERVER_MODE */
-
-  int px_height;		/* tournament tree: node level */
-  int px_myself;		/* tournament tree: node ID */
-
-  int px_tran_index;
-
-  void *px_arg;			/* operation info */
-
-  char **px_buff;
-  char **px_vector;
-  long px_vector_size;
-
-  char **px_result;		/* output */
-  long px_result_size;		/* output */
-};
-
 typedef struct sort_param SORT_PARAM;
 struct sort_param
 {
-  VFID temp[2 * SORT_MAX_HALF_FILES];	/* Temporary file identifiers */
+  VFID temp[SORT_MAX_TOT_FILES];	/* Temporary file identifiers */
   VFID multipage_file;		/* Temporary file for multi page sorting records */
-  FILE_CONTENTS file_contents[2 * SORT_MAX_HALF_FILES];	/* Contents of each temporary file */
+  FILE_CONTENTS file_contents[SORT_MAX_TOT_FILES];	/* Contents of each temporary file */
 
   bool tde_encrypted;		/* whether related temp files are encrypted (TDE) or not */
 
@@ -169,6 +152,10 @@ struct sort_param
   void *cmp_arg;
   SORT_DUP_OPTION option;
 
+  /* input function to apply on temporary records */
+  SORT_GET_FUNC *get_fn;
+  void *get_arg;
+
   /* output function to apply on temporary records */
   SORT_PUT_FUNC *put_fn;
   void *put_arg;
@@ -179,13 +166,24 @@ struct sort_param
   /* Details about the "limit" clause */
   int limit;
 
+  /* total number of recordes */
+  unsigned int total_numrecs;
+
   /* support parallelism */
+  PX_STATUS px_status;
+  int px_result_file_idx;
+  THREAD_ENTRY *px_orig_thread_p;
+  SORT_PARALLEL_TYPE px_type;
+  SORT_PARAM *ori_sort_param;
+  int px_parallel_num;
+  RESULT_RUN *px_result_run;
+    parallel_query::worker_manager * px_worker_manager;
+  ORDERBY_STATS orderby_stats;
+    cuberr::context * main_error_context;
 #if defined(SERVER_MODE)
-  pthread_mutex_t px_mtx;	/* px_node status mutex */
+  pthread_mutex_t *px_mtx;	/* px_status mutex */
+  pthread_cond_t *complete_cond;	/* complete condition */
 #endif
-  int px_height_max;		/* px_node tournament tree max level */
-  int px_array_size;		/* px_node array size */
-  PX_TREE_NODE *px_array;	/* px_node array */
 };
 
 typedef struct sort_rec_list SORT_REC_LIST;
@@ -247,19 +245,14 @@ typedef void MERGE_RUN_FN (char **, char **, SORT_STACK *, SORT_CMP_FUNC *, void
 #if !defined(NDEBUG)
 static int sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, void *comp_arg);
 #endif
-static PX_TREE_NODE *px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, char **px_buff,
-				     char **px_vector, long px_vector_size, int px_height, int px_myself);
-static int px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node);
-#if defined(SERVER_MODE)
-static int px_sort_communicate (PX_TREE_NODE * px_node);
-#endif
 
+static int sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FUNC * get_next,
 			      void *arguments, unsigned int *total_numrecs);
 static int sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param);
-static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
+static void sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PARALLEL_TYPE parallel_type);
 static int sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bool force_alloc,
 			      bool tde_encrypted);
 
@@ -1348,19 +1341,21 @@ sort_run_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, char **base, lo
 int
 sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn, void *get_arg,
 	       SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg, SORT_DUP_OPTION option,
-	       int limit, bool includes_tde_class)
+	       int limit, bool includes_tde_class, SORT_PARALLEL_TYPE parallel_type)
 {
+
   int error = NO_ERROR;
-  SORT_PARAM *sort_param = NULL;
-  bool prm_enable_sort_parallel = false;	/* TODO - PRM_SORT_PARALLEL_SORT */
+  SORT_PARAM ori_sort_param;
+  SORT_PARAM *sort_param = &ori_sort_param;
   INT32 input_pages;
   int i;
-  int file_pg_cnt_est;
-  unsigned int total_numrecs = 0;
+
+  /* for parallel sort */
+  SORT_PARAM *px_sort_param = NULL;
 #if defined(SERVER_MODE)
-  int num_cpus;
-  int rv;
-#endif /* SERVER_MODE */
+  pthread_mutex_t px_mtx;	/* px_status mutex */
+  pthread_cond_t complete_cond;	/* complete condition */
+#endif
 
   thread_set_sort_stats_active (thread_p, true);
 
@@ -1368,30 +1363,29 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   CUBRID_SORT_START ();
 #endif /* ENABLE_SYSTEMTAP */
 
-  sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM));
-  if (sort_param == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
-      return error;
-    }
-
 #if defined(SERVER_MODE)
-  rv = pthread_mutex_init (&(sort_param->px_mtx), NULL);
-  if (rv != 0)
+  if (pthread_mutex_init (&px_mtx, NULL) != 0)
     {
       error = ER_CSS_PTHREAD_MUTEX_INIT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-
-      free_and_init (sort_param);
-
       return error;
     }
+  if (pthread_cond_init (&complete_cond, NULL) != 0)
+    {
+      error = ER_CSS_PTHREAD_COND_INIT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+  sort_param->px_mtx = &px_mtx;
+  sort_param->complete_cond = &complete_cond;
 #endif /* SERVER_MODE */
 
   sort_param->cmp_fn = cmp_fn;
   sort_param->cmp_arg = cmp_arg;
   sort_param->option = option;
+
+  sort_param->get_fn = get_fn;
+  sort_param->get_arg = get_arg;
 
   sort_param->put_fn = put_fn;
   sort_param->put_arg = put_arg;
@@ -1400,14 +1394,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tot_tempfiles = 0;
 
   /* initialize memory allocable fields */
-  for (i = 0; i < 2 * SORT_MAX_HALF_FILES; i++)
+  for (i = 0; i < SORT_MAX_TOT_FILES; i++)
     {
       sort_param->temp[i].volid = NULL_VOLID;
       sort_param->file_contents[i].num_pages = NULL;
     }
   sort_param->internal_memory = NULL;
-  sort_param->px_height_max = sort_param->px_array_size = 0;
-  sort_param->px_array = NULL;
 
   /* initialize temp. overflow file. Real value will be assigned in sort_inphase_sort function, if long size sorting
    * records are encountered. */
@@ -1453,18 +1445,18 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tot_tempfiles = sort_param->half_files << 1;
   sort_param->in_half = 0;
 
-  for (i = 0; i < sort_param->tot_tempfiles; i++)
+  for (i = 0; i < SORT_MAX_TOT_FILES; i++)
     {
       /* Initilize temporary file identifier; real value will be set in "sort_add_new_file () */
       sort_param->temp[i].volid = NULL_VOLID;
 
       /* Initilize file contents list */
-      sort_param->file_contents[i].num_pages =
-	(int *) db_private_alloc (thread_p, SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
+      sort_param->file_contents[i].num_pages = (int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
       if (sort_param->file_contents[i].num_pages == NULL)
 	{
 	  sort_param->tot_tempfiles = i;
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
 	  goto cleanup;
 	}
 
@@ -1478,34 +1470,199 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tmp_file_pgs = MAX (1, sort_param->tmp_file_pgs);
 
   sort_param->tde_encrypted = includes_tde_class;
-
-  sort_param->px_height_max = 0;	/* init */
-  sort_param->px_array_size = 1;	/* init */
-
-  /* TODO - currently, disable parallelism */
-  prm_enable_sort_parallel = false;
-
-  tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
+  sort_param->px_type = parallel_type;
 
 #if defined(SERVER_MODE)
-  if (prm_enable_sort_parallel == true)
+  /* check the number of parallel process */
+  sort_param->px_parallel_num = sort_check_parallelism (thread_p, sort_param);
+
+  if (sort_param->px_parallel_num <= 1)
     {
-      num_cpus = cubthread::system_core_count ();
-
-      sort_param->px_height_max = (int) sqrt ((double) num_cpus);
-      sort_param->px_array_size = num_cpus;
-
-      assert_release (sort_param->px_array_size == pow ((double) 2, (double) sort_param->px_height_max));
+      /* single process */
+      sort_param->px_parallel_num = 1;
+      error = sort_listfile_internal (thread_p, sort_param);
     }
-#endif /* SERVER_MODE */
-
-  sort_param->px_array = (PX_TREE_NODE *) malloc (sort_param->px_array_size * sizeof (PX_TREE_NODE));
-  if (sort_param->px_array == NULL)
+  else
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (sort_param->px_array_size * sizeof (PX_TREE_NODE)));
+      px_sort_param = (SORT_PARAM *) malloc (sizeof (SORT_PARAM) * sort_param->px_parallel_num);
+      if (sort_param == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (SORT_PARAM));
+	  goto cleanup;
+	}
+
+      /* parallel process */
+      error = sort_start_parallelism (thread_p, px_sort_param, sort_param);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      /* execute parallel sort */
+      SORT_EXECUTE_PARALLEL (sort_param->px_parallel_num, px_sort_param, sort_listfile_execute);
+
+      /* wait for threads */
+      SORT_WAIT_PARALLEL (sort_param->px_parallel_num, sort_param, px_sort_param);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      error = sort_end_parallelism (thread_p, px_sort_param, sort_param);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+#else
+  /* single process for stand alone mode */
+  sort_param->px_parallel_num = 1;
+  error = sort_listfile_internal (thread_p, sort_param);
+#endif
+
+cleanup:
+#if defined(ENABLE_SYSTEMTAP)
+  CUBRID_SORT_END (sort_param->total_numrecs, error);
+#endif /* ENABLE_SYSTEMTAP */
+
+#if defined(SERVER_MODE)
+  pthread_mutex_destroy (&px_mtx);
+  pthread_cond_destroy (&complete_cond);
+#endif
+
+  /* free sort_param */
+#if defined(SERVER_MODE)
+  if (sort_param->px_parallel_num > 1)
+    {
+      for (int i = 0; i < sort_param->px_parallel_num; i++)
+	{
+	  sort_return_used_resources (thread_p, &px_sort_param[i], PX_THREAD_IN_PARALLEL);
+	}
+
+      sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
+      sort_param->px_worker_manager->release_workers (sort_param->px_parallel_num);
+      free_and_init (px_sort_param);
+    }
+  else
+#endif
+    {
+      sort_return_used_resources (thread_p, sort_param, PX_SINGLE);
+    }
+
+  thread_set_sort_stats_active (thread_p, false);
+
+  return error;
+}
+
+#if defined(SERVER_MODE)
+void
+sort_listfile_execute (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
+{
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  THREAD_ENTRY *thread_p = &thread_ref;
+  PX_STATUS px_status;
+
+  thread_p->push_resource_tracks ();
+
+  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
+  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
+  if (sort_param->px_orig_thread_p->on_trace)
+    {
+      thread_set_sort_stats_active (thread_p, true);
+      thread_ref.on_trace = true;
+      perfmon_initialize_parallel_stats (&thread_ref);
+    }
+
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      /* open splitted temp file for read */
+      if (qfile_open_list_scan (sort_info_p->input_file, sort_info_p->s_id->s_id) != NO_ERROR)
+	{
+	  px_status = PX_ERR_FAILED;
+	  goto cleanup;
+	}
+      if (thread_is_on_trace (sort_param->px_orig_thread_p))
+	{
+	  tsc_getticks (&start_tick);
+	}
+    }
+  else
+    {
+      /* Not implemented yet */
+      px_status = PX_ERR_FAILED;
       goto cleanup;
     }
+
+  if (sort_listfile_internal (&thread_ref, sort_param) != NO_ERROR)
+    {
+      px_status = PX_ERR_FAILED;
+      goto cleanup;
+    }
+  else
+    {
+      px_status = PX_DONE;
+    }
+
+cleanup:
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      /* close splitted temp file for read */
+      qfile_close_scan (&thread_ref, sort_info_p->s_id->s_id);
+      if (thread_is_on_trace (sort_param->px_orig_thread_p))
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	  TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
+
+	  sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
+	  sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
+	}
+    }
+  else
+    {
+      /* Not implemented yet */
+      px_status = PX_ERR_FAILED;
+    }
+
+  if (sort_param->px_orig_thread_p->on_trace)
+    {
+      thread_set_sort_stats_active (thread_p, false);
+      perfmon_destroy_parallel_stats (&thread_ref);
+    }
+
+  thread_p->pop_resource_tracks ();
+
+  /* done */
+  pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = px_status;
+  if (px_status == PX_ERR_FAILED)
+    {
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
+  pthread_cond_signal (sort_param->complete_cond);
+  pthread_mutex_unlock (sort_param->px_mtx);
+
+}
+#endif
+
+/*
+ * sort_listfile_internal () - Perform sorting
+ *   return:
+ */
+int
+sort_listfile_internal (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+{
+  int error = NO_ERROR;
+  int file_pg_cnt_est;
+  int i;
 
   /*
    * Don't allocate any temp files yet, since we may not need them.
@@ -1514,15 +1671,15 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
    * However, indicate to file/disk manager of the approximate temporary
    * space that is going to be needed.
    */
-
-  error = sort_inphase_sort (thread_p, sort_param, get_fn, get_arg, &total_numrecs);
+  error = sort_inphase_sort (thread_p, sort_param, sort_param->get_fn, sort_param->get_arg, &sort_param->total_numrecs);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      return error;
     }
 
   if (sort_param->tot_runs > 1)
     {
+      assert (sort_param->tot_runs > 0);
       /* Create output temporary files make file and temporary volume page count estimates */
       file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
       file_pg_cnt_est = MAX (1, file_pg_cnt_est);
@@ -1533,7 +1690,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	    sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
 	  if (error != NO_ERROR)
 	    {
-	      goto cleanup;
+	      return error;
 	    }
 	}
 
@@ -1547,16 +1704,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	  error = sort_exphase_merge (thread_p, sort_param);
 	}
     }				/* if (sort_param->tot_runs > 1) */
-
-cleanup:
-
-#if defined(ENABLE_SYSTEMTAP)
-  CUBRID_SORT_END (total_numrecs, error);
-#endif /* ENABLE_SYSTEMTAP */
-
-  sort_return_used_resources (thread_p, sort_param);
-  sort_param = NULL;
-  thread_set_sort_stats_active (thread_p, false);
 
   return error;
 }
@@ -1601,549 +1748,6 @@ sort_validate (char **vector, long size, SORT_CMP_FUNC * compare, void *comp_arg
 #endif
 
 /*
- * px_sort_assign() -
- *   return:
- *   thread_p(in):
- *   sort_param(in): sort parameters
- *   px_id(in):
- *   px_buff(in):
- *   px_vector(in):
- *   px_vector_size(in):
- *   px_height(in):
- *   px_myself(in):
- *
- * NOTE: support parallelism
- */
-static PX_TREE_NODE *
-px_sort_assign (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int px_id, char **px_buff, char **px_vector,
-		long px_vector_size, int px_height, int px_myself)
-{
-  PX_TREE_NODE *px_node;
-#if defined(SERVER_MODE)
-  int rv = NO_ERROR;
-#endif
-
-  assert (sort_param != NULL);
-
-  if (px_height < 0 || px_height > sort_param->px_height_max)
-    {
-      assert_release (false);
-      return NULL;
-    }
-
-  if (px_id < 0 || px_id >= sort_param->px_array_size)
-    {
-      assert_release (false);
-      return NULL;
-    }
-
-  if (px_myself < 0 || px_myself > px_id)
-    {
-      assert_release (false);
-      return NULL;
-    }
-
-  px_node = &(sort_param->px_array[px_id]);
-
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-  assert (rv == NO_ERROR);
-
-#if !defined(NDEBUG)
-  if (px_node->px_status != 0)
-    {
-      assert (false);
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-      return NULL;
-    }
-#endif
-
-  px_node->px_status = 0;
-
-  pthread_mutex_unlock (&(sort_param->px_mtx));
-#else /* SERVER_MODE */
-  assert (sort_param->px_height_max == 0);
-  assert (sort_param->px_array_size == 1);
-
-  assert (px_id == 0);
-  assert (px_height == 0);
-  assert (px_myself == 0);
-#endif /* SERVER_MODE */
-
-  /* set node info */
-
-  px_node->px_id = px_id;
-
-  px_node->px_height = px_height;
-  px_node->px_myself = px_myself;
-
-  px_node->px_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  /* set operation info */
-
-  px_node->px_arg = (void *) sort_param;
-
-  px_node->px_buff = px_buff;
-  px_node->px_vector = px_vector;
-  px_node->px_vector_size = px_vector_size;
-
-  px_node->px_result = px_node->px_vector;	/* init */
-  px_node->px_result_size = px_node->px_vector_size;	/* init */
-
-  return px_node;
-}
-
-#if defined(SERVER_MODE)
-// *INDENT-OFF*
-static void
-px_sort_myself_execute (cubthread::entry &thread_ref, PX_TREE_NODE * px_node)
-{
-  (void) px_sort_myself (&thread_ref, px_node);
-}
-
-/*
- * px_sort_communicate() -
- *   return:
- *   thread_p(in):
- *   px_node(in):
- *
- * NOTE: support parallelism
- */
-static int
-px_sort_communicate (PX_TREE_NODE * px_node)
-{
-  SORT_PARAM *sort_param;
-
-  assert_release (px_node != NULL);
-  assert_release (px_node->px_arg != NULL);
-
-  sort_param = (SORT_PARAM *) (px_node->px_arg);
-  assert_release (px_node->px_height <= sort_param->px_height_max);
-  assert_release (px_node->px_id < sort_param->px_array_size);
-  assert_release (px_node->px_vector_size > 1);
-
-  cubthread::entry_callable_task *task =
-    new cubthread::entry_callable_task (std::bind (px_sort_myself_execute, std::placeholders::_1, px_node));
-  css_push_external_task (css_get_current_conn_entry (), task);
-
-  return NO_ERROR;
-}
-// *INDENT-ON*
-#endif /* SERVER_MODE */
-
-/*
- * px_sort_myself() -
- *   return:
- *   thread_p(in):
- *   px_node(in):
- *
- * NOTE: support parallelism
- *
- * Partitioned merge logic
- *
- * The working core: each internal node recurses on this function
- * both for its left side and its right side, as nodes one closer to
- * the leaf level.  It then merges the results into the vector
- *
- * Leaf level nodes just sort the vector.
- */
-static int
-px_sort_myself (THREAD_ENTRY * thread_p, PX_TREE_NODE * px_node)
-{
-#define SORT_PARTITION_RUN_SIZE_MIN (ONE_M)
-
-  int ret = NO_ERROR;
-  bool old_check_interrupt;
-
-#if defined(SERVER_MODE)
-  int parent;
-  int child_right = 0;
-  int child_height;
-
-  int cmp;
-
-  int rv = NO_ERROR;
-#endif /* SERVER_MODE */
-
-  SORT_PARAM *sort_param;
-
-  char **buff;
-  char **vector;
-  long vector_size;
-
-  char **result = NULL;
-  long result_size = -1;
-
-  assert_release (px_node != NULL);
-  assert_release (px_node->px_id >= 0);
-  assert_release (px_node->px_arg != NULL);
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  sort_param = (SORT_PARAM *) (px_node->px_arg);
-
-#if defined(SERVER_MODE)
-  if (px_node->px_id > 0)
-    {
-      /* is new childs */
-      thread_p->tran_index = px_node->px_tran_index;
-      pthread_mutex_unlock (&thread_p->tran_index_lock);
-    }
-
-#if !defined(NDEBUG)
-  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-  assert (rv == NO_ERROR);
-
-  assert (px_node->px_status == 0);
-
-  pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif
-#endif /* SERVER_MODE */
-
-  old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-
-  buff = px_node->px_buff;
-  vector = px_node->px_vector;
-  vector_size = px_node->px_vector_size;
-
-  assert_release (px_node->px_result == vector);
-  assert_release (px_node->px_result_size == vector_size);
-
-  result = px_node->px_result;
-  result_size = px_node->px_result_size;
-
-  assert_release (vector_size > 0);
-
-#if defined(SERVER_MODE)
-  parent = px_node->px_id & ~(1 << px_node->px_height);
-  child_height = px_node->px_height - 1;
-  if (child_height >= 0)
-    {
-      child_right = px_node->px_myself | (1 << child_height);
-      assert_release (child_right > 0);
-    }
-
-  if (vector_size <= 1)
-    {
-      assert_release (px_node->px_result == vector);
-      assert_release (px_node->px_result_size == vector_size);
-
-      result = px_node->px_result = vector;
-      result_size = px_node->px_result_size = vector_size;
-
-      /* mark as finished */
-
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert_release (px_node->px_status == 0);
-      px_node->px_status = 1;	/* done */
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-
-      goto exit_on_end;
-    }
-
-  if (px_node->px_height > 0 && vector_size > SORT_PARTITION_RUN_SIZE_MIN)
-    {
-      long left_vector_size, right_vector_size;
-      char **left_vector, **right_vector;
-      PX_TREE_NODE *left_px_node, *right_px_node;
-      int i, j, k;		/* Used in the merge logic */
-
-      assert_release (child_right > 0);
-
-      left_vector_size = vector_size / 2;
-      right_vector_size = vector_size - left_vector_size;
-
-      assert_release (vector_size == left_vector_size + right_vector_size);
-
-      /* do new child first */
-      right_vector = vector + left_vector_size;
-      right_px_node = px_sort_assign (thread_p, sort_param, px_node->px_id + child_right, buff + left_vector_size,
-				      right_vector, right_vector_size, child_height, 0 /* px_myself: set as root */ );
-      if (right_px_node == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      if (right_vector_size > 1)
-	{
-	  /* launch new worker */
-	  if (px_sort_communicate (right_px_node) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-      else
-	{
-	  /* mark as finished */
-
-	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-	  assert (rv == NO_ERROR);
-
-	  assert_release (right_px_node->px_status == 0);
-	  right_px_node->px_status = 1;	/* done */
-
-	  pthread_mutex_unlock (&(sort_param->px_mtx));
-	}
-
-      left_vector = vector;
-      left_px_node =
-	px_sort_assign (thread_p, sort_param, px_node->px_id, buff, left_vector, left_vector_size, child_height,
-			px_node->px_myself);
-      if (left_px_node == NULL)
-	{
-	  goto exit_on_error;
-	}
-
-      assert_release (px_node == left_px_node);
-#if !defined(NDEBUG)
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert (px_node->px_status == 0);
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif
-
-      if (left_vector_size > 1)
-	{
-	  if (px_sort_myself (thread_p, left_px_node) != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	}
-
-      /* wait for right-child finished */
-      do
-	{
-	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-	  assert (rv == NO_ERROR);
-
-	  if (right_px_node->px_status != 0)
-	    {
-	      assert (right_px_node->px_status == 1);
-	      pthread_mutex_unlock (&(sort_param->px_mtx));
-	      break;
-	    }
-
-	  pthread_mutex_unlock (&(sort_param->px_mtx));
-	  thread_sleep (10);	/* 10 msec */
-	}
-      while (1);
-
-      assert_release (px_node == left_px_node);
-#if !defined(NDEBUG)
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert (right_px_node->px_status == 1);
-      assert (px_node->px_status == 0);
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif
-
-      right_vector = right_px_node->px_result;
-      right_vector_size = right_px_node->px_result_size;
-      if (right_vector == NULL || right_vector_size < 0)
-	{
-	  goto exit_on_error;
-	}
-
-      left_vector = left_px_node->px_result;
-      left_vector_size = left_px_node->px_result_size;
-      if (left_vector == NULL || left_vector_size < 0)
-	{
-	  goto exit_on_error;
-	}
-
-      assert_release (vector_size >= left_vector_size + right_vector_size);
-
-      result_size = px_node->px_result_size = left_vector_size + right_vector_size;
-      if (left_vector < vector)
-	{
-	  assert_release (left_vector + left_vector_size <= vector);
-	  result = px_node->px_result = vector;
-	}
-      else
-	{
-	  result = px_node->px_result = buff;
-	}
-
-      /* Merge the two sub-results back into upper result */
-
-      i = j = k = 0;
-
-      /* STEP 2: check CON conditions if (left_max < right_min) do FORWARD-CON. we use '<' instead of '<=' */
-      cmp = (*(sort_param->cmp_fn)) (&(left_vector[left_vector_size - 1]), &(right_vector[0]), sort_param->cmp_arg);
-
-      if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
-	{
-	  ;			/* ok */
-	}
-      else
-	{
-	  assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
-	  goto exit_on_error;
-	}
-
-      if (cmp == DB_LT)
-	{
-	  while (i < left_vector_size)
-	    {
-	      result[k++] = left_vector[i++];
-	    }
-	  while (j < right_vector_size)
-	    {
-	      result[k++] = right_vector[j++];
-	    }
-	}
-      else
-	{
-	  /* STEP 3: check CON conditions if (right_max < left_min) do BACKWARD-CON. we use '<' instead of '<=' */
-	  cmp =
-	    (*(sort_param->cmp_fn)) (&(right_vector[right_vector_size - 1]), &(left_vector[0]), sort_param->cmp_arg);
-
-	  if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
-	    {
-	      ;			/* ok */
-	    }
-	  else
-	    {
-	      assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
-	      goto exit_on_error;
-	    }
-
-	  if (cmp == DB_LT)
-	    {
-	      while (j < right_vector_size)
-		{
-		  result[k++] = right_vector[j++];
-		}
-	      while (i < left_vector_size)
-		{
-		  result[k++] = left_vector[i++];
-		}
-	    }
-	  else
-	    {
-	      /* STEP 4: do the actual merge */
-	      while (i < left_vector_size && j < right_vector_size)
-		{
-		  cmp = (*(sort_param->cmp_fn)) (&(left_vector[i]), &(right_vector[j]), sort_param->cmp_arg);
-
-		  if (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT)
-		    {
-		      ;		/* ok */
-		    }
-		  else
-		    {
-		      assert_release (cmp == DB_LT || cmp == DB_EQ || cmp == DB_GT);
-		      goto exit_on_error;
-		    }
-
-		  if (cmp == DB_EQ)
-		    {
-		      if (sort_param->option == SORT_DUP)	/* allow duplicate */
-			{
-			  sort_append (&(left_vector[i]), &(right_vector[j]));
-			}
-
-		      result[k++] = right_vector[j++];	/* temp */
-		      i++;	/* skip left-side dup */
-		    }
-		  else if (cmp == DB_GT)
-		    {
-		      result[k++] = right_vector[j++];
-		    }
-		  else
-		    {
-		      assert_release (cmp == DB_LT);
-		      result[k++] = left_vector[i++];
-		    }
-		}
-	      while (i < left_vector_size)
-		{
-		  result[k++] = left_vector[i++];
-		}
-	      while (j < right_vector_size)
-		{
-		  result[k++] = right_vector[j++];
-		}
-	    }			/* else */
-	}			/* else */
-
-      assert_release (result_size >= k);
-
-      result_size = px_node->px_result_size = k;
-
-#if !defined(NDEBUG)
-      if (sort_validate (result, result_size, sort_param->cmp_fn, sort_param->cmp_arg) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-#endif
-    }
-  else
-    {
-      result = px_node->px_result = sort_run_sort (thread_p, sort_param, vector, vector_size, 0 /* dummy */ ,
-						   buff, &(px_node->px_result_size));
-      result_size = px_node->px_result_size;
-    }
-
-#else /* SERVER_MODE */
-
-  result = px_node->px_result = sort_run_sort (thread_p, sort_param, vector, vector_size, 0 /* dummy */ ,
-					       buff, &(px_node->px_result_size));
-  result_size = px_node->px_result_size;
-
-#endif /* SERVER_MODE */
-
-  if (result == NULL || result_size < 0)
-    {
-      assert_release (false);
-      goto exit_on_error;
-    }
-
-exit_on_end:
-
-  assert_release (result == px_node->px_result);
-  assert_release (result_size == px_node->px_result_size);
-
-#if defined(SERVER_MODE)
-  if (parent != px_node->px_id)
-    {
-      /* mark as finished */
-
-      rv = pthread_mutex_lock (&(sort_param->px_mtx));
-      assert (rv == NO_ERROR);
-
-      assert_release (px_node->px_status == 0);
-      px_node->px_status = 1;	/* done */
-
-      pthread_mutex_unlock (&(sort_param->px_mtx));
-    }
-#endif /* SERVER_MODE */
-
-  (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
-
-  return ret;
-
-exit_on_error:
-
-  result = px_node->px_result = NULL;
-  result_size = px_node->px_result_size = -1;
-
-  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
-
-  goto exit_on_end;
-}
-
-/*
  * sort_inphase_sort () - Internal sorting phase
  *   return:
  *   sort_param(in): sort parameters
@@ -2179,15 +1783,11 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
   int i;
   int error = NO_ERROR;
 
-  PX_TREE_NODE *px_node;
 #if defined (SERVER_MODE)
   int rv = NO_ERROR;
 #endif /* SERVER_MODE */
 
   assert (sort_param->half_files <= SORT_MAX_HALF_FILES);
-
-  assert (sort_param->px_height_max >= 0);
-  assert (sort_param->px_array_size >= 1);
 
   /* Initialize the current pages of all temp files to 0 */
   for (i = 0; i < sort_param->half_files; i++)
@@ -2261,46 +1861,9 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
 	      index_area++;
 
-	      if (sort_numrecs == 0)
-		{
-		  assert (sort_param->px_height_max >= 0);
-		  assert (sort_param->px_array_size >= 1);
-#if defined(SERVER_MODE)
-		  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-		  assert (rv == NO_ERROR);
-
-		  for (i = 0; i < sort_param->px_array_size; i++)
-		    {
-		      sort_param->px_array[i].px_status = 0;	/* init */
-		    }
-
-		  pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif /* SERVER_MODE */
-
-		  px_node = px_sort_assign (thread_p, sort_param, 0, index_buff, index_area, numrecs,
-					    sort_param->px_height_max, 0 /* px_myself: set as root */ );
-		  if (px_node == NULL)
-		    {
-		      error = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  error = px_sort_myself (thread_p, px_node);
-		  if (error != NO_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
-
-		  index_area = px_node->px_result;
-		  numrecs = px_node->px_result_size;
-		  *total_numrecs += numrecs;
-		}
-	      else
-		{
-		  index_area =
-		    sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
-		  *total_numrecs += numrecs;
-		}
+	      index_area =
+		sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
+	      *total_numrecs += numrecs;
 
 	      if (index_area == NULL || numrecs < 0)
 		{
@@ -2516,45 +2079,8 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 
       index_area++;
 
-      if (sort_numrecs == 0)
-	{
-	  assert (sort_param->px_height_max >= 0);
-	  assert (sort_param->px_array_size >= 1);
-#if defined(SERVER_MODE)
-	  rv = pthread_mutex_lock (&(sort_param->px_mtx));
-	  assert (rv == NO_ERROR);
-
-	  for (i = 0; i < sort_param->px_array_size; i++)
-	    {
-	      sort_param->px_array[i].px_status = 0;	/* init */
-	    }
-
-	  pthread_mutex_unlock (&(sort_param->px_mtx));
-#endif /* SERVER_MODE */
-
-	  px_node = px_sort_assign (thread_p, sort_param, 0, index_buff, index_area, numrecs, sort_param->px_height_max,
-				    0 /* px_myself: set as root */ );
-	  if (px_node == NULL)
-	    {
-	      error = ER_FAILED;
-	      goto exit_on_error;
-	    }
-
-	  if (px_sort_myself (thread_p, px_node) != NO_ERROR)
-	    {
-	      error = ER_FAILED;
-	      goto exit_on_error;
-	    }
-
-	  index_area = px_node->px_result;
-	  numrecs = px_node->px_result_size;
-	  *total_numrecs += numrecs;
-	}
-      else
-	{
-	  index_area = sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
-	  *total_numrecs += numrecs;
-	}
+      index_area = sort_run_sort (thread_p, sort_param, index_area, numrecs, sort_numrecs, index_buff, &numrecs);
+      *total_numrecs += numrecs;
 
       if (index_area == NULL || numrecs < 0)
 	{
@@ -2562,7 +2088,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	  goto exit_on_error;
 	}
 
-      if (sort_param->tot_runs > 0)
+      if (sort_param->tot_runs > 0 || SORT_IS_PARALLEL (sort_param))
 	{
 	  /* There has been other runs produced already */
 
@@ -2596,7 +2122,7 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 	    }
 	}
     }
-  else if (sort_param->tot_runs == 1)
+  else if (sort_param->tot_runs == 1 && !SORT_IS_PARALLEL (sort_param))
     {
       if (once_flushed)
 	{
@@ -2942,7 +2468,6 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
     }
 
   /* OUTER LOOP */
-
   /* While there are more than one input files with different runs to merge */
   while ((act_infiles = sort_get_numpages_of_active_infiles (sort_param)) > 1)
     {
@@ -3254,6 +2779,12 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  /* Initialize the size of next run to zero */
 	  out_runsize = 0;
 
+	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
+	  if (very_last_run && SORT_IS_PARALLEL (sort_param))
+	    {
+	      sort_param->px_result_file_idx = cur_outfile;
+	    }
+
 	  for (;;)
 	    {
 	      /* OUTPUT A RECORD */
@@ -3266,7 +2797,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		{
 		  /* we found first unique sort_key record */
 
-		  if (very_last_run)
+		  if (very_last_run && !SORT_IS_PARALLEL (sort_param))
 		    {
 		      /* OUTPUT THE RECORD */
 		      /* Obtain the output record for this temporary record */
@@ -3552,7 +3083,7 @@ sort_exphase_merge_elim_dup (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!very_last_run)
+	  if (!(very_last_run && !SORT_IS_PARALLEL (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
@@ -3615,6 +3146,141 @@ bailout:
     }
 
   return (error == SORT_PUT_STOP) ? NO_ERROR : error;
+}
+
+/*
+ * sort_put_result_from_tmpfile () - put result from last temp file
+ *   return:
+ *   sort_param(in): sort parameters
+ *
+ */
+int
+sort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int start_pagenum)
+{
+  int tot_pages;
+  int current_pages = start_pagenum, read_pages = 0, cur_read_pages = 0;
+  int slot_num = 0;
+  char *cur_pgptr;
+  int result_file_idx = sort_param->px_result_file_idx;
+  RECDES record = RECDES_INITIALIZER;
+  RECDES long_record = RECDES_INITIALIZER;
+  int error = NO_ERROR;
+  SORT_REC *sort_rec;
+  int tot_rows = 0;
+
+  tot_pages = sort_param->file_contents[result_file_idx].num_pages[0];
+  while (tot_pages > 0)
+    {
+      read_pages = (tot_pages > sort_param->tot_buffers) ? sort_param->tot_buffers : tot_pages;
+
+      error =
+	sort_read_area (thread_p, &sort_param->temp[result_file_idx], current_pages, read_pages,
+			sort_param->internal_memory);
+      if (error != NO_ERROR)
+	{
+	  goto bailout;
+	}
+
+      cur_pgptr = sort_param->internal_memory;
+      cur_read_pages = read_pages;
+      while (cur_read_pages > 0)
+	{
+	  /* read record from sort temp file */
+	  slot_num = sort_spage_get_numrecs (cur_pgptr);
+	  tot_rows += slot_num;
+	  for (int i = 0; i < slot_num; i++)
+	    {
+	      if (sort_spage_get_record (cur_pgptr, i, &record, PEEK) != S_SUCCESS)
+		{
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
+		  error = ER_SORT_TEMP_PAGE_CORRUPTED;
+		  goto bailout;
+		}
+
+	      /* If this is a long record retrieve it */
+	      if (record.type == REC_BIGONE)
+		{
+		  if (sort_retrieve_longrec (thread_p, &record, &long_record) == NULL)
+		    {
+		      ASSERT_ERROR ();
+		      error = er_errid ();
+		      goto bailout;
+		    }
+		}
+	      /* write data by put_fn */
+	      if (record.type == REC_BIGONE)
+		{
+		  error = (*sort_param->put_fn) (thread_p, &long_record, sort_param->put_arg);
+		  if (error != NO_ERROR)
+		    {
+		      goto bailout;
+		    }
+		}
+	      else
+		{
+		  sort_rec = (SORT_REC *) (record.data);
+		  /* cut-off link used in Internal Sort */
+		  sort_rec->next = NULL;
+		  error = (*sort_param->put_fn) (thread_p, &record, sort_param->put_arg);
+		  if (error != NO_ERROR)
+		    {
+		      goto bailout;
+		    }
+		}
+	    }
+
+	  /* Switch to the next page */
+	  cur_pgptr += DB_PAGESIZE;
+
+	  cur_read_pages--;
+	  current_pages++;
+	}
+      tot_pages -= read_pages;
+    }
+
+bailout:
+  if (long_record.data != NULL)
+    {
+      free_and_init (long_record.data);
+    }
+  return (error == SORT_PUT_STOP) ? NO_ERROR : error;
+}
+
+/*
+ * sort_split_last_run () - split last run for parallel works.
+ *   return:
+ *   px_sort_param(in): px_sort_param
+ *   sort_param(in): sort_param
+ *
+ */
+void
+sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param, int parallel_num)
+{
+  int result_file_idx, total_pages, pages_per_thread, remaining_pages;
+  int start_index = 0;
+  int cp_pages, read_pages;
+
+  result_file_idx = sort_param->px_result_file_idx = px_sort_param[0].px_result_file_idx;
+  total_pages = sort_param->file_contents[result_file_idx].num_pages[0] =
+    px_sort_param[0].file_contents[result_file_idx].num_pages[0];
+  sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
+  pages_per_thread = total_pages / parallel_num;
+  remaining_pages = total_pages % parallel_num;
+
+  for (int i = 0; i < parallel_num; i++)
+    {
+      px_sort_param[i].px_result_file_idx = 0;
+      px_sort_param[i].file_contents[0].num_pages[0] = pages_per_thread + (i < remaining_pages ? 1 : 0);
+      px_sort_param[i].file_contents[0].first_run = 0;
+      px_sort_param[i].file_contents[0].last_run = 0;
+      px_sort_param[i].temp[0] = sort_param->temp[result_file_idx];
+
+      start_index += (i == 0) ? 0 : px_sort_param[i - 1].file_contents[0].num_pages[0];
+      px_sort_param[i].file_contents[0].start_index = start_index;
+
+      /* init px_status */
+      px_sort_param[i].px_status = PX_PROGRESS;
+    }
 }
 
 /*
@@ -4024,6 +3690,12 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  /* Initialize the size of next run to zero */
 	  out_runsize = 0;
 
+	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
+	  if (very_last_run && SORT_IS_PARALLEL (sort_param))
+	    {
+	      sort_param->px_result_file_idx = cur_outfile;
+	    }
+
 	  for (;;)
 	    {
 	      /* OUTPUT A RECORD */
@@ -4031,7 +3703,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	      /* FIND MINIMUM RECORD IN THE INPUT AREA */
 	      min = min_p->rec_pos;
 
-	      if (very_last_run)
+	      if (very_last_run && !SORT_IS_PARALLEL (sort_param))
 		{
 		  /* OUTPUT THE RECORD */
 		  /* Obtain the output record for this temporary record */
@@ -4300,7 +3972,7 @@ sort_exphase_merge (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 		}
 	    }
 
-	  if (!very_last_run)
+	  if (!(very_last_run && !SORT_IS_PARALLEL (sort_param)))
 	    {
 	      /* Flush whatever is left on the output section */
 
@@ -4407,7 +4079,7 @@ sort_get_avg_numpages_of_nonempty_tmpfile (SORT_PARAM * sort_param)
  *       memory areas and destroying any temporary files and volumes.
  */
 static void
-sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, PARALLEL_TYPE parallel_type)
 {
   int k;
 #if defined(SERVER_MODE)
@@ -4424,11 +4096,14 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       free_and_init (sort_param->internal_memory);
     }
 
-  for (k = 0; k < sort_param->tot_tempfiles; k++)
+  if (parallel_type == PX_SINGLE || parallel_type == PX_MAIN_IN_PARALLEL)
     {
-      if (sort_param->temp[k].volid != NULL_VOLID)
+      for (k = 0; k < sort_param->tot_tempfiles; k++)
 	{
-	  (void) file_temp_retire (thread_p, &sort_param->temp[k]);
+	  if (sort_param->temp[k].volid != NULL_VOLID)
+	    {
+	      (void) file_temp_retire (thread_p, &sort_param->temp[k]);
+	    }
 	}
     }
 
@@ -4437,29 +4112,52 @@ sort_return_used_resources (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
     }
 
-  for (k = 0; k < sort_param->tot_tempfiles; k++)
+  for (k = 0; k < SORT_MAX_TOT_FILES; k++)
     {
       if (sort_param->file_contents[k].num_pages != NULL)
 	{
-	  db_private_free_and_init (thread_p, sort_param->file_contents[k].num_pages);
+	  free_and_init (sort_param->file_contents[k].num_pages);
 	}
     }
 
-  if (sort_param->px_array)
+  if (parallel_type == PX_THREAD_IN_PARALLEL)
     {
-      free_and_init (sort_param->px_array);
+      if (sort_param->get_arg != NULL)
+	{
+	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->get_arg;
+	  if (sort_info_p->input_file)
+	    {
+	      qfile_free_list_id (sort_info_p->input_file);
+	    }
+	  if (sort_info_p->s_id->s_id != NULL)
+	    {
+	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+	    }
+	  if (sort_info_p->s_id != NULL)
+	    {
+	      db_private_free_and_init (thread_p, sort_info_p->s_id);
+	    }
+	  db_private_free_and_init (thread_p, sort_param->get_arg);
+	}
+      if (sort_param->put_arg != NULL)
+	{
+	  SORT_INFO *sort_info_p = (SORT_INFO *) sort_param->put_arg;
+	  SORT_INFO *ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
+	  if (sort_info_p->output_file && sort_info_p->output_file != ori_sort_info_p->output_file)
+	    {
+	      qfile_free_list_id (sort_info_p->output_file);
+	    }
+	  if (sort_info_p->s_id->s_id != NULL)
+	    {
+	      db_private_free_and_init (thread_p, sort_info_p->s_id->s_id);
+	    }
+	  if (sort_info_p->s_id != NULL)
+	    {
+	      db_private_free_and_init (thread_p, sort_info_p->s_id);
+	    }
+	  db_private_free_and_init (thread_p, sort_param->put_arg);
+	}
     }
-  sort_param->px_height_max = sort_param->px_array_size = 0;
-
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_destroy (&(sort_param->px_mtx));
-  if (rv != 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_MUTEX_DESTROY, 0);
-    }
-#endif
-
-  free_and_init (sort_param);
 }
 
 /*
@@ -4526,6 +4224,779 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
 
   return NO_ERROR;
 }
+
+#if defined(SERVER_MODE)
+/*
+ * sort_copy_sort_param () - copy sort param from src_param to dest_param
+ *   return: NO_ERROR
+ *   dest_param(in):
+ *   src_param(in):
+ *   parallel_num(in):
+ */
+int
+sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param, int parallel_num)
+{
+  int error = NO_ERROR;
+  int i, j;
+
+  /* init stats */
+  memset (&sort_param->orderby_stats, 0, sizeof (sort_param->orderby_stats));
+
+  /* copy from origin sort param */
+  for (i = 0; i < parallel_num; i++)
+    {
+      memcpy (&px_sort_param[i], sort_param, sizeof (SORT_PARAM));
+    }
+
+  /* init */
+  for (i = 0; i < parallel_num; i++)
+    {
+      px_sort_param[i].internal_memory = NULL;
+      for (j = 0; j < SORT_MAX_TOT_FILES; j++)
+	{
+	  px_sort_param[i].file_contents[j].num_pages = NULL;
+	}
+    }
+
+  /* alloc new memory */
+  for (i = 0; i < parallel_num; i++)
+    {
+      px_sort_param[i].internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
+      if (px_sort_param[i].internal_memory == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (sort_param->tot_buffers * DB_PAGESIZE));
+	  break;
+	}
+      for (j = 0; j < SORT_MAX_TOT_FILES; j++)
+	{
+	  /* Initilize file contents list */
+	  px_sort_param[i].file_contents[j].num_pages = (int *) malloc (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int));
+	  if (px_sort_param[i].file_contents[j].num_pages == NULL)
+	    {
+	      sort_param->tot_tempfiles = j;
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+		      (size_t) (SORT_INITIAL_DYN_ARRAY_SIZE * sizeof (int)));
+	      break;
+	    }
+
+	  px_sort_param[i].file_contents[j].num_slots = SORT_INITIAL_DYN_ARRAY_SIZE;
+	  px_sort_param[i].file_contents[j].first_run = -1;
+	  px_sort_param[i].file_contents[j].last_run = -1;
+	}
+
+      /* init px variable */
+      px_sort_param[i].px_status = PX_PROGRESS;
+      px_sort_param[i].px_parallel_num = parallel_num;
+      px_sort_param[i].px_result_file_idx = 0;
+      /* Copy the parent's thread_p. */
+      px_sort_param[i].px_orig_thread_p =
+	thread_p->m_px_orig_thread_entry ? thread_p->m_px_orig_thread_entry : thread_p;
+      px_sort_param[i].ori_sort_param = sort_param;
+      px_sort_param[i].main_error_context = &cuberr::context::get_thread_local_context ();
+    }
+
+  if (error != NO_ERROR)
+    {
+      /* free memory */
+      for (i = 0; i < parallel_num; i++)
+	{
+	  if (px_sort_param[i].internal_memory != NULL)
+	    {
+	      free_and_init (px_sort_param[i].internal_memory);
+	    }
+	  for (j = 0; j < SORT_MAX_TOT_FILES; j++)
+	    {
+	      if (px_sort_param[i].file_contents[j].num_pages != NULL)
+		{
+		  free_and_init (px_sort_param[i].file_contents[j].num_pages);
+		}
+	    }
+	}
+    }
+
+  return error;
+}
+
+/*
+ * sort_split_input_temp_file () - split input temp file
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ */
+int
+sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			    int parallel_num)
+{
+  int error = NO_ERROR;
+  int i = 0, j = 0, splitted_num_page;
+  bool is_first_vpid = false;
+  PAGE_PTR page_p;
+  VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
+  QFILE_LIST_SCAN_ID *scan_id_p;
+  SORT_INFO *sort_info_p, *org_sort_info_p;
+
+  /* init vpid */
+  for (i = 0; i < parallel_num; i++)
+    {
+      first_vpid[i] = VPID_INITIALIZER;
+      last_vpid[i] = VPID_INITIALIZER;
+    }
+
+  /* page_cnt contains ovfl_page. If the length of tuple is longer than page, split by the number of tuples. */
+  sort_info_p = (SORT_INFO *) sort_param->get_arg;
+  splitted_num_page = sort_info_p->input_file->page_cnt / parallel_num;
+  splitted_num_page = MIN (splitted_num_page, sort_info_p->input_file->tuple_cnt / parallel_num);
+
+  i = 0;
+  is_first_vpid = false;
+  prev_vpid = sort_info_p->input_file->first_vpid;
+  /* TO_DO : dont fix all pages to split. Consider using a numerable temporary file */
+  while (true)
+    {
+      page_p = qmgr_get_old_page (thread_p, &prev_vpid, sort_info_p->input_file->tfile_vfid);
+      if (page_p == NULL)
+	{
+	  return ER_FAILED;
+	}
+      if (is_first_vpid)
+	{
+	  QFILE_PUT_PREV_VPID_NULL (page_p);
+	  qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
+	  is_first_vpid = false;
+	}
+      QFILE_GET_NEXT_VPID (&next_vpid, page_p);
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
+	  break;
+	}
+      else if (++j >= splitted_num_page)
+	{
+	  QFILE_PUT_NEXT_VPID_NULL (page_p);
+	  qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
+	  is_first_vpid = true;
+	  first_vpid[i] = next_vpid;
+	  last_vpid[i] = prev_vpid;
+	  i++;
+
+	  if (i < parallel_num - 1)
+	    {
+	      j = 0;
+	    }
+	  else
+	    {
+	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
+
+	      /* init prev page id */
+	      page_p = qmgr_get_old_page (thread_p, &next_vpid, sort_info_p->input_file->tfile_vfid);
+	      if (page_p == NULL)
+		{
+		  return ER_FAILED;
+		}
+	      QFILE_PUT_PREV_VPID_NULL (page_p);
+	      qmgr_set_dirty_page (thread_p, page_p, DONT_FREE, NULL, sort_info_p->input_file->tfile_vfid);
+	      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
+	      break;
+	    }
+	}
+      prev_vpid = next_vpid;
+      qmgr_free_old_page_and_init (thread_p, page_p, sort_info_p->input_file->tfile_vfid);
+    }
+
+  /* add splitted file info */
+  for (i = 0; i < parallel_num; i++)
+    {
+      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
+      org_sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      sort_info_p->input_file = qfile_clone_list_id (org_sort_info_p->input_file, true, QFILE_SKIP_DEPENDENT);
+      if (sort_info_p->input_file == NULL)
+	{
+	  return ER_FAILED;
+	}
+      /* tuple_cnt and page_cnt put approximately. */
+      /* It can be put precisely from the page header, but not have to be precise for later process. */
+      sort_info_p->input_file->tuple_cnt = org_sort_info_p->input_file->tuple_cnt / parallel_num;
+      sort_info_p->input_file->page_cnt = splitted_num_page;
+      sort_info_p->input_file->first_vpid = (i == 0) ? org_sort_info_p->input_file->first_vpid : first_vpid[i - 1];
+      sort_info_p->input_file->last_vpid =
+	(i == parallel_num - 1) ? org_sort_info_p->input_file->last_vpid : last_vpid[i];
+    }
+
+  return error;
+}
+
+/*
+ * sort_merge_run_for_parallel () - merge run for parallel
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ */
+int
+sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			     int parallel_num)
+{
+  int error = NO_ERROR;
+  int i = 0, idx = 0, file_pg_cnt_est;
+  int remaining_run, level, merge_num;
+  RESULT_RUN result_run[SORT_MAX_PARALLEL];
+  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
+  SORT_INFO *sort_info_p;
+
+  if (parallel_num > SORT_MAX_PARALLEL)
+    {
+      return ER_FAILED;
+    }
+
+  /* init result_run */
+  for (i = 0; i < parallel_num; i++)
+    {
+      result_run[i].temp_file = px_sort_param[i].temp[px_sort_param[i].px_result_file_idx];
+      result_run[i].num_pages = px_sort_param[i].file_contents[px_sort_param[i].px_result_file_idx].num_pages[0];
+    }
+
+  remaining_run = parallel_num;
+  level = 0;
+
+  /* merge result run */
+  while (remaining_run > 1)
+    {
+      merge_num = (remaining_run + (SORT_PX_MERGE_FILES - 1)) / SORT_PX_MERGE_FILES;
+
+      for (i = 0; i < merge_num; i++)
+	{
+	  int first_idx = i * pow (SORT_PX_MERGE_FILES, level + 1);
+
+	  /* init file info */
+	  int half_files = MIN (remaining_run - (first_idx / pow (SORT_PX_MERGE_FILES, level)), SORT_PX_MERGE_FILES);
+	  if (half_files == 1)
+	    {
+	      /* skip last one file */
+	      continue;
+	    }
+
+	  px_sort_param[i].px_result_file_idx = 0;
+	  px_sort_param[i].half_files = half_files;
+	  px_sort_param[i].tot_tempfiles = half_files * 2;
+	  px_sort_param[i].in_half = 0;
+
+	  /* copy temp file and file contents */
+	  for (int j = 0; j < px_sort_param[i].half_files; j++)
+	    {
+	      idx = (level == 0) ? (j + first_idx) : ((j * pow (SORT_PX_MERGE_FILES, level)) + first_idx);
+	      px_sort_param[i].temp[j] = result_run[idx].temp_file;
+	      /* copy the number of pages for one run */
+	      px_sort_param[i].file_contents[j].num_pages[0] = result_run[idx].num_pages;
+	      px_sort_param[i].file_contents[j].first_run = 0;
+	      px_sort_param[i].file_contents[j].last_run = 0;
+	    }
+	  for (int j = px_sort_param[i].half_files; j < px_sort_param[i].tot_tempfiles; j++)
+	    {
+	      /* init temp file and contents */
+	      px_sort_param[i].temp[j].volid = NULL_VOLID;
+	      px_sort_param[i].file_contents[j].first_run = -1;
+	      px_sort_param[i].file_contents[j].last_run = -1;
+	    }
+	  px_sort_param[i].px_result_run = &result_run[first_idx];
+	  px_sort_param[i].px_status = PX_PROGRESS;
+
+	  parallel_query::callable_task * task =
+	    new parallel_query::callable_task (sort_param->px_worker_manager,
+					       std::bind (sort_merge_nruns_parallel, std::placeholders::_1,
+							  &px_sort_param[i]));
+	  sort_param->px_worker_manager->push_task (task);
+	}
+
+      SORT_WAIT_PARALLEL (merge_num, sort_param, px_sort_param);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      remaining_run = merge_num;
+      level++;
+    }
+
+  /* split last run into px_sort_param */
+  sort_split_last_run (thread_p, px_sort_param, sort_param, parallel_num);
+
+  /* put result from sort location info */
+  SORT_EXECUTE_PARALLEL (parallel_num, px_sort_param, sort_put_result_for_parallel);
+  /* wait for threads */
+  SORT_WAIT_PARALLEL (parallel_num, sort_param, px_sort_param);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  /* merge last output file */
+  origin_list_id = ((SORT_INFO *) px_sort_param[0].put_arg)->output_file;
+
+  /* merge lists */
+  for (int i = 1; i < parallel_num; i++)
+    {
+      sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+      /* check NULL list id */
+      if (VPID_ISNULL (&sort_info_p->output_file->first_vpid))
+	{
+	  /* skip the empty list */
+	  continue;
+	}
+
+      /* If QUERY_CACHE(FILE_QUERY_AREA), Merged list not possible. */
+      if (origin_list_id->tfile_vfid->temp_file_type == FILE_QUERY_AREA)
+	{
+	  error = qfile_append_list (thread_p, origin_list_id, sort_info_p->output_file);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  qfile_destroy_list (thread_p, sort_info_p->output_file);
+	  QFILE_FREE_AND_INIT_LIST_ID (sort_info_p->output_file);
+	}
+      else
+	{
+	  error = qfile_connect_list (thread_p, origin_list_id, sort_info_p->output_file);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  sort_info_p->output_file = NULL;
+	}
+    }
+
+cleanup:
+  /* clear input_file for px */
+  for (int i = 0; i < parallel_num; i++)
+    {
+      sort_info_p = (SORT_INFO *) px_sort_param[i].get_arg;
+      if (sort_info_p->input_file)
+	{
+	  qfile_free_list_id (sort_info_p->input_file);
+	  sort_info_p->input_file = NULL;
+	}
+    }
+
+  /* clear output_file for px */
+  for (int i = 1; i < parallel_num; i++)
+    {
+      /* index 0 is origin output file. it'll be freed in qfile_sort_list_with_func() */
+      sort_info_p = (SORT_INFO *) px_sort_param[i].put_arg;
+      if (sort_info_p->output_file)
+	{
+	  qfile_free_list_id (sort_info_p->output_file);
+	  sort_info_p->output_file = NULL;
+	}
+    }
+
+  return error;
+}
+
+/*
+ * sort_merge_nruns () - merge n run
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ */
+int
+sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+{
+  int error = NO_ERROR;
+  int i = 0, idx = 0, file_pg_cnt_est;
+
+  /* Create output temporary files make file and temporary volume page count estimates */
+  file_pg_cnt_est = sort_get_avg_numpages_of_nonempty_tmpfile (sort_param);
+  file_pg_cnt_est = MAX (1, file_pg_cnt_est);
+
+  for (i = sort_param->half_files; i < sort_param->tot_tempfiles; i++)
+    {
+      error = sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* Merge the parallel processed results. */
+  if (sort_param->option == SORT_ELIM_DUP)
+    {
+      error = sort_exphase_merge_elim_dup (thread_p, sort_param);
+    }
+  else
+    {
+      /* SORT_DUP */
+      error = sort_exphase_merge (thread_p, sort_param);
+    }
+
+  /* save result run */
+  sort_param->px_result_run->temp_file = sort_param->temp[sort_param->px_result_file_idx];
+  sort_param->px_result_run->num_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
+
+  /* retire temp file */
+  for (i = 0; i < sort_param->tot_tempfiles; i++)
+    {
+      if (sort_param->temp[i].volid != NULL_VOLID && i != sort_param->px_result_file_idx)
+	{
+	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
+	  VFID_SET_NULL (&sort_param->temp[i]);
+	}
+    }
+  return error;
+}
+
+/*
+ * sort_check_parallelism () - check the number of parallel processes
+ *   return: parallel_num
+ *   sort_parallel_type(in):
+ *   sort_param(in):
+ */
+int
+sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
+{
+  SORT_INFO *sort_info_p;
+  int parallel_num = 1;
+
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      /* get scan id of input file */
+      sort_info_p = (SORT_INFO *) sort_param->get_arg;
+
+      if (sort_info_p->parallelism > 0)
+	{
+	  parallel_num = sort_info_p->parallelism;
+	}
+      else
+	{
+	  parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
+	}
+
+      if (parallel_num <= 1)
+	{
+	  return 1;
+	}
+
+      /* Find the number of parallel processes by page_cnt and tuple_cnt */
+      if (sort_info_p->input_file->page_cnt <= parallel_num || sort_info_p->input_file->tuple_cnt <= parallel_num)
+	{
+	  /* TO_DO : need to check the appropriate number of parallels depending on the number of pages */
+	  return 1;
+	}
+
+      /* check worker */
+      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
+      if (sort_param->px_worker_manager == NULL)
+	{
+	  return 1;
+	}
+      else
+	{
+	  return parallel_num;
+	}
+    }
+  else
+    {
+      /* Not implemented yet */
+      return 1;
+    }
+
+  /* single process */
+  return 1;
+}
+
+/*
+ * sort_put_result_for_parallel () - put result file for parallel
+ *   return:
+ *   thread_p(in):
+ *   sort_param(in):
+ */
+void
+sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
+{
+  THREAD_ENTRY *thread_p = &thread_ref;
+  SORT_INFO *sort_info_p, *ori_sort_info_p;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  PX_STATUS px_status;
+
+  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
+  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
+
+  thread_p->push_resource_tracks ();
+
+  if (thread_is_on_trace (sort_param->px_orig_thread_p))
+    {
+      thread_set_sort_stats_active (thread_p, true);
+      thread_ref.on_trace = true;
+      perfmon_initialize_parallel_stats (&thread_ref);
+      tsc_getticks (&start_tick);
+    }
+
+  sort_info_p = (SORT_INFO *) sort_param->put_arg;
+  ori_sort_info_p = (SORT_INFO *) sort_param->ori_sort_param->put_arg;
+  if (sort_param->file_contents[0].start_index == 0)
+    {
+      /* first file : use origin output temp file */
+      sort_info_p->output_file = ori_sort_info_p->output_file;
+    }
+  else
+    {
+      sort_info_p->output_file =
+	qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
+			 ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+    }
+
+  /* write last temp file */
+  if (sort_put_result_from_tmpfile (thread_p, sort_param, sort_param->file_contents[0].start_index) != NO_ERROR)
+    {
+      px_status = PX_ERR_FAILED;
+    }
+  else
+    {
+      px_status = PX_DONE;
+    }
+
+  qfile_close_list (thread_p, sort_info_p->output_file);
+  if (sort_info_p->output_recdes.data)
+    {
+      db_private_free_and_init (NULL, sort_info_p->output_recdes.data);
+      sort_info_p->output_recdes.data = NULL;
+    }
+
+  if (thread_is_on_trace (sort_param->px_orig_thread_p))
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
+
+      sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
+      sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
+
+      thread_set_sort_stats_active (thread_p, false);
+      perfmon_destroy_parallel_stats (&thread_ref);
+    }
+  thread_p->pop_resource_tracks ();
+
+  /* done */
+  pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = px_status;
+  if (px_status == PX_ERR_FAILED)
+    {
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
+  pthread_cond_signal (sort_param->complete_cond);
+  pthread_mutex_unlock (sort_param->px_mtx);
+}
+
+/*
+ * sort_merge_nruns_parallel () - merge nruns for parallel
+ *   return:
+ *   thread_p(in):
+ *   sort_param(in):
+ */
+void
+sort_merge_nruns_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
+{
+  THREAD_ENTRY *thread_p = &thread_ref;
+  SORT_INFO *sort_info_p, *ori_sort_info_p;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
+  PX_STATUS px_status;
+
+  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
+  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
+
+  thread_p->push_resource_tracks ();
+
+  if (thread_is_on_trace (sort_param->px_orig_thread_p))
+    {
+      thread_set_sort_stats_active (thread_p, true);
+      thread_ref.on_trace = true;
+      perfmon_initialize_parallel_stats (&thread_ref);
+      tsc_getticks (&start_tick);
+    }
+
+  if (sort_merge_nruns (thread_p, sort_param) != NO_ERROR)
+    {
+      px_status = PX_ERR_FAILED;
+    }
+  else
+    {
+      px_status = PX_DONE;
+    }
+
+  if (thread_is_on_trace (sort_param->px_orig_thread_p))
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (sort_param->orderby_stats.orderby_time, tv_diff);
+
+      sort_param->orderby_stats.orderby_pages += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES));
+      sort_param->orderby_stats.orderby_ioreads += (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES));
+
+      thread_set_sort_stats_active (thread_p, false);
+      perfmon_destroy_parallel_stats (&thread_ref);
+    }
+  thread_p->pop_resource_tracks ();
+
+  /* done */
+  pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = px_status;
+  if (sort_param->px_status == PX_ERR_FAILED)
+    {
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
+  pthread_cond_signal (sort_param->complete_cond);
+  pthread_mutex_unlock (sort_param->px_mtx);
+}
+
+/*
+ * sort_start_parallelism () - start parallelism
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ *   sort_parallel_type(in):
+ */
+int
+sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param)
+{
+  int error = NO_ERROR;
+  int parallel_num = sort_param->px_parallel_num;
+
+  /* copy sort_param for parallel sort */
+  error = sort_copy_sort_param (thread_p, px_sort_param, sort_param, parallel_num);
+  if (error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* case of ORDER BY */
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      QFILE_LIST_SCAN_ID *scan_id_p;
+      SORT_INFO *sort_info_p;
+
+      for (int i = 0; i < parallel_num; i++)
+	{
+	  /* deep copy for get_arg, put_arg */
+	  error =
+	    sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].get_arg,
+				 (SORT_INFO *) sort_param->get_arg);
+	  if (error != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  error =
+	    sort_copy_sort_info (thread_p, (SORT_INFO **) & px_sort_param[i].put_arg,
+				 (SORT_INFO *) sort_param->put_arg);
+	  if (error != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
+      /* get scan id of input file */
+      sort_info_p = (SORT_INFO *) sort_param->get_arg;
+      scan_id_p = sort_info_p->s_id->s_id;
+
+      /* close input file for read. it'll be opened in parallel */
+      qfile_close_scan (thread_p, scan_id_p);
+
+      /* split input temp file. */
+      error = sort_split_input_temp_file (thread_p, px_sort_param, sort_param, parallel_num);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      /* not implemented yet (group by, analytic fuction, create index) */
+      return ER_FAILED;
+    }
+
+  return error;
+}
+
+/*
+ * sort_end_parallelism () - end parallelism
+ *   return: NO_ERROR
+ *   px_sort_param(in):
+ *   sort_param(in):
+ *   parallel_num(in):
+ *   sort_parallel_type(in):
+ */
+int
+sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param)
+{
+  int error = NO_ERROR;
+  SORT_INFO *sort_info_p;
+  QFILE_LIST_SCAN_ID *scan_id_p;
+  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
+  int parallel_num = sort_param->px_parallel_num;
+
+  if (sort_param->px_type == SORT_ORDER_BY)
+    {
+      sort_info_p = (SORT_INFO *) sort_param->get_arg;
+      scan_id_p = sort_info_p->s_id->s_id;
+
+      /* open origin temp file for read */
+      if (qfile_open_list_scan (sort_info_p->input_file, scan_id_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* merge parallel result into sort location temp file */
+      error = sort_merge_run_for_parallel (thread_p, px_sort_param, sort_param, parallel_num);
+      if (error != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      /* Do not output parallel sort trace info from qfile_sort_list(). */
+      ORDERBY_STATS *orderby_stats = (ORDERBY_STATS *) ((SORT_INFO *) sort_param->get_arg)->orderby_stats;
+      if (orderby_stats && thread_is_on_trace (thread_p))
+	{
+	  orderby_stats->px_min_orderby_time = std::numeric_limits < UINT64 >::max ();
+	  orderby_stats->px_min_orderby_pages = std::numeric_limits < UINT64 >::max ();
+	  orderby_stats->px_min_orderby_ioreads = std::numeric_limits < UINT64 >::max ();
+
+	  for (int i = 0; i < parallel_num; i++)
+	    {
+	      orderby_stats->px_min_orderby_time =
+		std::min (orderby_stats->px_min_orderby_time,
+			  (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+	      orderby_stats->px_max_orderby_time =
+		std::max (orderby_stats->px_max_orderby_time,
+			  (UINT64) (TO_MSEC (px_sort_param[i].orderby_stats.orderby_time)));
+	      orderby_stats->px_min_orderby_pages =
+		std::min (orderby_stats->px_min_orderby_pages, px_sort_param[i].orderby_stats.orderby_pages);
+	      orderby_stats->px_max_orderby_pages =
+		std::max (orderby_stats->px_max_orderby_pages, px_sort_param[i].orderby_stats.orderby_pages);
+	      orderby_stats->px_min_orderby_ioreads =
+		std::min (orderby_stats->px_min_orderby_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
+	      orderby_stats->px_max_orderby_ioreads =
+		std::max (orderby_stats->px_max_orderby_ioreads, px_sort_param[i].orderby_stats.orderby_ioreads);
+	    }
+	  orderby_stats->parallel_num = parallel_num;
+	}
+    }
+  else
+    {
+      /* not implemented yet (group by, analytic function, create index) */
+      return ER_FAILED;
+    }
+
+  return error;
+}
+#endif
 
 /*
  * sort_write_area () - Write memory area to disk
@@ -4892,8 +5363,7 @@ sort_run_add_new (FILE_CONTENTS * file_contents, int num_pages)
   if (file_contents->last_run >= file_contents->num_slots)
     {
       new_total_elements = ((int) (((float) file_contents->num_slots * SORT_EXPAND_DYN_ARRAY_RATIO) + 0.5));
-      file_contents->num_pages =
-	(int *) db_private_realloc (NULL, file_contents->num_pages, new_total_elements * sizeof (int));
+      file_contents->num_pages = (int *) realloc (file_contents->num_pages, new_total_elements * sizeof (int));
       if (file_contents->num_pages == NULL)
 	{
 	  return ER_FAILED;

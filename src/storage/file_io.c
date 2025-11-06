@@ -70,6 +70,7 @@
 #include "chartype.h"
 #include "connection_globals.h"
 #include "file_io.h"
+#include "compressor.hpp"
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
@@ -7479,7 +7480,9 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
     {
     case FILEIO_ZIP_LZ4_METHOD:
       assert (size <= LZ4_MAX_INPUT_SIZE);
-      buf_size = LZ4_compressBound (size);
+      // *INDENT-OFF*
+      buf_size = cubcompress::bound<cubcompress::LZ4> (size);
+      // *INDENT-ON*
       zip_info_size = offsetof (FILEIO_ZIP_INFO, zip_page) + sizeof (int) + buf_size;
       node_p->zip_info = (FILEIO_ZIP_INFO *) malloc (zip_info_size);
       if (node_p->zip_info == NULL)
@@ -7627,8 +7630,11 @@ fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup
     {
     case FILEIO_ZIP_LZ4_METHOD:
       /* The alternative is compress faster - best speed, but, require more memory alloc */
+      // *INDENT-OFF*
       local_buf_len =
-	LZ4_compress_default ((char *) node_p->area, zip_page->buf, (int) node_p->nread, node_p->zip_info->buf_size);
+	cubcompress::compress<cubcompress::LZ4> ((char *) node_p->area, (int) node_p->nread, zip_page->buf,
+						 node_p->zip_info->buf_size);
+      // *INDENT-ON*
       if (local_buf_len <= 0)
 	{
 	  /* best reduction */
@@ -9457,10 +9463,10 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	    {
 	      char save_time1[64];
 
-	      fileio_ctime (&match_backup_creation_time, io_timeval);
+	      fileio_ctime (&backup_header_p->start_time, io_timeval);
 	      strcpy (save_time1, io_timeval);
 
-	      fileio_ctime (&backup_header_p->start_time, io_timeval);
+	      fileio_ctime (&match_backup_creation_time, io_timeval);
 	      if (asprintf (&error_message_p,
 			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_TIME_MISMATCH),
 			    session_p->bkup.vlabel, save_time1, io_timeval) < 0)
@@ -10121,9 +10127,12 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	      }
 
 	    /* decompress - use safe decompressor as data might be corrupted during a file transfer */
+	    // *INDENT-OFF*
 	    unzip_len =
-	      LZ4_decompress_safe ((const char *) zip_page->buf, (char *) session_p->dbfile.area, zip_page->buf_len,
-				   nbytes);
+	      cubcompress::decompress<cubcompress::LZ4> ((const char *) zip_page->buf, zip_page->buf_len,
+							 (char *) session_p->dbfile.area, nbytes);
+	    // *INDENT-ON*
+
 	    if (unzip_len < 0 || unzip_len != nbytes)
 	      {
 		error = ER_IO_LZ4_DECOMPRESS_FAIL;

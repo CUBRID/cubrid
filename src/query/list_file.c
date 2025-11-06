@@ -1695,7 +1695,7 @@ static int
 qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, char *page_p, int tuple_length)
 {
   int i, tuple_value_size;
-
+  int total_tuple_value_size = 0;
   for (i = 0; i < tuple_descr_p->f_cnt; i++)
     {
       if (qdata_copy_db_value_to_tuple_value (tuple_descr_p->f_valp[i],
@@ -1704,9 +1704,11 @@ qfile_save_normal_tuple (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, char *tuple_p, 
 	{
 	  return ER_FAILED;
 	}
+      total_tuple_value_size += tuple_value_size;
       tuple_p += tuple_value_size;
     }
 
+  assert_release (total_tuple_value_size <= tuple_length);
   QFILE_PUT_TUPLE_LENGTH (page_p, tuple_length);
   return NO_ERROR;
 }
@@ -3130,6 +3132,7 @@ int
 qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id)
 {
   PAGE_PTR base_last_page = NULL, append_first_page = NULL;
+  QFILE_LIST_ID *base_last;
 
   assert (thread_p != NULL);
   assert (base_list_id != NULL);
@@ -3181,8 +3184,11 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
   base_list_id->last_offset = append_list_id->last_offset;
   base_list_id->lasttpl_len = append_list_id->lasttpl_len;
 
-  append_list_id->dependent_list_id = base_list_id->dependent_list_id;
-  base_list_id->dependent_list_id = append_list_id;
+  for (base_last = base_list_id; base_last->dependent_list_id != NULL; base_last = base_last->dependent_list_id)
+    {
+      ;
+    }
+  base_last->dependent_list_id = append_list_id;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -4278,11 +4284,14 @@ qfile_clear_sort_info (SORT_INFO * sort_info_p)
  *   extra_arg(in):
  *   limit(in):
  *   do_close(in):
+ *   parallelism(in)
+ *   orderby_stats(in)
  */
 QFILE_LIST_ID *
 qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, SORT_LIST * sort_list_p,
 			   QUERY_OPTIONS option, int flag, SORT_GET_FUNC * get_func, SORT_PUT_FUNC * put_func,
-			   SORT_CMP_FUNC * cmp_func, void *extra_arg, int limit, bool do_close)
+			   SORT_CMP_FUNC * cmp_func, void *extra_arg, int limit, bool do_close, int parallelism,
+			   ORDERBY_STATS * orderby_stats)
 {
   QFILE_LIST_ID *srlist_id;
   QFILE_LIST_SCAN_ID t_scan_id;
@@ -4290,6 +4299,10 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   SORT_INFO info;
   int sort_result, estimated_pages;
   SORT_DUP_OPTION dup_option;
+  SORT_PARALLEL_TYPE parallel_type;
+
+  /* The result file must be closed for parallel processing. If not closed, Latch contention may occur. */
+  qfile_close_list (thread_p, list_id_p);
 
   srlist_id = qfile_open_list (thread_p, &list_id_p->type_list, sort_list_p, list_id_p->query_id, flag, NULL);
   if (srlist_id == NULL)
@@ -4313,7 +4326,12 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   info.s_id = &s_scan_id;
   info.output_file = srlist_id;
+  info.input_file = list_id_p;
   info.extra_arg = extra_arg;
+  info.sort_list_p = sort_list_p;
+  info.flag = flag;
+  info.parallelism = parallelism;
+  info.orderby_stats = orderby_stats;
 
   if (get_func == NULL)
     {
@@ -4323,6 +4341,16 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
   if (put_func == NULL)
     {
       put_func = &qfile_put_next_sort_item;
+    }
+
+  if (put_func == qfile_put_next_sort_item)
+    {
+      parallel_type = SORT_ORDER_BY;
+    }
+  else
+    {
+      /* TO_DO: px_sort for qexec_ordby_put_next */
+      parallel_type = SORT_ORDER_WITH_LIMIT;
     }
 
   if (cmp_func == NULL)
@@ -4347,7 +4375,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
 
   sort_result =
     sort_listfile (thread_p, NULL_VOLID, estimated_pages, get_func, &info, put_func, &info, cmp_func, &info.key_info,
-		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted);
+		   dup_option, limit, srlist_id->tfile_vfid->tde_encrypted, parallel_type);
 
   if (sort_result < 0)
     {
@@ -4392,7 +4420,7 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
     {
       qfile_destroy_list (thread_p, list_id_p);
     }
-  qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_PROHIBIT_DEPENDENT);
+  qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_MOVE_DEPENDENT);
   QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 
   return list_id_p;
@@ -4425,7 +4453,7 @@ qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, SORT_LIST *
   ls_flag = (option == Q_DISTINCT) ? QFILE_FLAG_DISTINCT : QFILE_FLAG_ALL;
 
   return qfile_sort_list_with_func (thread_p, list_id_p, sort_list_p, option, ls_flag, NULL, NULL, NULL, NULL,
-				    NO_SORT_LIMIT, do_close);
+				    NO_SORT_LIMIT, do_close, 0, NULL);
 }
 
 /*
@@ -6937,8 +6965,15 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
       return;
     }
 
-  THREAD_ENTRY *target_thread_p =
-    (thread_p->m_px_orig_thread_entry != NULL) ? thread_p->m_px_orig_thread_entry : thread_p;
+  THREAD_ENTRY *target_thread_p = thread_p;
+  while (target_thread_p->m_px_orig_thread_entry != NULL)
+    {
+      if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
+	{
+	  break;
+	}
+      target_thread_p = target_thread_p->m_px_orig_thread_entry;
+    }
 
   target_thread_p->m_qlist_count.fetch_add (inc);
 

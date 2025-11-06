@@ -56,6 +56,15 @@ typedef enum
   SORT_DUP			/* allow duplicate */
 } SORT_DUP_OPTION;
 
+typedef enum
+{
+  SORT_ORDER_BY,
+  SORT_ORDER_WITH_LIMIT,
+  SORT_GROUP_BY,
+  SORT_ANALYTIC,
+  SORT_INDEX_LEAF
+} SORT_PARALLEL_TYPE;
+
 typedef SORT_STATUS SORT_GET_FUNC (THREAD_ENTRY * thread_p, RECDES *, void *);
 typedef int SORT_PUT_FUNC (THREAD_ENTRY * thread_p, const RECDES *, void *);
 typedef int SORT_CMP_FUNC (const void *, const void *, void *);
@@ -135,15 +144,22 @@ struct SORT_INFO
   SORTKEY_INFO key_info;	/* All of the interesting key information. */
   QFILE_SORT_SCAN_ID *s_id;	/* A SCAN_ID for the input list file.  This is stateful, and records the current
 				 * location of the scan between calls to ls_sort_get_next(). */
+  QFILE_LIST_ID *input_file;
   QFILE_LIST_ID *output_file;	/* The name of the output file.  This is where ls_sort_put_next_*() deposits its stuff.
 				 */
   RECDES output_recdes;		/* A working buffer for output of tuples; used only when we're using
 				 * ls_sort_put_next_short() as the output function. */
   void *extra_arg;		/* extra information supplied by the caller */
+  /* for parallel */
+  SORT_LIST *sort_list_p;	/* to open output list file */
+  int flag;			/* to open output list file */
+  int parallelism;
+  void *orderby_stats;
 };
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
-			  SORT_DUP_OPTION option, int limit, bool includes_tde_class);
+			  SORT_DUP_OPTION option, int limit, bool includes_tde_class,
+			  SORT_PARALLEL_TYPE sort_parallel_type);
 
 #endif /* _EXTERNAL_SORT_H_ */

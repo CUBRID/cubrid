@@ -260,6 +260,7 @@ static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
+static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
 static json_t *qo_plan_scan_print_json (QO_PLAN * plan);
 static json_t *qo_plan_sort_print_json (QO_PLAN * plan);
@@ -11497,6 +11498,72 @@ qo_has_sort_limit_subplan (QO_PLAN * plan)
     }
 
   return false;
+}
+
+/*
+ * qo_check_like_recompile_candidate () - check if the plan is a LIKE recompile candidate
+ * return : true if the plan is a LIKE recompile candidate, false otherwise
+ * parser (in) : parser
+ * plan (in) : plan to check
+ */
+static int
+qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg)
+{
+  BITSET terms_set, temp_segs_set;
+  int term_idx, seg_idx;
+  BITSET_ITERATOR terms_iter;
+  QO_ENV *env;
+  QO_TERM *termp;
+  PT_NODE *expr;
+  QO_SEGMENT *seg;
+
+  bool *result = (bool *) arg;
+
+  env = (plan->info)->env;
+  bitset_init (&terms_set, env);
+
+  bitset_assign (&terms_set, &(plan->sarged_terms));
+  bitset_union (&terms_set, &(plan->plan_un.scan.terms));
+  bitset_union (&terms_set, &(plan->plan_un.scan.kf_terms));
+
+  for (term_idx = bitset_iterate (&terms_set, &terms_iter); term_idx != -1; term_idx = bitset_next_member (&terms_iter))
+    {
+      termp = QO_ENV_TERM (env, term_idx);
+      expr = QO_TERM_PT_EXPR (termp);
+      if (expr == NULL)
+	{
+	  continue;
+	}
+
+      bitset_init (&temp_segs_set, env);
+
+      if (expr->info.expr.op != PT_LIKE)
+	{
+	  continue;
+	}
+
+      qo_expr_segs (env, pt_left_part (expr), &temp_segs_set);
+      seg_idx = bitset_first_member (&temp_segs_set);
+      if (seg_idx == -1)
+	{
+	  continue;
+	}
+
+      seg = QO_ENV_SEG (env, seg_idx);
+      if (seg->is_not_null)
+	{
+	  *result = true;
+	  return NO_ERROR;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+int
+qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg)
+{
+  return qo_walk_plan_tree (plan, qo_check_like_recompile_candidate, arg);
 }
 
 /*

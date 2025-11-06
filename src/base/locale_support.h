@@ -449,44 +449,6 @@ struct alphabet_data
   bool do_not_save;		/* used by genlocale if shared alphabet */
 };
 
-typedef enum
-{
-  TR_UPPER = 0,
-  TR_LOWER
-} TRANSFORM_TYPE;
-
-/* Describes how a text tranforms into another text
- * Used for lower / upper casing rule description */
-typedef struct transform_rule TRANSFORM_RULE;
-struct transform_rule
-{
-  TRANSFORM_TYPE type;
-
-  char *src;
-  int src_size;
-
-  char *dest;
-  int dest_size;
-};
-
-
-typedef struct alphabet_tailoring ALPHABET_TAILORING;
-struct alphabet_tailoring
-{
-  /* number of codepoints the optimization process will to take into account for casing : -1 means unlimited (we
-   * support up to MAX_UNICODE_CHARS) */
-  int sett_max_letters;
-
-  int alphabet_mode;		/* 0 : default UnicodeData 1 : UnicodeData with specified file 2 : ASCII letter and
-				 * casing */
-  /* file path for Unicode data (if 'alphabet_mode' == 1) */
-  char unicode_data_file[PATH_MAX];
-
-  int count_rules;		/* # of tailorings */
-  int max_rules;		/* # of max (allocated tailorings) */
-  TRANSFORM_RULE *rules;
-  LDML_CONTEXT ldml_context;
-};
 
 /* text conversions */
 typedef enum
@@ -525,17 +487,6 @@ struct text_conversion
   void (*init_conv_func) (void);
 };
 
-typedef struct text_conversion_prm TEXT_CONVERSION_PRM;
-struct text_conversion_prm
-{
-  TEXT_CONV_TYPE conv_type;
-
-  char win_codepages[TXT_CONV_SYSTEM_STR_SIZE];	/* Windows codepage identifier */
-  char nl_lang_str[TXT_CONV_SYSTEM_STR_SIZE];	/* Linux language string */
-
-  char conv_file[PATH_MAX];
-};
-
 #define UNICODE_NORMALIZATION_DECORATOR "std"
 
 typedef struct unicode_normalization UNICODE_NORMALIZATION;
@@ -547,6 +498,57 @@ struct unicode_normalization
   int *list_full_decomp;
 
   bool do_not_save;
+};
+
+#if defined(SA_MODE)
+
+typedef enum
+{
+  TR_UPPER = 0,
+  TR_LOWER
+} TRANSFORM_TYPE;
+
+/* Describes how a text tranforms into another text
+ * Used for lower / upper casing rule description */
+typedef struct transform_rule TRANSFORM_RULE;
+struct transform_rule
+{
+  TRANSFORM_TYPE type;
+
+  char *src;
+  int src_size;
+
+  char *dest;
+  int dest_size;
+};
+
+typedef struct alphabet_tailoring ALPHABET_TAILORING;
+struct alphabet_tailoring
+{
+  /* number of codepoints the optimization process will to take into account for casing : -1 means unlimited (we
+   * support up to MAX_UNICODE_CHARS) */
+  int sett_max_letters;
+
+  int alphabet_mode;		/* 0 : default UnicodeData 1 : UnicodeData with specified file 2 : ASCII letter and
+				 * casing */
+  /* file path for Unicode data (if 'alphabet_mode' == 1) */
+  char unicode_data_file[PATH_MAX];
+
+  int count_rules;		/* # of tailorings */
+  int max_rules;		/* # of max (allocated tailorings) */
+  TRANSFORM_RULE *rules;
+  LDML_CONTEXT ldml_context;
+};
+
+typedef struct text_conversion_prm TEXT_CONVERSION_PRM;
+struct text_conversion_prm
+{
+  TEXT_CONV_TYPE conv_type;
+
+  char win_codepages[TXT_CONV_SYSTEM_STR_SIZE];	/* Windows codepage identifier */
+  char nl_lang_str[TXT_CONV_SYSTEM_STR_SIZE];	/* Linux language string */
+
+  char conv_file[PATH_MAX];
 };
 
 #define CAL_SIMPLE_DATE_FORMAT_SIZE  30
@@ -643,26 +645,27 @@ struct locale_data
 
   LDML_CONTEXT ldml_context;
 };
+#endif //#if defined(SA_MODE)
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-  void locale_init_data (LOCALE_DATA * ld, const char *locale_name);
-  void locale_destroy_data (LOCALE_DATA * ld);
-  void locale_destroy_alphabet_data (const ALPHABET_DATA * a);
-  void locale_destroy_normalization_data (UNICODE_NORMALIZATION * norm);
   int locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool is_lang_init);
   int locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init);
-  int locale_prepare_C_file (void);
+
+#if defined(SA_MODE)
+  void locale_destroy_data (LOCALE_DATA * ld);
   int locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose);
+  int locale_prepare_C_file (void);
   void locale_mark_duplicate_collations (LOCALE_DATA ** ld, int start_index, int end_index, bool is_verbose);
   int locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index, int end_index, LOCALE_FILE * lf);
   int locale_dump (void *data, LOCALE_FILE * lf, int dl_settings, int start_value, int end_value);
   int locale_dump_lib_collations (void *lib_handle, const LOCALE_FILE * lf, int dl_settings, int start_value,
 				  int end_value);
   void locale_free_shared_data (void);
+#endif
 
 #ifdef __cplusplus
 }

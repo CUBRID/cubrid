@@ -55,7 +55,14 @@ catcls_add_data_type (struct db_object *class_mop)
     NULL /* POINTER */, NULL /* ERROR */, "SHORT", NULL /* VOBJ */,
     NULL /* OID */,
     NULL /* VALUE */, "NUMERIC", "BIT", "VARBIT", "CHAR",
-    "NCHAR", "VARNCHAR", NULL /* RESULTSET */, NULL /* MIDXKEY */,
+
+    /* TODO:
+     * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+     * However, to maintain compatibility with previous versions, the enum list will be preserved.
+     */
+    NULL /* NCHAR */, NULL /* VARNCHAR */,
+
+    NULL /* RESULTSET */, NULL /* MIDXKEY */,
     NULL /* TABLE */,
     "BIGINT", "DATETIME",
     "BLOB", "CLOB", "ENUM",
