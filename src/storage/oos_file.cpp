@@ -221,8 +221,8 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
 				  const OOS_RECORD_HEADER &first_chunk_header, RECDES &recdes)
 {
   int err = NO_ERROR;
-  auto header = first_chunk_header;
-  int total_size = first_chunk_header.total_size;
+  const auto header = first_chunk_header;
+  const int total_size = first_chunk_header.total_size;
   assert (first_chunk_header.chunk_index == 0);
   assert (total_size > oos_get_max_chunk_size_within_page ());
 
@@ -239,6 +239,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
   int idx = 0;
   OID current_chunk_oid = oid;
   char *buf = recdes.data;
+  int total_read_size = 0;
   while (current_chunk_oid.pageid != NULL_PAGEID)
     {
       OOS_RECORD_HEADER header;
@@ -253,13 +254,16 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
 	       header.total_size,
 	       header.chunk_index, header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
 
+      total_read_size += chunk_recdes.length;
       std::memcpy (buf, chunk_recdes.data, chunk_recdes.length);
       buf += chunk_recdes.length;
       oos_log ("oos_read_across_pages: read chunk index=%d, chunk_size=%d\n", idx, chunk_recdes.length);
       current_chunk_oid = header.next_chunk_oid;
       recdes_free_data_area (&chunk_recdes);
     }
-  assert (buf == header.total_size + recdes.data);
+
+  assert (total_read_size == total_size);
+  assert (buf == total_size + recdes.data);
 
   return err;
 }
