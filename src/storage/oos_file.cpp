@@ -28,14 +28,17 @@
 
 VPID recently_inserted_oos_vpid = VPID_INITIALIZER;
 
+int oos_get_max_chunk_size_within_page ()
+{
+  // one additional slot and OOS header are needed within page
+  return spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER);
+}
+
 int
 oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
-  // TODO: check if it is already created
-  // with something like hfid or vfid
 
-  FILE_DESCRIPTORS des;
-
+  FILE_DESCRIPTORS des; // unused
   int err = file_create_with_npages (thread_p, FILE_OOS, 1, &des, &oos_vfid);
   if (err != NO_ERROR)
     {
@@ -53,6 +56,12 @@ int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 
 static int oos_prepend_record_header (RECDES &rec_in, const OOS_RECORD_HEADER &oos_header, RECDES &rec_out)
 {
+  // Review point:
+  // This function just prepends the OOS header to the input record.
+  //
+  // While it doing simple job, it allocated new data area for output record.
+  // Can this be avoided to improve performance?
+
   int err;
   err = recdes_allocate_data_area (&rec_out, rec_in.length + (int)sizeof (OOS_RECORD_HEADER));
   if (err != NO_ERROR)
@@ -60,6 +69,7 @@ static int oos_prepend_record_header (RECDES &rec_in, const OOS_RECORD_HEADER &o
       return err;
     }
 
+  // Review point: REC_HOME is required to avoid assertion failure in spage_insert.
   rec_out.type = REC_HOME;
   rec_out.length = rec_in.length + (int)sizeof (OOS_RECORD_HEADER);
   std::memcpy (rec_out.data, &oos_header, (int)sizeof (OOS_RECORD_HEADER));
@@ -91,10 +101,7 @@ int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OI
       return err;
     }
 
-
-  const int max_possible_chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (
-      OOS_RECORD_HEADER);
-  if (recdes.length > max_possible_chunk_size)
+  if (recdes.length > oos_get_max_chunk_size_within_page ())
     {
       return oos_insert_across_pages (thread_p, oos_vfid, recdes, oid);
     }
@@ -111,10 +118,10 @@ static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
   int err = NO_ERROR;
 
   // split the recdes to multiple chunks and insert them one by one
-  int chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER);
-  assert (recdes.length > chunk_size);
+  const int max_chunk_size = oos_get_max_chunk_size_within_page ();
+  assert (recdes.length > max_chunk_size);
 
-  int required_page_nums = (recdes.length + chunk_size - 1) / chunk_size;
+  int required_page_nums = (recdes.length + max_chunk_size - 1) / max_chunk_size;
   assert (required_page_nums > 1);
 
   oos_log ("oos_insert_across_pages: required_page_nums=%d\n", required_page_nums);
@@ -127,8 +134,8 @@ static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
 
       RECDES chunk_recdes{};
       chunk_recdes.type = REC_HOME;
-      chunk_recdes.length = std::min (chunk_size, total_size - i * chunk_size);
-      chunk_recdes.data = recdes.data + i * chunk_size;
+      chunk_recdes.length = std::min (max_chunk_size, total_size - i * max_chunk_size);
+      chunk_recdes.data = recdes.data + i * max_chunk_size;
 
       // prev_chunk_oid is updated to point at the newly inserted chunk, so that we can copy it to header inside this loop.
       OOS_RECORD_HEADER header{total_size, i, prev_chunk_oid};
@@ -154,11 +161,9 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   int err = NO_ERROR;
   VPID vpid;
 
+  assert (recdes.length <= oos_get_max_chunk_size_within_page ());
+
   int required_length = recdes.length + (int)sizeof (OOS_RECORD_HEADER);
-
-  // data payload + oos header must be smaller than or equal to max record size - slot size
-  assert (required_length <= spage_max_record_size() - (int)sizeof (SPAGE_SLOT));
-
   err = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
   if (err != NO_ERROR)
     {
@@ -210,7 +215,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
   auto header = first_chunk_header;
   int total_size = first_chunk_header.total_size;
   assert (first_chunk_header.chunk_index == 0);
-  assert (total_size > spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER));
+  assert (total_size > oos_get_max_chunk_size_within_page ());
 
   oos_log ("oos_read_across_pages: total_size=%d\n", total_size);
 

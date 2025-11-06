@@ -68,3 +68,4 @@ static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes,
 		       OOS_RECORD_HEADER &out_header);
 
+int oos_get_max_chunk_size_within_page ();

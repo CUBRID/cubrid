@@ -217,9 +217,9 @@ TEST (OosTest, OosInsertAndRead100LargeStringsAroundMaxOosChunkSize)
   EXPECT_EQ (err, NO_ERROR);
 
   // max chunk size that can be stored in a single OOS slotted page
-  const auto chunk_size = spage_max_record_size () - (int)sizeof (SPAGE_SLOT) - (int)sizeof (OOS_RECORD_HEADER);
+  const int max_chunk_size = oos_get_max_chunk_size_within_page ();
 
-  for (int large_size = chunk_size - 50; large_size <= chunk_size + 50; large_size++)
+  for (int large_size = max_chunk_size - 50; large_size <= max_chunk_size + 50; large_size++)
     {
       auto large_data = generate_large_string (large_size);
 
