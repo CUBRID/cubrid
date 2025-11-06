@@ -128,29 +128,38 @@ static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
 
   const int total_size = recdes.length;
 
-  OID prev_chunk_oid = OID_INITIALIZER;
+  int total_inserted_size = 0;
+  OID next_chunk_oid = OID_INITIALIZER; // the last chunk has null OID as next_chunk_oid
+  // this loop inserts chunks in reverse order so that next_chunk_oid is always known
   for (int i = required_page_nums - 1; i >= 0; --i)
     {
 
       RECDES chunk_recdes{};
       chunk_recdes.type = REC_HOME;
       chunk_recdes.length = std::min (max_chunk_size, total_size - i * max_chunk_size);
+      total_inserted_size += chunk_recdes.length;
       chunk_recdes.data = recdes.data + i * max_chunk_size;
 
-      // prev_chunk_oid is updated to point at the newly inserted chunk, so that we can copy it to header inside this loop.
-      OOS_RECORD_HEADER header{total_size, i, prev_chunk_oid};
-      oos_log ("insert_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
+      OOS_RECORD_HEADER header{total_size, i, next_chunk_oid};
+      oos_log ("oos_insert_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
 	       header.total_size, header.chunk_index,
 	       header.next_chunk_oid.pageid, header.next_chunk_oid.slotid);
-      err = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, prev_chunk_oid);
+
+      OID current_chunk_oid;
+      err = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
       if (err != NO_ERROR)
 	{
+	  // TODO: cleanup previously inserted chunks
 	  break;
 	}
+
+      next_chunk_oid = current_chunk_oid;
     }
 
+  assert (total_inserted_size == recdes.length);
+
   // update the out parameter 'oid' to give access to the first slot
-  oid = prev_chunk_oid;
+  oid = next_chunk_oid;
   return err;
 }
 
