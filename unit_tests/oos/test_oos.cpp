@@ -224,17 +224,14 @@ TEST (OosTest, OosFindBestSpace)
 TEST (OosTest, OosFixAndUnfixPage)
 {
   int err;
-  VFID oos_vfid;
 
+  VFID oos_vfid;
   err = oos_create (thread_p, oos_vfid);
   EXPECT_EQ (err, NO_ERROR);
 
-  const auto data1 = std::string ("this is a random data 1");
+  VPID vpid{NULL_PAGEID, NULL_VOLID};
+  const auto random_data_length = 100;
 
-  VPID vpid{};
-  vpid.volid = NULL_VOLID;
-  vpid.pageid = NULL_PAGEID;
-  auto random_data_length = 100;
   err = oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
   EXPECT_EQ (err, NO_ERROR);
 
