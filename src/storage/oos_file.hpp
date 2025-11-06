@@ -23,9 +23,15 @@
 #include "thread_compat.hpp"
 #include "error_manager.h"
 
-#define OOS_LOG 1
+static int oos_log_enabled = 0;
+
+inline void oos_set_log_enabled (int enabled)
+{
+  oos_log_enabled = enabled;
+}
+
 #define oos_log(...) \
-  if (OOS_LOG) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+  if (oos_log_enabled) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
 struct oos_record_header
 {
