@@ -26,7 +26,6 @@
 
 #include "config.h"
 
-
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -39,6 +38,7 @@
 #include "elo.h"
 #include "error_manager.h"
 #include "file_io.h"
+#include "compressor.hpp"
 #include "mem_block.hpp"
 #include "object_representation.h"
 #include "set_object.h"
@@ -10844,8 +10844,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 		    }
 
 		  /* decompressing the string */
+		  // *INDENT-OFF*
 		  decompressed_size =
-		    LZ4_decompress_safe (new_, decompressed_string, compressed_size, expected_decompressed_size);
+		    cubcompress::decompress<cubcompress::LZ4> (new_, compressed_size, decompressed_string,
+							       expected_decompressed_size);
+		  // *INDENT-ON*
 		  if (decompressed_size < 0)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
@@ -13945,7 +13948,10 @@ pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compress
       /* Handle decompression */
 
       /* decompressing the string */
-      decompressed_size = LZ4_decompress_safe (buf->ptr, data, compressed_size, expected_decompressed_size);
+      // *INDENT-OFF*
+      decompressed_size =
+	cubcompress::decompress<cubcompress::LZ4> (buf->ptr, compressed_size, data, expected_decompressed_size);
+      // *INDENT-ON*
       if (decompressed_size < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_DECOMPRESS_FAIL, 0);
@@ -13991,7 +13997,9 @@ pr_get_compression_length (const char *string, int str_length)
     }
 
   /* Alloc memory for the compressed string */
-  compress_buffer_size = LZ4_compressBound (str_length);
+  // *INDENT-OFF*
+  compress_buffer_size = cubcompress::bound<cubcompress::LZ4> (str_length);
+  // *INDENT-ON*
   compressed_string = (char *) malloc (compress_buffer_size);
   if (compressed_string == NULL)
     {
@@ -14000,7 +14008,10 @@ pr_get_compression_length (const char *string, int str_length)
     }
 
   /* Compress the string */
-  compressed_length = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
+  // *INDENT-OFF*
+  compressed_length =
+    cubcompress::compress<cubcompress::LZ4> (string, str_length, compressed_string, compress_buffer_size);
+  // *INDENT-ON*
   if (compressed_length <= 0)
     {
       /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
@@ -14076,7 +14087,9 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
 
   /* Step 1 : Compress, if possible, the dbvalue */
   /* Alloc memory for the compressed string */
-  compress_buffer_size = LZ4_compressBound (str_length);
+  // *INDENT-OFF*
+  compress_buffer_size = cubcompress::bound<cubcompress::LZ4> (str_length);
+  // *INDENT-ON*
   compressed_string = (char *) malloc (compress_buffer_size);
   if (compressed_string == NULL)
     {
@@ -14085,7 +14098,10 @@ pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALU
       goto cleanup;
     }
 
-  compression_length = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
+  // *INDENT-OFF*
+  compression_length =
+    cubcompress::compress<cubcompress::LZ4> (string, str_length, compressed_string, compress_buffer_size);
+  // *INDENT-ON*
   if (compression_length <= 0)
     {
       /* We should not be having any kind of errors here. Because if this compression fails, there is not warranty
@@ -14316,7 +14332,10 @@ pr_data_compress_string (const char *string, int str_length, char *compressed_st
     }
 
   /* Compress the string */
-  compressed_length_local = LZ4_compress_default (string, compressed_string, str_length, compress_buffer_size);
+  // *INDENT-OFF*
+  compressed_length_local =
+    cubcompress::compress<cubcompress::LZ4> (string, str_length, compressed_string, compress_buffer_size);
+  // *INDENT-ON*
   if (compressed_length_local <= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_LZ4_COMPRESS_FAIL, 4, FILEIO_ZIP_LZ4_METHOD,
@@ -14437,7 +14456,9 @@ pr_do_db_value_string_compression (DB_VALUE * value)
     }
 
   /* Alloc memory for compression */
-  compressed_size = LZ4_compressBound (src_size);
+  // *INDENT-OFF*
+  compressed_size = cubcompress::bound<cubcompress::LZ4> (src_size);
+  // *INDENT-ON*
   compressed_string = (char *) db_private_alloc (NULL, compressed_size);
   if (compressed_string == NULL)
     {
