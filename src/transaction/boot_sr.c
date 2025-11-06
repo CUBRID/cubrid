@@ -5097,7 +5097,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   logpb_force_flush_pages (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
 
   (void) logpb_checkpoint (thread_p);
   boot_server_status (BOOT_SERVER_UP);

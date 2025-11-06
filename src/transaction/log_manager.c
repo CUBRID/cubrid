@@ -1793,7 +1793,7 @@ log_final (THREAD_ENTRY * thread_p)
   error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
   if (error_code == NO_ERROR)
     {
-      error_code = fileio_synchronize_all (thread_p, false);
+      error_code = fileio_synchronize_all (thread_p);
     }
 
   logpb_decache_archive_info (thread_p);
@@ -8928,7 +8928,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
     }
 
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
   (void) log_commit (thread_p, NULL_TRAN_INDEX, false);
 
   return ret;
@@ -9177,7 +9177,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
   if (flush_data_pages)
     {
       (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-      (void) fileio_synchronize_all (thread_p, false);
+      (void) fileio_synchronize_all (thread_p);
     }
 
   /* Undefine log buffer pool and transaction table */

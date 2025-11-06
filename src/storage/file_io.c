@@ -647,7 +647,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 
   if (need_sync)
     {
-      fileio_synchronize_all (thread_p, false);
+      fileio_synchronize_all (thread_p);
     }
 #endif /* SERVER_MODE */
 }
@@ -4562,10 +4562,9 @@ fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_inf
 /*
  * fileio_synchronize_all () - Synchronize all database volumes with disk
  *   return:
- *   include_log(in):
  */
 int
-fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
+fileio_synchronize_all (THREAD_ENTRY * thread_p)
 {
   int success = NO_ERROR;
   bool all_sync = false;
@@ -4579,12 +4578,6 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
   arg.vol_id = NULL_VOLID;
 
   er_stack_push ();
-
-  if (is_include)
-    {
-      /* Flush logs. */
-      (void) fileio_traverse_system_volume (thread_p, fileio_synchronize_sys_volume, &arg);
-    }
 
 #if !defined (CS_MODE)
   /* Flush DWB before volume data. */
@@ -9640,7 +9633,7 @@ fileio_finish_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 {
   int success;
 
-  success = fileio_synchronize_all (thread_p, false);
+  success = fileio_synchronize_all (thread_p);
   fileio_abort_restore (thread_p, session_p);
 
   return success;

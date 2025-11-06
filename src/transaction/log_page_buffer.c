@@ -5852,13 +5852,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   /* Flush the log header to reflect the archive */
   logpb_flush_header (thread_p);
 
-#if 0
-  if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) != 0)
-    {
-      fileio_synchronize (thread_p, log_Gl.append.vdes, FILEIO_SYNC_ONLY);
-    }
-#endif
-
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_ARCHIVE_CREATED, 3, arv_name, arvhdr->fpageid, last_pageid);
 
   /* Cast the archive information. May be used again */
@@ -6255,7 +6248,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, NULL, &newflush_upto_lsa, NULL);
 
   if ((!LSA_ISNULL (&newflush_upto_lsa) && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
-      || (fileio_synchronize_all (thread_p, false) != NO_ERROR))
+      || (fileio_synchronize_all (thread_p) != NO_ERROR))
     {
       /* Cannot remove the archives at this moment */
       return;
@@ -6994,7 +6987,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 
   detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
-  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
+  if (fileio_synchronize_all (thread_p) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
@@ -7358,11 +7351,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   logtb_clear_tdes (thread_p, tdes);
 
   LOG_CS_EXIT (thread_p);
-
-#if 0
-  /* have to sync log vol, data vol */
-  fileio_synchronize_all (thread_p, true /* include_log */ );
-#endif
 
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_END_CHECKPOINTS);
 
@@ -10676,7 +10664,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
 	}
     }
 
-  fileio_synchronize_all (thread_p, false);
+  fileio_synchronize_all (thread_p);
 
   fflush (stderr);
   fflush (stdout);

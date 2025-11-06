@@ -1194,7 +1194,7 @@ dwb_create_internal (THREAD_ENTRY *thread_p, const char *dwb_volume_name, UINT64
     }
 
   /* Needs to flush dirty page before activating DWB. */
-  fileio_synchronize_all (thread_p, false);
+  fileio_synchronize_all (thread_p);
 
   /* Create DWB blocks */
   error_code = dwb_create_blocks (thread_p, num_blocks, num_block_pages, &blocks);

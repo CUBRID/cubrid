@@ -497,7 +497,7 @@ extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io
 			    DKNPAGES npages, size_t page_size);
 extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel,
 			       FILEIO_SYNC_OPTION check_sync_dwb);
-extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
+extern int fileio_synchronize_all (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,
 				    void *area);
