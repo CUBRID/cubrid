@@ -562,7 +562,9 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
 	      || result_info->attr_types[i] == DB_TYPE_NULL || result_info->attr_types[i] == DB_TYPE_VARIABLE
 	      || value_type == result_info->attr_types[i]
 	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i]))
-	      || (TP_IS_BIT_TYPE (value_type) && TP_IS_BIT_TYPE (result_info->attr_types[i])));
+	      || (TP_IS_BIT_TYPE (value_type) && TP_IS_BIT_TYPE (result_info->attr_types[i]))
+	      || ((value_type == DB_TYPE_VARBIT) && (result_info->attr_types[i] == DB_TYPE_BLOB))
+	      || ((value_type == DB_TYPE_VARCHAR) && (result_info->attr_types[i] == DB_TYPE_CLOB)));
 
       switch (value_type)
 	{

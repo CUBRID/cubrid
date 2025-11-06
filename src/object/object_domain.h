@@ -234,7 +234,7 @@ typedef enum tp_match
  */
 // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 #define TP_IS_BIT_TYPE(typeid) \
-  (((typeid) == DB_TYPE_VARBIT) || ((typeid) == DB_TYPE_BIT) || ((typeid) == DB_TYPE_BLOB))
+  (((typeid) == DB_TYPE_VARBIT) || ((typeid) == DB_TYPE_BIT))
 
 /*
  * TP_IS_CHAR_TYPE
@@ -243,14 +243,16 @@ typedef enum tp_match
 // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 #define TP_IS_CHAR_TYPE(typeid) \
   (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
-   ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR)|| \
-   ((typeid) == DB_TYPE_CLOB))
+   ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
 
 #define TP_IS_LOBFILE_TYPE(typeid) \
   (((typeid) == DB_TYPE_BFILE)  || ((typeid) == DB_TYPE_CFILE))
 
 #define TP_IS_LOB_TYPE(typeid) \
   (((typeid) == DB_TYPE_BLOB)  || ((typeid) == DB_TYPE_CLOB))
+
+#define TP_IS_LOB_FAMILY_TYPE(typeid) \
+  ((TP_IS_LOBFILE_TYPE(typeid)) || (TP_IS_LOB_TYPE(typeid)))
 
 #define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
   (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))
@@ -317,7 +319,7 @@ static inline bool
 tp_implicit_coercion_not_allowed (DB_TYPE src, DB_TYPE dest)
 {
   /* Block both LOBFILE (BFILE/CFILE) and LOB (BLOB/CLOB). */
-  if (TP_IS_LOBFILE_TYPE (src) || TP_IS_LOBFILE_TYPE (dest) || TP_IS_LOB_TYPE (src) || TP_IS_LOB_TYPE (dest))
+  if (TP_IS_LOB_FAMILY_TYPE (src) || TP_IS_LOB_FAMILY_TYPE (dest))
     {
       return true;
     }

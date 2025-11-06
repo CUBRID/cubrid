@@ -79,9 +79,7 @@
 #define ARE_COMPARABLE(typ1, typ2)                        \
     ((typ1 == typ2) ||                                    \
      (QSTR_IS_CHAR(typ1) && QSTR_IS_CHAR(typ2)) ||       \
-     (QSTR_IS_NATIONAL_CHAR(typ1) && QSTR_IS_NATIONAL_CHAR(typ2)) || \
-     ((typ1) == DB_TYPE_BLOB   && (typ2) == DB_TYPE_VARBIT)       || \
-     ((typ1) == DB_TYPE_VARBIT && (typ2) == DB_TYPE_BLOB))
+     (QSTR_IS_NATIONAL_CHAR(typ1) && QSTR_IS_NATIONAL_CHAR(typ2)))
 
 #define DBL_MAX_DIGITS    ((int)ceil(DBL_MAX_EXP * log10((double) FLT_RADIX)))
 
@@ -92,11 +90,8 @@
 	  ((t1) == DB_TYPE_NCHAR    && (t2) == DB_TYPE_VARNCHAR) || \
 	  ((t1) == DB_TYPE_VARNCHAR && (t2) == DB_TYPE_VARCHAR) ||  \
 	  ((t1) == DB_TYPE_BIT      && (t2) == DB_TYPE_VARBIT) ||   \
-	  ((t1) == DB_TYPE_VARBIT   && (t2) == DB_TYPE_BIT)    ||   \
-          ((t1) == DB_TYPE_CLOB     && (t2) == DB_TYPE_VARCHAR)||   \
-          ((t1) == DB_TYPE_VARCHAR  && (t2) == DB_TYPE_CLOB)   ||   \
-          ((t1) == DB_TYPE_BLOB     && (t2) == DB_TYPE_VARBIT) ||   \
-          ((t1) == DB_TYPE_VARBIT   && (t2) == DB_TYPE_BLOB))
+	  ((t1) == DB_TYPE_VARBIT   && (t2) == DB_TYPE_BIT))
+
 
 #define TP_NUM_MIDXKEY_DOMAIN_LIST      (10)
 
@@ -9469,9 +9464,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  printf ("DEBUG dbbittoblob start\n");
 	  err = db_bit_to_blob (src, target);
-	  printf ("DEBUG dbbittoblob end\n");
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:

@@ -130,9 +130,7 @@
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT  \
-                   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CLOB \
-                   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BLOB)), \
+		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
 	  (v)->data.ch.medium.buf))
 
 #define DB_GET_NUMERIC_PRECISION(val) \
