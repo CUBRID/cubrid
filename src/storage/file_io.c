@@ -2827,7 +2827,11 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	}
     }
 
+#if !defined(CS_MODE)
   if (dwb_synchronize (thread_p, to_vol_desc, to_vol_label_p) != to_vol_desc)
+#else
+  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p) != to_vol_desc)
+#endif
     {
       goto error;
     }
@@ -2891,7 +2895,11 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
     }
   free_and_init (malloc_io_page_p);
 
+#if !defined(CS_MODE)
   if (dwb_synchronize (thread_p, vol_fd, vlabel) != vol_fd)
+#else
+  if (fileio_synchronize (thread_p, vol_fd, vlabel) != vol_fd)
+#endif
     {
       success = ER_FAILED;
     }
@@ -3101,7 +3109,11 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
    */
   vlabel = fileio_get_volume_label_by_fd (vol_fd, PEEK);
 
+#if !defined(CS_MODE)
   (void) dwb_synchronize (thread_p, vol_fd, vlabel);
+#else
+  (void) fileio_synchronize (thread_p, vol_fd, vlabel);
+#endif
 
 #if !defined(WINDOWS)
   lockf_type = fileio_get_lockf_type (vol_fd);
@@ -3303,7 +3315,11 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
+#if !defined(CS_MODE)
       (void) dwb_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
+#else
+      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
+#endif
 
 #if !defined(WINDOWS)
       if (vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -4393,7 +4409,7 @@ fileio_fsync_pending (void)
   static uint64_t counter (0);
 #endif
   uint64_t prev_counter;
-  uint64_t threshold;
+  int threshold;
 
   threshold = prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC);
   if (threshold <= 0)
@@ -4407,7 +4423,7 @@ fileio_fsync_pending (void)
   prev_counter = counter++;
 #endif
 
-  if (!(prev_counter % threshold))
+  if (!(prev_counter % (uint64_t) threshold))
     {
       return false;
     }
@@ -4419,7 +4435,6 @@ fileio_fsync_pending (void)
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
- *   sync_dwb(in): FILEIO_SYNC_ALSO_FLUSH_DWB if needs sync dwb
  */
 int
 fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
