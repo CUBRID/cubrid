@@ -28,8 +28,7 @@
 
 TEST (BasicTest, Hello)
 {
-  EXPECT_STRNE ("Hello", "World");
-  EXPECT_EQ (7 * 6, 42);
+  // Todo
 }
 
 // TODO: write persistence tests for OOS
