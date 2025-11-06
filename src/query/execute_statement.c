@@ -20848,7 +20848,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (create_server->pwd);
   assert (create_server->pwd->node_type == PT_VALUE);
   pwd = (char *) PT_VALUE_GET_BYTES (create_server->pwd);
-  if (pwd == NULL && *pwd == '\0')
+  if (pwd == NULL || *pwd == '\0')
     {
       error = ER_FAILED;
       goto end;
