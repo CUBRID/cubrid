@@ -17,7 +17,6 @@
  */
 
 #include <cassert>
-#include <memory>
 #include "error_code.h"
 #include "file_manager.h"
 #include "page_buffer.h"
@@ -98,8 +97,8 @@ static void oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out
 {
   assert (rec_in.length >= (int)sizeof (OOS_RECORD_HEADER));
   assert (&rec_in != &rec_out);
-  assert (rec_out.area_size >= rec_in.length - (int)sizeof (OOS_RECORD_HEADER));
 
+  recdes_allocate_data_area (&rec_out, rec_in.length - (int)sizeof (OOS_RECORD_HEADER));
   rec_out.type = REC_HOME;
   rec_out.length = rec_in.length - (int)sizeof (OOS_RECORD_HEADER);
   std::memcpy (&header_out, rec_in.data, (int)sizeof (OOS_RECORD_HEADER));
@@ -311,8 +310,6 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
       return ER_FAILED;
     }
 
-  recdes_allocate_data_area (&recdes, recdes_with_oos_header.length - sizeof (OOS_RECORD_HEADER));
-  recdes.length = recdes_with_oos_header.length - sizeof (OOS_RECORD_HEADER);
   oos_pop_record_header (recdes_with_oos_header, header_out, recdes);
   return NO_ERROR;
 }
