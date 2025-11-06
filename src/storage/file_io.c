@@ -4423,7 +4423,7 @@ fileio_fsync_pending (void)
   prev_counter = counter++;
 #endif
 
-  if (!(prev_counter % (uint64_t) threshold))
+  if (!((prev_counter + 1) % (uint64_t) threshold))
     {
       return false;
     }
