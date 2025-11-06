@@ -7561,13 +7561,6 @@ pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 		}
 	    }
 	}
-      else if (node->info.expr.op == PT_DISK_SIZE)
-	{
-	  if (node->info.expr.arg1->node_type == PT_VALUE && node->info.expr.arg1->type_enum == PT_TYPE_VARCHAR)
-	    {
-	      node->flag.do_not_fold = 1;
-	    }
-	}
       break;
     default:
       // nope
