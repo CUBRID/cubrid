@@ -51,14 +51,14 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 
-static int oos_insert_small (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
-			     const OOS_RECORD_HEADER &header, OID &oid);
-static int oos_insert_large (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
-			     OID &oid);
+static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+				   const OOS_RECORD_HEADER &header, OID &oid);
+static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes,
+				    OID &oid);
 static int
-oos_read_small (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes,
-		OOS_RECORD_HEADER &out_header);
+oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes,
+		      OOS_RECORD_HEADER &out_header);
 static int
-oos_read_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes,
-		   OOS_RECORD_HEADER &out_header);
+oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes,
+		       OOS_RECORD_HEADER &out_header);
 
