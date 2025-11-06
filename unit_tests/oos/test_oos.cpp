@@ -25,46 +25,6 @@
 #include "oos_file.hpp"
 #include "test_oos_common.hpp"
 
-std::string generate_large_string (int size)
-{
-  const std::string pattern = "ABCDEFGHIJK"; // pattern size is 11
-  if (size <= 0)
-    return {};
-
-  std::string large_data;
-  large_data.reserve (size); // reserve full size, not size - 1
-
-  for (int i = 0; i < size; ++i)
-    {
-      large_data.push_back (pattern[i % pattern.size()]);
-    }
-
-  return large_data;
-}
-
-int generate_record_from_string (const std::string &large_data, RECDES &rec)
-{
-  int err = recdes_allocate_data_area (&rec, static_cast<int> (large_data.size() + 1));
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-
-  rec.type = REC_HOME;
-  rec.length = static_cast<int> (large_data.size() + 1);
-
-  // copy data including null terminator
-  std::memcpy (rec.data, large_data.c_str(), large_data.size() + 1);
-  return NO_ERROR;
-}
-
-
-TEST (BasicTest, Hello)
-{
-  EXPECT_STRNE ("Hello", "World");
-  EXPECT_EQ (7 * 6, 42);
-}
-
 TEST (OosTest, OosCreateAndDestroy)
 {
   int err;
