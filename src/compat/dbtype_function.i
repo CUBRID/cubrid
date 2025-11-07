@@ -2160,6 +2160,7 @@ db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, 
   error = db_value_domain_init (value, DB_TYPE_CLOB, max_char_length, 0);
   if (error == NO_ERROR)
     {
+      assert (codeset >= INTL_CODESET_RAW_BYTES && codeset <= INTL_CODESET_UTF8);
       error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, char_str_byte_size);
     }
 
