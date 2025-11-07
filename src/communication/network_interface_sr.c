@@ -4626,7 +4626,6 @@ void
 shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   BTID btid;
-  BTID *return_btid = NULL;
   int dimension, hnsw_M, hnsw_efConstruction, metric_type;
   OID class_oid;
   char *ptr;
@@ -4641,9 +4640,20 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &hnsw_efConstruction);
   ptr = or_unpack_int (ptr, &metric_type);
 
-  return_btid = xhnsw_add_index (thread_p, &btid, dimension, hnsw_M, hnsw_efConstruction, metric_type);
+  hnsw_build_params params;
 
-  ptr = or_pack_int (reply, NO_ERROR);
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
+
+  int error = xhnsw_add_index (thread_p, params, btid);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
   ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -4671,6 +4681,7 @@ shnsw_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 void
 shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  int error = NO_ERROR;
   BTID btid;
   BTID *return_btid = NULL;
   int dimension, hnsw_M, hnsw_efConstruction, metric_type;
@@ -4708,12 +4719,17 @@ shnsw_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
       return;
     }
 
-  return_btid =
-    xhnsw_load_index_batch (thread_p, &btid, class_oids, n_classes, n_attrs, attr_ids, hfids, dimension, hnsw_M,
-			    hnsw_efConstruction, metric_type);
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
+
+  error = xhnsw_load_index (thread_p, &btid, class_oids, n_classes, n_attrs, attr_ids, hfids, params);
 
   ptr = or_pack_int (reply, NO_ERROR);
-  ptr = or_pack_btid (ptr, return_btid);
+  ptr = or_pack_btid (ptr, &btid);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   if (attr_ids != NULL)
