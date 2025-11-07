@@ -3004,11 +3004,11 @@ css_set_user_access_status (const char *db_user, const char *host, const char *p
       strncpy (access->db_user, db_user, sizeof (access->db_user) - 1);
     }
 
-  csect_exit (NULL, CSECT_ACCESS_STATUS);
-
   access->time = time (NULL);
   strncpy (access->host, host, sizeof (access->host) - 1);
   strncpy (access->program_name, program_name, sizeof (access->program_name) - 1);
+
+  csect_exit (NULL, CSECT_ACCESS_STATUS);
 
   return;
 }
