@@ -554,10 +554,10 @@ extern "C"
 #define DB_MAX_NUMERIC_SCALE 252
 
 /* The upper limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_OVERFLOW_LIMIT 1e127
+#define DB_NUMERIC_OVERFLOW_LIMIT 1e252
 
 /* The lower limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-127
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-211
 
 #define DB_MAX_CHAR_PRECISION 2048
 
@@ -584,7 +584,11 @@ extern "C"
 #define DB_NUMERIC_SCALE_SP 15
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
+#if 1				// used in phase-2
 #define DB_DEFAULT_NUMERIC_PRECISION 15
+#else				// used in phase-3
+#define DB_DEFAULT_NUMERIC_PRECISION DB_MAX_NUMERIC_PRECISION
+#endif
 
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_SCALE 0
@@ -593,7 +597,11 @@ extern "C"
 #define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
-#define DB_NUMERIC_BUF_SIZE	(2*sizeof(double))
+#if 1				// used in phase-2
+#define DB_NUMERIC_BUF_SIZE	((2*sizeof(double)) + 4)
+#else				// used in phase-3
+#define DB_NUMERIC_BUF_SIZE	((2*sizeof(double)) + 2)
+#endif
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
 /* This constant defines the default precision of DB_TYPE_BIGINT. */
@@ -817,6 +825,11 @@ extern "C"
   typedef struct db_numeric DB_NUMERIC;
   struct db_numeric
   {
+    struct
+    {
+      int precision;
+      int scale;
+    } header;
     union
     {
       unsigned char *digits;

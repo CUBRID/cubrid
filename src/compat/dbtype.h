@@ -71,6 +71,9 @@
 #define DB_VALUE_PRECISION(value)       db_value_precision(value)
 #define DB_VALUE_SCALE(value)           db_value_scale(value)
 
+#define DB_VALUE_NUMERIC_HEADER_PRECISION(value)       ((value)->data.num.header.precision)
+#define DB_VALUE_NUMERIC_HEADER_SCALE(value)           ((value)->data.num.header.scale)
+
 #define DB_SET_COMPRESSED_STRING(value, compressed_string, compressed_size, compressed_need_clear) \
 	db_set_compressed_string(value, compressed_string, compressed_size, compressed_need_clear)
 

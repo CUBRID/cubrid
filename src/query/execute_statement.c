@@ -1124,7 +1124,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
 
 
   /* create a NUMERIC value in new_val */
-  db_value_domain_init (&new_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   pval = pt_value_to_db (parser, node_new_val);
   if (pval == NULL)
     {
@@ -1445,8 +1445,17 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* get all values as string */
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&zero);
+#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&e38);
+#endif
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&negative_e38);
+#endif
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1455,7 +1464,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   max_val_node = PT_NODE_SR_MAX_VAL (statement);
 
   /* increment_val */
-  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   if (inc_val_node != NULL)
     {
       pval = pt_value_to_db (parser, inc_val_node);
@@ -1503,7 +1512,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* start_val 1 */
-  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   if (start_val_node != NULL)
     {
       pval = pt_value_to_db (parser, start_val_node);
@@ -1522,7 +1531,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       start_val_msgid = MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID;
     }
 
-  db_value_domain_init (&min_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&min_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   /*
    * min_val comes from several sources, it can be one of them:
    * 1. user input
@@ -1584,7 +1593,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* max_val */
-  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   if (max_val_node != NULL)
     {
@@ -1723,6 +1732,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
+#if 0				// used in phase-3
+      FLOAT_TO_FIXED_NUMERIC (&range_val);
+#endif
       er_clear ();
     }
 
@@ -1742,7 +1754,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* ABS (cache_num * inc_val) <= range_val */
 
       db_make_int (&cached_num_int_val, cached_num);
-      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
       error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -1848,7 +1860,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE cmp_result;
   int i;
   DB_VALUE e38;
-  char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
+  char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
   size_t name_len;
 
@@ -1862,7 +1874,13 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&min_val);
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&zero);
+#endif
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_FIXED_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&e38);
+#endif
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
@@ -1918,7 +1936,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   inc_val_node = auto_increment_node->info.auto_increment.increment_val;
 
   /* increment_val */
-  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   if (inc_val_node != NULL)
     {
@@ -1963,7 +1981,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
     }
 
   /* start_val */
-  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   if (start_val_node != NULL)
     {
       pval = pt_value_to_db (parser, start_val_node);
@@ -1994,7 +2012,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_value_clone (&start_val, &min_val);
 
   /* max value - depends on att's domain */
-  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   dtyp = att->data_type;
   switch (att->type_enum)
@@ -2009,7 +2027,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       db_make_int (&value, DB_INT16_MAX);
       break;
     case PT_TYPE_NUMERIC:
-      memset (num, '\0', DB_MAX_NUMERIC_PRECISION + 1);
+      memset (num, '\0', DB_MAX_FIXED_NUMERIC_PRECISION + 1);
       for (i = 0, p = num; i < dtyp->info.data_type.precision; i++, p++)
 	{
 	  *p = '9';
@@ -2018,6 +2036,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
+#if 0				// used in phase-3
+      FLOAT_TO_FIXED_NUMERIC (&value);
+#endif
       break;
     default:
       /* max numeric */
@@ -2102,7 +2123,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   char *att_name = NULL, *serial_name = NULL;
   DB_VALUE e38, current_val, max_val, value;
   int i, compare_result, save;
-  char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
+  char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
   size_t name_len;
   bool au_disable_flag = false;
@@ -2114,6 +2135,9 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   OID_SET_NULL (&serial_obj_id);
 
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&e38);
+#endif
 
   assert (serial_object != NULL);
 
@@ -2177,7 +2201,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     }
 
   /* max value - depends on att's domain */
-  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   dtyp = att->data_type;
   switch (att->type_enum)
@@ -2192,7 +2216,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       db_make_int (&value, DB_INT16_MAX);
       break;
     case PT_TYPE_NUMERIC:
-      memset (num, '\0', DB_MAX_NUMERIC_PRECISION + 1);
+      memset (num, '\0', DB_MAX_FIXED_NUMERIC_PRECISION + 1);
       for (i = 0, p = num; i < dtyp->info.data_type.precision; i++, p++)
 	{
 	  *p = '9';
@@ -2201,6 +2225,9 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
+#if 0				// used in phase-3
+      FLOAT_TO_FIXED_NUMERIC (&value);
+#endif
       break;
     default:
       /* max numeric */
@@ -2453,11 +2480,20 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Now, get new values from node */
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&zero);
+#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&e38);
+#endif
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
+#if 0				// used in phase-3
+  FLOAT_TO_FIXED_NUMERIC (&negative_e38);
+#endif
   db_make_int (&cmp_result, 0);
 
-  db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   inc_val_node = PT_NODE_SR_INCREMENT_VAL (statement);
   if (inc_val_node != NULL)
     {
@@ -2506,7 +2542,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* start_val */
-  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   start_val_node = PT_NODE_SR_START_VAL (statement);
   if (start_val_node != NULL)
     {
@@ -2532,7 +2568,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* max_val */
-  db_value_domain_init (&new_max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   max_val_node = PT_NODE_SR_MAX_VAL (statement);
   if (max_val_node != NULL)
     {
@@ -2581,7 +2617,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* min_val */
-  db_value_domain_init (&new_min_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_min_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   min_val_node = PT_NODE_SR_MIN_VAL (statement);
   if (min_val_node != NULL)
     {
@@ -2683,6 +2719,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
+#if 0				// used in phase-3
+      FLOAT_TO_FIXED_NUMERIC (&range_val);
+#endif
       er_clear ();
     }
 
@@ -2705,7 +2744,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* ABS (cache_num * inc_val) <= range_val */
 
       db_make_int (&cached_num_int_val, cached_num);
-      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
       error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -20804,7 +20843,7 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* PORT */
-  db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   pval = pt_value_to_db (parser, create_server->port);
   if (pval == NULL)
     {
@@ -21096,7 +21135,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       DB_VALUE *pval = NULL;
       DB_DATA_STATUS data_stat;
 
-      db_value_domain_init (&value, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      db_value_domain_init (&value, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
       pval = pt_value_to_db (parser, alter->port);
       if (pval == NULL)
 	{

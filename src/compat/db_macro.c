@@ -164,6 +164,8 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   value->domain.general_info.type = type;
   value->domain.numeric_info.precision = precision;
   value->domain.numeric_info.scale = scale;
+  value->data.num.header.precision = 0;
+  value->data.num.header.scale = 0;
   value->need_clear = false;
   value->domain.general_info.is_null = 1;
 
@@ -1780,9 +1782,15 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
+#if 1				// used in phase-2
 	else if (numeric_coerce_num_to_num
 		 (db_get_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
 		  DB_VALUE_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
+#else // used in phase-3
+	else if (numeric_coerce_num_to_num
+		 (db_get_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
+		  DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
+#endif
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
@@ -1790,7 +1798,18 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    /* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
 	     * value. */
-	    db_make_numeric (value, new_num, desired_precision, desired_scale);
+#if 1				// used in phase-2
+	    db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
+#else // used in phase-3
+	    if (orig_desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	      {
+		db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, true);
+	      }
+	    else
+	      {
+		db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
+	      }
+#endif
 	  }
 
 	db_value_clear (&tmp_value);

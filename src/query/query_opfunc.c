@@ -6164,7 +6164,22 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       break;
 
     case DB_TYPE_NUMERIC:
-      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p));
+#if 1				// used in phase-2
+      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p),
+		       DB_NUMERIC_BUF_SIZE, false);
+#else // used in phase-3
+      if (DB_VALUE_PRECISION (dbval_p) == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_NUMERIC_HEADER_PRECISION (dbval_p),
+			   DB_VALUE_NUMERIC_HEADER_SCALE (dbval_p), DB_NUMERIC_BUF_SIZE, true);
+	}
+      else
+	{
+	  db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p),
+			   DB_NUMERIC_BUF_SIZE, false);
+	}
+#endif
+
       if (numeric_db_value_negate (result_p) != NO_ERROR)
 	{
 	  return ER_FAILED;

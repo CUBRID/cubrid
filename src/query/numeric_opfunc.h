@@ -73,6 +73,22 @@ typedef enum fp_value_type
 
 #define db_locate_numeric(value) ((DB_C_NUMERIC) ((value)->data.num.d.buf))
 
+#define FIXED_TO_FLOAT_NUMERIC(value) \
+  do { \
+    (value)->data.num.header.precision = (value)->domain.numeric_info.precision; \
+    (value)->data.num.header.scale = (value)->domain.numeric_info.scale; \
+    (value)->domain.numeric_info.precision = 0; \
+    (value)->domain.numeric_info.scale = 0; \
+  } while(0)
+
+#define FLOAT_TO_FIXED_NUMERIC(value) \
+  do { \
+    (value)->domain.numeric_info.precision = (value)->data.num.header.precision; \
+    (value)->domain.numeric_info.scale = (value)->data.num.header.scale; \
+    (value)->data.num.header.precision = 0; \
+    (value)->data.num.header.scale = 0; \
+  } while(0)
+
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);
 #endif

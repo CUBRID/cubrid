@@ -2237,7 +2237,16 @@ _op_get_type_name (DB_DOMAIN * domain)
       int s;
       p = db_domain_precision (domain);
       s = db_domain_scale (domain);
-      snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id), p, s);
+#if 0				// used in phase-3
+      if (p == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  snprintf (result, result_size, "%s", db_get_type_name (type_id));
+	}
+      else
+#endif
+	{
+	  snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id), p, s);
+	}
     }
   else if ((p = db_domain_precision (domain)) != 0)
     {

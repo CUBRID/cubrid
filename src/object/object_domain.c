@@ -2379,7 +2379,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_NUMERIC:
       /*
        * The first domain is a default domain for numeric type,
-       * actually NUMERIC(15,0). We try to match it first.
+       * actually NUMERIC(43,0). We try to match it first.
        */
       if (transient->precision == domain->precision && transient->scale == domain->scale
 	  && transient->is_desc == domain->is_desc)
@@ -3300,7 +3300,7 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	   * the default "maximum" precision.
 	   * This may not be necessary any more.
 	   */
-	  if (domain->precision == -1)
+	  if (domain->precision == DB_DEFAULT_PRECISION)
 	    {
 	      domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
 	    }
@@ -11116,7 +11116,16 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+#if 0				// used in phase-3
+	  if (d->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      fprintf (fp, "%s", d->type->name);
+	    }
+	  else
+#endif
+	    {
+	      fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	    }
 	  break;
 
 	default:
