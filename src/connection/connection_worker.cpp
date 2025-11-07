@@ -597,7 +597,6 @@ retry:
 	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_settimer: %s\n", strerror (errno));
 	return false;
       }
-    _er_log_debug (ARG_FILE_LINE, "eventfd_settimer: index = %d, set sec = %d, nsec = %d\n", m_index, sec, nsec);
 
     return true;
   }
@@ -608,9 +607,8 @@ retry:
 
     if (m_timer_latency == latency)
       {
-	_er_log_debug (ARG_FILE_LINE, "eventfd_settimer: index = %d, skipped m_timer_latency = %d, latency = %d\n", m_index,
-		       m_timer_latency,
-		       latency);
+	er_log_conn (ARG_FILE_LINE, "eventfd_settimer: index = %d, skipped m_timer_latency = %d, latency = %d\n", m_index,
+		     m_timer_latency, latency);
 	/* no need to change */
 	return true;
       }
@@ -648,7 +646,6 @@ retry:
     /* timer fd */
     if (eventfds[1])
       {
-	_er_log_debug (ARG_FILE_LINE, "[timerfd] notified\n");
 	eventfds[1] = false;
 
 	m_has_retry = false;
@@ -1435,6 +1432,9 @@ retry:
 
   void connection_worker::initialize ()
   {
+    /* set name */
+    pthread_setname_np (pthread_self (), "cub_server:conn");
+
     /* pin myself */
     cubbase::topology.pin_core (m_core);
 
