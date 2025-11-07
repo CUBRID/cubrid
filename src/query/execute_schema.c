@@ -7081,9 +7081,11 @@ do_promote_partition (SM_CLASS * class_)
 	{
 	  smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
 	  smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
-	}else{
-          has_notnull_unique = true;
-        }
+	}
+      else
+	{
+	  has_notnull_unique = true;
+	}
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
       smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
     }
