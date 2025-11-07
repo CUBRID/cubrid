@@ -236,6 +236,7 @@ namespace cubconn
       connection_stats m_stats;
 
       void push_task_into_worker_pool (context *ctx);
+      void purge_stale_contexts ();
 
       /* --------------------------------------------------------------------------- */
       /* close connection							     */

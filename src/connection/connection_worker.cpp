@@ -21,6 +21,7 @@
  */
 
 #include "hardware_topology.hpp"
+#include "tcp.h"
 #include "network.h"
 #include "network_interface_sr.h"
 #include "server_support.h"
@@ -274,6 +275,24 @@ namespace cubconn
     css_push_server_task (*ctx->m_conn);
   }
 
+  void connection_worker::purge_stale_contexts ()
+  {
+    for (auto &ctx : m_removed_context)
+      {
+	/* release the conneciton */
+	css_free_conn (ctx->m_conn);
+
+	/* remove from the context list and delete it */
+	if (m_context.erase (ctx) == 0)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->purge_stale_contexts: context not found\n");
+	    continue;
+	  }
+	delete ctx;
+      }
+    m_removed_context.clear ();
+  }
+
   bool connection_worker::is_wait_required (context *ctx)
   {
     if (ctx->m_conn->fd == cdc_Gl.conn.fd)
@@ -466,8 +485,10 @@ namespace cubconn
 	handle->cv.notify_one ();
       }
 
-    /* release the conneciton */
-    css_free_conn (ctx->m_conn);
+    /* close the socket */
+    css_shutdown_socket (ctx->m_conn->fd);
+    ctx->m_conn->fd = INVALID_SOCKET;
+
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
     m_removed_context.push_back (ctx);
@@ -510,16 +531,8 @@ retry:
 	  }
       }
 
-    for (auto &ctx : m_removed_context)
-      {
-	if (m_context.erase (ctx) == 0)
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->ha_close_all_connections: context not found\n");
-	    continue;
-	  }
-	delete ctx;
-      }
-    m_removed_context.clear ();
+    /* the actual release of the context is handled last */
+    this->purge_stale_contexts ();
   }
 
   bool connection_worker::eventfd_register (int fd)
@@ -967,16 +980,7 @@ retry:
       }
 
     /* the actual release of the context is handled last */
-    for (auto &ctx : m_removed_context)
-      {
-	if (m_context.erase (ctx) == 0)
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
-	    continue;
-	  }
-	delete ctx;
-      }
-    m_removed_context.clear ();
+    this->purge_stale_contexts ();
 
     return true;
   }
@@ -1471,17 +1475,8 @@ retry:
       {
 	this->handle_message_queue_by_index (queue_type::LAZY);
 
-	/* removed context */
-	for (auto &ctx : m_removed_context)
-	  {
-	    if (m_context.erase (ctx) == 0)
-	      {
-		er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
-		continue;
-	      }
-	    delete ctx;
-	  }
-	m_removed_context.clear ();
+	/* the actual release of the context is handled last */
+	this->purge_stale_contexts ();
 
 	/* 1 ms */
 	thread_sleep (1);
