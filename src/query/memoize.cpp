@@ -68,8 +68,10 @@ namespace memoize
 	    }
 	  break;
 	}
+
 	case TARGET_LIST:
 	  break;
+
 	case TARGET_CLASS_ATTR:
 	case TARGET_SET:
 	case TARGET_JSON_TABLE:
@@ -79,6 +81,7 @@ namespace memoize
 	case TARGET_DBLINK:
 	  return false;
 	  break;
+
 	default:
 	  assert (0);
 	  return false;
@@ -89,6 +92,7 @@ namespace memoize
 	case ACCESS_METHOD_SEQUENTIAL:
 	case ACCESS_METHOD_INDEX:
 	  break;
+
 	case ACCESS_METHOD_JSON_TABLE:
 	case ACCESS_METHOD_SCHEMA:
 	case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
@@ -98,6 +102,7 @@ namespace memoize
 	case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
 	  return false;
 	  break;
+
 	default:
 	  assert (0);
 	  return false;
@@ -163,6 +168,7 @@ namespace memoize
       ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
       PRED_EXPR *if_pred = xasl->if_pred;
       PRED_EXPR *after_join_pred = xasl->after_join_pred;
+
       if (spec->where_key)
 	{
 	  (*this) (spec->where_key, const_regu_var_vector);
@@ -175,6 +181,7 @@ namespace memoize
 	{
 	  (*this) (spec->where_range, const_regu_var_vector);
 	}
+
       if (if_pred)
 	{
 	  (*this) (if_pred, const_regu_var_vector);
@@ -183,6 +190,7 @@ namespace memoize
 	{
 	  (*this) (after_join_pred, const_regu_var_vector);
 	}
+
       if (xasl->dptr_list)
 	{
 	  for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
@@ -190,6 +198,7 @@ namespace memoize
 	      (*this) (thread_p, dptr, const_regu_var_vector);
 	    }
 	}
+
       if constexpr (target_type == TARGET_LIST)
 	{
 	  REGU_VARIABLE_LIST pred = spec->s.list_node.list_regu_list_pred, rest = spec->s.list_node.list_regu_list_rest;
@@ -253,10 +262,12 @@ namespace memoize
 	      key = key->next;
 	    }
 	}
+
       for (auto &regu_var : const_regu_var_vector)
 	{
 	  key_ptr_src.push_back (regu_var->value.dbvalptr);
 	}
+
       return key_ptr_src.size();
     }
 
@@ -267,11 +278,13 @@ namespace memoize
 	{
 	  return;
 	}
+
       allocator<REGU_VARIABLE *> vector_allocator (thread_p);
       pvector<REGU_VARIABLE *> subquery_const_regu_var_vector (vector_allocator);
       ACCESS_SPEC_TYPE *spec = subquery->curr_spec ? subquery->curr_spec : subquery->spec_list;
       PRED_EXPR *if_pred = subquery->if_pred;
       PRED_EXPR *after_join_pred = subquery->after_join_pred;
+
       if (spec->where_key)
 	{
 	  (*this) (spec->where_key, subquery_const_regu_var_vector);
@@ -284,6 +297,7 @@ namespace memoize
 	{
 	  (*this) (spec->where_range, subquery_const_regu_var_vector);
 	}
+
       if (if_pred)
 	{
 	  (*this) (if_pred, subquery_const_regu_var_vector);
@@ -292,6 +306,7 @@ namespace memoize
 	{
 	  (*this) (after_join_pred, subquery_const_regu_var_vector);
 	}
+
       if (subquery->dptr_list)
 	{
 	  for (XASL_NODE *dptr = subquery->dptr_list; dptr != NULL; dptr = dptr->next)
@@ -308,14 +323,14 @@ namespace memoize
 	}
       if (subquery->scan_ptr)
 	{
-
 	  (*this) (thread_p, subquery->scan_ptr, subquery_const_regu_var_vector);
-
 	}
+
       if (subquery->outptr_list)
 	{
 	  (*this) (subquery->outptr_list->valptrp, subquery_const_regu_var_vector);
 	}
+
       if constexpr (target_type == TARGET_LIST)
 	{
 	  REGU_VARIABLE_LIST pred = spec->s.list_node.list_regu_list_pred, rest = spec->s.list_node.list_regu_list_rest;
@@ -393,26 +408,31 @@ namespace memoize
 	{
 	  return;
 	}
+
       switch (pred_expr->type)
 	{
 	case T_PRED:
 	  (*this) (&pred_expr->pe.m_pred, const_regu_var_vector);
 	  break;
+
 	case T_EVAL_TERM:
 	  (*this) (&pred_expr->pe.m_eval_term, const_regu_var_vector);
 	  break;
+
 	case T_NOT_TERM:
 	  (*this) (pred_expr->pe.m_not_term, const_regu_var_vector);
 	  break;
 	}
       return;
     }
+
     void operator() (cubxasl::pred *pred,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (pred->lhs, const_regu_var_vector);
       (*this) (pred->rhs, const_regu_var_vector);
     }
+
     void operator() (cubxasl::eval_term *eval_term,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -421,30 +441,37 @@ namespace memoize
 	case T_COMP_EVAL_TERM:
 	  (*this) (&eval_term->et.et_comp, const_regu_var_vector);
 	  break;
+
 	case T_ALSM_EVAL_TERM:
 	  (*this) (&eval_term->et.et_alsm, const_regu_var_vector);
 	  break;
+
 	case T_LIKE_EVAL_TERM:
 	  (*this) (&eval_term->et.et_like, const_regu_var_vector);
 	  break;
+
 	case T_RLIKE_EVAL_TERM:
 	  (*this) (&eval_term->et.et_rlike, const_regu_var_vector);
 	  break;
+
 	}
       return;
     }
+
     void operator() (cubxasl::comp_eval_term *comp_eval_term,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (comp_eval_term->lhs, const_regu_var_vector);
       (*this) (comp_eval_term->rhs, const_regu_var_vector);
     }
+
     void operator() (cubxasl::alsm_eval_term *alsm_eval_term,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (alsm_eval_term->elem, const_regu_var_vector);
       (*this) (alsm_eval_term->elemset, const_regu_var_vector);
     }
+
     void operator() (cubxasl::like_eval_term *like_eval_term,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -452,6 +479,7 @@ namespace memoize
       (*this) (like_eval_term->pattern, const_regu_var_vector);
       (*this) (like_eval_term->esc_char, const_regu_var_vector);
     }
+
     void operator() (cubxasl::rlike_eval_term *rlike_eval_term,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -459,6 +487,7 @@ namespace memoize
       (*this) (rlike_eval_term->pattern, const_regu_var_vector);
       (*this) (rlike_eval_term->case_sensitive, const_regu_var_vector);
     }
+
     void operator() (regu_variable_node *regu_var,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -466,33 +495,40 @@ namespace memoize
 	{
 	  return;
 	}
+
       switch (regu_var->type)
 	{
 	case TYPE_CONSTANT:
 	  const_regu_var_vector.push_back (regu_var);
 	  return;
 	  break;
+
 	case TYPE_INARITH:
 	case TYPE_OUTARITH:
 	  (*this) (regu_var->value.arithptr, const_regu_var_vector);
 	  return;
 	  break;
+
 	case TYPE_FUNC:
 	  (*this) (regu_var->value.funcp, const_regu_var_vector);
 	  return;
 	  break;
+
 	case TYPE_REGUVAL_LIST:
 	  (*this) (regu_var->value.reguval_list, const_regu_var_vector);
 	  return;
 	  break;
+
 	case TYPE_REGU_VAR_LIST:
 	  (*this) (regu_var->value.regu_var_list, const_regu_var_vector);
 	  return;
 	  break;
+
 	case TYPE_SP:
 	  (*this) (regu_var->value.sp_ptr, const_regu_var_vector);
 	  return;
 	  break;
+
 	case TYPE_DBVAL:
 	case TYPE_ORDERBY_NUM:
 	case TYPE_ATTR_ID:
@@ -505,6 +541,7 @@ namespace memoize
 	case TYPE_CLASSOID:
 	  return;
 	  break;
+
 	default:
 	  assert (false);
 	  return;
@@ -512,6 +549,7 @@ namespace memoize
 	}
       return;
     }
+
     void operator() (ARITH_TYPE *arith,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -521,6 +559,7 @@ namespace memoize
       (*this) (arith->pred, const_regu_var_vector);
       return;
     }
+
     void operator() (REGU_VARIABLE_LIST regu_var_list,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -531,6 +570,7 @@ namespace memoize
 	}
       return;
     }
+
     void operator() (REGU_VALUE_LIST *regu_value_list,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -542,12 +582,14 @@ namespace memoize
 	}
       return;
     }
+
     void operator() (struct function_node *function_node,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (function_node->operand, const_regu_var_vector);
       return;
     }
+
     void operator() (cubxasl::sp_node *sp_node,
 		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
@@ -563,6 +605,7 @@ namespace memoize
     , m_size (0)
   {
   }
+
   key::~key()
   {
     for (auto &dbval : m_values)
@@ -611,12 +654,14 @@ namespace memoize
       {
 	return m_size;
       }
+
     size_t dbval_sz = 0;
     for (auto &dbval : m_values)
       {
 	dbval_sz += pr_value_mem_size (&dbval);
 	dbval_sz += sizeof (DB_VALUE);
       }
+
     m_size = sizeof (value) + dbval_sz;
     return m_size;
   }
@@ -652,11 +697,14 @@ namespace memoize
     int key_cnt, value_cnt;
     allocator<DB_VALUE *> vector_allocator (thread_p);
     pvector<DB_VALUE *> key_ptr_src (vector_allocator);
+
     if (!checker (xasl))
       {
 	return nullptr;
       }
+
     value_cnt = val_list->val_cnt;
+
     if (spec->type == TARGET_CLASS)
       {
 	key_cnt = cls_key_maker (thread_p, xasl, key_ptr_src);
@@ -724,6 +772,7 @@ namespace memoize
 	m_key_fixed_allocator.deallocate (m_last_key);
 	m_last_key = nullptr;
       }
+
     for (auto it = m_key_value_map.begin(); it != m_key_value_map.end(); it++)
       {
 	it->first->~key();
@@ -734,6 +783,7 @@ namespace memoize
 	  }
 	m_key_fixed_allocator.deallocate (it->first);
       }
+
     m_keyptr_src.clear();
     m_key_value_map.clear();
   }
@@ -763,6 +813,7 @@ namespace memoize
 	    m_key_fixed_allocator.deallocate (m_last_key);
 	    m_current_value_list.clear();
 	  }
+
 	m_last_key = get_key();
 	key_changed = false;
 
@@ -774,21 +825,26 @@ namespace memoize
 	    miss++;
 	    return result_code::NOT_FOUND;
 	  }
+
 	for (auto it = range.first; it != range.second; it++)
 	  {
 	    m_current_value_list.push_back (it->second);
 	  }
+
 	v = m_current_value_list.back();
 	m_current_value_list.pop_back();
+
 	if (v == nullptr)
 	  {
 	    hit++;
 	    return result_code::ENDED;
 	  }
+
 	hit++;
 	has_range = true;
 	return set_value (v);
       }
+
     if (m_last_key == nullptr)
       {
 	return result_code::NOT_FOUND;
@@ -820,12 +876,17 @@ namespace memoize
 	    disabled = true;
 	    return result_code::FULL;
 	  }
+
 	current_key_joined = true;
 	assert (m_last_key != nullptr);
+
 	key *k = get_key();
+
 	m_key_sz += k->get_size();
-	m_key_value_map.insert ({k, get_value()});
 	m_hash_sz += hash_entry_sz;
+
+	m_key_value_map.insert ({k, get_value()});
+
 	return result_code::SUCCESS;
       }
     catch (const std::exception &e)
@@ -845,10 +906,12 @@ namespace memoize
 		disabled = true;
 		return result_code::FULL;
 	      }
+
 	    assert (m_last_key != nullptr);
 	    m_key_value_map.insert ({get_key(), nullptr});
 	    m_hash_sz += hash_entry_sz;
 	  }
+
 	return result_code::SUCCESS;
       }
     catch (const std::exception &e)
@@ -860,37 +923,46 @@ namespace memoize
   key *storage::get_key()
   {
     key *k = reinterpret_cast<key *> (m_key_fixed_allocator.allocate());
+
     if (k==nullptr)
       {
 	return nullptr;
       }
+
     k = placement_new (k,&m_dbval_allocator);
     k->m_values.reserve (m_keyptr_src.size());
+
     for (auto dbvalp : m_keyptr_src)
       {
 	DB_VALUE v;
 	pr_clone_value (dbvalp, &v);
 	k->m_values.push_back (v);
       }
+
     return k;
   }
 
   value *storage::get_value()
   {
     value *v = (value *)db_private_alloc (m_thread_p, sizeof (value));
+
     if (v==nullptr)
       {
 	return nullptr;
       }
+
     v = placement_new (v,&m_dbval_allocator);
     v->m_values.reserve (m_val_list->val_cnt);
+
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next)
       {
 	DB_VALUE dbv;
 	pr_clone_value (it->val, &dbv);
 	v->m_values.push_back (dbv);
       }
+
     m_value_sz += v->get_size();
+
     return v;
   }
 
@@ -918,15 +990,19 @@ extern "C"
   {
     UINT64 storage_size; /* system parameter need*/
     storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
+
     if (storage_size == 0)
       {
 	return NO_ERROR;
       }
+
     if (xasl->memoize_storage != nullptr)
       {
 	clear_memoize_storage (thread_p, xasl);
       }
+
     xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl);
+
     return NO_ERROR;
   }
 
@@ -946,33 +1022,42 @@ extern "C"
     *is_ended = false;
     assert (xasl->memoize_storage != nullptr);
     ret = xasl->memoize_storage->get ();
-    if (ret == result_code::SUCCESS)
+
+    switch (ret)
       {
+      case result_code::SUCCESS:
 	*success = true;
 	return NO_ERROR;
-      }
-    if (ret == result_code::ENDED)
-      {
+	break;
+
+      case result_code::ENDED:
 	*success = true;
 	*is_ended = true;
 	return NO_ERROR;
-      }
-    if (ret == result_code::NOT_FOUND)
-      {
+	break;
+
+      case result_code::NOT_FOUND:
 	*success = false;
 	return NO_ERROR;
-      }
-    if (ret == result_code::FULL)
-      {
+	break;
+
+      case result_code::FULL:
 	*success = false;
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
-      }
-    if (ret == result_code::ERROR)
-      {
+	break;
+
+      case result_code::ERROR:
 	*success = false;
 	return ER_FAILED;
+	break;
+
+      default:
+	assert (false);
+	return ER_FAILED;
+	break;
       }
+
     return NO_ERROR;
   }
 
@@ -980,22 +1065,31 @@ extern "C"
   {
     *success = true;
     assert (xasl->memoize_storage != nullptr);
+
     result_code ret = xasl->memoize_storage->put();
-    if (ret == result_code::SUCCESS)
+
+    switch (ret)
       {
+      case result_code::SUCCESS:
 	*success = true;
 	return NO_ERROR;
-      }
-    if (ret == result_code::FULL)
-      {
+	break;
+
+      case result_code::FULL:
 	*success = false;
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
-      }
-    if (ret == result_code::ERROR)
-      {
+	break;
+
+      case result_code::ERROR:
 	*success = false;
 	return ER_FAILED;
+	break;
+
+      default:
+	assert (false);
+	return ER_FAILED;
+	break;
       }
     return NO_ERROR;
   }
@@ -1003,22 +1097,30 @@ extern "C"
   {
     *success = true;
     result_code ret = xasl->memoize_storage->put_nullptr();
-    if (ret == result_code::SUCCESS)
+    switch (ret)
       {
+      case result_code::SUCCESS:
 	*success = true;
 	return NO_ERROR;
-      }
-    if (ret == result_code::FULL)
-      {
+	break;
+
+      case result_code::FULL:
 	*success = false;
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
-      }
-    if (ret == result_code::ERROR)
-      {
+	break;
+
+      case result_code::ERROR:
 	*success = false;
 	return ER_FAILED;
+	break;
+
+      default:
+	assert (false);
+	return ER_FAILED;
+	break;
       }
+
     return NO_ERROR;
   }
 }
