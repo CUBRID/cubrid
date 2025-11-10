@@ -22,11 +22,8 @@
 
 #pragma once
 
-#include "storage_common.h"
 #include "thread_compat.hpp"
-#include "error_manager.h"
 #include "page_buffer.h"
-#include "oos_log.hpp"
 
 // ****************************************************************************
 // RAII helpers

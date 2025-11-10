@@ -24,8 +24,10 @@
 #include "porting_inline.hpp"
 #include "slotted_page.h"
 #include "storage_common.h"
+
 #include "oos_file.hpp"
 #include "oos_util.hpp"
+#include "oos_log.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
