@@ -55,4 +55,4 @@ add_test(NAME test_oos COMMAND test_oos)
 # Note: add_test vs. gtest_discover_tests
 # - Prefer add_test if you want to share global setup/teardown, which speeds up test
 # - Prefer gtest_discover_tests for isolation between tests, at the cost of test speed
-# - Since we do not need isolation here, we use add_test aboe.
+# - Since we do not need isolation here, we use add_test above.
