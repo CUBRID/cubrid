@@ -158,7 +158,8 @@ namespace cubconn
 
   void connection_worker::enqueue (queue_type type, message &&item)
   {
-    assert ((item.conn ? (item.conn->fd != -1) : false) || item.type == message_type::SHUTDOWN);
+    assert ((item.conn ? (item.conn->fd != -1) : false) ||
+	    (item.type == message_type::START || item.type == message_type::SHUTDOWN));
 
 #if !defined (NDEBUG)
     item.message_id = message_counter++;
@@ -916,6 +917,9 @@ retry:
 
 	switch (request.type)
 	  {
+	  case message_type::START:
+	    break;
+
 	  case message_type::NEW_CLIENT:
 	    m_stats.add (stats::MQ_NEW_CLIENT, 1);
 	    if (!this->handle_message_queue_new_client (request))

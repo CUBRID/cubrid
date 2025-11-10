@@ -57,6 +57,8 @@ namespace cubconn
 
       enum class message_type
       {
+	START,
+
 	NEW_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 
