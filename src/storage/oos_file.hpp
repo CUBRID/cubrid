@@ -21,17 +21,7 @@
 #include "dbtype_def.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
-#include "error_manager.h"
-
-static int oos_log_enabled = 0;
-
-inline void oos_set_log_enabled (int enabled)
-{
-  oos_log_enabled = enabled;
-}
-
-#define oos_log(...) \
-  if (oos_log_enabled) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+#include "oos_util.hpp"
 
 struct oos_record_header
 {
@@ -69,3 +59,6 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &
 		       OOS_RECORD_HEADER &out_header);
 
 int oos_get_max_chunk_size_within_page ();
+
+int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
+
