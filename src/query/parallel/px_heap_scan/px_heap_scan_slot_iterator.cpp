@@ -108,6 +108,7 @@ namespace parallel_heap_scan
       {
 	COPY_OID (&retry_oid, & m_cur_oid);
 restart_scan_oid:
+	m_recdes = RECDES_INITIALIZER;
 	slot_code = heap_next_1page (thread_p, & m_hfid, & m_vpid, & m_class_oid,
 				     & m_cur_oid, & m_recdes,
 				     m_scan_cache,  m_is_peeking);
