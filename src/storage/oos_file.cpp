@@ -193,7 +193,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     err = oos_prepend_record_header (recdes, header, oos_rec);
     // oos_prepend_record_header allocates data area for oos_rec
     // therefore, we need to free it after use
-    auto_freed_recdes_ptr oos_rec_will_be_freed (&oos_rec, recdes_free_data_area);
+    auto_freed_recdes_ptr defer_free_oos_rec (&oos_rec, recdes_free_data_area);
 
     if (err != NO_ERROR)
       {
@@ -210,7 +210,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     assert (slotid != NULL_SLOTID);
 
     oos_recently_inserted_oos_vpid_map.emplace (&oos_vfid, vpid);
-    printf("recently inserted oos vpid map size: %zu\n", oos_recently_inserted_oos_vpid_map.size());
+    oos_log ("recently inserted oos vpid map size: %zu\n", oos_recently_inserted_oos_vpid_map.size());
 
     oid.pageid = vpid.pageid;
     oid.slotid = slotid;
@@ -255,7 +255,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
 	  {
 	    return err;
 	  }
-	auto_freed_recdes_ptr chunk_recdes_will_be_freed (&chunk_recdes, recdes_free_data_area);
+	auto_freed_recdes_ptr defer_free_chunk_recdes (&chunk_recdes, recdes_free_data_area);
 
 	oos_log ("read_large: header = {total_size=%d, chunk_index=%d, next_chunk_oid={pageid=%d, slotid=%d}}\n",
 		 header.total_size,
@@ -404,13 +404,13 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
   auto [pageid, volid] = recently_inserted_oos_vpid;
   int freespace = spage_get_free_space (thread_p, page_ptr.get());
-  printf ("oos_find_best_page: recently inserted page {volid=%d, pageid=%d} has freespace=%d\n",
-	  volid, pageid, freespace);
+  oos_log ("oos_find_best_page: recently inserted page {volid=%d, pageid=%d} has freespace=%d\n",
+	   volid, pageid, freespace);
 
   if (freespace >= rec_length + (int)sizeof (SPAGE_SLOT))
     {
-      printf ("oos_find_best_page: reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
-	      recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
+      oos_log ("oos_find_best_page: reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
+	       recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
       vpid = recently_inserted_oos_vpid;
       return NO_ERROR;
     }
