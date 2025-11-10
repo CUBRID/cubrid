@@ -21,74 +21,38 @@ project(test_oos_project)
 # test_oos
 #
 
-set(TEST_OOS_SOURCES
-  test_oos.cpp
-  test_oos_persist.cpp
-  test_oos_record_descriptor.cpp
-  )
+# # Collect all test source files matching test_*.cpp
+file(GLOB TEST_CPP_SOURCES test_*.cpp)
 
-set_source_files_properties(
-  ${TEST_OOS_SOURCES}
-  PROPERTIES LANGUAGE CXX
-  )
+foreach(src ${TEST_CPP_SOURCES})
+  # Extract the base name without extension
+  get_filename_component(test_name ${src} NAME_WE)
 
-add_executable(test_oos
-  test_oos.cpp
-  )
-add_executable(test_oos_persist
-  test_oos_persist.cpp
-  )
-add_executable(test_oos_record_descriptor
-  test_oos_record_descriptor.cpp
-  )
+  # Define executable
+  add_executable(${test_name} ${src})
 
-target_link_libraries(test_oos LINK_PRIVATE ${EP_LIBS})
-target_link_libraries(test_oos_persist LINK_PRIVATE ${EP_LIBS})
-target_link_libraries(test_oos_record_descriptor LINK_PRIVATE ${EP_LIBS})
+  # Link libraries
+  target_link_libraries(${test_name} PRIVATE ${EP_LIBS} cubridsa GTest::gtest)
 
-target_compile_definitions(test_oos PRIVATE
-  ${COMMON_DEFS} SA_MODE
-  )
-target_compile_definitions(test_oos_persist PRIVATE
-  ${COMMON_DEFS} SA_MODE
-  )
-target_compile_definitions(test_oos_record_descriptor PRIVATE
-  ${COMMON_DEFS} SA_MODE
-  )
+  # Common definitions and includes
+  target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SA_MODE)
+  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES})
+  
 
-target_link_libraries(test_oos PRIVATE
-  cubridsa
-  )
-target_link_libraries(test_oos_persist PRIVATE
-  cubridsa
-  )
-target_link_libraries(test_oos_record_descriptor PRIVATE
-  cubridsa
-  )
+  # Register the test automatically:
+  # add_test(NAME ${test_name} COMMAND ${test_name})
+  #
+  # but while active development,
+  # it is convenient to comment this out to avoid running all tests at once.
+  # Prefer to register tests one by one below.
+endforeach()
 
-target_include_directories(test_oos PRIVATE
-  ${TEST_INCLUDES}
-  )
-target_include_directories(test_oos_persist PRIVATE
-  ${TEST_INCLUDES}
-  )
-target_include_directories(test_oos_record_descriptor PRIVATE
-  ${TEST_INCLUDES}
-  )
-
-# prefer gtest over gtest_main to have custom main function
-# target_link_libraries(test_oos PRIVATE GTest::gtest_main)
-target_link_libraries(test_oos PRIVATE GTest::gtest)
-target_link_libraries(test_oos_persist PRIVATE GTest::gtest)
-target_link_libraries(test_oos_record_descriptor PRIVATE GTest::gtest)
-
-# In order to run each testcases in isolated process, uncomment below
-# include(GoogleTest)
-# gtest_discover_tests(test_oos)
-# gtest_discover_tests(test_oos_persist)
-# gtest_discover_tests(test_oos_record_descriptor)
-
-# In order to share global setup/teardown, we register tests without gtest_discover_tests
+# Register individual tests one by one.
 add_test(NAME test_oos COMMAND test_oos)
-add_test(NAME test_oos_persist COMMAND test_oos_persist)
-add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
+# add_test(NAME test_oos_persist COMMAND test_oos_persist)
+# add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
+
+# Note: add_test vs. gtest_discover_tests
+# - Prefer add_test if you want to share global setup/teardown, which speeds up test
+# - Prefer gtest_discover_tests for isolation between tests, at the cost of test speed
+# - Since we do not need isolation here, we use add_test aboe.

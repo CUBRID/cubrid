@@ -299,9 +299,9 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
 
   pgbuf_unfix (thread_p, page_ptr);
   recdes_free_data_area (&rec);
-  assert(rec.data == nullptr);
+  assert (rec.data == nullptr);
   // rec_out data area is PEEKed, so no need to free
-  assert(rec_out.data != nullptr);
+  assert (rec_out.data != nullptr);
 }
 
 TEST (OosTest, ShouldInsertIntoSamePage)
@@ -352,6 +352,69 @@ TEST (OosTest, ShouldInsertIntoSamePage)
   recdes_free_data_area (&rec_out1);
   recdes_free_data_area (&rec_out2);
 
+}
+
+TEST (OosTest, ShouldInsertIntoDifferentPages)
+{
+
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create (thread_p, oos_vfid);
+  EXPECT_EQ (err, NO_ERROR);
+
+  const int max_chunk_size = oos_get_max_chunk_size_within_page ();
+  const int large_size = max_chunk_size + 50;
+
+  RECDES rec_in1{};
+  err = generate_record_from_string (std::string (large_size, 'A'), rec_in1);
+  EXPECT_EQ (err, NO_ERROR);
+
+  /*
+   * rec_in1 is larger than max_chunk_size, so it will be split into
+   * two chunks. The tail chunk will occupy some space in the page
+   *
+   * The first chunk will occupy max_chunk_size bytes (first portion of rec_in1 + OOS_RECORD_HEADER)
+   * The second chunk will occupy the remaining bytes of rec_in1 + OOS_RECORD_HEADER,
+   * which is (large_size - (max_chunk_size - sizeof (OOS_RECORD_HEADER))) + sizeof (OOS_RECORD_HEADER)
+   *
+   */
+  const int second_chunk_size =
+	  (large_size - (max_chunk_size - static_cast<int> (sizeof (OOS_RECORD_HEADER)))) + static_cast<int> (sizeof (
+		      OOS_RECORD_HEADER));
+
+  OID oid1;
+  err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
+  EXPECT_EQ (err, NO_ERROR);
+  printf ("Inserted record oid1: volid=%d, pageid=%d, slotid=%d\n", oid1.volid, oid1.pageid, oid1.slotid);
+
+  // where the tail chunk of rec_in1 is inserted
+  VPID recent_vpid{};
+  get_recently_inserted_oos_vpid (oos_vfid, recent_vpid);
+  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &recent_vpid, OLD_PAGE_IF_IN_BUFFER,
+				PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  int free_space = spage_get_free_space (thread_p, raw_ptr);
+  assert (raw_ptr != nullptr);
+  {
+    auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
+    EXPECT_EQ (free_space, 7876);
+    printf ("db_pagesize=%d, max_chunk_size=%d, second_chunk_size=%d, free_space=%d oos_record_header_size=%lu\n",
+	    DB_PAGESIZE, max_chunk_size, second_chunk_size, free_space, sizeof (OOS_RECORD_HEADER));
+  }
+
+
+  RECDES rec_in2{};
+  err = generate_record_from_string (std::string (free_space - 50, 'A'), rec_in2);
+  EXPECT_EQ (err, NO_ERROR);
+
+  OID oid2;
+  err = oos_insert (thread_p, oos_vfid, rec_in2, oid2);
+  EXPECT_EQ (err, NO_ERROR);
+  printf ("Inserted record oid2: volid=%d, pageid=%d, slotid=%d\n", oid2.volid, oid2.pageid, oid2.slotid);
+
+  // xecent_vpid (where tail chunk of rec_in1 is inserted) should be where rec_in2 is inserted.
+  EXPECT_EQ (oid2.pageid, recent_vpid.pageid);
+  EXPECT_EQ (oid2.volid, recent_vpid.volid);
 }
 
 int main (int argc, char **argv)
