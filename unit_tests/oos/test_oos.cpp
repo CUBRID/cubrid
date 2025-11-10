@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include <cstdio>
 
+#include "oos_util.hpp"
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
@@ -316,41 +317,49 @@ TEST (OosTest, ShouldInsertIntoSamePage)
   const int large_size = DB_PAGESIZE + 5;
 
   RECDES rec_in1{};
-  err = generate_record_from_string ("first string", rec_in1);
-  EXPECT_EQ (err, NO_ERROR);
-
   RECDES rec_in2{};
-  err = generate_record_from_string ("second string again", rec_in2);
-  EXPECT_EQ (err, NO_ERROR);
-
-  OID oid1;
-  err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
-  EXPECT_EQ (err, NO_ERROR);
-
-  OID oid2;
-  err = oos_insert (thread_p, oos_vfid, rec_in2, oid2);
-  EXPECT_EQ (err, NO_ERROR);
-
   RECDES rec_out1{};
-  err = oos_read (thread_p, oos_vfid, oid1, rec_out1);
-  EXPECT_EQ (err, NO_ERROR);
-  EXPECT_STREQ (rec_out1.data, rec_in1.data);
-  EXPECT_EQ (strlen (rec_out1.data),strlen ("first string"));
-
   RECDES rec_out2{};
-  err = oos_read (thread_p, oos_vfid, oid2, rec_out2);
-  EXPECT_EQ (err, NO_ERROR);
-  EXPECT_STREQ (rec_out2.data, rec_in2.data);
-  EXPECT_EQ (strlen (rec_out2.data),strlen ("second string again"));
+  {
+    auto_freed_recdes_ptr defer_free_rec_in1 (&rec_in1, recdes_free_data_area);
+    auto_freed_recdes_ptr defer_free_rec_in2 (&rec_in2, recdes_free_data_area);
+    auto_freed_recdes_ptr defer_free_rec_out1 (&rec_out1, recdes_free_data_area);
+    auto_freed_recdes_ptr defer_free_rec_out2 (&rec_out2, recdes_free_data_area);
 
-  // rec_out1 and rec_out2 should be in the same page
-  EXPECT_EQ (oid1.pageid, oid2.pageid);
-  EXPECT_EQ (oid1.volid, oid2.volid);
+    err = generate_record_from_string ("first string", rec_in1);
+    EXPECT_EQ (err, NO_ERROR);
 
-  recdes_free_data_area (&rec_in1);
-  recdes_free_data_area (&rec_in2);
-  recdes_free_data_area (&rec_out1);
-  recdes_free_data_area (&rec_out2);
+    err = generate_record_from_string ("second string again", rec_in2);
+    EXPECT_EQ (err, NO_ERROR);
+
+    OID oid1;
+    err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
+    EXPECT_EQ (err, NO_ERROR);
+
+    OID oid2;
+    err = oos_insert (thread_p, oos_vfid, rec_in2, oid2);
+    EXPECT_EQ (err, NO_ERROR);
+
+    err = oos_read (thread_p, oos_vfid, oid1, rec_out1);
+    EXPECT_EQ (err, NO_ERROR);
+    EXPECT_STREQ (rec_out1.data, rec_in1.data);
+    EXPECT_EQ (strlen (rec_out1.data),strlen ("first string"));
+
+    err = oos_read (thread_p, oos_vfid, oid2, rec_out2);
+    EXPECT_EQ (err, NO_ERROR);
+    EXPECT_STREQ (rec_out2.data, rec_in2.data);
+    EXPECT_EQ (strlen (rec_out2.data),strlen ("second string again"));
+
+    // rec_out1 and rec_out2 should be in the same page
+    EXPECT_EQ (oid1.pageid, oid2.pageid);
+    EXPECT_EQ (oid1.volid, oid2.volid);
+  }
+
+  // auto freed recdes
+  assert (rec_in1.data == nullptr);
+  assert (rec_in2.data == nullptr);
+  assert (rec_out1.data == nullptr);
+  assert (rec_out2.data == nullptr);
 
 }
 
