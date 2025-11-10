@@ -16,12 +16,17 @@
  *
  */
 
+/*
+ * oos_util.hpp
+ */
+
 #pragma once
 
 #include "storage_common.h"
 #include "thread_compat.hpp"
 #include "error_manager.h"
 #include "page_buffer.h"
+#include "oos_log.hpp"
 
 // ****************************************************************************
 // RAII helpers
@@ -42,20 +47,4 @@ struct page_auto_unfix
 };
 using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
 using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
-
-
-// ****************************************************************************
-// logging support for OOS
-// ****************************************************************************
-
-static int oos_log_enabled = 0;
-
-inline void oos_set_log_enabled (int enabled)
-{
-  oos_log_enabled = enabled;
-}
-
-#define oos_log(...) \
-  if (oos_log_enabled) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
-
 
