@@ -482,7 +482,7 @@ typedef enum
   S_END = 0,
   S_SUCCESS = 1,
   S_SUCCESS_CHN_UPTODATE,	/* only for slotted page */
-  S_DOESNT_FIT,			/* only for slotted page */
+  S_DOESNT_FIT,			/* used for slotted page, heap attrinfo */
   S_DOESNT_EXIST,		/* only for slotted page */
   S_SNAPSHOT_NOT_SATISFIED
 } SCAN_CODE;
