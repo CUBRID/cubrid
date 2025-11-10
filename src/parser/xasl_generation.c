@@ -1669,7 +1669,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
 
 	      /* exists op must fetch one tuple */
-	      if (regu_var1 && regu_var1->xasl)
+	      if (!pt_has_having (parser, node->info.expr.arg1) && regu_var1 && regu_var1->xasl)
 		{
 		  XASL_SET_FLAG (regu_var1->xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
 		}
