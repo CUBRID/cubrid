@@ -50,6 +50,7 @@ namespace cubconn
 
   void connection_pool::initialize (std::uint32_t max_connections, int connection_threads)
   {
+    connection_worker::message request;
     std::vector<int> *cores;
     std::uint32_t i;
 
@@ -69,6 +70,13 @@ namespace cubconn
     for (int core : *cores)
       {
 	m_workers.emplace_back (std::make_unique<connection_worker> (this, core, i++));
+      }
+
+    /* pre-warm the connection thread and its queue to avoid a race condition. */
+    for (std::unique_ptr<connection_worker> &worker : m_workers)
+      {
+	request.type = connection_worker::message_type::START;
+	worker->enqueue (connection_worker::queue_type::IMMEDIATE, std::move (request));
       }
 
     m_max_connections = max_connections;
