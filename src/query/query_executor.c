@@ -1198,6 +1198,33 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
+	{
+	  buildlist = &xasl->proc.buildlist;
+	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+	    {
+	      // TODO: ~~where, order by,~~ 인덱스 사용 여부 확인하여 분석함수 결과 미리 계산하는 로직 추가
+
+	      if (a_eval_list->sort_list == NULL)	// over 절 내에 partition by, order by 절이 없는 경우
+		{
+		  if (fetch_val_list
+		      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl,
+		       true) != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+		    {
+		      if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		}
+	    }
+	}
+
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
@@ -1255,62 +1282,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 					    &xasl->list_id->tpl_descr, xasl->list_id, &output_tuple) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-	  else if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
-	    {
-	      buildlist = &xasl->proc.buildlist;
-	      for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
-		{
-		  // TODO: ~~where, order by,~~ 인덱스 사용 여부 확인하여 분석함수 결과 미리 계산하는 로직 추가
-
-		  if (a_eval_list->sort_list == NULL)	// over 절 내에 partition by, order by 절이 없는 경우
-		    {
-		      if (fetch_val_list
-			  (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl,
-			   true) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-
-		      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
-			{
-			  if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
-			    {
-			      GOTO_EXIT_ON_ERROR;
-			    }
-
-			  //   if (a_func_list->function != PT_ROW_NUMBER)
-			  //     {
-			  //       swap = a_func_list->value;
-			  //       a_func_list->value = a_func_list->out_value;
-			  //       a_func_list->out_value = swap;
-
-			  //       /* also, don't fetch into value */
-			  //       for (regu_list_p = buildlist->a_regu_list; regu_list_p != NULL;
-			  //         regu_list_p = regu_list_p->next)
-			  //      {
-			  //        if (regu_list_p->value.vfetch_to == a_func_list->value)
-			  //          {
-			  //            regu_list_p->value.vfetch_to = a_func_list->out_value;
-			  //            break;
-			  //          }
-			  //      }
-			  //     }
-			}
-		    }
-		}
-
-	      //       if (qexec_generate_tuple_descriptor (thread_p, xasl->list_id, buildlist->a_outptr_list, &xasl_state->vd)
-	      //        == QPROC_TPLDESCR_SUCCESS)
-	      if (qexec_generate_tuple_descriptor
-		  (thread_p, xasl->list_id, buildlist->a_outptr_list_interm, &xasl_state->vd) == QPROC_TPLDESCR_SUCCESS)
-		{
-		  if (qfile_generate_tuple_into_list (thread_p, xasl->list_id, T_NORMAL) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  break;
 		}
 	    }
 

@@ -16632,11 +16632,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  attr_offsets = pt_make_identity_offsets (select_list_ex);
 
 
-	  buildlist->a_scan_regu_list = pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);	// pointer 노드로 바꿔보자... vfetch_to 없어서 operand 값을 못읽어오는 것 같음.
+	  buildlist->a_scan_regu_list =
+	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);
 
 	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
-	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, NULL);
+	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, attr_offsets);
 
 	  if (buildlist->a_regu_list == NULL)
 	    {
