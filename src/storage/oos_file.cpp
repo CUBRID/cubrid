@@ -515,7 +515,7 @@ STATIC_INLINE int oos_get_max_chunk_size_within_page () __attribute__ ((ALWAYS_I
 }
 
 
-#if defined (UNIT_TEST)
+#if defined(CUBRID_UNIT_TEST_ENABLED)
 int bridge_oos_get_max_chunk_size_within_page ()
 {
   return oos_get_max_chunk_size_within_page ();
