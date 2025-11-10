@@ -20,7 +20,6 @@
  * query_executor.c - Query evaluator module
  */
 
-#include "storage_common.h"
 #ident "$Id$"
 
 
