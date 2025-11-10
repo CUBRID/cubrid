@@ -142,6 +142,7 @@ struct analytic_key_metadomain
 
   /* true if metadomain is now part of composite metadomain */
   bool demoted;
+  //
 
   /* level of metadomain */
   int level;
@@ -15834,7 +15835,7 @@ pt_generate_simple_analytic_eval_type (PARSER_CONTEXT * parser, ANALYTIC_INFO * 
  * that share the same window.
  */
 static ANALYTIC_EVAL_TYPE *
-pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool * no_optimization)
+pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, PT_NODE * orderby, bool * no_optimization)
 {
   ANALYTIC_EVAL_TYPE *ret = NULL;
   ANALYTIC_TYPE *func_p;
@@ -15847,6 +15848,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
   int sc_count = 0;
 
   /* meta domains */
+//   ANALYTIC_KEY_METADOMAIN *ordby_meta = NULL;
   ANALYTIC_KEY_METADOMAIN af_meta[ANALYTIC_OPT_MAX_FUNCTIONS * 2];
   int af_count = 0;
 
@@ -15878,6 +15880,52 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
 	  level = af_meta[af_count].key_size;
 	}
     }
+
+
+//   /* structure initialization */
+//   ordby_meta->level = 0;
+//   ordby_meta->key_size = 0;
+//   ordby_meta->links_count = 0;
+//   ordby_meta->demoted = false;
+//   ordby_meta->children[0] = NULL;
+//   ordby_meta->children[1] = NULL;
+//   ordby_meta->source = NULL;
+//   ordby_meta->part_size = 0; // 인덱스 선행 컬럼 개수로 설정해야 한다...
+
+//   PT_NODE *list;
+//   int idx;
+//   /* build index and structure */
+//   for (list = orderby; list != NULL; list = list->next)
+//     {
+//       /* search for sort list in index */
+//       idx = -1;
+//       for (i = 0; i < sc_count; i++)
+//      {
+//        if (SORT_SPEC_EQ (sc_index[i], list))
+//          {
+//            /* found */
+//            idx = i;
+//            break;
+//          }
+//      }
+
+//       /* add to index if not present -- 여기선 아님 */ 
+//       if (idx == -1)
+//      {
+//        break;
+//      }
+
+//       /* register */
+//       ordby_meta->key[ordby_meta->key_size] = idx;
+//       ordby_meta->key_size++;
+//       ordby_meta->level++;
+
+//       if (ordby_meta->key_size >= ANALYTIC_OPT_MAX_FUNCTIONS)
+//      {
+//        /* no more space in  index */
+//        // maybe impossible
+//      }
+//     }
 
   /* group metadomains with zero-length sort keys */
   do
@@ -16580,6 +16628,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
+	  int *attr_offsets;
+	  attr_offsets = pt_make_identity_offsets (select_list_ex);
+
+
+	  buildlist->a_scan_regu_list = pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);	// pointer 노드로 바꿔보자... vfetch_to 없어서 operand 값을 못읽어오는 것 같음.
+
 	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
 	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, NULL);
@@ -16623,7 +16677,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* optimize analytic function list */
-	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
+	  xasl->proc.buildlist.a_eval_list =
+	    pt_optimize_analytic_list (parser, &analytic_info, select_node->info.query.order_by, &no_optimization_done);
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
 	  if (no_optimization_done == true)

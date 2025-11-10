@@ -319,6 +319,7 @@ struct buildlist_proc_node
   QFILE_LIST_ID *push_list_id;	/* file descriptor for push list */
   OUTPTR_LIST *g_outptr_list;	/* group_by output ptr list */
   REGU_VARIABLE_LIST g_regu_list;	/* group_by regu. list */
+  REGU_VARIABLE_LIST a_scan_regu_list;
   VAL_LIST *g_val_list;		/* group_by value list */
   PRED_EXPR *g_having_pred;	/* having predicate */
   PRED_EXPR *g_grbynum_pred;	/* groupby_num() predicate */
