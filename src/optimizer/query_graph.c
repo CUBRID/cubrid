@@ -6878,6 +6878,12 @@ qo_is_segment_used_in_query (QO_ENV * env, int seg_idx)
   int t;
   QO_TERM *termp;
 
+  /* Check if segment is in SELECT list (final_segs) */
+  if (BITSET_MEMBER (env->final_segs, seg_idx))
+    {
+      return true;
+    }
+
   /* Check all terms in the environment */
   for (t = 0; t < env->nterms; t++)
     {
