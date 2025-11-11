@@ -6880,7 +6880,7 @@ btree_class_test_unique (char *buf, int buf_size)
 }
 
 int
-hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction, int metric)
+hnsw_add_index (BTID * btid, OID* class_oid, int dimension, int hnsw_M, int hnsw_efConstruction, int metric)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -6892,7 +6892,7 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4;
+  request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4 + OR_OID_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -6905,6 +6905,7 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
   ptr = or_pack_int (ptr, hnsw_M);
   ptr = or_pack_int (ptr, hnsw_efConstruction);
   ptr = or_pack_int (ptr, metric);
+  ptr = or_pack_oid (ptr, class_oid);
 
   req_error =
     net_client_request (NET_SERVER_HNSW_ADDINDEX, request, request_size, reply,
@@ -6934,7 +6935,7 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
   params.ef_construction = hnsw_efConstruction;
   params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
 
-  error = xhnsw_add_index (thread_p, params, *btid);
+  error = xhnsw_add_index (thread_p, class_oid, params, *btid);
 
   exit_server (*thread_p);
 
