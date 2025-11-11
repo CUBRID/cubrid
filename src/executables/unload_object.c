@@ -1997,8 +1997,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       pthread_mutex_lock (&unld_cls_info.mtx);
       pthread_cond_broadcast (&unld_cls_info.cond);
       pthread_mutex_unlock (&unld_cls_info.mtx);
-
-      pthread_cond_broadcast (&unld_cls_info.cond);
       YIELD_THREAD ();
 
       for (i = 0; i < nthreads; i++)
