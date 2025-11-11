@@ -77,6 +77,7 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "boot_cl.h"
+#include "schema_system_catalog_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -442,10 +443,6 @@ static DB_OBJLIST *sm_fetch_all_objects_internal (DB_OBJECT * op, DB_FETCH_MODE 
 static int sm_flush_and_decache_objects_internal (MOP obj, MOP obj_class_mop, int decache);
 
 static void sm_free_resident_classes_virtual_query_cache (void);
-static int sm_set_class_timestamps (SM_CLASS * class_);
-static int set_checked_time_with_strategy (MOP _db_class, const char *class_name, CLASS_STATS * stats,
-					   bool with_fullscan);
-
 
 /*
  * sc_set_current_schema()
@@ -2967,7 +2964,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
   need_free_old_name = true;
   need_free_new_name = false;
 
-  error = sm_update_class_timestamp (class_);
+  error = sm_set_class_catalog_timestamps (class_old_name, SM_CATALOG_TIMESTAMP_UPDATE);
   if (error != NO_ERROR)
     {
       goto end;
@@ -4279,7 +4276,8 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  if (class_->stats != NULL)
 		    {
 		      class_name = sm_ch_name ((MOBJ) class_);
-		      error = set_checked_time_with_strategy (_db_class, class_name, class_->stats, with_fullscan);
+		      error =
+			sm_set_class_catalog_statistics_info (_db_class, class_name, class_->stats, with_fullscan);
 		      if (error != NO_ERROR)
 			{
 			  return error;
@@ -4426,7 +4424,8 @@ sm_update_all_statistics (bool with_fullscan)
 		  if (class_->stats != NULL)
 		    {
 		      class_name = sm_ch_name ((MOBJ) class_);
-		      error = set_checked_time_with_strategy (_db_class, class_name, class_->stats, with_fullscan);
+		      error =
+			sm_set_class_catalog_statistics_info (_db_class, class_name, class_->stats, with_fullscan);
 		      if (error != NO_ERROR)
 			{
 			  return error;
@@ -13353,21 +13352,6 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto error_return;
     }
 
-  /* Align created_time and updated_time for system-defined classes 
-   * to ensure timestamp consistency after immediate internal updates. */
-  if (template_->current == NULL || class_->flags & SM_CLASSFLAG_SYSTEM)
-    {
-      error = sm_set_class_timestamps (class_);
-    }
-  else
-    {
-      error = sm_update_class_timestamp (class_);
-    }
-  if (error != NO_ERROR)
-    {
-      goto error_return;
-    }
-
   /* This used to be done toward the end but since the unique btid has to be inherited, the disk structures have to be
    * created before we update the subclasses. We also have to disable updating statistics for now because we haven't
    * finshed modifying the all the classes yet and the code which updates statistics on partitioned classes does not
@@ -14131,7 +14115,7 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	  goto severe_error;
 	}
 
-      if (sm_update_class_timestamp (class_) != NO_ERROR)
+      if (sm_set_class_catalog_timestamps (sm_ch_name ((MOBJ) class_), SM_CATALOG_TIMESTAMP_UPDATE) != NO_ERROR)
 	{
 	  goto severe_error;
 	}
@@ -16714,80 +16698,4 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
-}
-
-static int
-sm_set_class_timestamps (SM_CLASS * class_)
-{
-  DB_VALUE current_datetime;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  class_->created_time = *db_get_datetime (&current_datetime);
-  class_->updated_time = *db_get_datetime (&current_datetime);
-
-  return NO_ERROR;
-}
-
-int
-sm_update_class_timestamp (SM_CLASS * class_)
-{
-  DB_VALUE current_datetime;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  class_->updated_time = *db_get_datetime (&current_datetime);
-
-  return NO_ERROR;
-}
-
-static int
-set_checked_time_with_strategy (MOP _db_class, const char *class_name, CLASS_STATS * stats, bool with_fullscan)
-{
-  MOP inst;
-  int error = NO_ERROR;
-  DB_VALUE class_name_val;
-  int save;
-  DB_VALUE timestamp_val, current_datetime_val, statistics_strategy_val;
-
-  AU_DISABLE (save);
-  db_make_string (&class_name_val, class_name);
-  inst = db_find_unique (_db_class, "unique_name", &class_name_val);
-  if (inst == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  db_make_timestamp (&timestamp_val, stats->time_stamp);
-  error = db_timestamp_to_datetime (&timestamp_val, &current_datetime_val);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-  error = obj_set (inst, "checked_time", &current_datetime_val);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  db_make_int (&statistics_strategy_val, with_fullscan);
-  error = obj_set (inst, "statistics_strategy", &statistics_strategy_val);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  error = locator_flush_instance (inst);
-
-end:
-  db_value_clear (&class_name_val);
-  AU_ENABLE (save);
-
-  return error;
 }

@@ -30,6 +30,7 @@
 #include "execute_schema.h" /* do_recreate_filter_index_constr () */
 #include "locator_cl.h"
 #include "schema_manager.h"
+#include "schema_system_catalog_cl.h"
 #include "transform.h"
 #include "transaction_cl.h"
 #include "virtual_object.h"
@@ -276,7 +277,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
     }
 
   /* updated_time */
-  error = sm_update_class_timestamp (class_);
+  error = sm_set_class_catalog_timestamps (sm_ch_name ((MOBJ)class_), SM_CATALOG_TIMESTAMP_UPDATE);
   if (error != NO_ERROR)
     {
       goto end;

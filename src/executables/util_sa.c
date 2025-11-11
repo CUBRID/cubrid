@@ -70,6 +70,7 @@
 #include "thread_manager.hpp"
 #include "log_volids.hpp"
 #include "schema_system_catalog.hpp"
+#include "schema_system_catalog_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -703,12 +704,20 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	  db_shutdown ();
 	  goto error_exit;
 	}
-    }
-  if (sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
-    {
-      util_log_write_errstr ("%s\n", db_error_string (3));
-      db_shutdown ();
-      goto error_exit;
+
+      if (sm_set_class_catalog_timestamps_all_classes () != NO_ERROR)
+	{
+	  util_log_write_errstr ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
+
+      if (sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
+	{
+	  util_log_write_errstr ("%s\n", db_error_string (3));
+	  db_shutdown ();
+	  goto error_exit;
+	}
     }
 
   db_commit_transaction ();

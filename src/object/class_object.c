@@ -7042,11 +7042,6 @@ classobj_make_class (const char *name)
   class_->comment = NULL;
 
   class_->tde_algorithm = (int) TDE_ALGORITHM_NONE;
-  class_->statistics_strategy = -1;
-
-  class_->created_time = DATETIME_NULL_VALUE;
-  class_->updated_time = DATETIME_NULL_VALUE;
-  class_->checked_time = DATETIME_NULL_VALUE;
 
   if (name != NULL)
     {

@@ -1072,18 +1072,6 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
   /* tde_algorithm */
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_TDE_ALGORITHM_INDEX].value, NULL, -1, true, NULL, 0);
 
-  /* statistics_strategy */
-  tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_STATISTICS_STRATEGY_INDEX].value, NULL, -1, true, NULL, 0);
-
-  /* created_time */
-  tp_Datetime.data_readval (buf_p, &attrs[CT_CLASS_CREATED_TIME_INDEX].value, NULL, -1, true, NULL, 0);
-
-  /* updated_time */
-  tp_Datetime.data_readval (buf_p, &attrs[CT_CLASS_UPDATED_TIME_INDEX].value, NULL, -1, true, NULL, 0);
-
-  /* checked_time */
-  tp_Datetime.data_readval (buf_p, &attrs[CT_CLASS_CHECKED_TIME_INDEX].value, NULL, -1, true, NULL, 0);
-
   /* variable */
 
   /* unique_name */
