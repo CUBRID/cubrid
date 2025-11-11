@@ -4256,6 +4256,9 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      class_->stats = NULL;
 		    }
 
+#if defined(SA_MODE)
+		  ws_dirty (classop);
+#endif
 		  /* make sure the class is flushed before acquiring stats, see comments above in
 		   * sm_get_class_with_statistics */
 		  if (locator_flush_class (classop) != NO_ERROR)
@@ -4408,6 +4411,9 @@ sm_update_all_statistics (bool with_fullscan)
 		      stats_free_statistics (class_->stats);
 		      class_->stats = NULL;
 		    }
+#if defined(SA_MODE)
+		  ws_dirty (cl->op);
+#endif
 		  /* make sure the class is flushed but quit if an error happens */
 		  if (locator_flush_class (cl->op) != NO_ERROR)
 		    {
