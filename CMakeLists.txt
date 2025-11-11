@@ -752,6 +752,7 @@ if(WIN32)
 endif(WIN32)
 
 if(AT_LEAST_ONE_UNIT_TEST)
+  enable_testing()
   add_compile_definitions(CUBRID_UNIT_TEST_ENABLED)
 endif()
 
@@ -941,4 +942,3 @@ endif(WIN32)
 
 include(CPack)
 
-enable_testing()
