@@ -34,7 +34,8 @@ typedef enum
 } SM_CATALOG_TIMESTAMP_TYPE;
 
 int sm_set_class_catalog_timestamps (const char *class_name, SM_CATALOG_TIMESTAMP_TYPE type);
-int sm_set_class_catalog_statistics_info (MOP _db_class, const char *class_name, CLASS_STATS *stats, bool with_fullscan);
+int sm_set_class_catalog_statistics_info (MOP _db_class, const char *class_name, CLASS_STATS * stats,
+					  bool with_fullscan);
 int sm_set_class_catalog_timestamps_all_classes (void);
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CL_H_ */

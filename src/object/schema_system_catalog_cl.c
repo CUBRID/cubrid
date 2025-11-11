@@ -27,11 +27,11 @@
 #include "schema_manager.h"
 #include "string_opfunc.h"
 
-static int set_catalog_timestamps (MOP catalog_inst, SM_CATALOG_TIMESTAMP_TYPE type, DB_VALUE *datetime_val);
+static int set_catalog_timestamps (MOP catalog_inst, SM_CATALOG_TIMESTAMP_TYPE type, DB_VALUE * datetime_val);
 static MOP find_class_catalog_instance_with_write_mode (MOP _db_class, const char *class_name);
 
 static int
-set_catalog_timestamps (MOP catalog_inst, SM_CATALOG_TIMESTAMP_TYPE type, DB_VALUE *datetime_val)
+set_catalog_timestamps (MOP catalog_inst, SM_CATALOG_TIMESTAMP_TYPE type, DB_VALUE * datetime_val)
 {
   int error = NO_ERROR;
   DB_VALUE local_datetime_val;
@@ -87,7 +87,7 @@ find_class_catalog_instance_with_write_mode (MOP _db_class, const char *class_na
   catalog_inst = db_find_unique_write_mode (_db_class, "unique_name", &class_name_val);
   if (catalog_inst == NULL)
     {
-      ASSERT_ERROR();
+      ASSERT_ERROR ();
       goto end;
     }
 
@@ -113,7 +113,7 @@ sm_set_class_catalog_timestamps (const char *class_name, SM_CATALOG_TIMESTAMP_TY
       goto end;
     }
 
-  catalog_inst = find_class_catalog_instance_with_write_mode(_db_class, class_name);
+  catalog_inst = find_class_catalog_instance_with_write_mode (_db_class, class_name);
   if (catalog_inst == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -163,14 +163,14 @@ sm_set_class_catalog_timestamps_all_classes (void)
   for (int i = 0; i < lmops->num; i++)
     {
       class_name = sm_get_ch_name (lmops->mops[i]);
-      inst = find_class_catalog_instance_with_write_mode(_db_class, class_name);
+      inst = find_class_catalog_instance_with_write_mode (_db_class, class_name);
       if (inst == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  goto end;
 	}
 
-      error = set_catalog_timestamps ( inst, SM_CATALOG_TIMESTAMP_INIT, &datetime_val);
+      error = set_catalog_timestamps (inst, SM_CATALOG_TIMESTAMP_INIT, &datetime_val);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -183,7 +183,7 @@ end:
 }
 
 int
-sm_set_class_catalog_statistics_info (MOP _db_class, const char *class_name, CLASS_STATS *stats, bool with_fullscan)
+sm_set_class_catalog_statistics_info (MOP _db_class, const char *class_name, CLASS_STATS * stats, bool with_fullscan)
 {
   int save;
   MOP catalog_inst;
@@ -192,7 +192,7 @@ sm_set_class_catalog_statistics_info (MOP _db_class, const char *class_name, CLA
 
   AU_DISABLE (save);
 
-  catalog_inst = find_class_catalog_instance_with_write_mode(_db_class, class_name);
+  catalog_inst = find_class_catalog_instance_with_write_mode (_db_class, class_name);
   if (catalog_inst == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
