@@ -38,7 +38,7 @@
 int xhnsw_initialize (THREAD_ENTRY *thread_p);
 int xhnsw_finalize (THREAD_ENTRY *thread_p);
 
-int xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &btid_out);
+int xhnsw_add_index (THREAD_ENTRY *thread_p, const OID* class_oid, const hnsw_build_params &params, BTID &btid_out);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 		      HFID *hfids, const hnsw_build_params &params);

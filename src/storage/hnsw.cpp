@@ -133,7 +133,7 @@ xhnsw_finalize (THREAD_ENTRY *thread_p)
 }
 
 int
-xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &btid_out)
+xhnsw_add_index (THREAD_ENTRY *thread_p, const OID* class_oid, const hnsw_build_params &params, BTID &btid_out)
 {
   hnsw_index_backend *backend_instance = index_manager->get_backend ();
   if (!backend_instance)
@@ -197,7 +197,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
   OID_SET_NULL (&cur_oid);
   BTID new_btid;
 
-  if (xhnsw_add_index (thread_p, params, new_btid) != NO_ERROR)
+  if (xhnsw_add_index (thread_p, oid, params, new_btid) != NO_ERROR)
     {
       assert (false);
       return ER_FAILED;
@@ -669,11 +669,19 @@ int hnsw_index_manager::delete_index_on_disk (const std::string &prefix, const B
 BTID
 hnsw_index_manager::create_btid (const hnsw_index_backend *backend)
 {
-  BTID btid = {.vfid = VFID_INITIALIZER, .root_pageid = m_last_index_id};
+  BTID btid = {.vfid = VFID_INITIALIZER, .root_pageid = -1};
+  if (backend->is_disk_index ())
+  {
+    
+  }
+  else
+  {
+  btid.root_pageid = m_last_index_id;
   while (is_index_loaded (&btid) || is_index_meta_file_exists (backend->get_id(), &btid))
     {
       btid.root_pageid = ++m_last_index_id;
     }
+  }
   return btid;
 }
 
