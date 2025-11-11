@@ -1596,7 +1596,7 @@ dwb_wait_for_block_completion (THREAD_ENTRY *thread_p, unsigned int block_no)
   timeval_add_msec (&timeval_timeout, &timeval_crt, 20);
   timeval_to_timespec (&to, &timeval_timeout);
 
-  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+  r = thread_timed_suspend_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
 
   (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
@@ -1737,7 +1737,7 @@ dwb_wait_for_strucure_modification (THREAD_ENTRY *thread_p)
   timeval_add_msec (&timeval_timeout, &timeval_crt, 10);
   timeval_to_timespec (&to, &timeval_timeout);
 
-  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
+  r = thread_timed_suspend_and_unlock_entry (thread_p, &to, THREAD_DWB_QUEUE_SUSPENDED);
 
   (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
   if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)

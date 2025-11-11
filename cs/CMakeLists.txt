@@ -137,6 +137,7 @@ set(BASE_SOURCES
   )
 
 set(BASE_HEADERS
+  ${BASE_DIR}/compressor.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
