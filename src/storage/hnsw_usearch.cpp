@@ -22,6 +22,11 @@
 
 #include "hnsw.hpp"
 #include "error_manager.h"
+#include "page_buffer.h"
+#include "slotted_page.h"
+#include "page_buffer.h"
+#include "storage_common.h"
+#include "object_representation.h"
 #include "system_parameter.h"
 #include "vector_opfunc.hpp"
 #include "boot_sr.h"
@@ -58,6 +63,10 @@ char hnsw_index_directory[PATH_MAX] = {0};
 bool hnsw_index_directory_created = false;
 static std::mutex hnsw_elem_mutex;
 
+static int hnsw_create_file (THREAD_ENTRY *thread_p, OID *class_oid, int attr_id, BTID *btid);
+static int hnsw_initalize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
+static int hnsw_init_header (THREAD_ENTRY *thread_p, VFID *vfid, PAGE_PTR page_ptr, HNSW_HEADER *hnsw_header);
+static int hnsw_pack_header (RECDES *rec, HNSW_HEADER *hnsw_header);
 static int dump_hnsw_index (int hnsw_id, const std::unique_ptr<usearch::index_dense_t> &index);
 static int get_hnsw_index_file_path (int hnsw_id, char *out_path);
 static int create_hnsw_index_directory ();
@@ -69,8 +78,9 @@ static int64_t encode_oid (const OID &oid);
 static OID decode_oid (int64_t encoded_oid);
 
 BTID *
-xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hnsw_M = 16, int hnsw_efConstruction = 64,
-		 int metric = DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN)
+xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, OID * class_oid, int attr_id, int dimension, int hnsw_M,
+		 int hnsw_efConstruction,
+		 int metric)
 {
   usearch::metric_kind_t metric_kind = usearch::metric_kind_t::unknown_k;
   switch (metric)
@@ -121,6 +131,45 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension = 10, int hns
 
   _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", hnsw_index_id);
   hnsw_print_index_info (btid);
+
+  if (hnsw_create_file (thread_p, class_oid, attr_id, btid) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  PAGE_PTR page_ptr = NULL;
+  VPID root_vpid;
+
+  root_vpid.volid = btid->vfid.volid;
+  root_vpid.pageid = btid->root_pageid;
+
+  page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+#if !defined(NDEBUG)
+  pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_HNSW);
+#endif /* !NDEBUG */
+
+  HNSW_HEADER *hnsw_header = NULL;
+  hnsw_header->dimension = dimension;
+  hnsw_header->hnsw_M = hnsw_M;
+  hnsw_header->hnsw_efConstruction = hnsw_efConstruction;
+  hnsw_header->metric = metric;
+  hnsw_header->hnsw_efSearch = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
+
+  if (hnsw_init_header (thread_p, &btid->vfid, page_ptr, hnsw_header) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+  pgbuf_set_dirty (thread_p, page_ptr, FREE);
+  page_ptr = NULL;
 
   return btid;
 }
@@ -174,7 +223,7 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
   OID_SET_NULL (&cur_oid);
   const DB_VECTOR_FLOAT *vf = NULL;
 
-  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
+  BTID *new_btid = xhnsw_add_index (thread_p, btid, oid, attr_ids[0], dimension, m, ef_construction, metric);
 
   while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
     {
@@ -238,7 +287,7 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
   int attr_offset = 0;
   OID_SET_NULL (&cur_oid);
 
-  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
+  BTID *new_btid = xhnsw_add_index (thread_p, btid, oid, attr_ids[0], dimension, m, ef_construction, metric);
   if (new_btid == NULL)
     {
       return NULL;
@@ -451,6 +500,104 @@ void dump_all_hnsw_indices_to_files ()
 	  _er_log_debug (ARG_FILE_LINE, "Failed to dump HNSW Index with ID %d", hnsw_id);
 	}
     }
+}
+
+static int
+hnsw_create_file (THREAD_ENTRY *thread_p, OID *class_oid, int attr_id, BTID *btid)
+{
+  FILE_DESCRIPTORS des;
+  VPID vpid_root;
+  int error_code = NO_ERROR;
+
+  memset (&des, 0, sizeof (des));
+  des.btree.class_oid = *class_oid;
+  des.btree.attr_id = attr_id;
+
+  error_code = file_create_with_npages (thread_p, FILE_HNSW, 1, &des, &btid->vfid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  log_sysop_start (thread_p);
+  error_code = file_alloc_sticky_first_page (thread_p, &btid->vfid, hnsw_initalize_new_page, NULL, &vpid_root, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      return error_code;
+    }
+  if (vpid_root.volid != btid->vfid.volid)
+    {
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      return ER_FAILED;
+    }
+  btid->root_pageid = vpid_root.pageid;
+
+  log_sysop_commit (thread_p);
+  return NO_ERROR;
+}
+
+static int
+hnsw_initalize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
+{
+  pgbuf_set_page_ptype (thread_p, page, PAGE_HNSW);
+  spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+static int
+hnsw_init_header (THREAD_ENTRY *thread_p, VFID *vfid, PAGE_PTR page_ptr, HNSW_HEADER * hnsw_header)
+{
+  RECDES rec;
+  char copy_rec_buf[IO_MAX_PAGE_SIZE + HNSW_MAX_ALIGN];
+
+  rec.area_size = DB_PAGESIZE;
+  rec.data = PTR_ALIGN (copy_rec_buf, HNSW_MAX_ALIGN);
+
+  if (hnsw_pack_header (&rec, hnsw_header) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+hnsw_pack_header (RECDES *rec, HNSW_HEADER *hnsw_header)
+{
+  OR_BUF buf;
+  int rc = NO_ERROR;
+  int fixed_size = (int) offsetof (HNSW_HEADER, hnsw_efSearch);
+
+  memcpy (rec->data, hnsw_header, fixed_size);
+
+  or_init (&buf, rec->data + fixed_size, (rec->area_size == -1) ? -1 : (rec->area_size - fixed_size));
+
+  rec->length = fixed_size + CAST_BUFLEN (buf.ptr - buf.buffer);
+  rec->type = REC_HOME;
+
+  if (rc != NO_ERROR && er_errid () == NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  assert (false);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+    }
+
+  return rc;
 }
 
 void init_hnsw_index_path ()

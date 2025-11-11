@@ -4627,7 +4627,7 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
 {
   BTID btid;
   BTID *return_btid = NULL;
-  int dimension, hnsw_M, hnsw_efConstruction, metric_type;
+  int attr_id, dimension, hnsw_M, hnsw_efConstruction, metric_type;
   OID class_oid;
   char *ptr;
   int deduplicate_key_pos = -1;
@@ -4636,12 +4636,15 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &dimension);
   ptr = or_unpack_int (ptr, &hnsw_M);
   ptr = or_unpack_int (ptr, &hnsw_efConstruction);
   ptr = or_unpack_int (ptr, &metric_type);
 
-  return_btid = xhnsw_add_index (thread_p, &btid, dimension, hnsw_M, hnsw_efConstruction, metric_type);
+  return_btid =
+    xhnsw_add_index (thread_p, &btid, &class_oid, attr_id, dimension, hnsw_M, hnsw_efConstruction, metric_type);
 
   ptr = or_pack_int (reply, NO_ERROR);
   ptr = or_pack_btid (ptr, &btid);

@@ -3055,6 +3055,8 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "BTREE";
     case FILE_BTREE_OVERFLOW_KEY:
       return "BTREE_OVERFLOW_KEY";
+    case FILE_HNSW:
+      return "HNSW";
     case FILE_EXTENDIBLE_HASH:
       return "HASH";
     case FILE_EXTENDIBLE_HASH_DIRECTORY:

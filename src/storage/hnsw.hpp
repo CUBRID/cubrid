@@ -32,10 +32,27 @@
 
 #include "storage_common.h"
 #include "dbtype_def.h"
+#include "vector_distance_enum.h"
 #include "thread_compat.hpp"
 
-BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, int dimension, int hnsw_M, int hnsw_efConstruction,
-		       int metric);
+/* Maximum Alignment */
+#define HNSW_MAX_ALIGN INT_ALIGNMENT
+#define HEADER 0
+
+typedef struct hnsw_header HNSW_HEADER;
+
+struct hnsw_header
+{
+  int dimension;
+  int hnsw_M;
+  int hnsw_efConstruction;
+  int metric;
+  int hnsw_efSearch;
+};
+
+BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, OID * class_oid, int attr_id, int dimension = 10,
+		       int hnsw_M = 16, int hnsw_efConstruction = 64,
+		       int metric = DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN);
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			HFID *hfids, int dimension, int m, int ef_construction, int metric);

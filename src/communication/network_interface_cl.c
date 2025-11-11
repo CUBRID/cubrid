@@ -6880,7 +6880,8 @@ btree_class_test_unique (char *buf, int buf_size)
 }
 
 int
-hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction, int metric)
+hnsw_add_index (BTID * btid, OID * class_oid, int attr_id, int dimension, int hnsw_M, int hnsw_efConstruction,
+		int metric)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -6892,7 +6893,7 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4;
+  request_size = OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + OR_INT_SIZE * 5;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -6901,6 +6902,8 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
     }
 
   ptr = or_pack_btid (request, btid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, dimension);
   ptr = or_pack_int (ptr, hnsw_M);
   ptr = or_pack_int (ptr, hnsw_efConstruction);
@@ -6927,7 +6930,7 @@ hnsw_add_index (BTID * btid, int dimension, int hnsw_M, int hnsw_efConstruction,
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xhnsw_add_index (thread_p, btid, dimension, hnsw_M, hnsw_efConstruction, metric);
+  btid = xhnsw_add_index (thread_p, btid, class_oid, attr_id, dimension, hnsw_M, hnsw_efConstruction, metric);
 
   exit_server (*thread_p);
 
