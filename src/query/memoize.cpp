@@ -881,11 +881,13 @@ namespace memoize
 	assert (m_last_key != nullptr);
 
 	key *k = get_key();
+	value *v = get_value();
 
 	m_key_sz += k->get_size();
 	m_hash_sz += hash_entry_sz;
+	m_value_sz += v->get_size();
 
-	m_key_value_map.insert ({k, get_value()});
+	m_key_value_map.insert ({k, v});
 
 	return result_code::SUCCESS;
       }
@@ -934,7 +936,7 @@ namespace memoize
       }
 
     k = placement_new (k,&m_dbval_allocator);
-    k->m_values.reserve (m_keyptr_src.size());
+    k->m_values.reserve (m_key_cnt);
 
     for (auto dbvalp : m_keyptr_src)
       {
@@ -956,7 +958,7 @@ namespace memoize
       }
 
     v = placement_new (v,&m_dbval_allocator);
-    v->m_values.reserve (m_val_list->val_cnt);
+    v->m_values.reserve (m_value_cnt);
 
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next)
       {
@@ -964,8 +966,6 @@ namespace memoize
 	pr_clone_value (it->val, &dbv);
 	v->m_values.push_back (dbv);
       }
-
-    m_value_sz += v->get_size();
 
     return v;
   }
