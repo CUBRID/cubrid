@@ -38,7 +38,7 @@ enum class OOSLogLevel
 };
 
 // atomic runtime level
-inline std::atomic<OOSLogLevel> oos_current_level{OOSLogLevel::INFO};
+inline std::atomic<OOSLogLevel> oos_current_level{OOSLogLevel::DEBUG};
 
 inline void oos_set_level (OOSLogLevel level)
 {

@@ -145,6 +145,8 @@ static void oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out
 
 int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
+  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, recdes.length=%d\n",
+	     oos_vfid.fileid, oos_vfid.volid, recdes.length);
   int err = NO_ERROR;
 
   // TODO: otherwise spage assert type <= REC_UNKNOWN fails
@@ -381,6 +383,9 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
 int
 oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes)
 {
+  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, oid={pageid=%d, slotid=%d, volid=%d}\n",
+	     oos_vfid.fileid, oos_vfid.volid, oid.pageid, oid.slotid, oid.volid);
+
   int err = NO_ERROR;
 
   // try reading just one slot
@@ -473,18 +478,18 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
   auto [pageid, volid] = recently_inserted_oos_vpid;
   int freespace = spage_get_free_space (thread_p, page_ptr.get());
-  oos_debug ("recently inserted page {volid=%d, pageid=%d} has freespace=%d\n",
+  oos_trace ("recently inserted page {volid=%d, pageid=%d} has freespace=%d\n",
 	     volid, pageid, freespace);
 
   if (freespace >= rec_length + (int)sizeof (SPAGE_SLOT))
     {
-      oos_debug ("reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
+      oos_trace ("reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
 		 recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
       vpid = recently_inserted_oos_vpid;
       return NO_ERROR;
     }
 
-  oos_debug ("recently inserted page {volid=%d, pageid=%d} does not have enough space\n",
+  oos_trace ("recently inserted page {volid=%d, pageid=%d} does not have enough space\n",
 	     recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid);
 
   return oos_file_alloc_new (thread_p, oos_vfid, vpid);
