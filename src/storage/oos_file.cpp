@@ -235,14 +235,14 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   err = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
   if (err != NO_ERROR)
     {
-      oos_error ("oos_insert_within_page: oos_find_best_page failed");
+      oos_error ("oos_find_best_page failed");
       return err;
     }
 
   PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
-      oos_error ("oos_insert_within_page: pgbuf_fix failed for volid=%d, pageid=%d", vpid.volid, vpid.pageid);
+      oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", vpid.volid, vpid.pageid);
       return ER_FAILED;
     }
   auto_unfixed_page_ptr page_ptr {raw_ptr, page_auto_unfix {thread_p} };
@@ -253,7 +253,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     err = oos_prepend_record_header (recdes, header, oos_rec);
     if (err != NO_ERROR)
       {
-	oos_error ("oos_insert_within_page: oos_prepend_record_header failed");
+	oos_error ("oos_prepend_record_header failed");
 	return err;
       }
     // oos_prepend_record_header allocates data area for oos_rec
@@ -264,7 +264,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     int sp_status = spage_insert (thread_p, page_ptr.get(), &oos_rec, &slotid);
     if (sp_status != SP_SUCCESS)
       {
-	oos_error ("oos_insert_within_page: spage_insert failed with status %d", sp_status);
+	oos_error ("spage_insert failed with status %d", sp_status);
 	return ER_FAILED;
       }
     assert (slotid != NULL_SLOTID);
@@ -275,12 +275,12 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       }
     catch (const std::bad_alloc &)
       {
-	oos_error ("error: memory allocation failed while inserting into map");
+	oos_error ("memory allocation failed while inserting into map");
 	return ER_FAILED;
       }
     catch (const std::exception &e)
       {
-	oos_error ("error: exception while inserting into map: %s", e.what());
+	oos_error ("exception while inserting into map: %s", e.what());
 	return ER_FAILED;
       }
 
@@ -326,6 +326,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
 	int err = oos_read_within_page (thread_p, oos_vfid, current_chunk_oid, chunk_recdes, header);
 	if (err != NO_ERROR)
 	  {
+	    oos_error ("oos_read_within_page failed for chunk index=%d", idx);
 	    return err;
 	  }
 	auto_freed_recdes_ptr defer_free_chunk_recdes (&chunk_recdes, recdes_free_data_area);
@@ -399,7 +400,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
   err = oos_read_within_page (thread_p, oos_vfid, oid, first_chunk_recdes, first_chunk_header);
   if (err != NO_ERROR)
     {
-      oos_error ("oos_read: oos_read_within_page failed");
+      oos_error ("oos_read_within_page failed");
       return err;
     }
 
@@ -410,7 +411,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
       recdes_free_data_area (&first_chunk_recdes);
       if (err != NO_ERROR)
 	{
-	  oos_error ("oos_read: oos_read_across_pages failed");
+	  oos_error ("oos_read_across_pages failed");
 	  return err;
 	}
     }
@@ -449,7 +450,7 @@ static int oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, nullptr);
   if (err)
     {
-      oos_error ("oos file_alloc failed");
+      oos_error ("file_alloc failed");
       return err;
     }
   oos_trace ("allocated new page {volid=%d, pageid=%d}",
