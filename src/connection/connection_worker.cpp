@@ -244,7 +244,10 @@ namespace cubconn
 
     if (need_wait)
       {
-	handle->cv.wait_for (lock, std::chrono::seconds (10), [&] { return handle->done; });
+	if (!handle->cv.wait_for (lock, std::chrono::seconds (10), [&] { return handle->done; }))
+	  {
+	    return false;
+	  }
       }
 
     return true;
@@ -292,6 +295,16 @@ namespace cubconn
 	delete ctx;
       }
     m_removed_context.clear ();
+  }
+
+  void connection_worker::wakeup_blocked_worker (std::shared_ptr<message_blocker> handle)
+  {
+    if (handle)
+      {
+	std::lock_guard<std::mutex> lock (handle->m);
+	handle->done = true;
+	handle->cv.notify_one ();
+      }
   }
 
   bool connection_worker::is_wait_required (context *ctx)
@@ -479,12 +492,8 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
-    if (handle)
-      {
-	std::lock_guard<std::mutex> lock (handle->m);
-	handle->done = true;
-	handle->cv.notify_one ();
-      }
+    /* wake up the thread blocked until this request is complete */
+    this->wakeup_blocked_worker (handle);
 
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);
@@ -918,6 +927,7 @@ retry:
 	switch (request.type)
 	  {
 	  case message_type::START:
+	    this->wakeup_blocked_worker (request.waiter_handle);
 	    break;
 
 	  case message_type::NEW_CLIENT:
