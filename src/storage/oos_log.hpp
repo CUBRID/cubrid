@@ -40,17 +40,17 @@ enum class OOSLogLevel
 // atomic runtime level
 inline std::atomic<OOSLogLevel> oos_current_level{OOSLogLevel::DEBUG};
 
-inline void oos_set_level (OOSLogLevel level)
+inline void oos_log_set_level (OOSLogLevel level)
 {
   oos_current_level.store (level, std::memory_order_relaxed);
 }
 
-inline OOSLogLevel oos_get_level()
+inline OOSLogLevel oos_log_get_level()
 {
   return oos_current_level.load (std::memory_order_relaxed);
 }
 
-inline const char *oos_level_str (OOSLogLevel level)
+inline const char *oos_log_get_level_str (OOSLogLevel level)
 {
   switch (level)
     {
@@ -77,7 +77,7 @@ inline void oos_log_internal (OOSLogLevel level,
 			      const char *func,
 			      const char *fmt, ...)
 {
-  if (static_cast<int> (level) < static_cast<int> (oos_get_level()))
+  if (static_cast<int> (level) < static_cast<int> (oos_log_get_level()))
     {
       return;
     }
@@ -89,7 +89,7 @@ inline void oos_log_internal (OOSLogLevel level,
   std::strftime (timebuf, sizeof (timebuf), "%H:%M:%S", &tm);
 
   std::fprintf (stderr, "[%s] OOS [%s](%s:%d): ",
-		timebuf, oos_level_str (level), func, line);
+		timebuf, oos_log_get_level_str (level), func, line);
 
   va_list args;
   va_start (args, fmt);
