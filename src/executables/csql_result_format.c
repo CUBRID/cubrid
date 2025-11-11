@@ -1947,7 +1947,6 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 	  }
 
       }
-      assert (false);		// heexoo_test
       break;
 
     case DB_TYPE_ENUMERATION:
