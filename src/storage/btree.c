@@ -16721,7 +16721,15 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	  if (filled_match_idx)
 	    {
 	      j = attr_idx_ptr[i];
-	      found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
+	      if (j == -1)
+		{
+		  /* This attribute is not in the index (e.g., function index column's original attribute) */
+		  found = false;
+		}
+	      else
+		{
+		  found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
+		}
 	    }
 	  else
 	    {
@@ -16730,17 +16738,21 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 		{
 		  if (attr_value->attrid == btree_att_ids[j])
 		    {
-		      found = true;
-		      if (func_index_col_id != -1)
+		      if (func_index_col_id != -1 && j == func_index_col_id)
 			{
-			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
-			   * in attributes */
-			  if (j >= func_index_col_id && j + 1 < btree_num_att)
+			  /* If this is the function index column itself, we cannot read the original attribute value
+			   * from midxkey because midxkey only contains the function result, not the original attribute value.
+			   * The original attribute value must be read from the heap. */
+			  found = false;
+			  if (attr_idx_ptr)
 			    {
-			      j++;
+			      /* Store a special value to indicate this attribute is not in the index */
+			      attr_idx_ptr[i] = -1;
 			    }
+			  break;
 			}
 
+		      found = true;
 		      break;
 		    }
 		}
@@ -16753,8 +16765,12 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
 	  if (found == false)
 	    {
-	      error = ER_FAILED;
-	      goto error;
+	      /* This attribute is not in the index (e.g., function index column's original attribute).
+	       * It should be read from the heap later. */
+	      db_make_null (&attr_value->dbvalue);
+	      attr_value->state = HEAP_READ_ATTRVALUE;
+	      attr_value++;
+	      continue;
 	    }
 
 	  if (pr_clear_value (&(attr_value->dbvalue)) != NO_ERROR)
