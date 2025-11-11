@@ -71,6 +71,21 @@ namespace cubconn
 	m_workers.emplace_back (std::make_unique<connection_worker> (this, core, i++));
       }
 
+    /* pre-warm the connection thread and its queue to avoid a race condition. */
+    for (std::unique_ptr<connection_worker> &worker : m_workers)
+      {
+	for (i = 0; i < static_cast<std::size_t> (connection_worker::queue_type::TYPE_COUNT); i++)
+	  {
+	    connection_worker::message request;
+
+	    request.type = connection_worker::message_type::START;
+	    if (!worker->enqueue_and_notify (static_cast<connection_worker::queue_type> (i), std::move (request), nullptr, true))
+	      {
+		assert_release (false);
+	      }
+	  }
+      }
+
     m_max_connections = max_connections;
   }
 

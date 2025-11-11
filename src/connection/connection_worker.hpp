@@ -57,6 +57,8 @@ namespace cubconn
 
       enum class message_type
       {
+	START,
+
 	NEW_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 
@@ -236,6 +238,8 @@ namespace cubconn
       connection_stats m_stats;
 
       void push_task_into_worker_pool (context *ctx);
+      void purge_stale_contexts ();
+      void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
 
       /* --------------------------------------------------------------------------- */
       /* close connection							     */

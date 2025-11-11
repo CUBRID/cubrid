@@ -21,6 +21,7 @@
  */
 
 #include "hardware_topology.hpp"
+#include "tcp.h"
 #include "network.h"
 #include "network_interface_sr.h"
 #include "server_support.h"
@@ -157,7 +158,8 @@ namespace cubconn
 
   void connection_worker::enqueue (queue_type type, message &&item)
   {
-    assert ((item.conn ? (item.conn->fd != -1) : false) || item.type == message_type::SHUTDOWN);
+    assert ((item.conn ? (item.conn->fd != -1) : false) ||
+	    (item.type == message_type::START || item.type == message_type::SHUTDOWN));
 
 #if !defined (NDEBUG)
     item.message_id = message_counter++;
@@ -242,7 +244,10 @@ namespace cubconn
 
     if (need_wait)
       {
-	handle->cv.wait_for (lock, std::chrono::seconds (10), [&] { return handle->done; });
+	if (!handle->cv.wait_for (lock, std::chrono::seconds (10), [&] { return handle->done; }))
+	  {
+	    return false;
+	  }
       }
 
     return true;
@@ -272,6 +277,34 @@ namespace cubconn
   {
     /* push new task into worker pool */
     css_push_server_task (*ctx->m_conn);
+  }
+
+  void connection_worker::purge_stale_contexts ()
+  {
+    for (auto &ctx : m_removed_context)
+      {
+	/* release the conneciton */
+	css_free_conn (ctx->m_conn);
+
+	/* remove from the context list and delete it */
+	if (m_context.erase (ctx) == 0)
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection_worker->purge_stale_contexts: context not found\n");
+	    continue;
+	  }
+	delete ctx;
+      }
+    m_removed_context.clear ();
+  }
+
+  void connection_worker::wakeup_blocked_worker (std::shared_ptr<message_blocker> handle)
+  {
+    if (handle)
+      {
+	std::lock_guard<std::mutex> lock (handle->m);
+	handle->done = true;
+	handle->cv.notify_one ();
+      }
   }
 
   bool connection_worker::is_wait_required (context *ctx)
@@ -459,15 +492,13 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
-    if (handle)
-      {
-	std::lock_guard<std::mutex> lock (handle->m);
-	handle->done = true;
-	handle->cv.notify_one ();
-      }
+    /* wake up the thread blocked until this request is complete */
+    this->wakeup_blocked_worker (handle);
 
-    /* release the conneciton */
-    css_free_conn (ctx->m_conn);
+    /* close the socket */
+    css_shutdown_socket (ctx->m_conn->fd);
+    ctx->m_conn->fd = INVALID_SOCKET;
+
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
     m_removed_context.push_back (ctx);
@@ -510,16 +541,8 @@ retry:
 	  }
       }
 
-    for (auto &ctx : m_removed_context)
-      {
-	if (m_context.erase (ctx) == 0)
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->ha_close_all_connections: context not found\n");
-	    continue;
-	  }
-	delete ctx;
-      }
-    m_removed_context.clear ();
+    /* the actual release of the context is handled last */
+    this->purge_stale_contexts ();
   }
 
   bool connection_worker::eventfd_register (int fd)
@@ -597,7 +620,6 @@ retry:
 	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_settimer: %s\n", strerror (errno));
 	return false;
       }
-    _er_log_debug (ARG_FILE_LINE, "eventfd_settimer: index = %d, set sec = %d, nsec = %d\n", m_index, sec, nsec);
 
     return true;
   }
@@ -608,9 +630,8 @@ retry:
 
     if (m_timer_latency == latency)
       {
-	_er_log_debug (ARG_FILE_LINE, "eventfd_settimer: index = %d, skipped m_timer_latency = %d, latency = %d\n", m_index,
-		       m_timer_latency,
-		       latency);
+	er_log_conn (ARG_FILE_LINE, "eventfd_settimer: index = %d, skipped m_timer_latency = %d, latency = %d\n", m_index,
+		     m_timer_latency, latency);
 	/* no need to change */
 	return true;
       }
@@ -648,7 +669,6 @@ retry:
     /* timer fd */
     if (eventfds[1])
       {
-	_er_log_debug (ARG_FILE_LINE, "[timerfd] notified\n");
 	eventfds[1] = false;
 
 	m_has_retry = false;
@@ -906,6 +926,10 @@ retry:
 
 	switch (request.type)
 	  {
+	  case message_type::START:
+	    this->wakeup_blocked_worker (request.waiter_handle);
+	    break;
+
 	  case message_type::NEW_CLIENT:
 	    m_stats.add (stats::MQ_NEW_CLIENT, 1);
 	    if (!this->handle_message_queue_new_client (request))
@@ -970,16 +994,7 @@ retry:
       }
 
     /* the actual release of the context is handled last */
-    for (auto &ctx : m_removed_context)
-      {
-	if (m_context.erase (ctx) == 0)
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
-	    continue;
-	  }
-	delete ctx;
-      }
-    m_removed_context.clear ();
+    this->purge_stale_contexts ();
 
     return true;
   }
@@ -1435,6 +1450,9 @@ retry:
 
   void connection_worker::initialize ()
   {
+    /* set name */
+    pthread_setname_np (pthread_self (), "cub_server:conn");
+
     /* pin myself */
     cubbase::topology.pin_core (m_core);
 
@@ -1471,17 +1489,8 @@ retry:
       {
 	this->handle_message_queue_by_index (queue_type::LAZY);
 
-	/* removed context */
-	for (auto &ctx : m_removed_context)
-	  {
-	    if (m_context.erase (ctx) == 0)
-	      {
-		er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: context not found\n");
-		continue;
-	      }
-	    delete ctx;
-	  }
-	m_removed_context.clear ();
+	/* the actual release of the context is handled last */
+	this->purge_stale_contexts ();
 
 	/* 1 ms */
 	thread_sleep (1);
