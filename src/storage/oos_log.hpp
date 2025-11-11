@@ -27,77 +27,79 @@
 #include <ctime>
 #include <atomic>
 
-enum class OOSLogLevel
+namespace oos_log
 {
-  TRACE = 0,
-  DEBUG,
-  INFO,
-  WARN,
-  ERROR,
-  FATAL,
-};
+  enum class OOSLogLevel
+  {
+    TRACE = 0,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR,
+    FATAL,
+  };
 
 // atomic runtime level
-inline std::atomic<OOSLogLevel> oos_current_level{OOSLogLevel::DEBUG};
+  inline std::atomic<OOSLogLevel> oos_current_level{OOSLogLevel::DEBUG};
 
-inline void oos_log_set_level (OOSLogLevel level)
-{
-  oos_current_level.store (level, std::memory_order_relaxed);
-}
+  inline void oos_log_set_level (OOSLogLevel level)
+  {
+    oos_current_level.store (level, std::memory_order_relaxed);
+  }
 
-inline OOSLogLevel oos_log_get_level()
-{
-  return oos_current_level.load (std::memory_order_relaxed);
-}
+  inline OOSLogLevel oos_log_get_level()
+  {
+    return oos_current_level.load (std::memory_order_relaxed);
+  }
 
-inline const char *oos_log_get_level_str (OOSLogLevel level)
-{
-  switch (level)
-    {
-    case OOSLogLevel::TRACE:
-      return "TRACE";
-    case OOSLogLevel::DEBUG:
-      return "DEBUG";
-    case OOSLogLevel::INFO:
-      return "INFO";
-    case OOSLogLevel::WARN:
-      return "WARN";
-    case OOSLogLevel::ERROR:
-      return "ERROR";
-    case OOSLogLevel::FATAL:
-      return "FATAL";
-    default:
-      return "UNKNOWN";
-    }
-}
+  inline const char *oos_log_get_level_str (OOSLogLevel level)
+  {
+    switch (level)
+      {
+      case OOSLogLevel::TRACE:
+	return "TRACE";
+      case OOSLogLevel::DEBUG:
+	return "DEBUG";
+      case OOSLogLevel::INFO:
+	return "INFO";
+      case OOSLogLevel::WARN:
+	return "WARN";
+      case OOSLogLevel::ERROR:
+	return "ERROR";
+      case OOSLogLevel::FATAL:
+	return "FATAL";
+      default:
+	return "UNKNOWN";
+      }
+  }
 
-inline void oos_log_internal (OOSLogLevel level,
-			      const char *file,
-			      int line,
-			      const char *func,
-			      const char *fmt, ...)
-{
-  if (static_cast<int> (level) < static_cast<int> (oos_log_get_level()))
-    {
-      return;
-    }
+  inline void oos_log_internal (OOSLogLevel level,
+				const char *file,
+				int line,
+				const char *func,
+				const char *fmt, ...)
+  {
+    if (static_cast<int> (level) < static_cast<int> (oos_log_get_level()))
+      {
+	return;
+      }
 
-  std::time_t t = std::time (nullptr);
-  std::tm tm{};
-  localtime_r (&t, &tm);
-  char timebuf[20];
-  std::strftime (timebuf, sizeof (timebuf), "%H:%M:%S", &tm);
+    std::time_t t = std::time (nullptr);
+    std::tm tm{};
+    localtime_r (&t, &tm);
+    char timebuf[20];
+    std::strftime (timebuf, sizeof (timebuf), "%H:%M:%S", &tm);
 
-  std::fprintf (stderr, "[%s] OOS [%s](%s:%d): ",
-		timebuf, oos_log_get_level_str (level), func, line);
+    std::fprintf (stderr, "[%s] OOS [%s](%s:%d): ",
+		  timebuf, oos_log_get_level_str (level), func, line);
 
-  va_list args;
-  va_start (args, fmt);
-  std::vfprintf (stderr, fmt, args);
-  va_end (args);
-  std::fputc ('\n', stderr);
-  std::fflush (stderr);
-}
+    va_list args;
+    va_start (args, fmt);
+    std::vfprintf (stderr, fmt, args);
+    va_end (args);
+    std::fputc ('\n', stderr);
+    std::fflush (stderr);
+  }
 
 
 #if !defined (NDEBUG)
@@ -128,3 +130,5 @@ inline void oos_log_internal (OOSLogLevel level,
 #define oos_error(...)   do {} while (0)
 
 #endif
+
+} // namespace oos_log

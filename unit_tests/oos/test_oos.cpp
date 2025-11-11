@@ -28,6 +28,8 @@
 
 #include "oos_log.hpp"
 
+using namespace oos_log;
+
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
 int bridge_oos_get_max_chunk_size_within_page ();
