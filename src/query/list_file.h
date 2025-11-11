@@ -156,7 +156,8 @@ extern void qfile_clear_sort_key_info (SORTKEY_INFO * info);
 extern QFILE_LIST_ID *qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 						 SORT_LIST * sort_list, QUERY_OPTIONS option, int ls_flag,
 						 SORT_GET_FUNC * get_fn, SORT_PUT_FUNC * put_fn, SORT_CMP_FUNC * cmp_fn,
-						 void *extra_arg, int limit, bool do_close);
+						 void *extra_arg, int limit, bool do_close, int parallelism,
+						 ORDERBY_STATS * orderby_stats);
 extern QFILE_LIST_ID *qfile_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, SORT_LIST * sort_list,
 				       QUERY_OPTIONS option, bool do_close);
 

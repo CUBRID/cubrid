@@ -28,7 +28,7 @@
 
 #ident "$Id$"
 
-#include "lz4.h"
+#include "compressor.hpp"
 
 #define MAKE_ZIP_LEN(length)                                                  \
          ((length) | 0x80000000)
@@ -39,9 +39,9 @@
 #define ZIP_CHECK(length)                                                     \
          (((length) & 0x80000000) ? true : false)
 
-/* plus lz4 overhead to log_zip data size */
-#define LOG_ZIP_BUF_SIZE(length) \
-        (LZ4_compressBound(length) + sizeof(LOG_ZIP_SIZE_T))
+/* plus compression overhead to log_zip data size */
+#define LOG_ZIP_BUF_SIZE(type, length) \
+        (cubcompress::bound<cubcompress::type> (length) + sizeof (LOG_ZIP_SIZE_T))
 
 #define LOG_ZIP_SIZE_T int
 

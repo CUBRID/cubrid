@@ -11546,7 +11546,6 @@ qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg)
       seg_idx = bitset_first_member (&temp_segs_set);
       if (seg_idx == -1)
 	{
-	  assert (false);
 	  continue;
 	}
 
