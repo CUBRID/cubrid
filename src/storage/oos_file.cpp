@@ -94,7 +94,7 @@ oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
   err = file_create_with_npages (thread_p, FILE_OOS, 1, &des, &oos_vfid);
   if (err != NO_ERROR)
     {
-      oos_error ("oos_create: file_create_with_npages failed");
+      oos_error ("file_create_with_npages failed");
       return err;
     }
   return NO_ERROR;
@@ -204,7 +204,7 @@ static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
       if (err != NO_ERROR)
 	{
 	  // TODO: cleanup previously inserted chunks
-	  oos_error ("could not insert chunk index=%d of length %d.\n", i, chunk_recdes.length);
+	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
 	  break;
 	}
 
@@ -234,14 +234,14 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   err = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
   if (err != NO_ERROR)
     {
-      oos_error ("oos_insert_within_page: oos_find_best_page failed\n");
+      oos_error ("oos_insert_within_page: oos_find_best_page failed");
       return err;
     }
 
   PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
-      oos_error ("oos_insert_within_page: pgbuf_fix failed for volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+      oos_error ("oos_insert_within_page: pgbuf_fix failed for volid=%d, pageid=%d", vpid.volid, vpid.pageid);
       return ER_FAILED;
     }
   auto_unfixed_page_ptr page_ptr {raw_ptr, page_auto_unfix {thread_p} };
@@ -252,7 +252,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     err = oos_prepend_record_header (recdes, header, oos_rec);
     if (err != NO_ERROR)
       {
-	oos_error ("oos_insert_within_page: oos_prepend_record_header failed\n");
+	oos_error ("oos_insert_within_page: oos_prepend_record_header failed");
 	return err;
       }
     // oos_prepend_record_header allocates data area for oos_rec
@@ -263,7 +263,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     int sp_status = spage_insert (thread_p, page_ptr.get(), &oos_rec, &slotid);
     if (sp_status != SP_SUCCESS)
       {
-	oos_error ("oos_insert_within_page: spage_insert failed with status %d\n", sp_status);
+	oos_error ("oos_insert_within_page: spage_insert failed with status %d", sp_status);
 	return ER_FAILED;
       }
     assert (slotid != NULL_SLOTID);
@@ -274,12 +274,12 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       }
     catch (const std::bad_alloc &)
       {
-	oos_error ("error: memory allocation failed while inserting into map\n");
+	oos_error ("error: memory allocation failed while inserting into map");
 	return ER_FAILED;
       }
     catch (const std::exception &e)
       {
-	oos_error ("error: exception while inserting into map: %s\n", e.what());
+	oos_error ("error: exception while inserting into map: %s", e.what());
 	return ER_FAILED;
       }
 
@@ -302,7 +302,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, 
   assert (first_chunk_header.chunk_index == 0);
 
   assert (total_size > oos_get_max_chunk_size_within_page ());
-  oos_trace ("total_size=%d\n", total_size);
+  oos_trace ("total_size=%d", total_size);
 
   err = recdes_allocate_data_area (&recdes, total_size);
 
@@ -354,7 +354,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
   PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
-      oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d\n", volid, pageid);
+      oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
       return ER_FAILED;
     }
   auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
@@ -363,7 +363,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
   SCAN_CODE code = spage_get_record (thread_p, page_ptr.get(), slotid, &recdes_with_oos_header, PEEK);
   if (code != S_SUCCESS)
     {
-      oos_error ("oos_read_within_page: spage_get_record failed for volid=%d, pageid=%d, slotid=%d\n",
+      oos_error ("oos_read_within_page: spage_get_record failed for volid=%d, pageid=%d, slotid=%d",
 		 volid, pageid, slotid);
       return ER_FAILED;
     }
@@ -387,7 +387,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
 int
 oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &recdes)
 {
-  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, oid={pageid=%d, slotid=%d, volid=%d}\n",
+  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, oid={pageid=%d, slotid=%d, volid=%d}",
 	     oos_vfid.fileid, oos_vfid.volid, oid.pageid, oid.slotid, oid.volid);
 
   int err = NO_ERROR;
@@ -398,7 +398,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
   err = oos_read_within_page (thread_p, oos_vfid, oid, first_chunk_recdes, first_chunk_header);
   if (err != NO_ERROR)
     {
-      oos_error ("oos_read: oos_read_within_page failed\n");
+      oos_error ("oos_read: oos_read_within_page failed");
       return err;
     }
 
@@ -409,7 +409,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
       recdes_free_data_area (&first_chunk_recdes);
       if (err != NO_ERROR)
 	{
-	  oos_error ("oos_read: oos_read_across_pages failed\n");
+	  oos_error ("oos_read: oos_read_across_pages failed");
 	  return err;
 	}
     }
@@ -417,7 +417,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
     {
       recdes = first_chunk_recdes;
     }
-  oos_trace ("oos_read: read completed, total_size=%d\n", first_chunk_header.total_size);
+  oos_trace ("oos_read: read completed, total_size=%d", first_chunk_header.total_size);
 
   return NO_ERROR;
 }
@@ -448,10 +448,10 @@ static int oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, nullptr);
   if (err)
     {
-      oos_error ("oos file_alloc failed\n");
+      oos_error ("oos file_alloc failed");
       return err;
     }
-  oos_trace ("oos_file_alloc_new: allocated new page {volid=%d, pageid=%d}\n",
+  oos_trace ("oos_file_alloc_new: allocated new page {volid=%d, pageid=%d}",
 	     vpid_out.volid, vpid_out.pageid);
 
   return NO_ERROR;
@@ -488,18 +488,18 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
   auto [pageid, volid] = recently_inserted_oos_vpid;
   int freespace = spage_get_free_space (thread_p, page_ptr.get());
-  oos_trace ("recently inserted page {volid=%d, pageid=%d} has freespace=%d\n",
+  oos_trace ("recently inserted page {volid=%d, pageid=%d} has freespace=%d",
 	     volid, pageid, freespace);
 
   if (freespace >= rec_length + (int)sizeof (SPAGE_SLOT))
     {
-      oos_trace ("reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d\n",
+      oos_trace ("reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d",
 		 recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
       vpid = recently_inserted_oos_vpid;
       return NO_ERROR;
     }
 
-  oos_trace ("recently inserted page {volid=%d, pageid=%d} does not have enough space\n",
+  oos_trace ("recently inserted page {volid=%d, pageid=%d} does not have enough space",
 	     recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid);
 
   return oos_file_alloc_new (thread_p, oos_vfid, vpid);
