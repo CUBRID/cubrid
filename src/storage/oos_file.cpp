@@ -203,9 +203,10 @@ static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
       err = oos_insert_within_page (thread_p, oos_vfid, chunk_recdes, header, current_chunk_oid);
       if (err != NO_ERROR)
 	{
-	  // TODO: cleanup previously inserted chunks
 	  oos_error ("could not insert chunk index=%d of length %d.", i, chunk_recdes.length);
-	  break;
+	  // TODO: free partially inserted chunks.
+	  // Currently, already inserted chunks to slotted pages will remain as garbage.
+	  return err;
 	}
 
       next_chunk_oid = current_chunk_oid;
@@ -214,7 +215,7 @@ static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
 
   // update the out parameter 'oid' to give access to the first slot
   oid = next_chunk_oid;
-  return err;
+  return NO_ERROR;
 }
 
 
@@ -417,7 +418,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
     {
       recdes = first_chunk_recdes;
     }
-  oos_trace ("oos_read: read completed, total_size=%d", first_chunk_header.total_size);
+  oos_trace ("read completed, total_size=%d", first_chunk_header.total_size);
 
   return NO_ERROR;
 }
@@ -451,7 +452,7 @@ static int oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       oos_error ("oos file_alloc failed");
       return err;
     }
-  oos_trace ("oos_file_alloc_new: allocated new page {volid=%d, pageid=%d}",
+  oos_trace ("allocated new page {volid=%d, pageid=%d}",
 	     vpid_out.volid, vpid_out.pageid);
 
   return NO_ERROR;
