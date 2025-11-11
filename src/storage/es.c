@@ -348,7 +348,7 @@ es_delete_file (const char *uri)
  *
  * return: error code
  * in_uri(in):
- * metapath(in) : meta name combined with in_uri
+ * metaname(in) : meta name combined with in_uri
  * out_uri(out):
  */
 int
@@ -394,7 +394,61 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
       ret = es_posix_copy_file (ES_POSIX_PATH_POS (in_uri), metaname, ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: es_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #else /* CS_MODE */
-      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), (char *) metaname, ES_POSIX_PATH_POS (out_uri), NULL);
+      ret = xes_posix_copy_file (ES_POSIX_PATH_POS (in_uri), (char *) metaname, ES_POSIX_PATH_POS (out_uri));
+      es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, in_uri);
+      return ER_ES_INVALID_PATH;
+    }
+
+  return ret;
+}
+
+/*
+ * es_copy_file_with_suffix - Similar to es_copy_file(), but handles only the ES_POSIX type and performs file copy
+                              while adding a suffix to the destination path.
+ *
+ * return: error code
+ * in_uri(in): path of the original source file
+ * metaname(in) : mataname was used as a keyword to identify tables, but it is no longer used. TODO: remove mataname
+ * out_uri(out): new path of the copied file
+ * suffix(in): suffix that will be added to the destination path when copying
+ */
+int
+es_copy_file_with_suffix (const char *in_uri, const char *metaname, char *out_uri, const char *suffix)
+{
+  ES_TYPE es_type;
+  int ret = NO_ERROR;
+
+  assert (in_uri != NULL);
+  assert (out_uri != NULL);
+  assert (metaname != NULL);
+
+  if (es_initialized_type == ES_NONE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+      return ER_ES_NO_LOB_PATH;
+    }
+
+  es_type = es_get_type (in_uri);
+  if (es_type != es_initialized_type)
+    {
+      /* copy file operation is allowed only between same types */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_COPY_TO_DIFFERENT_TYPE, 2, es_get_type_string (es_type),
+	      es_get_type_string (es_initialized_type));
+      return ER_ES_COPY_TO_DIFFERENT_TYPE;
+    }
+
+  if (es_type == ES_POSIX)
+    {
+      memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      ret =
+	xes_posix_copy_file_with_suffix (ES_POSIX_PATH_POS (in_uri), (char *) metaname, ES_POSIX_PATH_POS (out_uri),
+					 suffix);
       es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
 #endif /* SERVER_MODE || SA_MODE */
     }
