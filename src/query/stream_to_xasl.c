@@ -6325,7 +6325,7 @@ error:
 static char *
 stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_TYPE * analytic_eval)
 {
-  int offset;
+  int offset, tmp_i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -6365,6 +6365,10 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
 	  goto error;
 	}
     }
+
+  /* is_sorted */
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic_eval->is_sorted = (bool) tmp_i;
 
   return ptr;
 

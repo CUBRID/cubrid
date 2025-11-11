@@ -15558,6 +15558,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  /* error was already set */
 		  return NULL;
 		}
+
+	      // if(eval->sort_list == NULL)
 	    }
 
 	  /* this is the case of a perfect match where both children can be evaluated together */
@@ -15880,52 +15882,6 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, PT_NOD
 	  level = af_meta[af_count].key_size;
 	}
     }
-
-
-//   /* structure initialization */
-//   ordby_meta->level = 0;
-//   ordby_meta->key_size = 0;
-//   ordby_meta->links_count = 0;
-//   ordby_meta->demoted = false;
-//   ordby_meta->children[0] = NULL;
-//   ordby_meta->children[1] = NULL;
-//   ordby_meta->source = NULL;
-//   ordby_meta->part_size = 0; // 인덱스 선행 컬럼 개수로 설정해야 한다...
-
-//   PT_NODE *list;
-//   int idx;
-//   /* build index and structure */
-//   for (list = orderby; list != NULL; list = list->next)
-//     {
-//       /* search for sort list in index */
-//       idx = -1;
-//       for (i = 0; i < sc_count; i++)
-//      {
-//        if (SORT_SPEC_EQ (sc_index[i], list))
-//          {
-//            /* found */
-//            idx = i;
-//            break;
-//          }
-//      }
-
-//       /* add to index if not present -- 여기선 아님 */ 
-//       if (idx == -1)
-//      {
-//        break;
-//      }
-
-//       /* register */
-//       ordby_meta->key[ordby_meta->key_size] = idx;
-//       ordby_meta->key_size++;
-//       ordby_meta->level++;
-
-//       if (ordby_meta->key_size >= ANALYTIC_OPT_MAX_FUNCTIONS)
-//      {
-//        /* no more space in  index */
-//        // maybe impossible
-//      }
-//     }
 
   /* group metadomains with zero-length sort keys */
   do
@@ -16680,6 +16636,52 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* optimize analytic function list */
 	  xasl->proc.buildlist.a_eval_list =
 	    pt_optimize_analytic_list (parser, &analytic_info, select_node->info.query.order_by, &no_optimization_done);
+
+	  ANALYTIC_EVAL_TYPE *eval;
+	  QO_NODE_INDEX_ENTRY *ni_entry;
+	  QO_INDEX_ENTRY *index_entry;
+	  int col_idx;
+	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
+	    {
+	      SORT_LIST *sort_list = eval->sort_list;
+
+	      if (qo_plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN)	// 따로 분리해서 위로 ...
+		{
+		  ni_entry = qo_plan->plan_un.scan.index;
+		  index_entry = ni_entry->head;
+		  if (index_entry != NULL && index_entry->constraints != NULL)
+		    {
+		      int num_columns = index_entry->col_num;
+		      col_idx = 0;
+
+		      while (sort_list != NULL && col_idx < num_columns)
+			{
+			  PT_NODE *node = pt_get_node_from_list (select_list_ex, sort_list->pos_descr.pos_no);
+			  if (node != NULL && (node->node_type == PT_NAME || node->node_type == PT_DOT_))	// 함수인덱스는 일단 제외
+			    {
+			      const char *col_name = node->info.name.original;
+			      const char *index_col_name = index_entry->constraints->attributes[col_idx]->header.name;
+
+			      if (!pt_str_compare (col_name, index_col_name, CASE_INSENSITIVE) == 0
+				  || !(sort_list->s_order == S_DESC && index_entry->constraints->asc_desc[col_idx] == 1)
+				  || !(sort_list->s_order == S_ASC && index_entry->constraints->asc_desc[col_idx] == 0))
+				{
+				  eval->is_sorted = false;
+				  break;
+				}
+			    }
+
+			  sort_list = sort_list->next;
+			  col_idx++;
+			}
+		    }
+		}
+
+	      if (sort_list == NULL)	// 인덱스와 일치하거나, over() 절이 비어있는 경우
+		{
+		  eval->is_sorted = true;
+		}
+	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
 	  if (no_optimization_done == true)

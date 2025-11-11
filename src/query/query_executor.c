@@ -1203,9 +1203,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  buildlist = &xasl->proc.buildlist;
 	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
 	    {
-	      // TODO: ~~where, order by,~~ 인덱스 사용 여부 확인하여 분석함수 결과 미리 계산하는 로직 추가
-
-	      if (a_eval_list->sort_list == NULL)	// over 절 내에 partition by, order by 절이 없는 경우
+	      if (a_eval_list->is_sorted)
 		{
 		  if (fetch_val_list
 		      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl,
