@@ -21,7 +21,6 @@
 #include "dbtype_def.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
-#include "oos_util.hpp"
 
 struct oos_record_header
 {
