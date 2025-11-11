@@ -90,15 +90,15 @@ int
 oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
   FILE_DESCRIPTORS des; // unused
-  int err = file_create_with_npages (thread_p, FILE_OOS, 1, &des, &oos_vfid);
+  int err = NO_ERROR;
+  err = file_create_with_npages (thread_p, FILE_OOS, 1, &des, &oos_vfid);
   if (err != NO_ERROR)
     {
+      oos_error ("oos_create: file_create_with_npages failed");
       return err;
     }
-
-  return 0;
+  return NO_ERROR;
 }
-
 
 int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
