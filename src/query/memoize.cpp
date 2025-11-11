@@ -908,8 +908,12 @@ namespace memoize
 	      }
 
 	    assert (m_last_key != nullptr);
-	    m_key_value_map.insert ({get_key(), nullptr});
+	    key *k = get_key();
+
+	    m_key_sz += k->get_size();
 	    m_hash_sz += hash_entry_sz;
+
+	    m_key_value_map.insert ({k, nullptr});
 	  }
 
 	return result_code::SUCCESS;
