@@ -145,7 +145,7 @@ static void oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out
 
 int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
-  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, recdes.length=%d\n",
+  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, recdes.length=%d",
 	     oos_vfid.fileid, oos_vfid.volid, recdes.length);
   int err = NO_ERROR;
 
@@ -353,6 +353,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
   PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
+      oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d\n", volid, pageid);
       return ER_FAILED;
     }
   auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
@@ -361,6 +362,8 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
   SCAN_CODE code = spage_get_record (thread_p, page_ptr.get(), slotid, &recdes_with_oos_header, PEEK);
   if (code != S_SUCCESS)
     {
+      oos_error ("oos_read_within_page: spage_get_record failed for volid=%d, pageid=%d, slotid=%d\n",
+		 volid, pageid, slotid);
       return ER_FAILED;
     }
 
@@ -394,6 +397,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
   err = oos_read_within_page (thread_p, oos_vfid, oid, first_chunk_recdes, first_chunk_header);
   if (err != NO_ERROR)
     {
+      oos_error ("oos_read: oos_read_within_page failed\n");
       return err;
     }
 
@@ -402,6 +406,11 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
     {
       err = oos_read_across_pages (thread_p, oos_vfid, oid, first_chunk_header, recdes);
       recdes_free_data_area (&first_chunk_recdes);
+      if (err != NO_ERROR)
+	{
+	  oos_error ("oos_read: oos_read_across_pages failed\n");
+	  return err;
+	}
     }
   else
     {
