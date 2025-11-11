@@ -1331,9 +1331,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  if (!HA_DISABLED () && !check_ha_repl_fk_ref_all_replicated (vclass))
+  error = check_ha_repl_constraint (vclass);
+  if (error != NO_ERROR)
     {
-      error = ER_HA_FK_CONSTRAINT_VIOLATION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return error;
     }
