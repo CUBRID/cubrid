@@ -1509,7 +1509,7 @@ const PR_TYPE tp_Clob = {
   mr_cmpval_clob
 };
 
-const PR_TYPE *tp_Type_Clob = &tp_Clob;
+const PR_TYPE *tp_Type_clob = &tp_Clob;
 
 // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 const PR_TYPE tp_Blob = {
@@ -1535,7 +1535,7 @@ const PR_TYPE tp_Blob = {
   mr_cmpval_blob
 };
 
-const PR_TYPE *tp_Type_Blob = &tp_Blob;
+const PR_TYPE *tp_Type_blob = &tp_Blob;
 
 const PR_TYPE tp_Variable = {
   "*variable*", DB_TYPE_VARIABLE, 1, sizeof (DB_VALUE), 0, 4,

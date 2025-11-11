@@ -276,12 +276,12 @@ TP_DOMAIN tp_Bfile_domain = { NULL, NULL, &tp_Bfile, DOMAIN_INIT };
 TP_DOMAIN tp_Cfile_domain = { NULL, NULL, &tp_Cfile, DOMAIN_INIT };
 
 // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_VarBit, DB_MAX_VARBIT_PRECISION, 0,
+TP_DOMAIN tp_Blob_domain = { NULL, NULL, &tp_Blob, DB_MAX_LOB_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_RAW_BITS, 0)
 };
 
 // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_String, DB_MAX_VARCHAR_PRECISION, 0,
+TP_DOMAIN tp_Clob_domain = { NULL, NULL, &tp_Clob, DB_MAX_LOB_PRECISION, 0,
   DOMAIN_INIT2 (INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY)
 };
 
@@ -521,6 +521,10 @@ static TP_DOMAIN *tp_Sequence_conv[] = {
   &tp_Sequence_domain, &tp_Multiset_domain, NULL
 };
 
+static TP_DOMAIN *tp_Lob_conv[] = {
+  &tp_Blob_domain, &tp_Clob_domain, NULL
+};
+
 /*
  * tp_Domain_conversion_matrix
  *    This is the matrix of conversion rules.  It is used primarily
@@ -563,8 +567,8 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_DATETIME */
   NULL,				/* DB_TYPE_BFILE */
   NULL,				/* DB_TYPE_CFILE */
-  tp_VarBit_conv,		/* DB_TYPE_BLOB */// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-  tp_String_conv,		/* DB_TYPE_CLOB */// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+  tp_Lob_conv,			/* DB_TYPE_BLOB */
+  tp_Lob_conv,			/* DB_TYPE_CLOB */
   NULL,				/* DB_TYPE_ENUMERATION */
   NULL,				/* DB_TYPE_TIMESTAMPTZ */
   NULL,				/* DB_TYPE_TIMESTAMPLTZ */
@@ -715,12 +719,14 @@ tp_apply_sys_charset (void)
   tp_NChar_domain.codeset = LANG_SYS_CODESET;
   tp_VarNChar_domain.codeset = LANG_SYS_CODESET;
   tp_Enumeration_domain.codeset = LANG_SYS_CODESET;
+  tp_Clob_domain.codeset = LANG_SYS_CODESET;
 
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
   tp_Char_domain.collation_id = LANG_SYS_COLLATION;
   tp_NChar_domain.collation_id = LANG_SYS_COLLATION;
   tp_VarNChar_domain.collation_id = LANG_SYS_COLLATION;
   tp_Enumeration_domain.collation_id = LANG_SYS_COLLATION;
+  tp_Clob_domain.collation_id = LANG_SYS_COLLATION;
 }
 
 /*
@@ -1040,6 +1046,11 @@ tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
     {
       domain->codeset = INTL_CODESET_RAW_BITS;
       domain->collation_id = 0;
+    }
+  else if (TP_IS_LOB_TYPE (type_id))
+    {
+      domain->codeset = LANG_SYS_CODESET;
+      domain->collation_id = LANG_SYS_COLLATION;
     }
   else
     {
