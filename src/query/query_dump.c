@@ -3258,17 +3258,10 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
   if (xasl_p->memoize_storage)
     {
       memoize = json_object ();
+      json_object_set_new (memoize, "time", json_integer (TO_MSEC (xasl_p->memoize_storage->m_elapsed_time)));
       json_object_set_new (memoize, "hit", json_integer (xasl_p->memoize_storage->hit));
       json_object_set_new (memoize, "miss", json_integer (xasl_p->memoize_storage->miss));
       json_object_set_new (memoize, "size", json_integer (xasl_p->memoize_storage->get_current_size () / 1024));
-      if (xasl_p->memoize_storage->is_disabled ())
-	{
-	  json_object_set_new (memoize, "status", json_string ("disabled"));
-	}
-      else
-	{
-	  json_object_set_new (memoize, "status", json_string ("enabled"));
-	}
       json_object_set_new (proc, "MEMOIZE", memoize);
     }
 
@@ -3749,9 +3742,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   if (xasl_p->memoize_storage)
     {
       fprintf (fp, "%*c", indent, ' ');
-      fprintf (fp, "MEMOIZE (size: %luKB, hit: %lu, miss: %lu, enabled: %s)\n",
-	       xasl_p->memoize_storage->get_current_size () / 1024, xasl_p->memoize_storage->hit,
-	       xasl_p->memoize_storage->miss, xasl_p->memoize_storage->is_disabled ()? "false" : "true");
+      fprintf (fp, "MEMOIZE (time: %d, hit: %lu, miss: %lu, size: %luKB)\n",
+	       TO_MSEC (xasl_p->memoize_storage->m_elapsed_time), xasl_p->memoize_storage->hit,
+	       xasl_p->memoize_storage->miss, xasl_p->memoize_storage->get_current_size () / 1024);
     }
 
   qdump_print_stats_text (fp, xasl_p->scan_ptr, indent);

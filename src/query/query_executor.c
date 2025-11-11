@@ -8081,7 +8081,7 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
   int memoize_err_code;
   SCAN_CODE xs_scan;
   bool is_memoize_ended = false;
-  memoize_err_code = memoize_get (xasl, is_memoize_succeed, &is_memoize_ended);
+  memoize_err_code = memoize_get (thread_p, xasl, is_memoize_succeed, &is_memoize_ended);
   if (memoize_err_code == ER_FAILED)
     {
       return S_ERROR;
@@ -8133,7 +8133,7 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
 		    {
 		      xasl->next_scan_on = false;
 
-		      memoize_err_code = memoize_get (xasl, is_memoize_succeed, &is_memoize_ended);
+		      memoize_err_code = memoize_get (thread_p, xasl, is_memoize_succeed, &is_memoize_ended);
 
 		      if (memoize_err_code == ER_FAILED)
 			{
@@ -8236,7 +8236,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
       if (sc_scan == S_END && xasl->memoize_storage)
 	{
-	  memoize_err_code = memoize_put_nullptr (xasl, &memoize_put_success);
+	  memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
 	  if (memoize_err_code == ER_FAILED)
 	    {
 	      return S_ERROR;
@@ -8362,7 +8362,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	{
 	  if (xasl->memoize_storage)
 	    {
-	      memoize_err_code = memoize_put (xasl, &memoize_put_success);
+	      memoize_err_code = memoize_put (thread_p, xasl, &memoize_put_success);
 	      if (memoize_err_code == ER_FAILED)
 		{
 		  return S_ERROR;

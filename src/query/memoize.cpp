@@ -671,7 +671,8 @@ namespace memoize
     size_t hash = 0;
     for (DB_VALUE dbval : k->m_values)
       {
-	hash ^= mht_valhash (&dbval, UINT_MAX);
+	hash = ROTL32 (hash, 13);
+	hash ^= mht_get_hash_number (UINT_MAX, &dbval);
       }
     return hash;
   }
@@ -762,6 +763,9 @@ namespace memoize
     , current_key_joined (false)
   {
     m_current_value_list.reserve (value_cnt);
+    m_elapsed_time = {0, 0};
+    m_start_tick.tv = {0, 0};
+    m_start_tick.tc = 0;
   }
 
   storage::~storage()
@@ -786,6 +790,20 @@ namespace memoize
 
     m_keyptr_src.clear();
     m_key_value_map.clear();
+  }
+
+  void storage::start_timer()
+  {
+    tsc_getticks (&m_start_tick);
+  }
+
+  void storage::stop_timer()
+  {
+    TSC_TICKS end_tick;
+    TSCTIMEVAL tv_diff;
+    tsc_getticks (&end_tick);
+    tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
+    TSC_ADD_TIMEVAL (m_elapsed_time, tv_diff);
   }
 
   void storage::init (pvector<DB_VALUE *> &arg_key_ptr_src)
@@ -993,6 +1011,10 @@ extern "C"
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
   {
     UINT64 storage_size; /* system parameter need*/
+    if (!XASL_IS_FLAGED (xasl, XASL_MEMOIZE_STORAGE))
+      {
+	return NO_ERROR;
+      }
     storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
 
     if (storage_size == 0)
@@ -1020,9 +1042,13 @@ extern "C"
       }
   }
 
-  int memoize_get (xasl_node *xasl, bool *success, bool *is_ended)
+  int memoize_get (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success, bool *is_ended)
   {
     result_code ret;
+    if (thread_p->on_trace)
+      {
+	xasl->memoize_storage->start_timer();
+      }
     *is_ended = false;
     assert (xasl->memoize_storage != nullptr);
     ret = xasl->memoize_storage->get ();
@@ -1031,42 +1057,58 @@ extern "C"
       {
       case result_code::SUCCESS:
 	*success = true;
-	return NO_ERROR;
 	break;
 
       case result_code::ENDED:
 	*success = true;
 	*is_ended = true;
-	return NO_ERROR;
 	break;
 
       case result_code::NOT_FOUND:
 	*success = false;
-	return NO_ERROR;
 	break;
 
       case result_code::FULL:
 	*success = false;
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	return NO_ERROR;
 	break;
 
       case result_code::ERROR:
 	*success = false;
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	return ER_FAILED;
 	break;
 
       default:
 	assert (false);
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	return ER_FAILED;
 	break;
       }
-
+    if (thread_p->on_trace)
+      {
+	xasl->memoize_storage->stop_timer();
+      }
     return NO_ERROR;
   }
 
-  int memoize_put (xasl_node *xasl, bool *success)
+  int memoize_put (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success)
   {
+    if (thread_p->on_trace)
+      {
+	xasl->memoize_storage->start_timer();
+      }
     *success = true;
     assert (xasl->memoize_storage != nullptr);
 
@@ -1076,55 +1118,78 @@ extern "C"
       {
       case result_code::SUCCESS:
 	*success = true;
-	return NO_ERROR;
 	break;
 
       case result_code::FULL:
 	*success = false;
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
-	return NO_ERROR;
 	break;
 
       case result_code::ERROR:
 	*success = false;
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	return ER_FAILED;
 	break;
 
       default:
 	assert (false);
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	return ER_FAILED;
 	break;
       }
+    if (thread_p->on_trace)
+      {
+	xasl->memoize_storage->stop_timer();
+      }
     return NO_ERROR;
   }
-  int memoize_put_nullptr (xasl_node *xasl, bool *success)
+  int memoize_put_nullptr (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success)
   {
+    if (thread_p->on_trace)
+      {
+	xasl->memoize_storage->start_timer();
+      }
     *success = true;
     result_code ret = xasl->memoize_storage->put_nullptr();
     switch (ret)
       {
       case result_code::SUCCESS:
 	*success = true;
-	return NO_ERROR;
 	break;
 
       case result_code::FULL:
 	*success = false;
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
-	return NO_ERROR;
 	break;
 
       case result_code::ERROR:
 	*success = false;
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	return ER_FAILED;
 	break;
 
       default:
 	assert (false);
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	return ER_FAILED;
 	break;
       }
-
+    if (thread_p->on_trace)
+      {
+	xasl->memoize_storage->stop_timer();
+      }
     return NO_ERROR;
   }
 }

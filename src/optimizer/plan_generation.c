@@ -38,6 +38,8 @@
 #include "xasl_generation.h"
 #include "xasl_predicate.hpp"
 
+#define MEMOIZE_NDV_RATIO_THRESHOLD (double) 0.5
+
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
 static XASL_NODE *make_scan_proc (QO_ENV * env);
@@ -1935,6 +1937,9 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   BITSET fake_subqueries;
   BITSET predset;
   BITSET taj_terms;
+  double join_outer_table_terms_selectivity = 1.0;
+  BITSET temp_segs_set;
+  QO_SEGMENT *seg;
 
   if (env == NULL)
     {
@@ -1951,6 +1956,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   bitset_init (&fake_subqueries, env);
   bitset_init (&predset, env);
   bitset_init (&taj_terms, env);
+  bitset_init (&temp_segs_set, env);
 
   /* set subqueries */
   bitset_assign (&new_subqueries, subqueries);
@@ -2096,6 +2102,18 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  bitset_union (&fake_subqueries, &(QO_TERM_SUBQUERIES (term)));
 		}
+	      bitset_assign (&temp_segs_set, &QO_TERM_SEGS (term));
+
+	      for (i = bitset_iterate (&temp_segs_set, &bi); i != -1; i = bitset_next_member (&bi))
+		{
+		  seg = QO_ENV_SEG (env, i);
+		  if ((seg != NULL && seg->head != NULL && seg->info != NULL && outer != NULL
+		       && outer->plan_un.scan.node != NULL) && (seg->head->idx == outer->plan_un.scan.node->idx))
+		    {
+		      join_outer_table_terms_selectivity *=
+			(double) seg->info->ndv / (double) outer->plan_un.scan.node->ncard;
+		    }
+		}
 	    }
 
 	  bitset_difference (&new_subqueries, &fake_subqueries);
@@ -2172,6 +2190,10 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  mark_access_as_outer_join (parser, scan);
 		}
+	    }
+	  if (join_outer_table_terms_selectivity < MEMOIZE_NDV_RATIO_THRESHOLD)
+	    {
+	      XASL_SET_FLAG (scan, XASL_MEMOIZE_STORAGE);
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
 	  make_outer_instnum (env, outer, plan);

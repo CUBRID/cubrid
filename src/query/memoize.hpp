@@ -23,6 +23,7 @@
 #include "memory_private_allocator.hpp"
 #include "xasl.h"
 #include "xasl_predicate.hpp"
+#include "tsc_timer.h"
 #include <unordered_map>
 #include "fixed_size_allocator.hpp"
 
@@ -91,6 +92,8 @@ namespace memoize
       void init (pvector<DB_VALUE *> &key_ptr_src);
       result_code get ();
       result_code put();
+      void start_timer();
+      void stop_timer();
       result_code put_nullptr();
       void set_key_changed()
       {
@@ -104,6 +107,7 @@ namespace memoize
       }
       size_t hit;
       size_t miss;
+      struct timeval m_elapsed_time;
     private:
       key *get_key();
       value *get_value();
@@ -132,6 +136,7 @@ namespace memoize
       bool has_range;
       bool key_changed;
       bool current_key_joined;
+      TSC_TICKS m_start_tick;
   };
 }
 
@@ -139,9 +144,9 @@ extern "C"
 {
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl);
   void clear_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl);
-  int memoize_get (xasl_node *xasl, bool *success, bool *is_ended);
-  int memoize_put (xasl_node *xasl, bool *success);
-  int memoize_put_nullptr (xasl_node *xasl, bool *success);
+  int memoize_get (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success, bool *is_ended);
+  int memoize_put (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success);
+  int memoize_put_nullptr (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success);
 }
 
 #endif /* _MEMOIZE_HPP_ */
