@@ -476,6 +476,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
   recently_inserted_oos_vpid = it->second;
   if (recently_inserted_oos_vpid.pageid == NULL_PAGEID)
     {
+      assert (false); // should not happen
       return oos_file_alloc_new (thread_p, oos_vfid, vpid);
     }
 
@@ -484,6 +485,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 				PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
+      assert (false); // should not happen
       return oos_file_alloc_new (thread_p, oos_vfid, vpid);
     }
   auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
