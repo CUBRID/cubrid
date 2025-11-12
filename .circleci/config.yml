@@ -125,7 +125,7 @@ jobs:
                             | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
                           echo "[debug] total testcases: \$(wc -l tc.list)"
                           echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir/\$TEST_SUITE/_* -maxdepth 0 -type d | grep -v -F -f tc.list | xargs -r rm -rf
+                          find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
                         fi
 
                         echo "[debug] Run the tests"
