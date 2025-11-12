@@ -425,7 +425,7 @@ oos_read (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid, RECDES &
 }
 
 
-int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
+static int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
 {
   auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
   if (it != oos_recently_inserted_oos_vpid_map.end ())
