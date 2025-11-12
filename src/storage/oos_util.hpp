@@ -25,23 +25,28 @@
 #include "thread_compat.hpp"
 #include "page_buffer.h"
 
-// ****************************************************************************
-// RAII helpers
-//
-// these are better to be in a common header, but for now they are only used here
-// ****************************************************************************
-
-struct page_auto_unfix
+namespace oos_utils
 {
-  THREAD_ENTRY *thread_p;
-  void operator() (PAGE_PTR p) const noexcept
-  {
-    if (p)
-      {
-	pgbuf_unfix (thread_p, p);
-      }
-  }
-};
-using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
-using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
+  // ****************************************************************************
+  // RAII helpers
+  //
+  // - auto_unfixed_page_ptr: automatically unfixed page when goes out of scope
+  // - auto_freed_recdes_ptr: automatically frees RECDES data area when goes out of scope
+  //
+  // these are better to be in a common header, but for now they are only used here
+  // ****************************************************************************
 
+  struct page_auto_unfix
+  {
+    THREAD_ENTRY *thread_p;
+    void operator() (PAGE_PTR p) const noexcept
+    {
+      if (p)
+	{
+	  pgbuf_unfix (thread_p, p);
+	}
+    }
+  };
+  using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
+  using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
+}

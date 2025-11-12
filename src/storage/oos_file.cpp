@@ -251,7 +251,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", vpid.volid, vpid.pageid);
       return ER_FAILED;
     }
-  auto_unfixed_page_ptr page_ptr {raw_ptr, page_auto_unfix {thread_p} };
+  oos_utils::auto_unfixed_page_ptr page_ptr {raw_ptr, oos_utils::page_auto_unfix {thread_p} };
 
 
   RECDES oos_rec{};
@@ -264,7 +264,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       }
     // oos_prepend_record_header allocates data area for oos_rec
     // therefore, we need to free it after use
-    auto_freed_recdes_ptr defer_free_oos_rec (&oos_rec, recdes_free_data_area);
+    oos_utils::auto_freed_recdes_ptr defer_free_oos_rec (&oos_rec, recdes_free_data_area);
 
     PGSLOTID slotid = NULL_SLOTID;
     int sp_status = spage_insert (thread_p, page_ptr.get(), &oos_rec, &slotid);
@@ -294,7 +294,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     oid.slotid = slotid;
     oid.volid = vpid.volid;
   }
-  assert (oos_rec.data == nullptr); // should be freed by auto_freed_recdes_ptr
+  assert (oos_rec.data == nullptr); // should be freed by oos_utils::auto_freed_recdes_ptr
 
   return NO_ERROR;
 }
@@ -339,7 +339,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 	assert (idx == header.chunk_index);
 	assert (total_size == header.total_size);
 
-	auto_freed_recdes_ptr defer_free_chunk_recdes (&chunk_recdes, recdes_free_data_area);
+	oos_utils::auto_freed_recdes_ptr defer_free_chunk_recdes (&chunk_recdes, recdes_free_data_area);
 
 	total_read_size += chunk_recdes.length;
 	std::memcpy (buf, chunk_recdes.data, chunk_recdes.length);
@@ -347,7 +347,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 
 	current_chunk_oid = header.next_chunk_oid;
       }
-      assert (chunk_recdes.data == nullptr); // should be freed by auto_freed_recdes_ptr
+      assert (chunk_recdes.data == nullptr); // should be freed by oos_utils::auto_freed_recdes_ptr
 
       idx++;
     }
@@ -371,7 +371,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES 
       oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
       return ER_FAILED;
     }
-  auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
+  oos_utils::auto_unfixed_page_ptr page_ptr { raw_ptr, oos_utils::page_auto_unfix {thread_p} };
 
   RECDES recdes_with_oos_header;
   SCAN_CODE code = spage_get_record (thread_p, page_ptr.get(), slotid, &recdes_with_oos_header, PEEK);
@@ -500,7 +500,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       assert (false); // should not happen
       return oos_file_alloc_new (thread_p, oos_vfid, vpid);
     }
-  auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
+  oos_utils::auto_unfixed_page_ptr page_ptr { raw_ptr, oos_utils::page_auto_unfix {thread_p} };
 
   auto [pageid, volid] = recently_inserted_oos_vpid;
   int freespace = spage_get_free_space (thread_p, page_ptr.get());

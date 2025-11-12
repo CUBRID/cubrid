@@ -30,6 +30,7 @@
 #include "test_oos_log.hpp"
 
 using namespace test_oos_log;
+using namespace oos_utils;
 
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
@@ -232,6 +233,36 @@ TEST (OosTest, OosFindBestSpace)
   ASSERT_NE (vpid.volid, NULL_VOLID);
   ASSERT_NE (vpid.pageid, NULL_PAGEID);
 }
+
+TEST (OosTest, OosFindBestSpaceReturnsExistingPage)
+{
+  int err;
+  VFID oos_vfid;
+
+  err = oos_create (thread_p, oos_vfid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  VPID vpid{};
+  vpid.volid = NULL_VOLID;
+  vpid.pageid = NULL_PAGEID;
+  auto random_data_length = 100;
+  err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
+  ASSERT_EQ (err, NO_ERROR);
+
+  test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
+  ASSERT_NE (vpid.volid, NULL_VOLID);
+  ASSERT_NE (vpid.pageid, NULL_PAGEID);
+
+  auto a_string = test_oos_utils::make_repeated_pattern_string (random_data_length);
+  RECDES rec{};
+  {
+    test_oos_utils::from_string_into_recdes (a_string, rec);
+    auto_freed_recdes_ptr defer_free_rec (&rec, recdes_free_data_area);
+
+  }
+  ASSERT_EQ (rec.data, nullptr);
+}
+
 
 TEST (OosTest, OosFixAndUnfixPage)
 {
