@@ -93,7 +93,7 @@ TEST (OosTest, OosInsertAndRead)
 
   RECDES rec{};
   const std::string random_data = "This is a test OOS data.";
-  generate_record_from_string ("This is a test OOS data.", rec);
+  test_oos_utils::from_string_into_recdes ("This is a test OOS data.", rec);
 
   OID oid = OID_INITIALIZER;
   err = oos_insert (thread_p, oos_vfid, rec, oid);
@@ -122,10 +122,10 @@ TEST (OosTest, OosInsertLargerThanPageSize)
 
   const int large_size = DB_PAGESIZE + 5;
 
-  auto large_data = generate_large_string (large_size);
+  auto large_data = test_oos_utils::make_repeated_pattern_string (large_size);
 
   RECDES rec_in{};
-  err = generate_record_from_string (large_data, rec_in);
+  err = test_oos_utils::from_string_into_recdes (large_data, rec_in);
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid;
@@ -154,10 +154,10 @@ TEST (OosTest, OosInsertLarge160KBString)
 
   const int large_size = 160 * 1024; // 160 KB
 
-  auto large_data = generate_large_string (large_size);
+  auto large_data = test_oos_utils::make_repeated_pattern_string (large_size);
 
   RECDES rec_in{};
-  err = generate_record_from_string (large_data, rec_in);
+  err = test_oos_utils::from_string_into_recdes (large_data, rec_in);
   ASSERT_EQ (err, NO_ERROR);
 
   OID oid;
@@ -189,10 +189,10 @@ TEST (OosTest, OosInsertAndRead100LargeStringsAroundMaxOosChunkSize)
 
   for (int large_size = max_chunk_size - 50; large_size <= max_chunk_size + 50; large_size++)
     {
-      auto large_data = generate_large_string (large_size);
+      auto large_data = test_oos_utils::make_repeated_pattern_string (large_size);
 
       RECDES rec_in{};
-      err = generate_record_from_string (large_data, rec_in);
+      err = test_oos_utils::from_string_into_recdes (large_data, rec_in);
       ASSERT_EQ (err, NO_ERROR);
 
       OID oid;
@@ -337,10 +337,10 @@ TEST (OosTest, ShouldInsertIntoSamePage)
     auto_freed_recdes_ptr defer_free_rec_out1 (&rec_out1, recdes_free_data_area);
     auto_freed_recdes_ptr defer_free_rec_out2 (&rec_out2, recdes_free_data_area);
 
-    err = generate_record_from_string ("first string", rec_in1);
+    err = test_oos_utils::from_string_into_recdes ("first string", rec_in1);
     ASSERT_EQ (err, NO_ERROR);
 
-    err = generate_record_from_string ("second string again", rec_in2);
+    err = test_oos_utils::from_string_into_recdes ("second string again", rec_in2);
     ASSERT_EQ (err, NO_ERROR);
 
     OID oid1;
@@ -387,7 +387,7 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
   const int large_size = max_chunk_size + 50;
 
   RECDES rec_in1{};
-  err = generate_record_from_string (std::string (large_size, 'A'), rec_in1);
+  err = test_oos_utils::from_string_into_recdes (std::string (large_size, 'A'), rec_in1);
   ASSERT_EQ (err, NO_ERROR);
 
   /*

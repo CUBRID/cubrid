@@ -70,36 +70,41 @@ class ServerEnv : public ::testing::Environment
 // utilities for tests
 // ****************************************************************************
 
-inline std::string generate_large_string (int size)
+namespace test_oos_utils
 {
-  const std::string pattern = "ABCDEFGHIJK"; // pattern size is 11
-  if (size <= 0)
-    return {};
 
-  std::string large_data;
-  large_data.reserve (size); // reserve full size, not size - 1
 
-  for (int i = 0; i < size; ++i)
-    {
-      large_data.push_back (pattern[i % pattern.size()]);
-    }
+  inline std::string make_repeated_pattern_string (int size)
+  {
+    const std::string pattern = "ABCDEFGHIJK"; // pattern size is 11
+    if (size <= 0)
+      return {};
 
-  return large_data;
+    std::string large_data;
+    large_data.reserve (size); // reserve full size, not size - 1
+
+    for (int i = 0; i < size; ++i)
+      {
+	large_data.push_back (pattern[i % pattern.size()]);
+      }
+
+    return large_data;
+  }
+
+  inline int from_string_into_recdes (const std::string &large_data, RECDES &rec)
+  {
+    int err = recdes_allocate_data_area (&rec, static_cast<int> (large_data.size() + 1));
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+
+    rec.type = REC_HOME;
+    rec.length = static_cast<int> (large_data.size() + 1);
+
+    // copy data including null terminator
+    std::memcpy (rec.data, large_data.c_str(), large_data.size() + 1);
+    return NO_ERROR;
+  }
+
 }
-
-inline int generate_record_from_string (const std::string &large_data, RECDES &rec)
-{
-  int err = recdes_allocate_data_area (&rec, static_cast<int> (large_data.size() + 1));
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-
-  rec.type = REC_HOME;
-  rec.length = static_cast<int> (large_data.size() + 1);
-
-  // copy data including null terminator
-  std::memcpy (rec.data, large_data.c_str(), large_data.size() + 1);
-  return NO_ERROR;
-}
-
