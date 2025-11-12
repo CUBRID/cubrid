@@ -29,7 +29,7 @@
 
 namespace oos_log
 {
-  enum class OOSLogLevel
+  enum class OosLogLevel
   {
     TRACE = 0,
     DEBUG,
@@ -40,40 +40,40 @@ namespace oos_log
   };
 
 // atomic runtime level
-  inline std::atomic<OOSLogLevel> oos_current_level{OOSLogLevel::DEBUG};
+  inline std::atomic<OosLogLevel> oos_current_level{OosLogLevel::DEBUG};
 
-  inline void oos_log_set_level (OOSLogLevel level)
+  inline void oos_log_set_level (OosLogLevel level)
   {
     oos_current_level.store (level, std::memory_order_relaxed);
   }
 
-  inline OOSLogLevel oos_log_get_level()
+  inline OosLogLevel oos_log_get_level()
   {
     return oos_current_level.load (std::memory_order_relaxed);
   }
 
-  inline const char *oos_log_get_level_str (OOSLogLevel level)
+  inline const char *oos_log_get_level_str (OosLogLevel level)
   {
     switch (level)
       {
-      case OOSLogLevel::TRACE:
+      case OosLogLevel::TRACE:
 	return "TRACE";
-      case OOSLogLevel::DEBUG:
+      case OosLogLevel::DEBUG:
 	return "DEBUG";
-      case OOSLogLevel::INFO:
+      case OosLogLevel::INFO:
 	return "INFO";
-      case OOSLogLevel::WARN:
+      case OosLogLevel::WARN:
 	return "WARN";
-      case OOSLogLevel::ERROR:
+      case OosLogLevel::ERROR:
 	return "ERROR";
-      case OOSLogLevel::FATAL:
+      case OosLogLevel::FATAL:
 	return "FATAL";
       default:
 	return "UNKNOWN";
       }
   }
 
-  inline void oos_log_internal (OOSLogLevel level,
+  inline void oos_log_internal (OosLogLevel level,
 				const char *file,
 				int line,
 				const char *func,
@@ -104,19 +104,19 @@ namespace oos_log
 
 #if !defined (NDEBUG)
 #define oos_trace(fmt, ...) \
-    oos_log_internal(OOSLogLevel::TRACE, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log_internal(OosLogLevel::TRACE, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_debug(fmt, ...) \
-    oos_log_internal(OOSLogLevel::DEBUG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log_internal(OosLogLevel::DEBUG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_info(fmt, ...) \
-    oos_log_internal(OOSLogLevel::INFO, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log_internal(OosLogLevel::INFO, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_warn(fmt, ...) \
-    oos_log_internal(OOSLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log_internal(OosLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_error(fmt, ...) \
-    oos_log_internal(OOSLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log_internal(OosLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #else
 
 #define oos_trace(...)   do {} while (0)

@@ -67,23 +67,6 @@ class ServerEnv : public ::testing::Environment
 };
 
 // ****************************************************************************
-// logging support for tests
-// ****************************************************************************
-
-static int test_oos_log_enabled = 1;
-
-inline void test_oos_set_log_enabled (int enabled)
-{
-  test_oos_log_enabled = enabled;
-}
-
-#define test_oos_log(...) \
-  if (test_oos_log_enabled) { printf("[TEST_OOS_LOG] %s:%d: ", __func__, __LINE__); printf(__VA_ARGS__); fflush (stdout); }
-
-#define test_oos_err(...) \
-  if (test_oos_log_enabled) { fprintf(stderr, "[TEST_OOS_ERROR] %s:%d: ", __func__, __LINE__); fprintf(stderr, __VA_ARGS__); }
-
-// ****************************************************************************
 // utilities for tests
 // ****************************************************************************
 

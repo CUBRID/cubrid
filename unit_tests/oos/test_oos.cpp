@@ -27,6 +27,9 @@
 #include "test_oos_common.hpp"
 
 #include "oos_log.hpp"
+#include "test_oos_log.hpp"
+
+using namespace test_oos_log;
 
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
@@ -44,7 +47,7 @@ TEST (OosTest, OosCreateAndDestroy)
 
   auto [fileid, volid] = oos_vfid;
 
-  test_oos_log ("oos_vfid: fileid=%d, volid=%d\n", fileid, volid);
+  test_oos_debug ("oos_vfid: fileid=%d, volid=%d", fileid, volid);
   ASSERT_NE (fileid, NULL_FILEID);
   ASSERT_NE (volid, NULL_VOLID);
 
@@ -72,8 +75,8 @@ TEST (OosTest, OosCreateAndCreateAgain)
   auto [fileid1, volid1] = oos_vfid;
   auto [fileid2, volid2] = oos_vfid2;
 
-  test_oos_log ("First oos_vfid: fileid=%d, volid=%d\n", fileid1, volid1);
-  test_oos_log ("Second oos_vfid: fileid=%d, volid=%d\n", fileid2, volid2);
+  test_oos_debug ("First oos_vfid: fileid=%d, volid=%d", fileid1, volid1);
+  test_oos_debug ("Second oos_vfid: fileid=%d, volid=%d", fileid2, volid2);
 
   // either volid is different or fileid is different
   ASSERT_TRUE ( (fileid1 != fileid2) || (volid1 != volid2) );
@@ -98,7 +101,7 @@ TEST (OosTest, OosInsertAndRead)
   ASSERT_NE (oid.pageid, NULL_PAGEID);
   ASSERT_NE (oid.volid, NULL_VOLID);
   ASSERT_NE (oid.slotid, NULL_SLOTID);
-  test_oos_log ("OID: volid=%d, pageid=%d, slotid=%d\n", oid.volid, oid.pageid, oid.slotid);
+  test_oos_debug ("OID: volid=%d, pageid=%d, slotid=%d", oid.volid, oid.pageid, oid.slotid);
 
   RECDES rec_out{};
   err = oos_read (thread_p, oos_vfid, oid, rec_out);
@@ -225,7 +228,7 @@ TEST (OosTest, OosFindBestSpace)
   err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
   ASSERT_EQ (err, NO_ERROR);
 
-  test_oos_log ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+  test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
   ASSERT_NE (vpid.volid, NULL_VOLID);
   ASSERT_NE (vpid.pageid, NULL_PAGEID);
 }
@@ -244,7 +247,7 @@ TEST (OosTest, OosFixAndUnfixPage)
   err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
   ASSERT_EQ (err, NO_ERROR);
 
-  test_oos_log ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+  test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
   ASSERT_NE (vpid.volid, NULL_VOLID);
   ASSERT_NE (vpid.pageid, NULL_PAGEID);
 
@@ -272,7 +275,7 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
   ASSERT_EQ (err, NO_ERROR);
 
-  test_oos_log ("Best page found: volid=%d, pageid=%d\n", vpid.volid, vpid.pageid);
+  test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
   ASSERT_NE (vpid.volid, NULL_VOLID);
   ASSERT_NE (vpid.pageid, NULL_PAGEID);
 
@@ -400,7 +403,7 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
   OID oid1;
   err = oos_insert (thread_p, oos_vfid, rec_in1, oid1);
   ASSERT_EQ (err, NO_ERROR);
-  printf ("Inserted record oid1: volid=%d, pageid=%d, slotid=%d\n", oid1.volid, oid1.pageid, oid1.slotid);
+  test_oos_debug ("Inserted record oid1: volid=%d, pageid=%d, slotid=%d", oid1.volid, oid1.pageid, oid1.slotid);
 
   // where the tail chunk of rec_in1 is inserted
   VPID recent_vpid{};
@@ -434,6 +437,7 @@ int main (int argc, char **argv)
   // This makes the test output verbose.
   // We need to explicitly set it to INFO or higher level to make test output clean.
   // For debugging test failures, we can set it back to DEBUG or TRACE.
-  oos_log::oos_log_set_level (oos_log::OOSLogLevel::INFO);
+  oos_log::oos_log_set_level (oos_log::OosLogLevel::INFO);
+  test_oos_log_set_level (test_oos_log::TestOosLogLevel::INFO);
   return RUN_ALL_TESTS();
 }
