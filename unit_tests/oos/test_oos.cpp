@@ -428,6 +428,12 @@ int main (int argc, char **argv)
   ::testing::InitGoogleTest (&argc, argv);
   ::testing::AddGlobalTestEnvironment (new ServerEnv());
   ::testing::GTEST_FLAG (break_on_failure) = true;
+
+  // TIP:
+  // While on active development, oos_log level is set to DEBUG.
+  // This makes the test output verbose.
+  // We need to explicitly set it to INFO or higher level to make test output clean.
+  // For debugging test failures, we can set it back to DEBUG or TRACE.
   oos_log::oos_log_set_level (oos_log::OOSLogLevel::INFO);
   return RUN_ALL_TESTS();
 }
