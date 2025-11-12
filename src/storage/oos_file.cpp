@@ -523,6 +523,8 @@ oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
 }
 
 
+// TODO: since this value never changes, we can make it a constant or static variable,
+// and make it initialized only once in something like oos_boot().
 STATIC_INLINE int oos_get_max_chunk_size_within_page () __attribute__ ((ALWAYS_INLINE))
 {
   // TODO: fix bug for spage_max_record_size returning incorrect size, which is out of scope for OOS project.
