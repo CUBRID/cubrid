@@ -1931,8 +1931,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   QO_PLAN *outer, *inner;
   JOIN_TYPE join_type = NO_JOIN;
   QO_TERM *term;
-  int i;
-  BITSET_ITERATOR bi;
+  int i, i2;
+  BITSET_ITERATOR bi, bi2;
   BITSET new_subqueries;
   BITSET fake_subqueries;
   BITSET predset;
@@ -2107,22 +2107,26 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  bitset_union (&fake_subqueries, &(QO_TERM_SUBQUERIES (term)));
 		}
-	      bitset_assign (&temp_segs_set, &QO_TERM_SEGS (term));
 
-	      for (i = bitset_iterate (&temp_segs_set, &bi); i != -1; i = bitset_next_member (&bi))
+	      if (term->segments.nwords > 0)
 		{
-		  seg = QO_ENV_SEG (env, i);
-		  if ((seg != NULL && seg->head != NULL && seg->info != NULL && outer != NULL
-		       && outer->plan_un.scan.node != NULL) && seg->head->idx == outer->plan_un.scan.node->idx)
+		  bitset_assign (&temp_segs_set, &QO_TERM_SEGS (term));
+
+		  for (i2 = bitset_iterate (&temp_segs_set, &bi2); i2 != -1; i2 = bitset_next_member (&bi2))
 		    {
-		      if (seg->info->ndv != 0)
+		      seg = QO_ENV_SEG (env, i2);
+		      if ((seg != NULL && seg->head != NULL && seg->info != NULL && outer != NULL
+			   && outer->plan_un.scan.node != NULL) && seg->head->idx == outer->plan_un.scan.node->idx)
 			{
-			  join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
-			}
-		      else
-			{
-			  join_outer_table_terms_duplicate_ratio = 1.0;
-			  break;
+			  if (seg->info->ndv != 0)
+			    {
+			      join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
+			    }
+			  else
+			    {
+			      join_outer_table_terms_duplicate_ratio = 1.0;
+			      break;
+			    }
 			}
 		    }
 		}
