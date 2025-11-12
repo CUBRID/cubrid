@@ -28,8 +28,6 @@
 
 #include "oos_log.hpp"
 
-using namespace oos_log;
-
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
 int bridge_oos_get_max_chunk_size_within_page ();
@@ -430,6 +428,6 @@ int main (int argc, char **argv)
   ::testing::InitGoogleTest (&argc, argv);
   ::testing::AddGlobalTestEnvironment (new ServerEnv());
   ::testing::GTEST_FLAG (break_on_failure) = true;
-  oos_log_set_level (OOSLogLevel::INFO);
+  oos_log::oos_log_set_level (oos_log::OOSLogLevel::INFO);
   return RUN_ALL_TESTS();
 }
