@@ -599,6 +599,26 @@ pt_associate_label_with_value_check_reference (const char *label, DB_VALUE * val
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
       return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
     }
+
+  if (val->domain.general_info.type == DB_TYPE_STRING)
+    {
+      if (pr_Enable_string_compression)
+	{
+	  if (val->data.ch.medium.compressed_size == DB_UNCOMPRESSABLE)
+	    {
+	      assert (val->data.ch.medium.compressed_buf == NULL);
+	      val->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
+	    }
+	}
+      else if (val->data.ch.medium.compressed_size > 0)
+	{
+	  assert (val->data.ch.medium.compressed_buf != NULL);
+	  db_private_free_and_init (NULL, val->data.ch.medium.compressed_buf);
+	  val->data.ch.medium.compressed_buf = NULL;
+	  val->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
+	}
+    }
+
   return pt_associate_label_with_value (label, val);
 }
 
