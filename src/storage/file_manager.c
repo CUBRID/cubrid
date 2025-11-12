@@ -1445,6 +1445,11 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
 
   switch (fhead->type)
     {
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap.class_oid);
@@ -10842,6 +10847,11 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_UNKNOWN_TYPE:
       /* accept any type */
       break;
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       /* accept heap or heap reuse slots */
@@ -10865,6 +10875,11 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
    * run-time), but b-tree and heap files must be protected by lock. */
   switch ((FILE_TYPE) item->type)
     {
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
@@ -10904,6 +10919,11 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_BTREE:
       *class_oid = fhead->descriptor.btree.class_oid;
       break;
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       *class_oid = fhead->descriptor.heap.class_oid;
@@ -11590,6 +11610,11 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       /* index file */
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
     case FILE_MULTIPAGE_OBJECT_HEAP:
