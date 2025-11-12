@@ -68,9 +68,9 @@ static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
 				     bool * did_incom_recovery);
-static int log_rv_analysis_ha_server_state (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-					    LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-					    bool * did_incom_recovery);
+static int log_rv_analysis_backup_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
+				       LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
+				       bool * did_incom_recovery);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint);
 static int log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -1556,7 +1556,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 #endif /* !NDEBUG */
       /*
        * Reset the log active and stop the recovery process at this
-       * point. Before reseting the log, make sure that we are not
+       * point. Before resetting the log, make sure that we are not
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
@@ -1581,7 +1581,7 @@ end:
 }
 
 /*
- * log_rv_analysis_ha_server_state -
+ * log_rv_analysis_backup_end -
  *
  * return: error code
  *
@@ -1595,10 +1595,10 @@ end:
  * Note:
  */
 static int
-log_rv_analysis_ha_server_state (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_LSA * prev_lsa,
-				 bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
+log_rv_analysis_backup_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_LSA * prev_lsa,
+			    bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
 {
-  LOG_REC_HA_SERVER_STATE *ha_server_state;
+  LOG_REC_DONETIME *donetime;
   time_t last_at_time;
   LOG_LSA record_header_lsa;
 
@@ -1614,16 +1614,16 @@ log_rv_analysis_ha_server_state (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG
    * the recovery at this point.
    */
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), log_lsa, log_page_p);
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), log_lsa, log_page_p);
 
-  ha_server_state = (LOG_REC_HA_SERVER_STATE *) ((char *) log_page_p->area + log_lsa->offset);
-  last_at_time = (time_t) ha_server_state->at_time;
+  donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
+  last_at_time = (time_t) donetime->at_time;
 
-  if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0)
+  if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) <= 0)
     {
       /*
        * Reset the log active and stop the recovery process at this
-       * point. Before reseting the log, make sure that we are not
+       * point. Before resetting the log, make sure that we are not
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
@@ -2490,9 +2490,9 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
 				       did_incom_recovery);
       break;
 
-    case LOG_DUMMY_HA_SERVER_STATE:
-      (void) log_rv_analysis_ha_server_state (thread_p, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
-					      did_incom_recovery);
+    case LOG_DUMMY_BACKUP_END:
+      (void) log_rv_analysis_backup_end (thread_p, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
+					 did_incom_recovery);
       break;
 
     case LOG_SYSOP_END:
@@ -2551,6 +2551,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_DUMMY_CRASH_RECOVERY:
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
+    case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SUPPLEMENTAL_INFO:
@@ -3891,6 +3892,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_DUMMY_BACKUP_END:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
@@ -4821,6 +4823,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_REPLICATION_DATA:
 		case LOG_REPLICATION_STATEMENT:
 		case LOG_DUMMY_HA_SERVER_STATE:
+		case LOG_DUMMY_BACKUP_END:
 		case LOG_DUMMY_OVF_RECORD:
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
@@ -5662,6 +5665,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_COMMIT:
     case LOG_ABORT:
+    case LOG_DUMMY_BACKUP_END:
       /* Read the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
 

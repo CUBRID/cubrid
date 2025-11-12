@@ -8199,27 +8199,37 @@ loop:
 
   /*
    * -------------------------------------------------------------------------
-   * Workaround to prevent transactions executed after backup completion
-   * from being included during "restoredb -d backuptime" recovery.
-   *
-   * Context:
-   *   1. backup start
-   *   2. backup end   → record completion time for restore reference
-   *   3. transaction  → commit log records its timestamp
+   * WORKAROUND: Preventing Restore of Post-Backup Transactions
+   * -------------------------------------------------------------------------
    *
    * Problem:
-   *   - (2) and (3) may have the same second-level timestamp, causing (3)
-   *     to be mistakenly restored.
+   * The restore process ('restoredb -d backuptime') compares the backup
+   * completion time (stored in the backup volume header) with each transaction’s
+   * completion timestamp (LOG_COMMIT / LOG_ABORT).
    *
-   * Fix:
-   *   - After (2), wait ≥1 second and write a dummy log
-   *     (LOG_DUMMY_HA_SERVER_STATE) with a later timestamp.
-   *   - Ensures all transactions after backup are excluded from recovery.
+   * Issue:
+   * When a transaction is executed immediately after a backup within the same
+   * session, both events can share the same second-level timestamp, causing the
+   * post-backup transaction to be mistakenly restored. Such transactions must
+   * always be excluded.
    *
-   * TODO:
-   *   - Use millisecond precision in LOG_COMMIT / LOG_ABORT instead.
+   * Workaround:
+   * Added a **new log entry** to record the backup completion time, followed by
+   * a forced 1-second delay before finalizing the backup. This delay ensures that
+   * any transaction executed immediately after the backup will have a later
+   * completion timestamp than the recorded backup time.
+   *
+   * Limitation:
+   * Effectively separates sequential operations in the same session, but cannot
+   * fully distinguish concurrent transactions across sessions due to
+   * second-level timestamp precision.
+   *
+   * TODO (Permanent Fix):
+   * - Add millisecond-level precision to LOG_COMMIT / LOG_ABORT timestamps to
+   *   accurately separate concurrent transactions in all sessions.
    * -------------------------------------------------------------------------
    */
+  assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
   assert (session.bkup.bkuphdr->end_time > 0);
 
   do
@@ -8228,12 +8238,7 @@ loop:
     }
   while (session.bkup.bkuphdr->end_time >= time (NULL));
 
-  if (HA_DISABLED ())
-    {
-      assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
-
-      log_append_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE);
-    }
+  log_append_backup_end (thread_p, session.bkup.bkuphdr->end_time);
 
 #if defined(SERVER_MODE)
   logpb_destroy_backup_read_worker_pool ();

@@ -286,6 +286,8 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 						      LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_backup_end (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
@@ -490,6 +492,8 @@ log_to_string (LOG_RECTYPE type)
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
       return "LOG_DUMMY_GENERIC";
+    case LOG_DUMMY_BACKUP_END:
+      return "LOG_DUMMY_BACKUP_END";
     case LOG_SUPPLEMENTAL_INFO:
       return "LOG_SUPPLEMENTAL_INFO";
     case LOG_SMALLER_LOGREC_TYPE:
@@ -3199,6 +3203,42 @@ log_append_ha_server_state (THREAD_ENTRY * thread_p, int state)
 
   ha_server_state->state = state;
   ha_server_state->at_time = time (NULL);
+
+  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+
+  logpb_flush_pages (thread_p, &start_lsa);
+}
+
+/*
+ * log_append_backup_end -
+ *
+ * return: nothing
+ */
+void
+log_append_backup_end (THREAD_ENTRY * thread_p, INT64 end_time)
+{
+  int tran_index;
+  LOG_TDES *tdes;
+  LOG_REC_DONETIME *donetime;
+  LOG_PRIOR_NODE *node;
+  LOG_LSA start_lsa;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return;
+    }
+  assert (tdes->is_system_main_transaction ());
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_BACKUP_END, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  donetime = (LOG_REC_DONETIME *) node->data_header;
+  donetime->at_time = end_time;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
@@ -6915,6 +6955,23 @@ log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 static LOG_PAGE *
+log_dump_record_backup_end (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_REC_DONETIME *donetime;
+  time_t tmp_time;
+  char time_val[CTIME_MAX];
+
+  /* Read the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*donetime), log_lsa, log_page_p);
+  donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
+  tmp_time = (time_t) donetime->at_time;
+  (void) ctime_r (&tmp_time, time_val);
+  fprintf (out_fp, "  Backup end time at = %s\n", time_val);
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_SUPPLEMENT *supplement;
@@ -7021,6 +7078,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_DUMMY_HA_SERVER_STATE:
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_DUMMY_BACKUP_END:
+      log_page_p = log_dump_record_backup_end (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_SUPPLEMENTAL_INFO:
@@ -7950,6 +8011,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_DUMMY_BACKUP_END:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
@@ -8382,6 +8444,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
+		    case LOG_DUMMY_BACKUP_END:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
 		    case LOG_SUPPLEMENTAL_INFO:
