@@ -614,12 +614,7 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
   {
     [&thread_p, &rcv] ()
     {
-      if (rcv.pgptr != nullptr)
-	{
-	  // could have used pgbuf_unfix_and_init if it were a function
-	  pgbuf_unfix (thread_p, rcv.pgptr);
-	  rcv.pgptr = nullptr;
-	}
+      pgbuf_unfix_and_init_after_check (thread_p, rcv.pgptr);
     }
   };
 
