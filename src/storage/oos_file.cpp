@@ -52,7 +52,7 @@ static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 		       OOS_RECORD_HEADER &out_header);
 
-static int oos_get_max_chunk_size_within_page ();
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int oos_get_max_chunk_size_within_page ();
 
 static int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
 
@@ -539,7 +539,7 @@ oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
 
 // TODO: since this value never changes, we can make it a constant or static variable,
 // and make it initialized only once in something like oos_boot().
-STATIC_INLINE int oos_get_max_chunk_size_within_page () __attribute__ ((ALWAYS_INLINE))
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int oos_get_max_chunk_size_within_page ()
 {
   // TODO: fix bug for spage_max_record_size returning incorrect size, which is out of scope for OOS project.
   const int actual_upper_limit = DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT);
