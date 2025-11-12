@@ -38,7 +38,7 @@
 #include "xasl_generation.h"
 #include "xasl_predicate.hpp"
 
-#define MEMOIZE_NDV_RATIO_THRESHOLD (double) 0.5
+#define MEMOIZE_NDV_RATIO_THRESHOLD (double) 2
 
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
@@ -2095,6 +2095,11 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    }
 	  [[fallthrough]];
 	case QO_JOINMETHOD_IDX_JOIN:
+	  if (outer != NULL && outer->plan_un.scan.node != NULL)
+	    {
+	      join_outer_table_terms_duplicate_ratio *= outer->plan_un.scan.node->ncard;
+	    }
+
 	  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	    {
 	      term = QO_ENV_TERM (env, i);
@@ -2108,13 +2113,13 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  seg = QO_ENV_SEG (env, i);
 		  if ((seg != NULL && seg->head != NULL && seg->info != NULL && outer != NULL
-		       && outer->plan_un.scan.node != NULL) && (seg->head->idx == outer->plan_un.scan.node->idx))
+		       && outer->plan_un.scan.node != NULL) && (seg->head->idx == outer->plan_un.scan.node->idx
+								&& seg->info->ndv != 0))
 		    {
 		      join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
 		    }
 		}
 	    }
-	  join_outer_table_terms_duplicate_ratio *= outer->plan_un.scan.node->ncard;
 
 	  bitset_difference (&new_subqueries, &fake_subqueries);
 
@@ -2191,7 +2196,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  mark_access_as_outer_join (parser, scan);
 		}
 	    }
-	  if (join_outer_table_terms_duplicate_ratio < MEMOIZE_NDV_RATIO_THRESHOLD)
+	  if (join_outer_table_terms_duplicate_ratio > MEMOIZE_NDV_RATIO_THRESHOLD)
 	    {
 	      XASL_SET_FLAG (scan, XASL_MEMOIZE_STORAGE);
 	    }
