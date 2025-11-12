@@ -9263,12 +9263,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  error = sm_set_class_catalog_timestamps (class_name, SM_CATALOG_TIMESTAMP_INIT);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
   if (do_flush_class_mop == true)
     {
       assert (error == NO_ERROR);
@@ -9277,6 +9271,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       error = locator_flush_class (class_obj);
     }
 
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = sm_set_class_catalog_timestamps (class_name, SM_CATALOG_TIMESTAMP_INIT);
   if (error != NO_ERROR)
     {
       goto error_exit;

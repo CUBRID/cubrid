@@ -82,8 +82,10 @@ find_class_catalog_instance_with_write_mode (MOP _db_class, const char *class_na
 {
   MOP catalog_inst = NULL;
   DB_VALUE class_name_val;
+  char downcase_name[SM_MAX_IDENTIFIER_LENGTH];
 
-  db_make_string (&class_name_val, class_name);
+  sm_downcase_name(class_name, downcase_name, SM_MAX_IDENTIFIER_LENGTH);
+  db_make_string (&class_name_val, downcase_name);
   catalog_inst = db_find_unique_write_mode (_db_class, "unique_name", &class_name_val);
   if (catalog_inst == NULL)
     {
