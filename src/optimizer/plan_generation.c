@@ -1940,6 +1940,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   double join_outer_table_terms_duplicate_ratio = 1.0;
   BITSET temp_segs_set;
   QO_SEGMENT *seg;
+  bool join_term_exists = false;
 
   if (env == NULL)
     {
@@ -2121,6 +2122,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			  if (seg->info->ndv != 0)
 			    {
 			      join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
+			      join_term_exists = true;
 			    }
 			  else
 			    {
@@ -2206,7 +2208,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  mark_access_as_outer_join (parser, scan);
 		}
-	      if (join_outer_table_terms_duplicate_ratio > MEMOIZE_NDV_RATIO_THRESHOLD)
+	      if (join_term_exists && join_outer_table_terms_duplicate_ratio > MEMOIZE_NDV_RATIO_THRESHOLD)
 		{
 		  XASL_SET_FLAG (scan, XASL_MEMOIZE_STORAGE);
 		}
