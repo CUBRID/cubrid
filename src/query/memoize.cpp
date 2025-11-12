@@ -1070,11 +1070,11 @@ extern "C"
 
       case result_code::FULL:
 	*success = false;
-	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	if (thread_p->on_trace)
 	  {
 	    xasl->memoize_storage->stop_timer();
 	  }
+	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
 	break;
 
@@ -1122,7 +1122,12 @@ extern "C"
 
       case result_code::FULL:
 	*success = false;
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
+	return NO_ERROR;
 	break;
 
       case result_code::ERROR:
@@ -1165,7 +1170,12 @@ extern "C"
 
       case result_code::FULL:
 	*success = false;
+	if (thread_p->on_trace)
+	  {
+	    xasl->memoize_storage->stop_timer();
+	  }
 	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
+	return NO_ERROR;
 	break;
 
       case result_code::ERROR:
@@ -1186,10 +1196,7 @@ extern "C"
 	return ER_FAILED;
 	break;
       }
-    if (thread_p->on_trace)
-      {
-	xasl->memoize_storage->stop_timer();
-      }
+
     return NO_ERROR;
   }
 }

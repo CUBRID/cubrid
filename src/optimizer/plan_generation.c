@@ -2113,10 +2113,17 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  seg = QO_ENV_SEG (env, i);
 		  if ((seg != NULL && seg->head != NULL && seg->info != NULL && outer != NULL
-		       && outer->plan_un.scan.node != NULL) && (seg->head->idx == outer->plan_un.scan.node->idx
-								&& seg->info->ndv != 0))
+		       && outer->plan_un.scan.node != NULL) && seg->head->idx == outer->plan_un.scan.node->idx)
 		    {
-		      join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
+		      if (seg->info->ndv != 0)
+			{
+			  join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
+			}
+		      else
+			{
+			  join_outer_table_terms_duplicate_ratio = 1.0;
+			  break;
+			}
 		    }
 		}
 	    }
@@ -2195,10 +2202,10 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  mark_access_as_outer_join (parser, scan);
 		}
-	    }
-	  if (join_outer_table_terms_duplicate_ratio > MEMOIZE_NDV_RATIO_THRESHOLD)
-	    {
-	      XASL_SET_FLAG (scan, XASL_MEMOIZE_STORAGE);
+	      if (join_outer_table_terms_duplicate_ratio > MEMOIZE_NDV_RATIO_THRESHOLD)
+		{
+		  XASL_SET_FLAG (scan, XASL_MEMOIZE_STORAGE);
+		}
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
 	  make_outer_instnum (env, outer, plan);
