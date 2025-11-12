@@ -58,7 +58,6 @@ typedef int mode_t;
 char es_base_dir[PATH_MAX] = { 0 };
 
 static void es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *filename);
-static int es_make_dirs (const char *dirname1, const char *dirname2);
 static void es_rename_path (const char *src, char *tgt, char *metaname);
 
 static int es_abs_open (const char *abs_path, int flags);
@@ -116,7 +115,7 @@ es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *
  * dirname1(in): first level directory name
  * dirname2(in): second level directory name
  */
-static int
+extern int
 es_make_dirs (const char *dirname1, const char *dirname2)
 {
   char dirbuf[PATH_MAX];

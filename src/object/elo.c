@@ -390,20 +390,20 @@ elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
 
       ret = es_copy_file_with_suffix (real_locator, elo->meta_data, out_uri, suffix);
       if (ret != NO_ERROR)
-        {
-          goto error_return;
-        }
+	{
+	  goto error_return;
+	}
       locator = db_private_strdup (NULL, out_uri);
       if (locator == NULL)
-        {
-          es_delete_file (out_uri);
-          goto error_return;
-        }
+	{
+	  es_delete_file (out_uri);
+	  goto error_return;
+	}
       ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
       if (ret != NO_ERROR)
-        {
-          goto error_return;
-        }
+	{
+	  goto error_return;
+	}
     }
   else
     {

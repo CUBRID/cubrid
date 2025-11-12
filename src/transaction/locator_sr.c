@@ -66,6 +66,7 @@
 #include "transaction_transient.hpp"
 #include "xserver_interface.h"
 #include "catalog_class.h"
+#include "es_posix.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -13929,4 +13930,71 @@ void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
 {
   xcache_remove_by_oid (thread_p, oidp);
+}
+
+/*
+ * xlob_create_dir () - create lob dir
+ *
+ * thread_p (in) : thread_entry.
+ * hfid (in) : hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
+ * attrid_arr (in): An array that stores LOB attribute ids of the table.
+                    When creating the LOB directory, each LOB attribute is distinguished by its id
+ * attrid_arr_length (in)	 : Length of the attrid_arr array
+ *
+ */
+int
+xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attrid_arr_length)
+{
+  char dirbuf[PATH_MAX];
+  char rv_path[PATH_MAX];
+  int ret = NO_ERROR;
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  for (int i = 0; i < attrid_arr_length; i++)
+    {
+      sprintf (dirbuf, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+      log_append_undo_data (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
+
+      es_make_dirs (dirbuf, NULL);
+    }
+
+  return ret;
+}
+
+/*
+ * xlob_remove_dir () - remove a lob directory
+ *
+ * thread_p (in) : thread_entry
+ * hfid (in) : Used to identify the table when removing the LOB directory
+ * attrid (in)	 : Used to identify the table's LOB attribute when removing the LOB directory
+ *
+ * NOTE: A LOB directory is created immediately,
+ *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
+ */
+int
+xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
+{
+  char dirbuf[PATH_MAX];
+  char rv_path[PATH_MAX];
+  int ret = NO_ERROR;
+  LOG_DATA_ADDR addr;
+  addr.offset = -1;
+  addr.pgptr = NULL;
+  addr.vfid = NULL;
+
+  if (attrid == -1)		/* DROP TABLE */
+    {
+      snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      log_append_postpone (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+    }
+  else				/* DROP LOB COLUMN */
+    {
+      snprintf (rv_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
+      log_append_postpone (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+    }
+
+  return ret;
 }
