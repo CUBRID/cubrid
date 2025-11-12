@@ -19,7 +19,6 @@
 #include "gtest/gtest.h"
 #include <cstdio>
 
-#include "oos_util.hpp"
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
@@ -30,7 +29,6 @@
 #include "test_oos_log.hpp"
 
 using namespace test_oos_log;
-using namespace oos_utils;
 
 // bridge functions to access static functions in oos_file.cpp
 int bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
@@ -257,7 +255,7 @@ TEST (OosTest, OosFindBestSpaceReturnsExistingPage)
   RECDES rec{};
   {
     test_oos_utils::from_string_into_recdes (a_string, rec);
-    auto_freed_recdes_ptr defer_free_rec (&rec, recdes_free_data_area);
+    test_oos_utils::auto_freed_recdes_ptr defer_free_rec (&rec, recdes_free_data_area);
 
   }
   ASSERT_EQ (rec.data, nullptr);
@@ -363,10 +361,10 @@ TEST (OosTest, ShouldInsertIntoSamePage)
   RECDES rec_out1{};
   RECDES rec_out2{};
   {
-    auto_freed_recdes_ptr defer_free_rec_in1 (&rec_in1, recdes_free_data_area);
-    auto_freed_recdes_ptr defer_free_rec_in2 (&rec_in2, recdes_free_data_area);
-    auto_freed_recdes_ptr defer_free_rec_out1 (&rec_out1, recdes_free_data_area);
-    auto_freed_recdes_ptr defer_free_rec_out2 (&rec_out2, recdes_free_data_area);
+    test_oos_utils::auto_freed_recdes_ptr defer_free_rec_in1 (&rec_in1, recdes_free_data_area);
+    test_oos_utils::auto_freed_recdes_ptr defer_free_rec_in2 (&rec_in2, recdes_free_data_area);
+    test_oos_utils::auto_freed_recdes_ptr defer_free_rec_out1 (&rec_out1, recdes_free_data_area);
+    test_oos_utils::auto_freed_recdes_ptr defer_free_rec_out2 (&rec_out2, recdes_free_data_area);
 
     err = test_oos_utils::from_string_into_recdes ("first string", rec_in1);
     ASSERT_EQ (err, NO_ERROR);
@@ -448,7 +446,7 @@ TEST (OosTest, ShouldInsertIntoDifferentPages)
   int free_space = spage_get_free_space (thread_p, raw_ptr);
   assert (raw_ptr != nullptr);
   {
-    auto_unfixed_page_ptr page_ptr { raw_ptr, page_auto_unfix {thread_p} };
+    test_oos_utils::auto_unfixed_page_ptr page_ptr { raw_ptr, test_oos_utils::page_auto_unfix {thread_p} };
     ASSERT_EQ (free_space, 4);
     // TODO: this should be something like (max_chunk_size - (large_size - (max_chunk_size - sizeof (OOS_RECORD_HEADER))) + sizeof (OOS_RECORD_HEADER))
     // ASSERT_EQ (free_space, 8000 something for 8k);
