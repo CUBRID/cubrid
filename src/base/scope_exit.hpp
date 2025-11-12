@@ -66,7 +66,8 @@ class scope_exit
 
   private:
     bool active_{false};
-    [[no_unique_address]] fun_t f_; // EBO when possible
+    // [[no_unique_address]] fun_t f_; // EBO when possible <- use this line when C++20 is available later.
+    fun_t f_;
 };
 
 // CTAD: scope_exit se{[]{}};
