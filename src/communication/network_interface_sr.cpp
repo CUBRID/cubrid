@@ -2922,56 +2922,7 @@ sfile_apply_tde_to_class_files (THREAD_ENTRY *thread_p, unsigned int rid, char *
 }
 
 void
-sdblink_get_crypt_keys (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int area_size = -1;
-  char *reply, *area, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
-  int err = NO_ERROR;
-  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
-  int length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  if (length < 0)
-    {
-      (void) return_error_to_client (thread_p, rid);
-      area = NULL;
-      area_size = 0;
-      err = length;
-    }
-  else
-    {
-      area_size = OR_INT_SIZE + or_packed_stream_length (length);
-      area = (char *) malloc (area_size);
-      if (area == NULL)
-	{
-	  (void) return_error_to_client (thread_p, rid);
-	  area_size = 0;
-	}
-      else
-	{
-	  ptr = or_pack_int (area, length);
-	  ptr = or_pack_stream (ptr, (char *) crypt_key, length);
-	}
-    }
-
-  ptr = or_pack_int (reply, area_size);
-  ptr = or_pack_int (ptr, err);
-
-  auto deleter = [area]() noexcept
-  {
-    if (area != NULL)
-      {
-	free (area);
-      }
-  };
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size,
-				     std::move (deleter));
-}
-
-void
-stde_get_data_keys (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int area_size = -1;
   char *reply, *area, *ptr;
