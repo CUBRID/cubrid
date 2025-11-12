@@ -15720,7 +15720,8 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (error != NO_ERROR || class_ == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      error = er_errid ();
+      return error;
     }
 
   error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
@@ -15749,7 +15750,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (lob_attrid_arr == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
-      return error;
+      goto end;
     }
 
   for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
@@ -15764,7 +15765,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = heap_destroy_newly_created (insts_hfid, oid, true);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   /* Destroy the lob dir if need */
@@ -15773,8 +15774,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
       error = lob_remove_dir (insts_hfid, -1);
       if (error != NO_ERROR)
 	{
-	  free (lob_attrid_arr);
-	  return error;
+	  goto end;
 	}
     }
 
@@ -15784,38 +15784,32 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = locator_flush_class (class_mop);
   if (error != NO_ERROR)
     {
-      if (lob_attrid_arr_length)
-	{
-	  free (lob_attrid_arr);
-	}
-      return error;
+      goto end;
     }
 
   /* Create a new heap */
   error = heap_create (insts_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
-      if (lob_attrid_arr_length)
-	{
-	  free (lob_attrid_arr);
-	}
-      return error;
+      goto end;
     }
 
   /* Create the lob dir if need */
   if (lob_attrid_arr_length)
     {
       error = lob_create_dir (insts_hfid, lob_attrid_arr, lob_attrid_arr_length);
-      free (lob_attrid_arr);
     }
 
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
+
+end:
+  free (lob_attrid_arr);
 
   return error;
 }
