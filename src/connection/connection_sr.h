@@ -139,6 +139,7 @@ extern CSS_THREAD_FN css_Request_handler;
   if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) er_print_callstack (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
 
 extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
+extern void css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern int css_init_conn_list (void);
 extern void css_final_conn_list (void);

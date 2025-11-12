@@ -499,6 +499,9 @@ namespace cubconn
     css_shutdown_socket (ctx->m_conn->fd);
     ctx->m_conn->fd = INVALID_SOCKET;
 
+    /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
+    css_prepare_shutdown_conn (ctx->m_conn);
+
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
     m_removed_context.push_back (ctx);
