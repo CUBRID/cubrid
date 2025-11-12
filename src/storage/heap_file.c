@@ -696,8 +696,7 @@ static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * a
 					RECDES * raw);
 static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					   RECDES * raw, bool * is_oos);
-static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-						bool is_oos);
+static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
@@ -10539,7 +10538,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *
  */
 static int
-heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw, bool is_oos)
+heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -10584,11 +10583,6 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 	}
     }
 
-  if (is_oos)
-    {
-      recdes_free_data_area (raw);
-    }
-
   return NO_ERROR;
 }
 
@@ -10608,6 +10602,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   OR_ATTRIBUTE *attrepr;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool is_oos = false;
+  int error;
 
   if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
     {
@@ -10646,7 +10641,13 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  return heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, is_oos);
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw);
+  if (is_oos)
+    {
+      recdes_free_data_area (&raw);
+    }
+
+  return error;
 }
 
 /*
@@ -11991,8 +11992,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 }
 
 VFID *
-heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate,
-		    PGBUF_LATCH_CONDITION latch_cond)
+heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
@@ -12009,11 +12009,11 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   vpid.pageid = hfid->hpgid;
 
   mode = (docreate == true ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ);
-  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, latch_cond);
+  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, PGBUF_UNCONDITIONAL_LATCH);
   if (addr_hdr.pgptr == NULL)
     {
-      /* something went wrong, return */
-      return NULL;
+      oos_vfid = NULL;
+      goto end;
     }
 
 #if !defined (NDEBUG)
@@ -12023,8 +12023,8 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   /* Peek the header record */
   if (spage_get_record (thread_p, addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
     {
-      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
-      return NULL;
+      oos_vfid = NULL;
+      goto end;
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
@@ -12037,7 +12037,8 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	  if (oos_create (thread_p, *oos_vfid) != NO_ERROR)
 	    {
 	      oos_vfid = NULL;
-	      return NULL;
+	      log_sysop_abort (thread_p);
+	      goto end;
 	    }
 
 	  /* Log undo, then redo */
@@ -12058,7 +12059,11 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
       VFID_COPY (oos_vfid, &heap_hdr->oos_vfid);
     }
 
-  pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+end:
+  if (addr_hdr.pgptr)
+    {
+      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+    }
 
   return oos_vfid;
 }
@@ -12161,7 +12166,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
     {
       return S_ERROR;
     }
-  if (heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true, PGBUF_UNCONDITIONAL_LATCH) == NULL)
+  if (heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true) == NULL)
     {
       return S_ERROR;
     }
