@@ -203,7 +203,7 @@ static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
 
-static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external);
+static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
 static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
@@ -20848,27 +20848,15 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (create_server->pwd);
   assert (create_server->pwd->node_type == PT_VALUE);
   pwd = (char *) PT_VALUE_GET_BYTES (create_server->pwd);
-  if (pwd == NULL)
+  if (pwd == NULL || *pwd == '\0')
     {
       error = ER_FAILED;
       goto end;
     }
 
-  error = pt_remake_dblink_password (pwd, &passwd, false);
+  error = db_make_string_copy (&passwd, pwd);
   if (error != NO_ERROR)
-    {				// TODO: error handling
-      if (!pt_has_error (parser))
-	{
-	  if (er_errid_if_has_error () != NO_ERROR)
-	    {
-	      PT_ERROR (parser, statement, (char *) er_msg ());
-	    }
-	  else
-	    {
-	      PT_ERRORf2 (parser, statement, "Failed to re-encryption passwordfor %s. error=%d", attr_val[0], error);
-	    }
-	}
-
+    {
       goto end;
     }
 
@@ -21050,22 +21038,10 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       pt = (char *) PT_VALUE_GET_BYTES (alter->pwd);
       assert (pt && *pt);
 
-      error = pt_remake_dblink_password (pt, &passwd, false);
+      db_make_null (&passwd);
+      error = db_make_string_copy (&passwd, pt);
       if (error != NO_ERROR)
 	{
-	  if (!pt_has_error (parser))
-	    {			// TODO: error handling
-	      if (er_errid_if_has_error () != NO_ERROR)
-		{
-		  PT_ERROR (parser, statement, (char *) er_msg ());
-		}
-	      else
-		{
-		  PT_ERRORf2 (parser, statement, "Failed to re-encryption password for %s. error=%d",
-			      (char *) server_name, error);
-		}
-	    }
-
 	  goto end;
 	}
       error = db_put (server_object, SERVER_ATTR_PASSWORD, &passwd);
@@ -21455,6 +21431,8 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
   max_len >>= 2;
   max_len <<= 2;
 
+  db_make_null (&val);
+
   if (ciper_buf_size <= max_len)
     {
       err = ER_TF_BUFFER_OVERFLOW;
@@ -21469,9 +21447,8 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 
   if (length <= DBLINK_PASSWORD_MAX_LENGTH)
     {
-      // The raw password entered by the user.
-      db_make_null (&val);
-      err = get_dblink_password_encrypt (passwd, &val, true);
+      // The raw password entered by the user.  
+      err = get_dblink_password_encrypt (passwd, &val);
       if (err == NO_ERROR)
 	{
 	  str = (char *) db_get_string (&val);
@@ -21497,16 +21474,31 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 	      err = ER_DBLINK_PASSWORD_ENCRYPT;
 	    }
 	}
-      pr_clear_value (&val);
     }
   else if (length == max_len)
     {
-      // A encrypted password from the raw password.      
-      strcpy (cipher_buf, passwd);
-      err = NO_ERROR;
+      err = get_dblink_password_decrypt (passwd, &val);
+      if (err == NO_ERROR)
+	{
+	  // A encrypted password from the raw password.      
+	  strcpy (cipher_buf, passwd);
+	}
+      else
+	{
+	  if (err == ER_DBLINK_PASSWORD_CHECKSUM || err == ER_DBLINK_PASSWORD_INVALID_LENGTH)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_DECRYPT, 1, err);
+	      err = ER_DBLINK_PASSWORD_DECRYPT;
+	    }
+	}
     }
 
 ret_pos:
+  pr_clear_value (&val);
   if (err != NO_ERROR)
     {
       if (er_errid_if_has_error () != NO_ERROR)
@@ -21522,67 +21514,23 @@ ret_pos:
   return err;
 }
 
-int
-pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external)
-{
-  int error;
-  DB_VALUE tmp_passwd;
-
-  db_make_null (&tmp_passwd);
-  error = get_dblink_password_decrypt (passwd, &tmp_passwd);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_PASSWORD_CHECKSUM || error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_DECRYPT, 1, error);
-	  error = ER_DBLINK_PASSWORD_DECRYPT;
-	}
-
-      pr_clear_value (&tmp_passwd);
-      return error;
-    }
-
-  error = get_dblink_password_encrypt ((char *) db_get_string (&tmp_passwd), outval, is_external);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_ENCRYPT, 1, error);
-	  error = ER_DBLINK_PASSWORD_ENCRYPT;
-	}
-    }
-
-  pr_clear_value (&tmp_passwd);
-  return error;
-}
-
 /*
  * get_dblink_password_encrypt ()  : Generates an encrypted password.
  *
  * return		  : NO_ERROR or error code.
  * passwd(in)             : Raw password
  * encrypt_val(out)	  : Encrypted password
- * is_external(in)	  : If true, generate a key for the external interface,
- *                          Otherwise, it generates a key to be stored internally.
  * 
  * Remark: 
  *      
  */
 static int
-get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external)
+get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 {
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
   char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   struct timeval check_time = { 0, 0 };
   struct tm *lt;
   char empty_str[4] = { 0x00, };
@@ -21603,25 +21551,18 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
   length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
   passwd = confused;
 
-  if (is_external == false)
+  if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
     {
-      private_key[0] = 0x00;
+      sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
     }
   else
     {
-      if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
+      if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+		    lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+		    check_time.tv_usec) >= (int) sizeof (private_key))
 	{
-	  sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
-	}
-      else
-	{
-	  if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
-			lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-			check_time.tv_usec) >= (int) sizeof (private_key))
-	    {
-	      assert_release (0);
-	      private_key[sizeof (private_key) - 1] = '\0';
-	    }
+	  assert_release (0);
+	  private_key[sizeof (private_key) - 1] = '\0';
 	}
     }
 
@@ -21657,7 +21598,7 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
   int err, length, new_length;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
 
   db_make_null (decrypt_val);
   if (!passwd_cipher || !*passwd_cipher)
