@@ -8232,13 +8232,13 @@ loop:
   assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
   assert (session.bkup.bkuphdr->end_time > 0);
 
+  log_append_backup_end (thread_p, session.bkup.bkuphdr->end_time);
+
   do
     {
       thread_sleep (1000);
     }
   while (session.bkup.bkuphdr->end_time >= time (NULL));
-
-  log_append_backup_end (thread_p, session.bkup.bkuphdr->end_time);
 
 #if defined(SERVER_MODE)
   logpb_destroy_backup_read_worker_pool ();
