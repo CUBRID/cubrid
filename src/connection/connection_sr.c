@@ -331,6 +331,18 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
 }
 
 /*
+ * css_prepare_shutdown_conn() - prepare to close connection entry
+ *   return: void
+ *   conn(in):
+ */
+void
+css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn)
+{
+  conn->stop_talk = false;
+  conn->in_flashback = false;
+}
+
+/*
  * css_shutdown_conn() - close connection entry
  *   return: void
  *   conn(in):
@@ -353,9 +365,8 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
   if (conn->status == CONN_OPEN || conn->status == CONN_CLOSING)
     {
       conn->status = CONN_CLOSED;
-      conn->stop_talk = false;
-      conn->in_flashback = false;
       conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
+      css_prepare_shutdown_conn (conn);
 
       if (conn->version_string)
 	{
