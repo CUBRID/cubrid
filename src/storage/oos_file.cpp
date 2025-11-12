@@ -329,6 +329,10 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 	    oos_error ("oos_read_within_page failed for chunk index=%d", idx);
 	    return err;
 	  }
+
+	assert (idx == header.chunk_index);
+	assert (total_size == header.total_size);
+
 	auto_freed_recdes_ptr defer_free_chunk_recdes (&chunk_recdes, recdes_free_data_area);
 
 	total_read_size += chunk_recdes.length;
@@ -338,6 +342,8 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 	current_chunk_oid = header.next_chunk_oid;
       }
       assert (chunk_recdes.data == nullptr); // should be freed by auto_freed_recdes_ptr
+
+      idx++;
     }
 
   assert (total_read_size == total_size);
