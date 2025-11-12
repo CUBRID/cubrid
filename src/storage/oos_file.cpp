@@ -197,6 +197,12 @@ static int oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
       total_inserted_size += chunk_recdes.length;
       chunk_recdes.data = recdes.data + i * max_chunk_size;
 
+      //  TODO: code review feedback
+      //
+      // - Distinguish between the record header and segment header for clarity.
+      // - 2nd to nth chunks do not need total_size in their headers, only the 1st chunk needs it.
+      // - If wanted for debug purposes, use NDEBUG
+      //
       OOS_RECORD_HEADER header{total_size, i, next_chunk_oid};
 
       OID current_chunk_oid;
