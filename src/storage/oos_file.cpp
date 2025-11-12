@@ -253,7 +253,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     }
   scope_exit page_unfixer ([&]()
   {
-    pgbuf_unfix (thread_p, page_ptr);
+    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   });
 
 
@@ -381,7 +381,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES 
     }
   scope_exit page_unfixer ([&]()
   {
-    pgbuf_unfix (thread_p, page_ptr);
+    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   });
 
   RECDES recdes_with_oos_header;
@@ -513,7 +513,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
     }
   scope_exit page_unfixer ([&]()
   {
-    pgbuf_unfix (thread_p, page_ptr);
+    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   });
 
   auto [pageid, volid] = recently_inserted_oos_vpid;
