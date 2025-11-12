@@ -1937,7 +1937,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
   BITSET fake_subqueries;
   BITSET predset;
   BITSET taj_terms;
-  double join_outer_table_terms_selectivity = 1.0;
+  double join_outer_table_terms_duplicate_ratio = 1.0;
   BITSET temp_segs_set;
   QO_SEGMENT *seg;
 
@@ -2110,11 +2110,11 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  if ((seg != NULL && seg->head != NULL && seg->info != NULL && outer != NULL
 		       && outer->plan_un.scan.node != NULL) && (seg->head->idx == outer->plan_un.scan.node->idx))
 		    {
-		      join_outer_table_terms_selectivity *=
-			(double) seg->info->ndv / (double) outer->plan_un.scan.node->ncard;
+		      join_outer_table_terms_duplicate_ratio /= (double) seg->info->ndv;
 		    }
 		}
 	    }
+	  join_outer_table_terms_duplicate_ratio *= outer->plan_un.scan.node->ncard;
 
 	  bitset_difference (&new_subqueries, &fake_subqueries);
 
@@ -2191,7 +2191,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  mark_access_as_outer_join (parser, scan);
 		}
 	    }
-	  if (join_outer_table_terms_selectivity < MEMOIZE_NDV_RATIO_THRESHOLD)
+	  if (join_outer_table_terms_duplicate_ratio < MEMOIZE_NDV_RATIO_THRESHOLD)
 	    {
 	      XASL_SET_FLAG (scan, XASL_MEMOIZE_STORAGE);
 	    }
