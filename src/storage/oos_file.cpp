@@ -239,7 +239,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       return err;
     }
 
-  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
       oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", vpid.volid, vpid.pageid);
@@ -353,7 +353,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, c
   const auto [pageid, slotid, volid] = oid;
   auto vpid = VPID{pageid, volid};
 
-  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
       oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
@@ -480,7 +480,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
     }
 
   // try the recently inserted page first
-  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE_IF_IN_BUFFER,
+  PAGE_PTR raw_ptr = pgbuf_fix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE,
 				PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (raw_ptr == nullptr)
     {
