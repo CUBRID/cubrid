@@ -8214,8 +8214,8 @@ loop:
    * always be excluded.
    *
    * Workaround:
-   * Added a **new log entry** to record the backup completion time, followed by
-   * a forced 1-second delay before finalizing the backup. This delay ensures that
+   * A **new log entry** is written to record the backup completion time, then a
+   * 1-second delay is enforced before finalizing the backup. This ensures that
    * any transaction executed immediately after the backup will have a later
    * completion timestamp than the recorded backup time.
    *
