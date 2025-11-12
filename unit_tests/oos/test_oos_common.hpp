@@ -44,8 +44,11 @@ class ServerEnv : public ::testing::Environment
     {
       printf ("##### Starting Server For OOS Unit Testing #####\n");
 
-      // log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
+      // CUBRID log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
       // when run directly, log files will be created in the current working directory
+      //
+      // Note that, this is only for the er_log().
+      // Custom loggers such as oos_log::* and test_oos_log::* are logged to stderr for faster development.
       er_init ("./test_oos_log",ER_NEVER_EXIT);
 
       // hacky way to detour pl_server_init(), not needed for oos unit tests
