@@ -532,7 +532,7 @@ oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
     {
       return err;
     }
-  spage_initialize (thread_p, page, ANCHORED_DONT_REUSE_SLOTS, OOS_ALIGNMENT, false);
+  spage_initialize (thread_p, page, ANCHORED, OOS_ALIGNMENT, false);
   return err;
 }
 
