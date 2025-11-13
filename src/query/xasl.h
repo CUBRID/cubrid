@@ -496,26 +496,26 @@ struct cte_proc_node
 #define XASL_G_GRBYNUM_FLAG_LIMIT_GT_LT	    0x10
 
 #define XASL_LINK_TO_REGU_VARIABLE	0x1	/* is linked to regu variable ? */
-#define XASL_SKIP_ORDERBY_LIST		0x1 << 1	/* skip sorting for orderby_list ? */
-#define XASL_ZERO_CORR_LEVEL		0x1 << 2	/* is zero-level uncorrelated subquery ? */
-#define XASL_TOP_MOST_XASL		0x1 << 3	/* this is a top most XASL */
-#define XASL_TO_BE_CACHED		0x1 << 4	/* the result will be cached */
-#define	XASL_HAS_NOCYCLE		0x1 << 5	/* NOCYCLE is specified */
-#define	XASL_HAS_CONNECT_BY		0x1 << 6	/* has CONNECT BY clause */
-#define XASL_MULTI_UPDATE_AGG		0x1 << 7	/* is for multi-update with aggregate */
-#define XASL_IGNORE_CYCLES	       0x1 << 8	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
-#define	XASL_OBJFETCH_IGNORE_CLASSOID  0x1 << 9	/* fetch proc should ignore class oid */
-#define XASL_IS_MERGE_QUERY	       0x1 << 10	/* query belongs to a merge statement */
-#define XASL_USES_MRO		       0x1 << 11	/* query uses multi range optimization */
-#define XASL_DECACHE_CLONE	      0x1 << 12	/* decache clone */
-#define XASL_RETURN_GENERATED_KEYS    0x1 << 13	/* return generated keys */
-#define XASL_NO_FIXED_SCAN	      0x1 << 14	/* disable fixed scan for this proc */
-#define XASL_FLAG_RESERVED_1	      0x1 << 15	/* reserved for future use */
-#define XASL_INCLUDES_TDE_CLASS	      0x1 << 16	/* is any tde class related */
-#define XASL_SAMPLING_SCAN	      0x1 << 17	/* is sampling scan */
-#define XASL_USES_SQ_CACHE	      0x1 << 18	/* subquery uses result cache */
-#define XASL_NO_PARALLEL_SUBQUERY      0x1 << 19	/* disable parallel subquery */
-#define XASL_MEMOIZE_STORAGE	      0x1 << 20	/* enable memoize storage */
+#define XASL_SKIP_ORDERBY_LIST		(0x1 << 1)	/* skip sorting for orderby_list ? */
+#define XASL_ZERO_CORR_LEVEL		(0x1 << 2)	/* is zero-level uncorrelated subquery ? */
+#define XASL_TOP_MOST_XASL		(0x1 << 3)	/* this is a top most XASL */
+#define XASL_TO_BE_CACHED		(0x1 << 4)	/* the result will be cached */
+#define	XASL_HAS_NOCYCLE		(0x1 << 5)	/* NOCYCLE is specified */
+#define	XASL_HAS_CONNECT_BY		(0x1 << 6)	/* has CONNECT BY clause */
+#define XASL_MULTI_UPDATE_AGG		(0x1 << 7)	/* is for multi-update with aggregate */
+#define XASL_IGNORE_CYCLES	        (0x1 << 8)	/* is for LEVEL usage in connect by clause... sometimes cycles may be ignored */
+#define	XASL_OBJFETCH_IGNORE_CLASSOID   (0x1 << 9)	/* fetch proc should ignore class oid */
+#define XASL_IS_MERGE_QUERY	        (0x1 << 10)	/* query belongs to a merge statement */
+#define XASL_USES_MRO		        (0x1 << 11)	/* query uses multi range optimization */
+#define XASL_DECACHE_CLONE	       (0x1 << 12)	/* decache clone */
+#define XASL_RETURN_GENERATED_KEYS     (0x1 << 13)	/* return generated keys */
+#define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
+#define XASL_FLAG_RESERVED_1	       (0x1 << 15)	/* reserved for future use */
+#define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
+#define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
+#define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
+#define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
+#define XASL_MEMOIZE_STORAGE	       (0x1 << 20)	/* enable memoize storage */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
