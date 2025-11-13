@@ -942,7 +942,7 @@ namespace parallel_heap_scan
     QFILE_TUPLE_RECORD tpl_buf;
     if (!tl_xasl_p->proc.buildvalue.agg_domains_resolved)
       {
-	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (thread_p, tl_xasl_p, &tl_vd,
+	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (thread_p, tl_xasl_p, tl_vd,
 	    &tl_xasl_p->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
 	  {
 	    return false;
