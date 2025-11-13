@@ -964,6 +964,10 @@ namespace parallel_heap_scan
 		  {
 		    assert (operand->value.type == TYPE_CONSTANT);
 		    DB_VALUE *db_value_p = operand->value.value.dbvalptr;
+		    if (DB_IS_NULL (db_value_p))
+		      {
+			continue;
+		      }
 		    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 		    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
 		    int dbval_size = pr_data_writeval_disk_size (db_value_p);
