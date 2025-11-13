@@ -842,38 +842,6 @@ css_is_shutdown_timeout_expired (void)
 static int
 css_reestablish_connection_to_master (void)
 {
-  CSS_CONN_ENTRY *conn;
-  static int i = CSS_WAIT_COUNT;
-  char *packed_server_name;
-  int name_length;
-
-  if (i-- > 0)
-    {
-      return 0;
-    }
-  i = CSS_WAIT_COUNT;
-
-  packed_server_name = css_pack_server_name (css_Master_server_name, &name_length);
-  if (packed_server_name != NULL)
-    {
-      conn = css_connect_to_master_server (css_Master_port_id, packed_server_name, name_length);
-      if (conn != NULL)
-	{
-	  css_Pipe_to_master = conn->fd;
-	  if (css_Master_conn)
-	    {
-	      css_free_conn (css_Master_conn);
-	    }
-	  css_Master_conn = conn;
-	  free_and_init (packed_server_name);
-	  return 1;
-	}
-      else
-	{
-	  free_and_init (packed_server_name);
-	}
-    }
-
   css_Pipe_to_master = INVALID_SOCKET;
   return 0;
 }
