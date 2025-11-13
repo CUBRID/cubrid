@@ -778,7 +778,7 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   /* Flush all pages that were formatted. This is not needed, but it is done for security reasons to identify the volume
    * in case of a system crash. Note that the identification may not be possible during media crashes */
   (void) pgbuf_flush_all (thread_p, volid);
-  (void) fileio_synchronize (thread_p, vdes, vol_fullname, FILEIO_SYNC_ALSO_FLUSH_DWB);
+  (void) dwb_synchronize (thread_p, vdes, vol_fullname);
 
   fault_inject_random_crash ();
 
@@ -1641,6 +1641,20 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick); \
       TSC_ADD_TIMEVAL (thread_p->event_stats.extend_time, tv_diff); \
       thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
+      if (thread_p->m_px_orig_thread_entry) \
+      { \
+        target_thread_p = thread_p; \
+      while (target_thread_p->m_px_orig_thread_entry != NULL) \
+	{ \
+	  if (target_thread_p->m_px_orig_thread_entry == target_thread_p) \
+	    { \
+	      break; \
+	    } \
+	  target_thread_p = target_thread_p->m_px_orig_thread_entry; \
+	} \
+        assert (target_thread_p != NULL); \
+        target_thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
+      } \
     } \
   while (0)
 #define DISK_EXTEND_COLLECT(nsects) \
@@ -1674,6 +1688,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
   bool check_interrupt = logtb_get_check_interrupt (thread_p);
   bool continue_check = false;
   int error_code = NO_ERROR;
+  THREAD_ENTRY *target_thread_p = NULL;
 
   /* How this works:
    * There can be only one expand running for permanent volumes and one for temporary volumes. Any expander must first
