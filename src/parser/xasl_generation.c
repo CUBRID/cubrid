@@ -142,7 +142,6 @@ struct analytic_key_metadomain
 
   /* true if metadomain is now part of composite metadomain */
   bool demoted;
-  //
 
   /* level of metadomain */
   int level;
@@ -15558,8 +15557,6 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  /* error was already set */
 		  return NULL;
 		}
-
-	      // if(eval->sort_list == NULL)
 	    }
 
 	  /* this is the case of a perfect match where both children can be evaluated together */
@@ -15850,7 +15847,6 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, PT_NOD
   int sc_count = 0;
 
   /* meta domains */
-//   ANALYTIC_KEY_METADOMAIN *ordby_meta = NULL;
   ANALYTIC_KEY_METADOMAIN af_meta[ANALYTIC_OPT_MAX_FUNCTIONS * 2];
   int af_count = 0;
 
@@ -16645,7 +16641,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      SORT_LIST *sort_list = eval->sort_list;
 
-	      if (qo_plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN)	// 따로 분리해서 위로 ...
+	      if (qo_plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN)	// CBRD-26386 에서는 제외할 예정
 		{
 		  ni_entry = qo_plan->plan_un.scan.index;
 		  index_entry = ni_entry->head;
