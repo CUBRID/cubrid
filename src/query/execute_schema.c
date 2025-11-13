@@ -1331,13 +1331,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  error = check_ha_repl_constraint (vclass);
-  if (error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
-    }
-
   /* If we have an ADD COLUMN x NOT NULL without a default value, the existing rows will be filled with NULL for the
    * new column by default. For compatibility with MySQL, we can auto-fill some column types with "hard defaults", like
    * 0 for integer types. THIS CAN TAKE A LONG TIME (it runs an UPDATE), and can be turned off by setting
@@ -1637,7 +1630,6 @@ change_ai_error:
   return error;
 }
 
-
 /*
  * do_alter() -
  *   return: Error code
@@ -1651,6 +1643,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *crt_clause = NULL;
   bool do_semantic_checks = false;
   bool do_rollback = false;
+  DB_OBJECT *vclass;
+  const char *entity_name;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1731,6 +1725,15 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  goto error_exit;
 	}
       do_semantic_checks = true;
+    }
+
+  entity_name = alter->info.alter.entity_name->info.name.original;
+  vclass = db_find_class (entity_name);
+  error_code = check_ha_repl_constraint (vclass);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      return error_code;
     }
 
   return error_code;
