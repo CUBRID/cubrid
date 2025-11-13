@@ -2004,7 +2004,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       extractor_thread_proc_terminate = true;
 
       pthread_mutex_lock (&unld_cls_info.mtx);
-      unld_cls_info.signaled = true;
       unld_cls_info.broadcasted = true;
       pthread_cond_broadcast (&unld_cls_info.cond);
       pthread_mutex_unlock (&unld_cls_info.mtx);
