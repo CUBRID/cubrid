@@ -194,6 +194,11 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		if (carry || num_str_p <= num_str_digits)
 		  {
 		    p = strlen (num_str_p);
+
+		    if (p > DB_MAX_NUMERIC_PRECISION)
+		      {
+			p = DB_MAX_NUMERIC_PRECISION;
+		      }
 		  }
 
 		if (num_str[0])
@@ -385,6 +390,11 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 			  }
 
 			p = strlen (num_str_p);
+
+			if (p > DB_MAX_NUMERIC_PRECISION)
+			  {
+			    p = DB_MAX_NUMERIC_PRECISION;
+			  }
 		      }
 		    else
 		      {

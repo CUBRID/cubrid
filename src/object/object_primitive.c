@@ -39,6 +39,7 @@
 #include "error_manager.h"
 #include "file_io.h"
 #include "compressor.hpp"
+#include "numeric_opfunc.h"
 #include "mem_block.hpp"
 #include "object_representation.h"
 #include "set_object.h"
@@ -8299,7 +8300,7 @@ mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
   else
 #endif
     {
-      mem_length = fp_numeric_precision_to_bytes (domain->precision);
+      mem_length = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       mem_length = DB_ALIGN (mem_length, INT_ALIGNMENT);
     }
 
@@ -8385,7 +8386,7 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 	  else
 #endif
 	    {
-	      byte_size = fp_numeric_precision_to_bytes (src_precision);
+	      byte_size = _gv_float_numeric_precision_bytes_lookup[src_precision - 1];
 	      byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
 
 	      memcpy (num, src_num + (DB_NUMERIC_BUF_SIZE - byte_size), byte_size);
@@ -8421,7 +8422,7 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 #endif
     {
       int byte_size;
-      byte_size = fp_numeric_precision_to_bytes (domain->precision);
+      byte_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
 
       if (num[0] & 0x80)
@@ -8454,7 +8455,7 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
   else
 #endif
     {
-      disk_size = fp_numeric_precision_to_bytes (domain->precision);
+      disk_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
     }
   or_put_data (buf, (char *) mem, disk_size);
@@ -8487,7 +8488,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       else
 #endif
 	{
-	  size = fp_numeric_precision_to_bytes (domain->precision);
+	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
 	  size = DB_ALIGN (size, INT_ALIGNMENT);
 	}
 
@@ -8515,7 +8516,7 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
   else
 #endif
     {
-      len = fp_numeric_precision_to_bytes (domain->precision);
+      len = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       len = DB_ALIGN (len, INT_ALIGNMENT);
     }
 
@@ -8611,7 +8612,7 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       else
 #endif
 	{
-	  len = fp_numeric_precision_to_bytes (precision);
+	  len = _gv_float_numeric_precision_bytes_lookup[precision - 1];
 	  len = DB_ALIGN (len, INT_ALIGNMENT);
 	}
     }
@@ -8662,7 +8663,7 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	  else
 #endif
 	    {
-	      disk_size = fp_numeric_precision_to_bytes (precision);
+	      disk_size = _gv_float_numeric_precision_bytes_lookup[precision - 1];
 	      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
 
 	      rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
@@ -8737,7 +8738,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	{
 	  DB_C_NUMERIC num = (DB_C_NUMERIC) buf->ptr;
 
-	  size = fp_numeric_precision_to_bytes (domain->precision);
+	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
 	  size = DB_ALIGN (size, INT_ALIGNMENT);
 
 	  if (num[0] & 0x80)

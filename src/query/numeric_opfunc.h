@@ -77,7 +77,7 @@ typedef enum fp_value_type
   do { \
     (value)->data.num.header.precision = (value)->domain.numeric_info.precision; \
     (value)->data.num.header.scale = (value)->domain.numeric_info.scale; \
-    (value)->domain.numeric_info.precision = 0; \
+    (value)->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION; \
     (value)->domain.numeric_info.scale = 0; \
   } while(0)
 
@@ -88,6 +88,17 @@ typedef enum fp_value_type
     (value)->data.num.header.precision = 0; \
     (value)->data.num.header.scale = 0; \
   } while(0)
+
+/*
+ * Lookup table for converting precision value to byte count
+ *
+ * Precision range: Pre-calculated for 1 to 43 digits
+ * Conversion formula: bytes = ceil(precision / log10(256))
+ * Note: log10(256) = 2.40824
+ */
+static const uint16_t _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] =
+  { 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15,
+15, 15, 16, 16, 17, 17, 18, 18, 18 };
 
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);

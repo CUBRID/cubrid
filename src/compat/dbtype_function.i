@@ -1522,7 +1522,7 @@ db_make_fp_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num)
 }
 
 /*
- * db_make_fixed_numeric() -
+ * db_make_fixed_numeric_internal() -
  * return :
  * value(out) :
  * num(in):

@@ -598,9 +598,16 @@ extern "C"
 
 /* These constants define the size of buffers within a DB_VALUE. */
 #if 1				// used in phase-2
-#define DB_NUMERIC_BUF_SIZE	((2*sizeof(double)) + 4)
+#define DB_NUMERIC_BUF_SIZE	20
 #else				// used in phase-3
-#define DB_NUMERIC_BUF_SIZE	((2*sizeof(double)) + 2)
+/*
+ * DB_NUMERIC_BUF_SIZE
+ * 
+ * buffer size for numeric type's db_value->data.num
+ * stores 18 bytes of data (for precision 43), excluding the 2-byte header.
+ * Formula: ceil(DB_MAX_NUMERIC_PRECISION / log10(256)) = 18
+ */
+#define DB_NUMERIC_BUF_SIZE	18
 #endif
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
