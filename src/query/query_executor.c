@@ -1205,6 +1205,30 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      if (a_eval_list->is_sorted)
 		{
+		  QFILE_TUPLE_VALUE_TYPE_LIST interm_type_list;
+		  if (xasl->list_id->tuple_cnt == 0)
+		    {
+
+		      if (qdata_get_valptr_type_list
+			  (thread_p, xasl->proc.buildlist.a_outptr_list_interm, &interm_type_list) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+
+		      a_eval_list->interm_list_id =
+			qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, 0, NULL);
+
+		      if (interm_type_list.domp)
+			{
+			  db_private_free_and_init (thread_p, interm_type_list.domp);
+			}
+
+		      if (a_eval_list->interm_list_id == NULL)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+
 		  if (fetch_val_list
 		      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl,
 		       true) != NO_ERROR)
@@ -1218,7 +1242,15 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
+
+		      if (a_func_list->function == PT_ROW_NUMBER)
+			{
+			  pr_clone_value (a_func_list->out_value, a_func_list->value);
+			}
 		    }
+
+		  a_eval_list->curr_group_tuple_count++;
+		  a_eval_list->curr_sort_key_tuple_count++;
 		}
 	    }
 	}
@@ -1283,6 +1315,22 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	    }
 
+	  if (xasl->proc.buildlist.a_eval_list->is_sorted)
+	    {
+
+	      if (qexec_generate_tuple_descriptor
+		  (thread_p, xasl->proc.buildlist.a_eval_list->interm_list_id, xasl->outptr_list,
+		   &xasl_state->vd) == QPROC_TPLDESCR_FAILURE)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      if (qfile_generate_tuple_into_list (thread_p, xasl->proc.buildlist.a_eval_list->interm_list_id, T_NORMAL)
+		  != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
 	  if (output_tuple)
 	    {
 	      /* generate tuple into list file page */
@@ -20603,25 +20651,32 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    /* open intermediate file */
-    if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list) != NO_ERROR)
+    if (analytic_eval->is_sorted)
       {
-	GOTO_EXIT_ON_ERROR;
+	analytic_state.interm_file = analytic_eval->interm_list_id;
       }
-
-    interm_list_id = qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, ls_flag, NULL);
-
-    if (interm_type_list.domp)
+    else
       {
-	db_private_free_and_init (thread_p, interm_type_list.domp);
-      }
+	/* open intermediate file */
+	if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list) != NO_ERROR)
+	  {
+	    GOTO_EXIT_ON_ERROR;
+	  }
 
-    if (interm_list_id == NULL)
-      {
-	GOTO_EXIT_ON_ERROR;
-      }
+	interm_list_id = qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, ls_flag, NULL);
 
-    analytic_state.interm_file = interm_list_id;
+	if (interm_type_list.domp)
+	  {
+	    db_private_free_and_init (thread_p, interm_type_list.domp);
+	  }
+
+	if (interm_list_id == NULL)
+	  {
+	    GOTO_EXIT_ON_ERROR;
+	  }
+
+	analytic_state.interm_file = interm_list_id;
+      }
 
     /* last iteration results in xasl result file */
     if (is_last)
@@ -20685,6 +20740,28 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   /*
    * Now load up the sort module and set it off...
    */
+
+  if (analytic_eval->is_sorted)
+    {
+      for (i = 0; i < analytic_state.func_count; i++)
+	{
+	  analytic_state.func_state_list[i].curr_group_tuple_count = analytic_eval->curr_group_tuple_count;
+	  analytic_state.func_state_list[i].curr_sort_key_tuple_count = analytic_eval->curr_sort_key_tuple_count;
+
+	  if (qexec_analytic_finalize_group
+	      (thread_p, analytic_state.xasl_state, &analytic_state.func_state_list[i], false) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
+      if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      analytic_state.state = NO_ERROR;
+      goto wrapup;
+    }
 
   estimated_pages = qfile_get_estimated_pages_for_sorting (list_id, &analytic_state.key_info);
 

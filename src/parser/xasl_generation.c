@@ -16663,8 +16663,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 			      const char *index_col_name = index_entry->constraints->attributes[col_idx]->header.name;
 
 			      if (!pt_str_compare (col_name, index_col_name, CASE_INSENSITIVE) == 0
-				  || !(sort_list->s_order == S_DESC && index_entry->constraints->asc_desc[col_idx] == 1)
-				  || !(sort_list->s_order == S_ASC && index_entry->constraints->asc_desc[col_idx] == 0))
+				  ||
+				  !((sort_list->s_order == S_DESC && index_entry->constraints->asc_desc[col_idx] == 1)
+				    || (sort_list->s_order == S_ASC
+					&& index_entry->constraints->asc_desc[col_idx] == 0)))
 				{
 				  eval->is_sorted = false;
 				  break;
@@ -16677,9 +16679,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		    }
 		}
 
-	      if (sort_list == NULL)	// 인덱스와 일치하거나, over() 절이 비어있는 경우
+	      if (sort_list == NULL)
 		{
 		  eval->is_sorted = true;
+		  eval->curr_group_tuple_count = 0;
+		  eval->curr_sort_key_tuple_count = 0;
 		}
 	    }
 

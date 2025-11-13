@@ -103,6 +103,9 @@ namespace cubxasl
     analytic_eval_type *next;	/* next eval group */
     analytic_list_node *head;		/* analytic type list */
     SORT_LIST *sort_list;		/* partition sort */
+    qfile_list_id *interm_list_id;	/* interm list id */
+    int curr_group_tuple_count;
+    int curr_sort_key_tuple_count;
     bool is_sorted;			/* is sorted? */
 
     analytic_eval_type () = default;
