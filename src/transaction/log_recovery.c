@@ -68,9 +68,6 @@ static int log_rv_analysis_atomic_sysop_start (THREAD_ENTRY * thread_p, int tran
 static int log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				     LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
 				     bool * did_incom_recovery);
-static int log_rv_analysis_backup_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
-				       LOG_LSA * prev_lsa, bool is_media_crash, time_t * stop_at,
-				       bool * did_incom_recovery);
 static int log_rv_analysis_sysop_end (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_lsa, LOG_PAGE * log_page_p);
 static int log_rv_analysis_start_checkpoint (LOG_LSA * log_lsa, LOG_LSA * start_lsa, bool * may_use_checkpoint);
 static int log_rv_analysis_end_checkpoint (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
@@ -1580,64 +1577,6 @@ end:
   return NO_ERROR;
 }
 
-/*
- * log_rv_analysis_backup_end -
- *
- * return: error code
- *
- *   log_lsa(in/out):
- *   log_page_p(in/out):
- *   prev_lsa(in/out):
- *   is_media_crash(in):
- *   stop_at(in):
- *   did_incom_recovery(in/out):
- *
- * Note:
- */
-static int
-log_rv_analysis_backup_end (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p, LOG_LSA * prev_lsa,
-			    bool is_media_crash, time_t * stop_at, bool * did_incom_recovery)
-{
-  LOG_REC_DONETIME *donetime;
-  time_t last_at_time;
-  LOG_LSA record_header_lsa;
-
-  if (is_media_crash != true)
-    {
-      goto end;
-    }
-
-  LSA_COPY (&record_header_lsa, log_lsa);
-
-  /*
-   * Need to read the donetime record to find out if we need to stop
-   * the recovery at this point.
-   */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page_p);
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), log_lsa, log_page_p);
-
-  donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
-  last_at_time = (time_t) donetime->at_time;
-
-  if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) <= 0)
-    {
-      /*
-       * Reset the log active and stop the recovery process at this
-       * point. Before resetting the log, make sure that we are not
-       * holding a page.
-       */
-      log_lsa->pageid = NULL_PAGEID;
-      log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
-      *did_incom_recovery = true;
-
-      return NO_ERROR;
-    }
-
-end:
-
-  return NO_ERROR;
-}
-
 /* TODO: We need to understand how recovery of system operations really works. We need to find its limitations.
  *	 For now, I did find out this:
  *	 1. if tdes->topops.last is 0 (cannot be bigger during recovery), it means the transaction should be in
@@ -2488,11 +2427,6 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_ABORT:
       (void) log_rv_analysis_complete (thread_p, tran_id, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
 				       did_incom_recovery);
-      break;
-
-    case LOG_DUMMY_BACKUP_END:
-      (void) log_rv_analysis_backup_end (thread_p, log_lsa, log_page_p, prev_lsa, is_media_crash, stop_at,
-					 did_incom_recovery);
       break;
 
     case LOG_SYSOP_END:
@@ -3892,7 +3826,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
-	    case LOG_DUMMY_BACKUP_END:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
@@ -4823,7 +4756,6 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_REPLICATION_DATA:
 		case LOG_REPLICATION_STATEMENT:
 		case LOG_DUMMY_HA_SERVER_STATE:
-		case LOG_DUMMY_BACKUP_END:
 		case LOG_DUMMY_OVF_RECORD:
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
@@ -5665,7 +5597,6 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
     case LOG_COMMIT:
     case LOG_ABORT:
-    case LOG_DUMMY_BACKUP_END:
       /* Read the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_DONETIME), &log_lsa, log_pgptr);
 

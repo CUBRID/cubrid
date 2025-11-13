@@ -137,11 +137,6 @@ enum log_rectype
 				 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
 				 * or undo images that never retrieved from the log. */
 
-  LOG_DUMMY_BACKUP_END = 53,	/* Used to record the backup completion time.
-				 * Contains the same timestamp as the backup volume header's end_time,
-				 * and is referenced during point-in-time restore (e.g., 'restoredb -d backuptime')
-				 * to determine the exact restore point. */
-
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 typedef enum log_rectype LOG_RECTYPE;

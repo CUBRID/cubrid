@@ -126,7 +126,6 @@ extern void log_append_compensate_with_undo_nxlsa (THREAD_ENTRY * thread_p, LOG_
 						   PGLENGTH offset, PAGE_PTR pgptr, int length, const void *data,
 						   LOG_TDES * tdes, const LOG_LSA * undo_nxlsa);
 extern void log_append_ha_server_state (THREAD_ENTRY * thread_p, int state);
-extern void log_append_backup_end (THREAD_ENTRY * thread_p, INT64 end_time);
 extern void log_append_empty_record (THREAD_ENTRY * thread_p, LOG_RECTYPE logrec_type, LOG_DATA_ADDR * addr);
 extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);

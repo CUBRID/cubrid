@@ -340,7 +340,6 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
     case LOG_DUMMY_HA_SERVER_STATE:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
-    case LOG_DUMMY_BACKUP_END:
     case LOG_SUPPLEMENTAL_INFO:
 
     case LOG_2PC_COMMIT_DECISION:
@@ -1267,7 +1266,6 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
 
     case LOG_COMMIT:
     case LOG_ABORT:
-    case LOG_DUMMY_BACKUP_END:
       assert (length == 0 && data == NULL);
       node->data_header_length = sizeof (LOG_REC_DONETIME);
       break;

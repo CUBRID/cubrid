@@ -8197,43 +8197,37 @@ loop:
       goto error;
     }
 
-  LOG_CS_EXIT (thread_p);
-
   /*
    * -------------------------------------------------------------------------
    * WORKAROUND: Preventing Restore of Post-Backup Transactions
    * -------------------------------------------------------------------------
    *
    * Problem:
-   * The restore process ('restoredb -d backuptime') compares the backup
-   * completion time (stored in the backup volume header) with each transaction’s
-   * completion timestamp (LOG_COMMIT / LOG_ABORT).
+   * The restore process ('restoredb -d backuptime') compares the backup end time
+   * (stored in the backup volume header) with each transaction’s commit timestamp
+   * (LOG_COMMIT / LOG_ABORT).
    *
    * Issue:
-   * When a transaction is executed immediately after a backup within the same
-   * session, both events can share the same second-level timestamp, causing the
-   * post-backup transaction to be mistakenly restored. Such transactions must
-   * always be excluded.
+   * Since time(NULL) does not guarantee monotonic increase, the commit time
+   * obtained after backup completion can be equal to or earlier than the backup
+   * end time. In such cases, point-in-time restore may include transactions that
+   * were executed after the backup, which should have been excluded.
    *
    * Workaround:
-   * A **new log entry** is written to record the backup completion time, then a
-   * 1-second delay is enforced before finalizing the backup. This ensures that
-   * any transaction executed immediately after the backup will have a later
-   * completion timestamp than the recorded backup time.
+   * Enforce a 1-second delay after setting the backup end time so that any
+   * subsequent transaction obtains a strictly later commit timestamp.
    *
    * Limitation:
-   * Effectively separates sequential operations in the same session, but cannot
-   * fully distinguish concurrent transactions across sessions due to
-   * second-level timestamp precision.
+   * This workaround resolves timing overlaps for transactions executed
+   * immediately after a backup in the same session, but cannot fully separate
+   * concurrent transactions across sessions due to second-level timestamp limits.
    *
    * TODO (Permanent Fix):
-   * - Add millisecond-level precision to LOG_COMMIT / LOG_ABORT timestamps to
-   *   accurately separate concurrent transactions in all sessions.
+   * - Use millisecond-level precision in LOG_COMMIT / LOG_ABORT timestamps to
+   *   accurately separate concurrent transactions.
    * -------------------------------------------------------------------------
    */
   assert (session.bkup.bkuphdr->end_time > 0);
-
-  log_append_backup_end (thread_p, session.bkup.bkuphdr->end_time);
 
   do
     {
@@ -8250,11 +8244,11 @@ loop:
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
       if (catmsg)
 	{
-	  LOG_CS_ENTER (thread_p);
 	  logpb_remove_archive_logs (thread_p, catmsg);
-	  LOG_CS_EXIT (thread_p);
 	}
     }
+
+  LOG_CS_EXIT (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 
