@@ -1143,7 +1143,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 
   args->volume = volume ? volume : empty;
   args->input_file = input_file ? input_file : empty;
-  args->user_name = user_name ? user_name : empty;
+  args->user_name = user_name ? user_name : AU_PUBLIC_USER_NAME;
   args->password = password ? password : empty;
   args->syntax_check = utility_get_option_bool_value (arg_map, LOAD_CHECK_ONLY_S);
   args->load_only = utility_get_option_bool_value (arg_map, LOAD_LOAD_ONLY_S);
