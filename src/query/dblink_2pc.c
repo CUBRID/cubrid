@@ -110,7 +110,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 void
 dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool is_commit, void *block_particps_ids)
 {
-  int i, err;
+  int i, err, conn_handle;
   XID xid;
   T_CCI_ERROR err_buf;
   DBLINK_CONN_INFO *dblink;
@@ -127,7 +127,7 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
     }
   else
     {
-      type = CCI_TRAN_ABORT;
+      type = CCI_TRAN_ROLLBACK;
     }
 
   dblink = (DBLINK_CONN_INFO *) block_particps_ids;
