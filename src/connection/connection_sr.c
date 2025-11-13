@@ -120,7 +120,11 @@ static pthread_mutex_t css_Client_id_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t css_Conn_rule_lock = PTHREAD_MUTEX_INITIALIZER;
 static CSS_CONN_ENTRY *css_Free_conn_anchor = NULL;
 static int css_Num_free_conn = 0;
-static int css_Num_max_conn = 101;	/* default max_clients + 1 for conn with master */
+static int css_Num_current_client = 0;	/* default max_clients + 1 for conn with master */
+static int css_Num_max_client = 101;	/* default max_clients + 1 for conn with master */
+static int css_Num_max_conn = 202;	/* must have a extra conn to avoid issuing the new conn
+					   when there is no conn even if the actual connceted client
+					   is lower than css_Num_max_client */
 
 CSS_CONN_ENTRY *css_Conn_array = NULL;
 CSS_CONN_ENTRY *css_Active_conn_anchor = NULL;
@@ -338,8 +342,17 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
 void
 css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn)
 {
+  int r;
+
   conn->stop_talk = false;
   conn->in_flashback = false;
+
+  START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
+
+  css_Num_current_client--;
+  assert (css_Num_current_client >= 0);
+
+  END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 }
 
 /*
@@ -366,8 +379,6 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     {
       conn->status = CONN_CLOSED;
       conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
-      css_prepare_shutdown_conn (conn);
-
       if (conn->version_string)
 	{
 	  free_and_init (conn->version_string);
@@ -420,7 +431,7 @@ css_init_conn_list (void)
 
   css_init_conn_rules ();
 
-  css_Num_max_conn = css_get_max_conn () + NUM_MASTER_CHANNEL;
+  css_Num_max_client = css_get_max_conn () + NUM_MASTER_CHANNEL;
 
   if (css_Conn_array != NULL)
     {
@@ -446,6 +457,7 @@ css_init_conn_list (void)
    * allocate NUM_MASTER_CHANNEL + the total number of
    *  conn entries
    */
+  css_Num_max_conn = css_Num_max_client * 2;
   css_Conn_array = (CSS_CONN_ENTRY *) malloc (sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
   if (css_Conn_array == NULL)
     {
@@ -497,6 +509,7 @@ css_init_conn_list (void)
   /* initialize active conn list, used for stopping all threads */
   css_Active_conn_anchor = NULL;
   css_Free_conn_anchor = &css_Conn_array[0];
+  css_Num_current_client = 0;
   css_Num_free_conn = css_Num_max_conn;
 
   return NO_ERROR;
@@ -575,16 +588,25 @@ css_make_conn (SOCKET fd)
 
   START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
-  if (css_Free_conn_anchor != NULL)
-    {
-      conn = css_Free_conn_anchor;
-      css_Free_conn_anchor = css_Free_conn_anchor->next;
-      conn->next = NULL;
+  assert (css_Num_current_client <= css_Num_max_client);
 
-      css_Num_free_conn--;
-      assert (css_Num_free_conn >= 0);
+  if (css_Num_current_client < css_Num_max_client)
+    {
+      if (css_Free_conn_anchor != NULL)
+	{
+	  conn = css_Free_conn_anchor;
+	  css_Free_conn_anchor = css_Free_conn_anchor->next;
+	  conn->next = NULL;
+
+	  css_Num_free_conn--;
+	  css_Num_current_client++;
+
+	  CSS_LOG_STACK ("css_make_conn: conn = %d, " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
+	}
     }
-  CSS_LOG_STACK ("css_make_conn: conn = %d, " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
+
+  assert (css_Num_free_conn >= 0);
+  assert (css_Num_current_client <= css_Num_max_client);
 
   END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
@@ -592,6 +614,8 @@ css_make_conn (SOCKET fd)
     {
       if (css_initialize_conn (conn, fd) != NO_ERROR)
 	{
+	  css_prepare_shutdown_conn (conn);
+	  css_free_conn (conn);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
 	  return NULL;
 	}
