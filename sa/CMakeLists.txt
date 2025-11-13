@@ -724,21 +724,16 @@ target_external_dependencies(cubridsa
   LIBEDIT
   )
 endif(UNIX)
-target_external_dependencies(cubridsa
-  LIBEXPAT
-  LIBJANSSON
-  LIBEDIT
-  LIBOPENSSL
-  LZ4
-  RAPIDJSON
-  RE2
-  )
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
+  )
+target_include_directories(cubridsa PRIVATE
+  ${EP_INCLUDES}
   )
 if(UNIX)
   # find out what this means:
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
+  target_link_libraries(cubridsa PRIVATE ${EP_LIBS})
   target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
   target_link_libraries(cubridsa PUBLIC rt)
@@ -747,7 +742,7 @@ endif(UNIX)
 target_link_libraries(cubridsa PUBLIC cascci)
 
 add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-#add_dependencies(cubridsa ${EP_TARGETS})
+add_dependencies(cubridsa ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})
