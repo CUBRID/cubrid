@@ -724,6 +724,7 @@ target_external_dependencies(cubridsa
   LIBEDIT
   )
 endif(UNIX)
+target_link_libraries(cubridsa PRIVATE ${EP_LIBS})
 target_include_directories(cubridsa PRIVATE
   ${FLEX_INCLUDE_DIRS}
   )
@@ -733,7 +734,8 @@ target_include_directories(cubridsa PRIVATE
 if(UNIX)
   # find out what this means:
   # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridsa PRIVATE ${EP_LIBS})
+  # The above line is deprecated and it causes multiple definition errors.
+  # we use this instead: target_link_libraries(cubridsa PRIVATE ${EP_LIBS}), outside the if(UNIX) block.
   target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
   target_link_libraries(cubridsa PUBLIC stdc++fs)
   target_link_libraries(cubridsa PUBLIC rt)
