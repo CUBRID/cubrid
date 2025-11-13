@@ -10785,16 +10785,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
     {
       common_type = PT_TYPE_DOUBLE;
     }
-  else if ((PT_IS_CHAR_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_CLOB) ||
-	   (PT_IS_CHAR_STRING_TYPE (arg2_type) && arg1_type == PT_TYPE_CLOB))
-    {
-      common_type = PT_TYPE_CLOB;
-    }
-  else if ((PT_IS_BIT_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_BLOB) ||
-	   (PT_IS_BIT_STRING_TYPE (arg2_type) && arg1_type == PT_TYPE_BLOB))
-    {
-      common_type = PT_TYPE_BLOB;
-    }
   else
     {
       switch (arg1_type)
@@ -10992,7 +10982,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
@@ -11023,7 +11012,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
@@ -11052,7 +11040,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_ENUMERATION:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
@@ -11089,7 +11076,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
@@ -11128,7 +11114,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
@@ -11169,7 +11154,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
@@ -11207,7 +11191,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      break;
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_ENUMERATION:
@@ -11237,7 +11220,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      break;
 
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_CHAR:
 	    case PT_TYPE_VARNCHAR:
 	    case PT_TYPE_NCHAR:
@@ -11271,7 +11253,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	    case PT_TYPE_CHAR:
 	      common_type = arg2_type;
 	      break;
@@ -11296,7 +11277,6 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_DATETIMELTZ:
 	    case PT_TYPE_DATETIMETZ:
 	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_CLOB:
 	      common_type = arg2_type;
 	      break;
 	    case PT_TYPE_CHAR:
@@ -11466,49 +11446,10 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	  break;
 
 	case PT_TYPE_CLOB:
-	  switch (arg2_type)
-	    {
-	    case PT_TYPE_CHAR:
-	    case PT_TYPE_VARCHAR:
-	    case PT_TYPE_NCHAR:
-	    case PT_TYPE_VARNCHAR:
-	    case PT_TYPE_CLOB:
-	      common_type = PT_TYPE_CLOB;
-	      break;
-
-	    case PT_TYPE_DATE:
-	    case PT_TYPE_TIME:
-	    case PT_TYPE_TIMESTAMP:
-	    case PT_TYPE_TIMESTAMPLTZ:
-	    case PT_TYPE_TIMESTAMPTZ:
-	    case PT_TYPE_DATETIME:
-	    case PT_TYPE_DATETIMELTZ:
-	    case PT_TYPE_DATETIMETZ:
-	      common_type = arg2_type;
-	      break;
-
-	    default:
-	      common_type = PT_TYPE_NONE;
-	      break;
-	    }
+	  common_type = PT_TYPE_NONE;
 	  break;
 
 	case PT_TYPE_BLOB:
-	  switch (arg2_type)
-	    {
-	    case PT_TYPE_BIT:
-	    case PT_TYPE_VARBIT:
-	    case PT_TYPE_BLOB:
-	      common_type = PT_TYPE_BLOB;
-	      break;
-
-	    default:
-	      common_type = PT_TYPE_NONE;
-	      break;
-	    }
-	  break;
-
-	default:
 	  common_type = PT_TYPE_NONE;
 	  break;
 	}
