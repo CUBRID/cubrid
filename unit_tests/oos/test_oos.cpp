@@ -24,6 +24,7 @@
 #include "storage_common.h"
 #include "oos_file.hpp"
 #include "test_oos_common.hpp"
+#include "page_buffer_support.hpp"
 
 #include "oos_log.hpp"
 #include "test_oos_log.hpp"
@@ -31,7 +32,7 @@
 using namespace test_oos_log;
 
 // bridge functions to access static functions in oos_file.cpp
-int bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
+const auto_unfix_page_ptr bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
 int bridge_oos_get_max_chunk_size_within_page ();
 int bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 int bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
@@ -224,8 +225,8 @@ TEST (OosTest, OosFindBestSpace)
   vpid.volid = NULL_VOLID;
   vpid.pageid = NULL_PAGEID;
   auto random_data_length = 100;
-  err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
-  ASSERT_EQ (err, NO_ERROR);
+  auto page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
+  ASSERT_NE (page_ptr, nullptr);
 
   test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
   ASSERT_NE (vpid.volid, NULL_VOLID);
@@ -244,8 +245,8 @@ TEST (OosTest, OosFindBestSpaceReturnsExistingPage)
   vpid.volid = NULL_VOLID;
   vpid.pageid = NULL_PAGEID;
   auto random_data_length = 100;
-  err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
-  ASSERT_EQ (err, NO_ERROR);
+  auto page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
+  ASSERT_NE (page_ptr, nullptr);
 
   test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
   ASSERT_NE (vpid.volid, NULL_VOLID);
@@ -273,18 +274,13 @@ TEST (OosTest, OosFixAndUnfixPage)
   VPID vpid{NULL_PAGEID, NULL_VOLID};
   const auto random_data_length = 100;
 
-  err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
-  ASSERT_EQ (err, NO_ERROR);
+  auto page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
+  ASSERT_NE (page_ptr, nullptr);
 
   test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
   ASSERT_NE (vpid.volid, NULL_VOLID);
   ASSERT_NE (vpid.pageid, NULL_PAGEID);
 
-  // manually initialize page
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  ASSERT_NE (page_ptr, nullptr);
-
-  pgbuf_unfix (thread_p, page_ptr);
 }
 
 TEST (OosTest, OosManualSlottedPageInsertAndGet)
@@ -301,16 +297,12 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   vpid.volid = NULL_VOLID;
   vpid.pageid = NULL_PAGEID;
   auto random_data_length = 100;
-  err = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
-  ASSERT_EQ (err, NO_ERROR);
+  auto auto_page_ptr = bridge_oos_find_best_page (thread_p, oos_vfid, random_data_length, vpid);
+  ASSERT_NE (auto_page_ptr, nullptr);
 
   test_oos_debug ("Best page found: volid=%d, pageid=%d", vpid.volid, vpid.pageid);
   ASSERT_NE (vpid.volid, NULL_VOLID);
   ASSERT_NE (vpid.pageid, NULL_PAGEID);
-
-  // manual initialize page
-  auto page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  ASSERT_NE (page_ptr, nullptr);
 
   // prepare insert data
   RECDES rec{};
@@ -325,6 +317,7 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
 
   // read
   PGSLOTID slotid_out = NULL_SLOTID;
+  PAGE_PTR page_ptr = auto_page_ptr.get();
   auto sp_error = spage_insert (thread_p, page_ptr, &rec, &slotid_out);
   ASSERT_EQ (sp_error, SP_SUCCESS);
   ASSERT_NE (slotid_out, NULL_SLOTID);
@@ -338,7 +331,6 @@ TEST (OosTest, OosManualSlottedPageInsertAndGet)
   ASSERT_EQ (rec.length, rec_out.length);
   ASSERT_STREQ (rec.data, rec_out.data);
 
-  pgbuf_unfix (thread_p, page_ptr);
   recdes_free_data_area (&rec);
   assert (rec.data == nullptr);
   // rec_out data area is PEEKed, so no need to free

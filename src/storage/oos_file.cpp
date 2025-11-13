@@ -25,6 +25,7 @@
 #include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "storage_common.h"
+#include "page_buffer_support.hpp"
 
 #include "oos_file.hpp"
 #include "oos_log.hpp"
@@ -35,7 +36,7 @@
 // static functions
 // ****************************************************************************
 
-static int
+static const auto_unfix_page_ptr
 oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
 
 static int
@@ -238,24 +239,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 
   assert (required_length <= DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT));
 
-  err = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
-  if (err != NO_ERROR)
-    {
-      oos_error ("oos_find_best_page failed");
-      return err;
-    }
-
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
-    {
-      oos_error ("pgbuf_fix failed for volid=%d, pageid=%d", vpid.volid, vpid.pageid);
-      return ER_FAILED;
-    }
-  scope_exit page_unfixer ([&]()
-  {
-    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
-  });
-
+  auto auto_page_ptr = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
 
   RECDES oos_rec{};
   {
@@ -273,6 +257,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     });
 
     PGSLOTID slotid = NULL_SLOTID;
+    PAGE_PTR page_ptr = auto_page_ptr.get();
     int sp_status = spage_insert (thread_p, page_ptr, &oos_rec, &slotid);
     if (sp_status != SP_SUCCESS)
       {
@@ -465,25 +450,26 @@ static int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
 }
 
 
-static int oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
-			       VPID &vpid_out)
+static auto_unfix_page_ptr oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
+    VPID &vpid_out)
 {
-  int err;
+  int err = NO_ERROR;
   PAGE_TYPE page_type = PAGE_OOS;
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, nullptr);
   if (err)
     {
       oos_error ("file_alloc failed");
-      return err;
+      return nullptr;
     }
   oos_trace ("allocated new page {volid=%d, pageid=%d}",
 	     vpid_out.volid, vpid_out.pageid);
 
-  return NO_ERROR;
+  return pgbuf_fix_auto_unfix (thread_p, &vpid_out, OLD_PAGE,
+			       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 }
 
 
-static int
+static const auto_unfix_page_ptr
 oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid)
 {
   int err = 0;
@@ -503,18 +489,15 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       return oos_file_alloc_new (thread_p, oos_vfid, vpid);
     }
 
-  // try the recently inserted page first
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE,
-				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
+  auto auto_page_ptr = pgbuf_fix_auto_unfix (thread_p, &recently_inserted_oos_vpid, OLD_PAGE,
+		       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (auto_page_ptr == nullptr)
     {
       assert (false); // should not happen
       return oos_file_alloc_new (thread_p, oos_vfid, vpid);
     }
-  scope_exit page_unfixer ([&]()
-  {
-    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
-  });
+
+  PAGE_PTR page_ptr = auto_page_ptr.get();
 
   auto [pageid, volid] = recently_inserted_oos_vpid;
   int freespace = spage_get_free_space (thread_p, page_ptr);
@@ -526,7 +509,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       oos_trace ("reusing recently inserted page {volid=%d, pageid=%d} with freespace=%d",
 		 recently_inserted_oos_vpid.volid, recently_inserted_oos_vpid.pageid, freespace);
       vpid = recently_inserted_oos_vpid;
-      return NO_ERROR;
+      return auto_page_ptr;
     }
 
   oos_trace ("recently inserted page {volid=%d, pageid=%d} does not have enough space",
@@ -578,7 +561,8 @@ int bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
   return get_recently_inserted_oos_vpid (oos_vfid, vpid);
 }
 
-int bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid)
+const auto_unfix_page_ptr bridge_oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length,
+    VPID &vpid)
 {
   return oos_find_best_page (thread_p, oos_vfid, rec_length, vpid);
 }
