@@ -8197,6 +8197,8 @@ loop:
       goto error;
     }
 
+  LOG_CS_EXIT (thread_p);
+
   /*
    * -------------------------------------------------------------------------
    * WORKAROUND: Preventing Restore of Post-Backup Transactions
@@ -8248,11 +8250,11 @@ loop:
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
       if (catmsg)
 	{
+	  LOG_CS_ENTER (thread_p);
 	  logpb_remove_archive_logs (thread_p, catmsg);
+	  LOG_CS_EXIT (thread_p);
 	}
     }
-
-  LOG_CS_EXIT (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_BACKUP_CS_EXIT, 1, log_Name_active);
 
