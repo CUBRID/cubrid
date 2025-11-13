@@ -4907,7 +4907,6 @@ export_server (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_ERROR query_error;
 #define SERVER_VALUE_INDEX_MAX   (10)
   DB_VALUE values[SERVER_VALUE_INDEX_MAX];
-  DB_VALUE passwd_val;
   char *srv_name, *owner_name, *str;
   char *uppercase_user = NULL;
   size_t uppercase_user_size = 0;
@@ -4962,7 +4961,6 @@ export_server (extract_context & ctxt, print_output & output_ctx)
       return ER_FAILED;
     }
 
-  db_make_null (&passwd_val);
   for (i = 0; i < SERVER_VALUE_INDEX_MAX; i++)
     {
       db_make_null (&values[i]);
@@ -4997,55 +4995,36 @@ export_server (extract_context & ctxt, print_output & output_ctx)
       if (au_is_server_authorized_user (values + (SERVER_VALUE_INDEX_MAX - 1)))
 	{
 	  srv_name = (char *) db_get_string (values + 0);
-	  str = (char *) db_get_string (values + 5);
-	  error = pt_remake_dblink_password (str, &passwd_val, true);
-	  if (error != NO_ERROR)
-	    {			// TODO: error handling       
-	      if (er_errid_if_has_error () != NO_ERROR)
-		{
-		  fprintf (stderr, "Failed to re-encryption password for %s. error=%d(%s)\n",
-			   srv_name, error, (char *) er_msg ());
-		}
-	      else
-		{
-		  fprintf (stderr, "Failed to re-encryption password for %s. error=%d\n", srv_name, error);
-		}
-	    }
-	  else
+
+	  owner_name = (char *) db_get_string (values + 8);
+	  PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
+			    sizeof (output_owner));
+
+	  output_ctx ("\nCREATE SERVER %s[%s] (", output_owner, srv_name);
+	  output_ctx ("\n\t HOST= '%s'", (char *) db_get_string (values + 1));
+	  output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
+
+	  output_ctx (",\n\t DBNAME= ");
+	  desc_value_print (output_ctx, values + 3);
+
+	  output_ctx (",\n\t USER= ");
+	  desc_value_print (output_ctx, values + 4);
+
+	  output_ctx (",\n\t PASSWORD= '%s'", (char *) db_get_string (values + 5));
+
+	  str = (char *) db_get_string (values + 6);
+	  if (str)
 	    {
-	      owner_name = (char *) db_get_string (values + 8);
-	      PRINT_OWNER_NAME (owner_name, (ctxt.is_dba_user || ctxt.is_dba_group_member), output_owner,
-				sizeof (output_owner));
-
-	      output_ctx ("\nCREATE SERVER %s[%s] (", output_owner, srv_name);
-	      output_ctx ("\n\t HOST= '%s'", (char *) db_get_string (values + 1));
-	      output_ctx (",\n\t PORT= %d", db_get_int (values + 2));
-
-	      output_ctx (",\n\t DBNAME= ");
-	      desc_value_print (output_ctx, values + 3);
-
-	      output_ctx (",\n\t USER= ");
-	      desc_value_print (output_ctx, values + 4);
-
-	      output_ctx (",\n\t PASSWORD= '%s'", (char *) db_get_string (&passwd_val));
-
-	      str = (char *) db_get_string (values + 6);
-	      if (str)
-		{
-		  output_ctx (",\n\t PROPERTIES= '%s'", str);
-		}
-
-	      str = (char *) db_get_string (values + 7);
-	      if (str)
-		{
-		  output_ctx (",\n\t COMMENT= ");
-		  desc_value_print (output_ctx, values + 7);
-		}
-	      output_ctx (" );\n");
+	      output_ctx (",\n\t PROPERTIES= '%s'", str);
 	    }
 
-	  db_value_clear (&passwd_val);
-	  db_make_null (&passwd_val);
+	  str = (char *) db_get_string (values + 7);
+	  if (str)
+	    {
+	      output_ctx (",\n\t COMMENT= ");
+	      desc_value_print (output_ctx, values + 7);
+	    }
+	  output_ctx (" );\n");
 	}
 
       for (i = 0; i < SERVER_VALUE_INDEX_MAX; i++)
@@ -5062,7 +5041,6 @@ err:
   parser_free_parser (parser);
   db_query_end (query_result);
 
-  db_value_clear (&passwd_val);
   if (error != NO_ERROR)
     {
       if (er_has_error ())

@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <atomic>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -648,7 +649,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 
   if (need_sync)
     {
-      fileio_synchronize_all (thread_p, false);
+      fileio_synchronize_all (thread_p);
     }
 #endif /* SERVER_MODE */
 }
@@ -2827,7 +2828,11 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	}
     }
 
-  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, FILEIO_SYNC_ALSO_FLUSH_DWB) != to_vol_desc)
+#if !defined(CS_MODE)
+  if (dwb_synchronize (thread_p, to_vol_desc, to_vol_label_p) != to_vol_desc)
+#else
+  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p) != to_vol_desc)
+#endif
     {
       goto error;
     }
@@ -2891,7 +2896,11 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
     }
   free_and_init (malloc_io_page_p);
 
-  if (fileio_synchronize (thread_p, vol_fd, vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB) != vol_fd)
+#if !defined(CS_MODE)
+  if (dwb_synchronize (thread_p, vol_fd, vlabel) != vol_fd)
+#else
+  if (fileio_synchronize (thread_p, vol_fd, vlabel) != vol_fd)
+#endif
     {
       success = ER_FAILED;
     }
@@ -3101,7 +3110,11 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
    */
   vlabel = fileio_get_volume_label_by_fd (vol_fd, PEEK);
 
-  (void) fileio_synchronize (thread_p, vol_fd, vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB);
+#if !defined(CS_MODE)
+  (void) dwb_synchronize (thread_p, vol_fd, vlabel);
+#else
+  (void) fileio_synchronize (thread_p, vol_fd, vlabel);
+#endif
 
 #if !defined(WINDOWS)
   lockf_type = fileio_get_lockf_type (vol_fd);
@@ -3303,7 +3316,11 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
-      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB);
+#if !defined(CS_MODE)
+      (void) dwb_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
+#else
+      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
+#endif
 
 #if !defined(WINDOWS)
       if (vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3345,7 +3362,7 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
       if (sys_vol_info_p->vdes != NULL_VOLDES)
 	{
 	  /* System volume. No need to sync DWB. */
-	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_ONLY);
+	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel);
 
 #if !defined(WINDOWS)
 	  if (sys_vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3648,7 +3665,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, msg);
 
 	      // exit handler
-	      (void) fileio_synchronize (thread_p, fd, vlabel, FILEIO_SYNC_ONLY);
+	      (void) fileio_synchronize (thread_p, fd, vlabel);
 
 #if !defined(NDEBUG)
 	      if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
@@ -4382,47 +4399,57 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
   return io_page_array[0];
 }
 
+bool
+fileio_fsync_pending (void)
+{
+#if defined (SERVER_MODE)
+// *INDENT-OFF*
+  static std::atomic<uint64_t> counter (0);
+// *INDENT-ON*
+#else
+  static uint64_t counter (0);
+#endif
+  uint64_t prev_counter;
+  int threshold;
+
+  threshold = prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC);
+  if (threshold <= 0)
+    {
+      return false;
+    }
+
+#if defined (SERVER_MODE)
+  prev_counter = counter.fetch_add (1, std::memory_order_relaxed);
+#else
+  prev_counter = counter++;
+#endif
+
+  if (!((prev_counter + 1) % (uint64_t) threshold))
+    {
+      return false;
+    }
+  return true;
+}
+
 /*
  * fileio_synchronize () - Synchronize a database volume's state with that on disk
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
- *   sync_dwb(in): FILEIO_SYNC_ALSO_FLUSH_DWB if needs sync dwb
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FILEIO_SYNC_OPTION sync_dwb)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel)
 {
-  int ret = NO_ERROR;
-  bool all_sync = false;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
 #endif
-#if defined (SERVER_MODE)
-  static pthread_mutex_t inc_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
-  int r;
-#endif
-  static int inc_cnt = 0;
+  int error = NO_ERROR;
 
-  if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) > 0)
+  /* should fsync ? */
+  if (fileio_fsync_pending ())
     {
-#if defined (SERVER_MODE)
-      r = pthread_mutex_lock (&inc_cnt_mutex);
-#endif
-      if (++inc_cnt >= prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC))
-	{
-	  inc_cnt = 0;
-	}
-      else
-	{
-#if defined (SERVER_MODE)
-	  pthread_mutex_unlock (&inc_cnt_mutex);
-#endif
-	  return vol_fd;
-	}
-#if defined (SERVER_MODE)
-      pthread_mutex_unlock (&inc_cnt_mutex);
-#endif
+      return vol_fd;
     }
 
 #if defined (EnableThreadMonitoring)
@@ -4432,18 +4459,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
     }
 #endif
 
-#if !defined (CS_MODE)
-  if (sync_dwb == FILEIO_SYNC_ALSO_FLUSH_DWB && fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
-    {
-      ret = dwb_flush_force (thread_p, &all_sync);
-    }
-#endif
-
-  /* If all_sync is true, everything was synchronized. This happens when DWB is completely flushed. */
-  if (ret == NO_ERROR && all_sync == false)
-    {
-      ret = fsync (vol_fd);
-    }
+  error = fsync (vol_fd);
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -4453,25 +4469,23 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
     }
 #endif
 
-  if (ret != 0)
+  if (error != NO_ERROR)
     {
       /* sync error is not alwasy handled and I am not sure a proper safe handling is possible: raise as fatal error */
       er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
       return NULL_VOLDES;
     }
-  else
-    {
+
 #if defined (EnableThreadMonitoring)
-      if (MONITOR_WAITING_THREAD (elapsed_time))
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
-		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
-	}
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
+    }
 #endif
 
-      perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOSYNCHES);
-      return vol_fd;
-    }
+  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOSYNCHES);
+  return vol_fd;
 }
 
 /*
@@ -4518,7 +4532,7 @@ fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLUME_INF
 
 
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_ONLY);
+      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel);
     }
 
   return found;
@@ -4554,7 +4568,7 @@ fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_inf
 	  return false;
 	}
 
-      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_ONLY);
+      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
     }
 
   return found;
@@ -4563,10 +4577,9 @@ fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_inf
 /*
  * fileio_synchronize_all () - Synchronize all database volumes with disk
  *   return:
- *   include_log(in):
  */
 int
-fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
+fileio_synchronize_all (THREAD_ENTRY * thread_p)
 {
   int success = NO_ERROR;
   bool all_sync = false;
@@ -4580,12 +4593,6 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
   arg.vol_id = NULL_VOLID;
 
   er_stack_push ();
-
-  if (is_include)
-    {
-      /* Flush logs. */
-      (void) fileio_traverse_system_volume (thread_p, fileio_synchronize_sys_volume, &arg);
-    }
 
 #if !defined (CS_MODE)
   /* Flush DWB before volume data. */
@@ -7350,8 +7357,7 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	  return NULL;
 	}
 
-      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name,
-			      FILEIO_SYNC_ONLY) != session_p->bkup.vdes)
+      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name) != session_p->bkup.vdes)
 	{
 	  return NULL;
 	}
@@ -9646,7 +9652,7 @@ fileio_finish_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 {
   int success;
 
-  success = fileio_synchronize_all (thread_p, false);
+  success = fileio_synchronize_all (thread_p);
   fileio_abort_restore (thread_p, session_p);
 
   return success;
