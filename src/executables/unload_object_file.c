@@ -720,11 +720,14 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
       {
-	char *pos;
-	TEXT_BUFFER_BLK *tail_ptr_bk;
+	char *pos = NULL;
+	TEXT_BUFFER_BLK *tail_ptr_bk = NULL;
 
-	tail_ptr_bk = tout->tail_ptr;
-	pos = tout->tail_ptr->ptr;
+	if (tout->tail_ptr)
+	  {
+	    tail_ptr_bk = tout->tail_ptr;
+	    pos = tout->tail_ptr->ptr;
+	  }
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
 			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
