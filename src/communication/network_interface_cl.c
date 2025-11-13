@@ -11380,10 +11380,10 @@ tdes_reset_query_start_info (PT_NODE * node)
  *   hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
  *   attrid_arr (in): An array that stores LOB attribute ids of the table.
                       When creating the LOB directory, each LOB attribute is distinguished by its id
- *   attrid_arr_length(in): length of attrid_arr
+ *   lob_attrid_arr_length(in): length of attrid_arr
  */
 int
-lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
+lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
@@ -11394,7 +11394,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * attrid_arr_length);
+  request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * lob_attrid_arr_length);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -11403,7 +11403,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
     }
 
   ptr = or_pack_hfid (request, hfid);
-  ptr = or_pack_int_array (ptr, attrid_arr_length, attrid_arr);
+  ptr = or_pack_int_array (ptr, lob_attrid_arr_length, attrid_arr);
 
   req_error =
     net_client_request (NET_SERVER_LOB_CREATE_DIR, request, request_size, reply,
@@ -11423,7 +11423,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length)
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xlob_create_dir (thread_p, hfid, attrid_arr, attrid_arr_length);
+  error = xlob_create_dir (thread_p, hfid, attrid_arr, lob_attrid_arr_length);
 
   exit_server (*thread_p);
 
