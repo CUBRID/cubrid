@@ -8229,7 +8229,6 @@ loop:
    *   accurately separate concurrent transactions in all sessions.
    * -------------------------------------------------------------------------
    */
-  assert (thread_p->tran_index == LOG_SYSTEM_TRAN_INDEX);
   assert (session.bkup.bkuphdr->end_time > 0);
 
   log_append_backup_end (thread_p, session.bkup.bkuphdr->end_time);

@@ -3229,7 +3229,6 @@ log_append_backup_end (THREAD_ENTRY * thread_p, INT64 end_time)
     {
       return;
     }
-  assert (tdes->is_system_main_transaction ());
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_BACKUP_END, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -6966,7 +6965,7 @@ log_dump_record_backup_end (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * lo
   donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
   tmp_time = (time_t) donetime->at_time;
   (void) ctime_r (&tmp_time, time_val);
-  fprintf (out_fp, "  Backup end time at = %s\n", time_val);
+  fprintf (out_fp, ",\n     Backup end time at = %s\n", time_val);
 
   return log_page_p;
 }
