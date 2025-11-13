@@ -52,6 +52,8 @@ extern int dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_pa
 				      DWB_SLOT **p_dwb_slot);
 extern int dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, DWB_SLOT **p_dwb_slot);
 
+extern int dwb_synchronize (THREAD_ENTRY *thread_p, int vol_fd, const char *vlabel);
+
 #if defined (SERVER_MODE)
 extern void dwb_daemons_init ();
 extern void dwb_daemons_destroy ();
