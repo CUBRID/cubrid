@@ -6881,7 +6881,7 @@ db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int
   assert (precision >= DB_DEFAULT_PRECISION);
 
   if (db_type != DB_TYPE_BIT && db_type != DB_TYPE_VARBIT && db_type != DB_TYPE_CHAR && db_type != DB_TYPE_VARCHAR
-      && db_type != DB_TYPE_NCHAR && db_type != DB_TYPE_VARNCHAR)
+      && db_type != DB_TYPE_NCHAR && db_type != DB_TYPE_VARNCHAR && db_type != DB_TYPE_CLOB && db_type != DB_TYPE_BLOB)
     {
       return ER_QSTR_INVALID_DATA_TYPE;
     }
@@ -25249,18 +25249,18 @@ db_bit_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
       goto success;
     }
 
-  if (!(QSTR_IS_BIT (src_type) && !QSTR_IS_LOB (src_type)))
+  if (!QSTR_IS_BIT (src_type))
     {
-      // TODO: This part should be revised when the TOAST structure is introduced in the future.
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       goto error;
     }
 
   bit_data = db_get_bit (src_value, &length);
 
-  if (length > 0)
+  if ((length >= 0) && (bit_data != NULL))
     {
-      buf = db_private_alloc (NULL, length);
+      /* Allocate 1 byte when length is 0 (empty string case) so that buf can hold an empty string (''). */
+      buf = db_private_alloc (NULL, length ? length : 1);
       if (buf == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -25323,9 +25323,10 @@ db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
       char_data = db_get_string (src_value);
       length = db_get_string_size (src_value);
 
-      if (length > 0)
+      if ((length >= 0) && (char_data != NULL))
 	{
-	  buf = db_private_alloc (NULL, length);
+	  /* Allocate 1 byte when length is 0 (empty string case) so that buf can hold an empty string (''). */
+	  buf = db_private_alloc (NULL, length ? length : 1);
 	  if (buf == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -25401,36 +25402,35 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VA
       goto success;
     }
 
-  if (src_type == DB_TYPE_BLOB && length_type == DB_TYPE_INTEGER)
-    {
-      // TODO: This part should be revised when the TOAST structure is introduced in the future.
-      blob_data = db_get_bit (src_value, &length);
-
-      if (length > 0)
-	{
-	  buf = db_private_alloc (NULL, length);
-	  if (buf == NULL)
-	    {
-	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error;
-	    }
-
-	  memcpy (buf, blob_data, length);
-	}
-
-      error_status = db_make_varbit (result_value, max_length, (DB_CONST_C_BIT) buf, length);
-      if (error_status != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      result_value->need_clear = true;
-    }
-  else
+  if (src_type != DB_TYPE_BLOB && length_type != DB_TYPE_INTEGER)
     {
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       goto error;
     }
+
+  // TODO: This part should be revised when the TOAST structure is introduced in the future.
+  blob_data = db_get_bit (src_value, &length);
+
+  if ((length >= 0) && (blob_data != NULL))
+    {
+      /* Allocate 1 byte when length is 0 (empty string case) so that buf can hold an empty string (''). */
+      buf = db_private_alloc (NULL, length ? length : 1);
+      if (buf == NULL)
+	{
+	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      memcpy (buf, blob_data, length);
+    }
+
+  error_status = db_make_varbit (result_value, max_length, (DB_CONST_C_BIT) buf, length);
+  if (error_status != NO_ERROR)
+    {
+      goto error;
+    }
+
+  result_value->need_clear = true;
 
 success:
   return error_status;
@@ -25547,9 +25547,10 @@ db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
   codeset = db_get_string_codeset (src_value);
   collation = db_get_string_collation (src_value);
 
-  if (length > 0)
+  if ((length >= 0) && (char_data != NULL))
     {
-      buf = db_private_alloc (NULL, length);
+      /* Allocate 1 byte when length is 0 (empty string case) so that buf can hold an empty string (''). */
+      buf = db_private_alloc (NULL, length ? length : 1);
       if (buf == NULL)
 	{
 	  error_status = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -25627,9 +25628,10 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
       collation = db_get_string_collation (src_value);
 
 
-      if (length > 0)
+      if ((length >= 0) && (clob_data != NULL))
 	{
-	  buf = db_private_alloc (NULL, length);
+	  /* Allocate 1 byte when length is 0 (empty string case) so that buf can hold an empty string (''). */
+	  buf = db_private_alloc (NULL, length ? length : 1);
 	  if (buf == NULL)
 	    {
 	      error_status = ER_OUT_OF_VIRTUAL_MEMORY;

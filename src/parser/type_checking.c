@@ -18725,7 +18725,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       domain = pt_xasl_node_to_domain (parser, expr);
 
       if (domain
-	  && (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)) || type1 == PT_TYPE_NULL || type2 == PT_TYPE_NULL))
+	  && (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)) || TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (domain))
+	      || type1 == PT_TYPE_NULL || type2 == PT_TYPE_NULL))
 	{
 	  if (opd3)		/* REPLACE */
 	    {
