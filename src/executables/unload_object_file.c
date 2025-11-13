@@ -732,8 +732,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
 			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
 	/* if tout flushed, then this float/double should be the first content */
-	if (tail_ptr_bk != tout->tail_ptr)
+	if (pos == NULL || tail_ptr_bk != tout->tail_ptr)
 	  {
+	    assert (tout->tail_ptr != NULL);
 	    pos = tout->tail_ptr->buffer;
 	  }
 
