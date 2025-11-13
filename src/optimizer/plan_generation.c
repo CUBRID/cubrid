@@ -1164,13 +1164,44 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
 	{
 	  xasl->ordbynum_flag = XASL_ORDBYNUM_FLAG_SCAN_CONTINUE;
 	}
+
+      xasl->ordbynum_val = ordby_val;
+
       limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, false);
       if (limit_infop)
 	{
-	  xasl->orderby_limit = limit_infop->upper;
+	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
+	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
+		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE))
+	    {
+	      assert (xasl->instnum_pred == NULL);
+	      assert (xasl->ordbynum_pred != NULL);
+	      assert (xasl->save_instnum_val == NULL);
+
+	      xasl->instnum_pred = xasl->ordbynum_pred;
+	      xasl->ordbynum_pred = NULL;
+
+	      xasl->save_instnum_val = xasl->instnum_val;
+	      xasl->instnum_val = xasl->ordbynum_val;
+	      xasl->instnum_flag = xasl->ordbynum_flag;
+
+	      xasl->ordbynum_val = NULL;
+	      xasl->ordbynum_flag = 0;
+
+	      KEY_INFO *key_infop = &xasl->spec_list->indexptr->key_info;
+	      key_infop->key_limit_l = limit_infop->lower;
+	      key_infop->key_limit_u = limit_infop->upper;
+	      key_infop->key_limit_reset = false;
+
+	      XASL_SET_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
+	    }
+	  else
+	    {
+	      xasl->orderby_limit = limit_infop->upper;
+	    }
+
 	  db_private_free (NULL, limit_infop);
 	}
-      xasl->ordbynum_val = ordby_val;
     }
 
   return xasl;
