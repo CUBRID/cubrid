@@ -5253,13 +5253,12 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
 
-    }
-
-  /* remove lob ces temp dir */
-  error_code = boot_lob_remove_temp_dir ();
-  if (error_code != NO_ERROR)
-    {
-      goto error_rem_allvols;
+      /* remove lob ces temp dir */
+      error_code = boot_lob_remove_temp_dir ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
     }
 
   /* Now delete the database */

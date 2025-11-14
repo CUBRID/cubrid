@@ -283,9 +283,6 @@ namespace cubthread
       bool trigger_involved;
       bool is_cdc_daemon;
 
-      /* for lob_dir_path */
-      LOB_DIR_ID lob_id;
-
       /* support multi-process unloaddb
        * _unload_parallel_process_idx is only valid when (_unload_cnt_parallel_process > 1).
        * At this time, _unload_parallel_process_idx can have values ​​between 0 and (_unload_cnt_parallel_process-1).
