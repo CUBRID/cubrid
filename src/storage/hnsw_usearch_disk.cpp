@@ -42,6 +42,8 @@
 #include <usearch/index_dense.hpp>
 #include <usearch/index_plugins.hpp>
 
+#include "hnsw_algo.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -96,24 +98,7 @@ class hnsw_disk_usearch final:public hnsw_index
     virtual int load (const std::string &path) override;
 
     THREAD_ENTRY *m_thread_p;
-    hnsw_context m_context;
-
-  protected:
-
-    hnsw_build_params m_build_params;
-    hnsw_index_backend &m_backend;
-
-    int search_for_one_ (const float *query, const OID closest_oid, const uint16_t begin_level, const uint16_t end_level,
-			 OID &output_oid);
-    int search_to_insert_ (const float *query, const OID start_oid, const uint16_t level, const std::size_t top_limit);
-    int form_links_to_closests_ (const OID new_slot_oid, const uint16_t level);
-    int refine_ (std::size_t needed, top_candidates_t &top, std::size_t &refines_counter, cadidates_t &candidates);
-};
-
-class hnsw_node_helper
-{
-    hnsw_node *get (THREAD_ENTRY *thread_p, VPID vpid, int slot_id);
-
+    VPID m_root_vpid;
 };
 
 // =====================================================================
@@ -240,16 +225,24 @@ hnsw_disk_usearch_backend::create_index (THREAD_ENTRY *thread_p, const BTID *bti
 // hnsw_disk_usearch
 // =====================================================================
 
+hnsw_disk_usearch::hnsw_disk_usearch (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
+  const hnsw_build_params &build_params)
+  : hnsw_index (backend, btid, name, build_params)
+{
+  m_root_vpid = { btid.root_pageid, btid.vfid.volid};
+}
+
 int
 hnsw_disk_usearch::prepare_to_add (int n_vectors, const OID *oid, const float *vector)
 {
-  return ER_FAILED;
+  // do nothing
+  return NO_ERROR;
 }
 
 int
 hnsw_disk_usearch::add (int n_vectors, const OID *oid, const float *vector)
 {
-
+  
   return ER_FAILED;
 }
 
