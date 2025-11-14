@@ -154,6 +154,7 @@ extern char *sm_get_method_source_file (MOP obj, const char *name);
 extern int sm_truncate_class (MOP class_mop, const bool is_cascade);
 extern int sm_truncate_using_delete (MOP class_mop);
 extern int sm_truncate_using_destroy_heap (MOP class_mop);
+extern int lob_create_or_remove_dir (HFID *old_hfid, HFID *new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length);
 
 bool sm_is_possible_to_recreate_constraint (MOP class_mop, const SM_CLASS * const class_,
 					    const SM_CLASS_CONSTRAINT * const constraint);

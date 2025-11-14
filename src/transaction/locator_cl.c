@@ -5772,7 +5772,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       if (attrid_arr_length)
 	{
 	  HFID lob_hfid = *hfid;
-	  if (lob_create_dir (&lob_hfid, lob_attrid_arr, attrid_arr_length) != NO_ERROR)
+	  if (lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, attrid_arr_length) != NO_ERROR)
 	    {
 	      free (lob_attrid_arr);
 	      return NULL;
@@ -5940,7 +5940,10 @@ locator_remove_class (MOP class_mop)
 	{
 	  if (TP_IS_LOB_TYPE (attr->type->id))
 	    {
-	      error_code = lob_remove_dir (insts_hfid, -1);
+	      int attrid_arr[1];
+
+	      attrid_arr[0] = -1;
+	      error_code = lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;

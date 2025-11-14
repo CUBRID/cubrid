@@ -26776,9 +26776,7 @@ heap_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   char lob_path[PATH_MAX];
   int error = NO_ERROR;
 
-#if defined(SERVER_MODE) || defined(SA_MODE)
   snprintf (lob_path, (strlen (path) + 1), "%s", path);
-#endif /* SERVER_MODE || SA_MODE */
 
   error = fileio_lob_remove_dir (lob_path);
 
