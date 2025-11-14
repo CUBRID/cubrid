@@ -10835,7 +10835,8 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 
 	  vimkim_log ("m, ef_construction, metric: %d, %d, %d\n", m, ef_construction, metric);
 
-	  error = hnsw_add_index (index, domain->precision, m, ef_construction, (int) metric);
+	  error =
+	    hnsw_add_index (index, WS_OID (classop), attrs[0]->id, domain->precision, m, ef_construction, (int) metric);
 	}
       else
 	{

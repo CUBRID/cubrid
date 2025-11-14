@@ -122,19 +122,19 @@ hnsw_index::get_backend() const
 // hnsw_oid_encoder_default
 // ====================
 
-int64_t
+uint64_t
 hnsw_oid_encoder_default::encode_oid (const OID &oid)
 {
-  return (static_cast<int64_t> (oid.pageid) << 32) |
-	 (static_cast<uint32_t> (oid.slotid) << 16) |
-	 (static_cast<uint16_t> (oid.volid));
+  return (static_cast<uint64_t> (static_cast<uint32_t> (oid.pageid)) << 32) |
+	 (static_cast<uint64_t> (static_cast<uint16_t> (oid.slotid)) << 16) |
+	 static_cast<uint64_t> (static_cast<uint16_t> (oid.volid));
 }
 
 OID
 hnsw_oid_encoder_default::decode_oid (const int64_t &id)
 {
   OID oid;
-  oid.pageid = static_cast<int32_t> (id >> 32);
+  oid.pageid = static_cast<int32_t> (static_cast<uint32_t> (id >> 32));
   oid.slotid = static_cast<int16_t> ((id >> 16) & 0xFFFF);
   oid.volid = static_cast<int16_t> (id & 0xFFFF);
 

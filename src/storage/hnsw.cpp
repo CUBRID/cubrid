@@ -37,6 +37,8 @@
 #include "heap_file.h"
 #include "hnsw_api.hpp"
 
+#include "slotted_page.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -64,7 +66,7 @@ class hnsw_index_manager
     bool is_index_file_exists (const std::string &prefix, const BTID *btid) const;
     bool is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const;
 
-    BTID create_btid (const hnsw_index_backend *backend);
+    BTID create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, const OID *class_oid, int attr_id);
 
     // index management on memory
     bool is_index_loaded (const BTID *btid) const;
@@ -133,7 +135,8 @@ xhnsw_finalize (THREAD_ENTRY *thread_p)
 }
 
 int
-xhnsw_add_index (THREAD_ENTRY *thread_p, const OID* class_oid, const hnsw_build_params &params, BTID &btid_out)
+xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attr_id, const hnsw_build_params &params,
+		 BTID &btid_out)
 {
   hnsw_index_backend *backend_instance = index_manager->get_backend ();
   if (!backend_instance)
@@ -149,22 +152,24 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const OID* class_oid, const hnsw_build_
       return ER_FAILED;
     }
 
-  btid_out = index_manager->create_btid (backend_instance);
+  log_sysop_start (thread_p);
+
+  btid_out = index_manager->create_btid (thread_p, backend_instance, class_oid, attr_id);
+  // TODO: error handling
 
   hnsw_index *index = backend_instance->create_index (thread_p, &btid_out, "", params);
   if (index == nullptr)
     {
       // failed to create index
       assert (false);
-      return ER_FAILED;
+      goto error;
     }
 
-  int error = index_manager->add_index (&btid_out, index);
-  if (error != NO_ERROR)
+  if (index_manager->add_index (&btid_out, index) != NO_ERROR)
     {
       // failed to add index
       assert (false);
-      return ER_FAILED;
+      goto error;
     }
 
 #if !defined(NDEBUG)
@@ -173,7 +178,13 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const OID* class_oid, const hnsw_build_
   index_manager->print_index_info (&btid_out);
 #endif
 
-  return error;
+  return NO_ERROR;
+
+error:
+
+  log_sysop_abort (thread_p);
+
+  return ER_FAILED;
 }
 
 int
@@ -197,7 +208,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
   OID_SET_NULL (&cur_oid);
   BTID new_btid;
 
-  if (xhnsw_add_index (thread_p, oid, params, new_btid) != NO_ERROR)
+  if (xhnsw_add_index (thread_p, oid, attr_ids[0], params, new_btid) != NO_ERROR)
     {
       assert (false);
       return ER_FAILED;
@@ -667,21 +678,82 @@ int hnsw_index_manager::delete_index_on_disk (const std::string &prefix, const B
 
 
 BTID
-hnsw_index_manager::create_btid (const hnsw_index_backend *backend)
+hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, const OID *class_oid,
+				 int attr_id)
 {
   BTID btid = {.vfid = VFID_INITIALIZER, .root_pageid = -1};
   if (backend->is_disk_index ())
-  {
-    
-  }
-  else
-  {
-  btid.root_pageid = m_last_index_id;
-  while (is_index_loaded (&btid) || is_index_meta_file_exists (backend->get_id(), &btid))
     {
-      btid.root_pageid = ++m_last_index_id;
+      FILE_DESCRIPTORS des;
+      VPID vpid_root;
+
+      int error_code = NO_ERROR;
+      memset (&des, 0, sizeof (des));
+
+      // TODO: des.btree?
+      des.btree.class_oid = *class_oid;
+      des.btree.attr_id = attr_id;
+
+      error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, &btid.vfid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR();
+	  goto exit;
+	}
+
+      // TODO: consider TDE?
+      error_code = file_apply_tde_algorithm (thread_p, &btid.vfid, TDE_ALGORITHM_NONE);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      /* index page allocations need to be committed. they are not individually deallocated on undo; all pages are
+       * deallocated when the file is destroyed. */
+      log_sysop_start (thread_p);
+
+      // TODO: FIXME
+      auto lambda = [] (THREAD_ENTRY* thread_p, PAGE_PTR page, void *args) -> int
+      {
+	pgbuf_set_page_ptype (thread_p, page, PAGE_BTREE);
+
+	const int MAX_ALIGN = INT_ALIGNMENT;
+	spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+	log_append_undoredo_data2 (thread_p, RVBT_GET_NEWPAGE, NULL, page, -1, 0, 0, NULL, NULL);
+	pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+	return NO_ERROR;
+      };
+
+      error_code = file_alloc_sticky_first_page (thread_p, &btid.vfid, lambda, NULL, &vpid_root, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
+	  goto exit;
+	}
+      if (vpid_root.volid != btid.vfid.volid)
+	{
+	  /* should not happen */
+	  assert_release (false);
+	  log_sysop_abort (thread_p);
+	  goto exit;
+	}
+      btid.root_pageid = vpid_root.pageid;
+
+      log_sysop_commit (thread_p);
     }
-  }
+  else
+    {
+      btid.root_pageid = m_last_index_id;
+      while (is_index_loaded (&btid) || is_index_meta_file_exists (backend->get_id(), &btid))
+	{
+	  btid.root_pageid = ++m_last_index_id;
+	}
+    }
+
+exit:
   return btid;
 }
 
