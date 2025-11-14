@@ -589,6 +589,7 @@ static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * 
 static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				   ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last);
+static int qexec_init_analytic_interm_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static void qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
 						  const HEAP_SCANCACHE * scan_cache);
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * vd,
@@ -1205,30 +1206,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      if (a_eval_list->is_sorted)
 		{
-		  QFILE_TUPLE_VALUE_TYPE_LIST interm_type_list;
-		  if (xasl->list_id->tuple_cnt == 0)
-		    {
-
-		      if (qdata_get_valptr_type_list
-			  (thread_p, xasl->proc.buildlist.a_outptr_list_interm, &interm_type_list) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-
-		      a_eval_list->interm_list_id =
-			qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, 0, NULL);
-
-		      if (interm_type_list.domp)
-			{
-			  db_private_free_and_init (thread_p, interm_type_list.domp);
-			}
-
-		      if (a_eval_list->interm_list_id == NULL)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-		    }
-
 		  if (fetch_val_list
 		      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl,
 		       true) != NO_ERROR)
@@ -1247,6 +1224,18 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 			{
 			  pr_clone_value (a_func_list->out_value, a_func_list->value);
 			}
+		    }
+
+		  if (qexec_generate_tuple_descriptor
+		      (thread_p, a_eval_list->interm_list_id, xasl->outptr_list,
+		       &xasl_state->vd) == QPROC_TPLDESCR_FAILURE)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+
+		  if (qfile_generate_tuple_into_list (thread_p, a_eval_list->interm_list_id, T_NORMAL) != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
 		    }
 
 		  a_eval_list->curr_group_tuple_count++;
@@ -1315,22 +1304,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	    }
 
-	  if (xasl->proc.buildlist.a_eval_list->is_sorted)
-	    {
-
-	      if (qexec_generate_tuple_descriptor
-		  (thread_p, xasl->proc.buildlist.a_eval_list->interm_list_id, xasl->outptr_list,
-		   &xasl_state->vd) == QPROC_TPLDESCR_FAILURE)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      if (qfile_generate_tuple_into_list (thread_p, xasl->proc.buildlist.a_eval_list->interm_list_id, T_NORMAL)
-		  != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
 	  if (output_tuple)
 	    {
 	      /* generate tuple into list file page */
@@ -15050,6 +15023,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		}
 	    }
 
+	  if (qexec_init_analytic_interm_lists (thread_p, xasl, xasl_state) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
 	  /* nullify domains */
 	  for (agg_p = xasl->proc.buildlist.g_agg_list; agg_p != NULL; agg_p = agg_p->next)
 	    {
@@ -20595,6 +20573,54 @@ query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	}
     }
   return NULL;
+}
+
+/*
+ * qexec_init_analytic_interm_lists () -
+ *   return:
+ *   thread_p(in):
+ *   xasl(in):
+ *   xasl_state(in):
+ */
+static int
+qexec_init_analytic_interm_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  ANALYTIC_EVAL_TYPE *a_eval_list;
+  BUILDLIST_PROC_NODE *buildlist;
+
+  if (xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.a_eval_list == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  buildlist = &xasl->proc.buildlist;
+  for (a_eval_list = buildlist->a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+    {
+      if (a_eval_list->is_sorted && a_eval_list->interm_list_id == NULL)
+	{
+	  QFILE_TUPLE_VALUE_TYPE_LIST interm_type_list;
+
+	  if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  a_eval_list->interm_list_id =
+	    qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, 0, NULL);
+
+	  if (interm_type_list.domp)
+	    {
+	      db_private_free_and_init (thread_p, interm_type_list.domp);
+	    }
+
+	  if (a_eval_list->interm_list_id == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
