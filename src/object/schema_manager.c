@@ -15701,14 +15701,16 @@ int
 sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
+  HFID old_hfid;
   SM_CLASS *class_ = NULL;
-  int error = NO_ERROR;
-  bool reuse_oid = false;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
   OID *oid = NULL;
   DB_OBJLIST *subs;
   SM_ATTRIBUTE *attr;
-  int *lob_attrid_arr = NULL;
+  bool reuse_oid = false;
+  int error = NO_ERROR;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  int *lob_alloc_attrid_arr = NULL;
+  int lob_local_attrid_arr[2];
   int lob_attrid_arr_length = 0;
 
   oid = ws_oid (class_mop);
@@ -15746,18 +15748,46 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
-  lob_attrid_arr = (int *) malloc (sizeof (int) * class_->att_count);
-  if (lob_attrid_arr == NULL)
-    {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto end;
-    }
+  old_hfid = *insts_hfid;
 
-  for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
+  attr = class_->ordered_attributes;
+  while (attr)
     {
       if (TP_IS_LOB_TYPE (attr->type->id))
 	{
-	  lob_attrid_arr[lob_attrid_arr_length++] = attr->id;
+	  if (lob_attrid_arr_length > 2)
+	    {
+	      lob_attrid_arr_length++;
+	    }
+	  else
+	    {
+	      lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
+	    }
+	}
+
+      attr = attr->order_link;
+    }
+
+  if (lob_attrid_arr_length > 2)
+    {
+      int index = 0;
+
+      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+      if (lob_alloc_attrid_arr == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      attr = class_->ordered_attributes;
+      while (attr)
+	{
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_alloc_attrid_arr[index++] = attr->id;
+	    }
+
+	  attr = attr->order_link;
 	}
     }
 
@@ -15766,16 +15796,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (error != NO_ERROR)
     {
       goto end;
-    }
-
-  /* Destroy the lob dir if need */
-  if (lob_attrid_arr_length)
-    {
-      error = lob_remove_dir (insts_hfid, -1);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
     }
 
   HFID_SET_NULL (insts_hfid);
@@ -15794,10 +15814,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
       goto end;
     }
 
-  /* Create the lob dir if need */
+  /* Destroy and Create the lob dir if need */
   if (lob_attrid_arr_length)
     {
-      error = lob_create_dir (insts_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      error =
+	lob_create_or_remove_dir (&old_hfid, insts_hfid,
+				  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
+				  lob_attrid_arr_length);
     }
 
   if (error != NO_ERROR)
@@ -15809,7 +15832,47 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = locator_flush_class (class_mop);
 
 end:
-  free (lob_attrid_arr);
+  free (lob_alloc_attrid_arr);
+
+  return error;
+}
+
+int
+lob_create_or_remove_dir (HFID * old_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
+{
+  int error = NO_ERROR;
+
+  assert (old_hfid != NULL || new_hfid != NULL);
+
+  if (old_hfid != NULL && new_hfid != NULL)	/* truncate case */
+    {
+      error = lob_remove_dir (old_hfid, -1);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (old_hfid != NULL)
+    {
+      error = lob_remove_dir (old_hfid, lob_attrid_arr[0]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (new_hfid != NULL)
+    {
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
 
   return error;
 }

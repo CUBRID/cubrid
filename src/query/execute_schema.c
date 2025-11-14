@@ -658,7 +658,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (arr_length)
 	      {
 		HFID lob_hfid = class_->header.ch_heap;
-		error = lob_create_dir (&lob_hfid, lob_attrid_arr, arr_length);
+		error = lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, arr_length);
 		free (lob_attrid_arr);
 
 		if (error != NO_ERROR)
@@ -806,6 +806,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		if (TP_IS_LOB_TYPE (attr.type->id))
 		  {
 		    HFID lob_hfid = class_->header.ch_heap;
+		    int lob_attrid_arr[1];
+
 		    p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
 		    for (;
 			 p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
@@ -820,7 +822,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 			    return error;
 			  }
 		      }
-		    error = lob_remove_dir (&lob_hfid, attr.id);
+
+		    lob_attrid_arr[0] = attr.id;
+		    error = lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
 		    if (error != NO_ERROR)
 		      {
 			dbt_abort_class (ctemplate);
