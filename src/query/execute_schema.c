@@ -61,7 +61,6 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
-#include "schema_system_catalog_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1629,7 +1628,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *crt_clause = NULL;
   bool do_semantic_checks = false;
   bool do_rollback = false;
-  const char *class_name = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1645,7 +1643,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     {
       PT_NODE *const save_next = crt_clause->next;
       const PT_ALTER_CODE alter_code = crt_clause->info.alter.code;
-      class_name = PT_NAME_ORIGINAL (crt_clause->info.alter.entity_name);
 
       /* The first ALTER clause has already been checked, we call the semantic check starting with the second clause. */
       if (do_semantic_checks)
@@ -1707,7 +1704,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto error_exit;
 	}
-      error_code = sm_set_class_catalog_timestamps (class_name, SM_CATALOG_TIMESTAMP_UPDATE);
       do_semantic_checks = true;
     }
 
@@ -9271,12 +9267,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       error = locator_flush_class (class_obj);
     }
 
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  error = sm_set_class_catalog_timestamps (class_name, SM_CATALOG_TIMESTAMP_INIT);
   if (error != NO_ERROR)
     {
       goto error_exit;

@@ -77,7 +77,6 @@
 #include "db.h"
 #include "object_accessor.h"
 #include "boot_cl.h"
-#include "schema_system_catalog_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2964,12 +2963,6 @@ sm_rename_class (MOP class_mop, const char *new_name)
   need_free_old_name = true;
   need_free_new_name = false;
 
-  error = sm_set_class_catalog_timestamps (class_old_name, SM_CATALOG_TIMESTAMP_UPDATE);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
   error = sm_flush_objects (class_mop);
   if (error != NO_ERROR)
     {
@@ -4208,8 +4201,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
-  MOP _db_class;
-  const char *class_name = NULL;
 
   assert_release (classop != NULL);
 
@@ -4233,13 +4224,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      _db_class = sm_find_class_with_purpose (CT_CLASS_NAME, true);
-      if (_db_class == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  return error;
-	}
-
       error = stats_update_statistics (classop, with_fullscan);
       if (error == NO_ERROR)
 	{
@@ -4256,9 +4240,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		      class_->stats = NULL;
 		    }
 
-#if defined(SA_MODE)
-		  ws_dirty (classop);
-#endif
 		  /* make sure the class is flushed before acquiring stats, see comments above in
 		   * sm_get_class_with_statistics */
 		  if (locator_flush_class (classop) != NO_ERROR)
@@ -4273,18 +4254,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  if (error != NO_ERROR)
 		    {
 		      return error;
-		    }
-
-		  /* class_->stats is NULL if class doesn't have attributes. */
-		  if (class_->stats != NULL)
-		    {
-		      class_name = sm_ch_name ((MOBJ) class_);
-		      error =
-			sm_set_class_catalog_statistics_info (_db_class, class_name, class_->stats, with_fullscan);
-		      if (error != NO_ERROR)
-			{
-			  return error;
-			}
 		    }
 		}
 	    }
@@ -4377,21 +4346,12 @@ sm_update_all_statistics (bool with_fullscan)
   int error = NO_ERROR;
   DB_OBJLIST *cl;
   SM_CLASS *class_;
-  MOP _db_class;
-  const char *class_name = NULL;
 
   /* make sure the workspace is flushed before calculating stats */
   if (locator_all_flush () != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
-    }
-
-  _db_class = sm_find_class_with_purpose (CT_CLASS_NAME, true);
-  if (_db_class == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
     }
 
   error = stats_update_all_statistics (with_fullscan);
@@ -4411,9 +4371,6 @@ sm_update_all_statistics (bool with_fullscan)
 		      stats_free_statistics (class_->stats);
 		      class_->stats = NULL;
 		    }
-#if defined(SA_MODE)
-		  ws_dirty (cl->op);
-#endif
 		  /* make sure the class is flushed but quit if an error happens */
 		  if (locator_flush_class (cl->op) != NO_ERROR)
 		    {
@@ -4424,18 +4381,6 @@ sm_update_all_statistics (bool with_fullscan)
 		  if (error != NO_ERROR)
 		    {
 		      return error;
-		    }
-
-		  /* class_->stats is NULL if class doesn't have attributes. */
-		  if (class_->stats != NULL)
-		    {
-		      class_name = sm_ch_name ((MOBJ) class_);
-		      error =
-			sm_set_class_catalog_statistics_info (_db_class, class_name, class_->stats, with_fullscan);
-		      if (error != NO_ERROR)
-			{
-			  return error;
-			}
 		    }
 		}
 	    }
@@ -14117,11 +14062,6 @@ sm_drop_index (MOP classop, const char *constraint_name)
 	}
 
       if (!classobj_cache_constraints (class_))
-	{
-	  goto severe_error;
-	}
-
-      if (sm_set_class_catalog_timestamps (sm_ch_name ((MOBJ) class_), SM_CATALOG_TIMESTAMP_UPDATE) != NO_ERROR)
 	{
 	  goto severe_error;
 	}
