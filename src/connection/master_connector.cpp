@@ -870,7 +870,7 @@ namespace cubconn
     new_ctx->m_conn->request_id = request_id;
     if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
       {
-	css_prepare_shutdown_conn (ctx->m_conn);
+	css_prepare_shutdown_conn (new_ctx->m_conn);
 	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
 
@@ -887,7 +887,7 @@ namespace cubconn
       }
     else if (status == result::PeerReset || status == result::Error)
       {
-	css_prepare_shutdown_conn (ctx->m_conn);
+	css_prepare_shutdown_conn (new_ctx->m_conn);
 	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
 
@@ -900,7 +900,7 @@ namespace cubconn
       {
 	er_log_conn (__FILE__, __LINE__,
 		     "master_connector->request_new_client: m_events->add_descriptor failed: %s", strerror (errno));
-	css_prepare_shutdown_conn (ctx->m_conn);
+	css_prepare_shutdown_conn (new_ctx->m_conn);
 	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
 
