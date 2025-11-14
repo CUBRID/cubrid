@@ -45,11 +45,12 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 
   while (dblink)
     {
-      dblink = dblink->next;
       if (dblink->is_2pc_participant)
 	{
 	  num_ids++;
 	}
+
+      dblink = dblink->next;
     }
 
   *block_particps_ids = NULL;
