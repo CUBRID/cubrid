@@ -13945,7 +13945,6 @@ xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
 int
 xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attrid_arr_length)
 {
-  char dirbuf[PATH_MAX];
   char rv_path[PATH_MAX];
   int ret = NO_ERROR;
   LOG_DATA_ADDR addr;
@@ -13955,10 +13954,10 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 
   for (int i = 0; i < attrid_arr_length; i++)
     {
-      sprintf (dirbuf, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+      sprintf (rv_path, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
       log_append_undo_data (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
-      es_make_dirs (dirbuf, NULL);
+      es_make_dirs (rv_path, NULL);
     }
 
   return ret;
