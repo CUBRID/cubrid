@@ -1194,7 +1194,7 @@ dwb_create_internal (THREAD_ENTRY *thread_p, const char *dwb_volume_name, UINT64
     }
 
   /* Needs to flush dirty page before activating DWB. */
-  fileio_synchronize_all (thread_p, false);
+  fileio_synchronize_all (thread_p);
 
   /* Create DWB blocks */
   error_code = dwb_create_blocks (thread_p, num_blocks, num_block_pages, &blocks);
@@ -2276,8 +2276,7 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
 	      if (ATOMIC_INC_32 (& (dwb_Global.file_sync_helper_block->flush_volumes_info[i].num_pages), 0) >= 0)
 		{
 		  (void) fileio_synchronize (thread_p,
-					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes, NULL,
-					     FILEIO_SYNC_ONLY);
+					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes, NULL);
 
 		  dwb_log ("dwb_flush_block: Synchronized volume %d\n",
 			   dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes);
@@ -2320,7 +2319,7 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
   /* Increment statistics after writing in double write volume. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, block->count_wb_pages);
 
-  if (fileio_synchronize (thread_p, dwb_Global.vdes, dwb_Volume_name, FILEIO_SYNC_ONLY) != dwb_Global.vdes)
+  if (fileio_synchronize (thread_p, dwb_Global.vdes, dwb_Volume_name) != dwb_Global.vdes)
     {
       assert (false);
       /* Something wrong happened. */
@@ -2378,7 +2377,7 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
       num_pages = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
       assert (num_pages != 0);
 
-      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, FILEIO_SYNC_ONLY);
+      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL);
 
       dwb_log ("dwb_flush_block: Synchronized volume %d\n", block->flush_volumes_info[i].vdes);
     }
@@ -2802,6 +2801,79 @@ dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, DWB_SL
   dwb_log ("Successfully flushed DWB block = %d having version %lld\n", block->block_no, block->version);
 
   return NO_ERROR;
+}
+
+/*
+ * dwb_synchronize () - synchronize the DWB and volume.
+ *
+ * return   : Error code.
+ * thread_p (in): The thread entry.
+ * vol_fd(in): Volume descriptor
+ * vlabel(in): Volume label
+ *
+ * NOTE: try to sync the DWB and the volume, but sync only
+ *	 the volume if failed to sync the DWB.
+ */
+int dwb_synchronize (THREAD_ENTRY *thread_p, int vol_fd, const char *vlabel)
+{
+#if defined (EnableThreadMonitoring)
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL elapsed_time;
+#endif
+  bool complete = false;
+  int error = NO_ERROR;
+
+  /* should fsync ? */
+  if (fileio_fsync_pending ())
+    {
+      return vol_fd;
+    }
+
+#if defined (EnableThreadMonitoring)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
+    {
+      tsc_getticks (&start_tick);
+    }
+#endif
+
+#if !defined (CS_MODE)
+  if (fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
+    {
+      error = dwb_flush_force (thread_p, &complete);
+    }
+#endif
+
+  /* If complete is true, everything was synchronized. if not, directly sync the volume */
+  if (error == NO_ERROR && complete == false)
+    {
+      error = fsync (vol_fd);
+    }
+
+#if defined (EnableThreadMonitoring)
+  if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
+    }
+#endif
+
+  if (error != NO_ERROR)
+    {
+      /* sync error is not alwasy handled and I am not sure a proper safe handling is possible: raise as fatal error */
+      er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
+      return NULL_VOLDES;
+    }
+
+#if defined (EnableThreadMonitoring)
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
+    }
+#endif
+
+  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOSYNCHES);
+  return vol_fd;
 }
 
 /*
@@ -3249,8 +3321,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY *thread_p, const char *dwb_path_p, cons
 	      /* Now, flush the volumes having pages in current block. */
 	      for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
 		{
-		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL,
-					  FILEIO_SYNC_ONLY) == NULL_VOLDES)
+		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL) == NULL_VOLDES)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
@@ -3764,7 +3835,7 @@ dwb_file_sync_helper (THREAD_ENTRY *thread_p)
 	   * Flush the volume. If not all volume pages are available now, continue with next volume, if any,
 	   * and then resume the current one.
 	   */
-	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, FILEIO_SYNC_ONLY);
+	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL);
 
 	  dwb_log ("dwb_file_sync_helper: Synchronized volume %d\n", current_flush_volume_info->vdes);
 	}
