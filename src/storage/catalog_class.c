@@ -190,6 +190,9 @@ static void catcls_apply_resolutions (OR_VALUE * value_p, OR_VALUE * resolution_
 static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_oid, OID * entry_new_oid);
 static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
 
+static void catcls_set_or_value_class_timestamps (OR_VALUE * value_p);
+static void catcls_update_or_value_class_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
+
 /*
  * catcls_allocate_entry () -
  *   return:
@@ -4079,6 +4082,27 @@ error:
   return error;
 }
 
+static void
+catcls_set_or_value_class_timestamps (OR_VALUE * value_p)
+{
+  DB_VALUE datetime_val;
+  DB_DATETIME *datetime;
+
+  db_sys_datetime (&datetime_val);
+  datetime = db_get_datetime (&datetime_val);
+  db_make_datetime (&value_p->sub.value[CT_CLASS_CREATED_TIME_INDEX].value, datetime);
+  db_make_datetime (&value_p->sub.value[CT_CLASS_UPDATED_TIME_INDEX].value, datetime);
+}
+
+static void
+catcls_update_or_value_class_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
+{
+  DB_DATETIME *datetime = db_get_datetime (&old_value_p->sub.value[CT_CLASS_CREATED_TIME_INDEX].value);
+
+  db_make_datetime (&value_p->sub.value[CT_CLASS_CREATED_TIME_INDEX].value, datetime);
+  db_sys_datetime (&value_p->sub.value[CT_CLASS_UPDATED_TIME_INDEX].value);
+}
+
 /*
  * catcls_update_instance () -
  *   return:
@@ -4116,6 +4140,11 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto error;
+    }
+
+  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid))
+    {
+      catcls_update_or_value_class_timestamps (value_p, old_value_p);
     }
 
   error = catcls_reorder_attributes_by_repr (thread_p, value_p);
@@ -4251,6 +4280,8 @@ catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record_p)
     {
       goto error;
     }
+
+  catcls_set_or_value_class_timestamps (value_p);
 
   class_oid_p = &ct_Class.cc_classoid;
   cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
