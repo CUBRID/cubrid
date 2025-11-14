@@ -125,6 +125,7 @@ extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET 
 extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
+extern int catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, bool with_fullscan);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p, int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
@@ -192,6 +193,8 @@ static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF *
 
 static void catcls_set_or_value_class_timestamps (OR_VALUE * value_p);
 static void catcls_update_or_value_class_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
+static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullscan);
+static int catcls_get_class_disk_repr_idx (OR_VALUE * value_p, CT_ATTR_CLASS_INDEX attr_idx);
 
 /*
  * catcls_allocate_entry () -
@@ -4082,6 +4085,23 @@ error:
   return error;
 }
 
+static int
+catcls_get_class_disk_repr_idx (OR_VALUE * value_p, CT_ATTR_CLASS_INDEX attr_idx)
+{
+  CT_ATTR *ct_attrs = ct_Class.cc_atts;
+
+  for (int i = 0; i < ct_Class.cc_n_atts; i++)
+    {
+      if (ct_attrs[attr_idx].ca_id == value_p->sub.value[i].id.attrid)
+	{
+	  return i;
+	}
+    }
+
+  assert (false);
+  return -1;
+}
+
 static void
 catcls_set_or_value_class_timestamps (OR_VALUE * value_p)
 {
@@ -4101,6 +4121,16 @@ catcls_update_or_value_class_timestamps (OR_VALUE * value_p, OR_VALUE * old_valu
 
   db_make_datetime (&value_p->sub.value[CT_CLASS_CREATED_TIME_INDEX].value, datetime);
   db_sys_datetime (&value_p->sub.value[CT_CLASS_UPDATED_TIME_INDEX].value);
+}
+
+static void
+catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullscan)
+{
+  int checked_time_disk_repr_idx = catcls_get_class_disk_repr_idx (value_p, CT_CLASS_CHECKED_TIME_INDEX);
+  int stats_strategy_disk_repr_idx = catcls_get_class_disk_repr_idx (value_p, CT_CLASS_STATISTICS_STRATEGY_INDEX);
+
+  db_sys_datetime (&value_p->sub.value[checked_time_disk_repr_idx].value);
+  db_make_int (&value_p->sub.value[stats_strategy_disk_repr_idx].value, CT_CLASS_STATISTICS_STRATEGY_INDEX);
 }
 
 /*
@@ -4407,6 +4437,114 @@ error:
     }
 
   return ER_FAILED;
+}
+
+int
+catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, bool with_fullscan)
+{
+  int error = NO_ERROR;
+  OID oid;
+  OID *catalog_class_oid_p = NULL;
+  CLS_INFO *cls_info_p = NULL;
+  HFID *hfid_p = NULL;
+  HEAP_SCANCACHE scan;
+  bool is_scan_inited = false;
+  int old_chn;
+  OR_VALUE *value_p = NULL;
+  RECDES record = RECDES_INITIALIZER;
+  HEAP_OPERATION_CONTEXT update_context;
+
+  error = catcls_find_oid_by_class_name (thread_p, class_name, &oid);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  catalog_class_oid_p = &ct_Class.cc_classoid;
+  cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p, NULL);
+  if (cls_info_p == NULL)
+    {
+      goto error;
+    }
+
+  hfid_p = &cls_info_p->ci_hfid;
+  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, catalog_class_oid_p, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  is_scan_inited = true;
+
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+  old_chn = or_chn (&record);
+  value_p = catcls_get_or_value_from_record (thread_p, &record, catalog_class_oid_p);
+  if (value_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+  catcls_update_or_value_class_stats_fields (value_p, with_fullscan);
+
+  record.length = catcls_guess_record_length (value_p);
+  record.area_size = record.length;
+  record.type = REC_HOME;
+  record.data = (char *) malloc (record.length);
+
+  if (record.data == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) record.length);
+      goto error;
+    }
+
+  error = catcls_put_or_value_into_record (thread_p, value_p, old_chn + 1, &record, catalog_class_oid_p);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (locator_update_index (thread_p, &record, &record, NULL, 0, &oid, catalog_class_oid_p, SINGLE_ROW_UPDATE,
+			    &scan, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+  heap_create_update_context (&update_context, hfid_p, &oid, catalog_class_oid_p, &record, &scan, UPDATE_INPLACE_NONE);
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+error:
+  if (record.data)
+    {
+      free_and_init (record.data);
+    }
+
+  if (value_p)
+    {
+      catcls_free_or_value (value_p);
+    }
+
+  if (is_scan_inited)
+    {
+      heap_scancache_end_modify (thread_p, &scan);
+    }
+
+  if (cls_info_p)
+    {
+      catalog_free_class_info_and_init (cls_info_p);
+    }
+
+  return error;
 }
 
 /*

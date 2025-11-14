@@ -75,6 +75,7 @@ static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid, OID * partitions, int count,
 						bool with_fullscan, CLASS_ATTR_NDV * class_attr_ndv);
 
+extern int catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, bool with_fullscan);
 /*
  * xstats_update_statistics () -  Updates the statistics for the objects
  *                                of a given class
@@ -303,6 +304,14 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   cls_info_p->ci_time_stamp = stats_get_time_stamp ();
 
   error_code = catalog_add_class_info (thread_p, class_id_p, cls_info_p, &catalog_access_info);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error_code);
+
+  error_code = catcls_update_class_stats (thread_p, class_name, with_fullscan);
   if (error_code != NO_ERROR)
     {
       goto error;
