@@ -164,6 +164,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
+  ${BASE_DIR}/fixed_size_allocator.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -286,6 +287,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
   ${QUERY_DIR}/subquery_cache.c
+  ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -303,6 +305,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
+  ${QUERY_DIR}/memoize.hpp
   )
 
 set(OBJECT_SOURCES
