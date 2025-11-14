@@ -38,6 +38,7 @@
 #include "object_representation.h"
 #include "thread_entry.hpp"
 #include "system_parameter.h"
+#include "catalog_class.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -75,7 +76,6 @@ static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid, OID * partitions, int count,
 						bool with_fullscan, CLASS_ATTR_NDV * class_attr_ndv);
 
-extern int catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, bool with_fullscan);
 /*
  * xstats_update_statistics () -  Updates the statistics for the objects
  *                                of a given class

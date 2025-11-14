@@ -70,6 +70,7 @@
 #include "thread_manager.hpp"
 #include "log_volids.hpp"
 #include "schema_system_catalog.hpp"
+#include "catalog_class.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -92,11 +93,7 @@ typedef int pid_t;
 
 static char bo_Dbfullname[PATH_MAX];
 
-extern bool catcls_Enable;
 extern int log_default_input_for_archive_log_location;
-
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 
 static int parse_user_define_line (char *line, FILE * output_file);
 static int parse_user_define_file (FILE * user_define_file, FILE * output_file);

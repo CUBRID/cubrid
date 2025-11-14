@@ -27,6 +27,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "catalog_class.h"
 #include "system_catalog.h"
 
 #include "btree.h"		// for single/multi ops
@@ -60,7 +61,6 @@
   } while (0)
 
 #define CATCLS_INDEX_NAME "i__db_class_unique_name"
-#define CATCLS_INDEX_KEY   CT_CLASS_UNIQUE_NAME_INDEX
 
 #define CATCLS_OID_TABLE_SIZE   1024
 
@@ -105,27 +105,11 @@ struct catcls_property
   int is_foreign_key;
 };
 
-/* TODO: add to ct_class.h */
 bool catcls_Enable = false;
 
 static BTID catcls_Btid;
 static CATCLS_ENTRY *catcls_Free_entry_list = NULL;
 static MHT_TABLE *catcls_Class_oid_to_oid_hash_table = NULL;
-
-/* TODO: move to ct_class.h */
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record);
-extern int catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name, OID * class_oid);
-extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name, RECDES * record, OID * class_oid_p,
-					  UPDATE_INPLACE_STYLE force_in_place);
-extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
-extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
-					  const int lang_buf_size, char *timezone_checksum);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
-extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
-extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
-extern int catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, bool with_fullscan);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p, int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
@@ -636,7 +620,7 @@ catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
   int error = NO_ERROR;
 
   index_class_p = &ct_Class.cc_classoid;
-  index_key = (ct_Class.cc_atts)[CATCLS_INDEX_KEY].ca_id;
+  index_key = (ct_Class.cc_atts)[CT_CLASS_UNIQUE_NAME_INDEX].ca_id;
 
   error = catalog_get_last_representation_id (thread_p, index_class_p, &repr_id);
   if (error != NO_ERROR)

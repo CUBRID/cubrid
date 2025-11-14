@@ -110,10 +110,8 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-/* TODO : Move .h */
 #if defined(SA_MODE)
-extern bool catcls_Enable;
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
+#include "catalog_class.h"
 #endif /* SA_MODE */
 
 #define BOOT_FORMAT_MAX_LENGTH 500
