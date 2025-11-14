@@ -505,6 +505,8 @@ enum param_id
 
   PRM_ID_PAGE_LATCH_TIMEOUT,
 
+  PRM_ID_MEMOIZE_MEMORY_LIMIT,
+
   PRM_ID_HOSTVAR_PEEKING,
 
   /* change PRM_LAST_ID when adding new system parameters */
