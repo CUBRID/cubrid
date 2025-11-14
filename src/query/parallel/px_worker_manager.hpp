@@ -37,6 +37,7 @@ namespace parallel_query
     public:
       static worker_manager *try_reserve_workers (int n_workers);
       void release_workers (int n_workers);
+      void wait_workers ();
       void push_task (cubthread::entry_task *task);
       void pop_task ()
       {
