@@ -15837,6 +15837,17 @@ end:
   return error;
 }
 
+/*
+ * lob_create_or_remove_dir() - Unified interface for creating or removing LOB directories.
+ *   return: error code
+ *   old_hfid(in): HFID of an existing LOB directory to remove.
+ *   new_hfid(in): HFID for the new LOB directory to create.
+ *   lob_attrid_arr(in): Array of LOB attribute IDs used for create/remove operations.
+ *   lob_attrid_arr_length(in): Number of elements in lob_attrid_arr.
+ *
+ * NOTE: This function abstracts the logic of calling lob_create_dir() and lob_remove_dir(),
+ *       allowing the caller to handle both operations through a single interface.
+ */
 int
 lob_create_or_remove_dir (HFID * old_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
 {

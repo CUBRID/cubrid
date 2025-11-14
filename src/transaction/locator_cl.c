@@ -5731,8 +5731,9 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       OID *oid;
       SM_CLASS *class_;
       SM_ATTRIBUTE *attr;
-      int *lob_attrid_arr = NULL;
-      int attrid_arr_length = 0;
+      int *lob_alloc_attrid_arr = NULL;
+      int lob_local_attrid_arr[2];
+      int lob_attrid_arr_length = 0;
 
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5759,26 +5760,58 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      lob_attrid_arr = (int *) malloc (sizeof (int) * class_->att_count);
-
-      for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
+      attr = class_->ordered_attributes;
+      while (attr)
 	{
 	  if (TP_IS_LOB_TYPE (attr->type->id))
 	    {
-	      lob_attrid_arr[attrid_arr_length++] = attr->id;
+	      if (lob_attrid_arr_length > 2)
+		{
+		  lob_attrid_arr_length++;
+		}
+	      else
+		{
+		  lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
+		}
+	    }
+
+	  attr = attr->order_link;
+	}
+
+      if (lob_attrid_arr_length > 2)
+	{
+	  int index = 0;
+
+	  lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+	  if (lob_alloc_attrid_arr == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  attr = class_->ordered_attributes;
+	  while (attr)
+	    {
+	      if (TP_IS_LOB_TYPE (attr->type->id))
+		{
+		  lob_alloc_attrid_arr[index++] = attr->id;
+		}
+
+	      attr = attr->order_link;
 	    }
 	}
 
-      if (attrid_arr_length)
+      if (lob_attrid_arr_length)
 	{
 	  HFID lob_hfid = *hfid;
-	  if (lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, attrid_arr_length) != NO_ERROR)
+	  if (lob_create_or_remove_dir
+	      (NULL, &lob_hfid, lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
+	       lob_attrid_arr_length) != NO_ERROR)
 	    {
-	      free (lob_attrid_arr);
+	      free (lob_alloc_attrid_arr);
 	      return NULL;
 	    }
 	}
-      free (lob_attrid_arr);
+      free (lob_alloc_attrid_arr);
 
       ws_dirty (class_mop);
 
