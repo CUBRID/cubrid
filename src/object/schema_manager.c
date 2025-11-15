@@ -15751,43 +15751,43 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   old_hfid = *insts_hfid;
 
   for (int i = 0; i < class_->att_count; i++)
-      {
-        attr = &class_->attributes[i];
+    {
+      attr = &class_->attributes[i];
 
-        if (TP_IS_LOB_TYPE (attr->type->id))
-          {
-            if (lob_attrid_arr_length >= 2)
-              {
-                lob_attrid_arr_length++;
-              }
-            else
-              {
-                lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
-              }
-          }
-      }
+      if (TP_IS_LOB_TYPE (attr->type->id))
+	{
+	  if (lob_attrid_arr_length >= 2)
+	    {
+	      lob_attrid_arr_length++;
+	    }
+	  else
+	    {
+	      lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
+	    }
+	}
+    }
 
-    if (lob_attrid_arr_length > 2)
-      {
-        int index = 0;
+  if (lob_attrid_arr_length > 2)
+    {
+      int index = 0;
 
-        lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
-        if (lob_alloc_attrid_arr == NULL)
-          {
-            error = ER_OUT_OF_VIRTUAL_MEMORY;
-	    goto end;
-          }
+      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+      if (lob_alloc_attrid_arr == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
 
-        for (int i = 0; i < class_->att_count; i++)
-          {
-            attr = &class_->attributes[i];
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
 
-            if (TP_IS_LOB_TYPE (attr->type->id))
-              {
-                lob_alloc_attrid_arr[index++] = attr->id;
-              }
-          }
-      }
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_alloc_attrid_arr[index++] = attr->id;
+	    }
+	}
+    }
 
   /* Destroy the heap */
   error = heap_destroy_newly_created (insts_hfid, oid, true);
