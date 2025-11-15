@@ -643,7 +643,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 		if (TP_IS_LOB_TYPE (type_id))
 		  {
-		    if (lob_attrid_arr_length > 2)
+		    if (lob_attrid_arr_length >= 2)
 		      {
 			lob_attrid_arr_length++;
 		      }
