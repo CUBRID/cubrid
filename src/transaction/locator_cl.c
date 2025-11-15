@@ -5760,12 +5760,13 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      attr = class_->ordered_attributes;
-      while (attr)
-	{
-	  if (TP_IS_LOB_TYPE (attr->type->id))
+      for (int i = 0; i < class_->att_count; i++)
+        {
+          attr = &class_->attributes[i];
+
+          if (TP_IS_LOB_TYPE (attr->type->id))
 	    {
-	      if (lob_attrid_arr_length > 2)
+	      if (lob_attrid_arr_length >= 2)
 		{
 		  lob_attrid_arr_length++;
 		}
@@ -5774,9 +5775,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 		  lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
 		}
 	    }
-
-	  attr = attr->order_link;
-	}
+        }
 
       if (lob_attrid_arr_length > 2)
 	{
@@ -5788,16 +5787,15 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	      return NULL;
 	    }
 
-	  attr = class_->ordered_attributes;
-	  while (attr)
-	    {
-	      if (TP_IS_LOB_TYPE (attr->type->id))
-		{
-		  lob_alloc_attrid_arr[index++] = attr->id;
-		}
+          for (int i = 0; i < class_->att_count; i++)
+            {
+              attr = &class_->attributes[i];
 
-	      attr = attr->order_link;
-	    }
+              if (TP_IS_LOB_TYPE (attr->type->id))
+                {
+                  lob_alloc_attrid_arr[index++] = attr->id;
+                }
+            }
 	}
 
       if (lob_attrid_arr_length)
