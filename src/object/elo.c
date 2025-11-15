@@ -361,7 +361,7 @@ error_return:
 int
 elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
 {
-  int ret;
+  int ret = NO_ERROR;
   ES_URI out_uri, real_locator;
   char *locator = NULL;
   char *meta_data = NULL;
