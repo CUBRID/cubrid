@@ -3040,7 +3040,7 @@ css_server_task::execute (context_type &thread_ref)
 
   if (m_conn.end_working_task () == 0 && m_conn.status == CONN_CLOSING)
     {
-      css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, false);
+      css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
     }
   else
     {

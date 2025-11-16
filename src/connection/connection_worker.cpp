@@ -212,12 +212,12 @@ namespace cubconn
   }
 
   bool connection_worker::enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func,
-      bool need_wait)
+      int wait_time)
   {
     std::shared_ptr<message_blocker> handle;
     std::unique_lock<std::mutex> lock;
 
-    if (need_wait)
+    if (wait_time)
       {
 	/* acquire the lock to prevent a lost wakeup */
 	handle = std::make_shared<message_blocker> ();
@@ -242,9 +242,16 @@ namespace cubconn
 	func ();
       }
 
-    if (need_wait)
+    if (wait_time)
       {
-	handle->cv.wait (lock, [&] { return handle->done; });
+	if (wait_time < 0)
+	  {
+	    handle->cv.wait (lock, [&] { return handle->done; });
+	  }
+	else
+	  {
+	    handle->cv.wait_for (lock, std::chrono::seconds (wait_time), [&] { return handle->done; });
+	  }
       }
 
     return true;
