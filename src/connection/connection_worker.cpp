@@ -244,10 +244,7 @@ namespace cubconn
 
     if (need_wait)
       {
-	if (!handle->cv.wait_for (lock, std::chrono::seconds (10), [&] { return handle->done; }))
-	  {
-	    return false;
-	  }
+	handle->cv.wait (lock, [&] { return handle->done; });
       }
 
     return true;
@@ -372,6 +369,9 @@ namespace cubconn
 
     if (ctx->m_removed)
       {
+	/* wake up the thread blocked until this request is complete */
+	this->wakeup_blocked_worker (handle);
+
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: already removed context. conn = %p\n",
 		     ctx->m_conn);
 	return true;
@@ -492,12 +492,12 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
-    /* wake up the thread blocked until this request is complete */
-    this->wakeup_blocked_worker (handle);
-
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);
     ctx->m_conn->fd = INVALID_SOCKET;
+
+    /* wake up the thread blocked until this request is complete */
+    this->wakeup_blocked_worker (handle);
 
     /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
     css_prepare_shutdown_conn (ctx->m_conn);

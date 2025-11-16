@@ -5888,24 +5888,26 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
       is_trx_exists = logtb_set_tran_index_interrupt (thread_p, tran_index, true);
     }
 
-  for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES; i++)
-    {
-      thread_sleep_for (std::chrono::seconds (1));
+  /*
+     for (i = 0; i < LOGTB_RETRY_SLAM_MAX_TIMES; i++)
+     {
+     thread_sleep_for (std::chrono::seconds (1));
 
-      if (logtb_find_interrupt (tran_index, &interrupt) != NO_ERROR)
-	{
-	  break;
-	}
-      if (interrupt == false)
-	{
-	  break;
-	}
-    }
+     if (logtb_find_interrupt (tran_index, &interrupt) != NO_ERROR)
+     {
+     break;
+     }
+     if (interrupt == false)
+     {
+     break;
+     }
+     }
 
-  if (i == LOGTB_RETRY_SLAM_MAX_TIMES)
-    {
-      return ER_FAILED;		/* timeout */
-    }
+     if (i == LOGTB_RETRY_SLAM_MAX_TIMES)
+     {
+     return ER_FAILED;
+     }
+   */
 
   if (is_trx_exists == false)
     {
