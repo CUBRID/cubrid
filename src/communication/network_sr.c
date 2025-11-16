@@ -348,10 +348,6 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = slob_remove_dir;
 
-  /* dblink */
-  req_p = &net_Requests[NET_SERVER_DBLINK_GET_CRYPT_KEY];
-  req_p->processing_function = sdblink_get_crypt_keys;
-
   /* tde */
   req_p = &net_Requests[NET_SERVER_TDE_IS_LOADED];
   req_p->processing_function = stde_is_loaded;
