@@ -5683,11 +5683,10 @@ logtb_check_class_for_rr_isolation_err (const OID * class_oid)
 void
 logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
 {
+  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
 #if defined (SERVER_MODE)
   css_shutdown_conn_by_tran_index (tran_index, LOGTB_RETRY_SLAM_MAX_TIMES);
-#else
-  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
 #endif // SERVER_MODE
 }
 
