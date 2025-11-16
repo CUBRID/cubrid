@@ -775,14 +775,14 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
-#define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
-
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
 #define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
 
 #define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
 #define PRM_NAME_CSS_CONNECTION_THREAD_COUNT "connection_thread_count"
+
+#define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
 // #endregion 
 
