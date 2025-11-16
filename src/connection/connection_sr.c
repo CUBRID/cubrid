@@ -1239,9 +1239,10 @@ error_return:
  *                                     transaction id
  *   return: error code
  *   tran_index(in): transaction id
+ *   wait_time(in): wait time (-1: infinite, 0: no wait, : wait time)
  */
 int
-css_shutdown_conn_by_tran_index (int tran_index)
+css_shutdown_conn_by_tran_index (int tran_index, int wait_time)
 {
   CSS_CONN_ENTRY *conn = NULL;
   int error = ER_FAILED;
@@ -1261,7 +1262,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
-					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, true);
+					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, wait_time);
 
 		  error = NO_ERROR;
 		}
@@ -2995,7 +2996,7 @@ css_get_argv (void)
 }
 
 void
-css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, bool wait)
+css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, int wait_time)
 {
   cubconn::connection_worker::message request;
   int r;
@@ -3029,7 +3030,8 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, bo
     rmutex_unlock (NULL, &conn->cmutex);
   };
 
-  if (!conn->worker->enqueue_and_notify (cubconn::connection_worker::queue_type::LAZY, std::move (request), func, wait))
+  if (!conn->worker->enqueue_and_notify (cubconn::connection_worker::queue_type::LAZY,
+					 std::move (request), func, wait_time))
     {
       assert_release (false);
     }

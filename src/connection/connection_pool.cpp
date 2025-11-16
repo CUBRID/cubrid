@@ -79,7 +79,8 @@ namespace cubconn
 	    connection_worker::message request;
 
 	    request.type = connection_worker::message_type::START;
-	    if (!worker->enqueue_and_notify (static_cast<connection_worker::queue_type> (i), std::move (request), nullptr, true))
+	    if (!worker->enqueue_and_notify (static_cast<connection_worker::queue_type> (i), std::move (request), nullptr,
+					     -1 /* infinite */))
 	      {
 		assert_release (false);
 	      }
