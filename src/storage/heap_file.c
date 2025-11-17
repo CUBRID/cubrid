@@ -195,7 +195,7 @@ struct heap_hdr_stats
   OID class_oid;
   VFID ovf_vfid;		/* Overflow file identifier (if any) */
   VPID next_vpid;		/* Next page (i.e., the 2nd page of heap file) */
-  VFID oos_vfid;		/* Overflow file identifier (if any) */
+  VFID oos_vfid;		/* OOS file identifier (if any) */
   int unfill_space;		/* Stop inserting when page has run below this. leave it for updates */
   struct
   {
@@ -11991,7 +11991,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   return header_size + payload_size;
 }
 
-VFID *
+bool
 heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
@@ -11999,7 +11999,9 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   VPID vpid;			/* Page-volume identifier */
   RECDES hdr_recdes;		/* Header record descriptor */
   PGBUF_LATCH_MODE mode;
-  int error;
+  bool success;
+
+  success = true;
 
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -12012,8 +12014,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, PGBUF_UNCONDITIONAL_LATCH);
   if (addr_hdr.pgptr == NULL)
     {
-      oos_vfid = NULL;
-      goto end;
+      goto exit_on_error;
     }
 
 #if !defined (NDEBUG)
@@ -12023,8 +12024,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   /* Peek the header record */
   if (spage_get_record (thread_p, addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
     {
-      oos_vfid = NULL;
-      goto end;
+      goto exit_on_error;
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
@@ -12036,9 +12036,8 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	  log_sysop_start (thread_p);
 	  if (oos_create (thread_p, *oos_vfid) != NO_ERROR)
 	    {
-	      oos_vfid = NULL;
 	      log_sysop_abort (thread_p);
-	      goto end;
+	      goto exit_on_error;
 	    }
 
 	  /* Log undo, then redo */
@@ -12051,7 +12050,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	}
       else
 	{
-	  oos_vfid = NULL;
+	  goto exit_on_error;
 	}
     }
   else
@@ -12059,13 +12058,18 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
       VFID_COPY (oos_vfid, &heap_hdr->oos_vfid);
     }
 
+  goto end;
+
+exit_on_error:
+  success = false;
+
 end:
   if (addr_hdr.pgptr)
     {
       pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
     }
 
-  return oos_vfid;
+  return success;
 }
 
 static SCAN_CODE
@@ -12166,7 +12170,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
     {
       return S_ERROR;
     }
-  if (heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true) == NULL)
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
     {
       return S_ERROR;
     }
@@ -12486,6 +12490,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	{
 	  assert (dbvalue != NULL && db_value_is_null (dbvalue) != true);
 
+	  /* see Implementation in CBRD-26352 for details on why this design is possible. */
 	  /* use 2-bit of offset value as flags */
 	  length = OR_SET_VAR_OOS (length);
 	}
@@ -12559,6 +12564,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  *ptr_varvals = buf->ptr;
 	}
     }
+
+  assert (!(((uint64_t) * ptr_varvals) & 0x3));
 
   return S_SUCCESS;
 }
