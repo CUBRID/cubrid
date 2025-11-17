@@ -157,6 +157,7 @@ extern void css_free_conn (CSS_CONN_ENTRY * conn);
 extern void css_print_conn_entry_info (CSS_CONN_ENTRY * p);
 extern void css_print_conn_list (void);
 extern void css_print_free_conn_list (void);
+extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
 extern void css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn),
 					   CSS_THREAD_FN request_handler);
 
