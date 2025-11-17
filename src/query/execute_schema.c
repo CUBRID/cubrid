@@ -1644,7 +1644,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   bool do_semantic_checks = false;
   bool do_rollback = false;
   DB_OBJECT *vclass;
-  const char *entity_name;
+  const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1681,6 +1681,13 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
+	  /* 
+	   * entity_name is required for performing the HA replication constraint check 
+	   * after all ALTER clauses have been processed. 
+	   * Since the check must be based on the final table name, 
+	   * entity_name is continuously updated as each RENAME clause is applied.
+	   */
+	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
@@ -1727,13 +1734,12 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       do_semantic_checks = true;
     }
 
-  entity_name = alter->info.alter.entity_name->info.name.original;
   vclass = db_find_class (entity_name);
   error_code = check_ha_repl_constraint (vclass);
   if (error_code != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-      return error_code;
+      goto error_exit;
     }
 
   return error_code;
