@@ -1215,6 +1215,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
 		  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 		    {
+		      ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
 		      if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -1224,18 +1225,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 			{
 			  pr_clone_value (a_func_list->out_value, a_func_list->value);
 			}
-		    }
-
-		  if (qexec_generate_tuple_descriptor
-		      (thread_p, a_eval_list->interm_list_id, xasl->outptr_list,
-		       &xasl_state->vd) == QPROC_TPLDESCR_FAILURE)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  if (qfile_generate_tuple_into_list (thread_p, a_eval_list->interm_list_id, T_NORMAL) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
 		    }
 
 		  a_eval_list->curr_group_tuple_count++;
@@ -15008,6 +14997,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       if (xasl->type == BUILDLIST_PROC)
 	{
 	  AGGREGATE_TYPE *agg_p;
+	  ANALYTIC_EVAL_TYPE *a_eval_list;
+	  ANALYTIC_TYPE *a_func_list;
 
 	  /* prepare hash table for aggregate evaluation */
 	  if (xasl->proc.buildlist.g_hash_eligible)
@@ -15033,6 +15024,20 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
+
+	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+	    {
+	      if (a_eval_list->is_sorted)
+		{
+		  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+		    {
+		      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		}
+	    }
 	}
       else if (xasl->type == BUILDVALUE_PROC)
 	{
