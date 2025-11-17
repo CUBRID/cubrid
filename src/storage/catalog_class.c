@@ -4123,7 +4123,7 @@ catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullsca
   int stats_strategy_disk_repr_idx = catcls_get_disk_repr_idx (value_p, &ct_Class, CT_CLASS_STATISTICS_STRATEGY_INDEX);
 
   db_sys_datetime (&value_p->sub.value[checked_time_disk_repr_idx].value);
-  db_make_int (&value_p->sub.value[stats_strategy_disk_repr_idx].value, CT_CLASS_STATISTICS_STRATEGY_INDEX);
+  db_make_int (&value_p->sub.value[stats_strategy_disk_repr_idx].value, with_fullscan);
 }
 
 /*
