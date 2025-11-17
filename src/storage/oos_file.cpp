@@ -132,16 +132,23 @@ static int oos_prepend_record_header (RECDES &rec_in, const OOS_RECORD_HEADER &o
 }
 
 
-static void oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out, RECDES &rec_out)
+static int oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out, RECDES &rec_out)
 {
   assert (rec_in.length >= (int)sizeof (OOS_RECORD_HEADER));
   assert (&rec_in != &rec_out);
 
-  recdes_allocate_data_area (&rec_out, rec_in.length - (int)sizeof (OOS_RECORD_HEADER));
+  int err;
+  err = recdes_allocate_data_area (&rec_out, rec_in.length - (int)sizeof (OOS_RECORD_HEADER));
+  if (err != NO_ERROR)
+    {
+      oos_error ("recdes_allocate_data_area failed");
+      return err;
+    }
   rec_out.type = REC_HOME;
   rec_out.length = rec_in.length - (int)sizeof (OOS_RECORD_HEADER);
   std::memcpy (&header_out, rec_in.data, (int)sizeof (OOS_RECORD_HEADER));
   std::memcpy (rec_out.data, rec_in.data + (int)sizeof (OOS_RECORD_HEADER), rec_out.length);
+  return NO_ERROR;
 }
 
 
@@ -355,6 +362,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 static int oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 				 OOS_RECORD_HEADER &header_out)
 {
+  int err = NO_ERROR;
   const auto [pageid, slotid, volid] = oid;
   auto vpid = VPID{pageid, volid};
 
@@ -378,7 +386,13 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES 
       return ER_FAILED;
     }
 
-  oos_pop_record_header (recdes_with_oos_header, header_out, recdes);
+  err = oos_pop_record_header (recdes_with_oos_header, header_out, recdes);
+  if (err != NO_ERROR)
+    {
+      oos_error ("oos_pop_record_header failed for volid=%d, pageid=%d, slotid=%d",
+		 volid, pageid, slotid);
+      return err;
+    }
   return NO_ERROR;
 }
 
