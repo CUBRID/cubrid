@@ -177,6 +177,7 @@ static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF *
 
 static void catcls_set_or_value_timestamps (OR_VALUE * value_p);
 static void catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
+static void catcls_copy_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
 static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullscan);
 static int catcls_get_disk_repr_idx (OR_VALUE * value_p, CT_CLASS * catalog, int attr_idx);
 
@@ -4092,25 +4093,48 @@ catcls_set_or_value_timestamps (OR_VALUE * value_p)
 }
 
 static void
-catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
+catcls_copy_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
 {
-  int old_created_time_idx, created_time_idx, updated_time_idx;
+  int created_time_idx, updated_time_idx;
+  DB_DATETIME *created_time_dt, *updated_time_dt;
 
   if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid))
     {
-      old_created_time_idx = catcls_get_disk_repr_idx (old_value_p, &ct_Class, CT_CLASS_CREATED_TIME_INDEX);
-      created_time_idx = CT_CLASS_CREATED_TIME_INDEX;
-      updated_time_idx = CT_CLASS_UPDATED_TIME_INDEX;
+      created_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Class, CT_CLASS_CREATED_TIME_INDEX);
+      updated_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Class, CT_CLASS_UPDATED_TIME_INDEX);
     }
   else
     {
       /* OID_EQ(ct_Index.cc_classoid, class_oid_p) */
-      old_created_time_idx = catcls_get_disk_repr_idx (old_value_p, &ct_Index, CT_INDEX_CREATED_TIME_INDEX);
-      created_time_idx = CT_INDEX_CREATED_TIME_INDEX;
-      updated_time_idx = CT_INDEX_UPDATED_TIME_INDEX;
+      created_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Index, CT_INDEX_CREATED_TIME_INDEX);
+      updated_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Index, CT_INDEX_UPDATED_TIME_INDEX);
     }
 
-  DB_DATETIME *datetime = db_get_datetime (&old_value_p->sub.value[old_created_time_idx].value);
+  created_time_dt = db_get_datetime (&old_value_p->sub.value[created_time_idx].value);
+  updated_time_dt = db_get_datetime (&old_value_p->sub.value[updated_time_idx].value);
+
+  db_make_datetime (&value_p->sub.value[created_time_idx].value, created_time_dt);
+  db_make_datetime (&value_p->sub.value[updated_time_idx].value, updated_time_dt);
+}
+
+static void
+catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
+{
+  int created_time_idx, updated_time_idx;
+
+  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid))
+    {
+      created_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Class, CT_CLASS_CREATED_TIME_INDEX);
+      updated_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Class, CT_CLASS_UPDATED_TIME_INDEX);
+    }
+  else
+    {
+      /* OID_EQ(ct_Index.cc_classoid, class_oid_p) */
+      created_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Index, CT_INDEX_CREATED_TIME_INDEX);
+      updated_time_idx = catcls_get_disk_repr_idx (value_p, &ct_Index, CT_INDEX_UPDATED_TIME_INDEX);
+    }
+
+  DB_DATETIME *datetime = db_get_datetime (&old_value_p->sub.value[created_time_idx].value);
 
   db_make_datetime (&value_p->sub.value[created_time_idx].value, datetime);
   db_sys_datetime (&value_p->sub.value[updated_time_idx].value);
@@ -4165,15 +4189,15 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       goto error;
     }
 
-  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
-    {
-      catcls_update_or_value_timestamps (value_p, old_value_p);
-    }
-
   error = catcls_reorder_attributes_by_repr (thread_p, value_p);
   if (error != NO_ERROR)
     {
       goto error;
+    }
+
+  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
+    {
+      catcls_copy_or_value_timestamps (value_p, old_value_p);
     }
 
   /* update old_value */
@@ -4223,6 +4247,11 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   if (uflag == true)
     {
       HEAP_OPERATION_CONTEXT update_context;
+
+      if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
+	{
+	  catcls_update_or_value_timestamps (value_p, old_value_p);
+	}
 
       record.length = catcls_guess_record_length (value_p);
       record.area_size = record.length;
