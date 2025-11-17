@@ -13955,7 +13955,7 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
   for (int i = 0; i < attrid_arr_length; i++)
     {
       sprintf (rv_path, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
-      log_append_undo_data (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
+      log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
       es_make_dirs (rv_path, NULL);
     }
@@ -13987,12 +13987,12 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
   if (attrid == -1)		/* DROP TABLE */
     {
       snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      log_append_postpone (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+      log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
     }
   else				/* DROP LOB COLUMN */
     {
       snprintf (rv_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
-      log_append_postpone (thread_p, RVHF_LOB_ROMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+      log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
     }
 
   return ret;
