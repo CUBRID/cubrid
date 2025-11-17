@@ -540,7 +540,7 @@ typedef enum
  * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
  * - constraint: { name, info }
  *   - name: constraint name
- *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, index_type, options, comment, created_time, updated_time }
+ *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, index_type, options, comment }
  *     - BTID: volid|pageid|fileid
  *     - [att_name|id, asc_desc] can repeat for multiple attributes
  *     - optional_info appears only when applicable:
@@ -569,8 +569,6 @@ struct sm_class_constraint
   SM_INDEX_STATUS index_status;
   SM_INDEX_TYPE index_type;
   int options;			/* bits 0-3: deduplicate level (0-14), rest reserved */
-  DB_DATETIME created_time;
-  DB_DATETIME updated_time;
 };
 
 /* options macros */
@@ -1154,5 +1152,4 @@ extern SM_PARTITION *classobj_copy_partition_info (SM_PARTITION * partition_info
 
 extern int classobj_change_constraint_status (DB_SEQ * properties, SM_CLASS_CONSTRAINT * cons,
 					      SM_INDEX_STATUS index_status);
-extern int classobj_update_constraint_updated_time (DB_SEQ * properties, SM_CLASS_CONSTRAINT * constraint);
 #endif /* _CLASS_OBJECT_H_ */

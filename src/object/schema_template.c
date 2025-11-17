@@ -1585,8 +1585,6 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   con.shared_cons_name = NULL;
   con.index_type = SM_BTREE_TYPE;
   con.options = options;
-  con.created_time = *db_get_datetime (&current_datetime);
-  con.updated_time = *db_get_datetime (&current_datetime);
 
   if (classobj_put_index (&template_->properties, &con, NULL, fk_info, shared_cons_name, true) != NO_ERROR)
     {
@@ -3092,12 +3090,6 @@ change_constraints_comment_partitioned_class (MOP obj, const char *index_name, c
 	  goto error_exit;
 	}
 
-      error = classobj_update_constraint_updated_time (ctemplate->properties, cons);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
       /* classobj_free_template() is included in sm_update_class() */
       error = sm_update_class (ctemplate, NULL);
       if (error != NO_ERROR)
@@ -3153,30 +3145,6 @@ smt_change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, 
     }
 
   error = classobj_change_constraint_comment (ctemplate->properties, cons, comment);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  return NO_ERROR;
-}
-
-int
-smt_update_constraint_updated_time (SM_TEMPLATE * ctemplate, const char *index_name)
-{
-  SM_CLASS_CONSTRAINT *constraint = NULL;
-  int error = NO_ERROR;
-
-  assert (ctemplate != NULL && ctemplate->op != NULL);
-
-  constraint = smt_find_constraint (ctemplate, index_name);
-  if (constraint == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      return error;
-    }
-
-  error = classobj_update_constraint_updated_time (ctemplate->properties, constraint);
   if (error != NO_ERROR)
     {
       return error;
@@ -4806,12 +4774,6 @@ change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM
 	}
 
       error = classobj_change_constraint_status (ctemplate->properties, cons, index_status);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      error = classobj_update_constraint_updated_time (ctemplate->properties, cons);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

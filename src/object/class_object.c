@@ -1213,14 +1213,6 @@ classobj_put_index (DB_SEQ ** properties, SM_CLASS_CONSTRAINT * con, const BTID 
   db_make_string (&value, con->comment);
   classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
 
-  /* created_time */
-  db_make_datetime (&value, &con->created_time);
-  classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
-
-  /* updated_time */
-  db_make_datetime (&value, &con->updated_time);
-  classobj_put_value_and_iterate (constraint, constraint_seq_index, value);
-
   /* Append the constraint to the unique property sequence */
   db_make_sequence (&value, constraint);
   constraint = NULL;
@@ -1382,7 +1374,6 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 {
   DB_VALUE prop_val, pk_val, fk_container_val, fk_val;
   DB_VALUE status, index_type, options, comment;
-  DB_VALUE created_time, updated_time;
   DB_SEQ *pk_property, *pk_seq, *fk_container, *fk_seq;
   int size;
   int fk_container_pos;
@@ -1397,8 +1388,6 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
   PRIM_SET_NULL (&index_type);
   PRIM_SET_NULL (&options);
   PRIM_SET_NULL (&comment);
-  PRIM_SET_NULL (&created_time);
-  PRIM_SET_NULL (&updated_time);
 
   if (classobj_get_prop (*properties, SM_PROPERTY_PRIMARY_KEY, &prop_val) <= 0)
     {
@@ -1492,20 +1481,6 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	}
 
       err =
-	set_get_element (pk_seq, get_class_constraint_index (size, SM_CONSTRAINT_CREATED_TIME_INDEX), &created_time);
-      if (err != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      err =
-	set_get_element (pk_seq, get_class_constraint_index (size, SM_CONSTRAINT_UPDATED_TIME_INDEX), &updated_time);
-      if (err != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      err =
 	set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_OPTIONAL_INFO_INDEX),
 			 &fk_container_val);
       if (err != NO_ERROR)
@@ -1537,22 +1512,6 @@ classobj_put_foreign_key_ref (DB_SEQ ** properties, SM_FOREIGN_KEY_INFO * fk_inf
 	{
 	  goto end;
 	}
-
-      err =
-	set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_CREATED_TIME_INDEX),
-			 &created_time);
-      if (err != NO_ERROR)
-	{
-	  goto end;
-	}
-
-      err =
-	set_put_element (pk_seq, get_class_constraint_index (size + 1, SM_CONSTRAINT_UPDATED_TIME_INDEX),
-			 &updated_time);
-      if (err != NO_ERROR)
-	{
-	  goto end;
-	}
     }
 
   err = set_put_element (pk_property, 1, &pk_val);
@@ -1577,8 +1536,6 @@ end:
   pr_clear_value (&index_type);
   pr_clear_value (&options);
   pr_clear_value (&comment);
-  pr_clear_value (&created_time);
-  pr_clear_value (&updated_time);
 
   return err;
 }
@@ -2096,73 +2053,6 @@ end:
   pr_clear_value (&cnstr_val);
   pr_clear_value (&curr_comment);
   pr_clear_value (&new_comment);
-
-  return error;
-}
-
-int
-classobj_update_constraint_updated_time (DB_SEQ * properties, SM_CLASS_CONSTRAINT * constraint)
-{
-  const char *property_type;
-  DB_VALUE property_val, constraint_val, updated_time_val;
-  DB_SEQ *property_seq, *index_seq;
-  int error = NO_ERROR;
-  int seq_len = 0;
-
-  assert (properties != NULL && constraint != NULL);
-
-  db_make_null (&property_val);
-  db_make_null (&constraint_val);
-
-  property_type = classobj_map_constraint_to_property (constraint->type);
-
-  if (classobj_get_prop (properties, property_type, &property_val) == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
-      error = ER_SM_INVALID_PROPERTY;
-      goto end;
-    }
-
-  property_seq = db_get_set (&property_val);
-  if (classobj_get_prop (property_seq, constraint->name, &constraint_val) == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
-      error = ER_SM_INVALID_PROPERTY;
-      goto end;
-    }
-
-  index_seq = db_get_set (&constraint_val);
-  seq_len = set_size (index_seq);
-
-  if (db_sys_datetime (&updated_time_val) != NO_ERROR ||
-      set_put_element (index_seq, get_class_constraint_index (seq_len, SM_CONSTRAINT_UPDATED_TIME_INDEX),
-		       &updated_time_val) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
-      error = ER_SM_INVALID_PROPERTY;
-      goto end;
-    }
-
-  db_make_sequence (&constraint_val, index_seq);
-  if (classobj_put_prop (property_seq, constraint->name, &constraint_val) == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
-      error = ER_SM_INVALID_PROPERTY;
-      goto end;
-    }
-
-  db_make_sequence (&property_val, property_seq);
-  if (classobj_put_prop (properties, property_type, &property_val) == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_PROPERTY, 0);
-      error = ER_SM_INVALID_PROPERTY;
-      goto end;
-    }
-
-end:
-  pr_clear_value (&property_val);
-  pr_clear_value (&constraint_val);
-  pr_clear_value (&updated_time_val);
 
   return error;
 }
@@ -2763,8 +2653,6 @@ classobj_make_class_constraint (const char *name, SM_CONSTRAINT_TYPE type)
   new_->comment = NULL;
   new_->extra_status = SM_FLAG_NORMALLY_INITIALIZED;
   new_->index_status = SM_NO_INDEX;
-  new_->created_time = DATETIME_NULL_VALUE;
-  new_->updated_time = DATETIME_NULL_VALUE;
 
   return new_;
 }
@@ -3279,7 +3167,7 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
   SM_CLASS_CONSTRAINT *constraints, *last, *new_;
   DB_SET *props, *info, *fk;
   DB_VALUE pvalue, uvalue, bvalue, avalue, fvalue, statusval;
-  DB_VALUE index_type, options, cvalue, created_time, updated_time;
+  DB_VALUE index_type, options, cvalue;
   int i, j, k, e, len, info_len, att_cnt;
   int *asc_desc;
   int num_constraint_types = NUM_CONSTRAINT_TYPES;
@@ -3299,8 +3187,6 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
   db_make_null (&index_type);
   db_make_null (&options);
   db_make_null (&cvalue);
-  db_make_null (&created_time);
-  db_make_null (&updated_time);
 
   constraints = last = NULL;
 
@@ -3672,28 +3558,6 @@ classobj_make_class_constraints (DB_SET * class_props, SM_ATTRIBUTE * attributes
 		  goto structure_error;
 		}
 
-	      if (set_get_element
-		  (info, get_class_constraint_index (info_len, SM_CONSTRAINT_CREATED_TIME_INDEX),
-		   &created_time) != NO_ERROR)
-		{
-		  goto structure_error;
-		}
-	      else
-		{
-		  new_->created_time = *db_get_datetime (&created_time);
-		}
-
-	      if (set_get_element
-		  (info, get_class_constraint_index (info_len, SM_CONSTRAINT_UPDATED_TIME_INDEX),
-		   &updated_time) != NO_ERROR)
-		{
-		  goto structure_error;
-		}
-	      else
-		{
-		  new_->updated_time = *db_get_datetime (&updated_time);
-		}
-
 	      /* clear each unique info sequence value */
 	      pr_clear_value (&uvalue);
 	    }
@@ -3731,8 +3595,6 @@ other_error:
   pr_clear_value (&statusval);
   pr_clear_value (&index_type);
   pr_clear_value (&options);
-  pr_clear_value (&created_time);
-  pr_clear_value (&updated_time);
 
   classobj_free_class_constraints (constraints);
 

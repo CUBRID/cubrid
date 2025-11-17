@@ -175,10 +175,10 @@ static void catcls_apply_resolutions (OR_VALUE * value_p, OR_VALUE * resolution_
 static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_oid, OID * entry_new_oid);
 static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
 
-static void catcls_set_or_value_class_timestamps (OR_VALUE * value_p);
-static void catcls_update_or_value_class_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
+static void catcls_set_or_value_timestamps (OR_VALUE * value_p);
+static void catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
 static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullscan);
-static int catcls_get_class_disk_repr_idx (OR_VALUE * value_p, CT_ATTR_CLASS_INDEX attr_idx);
+static int catcls_get_disk_repr_idx (OR_VALUE * value_p, CT_CLASS * catalog, int attr_idx);
 
 /*
  * catcls_allocate_entry () -
@@ -2288,8 +2288,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       attrs = values[j].sub.value;
 
-      /* index_name */
-      attr_val_p = &attrs[1].value;
+      attr_val_p = &attrs[CT_INDEX_INDEX_NAME_INDEX].value;
       error = set_get_element (seq_p, i, attr_val_p);
       if (error != NO_ERROR)
 	{
@@ -2297,8 +2296,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	}
       db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
-      /* (is_unique) */
-      db_make_int (&attrs[2].value, is_unique);
+      db_make_int (&attrs[CT_INDEX_IS_UNIQUE_INDEX].value, is_unique);
 
       error = set_get_element (seq_p, i + 1, &keys);
       if (error != NO_ERROR)
@@ -2323,7 +2321,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_STATUS_INDEX),
-			 &attrs[10].value);
+			 &attrs[CT_INDEX_STATUS_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2353,7 +2351,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    }
 	  if (db_value_is_null (&val) == false)
 	    {
-	      db_make_oid (&attrs[11].value, db_get_oid (&val));
+	      db_make_oid (&attrs[CT_INDEX_REFERENTIAL_INDEX_INDEX].value, db_get_oid (&val));
 	    }
 
 	  error = set_get_element (seq, SM_FK_INFO_DELETE_ACTION_INDEX, &val);
@@ -2361,14 +2359,14 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[12].value, db_get_int (&val));
+	  db_make_int (&attrs[CT_INDEX_DELETE_RULE_INDEX].value, db_get_int (&val));
 
 	  error = set_get_element (seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[13].value, db_get_int (&val));
+	  db_make_int (&attrs[CT_INDEX_UPDATE_RULE_INDEX].value, db_get_int (&val));
 
 	  seq = db_get_set (&svalue);
 	  error = set_get_element (seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &val);
@@ -2376,12 +2374,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[14].value, db_get_int (&val));
+	  db_make_int (&attrs[CT_INDEX_REFERENTIAL_MATCH_OPTION_INDEX].value, db_get_int (&val));
 	}
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_INDEX_TYPE_INDEX),
-			 &attrs[15].value);
+			 &attrs[CT_INDEX_INDEX_TYPE_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2389,7 +2387,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_OPTIONS_INDEX),
-			 &attrs[16].value);
+			 &attrs[CT_INDEX_OPTIONS_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2397,28 +2395,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_COMMENT_INDEX),
-			 &attrs[17].value);
+			 &attrs[CT_INDEX_COMMENT_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
-      db_string_truncate (&attrs[17].value, DB_MAX_COMMENT_LENGTH);
-
-      error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_CREATED_TIME_INDEX),
-			 &attrs[18].value);
-      if (error != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_UPDATED_TIME_INDEX),
-			 &attrs[19].value);
-      if (error != NO_ERROR)
-	{
-	  goto error;
-	}
+      db_string_truncate (&attrs[CT_INDEX_COMMENT_INDEX].value, DB_MAX_COMMENT_LENGTH);
 
       if (!is_primary_key && !is_foreign_key)
 	{
@@ -2514,7 +2496,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		    {
 		    case SM_INDEX_FLAG_FILTER:
 		      pred_seq = db_get_set (&avalue);
-		      attr_val_p = &attrs[8].value;
+		      attr_val_p = &attrs[CT_INDEX_FILTER_EXPRESSION_INDEX].value;
 		      error = set_get_element (pred_seq, 0, attr_val_p);
 		      if (error != NO_ERROR)
 			{
@@ -2543,8 +2525,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
 		      att_cnt = att_index_start + 1;
 
-		      /* key_count */
-		      db_make_int (&attrs[3].value, att_cnt);
+		      db_make_int (&attrs[CT_INDEX_KEY_COUNT_INDEX].value, att_cnt);
 
 		      subset_p = catcls_allocate_or_value (att_cnt);
 		      if (subset_p == NULL)
@@ -2553,8 +2534,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 			  goto error;
 			}
 
-		      attrs[4].sub.value = subset_p;
-		      attrs[4].sub.count = att_cnt;
+		      attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.value = subset_p;
+		      attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.count = att_cnt;
 
 		      /* key_attrs */
 		      e = 1;
@@ -2671,10 +2652,9 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pr_clear_value (&val);
 	}
 
-      /* key_count */
       if (has_function_index == 0)
 	{
-	  db_make_int (&attrs[3].value, att_cnt);
+	  db_make_int (&attrs[CT_INDEX_KEY_COUNT_INDEX].value, att_cnt);
 
 	  subset_p = catcls_allocate_or_value (att_cnt);
 	  if (subset_p == NULL)
@@ -2683,8 +2663,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	      goto error;
 	    }
 
-	  attrs[4].sub.value = subset_p;
-	  attrs[4].sub.count = att_cnt;
+	  attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.value = subset_p;
+	  attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.count = att_cnt;
 
 	  /* key_attrs */
 	  e = 1;
@@ -2748,17 +2728,13 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pvalue = NULL;
 	}
 
-      /* is_reverse */
-      db_make_int (&attrs[5].value, is_reverse);
+      db_make_int (&attrs[CT_INDEX_IS_REVERSE_INDEX].value, is_reverse);
 
-      /* is_primary_key */
-      db_make_int (&attrs[6].value, is_primary_key);
+      db_make_int (&attrs[CT_INDEX_IS_PRIMARY_KEY_INDEX].value, is_primary_key);
 
-      /* is_foreign_key */
-      db_make_int (&attrs[7].value, is_foreign_key);
+      db_make_int (&attrs[CT_INDEX_IS_FOREIGN_KEY_INDEX].value, is_foreign_key);
 
-      /* have_function */
-      db_make_int (&attrs[9].value, has_function_index);
+      db_make_int (&attrs[CT_INDEX_HAVE_FUNCTION_INDEX].value, has_function_index);
     }
 
   return NO_ERROR;
@@ -3877,6 +3853,11 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       COPY_OID (root_oid_p, oid_p);
     }
 
+  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
+    {
+      catcls_set_or_value_timestamps (value_p);
+    }
+
   for (attrs = value_p->sub.value, i = 0; i < value_p->sub.count; i++)
     {
       if (IS_SUBSET (attrs[i]))
@@ -4070,13 +4051,11 @@ error:
 }
 
 static int
-catcls_get_class_disk_repr_idx (OR_VALUE * value_p, CT_ATTR_CLASS_INDEX attr_idx)
+catcls_get_disk_repr_idx (OR_VALUE * value_p, CT_CLASS * catalog, int attr_idx)
 {
-  CT_ATTR *ct_attrs = ct_Class.cc_atts;
-
-  for (int i = 0; i < ct_Class.cc_n_atts; i++)
+  for (int i = 0; i < catalog->cc_n_atts; i++)
     {
-      if (ct_attrs[attr_idx].ca_id == value_p->sub.value[i].id.attrid)
+      if (catalog->cc_atts[attr_idx].ca_id == value_p->sub.value[i].id.attrid)
 	{
 	  return i;
 	}
@@ -4087,31 +4066,61 @@ catcls_get_class_disk_repr_idx (OR_VALUE * value_p, CT_ATTR_CLASS_INDEX attr_idx
 }
 
 static void
-catcls_set_or_value_class_timestamps (OR_VALUE * value_p)
+catcls_set_or_value_timestamps (OR_VALUE * value_p)
 {
   DB_VALUE datetime_val;
   DB_DATETIME *datetime;
+  int created_time_idx, updated_time_idx;
+
+  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid))
+    {
+      created_time_idx = CT_CLASS_CREATED_TIME_INDEX;
+      updated_time_idx = CT_CLASS_UPDATED_TIME_INDEX;
+    }
+  else
+    {
+      /* OID_EQ(value_p->id.classoid, &ct_Index.cc_classoid) */
+      created_time_idx = CT_INDEX_CREATED_TIME_INDEX;
+      updated_time_idx = CT_INDEX_UPDATED_TIME_INDEX;
+    }
 
   db_sys_datetime (&datetime_val);
   datetime = db_get_datetime (&datetime_val);
-  db_make_datetime (&value_p->sub.value[CT_CLASS_CREATED_TIME_INDEX].value, datetime);
-  db_make_datetime (&value_p->sub.value[CT_CLASS_UPDATED_TIME_INDEX].value, datetime);
+
+  db_make_datetime (&value_p->sub.value[created_time_idx].value, datetime);
+  db_make_datetime (&value_p->sub.value[updated_time_idx].value, datetime);
 }
 
 static void
-catcls_update_or_value_class_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
+catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
 {
-  DB_DATETIME *datetime = db_get_datetime (&old_value_p->sub.value[CT_CLASS_CREATED_TIME_INDEX].value);
+  int old_created_time_idx, created_time_idx, updated_time_idx;
 
-  db_make_datetime (&value_p->sub.value[CT_CLASS_CREATED_TIME_INDEX].value, datetime);
-  db_sys_datetime (&value_p->sub.value[CT_CLASS_UPDATED_TIME_INDEX].value);
+  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid))
+    {
+      old_created_time_idx = catcls_get_disk_repr_idx (old_value_p, &ct_Class, CT_CLASS_CREATED_TIME_INDEX);
+      created_time_idx = CT_CLASS_CREATED_TIME_INDEX;
+      updated_time_idx = CT_CLASS_UPDATED_TIME_INDEX;
+    }
+  else
+    {
+      /* OID_EQ(ct_Index.cc_classoid, class_oid_p) */
+      old_created_time_idx = catcls_get_disk_repr_idx (old_value_p, &ct_Index, CT_INDEX_CREATED_TIME_INDEX);
+      created_time_idx = CT_INDEX_CREATED_TIME_INDEX;
+      updated_time_idx = CT_INDEX_UPDATED_TIME_INDEX;
+    }
+
+  DB_DATETIME *datetime = db_get_datetime (&old_value_p->sub.value[old_created_time_idx].value);
+
+  db_make_datetime (&value_p->sub.value[created_time_idx].value, datetime);
+  db_sys_datetime (&value_p->sub.value[updated_time_idx].value);
 }
 
 static void
 catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullscan)
 {
-  int checked_time_disk_repr_idx = catcls_get_class_disk_repr_idx (value_p, CT_CLASS_CHECKED_TIME_INDEX);
-  int stats_strategy_disk_repr_idx = catcls_get_class_disk_repr_idx (value_p, CT_CLASS_STATISTICS_STRATEGY_INDEX);
+  int checked_time_disk_repr_idx = catcls_get_disk_repr_idx (value_p, &ct_Class, CT_CLASS_CHECKED_TIME_INDEX);
+  int stats_strategy_disk_repr_idx = catcls_get_disk_repr_idx (value_p, &ct_Class, CT_CLASS_STATISTICS_STRATEGY_INDEX);
 
   db_sys_datetime (&value_p->sub.value[checked_time_disk_repr_idx].value);
   db_make_int (&value_p->sub.value[stats_strategy_disk_repr_idx].value, CT_CLASS_STATISTICS_STRATEGY_INDEX);
@@ -4156,9 +4165,9 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       goto error;
     }
 
-  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid))
+  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
     {
-      catcls_update_or_value_class_timestamps (value_p, old_value_p);
+      catcls_update_or_value_timestamps (value_p, old_value_p);
     }
 
   error = catcls_reorder_attributes_by_repr (thread_p, value_p);
@@ -4294,8 +4303,6 @@ catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record_p)
     {
       goto error;
     }
-
-  catcls_set_or_value_class_timestamps (value_p);
 
   class_oid_p = &ct_Class.cc_classoid;
   cls_info_p = catalog_get_class_info (thread_p, class_oid_p, NULL);
