@@ -7,43 +7,54 @@ on:
 jobs:
   run_test:
     name: Run test on CircleCI
-    if: |
-      ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run ') }}
+    if: ${{ github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/run') }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Get Branch Name and Test Type
-        run: |         
-          # Get comment
+      - name: Validate Command
+        shell: bash
+        run: |
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
-          
-          # Define test types
+
+          # Allowed commands: /run all, /run shell, /run sql, /run medium
+          # Or any combination of them (up to 4)
+          if ! [[ "$COMMENT" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+            echo "[info] Ignored invalid command: $COMMENT"
+            exit 0
+          fi
+
+          echo "[debug] Valid command: $COMMENT"
+          echo "VALID_RUN=true" >> $GITHUB_ENV
+
+      - name: Get Branch Name and Test Type
+        if: ${{ env.VALID_RUN == 'true' }}
+        shell: bash
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          echo "[debug] Comment: $COMMENT"
+
           TEST_TYPES="shell sql medium"
           TEST_JSON="{"
-          
-          # Check for 'all' keyword or parse individual test types
-          if [[ "$COMMENT" == *"all"* ]]; then
-            # Enable all tests
+
+          # If 'all' is included, run all tests
+          if [[ "$COMMENT" =~ (^|[[:space:]])all($|[[:space:]]) ]]; then
             echo "[debug] Running all tests"
             for test in $TEST_TYPES; do
               TEST_JSON+="\"run_${test}_test\":true,"
             done
             TEST_JSON+="\"run_all_test\":true,"
           else
-            # Check each test type
+            # Detect each combined test type separately
             for test in $TEST_TYPES; do
-              if [[ "$COMMENT" == *"$test"* ]]; then
+              if [[ "$COMMENT" =~ (^|[[:space:]])$test($|[[:space:]]) ]]; then
                 echo "[debug] Will run $test test"
                 TEST_JSON+="\"run_${test}_test\":true,"
               fi
             done
             TEST_JSON+="\"run_all_test\":false,"
           fi
-          
-          # Extract baseline version from comment if it exists
+
           BASELINE=$(echo "$COMMENT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+' || echo "")
-          
-          # Add baseline to JSON and remove trailing comma if present
           if [ -n "$BASELINE" ]; then
             echo "[debug] Baseline Version: $BASELINE"
             TEST_JSON+="\"baseline\":\"$BASELINE\"}"
@@ -51,31 +62,28 @@ jobs:
             echo "[debug] No Baseline Version provided. Will use latest from DB."
             TEST_JSON+="\"baseline\":\"none\"}"
           fi
+
           TEST_JSON=$(echo $TEST_JSON | sed 's/,}/}/')
-          
-          # Save the JSON to environment
           echo "TEST_JSON=$TEST_JSON" >> $GITHUB_ENV
-          
-          # For debugging
           echo "[debug] Test Parameters: $TEST_JSON"
 
       - name: Trigger CircleCI Test
+        if: ${{ env.VALID_RUN == 'true' }}
         env:
           CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
           BRANCH_NAME: pull/${{ github.event.issue.number }}/head
           TEST_JSON: ${{ env.TEST_JSON }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
+        shell: bash
         run: |
-          # Create final JSON data
           DATA=$(echo '{"branch": "'"$BRANCH_NAME"'", "parameters": '"$TEST_JSON"'}')
-          
-          # Trigger CircleCI pipeline
           echo "[debug] DATA: $DATA"
           echo "[debug] REPO_OWNER: $REPO_OWNER"
           echo "[debug] REPO_NAME: $REPO_NAME"
+
           curl --request POST \
-            --url https://circleci.com/api/v2/project/gh/$REPO_OWNER/$REPO_NAME/pipeline \
+            --url "https://circleci.com/api/v2/project/gh/$REPO_OWNER/$REPO_NAME/pipeline" \
             --header "Circle-Token: $CIRCLECI_TOKEN" \
             --header "Content-Type: application/json" \
             --data "$DATA"
