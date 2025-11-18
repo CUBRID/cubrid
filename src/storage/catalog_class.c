@@ -4113,6 +4113,16 @@ catcls_copy_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
 
   db_make_datetime (&value_p->sub.value[created_time_idx].value, created_time_dt);
   db_make_datetime (&value_p->sub.value[updated_time_idx].value, updated_time_dt);
+
+  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid) &&
+      !db_value_is_null (&old_value_p->sub.value[_gv_ct_Class_checked_time_idx].value) &&
+      !db_value_is_null (&old_value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value))
+    {
+      db_make_datetime (&value_p->sub.value[_gv_ct_Class_checked_time_idx].value,
+			db_get_datetime (&old_value_p->sub.value[_gv_ct_Class_checked_time_idx].value));
+      db_make_int (&value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value,
+		   db_get_int (&old_value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value));
+    }
 }
 
 static void
