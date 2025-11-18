@@ -176,8 +176,8 @@ static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_
 static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
 
 static void catcls_set_or_value_timestamps (OR_VALUE * value_p);
-static void catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
-static void catcls_copy_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
+static void catcls_update_or_value_updated_time (OR_VALUE * value_p);
+static void catcls_copy_or_value_times_and_statistics (OR_VALUE * value_p, OR_VALUE * old_value_p);
 static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, unsigned int ci_time_stamp,
 						       bool with_fullscan);
 static int catcls_cache_fixed_attr_indexes (THREAD_ENTRY * thread_p);
@@ -188,19 +188,6 @@ static int _gv_ct_Index_created_time_idx = -1;
 static int _gv_ct_Index_updated_time_idx = -1;
 static int _gv_ct_Class_checked_time_idx = -1;
 static int _gv_ct_Class_statistics_strategy_idx = -1;
-
-static inline int
-catcls_get_created_time_index (OID * class_oid_p)
-{
-  return OID_EQ (class_oid_p, &ct_Class.cc_classoid) ? _gv_ct_Class_created_time_idx : _gv_ct_Index_created_time_idx;
-}
-
-static inline int
-catcls_get_updated_time_index (OID * class_oid_p)
-{
-  return OID_EQ (class_oid_p, &ct_Class.cc_classoid) ? _gv_ct_Class_updated_time_idx : _gv_ct_Index_updated_time_idx;
-}
-
 
 /*
  * catcls_allocate_entry () -
@@ -4099,44 +4086,46 @@ catcls_set_or_value_timestamps (OR_VALUE * value_p)
 }
 
 static void
-catcls_copy_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
+catcls_copy_or_value_times_and_statistics (OR_VALUE * value_p, OR_VALUE * old_value_p)
 {
   int created_time_idx, updated_time_idx;
   DB_DATETIME *created_time_dt = NULL;
   DB_DATETIME *updated_time_dt = NULL;
+  OR_VALUE *new_value = value_p->sub.value;
+  OR_VALUE *old_value = old_value_p->sub.value;
 
-  created_time_idx = catcls_get_created_time_index (&value_p->id.classoid);
-  updated_time_idx = catcls_get_updated_time_index (&value_p->id.classoid);
-
-  created_time_dt = db_get_datetime (&old_value_p->sub.value[created_time_idx].value);
-  updated_time_dt = db_get_datetime (&old_value_p->sub.value[updated_time_idx].value);
-
-  db_make_datetime (&value_p->sub.value[created_time_idx].value, created_time_dt);
-  db_make_datetime (&value_p->sub.value[updated_time_idx].value, updated_time_dt);
-
-  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid) &&
-      !db_value_is_null (&old_value_p->sub.value[_gv_ct_Class_checked_time_idx].value) &&
-      !db_value_is_null (&old_value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value))
+  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid))
     {
-      db_make_datetime (&value_p->sub.value[_gv_ct_Class_checked_time_idx].value,
-			db_get_datetime (&old_value_p->sub.value[_gv_ct_Class_checked_time_idx].value));
-      db_make_int (&value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value,
-		   db_get_int (&old_value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value));
+      if (!db_value_is_null (&old_value[_gv_ct_Class_checked_time_idx].value) &&
+	  !db_value_is_null (&old_value[_gv_ct_Class_statistics_strategy_idx].value))
+	{
+	  db_make_datetime (&new_value[_gv_ct_Class_checked_time_idx].value,
+			    db_get_datetime (&old_value[_gv_ct_Class_checked_time_idx].value));
+	  db_make_int (&new_value[_gv_ct_Class_statistics_strategy_idx].value,
+		       db_get_int (&old_value[_gv_ct_Class_statistics_strategy_idx].value));
+	}
+      created_time_idx = _gv_ct_Class_created_time_idx;
+      updated_time_idx = _gv_ct_Class_updated_time_idx;
     }
+  else
+    {
+      /* OID_EQ(value_p->id.classoid, &ct_Index.cc_classoid) */
+      created_time_idx = _gv_ct_Index_created_time_idx;
+      updated_time_idx = _gv_ct_Index_updated_time_idx;
+    }
+
+  created_time_dt = db_get_datetime (&old_value[created_time_idx].value);
+  updated_time_dt = db_get_datetime (&old_value[updated_time_idx].value);
+
+  db_make_datetime (&new_value[created_time_idx].value, created_time_dt);
+  db_make_datetime (&new_value[updated_time_idx].value, updated_time_dt);
 }
 
 static void
-catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
+catcls_update_or_value_updated_time (OR_VALUE * value_p)
 {
-  int created_time_idx, updated_time_idx;
-  DB_DATETIME *datetime = NULL;
-
-  created_time_idx = catcls_get_created_time_index (&value_p->id.classoid);
-  updated_time_idx = catcls_get_updated_time_index (&value_p->id.classoid);
-
-  datetime = db_get_datetime (&old_value_p->sub.value[created_time_idx].value);
-
-  db_make_datetime (&value_p->sub.value[created_time_idx].value, datetime);
+  int updated_time_idx = OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid) ?
+    _gv_ct_Class_updated_time_idx : _gv_ct_Index_updated_time_idx;
   db_sys_datetime (&value_p->sub.value[updated_time_idx].value);
 }
 
@@ -4198,7 +4187,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 
   if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
     {
-      catcls_copy_or_value_timestamps (value_p, old_value_p);
+      catcls_copy_or_value_times_and_statistics (value_p, old_value_p);
     }
 
   /* update old_value */
@@ -4251,7 +4240,7 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
 
       if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
 	{
-	  catcls_update_or_value_timestamps (value_p, old_value_p);
+	  catcls_update_or_value_updated_time (value_p);
 	}
 
       record.length = catcls_guess_record_length (value_p);
