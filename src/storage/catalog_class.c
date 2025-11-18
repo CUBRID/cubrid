@@ -178,7 +178,8 @@ static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF *
 static void catcls_set_or_value_timestamps (OR_VALUE * value_p);
 static void catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
 static void catcls_copy_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p);
-static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullscan);
+static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, unsigned int ci_time_stamp,
+						       bool with_fullscan);
 static int catcls_cache_fixed_attr_indexes (THREAD_ENTRY * thread_p);
 
 static int _gv_ct_Class_created_time_idx = -1;
@@ -4130,9 +4131,13 @@ catcls_update_or_value_timestamps (OR_VALUE * value_p, OR_VALUE * old_value_p)
 }
 
 static void
-catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, bool with_fullscan)
+catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, unsigned int ci_time_stamp, bool with_fullscan)
 {
-  db_sys_datetime (&value_p->sub.value[_gv_ct_Class_checked_time_idx].value);
+  DB_VALUE timestamp_val;
+
+  db_make_timestamp (&timestamp_val, ci_time_stamp);
+
+  db_timestamp_to_datetime (&timestamp_val, &value_p->sub.value[_gv_ct_Class_checked_time_idx].value);
   db_make_int (&value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value, with_fullscan);
 }
 
@@ -4446,7 +4451,8 @@ error:
 }
 
 int
-catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, bool with_fullscan)
+catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
+			   bool with_fullscan)
 {
   int error = NO_ERROR;
   OID oid;
@@ -4495,7 +4501,7 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, bool
       goto error;
     }
 
-  catcls_update_or_value_class_stats_fields (value_p, with_fullscan);
+  catcls_update_or_value_class_stats_fields (value_p, ci_time_stamp, with_fullscan);
 
   record.length = catcls_guess_record_length (value_p);
   record.area_size = record.length;
