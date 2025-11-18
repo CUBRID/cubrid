@@ -27,7 +27,10 @@ inline auto_unfix_page_ptr pgbuf_fix_auto_unfix (
 	PGBUF_LATCH_CONDITION condition)
 {
   PAGE_PTR p = pgbuf_fix (thread_p, vpid, fetch_mode, request_mode, condition);
-  // If p == nullptr, UniquePagePtr is empty, but still carries the deleter with thread_p
+  // pgbuf_fix returns nullptr on failure (e.g., page not found or latch unavailable).
+  // In that case we still construct a unique_ptr with a null pointer.
+  // The custom deleter safely handles nullptr and performs no action.
+  // Callers should check the returned unique_ptr for null to detect fix failure.
   return auto_unfix_page_ptr (p, page_auto_unfix{thread_p});
 }
 
