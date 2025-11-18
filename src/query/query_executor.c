@@ -7177,18 +7177,13 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		 QUERY_ID query_id, SCAN_OPERATION_TYPE scan_op_type, bool scan_immediately_stop,
 		 bool * p_mvcc_select_lock_needed, XASL_NODE * xasl)
 {
-  SCAN_TYPE scan_type;
-  INDX_INFO *indx_info;
-  QFILE_LIST_ID *list_id;
   bool mvcc_select_lock_needed = false;
-  int error_code = NO_ERROR;
-  DBLINK_HOST_VARS host_vars;
-  SCAN_CODE s_parts;
+  int error = NO_ERROR;
 
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && !curr_spec->pruned)
     {
-      error_code = qexec_prune_spec (thread_p, curr_spec, vd, scan_op_type);
-      if (error_code != NO_ERROR)
+      error = qexec_prune_spec (thread_p, curr_spec, vd, scan_op_type);
+      if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
@@ -7213,347 +7208,323 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       else
 	{
-	  mvcc_select_lock_needed = (curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE);
+	  mvcc_select_lock_needed = ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE);
 	}
     }
 
   switch (curr_spec->type)
     {
     case TARGET_CLASS:
-      if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL)
-	{
-	  /* open a sequential heap file scan */
-	  scan_type = S_HEAP_SCAN;
-	  indx_info = NULL;
-#if SERVER_MODE && !WINDOWS
-	  if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
+      {
+	switch (curr_spec->access)
+	  {
+	  case ACCESS_METHOD_SEQUENTIAL:
 	    {
-	      if (!(curr_spec->flags & ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS))
+#if SERVER_MODE && !WINDOWS
+	      error =
+		scan_open_parallel_heap_scan (thread_p, s_id, curr_spec, fixed, grouped, mvcc_select_lock_needed, xasl,
+					      query_id, vd);
+	      if (error != NO_ERROR)
 		{
-		  curr_spec->num_parallel_threads = prm_get_integer_value (PRM_ID_PARALLELISM);
-		}
-	      else
-		{
-		  /* use the number of parallel heap scan threads set by hint */
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
 		}
 
-	      if (curr_spec->num_parallel_threads > 1)
+	      if (s_id->type == S_PARALLEL_HEAP_SCAN)
 		{
-		  if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
-		    {
-		      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags & ~ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-		    }
-		  if (!oid_is_system_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_is_mvcc_disabled_class (&curr_spec->s.cls_node.cls_oid) && !mvcc_select_lock_needed && thread_p->private_heap_id != 0)	/* Only for User table */
-		    {
-		      if (curr_spec->pruning_type == DB_PARTITIONED_CLASS)
-			{
-			  /* DB_PARTITION_CLASS will be parallel-heap-scanned, not DB_PARTITIONED_CLASS */
-			}
-		      else
-			{
-			  /* Why thread_p->private_heap_id != 0? 
-			   * Because, if it is 0, it means that the scan is not executed in main thread.
-			   * So, we can't use parallel heap scan.
-			   */
-			  scan_type = S_PARALLEL_HEAP_SCAN;
-			}
-		    }
-		  else
-		    {
-		      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
-		    }
+		  assert (s_id->s.phsid.manager != nullptr);
 		}
 	      else
 		{
-		  curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
-		}
-	    }
+		  /* fallback to single-thread heap scan */
+		  assert (s_id->type == S_HEAP_SCAN);
 #endif /* SERVER_MODE && !WINDOWS */
-	}
-      else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
-	{
-	  /* open a sequential heap file scan that reads record info */
-	  scan_type = S_HEAP_SCAN_RECORD_INFO;
-	  indx_info = NULL;
-	}
-      else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-	{
-	  /* open a sequential heap file sampling scan */
-	  scan_type = S_HEAP_SAMPLING_SCAN;
-	  indx_info = NULL;
-	}
-      else if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
-	{
-	  /* open a sequential heap file scan that reads page info */
-	  scan_type = S_HEAP_PAGE_SCAN;
-	  indx_info = NULL;
-	}
-      else if (curr_spec->access == ACCESS_METHOD_INDEX)
-	{
-	  /* open an indexed heap file scan */
-	  scan_type = S_INDX_SCAN;
-	  indx_info = curr_spec->indexptr;
-	}
-      else if (curr_spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
-	{
-	  scan_type = S_INDX_KEY_INFO_SCAN;
-	  indx_info = curr_spec->indexptr;
-	}
-      else if (curr_spec->access == ACCESS_METHOD_INDEX_NODE_INFO)
-	{
-	  scan_type = S_INDX_NODE_INFO_SCAN;
-	  indx_info = curr_spec->indexptr;
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-	  return ER_QPROC_INVALID_XASLNODE;
-	}			/* if */
+		  error =
+		    scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+					 curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+					 &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+					 curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+					 curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->s.cls_node.num_attrs_pred,
+					 curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+					 curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
+					 curr_spec->s.cls_node.cache_rest, S_HEAP_SCAN,
+					 curr_spec->s.cls_node.cache_reserved,
+					 curr_spec->s.cls_node.cls_regu_list_reserved, false);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      goto exit_on_error;
+		    }
+#if SERVER_MODE && !WINDOWS
+		}
+#endif /* SERVER_MODE && !WINDOWS */
+	      break;
+	    }			/* case  ACCESS_METHOD_SEQUENTIAL */
 
-      if (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_HEAP_SAMPLING_SCAN)
-	{
-	  error_code = scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+	  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:	/* fall through */
+	  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+	    {
+	      SCAN_TYPE scan_type =
+		(curr_spec->access ==
+		 ACCESS_METHOD_SEQUENTIAL_RECORD_INFO) ? S_HEAP_SCAN_RECORD_INFO : S_HEAP_SAMPLING_SCAN;
+
+	      error = scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+					   curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+					   &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+					   curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+					   curr_spec->s.cls_node.cls_regu_list_rest,
+					   curr_spec->s.cls_node.num_attrs_pred,
+					   curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+					   curr_spec->s.cls_node.num_attrs_rest,
+					   curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
+					   scan_type, curr_spec->s.cls_node.cache_reserved,
+					   curr_spec->s.cls_node.cls_regu_list_reserved, false);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+
+	      break;
+	    }			/* case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO, ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN */
+
+	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
+	    {
+	      error = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),
+						&ACCESS_SPEC_HFID (curr_spec), curr_spec->where_pred,
+						S_HEAP_PAGE_SCAN, curr_spec->s.cls_node.cache_reserved,
+						curr_spec->s.cls_node.cls_regu_list_reserved);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+	      break;
+	    }			/* case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN */
+
+	  case ACCESS_METHOD_INDEX:
+	    {
+	      error = scan_open_index_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					    curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-					    &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-					    curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
-					    curr_spec->s.cls_node.cls_regu_list_rest,
-					    curr_spec->s.cls_node.num_attrs_pred,
+					    curr_spec->indexptr, &ACCESS_SPEC_CLS_OID (curr_spec),
+					    &ACCESS_SPEC_HFID (curr_spec), curr_spec->s.cls_node.cls_regu_list_key,
+					    curr_spec->where_key, curr_spec->s.cls_node.cls_regu_list_pred,
+					    curr_spec->where_pred, curr_spec->s.cls_node.cls_regu_list_rest,
+					    curr_spec->where_range, curr_spec->s.cls_node.cls_regu_list_range,
+					    curr_spec->s.cls_node.cls_output_val_list,
+					    curr_spec->s.cls_node.cls_regu_val_list,
+					    curr_spec->s.cls_node.num_attrs_key, curr_spec->s.cls_node.attrids_key,
+					    curr_spec->s.cls_node.cache_key, curr_spec->s.cls_node.num_attrs_pred,
 					    curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
-					    curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
-					    curr_spec->s.cls_node.cache_rest, scan_type,
-					    curr_spec->s.cls_node.cache_reserved,
-					    curr_spec->s.cls_node.cls_regu_list_reserved, false);
-	  if (error_code != NO_ERROR)
+					    curr_spec->s.cls_node.num_attrs_rest,
+					    curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
+					    curr_spec->s.cls_node.num_attrs_range,
+					    curr_spec->s.cls_node.attrids_range, curr_spec->s.cls_node.cache_range,
+					    iscan_oid_order, query_id, ACCESS_SPEC_IS_FLAGED (curr_spec,
+											      ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+
+	      /* monitor */
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	      break;
+	    }			/* case ACCESS_METHOD_INDEX */
+
+	  case ACCESS_METHOD_INDEX_KEY_INFO:
 	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
-	    }
-	}
-#if SERVER_MODE && !WINDOWS
-      else if (scan_type == S_PARALLEL_HEAP_SCAN)
-	{
-	  parallel_heap_scan::RESULT_TYPE result_get_method = parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT;	/* should check LIST_MERGE in checker */
-	  if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+	      error =
+		scan_open_index_key_info_scan (thread_p, s_id, val_list, vd, curr_spec->indexptr,
+					       &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+					       curr_spec->where_pred, curr_spec->s.cls_node.cls_output_val_list,
+					       iscan_oid_order, query_id, curr_spec->s.cls_node.cache_reserved,
+					       curr_spec->s.cls_node.cls_regu_list_reserved);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+
+	      /* monitor */
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	      break;
+	    }			/* case ACCESS_METHOD_INDEX_KEY_INFO */
+
+	  case ACCESS_METHOD_INDEX_NODE_INFO:
 	    {
-	      curr_spec->flags = (ACCESS_SPEC_FLAG) (curr_spec->flags & ~ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-	    }
-	  else if (curr_spec->flags & ACCESS_SPEC_FLAG_MERGEABLE_LIST)
-	    {
-	      result_get_method = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
-	    }
-	  error_code =
-	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
-					  curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-					  &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-					  curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
-					  curr_spec->s.cls_node.cls_regu_list_rest,
-					  curr_spec->s.cls_node.num_attrs_pred, curr_spec->s.cls_node.attrids_pred,
-					  curr_spec->s.cls_node.cache_pred, curr_spec->s.cls_node.num_attrs_rest,
-					  curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
-					  scan_type, curr_spec->s.cls_node.cache_reserved,
-					  curr_spec->s.cls_node.cls_regu_list_reserved, false, query_id,
-					  curr_spec->num_parallel_threads, result_get_method, xasl);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
-	    }
-	}
-#endif /* SERVER_MODE && !WINDOWS */
-      else if (scan_type == S_HEAP_PAGE_SCAN)
-	{
-	  error_code = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),
-						 &ACCESS_SPEC_HFID (curr_spec), curr_spec->where_pred, scan_type,
-						 curr_spec->s.cls_node.cache_reserved,
-						 curr_spec->s.cls_node.cls_regu_list_reserved);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
-	    }
-	}
-      else if (scan_type == S_INDX_KEY_INFO_SCAN)
-	{
-	  error_code =
-	    scan_open_index_key_info_scan (thread_p, s_id, val_list, vd, indx_info, &ACCESS_SPEC_CLS_OID (curr_spec),
-					   &ACCESS_SPEC_HFID (curr_spec), curr_spec->where_pred,
-					   curr_spec->s.cls_node.cls_output_val_list, iscan_oid_order, query_id,
-					   curr_spec->s.cls_node.cache_reserved,
-					   curr_spec->s.cls_node.cls_regu_list_reserved);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
-	    }
-	  /* monitor */
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
-	}
-      else if (scan_type == S_INDX_NODE_INFO_SCAN)
-	{
-	  error_code = scan_open_index_node_info_scan (thread_p, s_id, val_list, vd, indx_info, curr_spec->where_pred,
-						       curr_spec->s.cls_node.cache_reserved,
-						       curr_spec->s.cls_node.cls_regu_list_reserved);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
-	    }
-	  /* monitor */
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
-	}
-      else			/* S_INDX_SCAN */
-	{
-	  error_code = scan_open_index_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
-					     curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd, indx_info,
-					     &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-					     curr_spec->s.cls_node.cls_regu_list_key, curr_spec->where_key,
-					     curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
-					     curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->where_range,
-					     curr_spec->s.cls_node.cls_regu_list_range,
-					     curr_spec->s.cls_node.cls_output_val_list,
-					     curr_spec->s.cls_node.cls_regu_val_list,
-					     curr_spec->s.cls_node.num_attrs_key, curr_spec->s.cls_node.attrids_key,
-					     curr_spec->s.cls_node.cache_key, curr_spec->s.cls_node.num_attrs_pred,
-					     curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
-					     curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
-					     curr_spec->s.cls_node.cache_rest, curr_spec->s.cls_node.num_attrs_range,
-					     curr_spec->s.cls_node.attrids_range, curr_spec->s.cls_node.cache_range,
-					     iscan_oid_order, query_id,
-					     (curr_spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto exit_on_error;
-	    }
-	  /* monitor */
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
-	}
-      break;
+	      error =
+		scan_open_index_node_info_scan (thread_p, s_id, val_list, vd, curr_spec->indexptr,
+						curr_spec->where_pred, curr_spec->s.cls_node.cache_reserved,
+						curr_spec->s.cls_node.cls_regu_list_reserved);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit_on_error;
+		}
+
+	      /* monitor */
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_ISCANS);
+	      break;
+	    }			/* case ACCESS_METHOD_INDEX_NODE_INFO */
+
+	  default:
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return ER_QPROC_INVALID_XASLNODE;
+	  }			/* switch (curr_spec->access) */
+
+	break;
+      }				/* case TARGET_CLASS */
 
     case TARGET_CLASS_ATTR:
-      error_code =
-	scan_open_class_attr_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-				   &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
-				   curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
-				   curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->s.cls_node.num_attrs_pred,
-				   curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
-				   curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
-				   curr_spec->s.cls_node.cache_rest);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      break;
+      {
+	error =
+	  scan_open_class_attr_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				     &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec),
+				     curr_spec->s.cls_node.cls_regu_list_pred, curr_spec->where_pred,
+				     curr_spec->s.cls_node.cls_regu_list_rest, curr_spec->s.cls_node.num_attrs_pred,
+				     curr_spec->s.cls_node.attrids_pred, curr_spec->s.cls_node.cache_pred,
+				     curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
+				     curr_spec->s.cls_node.cache_rest);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+	break;
+      }				/* case TARGET_CLASS_ATTR */
 
     case TARGET_LIST:
-      /* open a list file scan */
-      if (ACCESS_SPEC_XASL_NODE (curr_spec) && ACCESS_SPEC_XASL_NODE (curr_spec)->spec_list == curr_spec)
-	{
-	  /* if XASL of access spec for list scan is itself then this is for HQ */
-	  list_id = ACCESS_SPEC_CONNECT_BY_LIST_ID (curr_spec);
-	}
-      else
-	{
-	  list_id = ACCESS_SPEC_LIST_ID (curr_spec);
-	}
-      error_code =
-	scan_open_list_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			     list_id, curr_spec->s.list_node.list_regu_list_pred,
-			     curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest,
-			     curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe,
-			     curr_spec->s.list_node.hash_list_scan_yn);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      break;
+      {
+	/* open a list file scan */
+	QFILE_LIST_ID *list_id = NULL;
+
+	if (ACCESS_SPEC_XASL_NODE (curr_spec) && ACCESS_SPEC_XASL_NODE (curr_spec)->spec_list == curr_spec)
+	  {
+	    /* if XASL of access spec for list scan is itself then this is for HQ */
+	    list_id = ACCESS_SPEC_CONNECT_BY_LIST_ID (curr_spec);
+	  }
+	else
+	  {
+	    list_id = ACCESS_SPEC_LIST_ID (curr_spec);
+	  }
+
+	error =
+	  scan_open_list_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+			       list_id, curr_spec->s.list_node.list_regu_list_pred,
+			       curr_spec->where_pred, curr_spec->s.list_node.list_regu_list_rest,
+			       curr_spec->s.list_node.list_regu_list_build, curr_spec->s.list_node.list_regu_list_probe,
+			       curr_spec->s.list_node.hash_list_scan_yn);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+	break;
+      }				/* case TARGET_LIST */
 
     case TARGET_SHOWSTMT:
-      /* open a showstmt scan */
-      error_code =
-	scan_open_showstmt_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-				 curr_spec->where_pred, curr_spec->s.showstmt_node.show_type,
-				 curr_spec->s.showstmt_node.arg_list);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      break;
+      {
+	/* open a showstmt scan */
+	error =
+	  scan_open_showstmt_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				   curr_spec->where_pred, curr_spec->s.showstmt_node.show_type,
+				   curr_spec->s.showstmt_node.arg_list);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+	break;
+      }				/* case TARGET_SHOWSTMT */
 
     case TARGET_REGUVAL_LIST:
-      /* open a regu value list scan */
-      error_code =
-	scan_open_values_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			       ACCESS_SPEC_RLIST_VALPTR_LIST (curr_spec));
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      break;
+      {
+	/* open a regu value list scan */
+	error =
+	  scan_open_values_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				 ACCESS_SPEC_RLIST_VALPTR_LIST (curr_spec));
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+	break;
+      }				/* case TARGET_REGUVAL_LIST */
 
     case TARGET_SET:
-      /* open a set based derived table scan */
-      error_code =
-	scan_open_set_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			    ACCESS_SPEC_SET_PTR (curr_spec), ACCESS_SPEC_SET_REGU_LIST (curr_spec),
-			    curr_spec->where_pred);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      break;
+      {
+	/* open a set based derived table scan */
+	error =
+	  scan_open_set_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+			      ACCESS_SPEC_SET_PTR (curr_spec), ACCESS_SPEC_SET_REGU_LIST (curr_spec),
+			      curr_spec->where_pred);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+	break;
+      }				/* case TARGET_SET */
 
     case TARGET_JSON_TABLE:
-      /* open a json table based derived table scan */
-      error_code =
-	scan_open_json_table_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list,
-				   vd, curr_spec->where_pred);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      break;
+      {
+	/* open a json table based derived table scan */
+	error =
+	  scan_open_json_table_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list,
+				     vd, curr_spec->where_pred);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+	break;
+      }				/* case TARGET_JSON_TABLE */
 
     case TARGET_METHOD:
-      error_code =
-	scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
-			       ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_ARRAY (curr_spec));
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
-      break;
+      {
+	error =
+	  scan_open_method_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				 ACCESS_SPEC_METHOD_LIST_ID (curr_spec), ACCESS_SPEC_METHOD_SIG_ARRAY (curr_spec));
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+	break;
+      }				/* case TARGET_METHOD */
+
     case TARGET_DBLINK:
-      host_vars.count = curr_spec->s.dblink_node.host_var_count;
-      host_vars.index = curr_spec->s.dblink_node.host_var_index;
-      error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
+      {
+	DBLINK_HOST_VARS host_vars;
 
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit_on_error;
-	}
+	host_vars.count = curr_spec->s.dblink_node.host_var_count;
+	host_vars.index = curr_spec->s.dblink_node.host_var_index;
 
-      /* DBLINK(..., "SELECT <result columns part> FROM ...") AS tnmae( <alias columns part> )
-       ** s_id->s.dblid.scan_buf.col_cnt is the number of elements in the list <result columns part>.
-       ** val_list->val_cnt is the number of elements in the list <alias columns part>.             */
-      if (val_list->val_cnt != s_id->s.dblid.scan_info.col_cnt)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_COLUMNS_SPECIFIED, 0);
-	  error_code = ER_DBLINK_INVALID_COLUMNS_SPECIFIED;
-	  goto exit_on_error;
-	}
-      break;
+	error = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
+	if (error != NO_ERROR)
+	  {
+	    ASSERT_ERROR ();
+	    goto exit_on_error;
+	  }
+
+	/* DBLINK (..., "SELECT <result columns part> FROM ...") AS tname ( <alias columns part> )
+	 * s_id->s.dblid.scan_buf.col_cnt is the number of elements in the list <result columns part>.
+	 * val_list->val_cnt is the number of elements in the list <alias columns part>. */
+	if (val_list->val_cnt != s_id->s.dblid.scan_info.col_cnt)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_COLUMNS_SPECIFIED, 0);
+	    error = ER_DBLINK_INVALID_COLUMNS_SPECIFIED;
+	    goto exit_on_error;
+	  }
+
+	break;
+      }				/* case TARGET_DBLINK */
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      error_code = ER_QPROC_INVALID_XASLNODE;
+      error = ER_QPROC_INVALID_XASLNODE;
       goto exit_on_error;
     }				/* switch */
 
@@ -7566,18 +7537,19 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
   if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned)
     {
-      s_parts = qexec_init_next_partition (thread_p, curr_spec, xasl);
-      if (s_parts != S_SUCCESS)
+      SCAN_CODE scan_code = qexec_init_next_partition (thread_p, curr_spec, xasl);
+      if (scan_code != S_SUCCESS)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
     }
 
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 exit_on_error:
-
+  /* TODO: cleared by qexec_clear_access_spec_list; redundant? */
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->parts != NULL)
     {
       /* reset pruning info */
@@ -7587,8 +7559,8 @@ exit_on_error:
       curr_spec->pruned = false;
     }
 
-  ASSERT_ERROR_AND_SET (error_code);
-  return error_code;
+  ASSERT_ERROR_AND_SET (error);
+  return error;
 }
 
 /*
@@ -8257,14 +8229,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  if (xasl->bptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->bptr_list);
-	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
-		{
-		  scan_operation_type = S_UPDATE;
-		}
-	      else
-		{
-		  scan_operation_type = S_SELECT;
-		}
+	      scan_operation_type =
+		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
 	    }
 	  /* evaluate bptr list */
 	  for (xptr = xasl->bptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -8335,14 +8301,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  if (xasl->fptr_list)
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->fptr_list);
-	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
-		{
-		  scan_operation_type = S_UPDATE;
-		}
-	      else
-		{
-		  scan_operation_type = S_SELECT;
-		}
+	      scan_operation_type =
+		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
 	    }
 	  /* evaluate fptr list */
 	  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -8568,7 +8528,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
       return error;
     }
 
-  if (!COMPOSITE_LOCK (scan_op_type) && !(spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE))
+  if (!COMPOSITE_LOCK (scan_op_type) && !(ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)))
     {
       lock = IS_LOCK;
     }
@@ -8628,21 +8588,11 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
 static SCAN_CODE
 qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
 {
-  int error = NO_ERROR;
-  SCAN_OPERATION_TYPE scan_op_type = spec->s_id.scan_op_type;
-  bool mvcc_select_lock_needed = spec->s_id.mvcc_select_lock_needed;
-  int fixed = spec->s_id.fixed;
-  int grouped = spec->s_id.grouped;
-  QPROC_SINGLE_FETCH single_fetch = spec->s_id.single_fetch;
-  VAL_LIST *val_list = spec->s_id.val_list;
-  VAL_DESCR *vd = spec->s_id.vd;
-  bool iscan_oid_order = spec->s_id.s.isid.iscan_oid_order;
-  INDX_INFO *idxptr = NULL;
-  QUERY_ID query_id = spec->s_id.s.isid.indx_cov.query_id;
   OID class_oid;
   HFID class_hfid;
   BTID btid;
-  PARTITION_SPEC_TYPE *prev_partition_spec = spec->curent;
+  int i;
+  int error = NO_ERROR;
 
   if (spec->type != TARGET_CLASS && spec->type != TARGET_CLASS_ATTR)
     {
@@ -8656,21 +8606,48 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
   if (spec->curent == NULL)
     {
+      /* first partition */
       spec->curent = spec->parts;
     }
   else
     {
-      if (spec->curent->next == NULL)
+#if SERVER_MODE && !WINDOWS
+      /* save stats for the partition before ending the current scan */
+      if (thread_is_on_trace (thread_p))
+	{
+	  /* When scanning a DB_PARTITIONED_CLASS,
+	   * each DB_PARTITION_CLASS may use either S_PARALLEL_HEAP_SCAN or S_HEAP_SCAN. */
+	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
+	    {
+	      if (spec->s_id.s.phsid.trace_storage)
+		{
+		  if (thread_p->m_px_stats != NULL)
+		    {
+		      spec->s_id.scan_stats.num_fetches +=
+			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
+		      spec->s_id.scan_stats.num_ioreads +=
+			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
+		    }
+
+		  spec->s_id.s.phsid.trace_storage->set_last_partition_stats (&spec->curent->scan_stats);
+		}
+	    }
+	}
+#endif
+
+      /* move to next partition */
+      if (spec->curent->next != NULL)
+	{
+	  spec->curent = spec->curent->next;
+	}
+      else
 	{
 	  /* no more partitions */
 	  spec->curent = NULL;
 	}
-      else
-	{
-	  spec->curent = spec->curent->next;
-	}
     }
 
+  /* prepare to record stats for the next partition */
   if (thread_is_on_trace (thread_p))
     {
       if (spec->curent != NULL)
@@ -8696,23 +8673,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   scan_end_scan (thread_p, &spec->s_id);
   scan_close_scan (thread_p, &spec->s_id);
 
-#if SERVER_MODE && !WINDOWS
-  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
-    {
-      if (spec->s_id.s.phsid.trace_storage)
-	{
-	  if (thread_p->m_px_stats != NULL)
-	    {
-	      spec->s_id.scan_stats.num_fetches +=
-		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-	      spec->s_id.scan_stats.num_ioreads +=
-		thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-	    }
-	  spec->s_id.s.phsid.trace_storage->set_last_partition_stats (&prev_partition_spec->scan_stats);
-	}
-    }
-#endif
-
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_rest);
@@ -8720,184 +8680,284 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   qexec_reset_pred_expr (spec->where_pred);
   qexec_reset_pred_expr (spec->where_key);
 
-  if (spec->curent == NULL)
+  if (spec->curent != NULL)
+    {
+      COPY_OID (&class_oid, &spec->curent->oid);
+      HFID_COPY (&class_hfid, &spec->curent->hfid);
+      if (IS_ANY_INDEX_ACCESS (spec->access))
+	{
+	  BTID_COPY (&btid, &spec->curent->btid);
+	}
+    }
+  else
     {
       /* reset back to root class */
       COPY_OID (&class_oid, &ACCESS_SPEC_CLS_OID (spec));
       HFID_COPY (&class_hfid, &ACCESS_SPEC_HFID (spec));
       if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
-	  btid = spec->btid;
+	  BTID_COPY (&btid, &spec->btid);
 	}
     }
-  else
+
+  switch (spec->type)
     {
-      COPY_OID (&class_oid, &spec->curent->oid);
-      HFID_COPY (&class_hfid, &spec->curent->hfid);
-      if (IS_ANY_INDEX_ACCESS (spec->access))
-	{
-	  btid = spec->curent->btid;
-	}
-    }
-  if (spec->type == TARGET_CLASS
-      && (spec->access == ACCESS_METHOD_SEQUENTIAL || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	  || spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN))
-    {
-      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
-      SCAN_TYPE scan_type =
-	(spec->access == ACCESS_METHOD_SEQUENTIAL) ? S_HEAP_SCAN : (spec->access ==
-								    ACCESS_METHOD_SEQUENTIAL_RECORD_INFO) ?
-	S_HEAP_SCAN_RECORD_INFO : S_HEAP_SAMPLING_SCAN;
-      int i = 0;
-      if (hsidp->caches_inited)
-	{
-	  heap_attrinfo_end (thread_p, hsidp->pred_attrs.attr_cache);
-	  heap_attrinfo_end (thread_p, hsidp->rest_attrs.attr_cache);
-	  if (hsidp->cache_recordinfo != NULL)
+    case TARGET_CLASS:
+      {
+	switch (spec->access)
+	  {
+	  case ACCESS_METHOD_SEQUENTIAL:
 	    {
-	      for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
+	      QUERY_ID query_id = spec->s_id.vd->xasl_state->query_id;
+	      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
+
+	      /* clear caches */
+	      if (hsidp->caches_inited)
 		{
-		  pr_clear_value (hsidp->cache_recordinfo[i]);
+		  heap_attrinfo_end (thread_p, hsidp->pred_attrs.attr_cache);
+		  heap_attrinfo_end (thread_p, hsidp->rest_attrs.attr_cache);
+		  if (hsidp->cache_recordinfo != NULL)
+		    {
+		      for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
+			{
+			  pr_clear_value (hsidp->cache_recordinfo[i]);
+			}
+		    }
+		  hsidp->caches_inited = false;
 		}
-	    }
-	  hsidp->caches_inited = false;
-	}
-      hsidp->scancache_inited = false;
+	      hsidp->scancache_inited = false;
+
+	      if (spec->curent == NULL)
+		{
+		  return S_END;
+		}
 
 #if SERVER_MODE && !WINDOWS
-      if (scan_type == S_HEAP_SCAN)
-	{
-	  if (spec->curent != NULL)
-	    {
-	      if (!(spec->flags & ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
+	      error =
+		scan_open_parallel_heap_scan (thread_p, &spec->s_id, spec, spec->s_id.fixed, spec->s_id.grouped,
+					      spec->s_id.mvcc_select_lock_needed, xasl, query_id, spec->s_id.vd);
+	      if (error != NO_ERROR)
 		{
-		  scan_type = S_PARALLEL_HEAP_SCAN;
+		  ASSERT_ERROR ();
+		  return S_ERROR;
 		}
-	    }
-	}
-#endif
-      if (scan_type == S_HEAP_SCAN || spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	  || spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-	{
-	  error =
-	    scan_open_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
-				 single_fetch, spec->s_dbval, val_list, vd, &class_oid, &class_hfid,
-				 spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
-				 spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
-				 spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-				 spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-				 spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-				 spec->s.cls_node.cls_regu_list_reserved, true);
-	}
+
+	      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+		{
+		  assert (spec->s_id.type == S_PARALLEL_HEAP_SCAN);
+		  assert (spec->s_id.s.phsid.manager != nullptr);
+		}
+	      else
+		{
+		  /* fallback to single-thread heap scan */
+		  assert (spec->s_id.type == S_HEAP_SCAN);
+#endif /* SERVER_MODE && !WINDOWS */
+		  error =
+		    scan_open_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
+					 spec->s_id.scan_op_type, spec->s_id.fixed, spec->s_id.grouped,
+					 spec->s_id.single_fetch, spec->s_dbval, spec->s_id.val_list, spec->s_id.vd,
+					 &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
+					 spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
+					 spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
+					 spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
+					 spec->s.cls_node.cache_rest, S_HEAP_SCAN, spec->s.cls_node.cache_reserved,
+					 spec->s.cls_node.cls_regu_list_reserved, true);
+		  if (error != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return S_ERROR;
+		    }
 #if SERVER_MODE && !WINDOWS
-      else
-	{
-	  assert (scan_type == S_PARALLEL_HEAP_SCAN);
-	  parallel_heap_scan::RESULT_TYPE result_get_method = parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT;
-	  query_id = spec->s_id.vd->xasl_state->query_id;
-	  if (spec->flags & ACCESS_SPEC_FLAG_MERGEABLE_LIST)
+		}
+#endif /* SERVER_MODE && !WINDOWS */
+
+	      break;
+	    }			/* case ACCESS_METHOD_SEQUENTIAL */
+
+	  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:	/* fall through */
+	  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
 	    {
-	      result_get_method = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
-	    }
-	  error =
-	    scan_open_parallel_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed,
-					  grouped, single_fetch, spec->s_dbval, val_list, vd, &class_oid,
-					  &class_hfid, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
-					  spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
-					  spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-					  spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-					  spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-					  spec->s.cls_node.cls_regu_list_reserved, true, query_id,
-					  spec->num_parallel_threads, result_get_method, xasl);
-	}
-#endif
-    }
-  else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
-    {
-      HEAP_PAGE_SCAN_ID *hpsidp = &spec->s_id.s.hpsid;
-      SCAN_TYPE scan_type = S_HEAP_PAGE_SCAN;
-      int i = 0;
+	      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
+	      SCAN_TYPE scan_type =
+		(spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO) ? S_HEAP_SCAN_RECORD_INFO : S_HEAP_SAMPLING_SCAN;
 
-      if (hpsidp->cache_page_info != NULL)
-	{
-	  for (i = 0; i < HEAP_PAGE_INFO_COUNT; i++)
+	      /* clear caches */
+	      if (hsidp->caches_inited)
+		{
+		  heap_attrinfo_end (thread_p, hsidp->pred_attrs.attr_cache);
+		  heap_attrinfo_end (thread_p, hsidp->rest_attrs.attr_cache);
+		  if (hsidp->cache_recordinfo != NULL)
+		    {
+		      for (i = 0; i < HEAP_RECORD_INFO_COUNT; i++)
+			{
+			  pr_clear_value (hsidp->cache_recordinfo[i]);
+			}
+		    }
+		  hsidp->caches_inited = false;
+		}
+	      hsidp->scancache_inited = false;
+
+	      if (spec->curent == NULL)
+		{
+		  return S_END;
+		}
+
+	      error =
+		scan_open_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed, spec->s_id.scan_op_type,
+				     spec->s_id.fixed, spec->s_id.grouped, spec->s_id.single_fetch, spec->s_dbval,
+				     spec->s_id.val_list, spec->s_id.vd, &class_oid, &class_hfid,
+				     spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
+				     spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
+				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
+				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
+				     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
+				     spec->s.cls_node.cls_regu_list_reserved, true);
+	      if (error != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+
+	      break;
+	    }			/* case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO, ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN */
+
+	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
 	    {
-	      pr_clear_value (hpsidp->cache_page_info[i]);
-	    }
-	}
-      error =
-	scan_open_heap_page_scan (thread_p, &spec->s_id, val_list, vd, &class_oid, &class_hfid, spec->where_pred,
-				  scan_type, spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
-    }
-  else if (spec->type == TARGET_CLASS && spec->access == ACCESS_METHOD_INDEX)
-    {
-      INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
-      if (isidp->caches_inited)
-	{
-	  if (isidp->range_pred.regu_list)
+	      HEAP_PAGE_SCAN_ID *hpsidp = &spec->s_id.s.hpsid;
+
+	      /* clear caches */
+	      if (hpsidp->cache_page_info != NULL)
+		{
+		  for (i = 0; i < HEAP_PAGE_INFO_COUNT; i++)
+		    {
+		      pr_clear_value (hpsidp->cache_page_info[i]);
+		    }
+		}
+
+	      if (spec->curent == NULL)
+		{
+		  return S_END;
+		}
+
+	      error =
+		scan_open_heap_page_scan (thread_p, &spec->s_id, spec->s_id.val_list, spec->s_id.vd, &class_oid,
+					  &class_hfid, spec->where_pred, S_HEAP_PAGE_SCAN,
+					  spec->s.cls_node.cache_reserved, spec->s.cls_node.cls_regu_list_reserved);
+	      if (error != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+	      break;
+	    }			/* case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN */
+
+	  case ACCESS_METHOD_INDEX:
 	    {
-	      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
+	      QUERY_ID query_id = spec->s_id.vd->xasl_state->query_id;
+	      INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
+	      bool iscan_oid_order = spec->s_id.s.isid.iscan_oid_order;
 
-	      /* some attributes might remain also cached in pred_expr
-	       * (lhs|rhs).value.attr_descr.cache_dbvalp might point to attr_cache values
-	       * see fetch_peek_dbval for example */
-	      qexec_reset_pred_expr (isidp->range_pred.pred_expr);
-	    }
-	  if (isidp->key_pred.regu_list)
-	    {
-	      heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
-	    }
-	  heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
-	  heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
-	  isidp->caches_inited = false;
-	}
-      idxptr = spec->indexptr;
-      idxptr->btid = btid;
-      spec->s_id.s.isid.scancache_inited = false;
-      spec->s_id.s.isid.caches_inited = false;
+	      /* clear caches */
+	      if (isidp->caches_inited)
+		{
+		  if (isidp->range_pred.regu_list)
+		    {
+		      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
 
-      error =
-	scan_open_index_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
-			      single_fetch, spec->s_dbval, val_list, vd, idxptr, &class_oid, &class_hfid,
-			      spec->s.cls_node.cls_regu_list_key, spec->where_key, spec->s.cls_node.cls_regu_list_pred,
-			      spec->where_pred, spec->s.cls_node.cls_regu_list_rest, spec->where_range,
-			      spec->s.cls_node.cls_regu_list_range,
-			      spec->s.cls_node.cls_output_val_list, spec->s.cls_node.cls_regu_val_list,
-			      spec->s.cls_node.num_attrs_key, spec->s.cls_node.attrids_key, spec->s.cls_node.cache_key,
-			      spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
-			      spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
-			      spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
-			      spec->s.cls_node.num_attrs_range, spec->s.cls_node.attrids_range,
-			      spec->s.cls_node.cache_range, iscan_oid_order, query_id,
-			      (spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+		      /* some attributes might remain also cached in pred_expr
+		       * (lhs|rhs).value.attr_descr.cache_dbvalp might point to attr_cache values
+		       * see fetch_peek_dbval for example */
+		      qexec_reset_pred_expr (isidp->range_pred.pred_expr);
+		    }
+		  if (isidp->key_pred.regu_list)
+		    {
+		      heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
+		    }
+		  heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
+		  heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
+		  isidp->caches_inited = false;
+		}
+	      spec->s_id.s.isid.scancache_inited = false;
 
-    }
-  else if (spec->type == TARGET_CLASS_ATTR)
-    {
-      if (spec->s_id.s.hsid.caches_inited)
-	{
-	  heap_attrinfo_end (thread_p, spec->s_id.s.hsid.pred_attrs.attr_cache);
-	  heap_attrinfo_end (thread_p, spec->s_id.s.hsid.rest_attrs.attr_cache);
-	  spec->s_id.s.hsid.caches_inited = false;
-	}
+	      if (spec->curent == NULL)
+		{
+		  return S_END;
+		}
 
-      error =
-	scan_open_class_attr_scan (thread_p, &spec->s_id, grouped, spec->single_fetch, spec->s_dbval, val_list, vd,
-				   &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
-				   spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
-				   spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
-				   spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
-				   spec->s.cls_node.cache_rest);
-    }
-  if (error != NO_ERROR)
-    {
+	      spec->indexptr->btid = btid;
+
+	      error =
+		scan_open_index_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
+				      spec->s_id.scan_op_type, spec->s_id.fixed, spec->s_id.grouped,
+				      spec->s_id.single_fetch, spec->s_dbval, spec->s_id.val_list, spec->s_id.vd,
+				      spec->indexptr, &class_oid, &class_hfid, spec->s.cls_node.cls_regu_list_key,
+				      spec->where_key, spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
+				      spec->s.cls_node.cls_regu_list_rest, spec->where_range,
+				      spec->s.cls_node.cls_regu_list_range, spec->s.cls_node.cls_output_val_list,
+				      spec->s.cls_node.cls_regu_val_list, spec->s.cls_node.num_attrs_key,
+				      spec->s.cls_node.attrids_key, spec->s.cls_node.cache_key,
+				      spec->s.cls_node.num_attrs_pred, spec->s.cls_node.attrids_pred,
+				      spec->s.cls_node.cache_pred, spec->s.cls_node.num_attrs_rest,
+				      spec->s.cls_node.attrids_rest, spec->s.cls_node.cache_rest,
+				      spec->s.cls_node.num_attrs_range, spec->s.cls_node.attrids_range,
+				      spec->s.cls_node.cache_range, iscan_oid_order, query_id,
+				      ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+	      if (error != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+	      break;
+	    }			/* case ACCESS_METHOD_INDEX */
+
+	  case ACCESS_METHOD_JSON_TABLE:	/* fall through */
+	  case ACCESS_METHOD_SCHEMA:	/* fall through */
+	  case ACCESS_METHOD_INDEX_KEY_INFO:	/* fall through */
+	  case ACCESS_METHOD_INDEX_NODE_INFO:	/* fall through */
+	  default:
+	    /* impossible case */
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return S_ERROR;
+	  }			/* switch (spec->access) */
+
+	break;
+      }				/* case TARGET_CLASS */
+
+    case TARGET_CLASS_ATTR:
+      {
+	/* clear caches */
+	if (spec->s_id.s.hsid.caches_inited)
+	  {
+	    heap_attrinfo_end (thread_p, spec->s_id.s.hsid.pred_attrs.attr_cache);
+	    heap_attrinfo_end (thread_p, spec->s_id.s.hsid.rest_attrs.attr_cache);
+	    spec->s_id.s.hsid.caches_inited = false;
+	  }
+
+	if (spec->curent == NULL)
+	  {
+	    return S_END;
+	  }
+
+	error =
+	  scan_open_class_attr_scan (thread_p, &spec->s_id, spec->s_id.grouped, spec->single_fetch, spec->s_dbval,
+				     spec->s_id.val_list, spec->s_id.vd, &class_oid, &class_hfid,
+				     spec->s.cls_node.cls_regu_list_pred, spec->where_pred,
+				     spec->s.cls_node.cls_regu_list_rest, spec->s.cls_node.num_attrs_pred,
+				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
+				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
+				     spec->s.cls_node.cache_rest);
+	if (error != NO_ERROR)
+	  {
+	    return S_ERROR;
+	  }
+
+	break;
+      }				/* case TARGET_CLASS_ATTR */
+
+    default:
+      /* impossible case */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return S_ERROR;
-    }
+    }				/* switch (spec->type) */
 
-  if (spec->curent == NULL)
-    {
-      return S_END;
-    }
+  assert (spec->curent != NULL);
 
   error = scan_start_scan (thread_p, &spec->s_id);
   if (error != NO_ERROR)
@@ -8905,6 +8965,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_ERROR;
     }
 
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return S_SUCCESS;
 }
 
@@ -9085,14 +9146,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (xasl->bptr_list)
 	    {
-	      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
-		{
-		  scan_operation_type = S_UPDATE;
-		}
-	      else
-		{
-		  scan_operation_type = S_SELECT;
-		}
+	      scan_operation_type =
+		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
 	    }
 
 	  /* evaluate bptr list */
@@ -9159,14 +9214,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		  /* evaluate fptr list */
 		  if (xasl->fptr_list)
 		    {
-		      if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_FOR_UPDATE)
-			{
-			  scan_operation_type = S_UPDATE;
-			}
-		      else
-			{
-			  scan_operation_type = S_SELECT;
-			}
+		      scan_operation_type =
+			(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
 		    }
 
 		  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -9232,7 +9281,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
-				  if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN)
+				  if (ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
 				    {
 				      assert (xasl->curr_spec->indexptr != NULL);
 				      if (xasl->proc.buildvalue.agg_list != NULL)
@@ -22962,7 +23011,6 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * scan_list
 {
   XASL_NODE *scan = NULL;
   ACCESS_SPEC_TYPE *specp = NULL;
-  OID *class_oid = NULL;
   int error = NO_ERROR;
   LOCK class_lock = IX_LOCK;	/* MVCC use IX_LOCK on class at update/delete */
 
@@ -22970,12 +23018,11 @@ qexec_for_update_set_class_locks (THREAD_ENTRY * thread_p, XASL_NODE * scan_list
     {
       for (specp = scan->spec_list; specp; specp = specp->next)
 	{
-	  if (specp->type == TARGET_CLASS && (specp->flags & ACCESS_SPEC_FLAG_FOR_UPDATE))
+	  if (specp->type == TARGET_CLASS && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FOR_UPDATE))
 	    {
-	      class_oid = &specp->s.cls_node.cls_oid;
-
 	      /* lock the class */
-	      if (lock_object (thread_p, class_oid, oid_Root_class_oid, class_lock, LK_UNCOND_LOCK) != LK_GRANTED)
+	      if (lock_object (thread_p, &ACCESS_SPEC_CLS_OID (specp), oid_Root_class_oid, class_lock, LK_UNCOND_LOCK)
+		  != LK_GRANTED)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();

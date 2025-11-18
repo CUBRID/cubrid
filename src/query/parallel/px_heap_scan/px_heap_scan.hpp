@@ -116,34 +116,47 @@ namespace parallel_heap_scan
       bool m_uses_xasl_clone;
       bool m_g_agg_domain_resolve_need;
   };
+
+  constexpr int log2_floor_constexpr (UINT64 n)
+  {
+    int r = -1;
+    while (n)
+      {
+	n >>= 1;
+	++r;
+      }
+    return r;
+  }
+
+  static constexpr UINT64 px_heap_scan_lower_bound = 100; // TODO: by youngjinj - 4096
+  static constexpr int px_heap_scan_start_degree = 2;
+  static constexpr int px_heap_scan_lower_bound_degree = log2_floor_constexpr (px_heap_scan_lower_bound);
+
+  inline int
+  px_heap_scan_compute_parallel_degree (UINT64 n) noexcept
+  {
+    int px_heap_scan_upper_bound_degee = prm_get_integer_value (PRM_ID_PARALLELISM);
+
+    if (n < px_heap_scan_lower_bound)
+      {
+	return 0;
+      }
+
+    int degree = log2_floor_constexpr (n / px_heap_scan_lower_bound) + px_heap_scan_start_degree;
+
+    return MIN (degree, px_heap_scan_upper_bound_degee);
+  }
 }
 
 extern "C"
 {
-  extern SCAN_CODE
-  scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern int
-  scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern void
-  scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern void
-  scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern   int
-  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
-				/* fields of SCAN_ID */
-				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
-				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE *join_dbval,
-				val_list_node *val_list, VAL_DESCR *vd,
-				/* fields of HEAP_SCAN_ID */
-				OID *cls_oid, HFID *hfid, regu_variable_list_node *regu_list_pred,
-				PRED_EXPR *pr, regu_variable_list_node *regu_list_rest, int num_attrs_pred,
-				ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
-				ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
-				DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-				bool is_partition_table, QUERY_ID query_id, int num_parallel_threads, parallel_heap_scan::RESULT_TYPE result_type,
-				XASL_NODE *xasl);
-  extern int
-  scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, ACCESS_SPEC_TYPE *curr_spec,
+      int fixed_scan, int grouped_scan, bool mvcc_select_lock_needed, XASL_NODE *xasl, QUERY_ID query_id, VAL_DESCR *vd);
+  extern void scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern SCAN_CODE scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }
 
 #endif /*_PX_HEAP_SCAN_MANAGER_HPP_ */
