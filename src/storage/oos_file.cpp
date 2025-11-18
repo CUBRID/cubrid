@@ -160,12 +160,6 @@ int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OI
 
   // TODO: otherwise spage assert type <= REC_UNKNOWN fails
   assert (recdes.type == REC_HOME);
-
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-
   assert (recdes.length > 0);
 
   if (recdes.length <= oos_get_max_chunk_size_within_page ())
