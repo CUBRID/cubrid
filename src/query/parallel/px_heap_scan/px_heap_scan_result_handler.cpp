@@ -238,19 +238,6 @@ namespace parallel_heap_scan
 	    return;
 	  }
 	size = tl.writer_result_p->type_list.type_cnt * sizeof (bool);
-	tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (size);
-	if (tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	    m_err_messages_p->move_top_error_message_to_this();
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    /* error occurred, return false to stop the writer */
-	    return;
-	  }
-	for (int i = 0; i < tl.writer_result_p->type_list.type_cnt; i++)
-	  {
-	    tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache[i] = false;
-	  }
 	tl.tpl_buf.tpl = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
 	if (tl.tpl_buf.tpl == nullptr)
 	  {
@@ -300,7 +287,6 @@ namespace parallel_heap_scan
 	if (tl.writer_result_p != nullptr && tl.writer_result_p->tpl_descr.f_valp != nullptr)
 	  {
 	    free_and_init (tl.writer_result_p->tpl_descr.f_valp);
-	    free_and_init (tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache);
 	  }
 	tl.writer_result_p = nullptr;
 	if (tl.tpl_buf.tpl != nullptr)
