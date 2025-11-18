@@ -16634,53 +16634,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    pt_optimize_analytic_list (parser, &analytic_info, select_node->info.query.order_by, &no_optimization_done);
 
 	  ANALYTIC_EVAL_TYPE *eval;
-	  QO_NODE_INDEX_ENTRY *ni_entry;
-	  QO_INDEX_ENTRY *index_entry;
-	  int col_idx;
 	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
 	    {
-	      SORT_LIST *sort_list = eval->sort_list;
-
-	      if (qo_plan->plan_un.scan.scan_method == QO_SCANMETHOD_INDEX_SCAN)	// CBRD-26386 에서는 제외할 예정
-		{
-		  ni_entry = qo_plan->plan_un.scan.index;
-		  index_entry = ni_entry->head;
-		  if (index_entry != NULL && index_entry->constraints != NULL)
-		    {
-		      int num_columns = index_entry->col_num;
-		      col_idx = 0;
-
-		      while (sort_list != NULL && col_idx < num_columns)
-			{
-			  PT_NODE *node = pt_get_node_from_list (select_list_ex, sort_list->pos_descr.pos_no);
-			  if (node != NULL && (node->node_type == PT_NAME || node->node_type == PT_DOT_))	// 함수인덱스는 일단 제외
-			    {
-			      const char *col_name = node->info.name.original;
-			      const char *index_col_name = index_entry->constraints->attributes[col_idx]->header.name;
-
-			      if (!pt_str_compare (col_name, index_col_name, CASE_INSENSITIVE) == 0
-				  ||
-				  !((sort_list->s_order == S_DESC && index_entry->constraints->asc_desc[col_idx] == 1)
-				    || (sort_list->s_order == S_ASC
-					&& index_entry->constraints->asc_desc[col_idx] == 0)))
-				{
-				  eval->is_sorted = false;
-				  break;
-				}
-			    }
-
-			  sort_list = sort_list->next;
-			  col_idx++;
-			}
-		    }
-		}
-
-	      if (sort_list == NULL)
-		{
-		  eval->is_sorted = true;
-		  eval->curr_group_tuple_count = 0;
-		  eval->curr_sort_key_tuple_count = 0;
-		}
+	      eval->curr_group_tuple_count = 0;
+	      eval->curr_sort_key_tuple_count = 0;
+	      eval->is_sorted = (eval->sort_list == NULL && xasl->limit_row_count == NULL) ? true : false;
 	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
