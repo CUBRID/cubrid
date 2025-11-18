@@ -558,7 +558,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	int old_att_count = class_->att_count;
 	int type_id = 0;
 	int lob_attrid_arr_length = 0;
-	int *lob_alloc_attrid_arr;
+	int *lob_alloc_attrid_arr = NULL;
 	int lob_local_attrid_arr[2];
 
 	error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
