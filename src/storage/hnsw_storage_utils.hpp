@@ -36,15 +36,15 @@ template <typename T>
 struct lightweight_span
 {
   const T* data_;
-  size_t size_;
+  std::size_t size_;
 
-  lightweight_span(const T* data, size_t size)
+  lightweight_span(const T* data, std::size_t size)
     : data_(data), size_(size) {}
 
   const T* data() const { return data_; }
-  size_t size() const { return size_; }
+  std::size_t size() const { return size_; }
 
-  const T& operator[](size_t i) const { return data_[i]; }
+  const T& operator[](std::size_t i) const { return data_[i]; }
   const T* begin() const { return data_; }
   const T* end() const { return data_ + size_; }
 };
@@ -58,7 +58,7 @@ class rw_span_cursor
 
     std::optional<scope_exit<Cleanup>> m_guard;
 
-    explicit rw_span_cursor (std::byte* span, size_t size)
+    explicit rw_span_cursor (std::byte* span, std::size_t size)
     : p(span), end(span + size) {}
 
     ~rw_span_cursor() = default;
@@ -114,10 +114,10 @@ class rw_span_cursor
     }
   
     template <typename T>
-    void write_array(const T* src, size_t count)
+    void write_array(const T* src, std::size_t count)
     {
       static_assert(std::is_trivially_copyable_v<T>, "T must be POD.");
-      size_t bytes = sizeof(T) * count;
+      std::size_t bytes = sizeof(T) * count;
       assert(p + bytes <= end);
   
       std::memcpy(p, src, bytes);
@@ -136,10 +136,10 @@ class rw_span_cursor
     }
   
     template <typename T>
-    lightweight_span<T> read_array(size_t count)
+    lightweight_span<T> read_array(std::size_t count)
     {
       static_assert(std::is_trivially_copyable_v<T>, "T must be POD.");
-      size_t bytes = sizeof(T) * count;
+      std::size_t bytes = sizeof(T) * count;
       assert(p + bytes <= end);
   
       T* arr = reinterpret_cast<T*>(p);
@@ -156,9 +156,16 @@ class rw_span_cursor
       return reinterpret_cast<T*>(p);
     }
   
-    void skip(size_t bytes)
+    void skip(std::size_t bytes)
     {
       assert(p + bytes <= end);
       p += bytes;
     }
+
+    std::std::size_t remaining () const
+    {
+      return static_cast<std::std::size_t> (end - p);
+    }
 };
+
+

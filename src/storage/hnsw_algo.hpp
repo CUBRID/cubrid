@@ -84,8 +84,6 @@ inline float cubvec_l2_distance (const float *vec1, const float *vec2, size_t di
 
 namespace cubhnsw
 {
-  using level_t = uint16_t;
-
   // =====================================================================
   // distance
   // =====================================================================
@@ -97,57 +95,6 @@ namespace cubhnsw
   {
     cubvec_cosine_distance,
     cubvec_l2_distance
-  };
-
-  // =====================================================================
-  // graph
-  // =====================================================================
-
-
-  struct graph_root
-  {
-    hnsw_build_params build_params;
-    level_t entry_level;
-    VPID layers[MAX_LEVELS];
-
-    graph_root (const hnsw_build_params &build_params)
-      : build_params (build_params), entry_level (-1)
-    {
-      for (int i = 0; i < MAX_LEVELS; i++)
-	{
-	  layers[i] = VPID_INITIALIZER;
-	}
-    }
-  };
-
-
-  struct graph_node_header
-  {
-    uint16_t level;
-    VPID sibling_vpid; // next page id in the same level
-  };
-
-  // memory layout
-  struct graph_neighbor
-  {
-    uint16_t n_neighbors;
-    OID *neighbors;
-  };
-
-  struct graph_node
-  {
-    OID key;
-    float *vecs;
-    uint16_t level; // max level of the node
-    graph_neighbor *neighbors;
-  };
-
-  template <class VPID>
-  struct graph_node_block
-  {
-    VPID id;
-    uint16_t n_nodes;
-    graph_node *nodes;
   };
 
   // =====================================================================
@@ -238,9 +185,12 @@ namespace cubhnsw
       context_t m_context;
       storage_t m_storage;
 
+      // from build_params
       vector_distance_metric_t m_metric;
       std::size_t m_dimension;
       std::size_t m_connectivity;
+
+      // precomputed
       double m_inverse_log_connectivity;
   };
 
@@ -263,7 +213,7 @@ namespace cubhnsw
 	assert (false);
       }
 
-    // precomputed
+    // precompute inverse log connectivity
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.ef_construction));
   }
 
@@ -273,8 +223,9 @@ namespace cubhnsw
     add_result_t result;
     m_context.clear_candidates();
 
-    // TODO: get_root_node
     std::size_t top_limit = m_connectivity;
+
+    graph_root root_node = m_storage.get_root ();
 
     level_t curr_max_level = root_node.entry_level; // get max_level from root page
     level_t new_target_level = choose_random_level_ (m_context.m_level_generator, m_inverse_log_connectivity);
@@ -285,22 +236,24 @@ namespace cubhnsw
 	new_target_level = MAX_LEVELS;
       }
 
-    // get entry_oid from root
-    OID entry_oid;
-    OID_SET_NULL (&entry_oid);
-
-    if (OID_ISNULL (&entry_oid) || new_target_level > curr_max_level)
+    graph_node new_node (oid, new_target_level);
+    // get entry_oid from root block of the storage
+    OID entry_oid = root_node.entry_oid;
+    if (OID_ISNULL (&entry_oid))
       {
 	// first element or new_target_level is greater than curr_max_level
-	// it requires promotion of write latch on the root page
+	// it requires promotion of write latch on the root page to update entry_oid and entry_level
+  
       }
-    else
+
+    if (new_target_level > curr_max_level)
+      {
+        // promotion required
+        // TODO: implement promotion
+      }
+    
       {
 	// from the second element
-
-	// TODO: implement storage
-	entry_oid = m_storage.get_entry_oid ();
-
 	OID closest_oid = search_for_one_ (vector, entry_oid, curr_max_level, new_target_level);
 	for (level_t level = (std::min) (new_target_level, curr_max_level); level >= 0; --level)
 	  {
@@ -351,7 +304,7 @@ namespace cubhnsw
     assert (begin_level >= end_level);
 
     OID closest_oid = start_oid;
-    distance_t closest_dist = compute_distance_ (query, m_storage.vector_at_ (closest_oid));
+    distance_t closest_dist = compute_distance_ (query, m_storage.vector_at (closest_oid));
     for (level_t level = begin_level; level > end_level; --level)
       {
 	bool changed = false;
@@ -364,7 +317,7 @@ namespace cubhnsw
 	    for (int i = 0; i < neighbors.size (); ++i)
 	      {
 		OID neighbor_oid = neighbors.at (i);
-		distance_t candidate_dist = compute_distance_ (query, m_storage.vector_at_ (neighbor_oid));
+		distance_t candidate_dist = compute_distance_ (query, m_storage.vector_at (neighbor_oid));
 		if (candidate_dist < closest_dist)
 		  {
 		    closest_dist = candidate_dist;
@@ -382,7 +335,7 @@ namespace cubhnsw
   int
   algo::search_to_insert_ (const float *query, const OID &start_oid, const uint16_t level, const std::size_t top_limit)
   {
-    distance_t radius = compute_distance_ (query, m_storage.vector_at_ (start_oid));
+    distance_t radius = compute_distance_ (query, m_storage.vector_at (start_oid));
 
     next_candidates_t &next = m_context.m_next_candidates;
     top_candidates_t &top = m_context.m_top_candidates;
@@ -418,7 +371,7 @@ namespace cubhnsw
 		continue;
 	      }
 
-	    distance_t sucessor_dist = compute_distance_ (query, m_storage.vector_at_ (successor_oid));
+	    distance_t sucessor_dist = compute_distance_ (query, m_storage.vector_at (successor_oid));
 	    if (top.size () < top_limit || sucessor_dist < radius)
 	      {
 		next.push (candidate_t {-sucessor_dist, successor_oid});
@@ -445,7 +398,7 @@ namespace cubhnsw
     m_context.clear_candidates();
 
     OID closest_oid = start_oid;
-    distance_t radius = compute_distance_ (query, m_storage.vector_at_ (closest_oid));
+    distance_t radius = compute_distance_ (query, m_storage.vector_at (closest_oid));
     next.push ({-radius, closest_oid});
     visits.insert (closest_oid);
 
@@ -470,7 +423,7 @@ namespace cubhnsw
 		continue;
 	      }
 
-	    distance_t sucessor_dist = compute_distance_ (query, m_storage.vector_at_ (successor_oid));
+	    distance_t sucessor_dist = compute_distance_ (query, m_storage.vector_at (successor_oid));
 	    if (top.size() < expansion || sucessor_dist < radius)
 	      {
 		next.push (candidate_t {-sucessor_dist, successor_oid});
@@ -518,11 +471,11 @@ namespace cubhnsw
   m_context.m_top_for_refine = {}; // clear
   top_candidates_t& top_for_refine = m_context.m_top_for_refine;
 
-	top_for_refine.push ({compute_distance_ (value, m_storage.vector_at_(close_oid)), new_slot_oid});
+	top_for_refine.push ({compute_distance_ (value, m_storage.vector_at(close_oid)), new_slot_oid});
 	for (int i = 0; i < close_header.size (); i++)
 	  {
 	    OID successor_oid = close_header.at (i);
-	    top_for_refine.push ({compute_distance_ (m_storage.vector_at_(close_oid), m_storage.vector_at_(successor_oid)), successor_oid});
+	    top_for_refine.push ({compute_distance_ (m_storage.vector_at(close_oid), m_storage.vector_at(successor_oid)), successor_oid});
 	  }
 
 	// remove all neighbors from close_header
