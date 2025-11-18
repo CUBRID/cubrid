@@ -36,7 +36,6 @@
 #include "heap_file.h"
 
 #include "deduplicate_key.h"
-#include "es_posix.h"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"

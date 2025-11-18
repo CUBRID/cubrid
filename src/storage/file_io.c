@@ -126,10 +126,6 @@
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 #endif // SERVER_MODE
-#if defined(SERVER_MODE)
-#include "log_append.hpp"
-#include "log_manager.h"
-#endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
