@@ -26,7 +26,7 @@
 
 namespace cubhnsw
 {
-  using level_t = uint16_t;
+  using level_t = int16_t;
   using byte_t = std::byte;
 
 

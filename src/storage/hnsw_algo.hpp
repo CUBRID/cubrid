@@ -137,20 +137,20 @@ namespace cubhnsw
   class algo
   {
     public:
-    using traits      = Traits;
-    using block_id_t  = typename traits::block_id_t;
-    using storage_t   = cubhnsw::storage_t<traits>;
-    using root_type   = cubhnsw::root_t<traits>;
-    using node_type   = cubhnsw::node_t<traits>;
-    using neighbors_ref_type = cubhnsw::neighbors_ref_t<traits>;
+      using traits      = Traits;
+      using block_id_t  = typename traits::block_id_t;
+      using storage_t   = cubhnsw::storage_t<traits>;
+      using root_type   = cubhnsw::root_t<traits>;
+      using node_type   = cubhnsw::node_t<traits>;
+      using neighbors_ref_type = cubhnsw::neighbors_ref_t<traits>;
 
-    using key_id_t    = OID;
+      using key_id_t    = OID;
 
 
-    using visited_set_t = std::unordered_set<OID>;
-    using candidates_view_t = std::vector<candidate_t>;
-    using top_candidates_t = std::priority_queue<candidate_t, std::vector<candidate_t>, less_candidate_t>;
-    using next_candidates_t = std::priority_queue<candidate_t, std::vector<candidate_t>, less_candidate_t>;
+      using visited_set_t = std::unordered_set<OID>;
+      using candidates_view_t = std::vector<candidate_t>;
+      using top_candidates_t = std::priority_queue<candidate_t, std::vector<candidate_t>, less_candidate_t>;
+      using next_candidates_t = std::priority_queue<candidate_t, std::vector<candidate_t>, less_candidate_t>;
 
       struct context_t
       {
@@ -175,17 +175,18 @@ namespace cubhnsw
 
     protected:
 
-      void search_for_one_ (const float *query, const OID &start_oid, const level_t begin_level, const level_t end_level, OID& out);
-      
+      void search_for_one_ (const float *query, const OID &start_oid, const level_t begin_level, const level_t end_level,
+			    OID &out);
+
       int search_to_insert_ (const float *query, const OID &start_oid, const level_t level, const std::size_t top_limit);
       int search_to_find_in_base_ (const float *query, const OID &start_oid, const std::size_t expansion);
 
-      void form_links_to_closest_ (const block_id_t &new_slot, const level_t level, candidates_view_t& out);
+      void form_links_to_closest_ (const block_id_t &new_slot, const level_t level, candidates_view_t &out);
       int form_reverse_links_ (block_id_t new_slot, const float *value, candidates_view_t &new_neighbors, level_t level);
 
       level_t choose_random_level_ (std::default_random_engine &generator, double inverse_log_connectivity);
 
-      void refine_ (std::size_t needed, top_candidates_t &top, candidates_view_t& out) const;
+      void refine_ (std::size_t needed, top_candidates_t &top, candidates_view_t &out) const;
 
       distance_t compute_distance_ (const float *v1, const float *v2) const
       {
@@ -261,11 +262,11 @@ namespace cubhnsw
     //
 
     if (m_storage->is_empty())
-    {
-      root_node.set_entry (new_slot);
-      root_node.set_level (new_target_level);
-      return result;
-    }
+      {
+	root_node.set_entry (new_slot);
+	root_node.set_level (new_target_level);
+	return result;
+      }
 
     if (new_target_level > curr_max_level)
       {
@@ -273,15 +274,18 @@ namespace cubhnsw
 	// TODO: implement promotion
       }
 
-      block_id_t entry = root_node.get_entry();
-      node_type entry_node = m_storage->get_node (entry);
+    block_id_t entry = root_node.get_entry();
+    node_type entry_node = m_storage->get_node (entry);
     {
       // from the second element
       OID closest_oid;
       search_for_one_ (vector, entry_node.get_key(), curr_max_level, new_target_level, closest_oid);
-      for (level_t level = (std::min) (new_target_level, curr_max_level); level >= 0; --level)
+
+      level_t level = (std::min) (new_target_level, curr_max_level);
+      while (true)
 	{
 	  (void) search_to_insert_ (vector, closest_oid, level, top_limit);
+
 	  candidates_view_t closest_view;
 	  {
 	    neighbors_ref_type neighbors = m_storage->get_neighbors (new_slot, level);
@@ -291,6 +295,12 @@ namespace cubhnsw
 	    closest_oid = closest_view[0].key;
 	  }
 	  form_reverse_links_ (new_slot, vector, closest_view, level);
+	  if (level == 0)
+	    {
+	      break;
+	    }
+
+	  --level;
 	}
     }
 
@@ -320,10 +330,10 @@ namespace cubhnsw
 			      query, entry_oid, current_max_level, 0);
 
     if (search_to_find_in_base_ (query, closest_oid) != NO_ERROR)
-    {
-      // TODO: error handling
-    }
-  #endif
+      {
+	// TODO: error handling
+      }
+#endif
 
     return result;
   }
@@ -331,11 +341,11 @@ namespace cubhnsw
   template <typename Traits>
   void
   algo<Traits>::search_for_one_ (const float *query, const OID &start_oid, const level_t begin_level,
-				   const level_t end_level, OID& out)
+				 const level_t end_level, OID &out)
   {
 // asserts
     assert (begin_level >= end_level);
-    visited_set_t& visits = m_context.m_visits;
+    visited_set_t &visits = m_context.m_visits;
     visits.clear ();
 
     OID closest_oid = start_oid;
@@ -348,13 +358,13 @@ namespace cubhnsw
 	  {
 	    changed = false;
 
-      block_id_t closest_node_at = m_storage->node_at (closest_oid);
+	    block_id_t closest_node_at = m_storage->node_at (closest_oid);
 	    neighbors_ref_type neighbors = m_storage->get_neighbors (closest_node_at, level);
 	    for (std::size_t i = 0; i < neighbors.size (); ++i)
 	      {
-    block_id_t neighbor_id = neighbors.at (i);
-    node_type neighbor_node = m_storage->get_node (neighbor_id);
-    OID neighbor_oid = neighbor_node.get_key();
+		block_id_t neighbor_id = neighbors.at (i);
+		node_type neighbor_node = m_storage->get_node (neighbor_id);
+		OID neighbor_oid = neighbor_node.get_key();
 
 		distance_t candidate_dist = compute_distance_ (query, m_storage->get_vector (m_storage->vector_at (neighbor_oid)));
 		if (candidate_dist < closest_dist)
@@ -375,7 +385,7 @@ namespace cubhnsw
   template <typename Traits>
   int
   algo<Traits>::search_to_insert_ (const float *query, const OID &start_oid, const level_t level,
-				     const std::size_t top_limit)
+				   const std::size_t top_limit)
   {
     distance_t radius = compute_distance_ (query, m_storage->get_vector (m_storage->vector_at (start_oid)));
 
@@ -406,8 +416,8 @@ namespace cubhnsw
 	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
 	  {
 	    block_id_t successor_id = candidate_neighbors.at (i);
-    node_type successor_node = m_storage->get_node (successor_id);
-    OID successor_oid = successor_node.get_key();
+	    node_type successor_node = m_storage->get_node (successor_id);
+	    OID successor_oid = successor_node.get_key();
 
 	    if (visits.find (successor_oid) != visits.end ())
 	      {
@@ -461,8 +471,8 @@ namespace cubhnsw
 	for (int i = 0; i < candidate_neighbors.size (); ++i)
 	  {
 	    block_id_t successor_id = candidate_neighbors.at (i);
-    node_type successor_node = m_storage->get_node (successor_id);
-    OID successor_oid = successor_node.get_key();
+	    node_type successor_node = m_storage->get_node (successor_id);
+	    OID successor_oid = successor_node.get_key();
 	    if (visits.find (successor_oid) != visits.end ())
 	      {
 		continue;
@@ -483,7 +493,7 @@ namespace cubhnsw
 
   template <typename Traits>
   void
-  algo<Traits>::form_links_to_closest_ (const block_id_t &new_slot, const level_t level, candidates_view_t& top_view)
+  algo<Traits>::form_links_to_closest_ (const block_id_t &new_slot, const level_t level, candidates_view_t &top_view)
   {
     top_candidates_t &top = m_context.m_top_candidates;
     refine_ (m_connectivity,top, top_view);
@@ -498,9 +508,10 @@ namespace cubhnsw
 
   template <typename Traits>
   int
-  algo<Traits>::form_reverse_links_ (block_id_t new_slot, const float * value, candidates_view_t &new_neighbors, level_t level)
+  algo<Traits>::form_reverse_links_ (block_id_t new_slot, const float *value, candidates_view_t &new_neighbors,
+				     level_t level)
   {
-    node_type new_node = m_storage->get_node(new_slot);
+    node_type new_node = m_storage->get_node (new_slot);
     for (auto n : new_neighbors)
       {
 	OID close_oid = n.key;
@@ -519,23 +530,24 @@ namespace cubhnsw
 	m_context.m_top_for_refine = {}; // clear
 	top_candidates_t &top_for_refine = m_context.m_top_for_refine;
 
-  distance_t dist = compute_distance_ (value, m_storage->get_vector (m_storage->vector_at (close_oid)));
+	distance_t dist = compute_distance_ (value, m_storage->get_vector (m_storage->vector_at (close_oid)));
 	top_for_refine.push (candidate_t (dist, close_oid));
 	for (std::size_t i = 0; i < close_header.size (); i++)
 	  {
 	    block_id_t successor_id = close_header.at (i);
-    node_type successor_node = m_storage->get_node (successor_id);
-    OID successor_oid = successor_node.get_key();
-	    top_for_refine.push (candidate_t (compute_distance_ (m_storage->get_vector (m_storage->vector_at (close_oid)), m_storage->get_vector (m_storage->vector_at (successor_oid))), successor_oid));
+	    node_type successor_node = m_storage->get_node (successor_id);
+	    OID successor_oid = successor_node.get_key();
+	    top_for_refine.push (candidate_t (compute_distance_ (m_storage->get_vector (m_storage->vector_at (close_oid)),
+					      m_storage->get_vector (m_storage->vector_at (successor_oid))), successor_oid));
 	  }
 
 	// remove all neighbors from close_header
 	close_header.clear();
 	candidates_view_t top_view;
-  (void) refine_ (m_connectivity, top_for_refine, top_view);
+	(void) refine_ (m_connectivity, top_for_refine, top_view);
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
-	    close_header.push_back (m_storage->node_at(top_view[i].key));
+	    close_header.push_back (m_storage->node_at (top_view[i].key));
 	  }
       }
 
@@ -544,20 +556,20 @@ namespace cubhnsw
 
   template <typename Traits>
   void
-  algo<Traits>::refine_ (std::size_t needed, top_candidates_t &top, candidates_view_t& out) const
+  algo<Traits>::refine_ (std::size_t needed, top_candidates_t &top, candidates_view_t &out) const
   {
     out = {};
     if (top.size() < needed)
-    {
-      while (!top.empty())
       {
-        out.push_back(top.top());
-        top.pop();
+	while (!top.empty())
+	  {
+	    out.push_back (top.top());
+	    top.pop();
+	  }
+	return;
       }
-      return;
-    }
 
-    
+
   }
 
   template <typename Traits>
