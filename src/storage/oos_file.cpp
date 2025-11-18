@@ -25,7 +25,7 @@
 #include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "storage_common.h"
-#include "page_buffer_support.hpp"
+#include "page_buffer_util.hpp"
 
 #include "oos_file.hpp"
 #include "oos_log.hpp"

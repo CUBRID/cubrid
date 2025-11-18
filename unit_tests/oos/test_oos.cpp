@@ -24,7 +24,7 @@
 #include "storage_common.h"
 #include "oos_file.hpp"
 #include "test_oos_common.hpp"
-#include "page_buffer_support.hpp"
+#include "page_buffer_util.hpp"
 
 #include "oos_log.hpp"
 #include "test_oos_log.hpp"
