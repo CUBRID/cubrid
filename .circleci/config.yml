@@ -98,7 +98,7 @@ jobs:
                             ;;
                           sql)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*"
                             ;;
                           shell)
                             base_dir="cubrid-testcases-private-ex"
@@ -107,7 +107,7 @@ jobs:
                             ;;
                           *)
                             base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sql"
+                            glob_path="\$base_dir/\$TEST_SUITE/_*"
                             ;;
                         esac
 
@@ -121,8 +121,8 @@ jobs:
                           find \$base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
                         else
                           echo "[debug] split tests for parallel execution"
-                          circleci tests glob "\$glob_path" | grep -P '/cases/[^/]+\.sql$' \
-                            | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=timings --timings-type=file
+                          circleci tests glob "\$glob_path" \
+                            | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
                           echo "[debug] total testcases: \$(wc -l tc.list)"
                           echo "[debug] Remove tests that are not in the list"
                           find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
@@ -258,7 +258,7 @@ jobs:
               test_sql:
                 executor: cubrid-default
                 resource_class: medium
-                parallelism: 8
+                parallelism: 10
                 environment:
                   TEST_SUITE: "sql"
                 steps:
