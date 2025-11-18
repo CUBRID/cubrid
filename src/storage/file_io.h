@@ -37,7 +37,6 @@
 #include "release_string.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
-#include "recovery.h"
 
 #include <stdio.h>
 #include <time.h>
