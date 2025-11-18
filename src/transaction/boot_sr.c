@@ -110,8 +110,6 @@
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
 
-#define LOB_TEMPDIR_PREFIX "ces"
-
 typedef struct boot_dbparm BOOT_DB_PARM;
 struct boot_dbparm
 {
@@ -6177,5 +6175,7 @@ boot_after_copydb (THREAD_ENTRY * thread_p)
 static int
 boot_lob_remove_temp_dir ()
 {
-  return fileio_lob_remove_dir ((char *) LOB_TEMPDIR_PREFIX);
+  const char *lob_tempdir_prefix = "ces";
+
+  return fileio_lob_remove_dir ((char *) lob_tempdir_prefix);
 }
