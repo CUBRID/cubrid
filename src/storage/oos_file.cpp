@@ -296,7 +296,6 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 				  const OOS_RECORD_HEADER &first_chunk_header, RECDES &recdes)
 {
   int err = NO_ERROR;
-  const auto header = first_chunk_header;
   const int total_size = first_chunk_header.total_size;
   assert (first_chunk_header.chunk_index == 0);
 
@@ -304,11 +303,11 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
   oos_trace ("total_size=%d", total_size);
 
   err = recdes_allocate_data_area (&recdes, total_size);
-
   if (err != NO_ERROR)
     {
       return err;
     }
+
   recdes.type = REC_HOME;
   recdes.length = total_size;
 
