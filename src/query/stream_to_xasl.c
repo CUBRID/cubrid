@@ -6368,22 +6368,6 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
 	}
     }
 
-  /* interm_list_id */
-  ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
-    {
-      analytic_eval->interm_list_id = NULL;
-    }
-  else
-    {
-      analytic_eval->interm_list_id = stx_restore_list_id (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (analytic_eval->interm_list_id == NULL)
-	{
-	  goto error;
-	}
-    }
-
-  /* is_sorted */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic_eval->is_sorted = (bool) tmp_i;
 

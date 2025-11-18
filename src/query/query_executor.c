@@ -593,7 +593,6 @@ static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * 
 static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				   ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last);
-static int qexec_init_analytic_interm_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static void qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
 						  const HEAP_SCANCACHE * scan_cache);
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * vd,
@@ -1147,8 +1146,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   BUILDLIST_PROC_NODE *buildlist;
   ANALYTIC_EVAL_TYPE *a_eval_list;
   ANALYTIC_TYPE *a_func_list;
-  REGU_VARIABLE_LIST regu_list_p;
-  DB_VALUE *swap;
 
   if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
@@ -20765,54 +20762,6 @@ query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	}
     }
   return NULL;
-}
-
-/*
- * qexec_init_analytic_interm_lists () -
- *   return:
- *   thread_p(in):
- *   xasl(in):
- *   xasl_state(in):
- */
-static int
-qexec_init_analytic_interm_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
-{
-  ANALYTIC_EVAL_TYPE *a_eval_list;
-  BUILDLIST_PROC_NODE *buildlist;
-
-  if (xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.a_eval_list == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  buildlist = &xasl->proc.buildlist;
-  for (a_eval_list = buildlist->a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
-    {
-      if (a_eval_list->is_sorted && a_eval_list->interm_list_id == NULL)
-	{
-	  QFILE_TUPLE_VALUE_TYPE_LIST interm_type_list;
-
-	  if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  a_eval_list->interm_list_id =
-	    qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, 0, NULL);
-
-	  if (interm_type_list.domp)
-	    {
-	      db_private_free_and_init (thread_p, interm_type_list.domp);
-	    }
-
-	  if (a_eval_list->interm_list_id == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-    }
-
-  return NO_ERROR;
 }
 
 /*
