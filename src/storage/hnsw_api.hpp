@@ -90,11 +90,11 @@ class hnsw_oid_encoder
     virtual OID decode_oid (const id_type &id)=0;
 };
 
-class hnsw_oid_encoder_default: public hnsw_oid_encoder<int64_t>
+class hnsw_oid_encoder_default: public hnsw_oid_encoder<uint64_t>
 {
   public:
-    int64_t encode_oid (const OID &oid) override;
-    OID decode_oid (const int64_t &id) override;
+    uint64_t encode_oid (const OID &oid) override;
+    OID decode_oid (const uint64_t &id) override;
 };
 
 using hnsw_backend_factory_fn = std::function<std::unique_ptr<hnsw_index_backend> ()>;

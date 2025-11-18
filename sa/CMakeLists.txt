@@ -516,6 +516,9 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/hnsw_api.cpp
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/hnsw_storage.hpp
+  ${STORAGE_DIR}/hnsw_algo.hpp
+  ${STORAGE_DIR}/hnsw_api.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
 )

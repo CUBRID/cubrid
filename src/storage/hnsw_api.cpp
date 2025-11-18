@@ -131,7 +131,7 @@ hnsw_oid_encoder_default::encode_oid (const OID &oid)
 }
 
 OID
-hnsw_oid_encoder_default::decode_oid (const int64_t &id)
+hnsw_oid_encoder_default::decode_oid (const uint64_t &id)
 {
   OID oid;
   oid.pageid = static_cast<int32_t> (static_cast<uint32_t> (id >> 32));
