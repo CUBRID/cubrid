@@ -29,7 +29,6 @@
 
 #include "error_context.hpp"
 #include "lockfree_transaction_def.hpp"
-#include "storage_common.h"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
