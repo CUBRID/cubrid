@@ -134,13 +134,17 @@ namespace cubload
 	 */
 
 	char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+	char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
 	const char *user_name = m_session.get_args ().user_name.c_str ();
-	assert (user_name != NULL);
+	assert (user_name != NULL && user_name[0] != '\0');
 
 	snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", user_name, class_name);
 
-	found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+	assert (intl_identifier_lower_string_size (user_name) < DB_MAX_USER_LENGTH);
+	intl_identifier_lower (user_specified_name, realname);
+
+	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
       }
 
     if (found == LC_CLASSNAME_EXIST)
