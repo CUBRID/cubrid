@@ -7941,7 +7941,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		{
 		  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
 
-		  error_code = hnsw_add_element (&btid, inst_oid, vf->float_array, 1);
+		  error_code = hnsw_add_element (thread_p, &btid, inst_oid, vf->float_array, 1);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;

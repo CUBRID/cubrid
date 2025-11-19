@@ -22,6 +22,7 @@
 
 #include "hnsw.hpp"
 
+#include <fstream>
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -39,9 +40,81 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+// =====================================================================
+// hnsw_index_manager declaration
+// =====================================================================
+
+namespace fs = std::filesystem;
+
+class hnsw_index_manager
+{
+  public:
+
+    static hnsw_index_manager &instance()
+    {
+      static hnsw_index_manager inst;
+      return inst;
+    }
+
+    fs::path get_index_file_path (const std::string &prefix, const BTID *btid) const;
+    fs::path get_index_meta_file_path (const std::string &prefix, const BTID *btid) const;
+    fs::path get_index_directory_path() const;
+
+    void create_index_directory();
+    bool is_index_file_exists (const std::string &prefix, const BTID *btid) const;
+    bool is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const;
+
+    BTID create_btid (const hnsw_index_backend *backend);
+
+    // index management on memory
+    bool is_index_loaded (const BTID *btid) const;
+    int add_index (const BTID *btid, hnsw_index *index);
+    hnsw_index *get_index (const BTID *btid) const;
+    int delete_index (const BTID *btid);
+
+    void print_index_info (const BTID *btid);
+
+    // index management on disk
+    int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
+    int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
+    int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
+    int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
+    int save_all_indices (THREAD_ENTRY *thread_p);
+    int delete_index_on_disk (const std::string &prefix, const BTID *btid);
+
+    // backend management
+    void register_backend (std::unique_ptr<hnsw_index_backend> backend);
+    const hnsw_index_backend *get_backend () const;
+    hnsw_index_backend *get_backend ();
+
+    ~hnsw_index_manager() = default;
+
+  private:
+    fs::path get_vindex_root_path() const;
+
+    /* singleton */
+    hnsw_index_manager();
+
+    hnsw_index_manager (const hnsw_index_manager &) = delete;
+    hnsw_index_manager &operator= (const hnsw_index_manager &) = delete;
+    hnsw_index_manager (hnsw_index_manager &&) = delete;
+    hnsw_index_manager &operator= (hnsw_index_manager &&) = delete;
+
+    /* index directory root path */
+    fs::path m_root_path;
+    int m_last_index_id;
+
+    std::unordered_map<BTID, std::unique_ptr<hnsw_index>> m_index_map;
+    std::unique_ptr<hnsw_index_backend> m_backend;
+};
+
 // singleton instances
 // TODO: dynamically load backend implementations
 static hnsw_index_manager *index_manager = nullptr;
+
+// =====================================================================
+// high-level APIs
+// =====================================================================
 
 int
 xhnsw_initialize (THREAD_ENTRY *thread_p)
@@ -81,6 +154,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &
   hnsw_index *index = backend_instance->create_index (thread_p, &btid_out, "", params);
   if (index == nullptr)
     {
+      // failed to create index
       assert (false);
       return ER_FAILED;
     }
@@ -88,19 +162,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &
   int error = index_manager->add_index (&btid_out, index);
   if (error != NO_ERROR)
     {
-      assert (false);
-      return ER_FAILED;
-    }
-
-  hnsw_index_meta meta =
-  {
-    .backend_id = backend_instance->get_id(),
-    .build_params = params
-  };
-
-  error = index_manager->save_index_meta (thread_p, &btid_out, meta);
-  if (error != NO_ERROR)
-    {
+      // failed to add index
       assert (false);
       return ER_FAILED;
     }
@@ -108,7 +170,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &
 #if !defined(NDEBUG)
   _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", btid_out.root_pageid);
 
-  hnsw_print_index_info (&btid_out);
+  index_manager->print_index_info (&btid_out);
 #endif
 
   return error;
@@ -253,7 +315,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
 
 	case S_END:
 	{
-	  hnsw_add_element (&new_btid, oids, vectors, count);
+	  hnsw_add_element (thread_p, &new_btid, oids, vectors, count);
 
 	  if (oids)
 	    {
@@ -292,7 +354,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
 }
 
 int
-hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
+hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
 {
   assert (oid);
   assert (vector);
@@ -307,8 +369,12 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
   auto *index = index_manager->get_index (btid);
   if (index == nullptr)
     {
-      // load index
-
+      if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
+	{
+	  // failed to load index
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
 
   if (index->prepare_to_add (n_vectors, oid, vector) != NO_ERROR)
@@ -321,7 +387,7 @@ hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors)
 }
 
 int
-hnsw_search_element (BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
+hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances)
 {
   assert (btid);
   assert (key_dbvalue);
@@ -332,7 +398,12 @@ hnsw_search_element (BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, fl
   hnsw_index *index = index_manager->get_index (btid);
   if (index == nullptr)
     {
-      // load index
+      if (index_manager->load_index (thread_p, btid, index) != NO_ERROR)
+	{
+	  // failed to load index
+	  assert (false);
+	  return ER_FAILED;
+	}
     }
 
   const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
@@ -340,4 +411,284 @@ hnsw_search_element (BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids, fl
 
   int ef_search = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
   return index->search (vf->float_array, k, ef_search, rec_oids, distances);
+}
+
+// =====================================================================
+// hnsw_index_manager implementation
+// =====================================================================
+
+hnsw_index_manager::hnsw_index_manager()
+{
+  auto &f = ::hnsw_backend_registry::factories();
+  if (!f.empty())
+    {
+      assert (f.size() == 1 && "Only one HNSW backend factory must be registered.");
+      auto it = f.begin();
+      auto id = it->first;
+      auto &fn = it->second;
+      register_backend (fn ()); // unique_ptr<hnsw_index_backend>
+      assert (m_backend != nullptr && "Only one HNSW backend instance must exist.");
+    }
+
+}
+
+fs::path
+hnsw_index_manager::get_vindex_root_path() const
+{
+  char db_path[PATH_MAX];
+  fileio_get_directory_path (db_path, boot_db_full_name());
+  fs::path root_path = fs::path (db_path) / "vindex";
+
+  return root_path;
+}
+
+void
+hnsw_index_manager::create_index_directory()
+{
+  if (m_root_path.empty())
+    {
+      m_root_path = get_vindex_root_path();
+    }
+
+  if (!fs::exists (m_root_path))
+    {
+      fs::create_directory (m_root_path);
+    }
+}
+
+fs::path
+hnsw_index_manager::get_index_file_path (const std::string &prefix, const BTID *btid) const
+{
+  return m_root_path / (prefix + "_" + std::to_string (btid->root_pageid) + ".bin");
+}
+
+fs::path
+hnsw_index_manager::get_index_meta_file_path (const std::string &prefix, const BTID *btid) const
+{
+  return m_root_path / (prefix + "_" + std::to_string (btid->root_pageid) + ".meta");
+}
+
+fs::path
+hnsw_index_manager::get_index_directory_path() const
+{
+  return m_root_path;
+}
+
+bool
+hnsw_index_manager::is_index_file_exists (const std::string &prefix, const BTID *btid) const
+{
+  return fs::exists (get_index_file_path (prefix, btid));
+}
+
+bool
+hnsw_index_manager::is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const
+{
+  return fs::exists (get_index_meta_file_path (prefix, btid));
+}
+
+bool
+hnsw_index_manager::is_index_loaded (const BTID *btid) const
+{
+  return m_index_map.find (*btid) != m_index_map.end();
+}
+
+int
+hnsw_index_manager::add_index (const BTID *btid, hnsw_index *index)
+{
+  if (is_index_loaded (btid))
+    {
+      assert (false);
+      _er_log_debug (ARG_FILE_LINE, "HNSW Index already exists with ID %d", btid->root_pageid);
+      return ER_FAILED;
+    }
+
+  m_index_map[*btid] = std::unique_ptr<hnsw_index> (index);
+  return NO_ERROR;
+}
+
+hnsw_index *
+hnsw_index_manager::get_index (const BTID *btid) const
+{
+  if (is_index_loaded (btid))
+    {
+      return m_index_map.at (*btid).get();
+    }
+  return nullptr;
+}
+
+int
+hnsw_index_manager::delete_index (const BTID *btid)
+{
+  m_index_map.erase (*btid);
+  return NO_ERROR;
+}
+
+void
+hnsw_index_manager::print_index_info (const BTID *btid)
+{
+  if (is_index_loaded (btid))
+    {
+      m_index_map.at (*btid)->dump (stdout);
+    }
+}
+
+int
+hnsw_index_manager::save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta)
+{
+  // if meta file exists, do not overwrite it
+  if (is_index_meta_file_exists (meta.backend_id, btid))
+    {
+      return NO_ERROR;
+    }
+
+  // Write meta to file in text mode (with newline) and check for errors
+  const auto meta_path = get_index_meta_file_path (meta.backend_id, btid);
+  std::ofstream meta_file (meta_path, std::ios::out | std::ios::trunc);
+  if (!meta_file)
+    {
+      // Could not open file for writing
+      return ER_FAILED;
+    }
+  meta_file << meta << std::endl;
+  if (!meta_file)
+    {
+      // Write failed
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+int
+hnsw_index_manager::load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta)
+{
+  // The backend_id is not known before reading the file, so we must try all possible meta files.
+  // For now, try all registered backends.
+  for (const auto &pair : hnsw_backend_registry::factories())
+    {
+      const std::string &backend_id = pair.first;
+      const auto meta_path = get_index_meta_file_path (backend_id, btid);
+      std::ifstream meta_file (meta_path, std::ios::in);
+      if (!meta_file.is_open())
+	{
+	  continue;
+	}
+      hnsw_index_meta temp_meta;
+      meta_file >> temp_meta;
+      if (!meta_file)
+	{
+	  meta_file.close();
+	  continue;
+	}
+      meta_file.close();
+      // Found and successfully read meta
+      meta = temp_meta;
+      return NO_ERROR;
+    }
+  // Could not find or read any meta file
+  return ER_FAILED;
+}
+
+int
+hnsw_index_manager::save_all_indices (THREAD_ENTRY *thread_p)
+{
+  for (const auto &pair : m_index_map)
+    {
+      const BTID *btid = &pair.first;
+
+      hnsw_index_meta meta;
+      meta.backend_id = pair.second->get_backend().get_id();
+      meta.build_params = pair.second->get_build_params();
+
+      save_index_meta (thread_p, btid, meta);
+      hnsw_index *index = pair.second.get();
+      save_index (thread_p, index);
+    }
+  return NO_ERROR;
+}
+int hnsw_index_manager::save_index (THREAD_ENTRY *thread_p, hnsw_index *index)
+{
+  std::string prefix = index->get_backend().get_id();
+  const BTID &btid = index->get_id();
+  index->save (get_index_file_path (prefix, &btid).string());
+  return NO_ERROR;
+}
+
+int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index_out)
+{
+  if (is_index_loaded (btid))
+    {
+      return NO_ERROR;
+    }
+
+  hnsw_index_meta meta;
+  int error = load_index_meta (thread_p, btid, meta);
+  if (error != NO_ERROR)
+    {
+      _er_log_debug (ARG_FILE_LINE, "Failed to load HNSW Index meta with ID %d", btid->root_pageid);
+      return error;
+    }
+
+  hnsw_index_backend *backend = get_backend ();
+  if (backend == nullptr)
+    {
+      assert (false);
+      _er_log_debug (ARG_FILE_LINE, "Failed to load HNSW Index backend with ID %s", meta.backend_id.c_str());
+      return ER_FAILED;
+    }
+
+  index_out = backend->create_index (thread_p, btid, meta.backend_id, meta.build_params);
+  if (!index_out)
+    {
+      return ER_FAILED;
+    }
+  if (index_out->load (get_index_file_path (meta.backend_id, btid).string()) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  add_index (btid, index_out);
+  return NO_ERROR;
+}
+
+int hnsw_index_manager::delete_index_on_disk (const std::string &prefix, const BTID *btid)
+{
+  if (is_index_file_exists (prefix, btid))
+    {
+      fs::remove (get_index_file_path (prefix, btid));
+    }
+  if (is_index_meta_file_exists (prefix, btid))
+    {
+      fs::remove (get_index_meta_file_path (prefix, btid));
+    }
+
+  delete_index (btid);
+
+  return NO_ERROR;
+}
+
+
+BTID
+hnsw_index_manager::create_btid (const hnsw_index_backend *backend)
+{
+  BTID btid = {.vfid = VFID_INITIALIZER, .root_pageid = m_last_index_id};
+  while (is_index_loaded (&btid) || is_index_meta_file_exists (backend->get_id(), &btid))
+    {
+      btid.root_pageid = ++m_last_index_id;
+    }
+  return btid;
+}
+
+void hnsw_index_manager::register_backend (std::unique_ptr<hnsw_index_backend> backend)
+{
+  m_backend = std::move (backend);
+}
+
+const hnsw_index_backend *hnsw_index_manager::get_backend () const
+{
+  return m_backend.get();
+}
+
+hnsw_index_backend *
+hnsw_index_manager::get_backend ()
+{
+  return m_backend.get();
 }
