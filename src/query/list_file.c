@@ -62,7 +62,7 @@ static int rv;
 #endif /* not SERVER_MODE */
 
 #define QFILE_CHECK_LIST_FILE_IS_CLOSED(list_id) \
-  assert (!VPID_ISNULL(&list_id->last_vpid) ? (list_id->last_pgptr != NULL) : true)
+  assert (list_id != NULL &&(!VPID_ISNULL(&list_id->last_vpid) ? (list_id->last_pgptr != NULL) : true))
 
 #define QFILE_DEFAULT_PAGES 4
 
