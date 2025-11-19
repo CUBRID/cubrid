@@ -191,8 +191,15 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	}
       else if (ws_is_same_object (classobj->owner, user))
 	{
-	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	    {
+	      goto fail_end;
+	    }
+	  else
+	    {
+	      error = ER_AU_CANT_GRANT_OWNER;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
+	    }
 	}
       else if ((error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner,
 			NULL)) != NO_ERROR)
