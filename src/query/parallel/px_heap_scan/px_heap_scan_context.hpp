@@ -23,8 +23,6 @@
 #ifndef _PX_HEAP_SCAN_CONTEXT_HPP_
 #define _PX_HEAP_SCAN_CONTEXT_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include "scan_manager.h"
 #include "px_heap_scan_memory_mapper.hpp"
 #include "dbtype_def.h"
@@ -113,7 +111,5 @@ namespace parallel_heap_scan
       bool m_is_domain_resolve_needed;
   };
 }
-
-#endif /* SERVER_MODE && !WINDOWS */
 
 #endif /*_PX_HEAP_SCAN_CONTEXT_HPP_ */

@@ -108,6 +108,13 @@ enum
   QFILE_LIST_QUERY_CACHE_MODE_SELECTIVELY_ON = 2
 };
 
+typedef enum
+{
+  QFILE_PROHIBIT_DEPENDENT = 0,
+  QFILE_SKIP_DEPENDENT = 1,
+  QFILE_MOVE_DEPENDENT = 2
+} QFILE_DEPENDENT_MODE;
+
 /* List manipulation routines */
 extern int qfile_initialize (void);
 extern void qfile_finalize (void);
@@ -121,8 +128,10 @@ extern int qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST
 extern int qfile_get_first_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 
 /* Copy routines */
-extern int qfile_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id, bool include_sort_list);
-extern QFILE_LIST_ID *qfile_clone_list_id (const QFILE_LIST_ID * list_id, bool include_sort_list);
+extern int qfile_copy_list_id (QFILE_LIST_ID * dest_list_id, const QFILE_LIST_ID * src_list_id,
+			       bool is_include_sort_list, QFILE_DEPENDENT_MODE dep_mode);
+extern QFILE_LIST_ID *qfile_clone_list_id (const QFILE_LIST_ID * list_id, bool is_include_sort_list,
+					   QFILE_DEPENDENT_MODE dep_mode);
 
 /* Free routines */
 extern void qfile_free_list_id (QFILE_LIST_ID * list_id);
@@ -189,6 +198,8 @@ extern int qfile_fast_val_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID 
 extern int qfile_add_item_to_list (THREAD_ENTRY * thread_p, char *item, int item_size, QFILE_LIST_ID * list_id);
 extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file,
 					      QFILE_LIST_ID * rhs_file, int flag);
+extern int qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
+extern int qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
 extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tpl_descr,
 					    QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);

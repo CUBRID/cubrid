@@ -180,7 +180,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
 endif(VERSION_MATCHES_LENGTH GREATER 3)
 set(CUBRID_VERSION ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION}${CUBRID_HASH_TAG})
 
-set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION})
+set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
 set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
 set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
 # TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
@@ -458,6 +458,7 @@ set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
+set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
 set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 
@@ -487,6 +488,7 @@ include_directories(
   src/thread
   src/transaction
   src/xasl
+  src/query/parallel/px_hash_join
   src/query/parallel/px_heap_scan
   src/query/parallel
   src/query/parallel/px_query_execute
@@ -864,6 +866,7 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
     PATTERN "cmake" EXCLUDE
     PATTERN "src" EXCLUDE
     PATTERN "output" EXCLUDE
+    PATTERN "release" EXCLUDE
   )
 endif()
 

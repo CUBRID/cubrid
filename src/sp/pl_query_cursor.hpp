@@ -91,6 +91,8 @@ namespace cubpl
       bool m_is_opened;
 
       int m_fetch_count; /* # of rows to fetch */
+
+      unsigned int m_query_entry_no;
   };
 }		// namespace cubmethod
 

@@ -2905,6 +2905,12 @@ create_stmt
 
 			    const char* metric_name = metric_node->info.name.original;
 			    enum DB_VECTOR_DISTANCE_METRIC metric = string_to_vector_distance_metric (metric_name);
+				if (metric == METRIC_UNKNOWN)
+				  {
+				PT_ERRORm (this_parser, metric_node,
+					   MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_INVALID_VECTOR_DISTANCE_METRIC);
+				  }
 			    node->info.index.vector_index.metric = metric;
 
 			    if (node->info.index.unique)
@@ -25715,10 +25721,7 @@ vector_distance_metric
 		{{ DBG_TRACE_GRAMMAR(vector_distance_metric,  : identifier );
 
 			PT_NODE *identifier = $1;
-			if (identifier == NULL) 
-			  {
-			    assert(false);
-			  }
+			assert (identifier != NULL);
 
 			// Convert identifier (PT_NAME) to PT_VALUE manually.
 			// This is a hack to map vector metric name to an ENUM value.
@@ -25746,9 +25749,8 @@ vector_distance_metric
 			  }
 			else
 			  {
-			    assert(false);
+				metric = METRIC_UNKNOWN;
 			  }
-
 
 			PT_NODE *ret = parser_new_node (this_parser, PT_VALUE);
 			if (ret)
@@ -27120,6 +27122,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
   INIT_PT_HINT("NO_PARALLEL_HEAP_SCAN", PT_HINT_NO_PARALLEL_HEAP_SCAN),
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
+  INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),

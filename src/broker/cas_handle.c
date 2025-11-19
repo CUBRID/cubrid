@@ -35,9 +35,7 @@
 #include <unistd.h>
 #endif /* WINDOWS */
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "cas_db_inc.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "cas_execute.h"
 
 #include "cas.h"
@@ -113,18 +111,7 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->use_query_cache = false;
   srv_handle->is_holdable = false;
   srv_handle->is_from_current_transaction = true;
-#if defined(CAS_FOR_ORACLE)
-  srv_handle->has_out_result = false;
-#endif /* defined(CAS_FOR_ORACLE) */
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  srv_handle->send_metadata_before_execute = false;
-  srv_handle->next_cursor_pos = 1;
-#endif
   srv_handle->is_pooled = as_info->cur_statement_pooling;
-
-#if defined(CAS_FOR_MYSQL)
-  srv_handle->has_mysql_last_insert_id = false;
-#endif /* CAS_FOR_MYSQL */
 
 #if defined (CAS_FOR_CGW)
   srv_handle->cgw_handle = NULL;
@@ -175,10 +162,8 @@ hm_srv_handle_free (int h_id)
   srv_handle_content_free (srv_handle);
   srv_handle_rm_tmp_file (h_id, srv_handle);
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   FREE_MEM (srv_handle->classes);
   FREE_MEM (srv_handle->classes_chn);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if defined (CAS_FOR_CGW)
   ux_cgw_free_stmt (srv_handle);
@@ -262,10 +247,6 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  continue;
 	}
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-      hm_qresult_end (srv_handle, FALSE);
-#else /* CAS_FOR_MYSQL */
-
       if (srv_handle->is_holdable && !end_holdable)
 	{
 	  /* do not close holdable results */
@@ -287,11 +268,10 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
 	}
-#endif
     }
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
+#if defined(ENABLE_UNUSED_FUNCTION)
 void
 hm_srv_handle_set_pooled ()
 {
@@ -324,22 +304,6 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
   int i;
 
   q_result = srv_handle->q_result;
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-
-#if defined(CAS_FOR_MYSQL)
-  if (srv_handle->session)
-    {
-      cas_mysql_stmt_free_result (srv_handle->session);
-    }
-#endif /* CAS_FOR_MYSQL */
-
-  if (free_flag == TRUE)
-    {
-      ux_free_result (q_result);
-      FREE_MEM (q_result);
-      srv_handle->q_result = NULL;
-    }
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   if (q_result)
     {
       for (i = 0; i < srv_handle->num_q_result; i++)
@@ -384,7 +348,6 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 
   srv_handle->cur_result = NULL;
   srv_handle->has_result_set = false;
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
 void
@@ -392,13 +355,7 @@ hm_session_free (T_SRV_HANDLE * srv_handle)
 {
   if (srv_handle->session)
     {
-#if defined(CAS_FOR_ORACLE)
-      cas_oracle_stmt_close (srv_handle->session);
-#elif defined(CAS_FOR_MYSQL)
-      cas_mysql_stmt_close (srv_handle->session);
-#else /* CAS_FOR_ORACLE */
       db_close_session ((DB_SESSION *) (srv_handle->session));
-#endif /* CAS_FOR_ORACLE */
     }
   srv_handle->session = NULL;
 }
@@ -412,12 +369,6 @@ hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info)
 static void
 srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  FREE_MEM (srv_handle->sql_stmt);
-  ux_prepare_call_info_free (srv_handle->prepare_call_info);
-  hm_qresult_end (srv_handle, TRUE);
-  hm_session_free (srv_handle);
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   FREE_MEM (srv_handle->sql_stmt);
   ux_prepare_call_info_free (srv_handle->prepare_call_info);
 
@@ -456,7 +407,6 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	}
       srv_handle->cur_result = NULL;
     }
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 }
 
 static void
@@ -464,7 +414,6 @@ col_update_info_free (T_QUERY_RESULT * q_result)
 {
   int i;
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (q_result->col_update_info)
     {
       for (i = 0; i < q_result->num_column; i++)
@@ -476,13 +425,11 @@ col_update_info_free (T_QUERY_RESULT * q_result)
     }
   q_result->col_updatable = FALSE;
   q_result->num_column = 0;
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 }
 
 static void
 srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
 {
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   if (srv_handle->query_info_flag == TRUE)
     {
       char *p;
@@ -493,7 +440,6 @@ srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
 	  unlink (p);
 	}
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 }
 
 int

@@ -940,22 +940,24 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
   size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
   if (buflen > 0)
     {
+      int tlen = 0;
       assert (buf != NULL);
 
       while (buflen >= size)
 	{
-	  memcpy (tout->tail_ptr->ptr, buf, size);
+	  memcpy (tout->tail_ptr->ptr, buf + tlen, size);
 	  *(tout->tail_ptr->ptr + size) = '\0';	/* Null terminate */
 	  tout->tail_ptr->ptr += size;
 	  tout->tail_ptr->count += size;
 	  buflen -= size;
+	  tlen += size;
 	  CHECK_PRINT_ERROR (get_text_output_mem (tout, buflen));
 	  size = tout->tail_ptr->iosize;
 	}
 
       if (buflen > 0)
 	{
-	  memcpy (tout->tail_ptr->ptr, buf, buflen);
+	  memcpy (tout->tail_ptr->ptr, buf + tlen, buflen);
 	  *(tout->tail_ptr->ptr + buflen) = '\0';	/* Null terminate */
 
 	  tout->tail_ptr->ptr += buflen;

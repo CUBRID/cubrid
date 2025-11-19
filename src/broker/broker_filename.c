@@ -60,8 +60,6 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_MONITORD_LOG, ""},
   {FID_ER_HTML, ""},
   {FID_CUBRID_ERR_DIR, ""},
-  {FID_CAS_FOR_ORACLE_DBINFO, ""},
-  {FID_CAS_FOR_MYSQL_DBINFO, ""},
   {FID_ACCESS_CONTROL_FILE, ""},
   {FID_SLOW_LOG_DIR, ""},
   {FID_SHARD_DBINFO, ""},
@@ -155,7 +153,6 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
       break;
 
     case FID_ACCESS_CONTROL_FILE:
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
       if (repath)
 	{
 	  envvar_confdir_file (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
@@ -164,9 +161,6 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	{
 	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	}
-#else
-      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
-#endif
       break;
     default:
       if (repath)
@@ -299,12 +293,6 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
 #endif
     case FID_ER_HTML:
       envvar_confdir_file (buf, len, "uw_er.html");
-      break;
-    case FID_CAS_FOR_ORACLE_DBINFO:
-      envvar_confdir_file (buf, len, "databases_oracle.txt");
-      break;
-    case FID_CAS_FOR_MYSQL_DBINFO:
-      envvar_confdir_file (buf, len, "databases_mysql.txt");
       break;
     case FID_SHARD_DBINFO:
       envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");

@@ -2740,6 +2740,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
       return false;
     }
 
+  /* get thread by tran_index, if thread_p is NULL */
+  if (!thread_p)
+    {
+      thread_p = logtb_find_thread_by_tran_index (tran_index);
+    }
+
   if (log_Gl.trantable.area != NULL)
     {
       tdes = LOG_FIND_TDES (tran_index);
@@ -2778,18 +2784,20 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
-	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+
+	      /* collect stat, if thread_p is not NULL */
+	      if (thread_p)
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+		}
 
 	      // Only TT_WORKER threads use pl_session
 	      if (thread_p && thread_p->type == TT_WORKER)
 		{
-		  if (session_has_pl_session (thread_p))
+		  cubpl::session * session = cubpl::get_session ();
+		  if (session)
 		    {
-		      cubpl::session * session = cubpl::get_session ();
-		      if (session)
-			{
-			  session->set_interrupt (ER_INTERRUPTED);
-			}
+		      session->set_interrupt (ER_INTERRUPTED);
 		    }
 		}
 	    }
@@ -2865,13 +2873,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      if (session_has_pl_session (thread_p))
+      cubpl::session * session = cubpl::get_session ();
+      if (session)
 	{
-	  cubpl::session * session = cubpl::get_session ();
-	  if (session)
-	    {
-	      session->set_interrupt (ER_INTERRUPTED);
-	    }
+	  session->set_interrupt (ER_INTERRUPTED);
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
@@ -6111,10 +6116,10 @@ log_tdes::lock_topop ()
 // TODO [PL/CSQL]: It will be fixed at CBRD-25641.
 // The following code inside of #if block is a workaround for the issue.
 #if 1
-      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
+      if (rmutex_topop.owner != thread_id_t ())
       {
         cubpl::session *session = cubpl::get_session();
-      if (session 
+      if (session
         && session->is_thread_involved (rmutex_topop.owner))
         {
         thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
@@ -6135,10 +6140,10 @@ log_tdes::unlock_topop ()
 // TODO [PL/CSQL]: It will be fixed at CBRD-25641.
 // The following code inside of #if block is a workaround for the issue.
 #if 1
-      if (rmutex_topop.owner != thread_id_t () && session_has_pl_session (thread_p))
+      if (rmutex_topop.owner != thread_id_t ())
       {
         cubpl::session *session = cubpl::get_session();
-      if (session 
+      if (session
         && session->is_thread_involved (rmutex_topop.owner))
         {
         thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);

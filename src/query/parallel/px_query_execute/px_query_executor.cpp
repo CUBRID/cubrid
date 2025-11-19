@@ -19,7 +19,6 @@
 /*
  * px_query_executor.cpp
  */
-#if SERVER_MODE
 #include "px_query_executor.hpp"
 #include <algorithm>
 #include "xasl_cache.h"
@@ -153,6 +152,11 @@ namespace parallel_query_execute
 	    delete err_desc.second;
 	  }
 	delete m_error_messages_p;
+	if (m_thread_p->m_px_stats != NULL)
+	  {
+	    perfmon_merge_parallel_stats_to_tran_stats (m_thread_p);
+	    free_and_init (m_thread_p->m_px_stats);
+	  }
       }
   }
 
@@ -195,4 +199,3 @@ namespace parallel_query_execute
       }
   }
 }
-#endif // SERVER_MODE

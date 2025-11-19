@@ -845,7 +845,7 @@ namespace cubschema
       {"is_system_generated", "integer"},
       {"directive", "integer"},
       {"target_class", format_varchar (1024)},
-      {"target_method", format_varchar (1024)},
+      {"target_method", format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)}
     },

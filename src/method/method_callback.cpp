@@ -527,7 +527,7 @@ namespace cubmethod
     int error = NO_ERROR;
 
     std::vector<sql_semantics> semantics_vec;
-    for (const std::string s : request.sqls)
+    for (const std::string &s : request.sqls)
       {
 	i++;
 	query_handler *handler = new_query_handler ();

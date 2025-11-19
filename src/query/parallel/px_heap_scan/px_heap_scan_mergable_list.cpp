@@ -19,7 +19,7 @@
 /*
  * px_heap_scan_mergable_list.cpp - mergable list for parallel heap scan
  */
-#if SERVER_MODE && !WINDOWS
+#include "xasl.h"
 
 #include "px_heap_scan_mergable_list.hpp"
 #include "query_opfunc.h"
@@ -32,6 +32,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
 namespace parallel_heap_scan
 {
   mergable_list_array::mergable_list_array (THREAD_ENTRY *thread_p, std::size_t size)
@@ -77,6 +79,7 @@ namespace parallel_heap_scan
     m_outptr_list = outptr_list;
     m_tpl_buf.tpl = (char *) malloc (DB_PAGESIZE);
     m_tpl_buf.size = DB_PAGESIZE;
+    m_is_list_id_domain_resolved = false;
   }
 
   mergable_list_writer::~mergable_list_writer()
@@ -90,14 +93,39 @@ namespace parallel_heap_scan
     QFILE_TUPLE_VALUE_TYPE_LIST type_list;
     REGU_VARIABLE_LIST valptr, orig_pred_regu, new_pred_regu, orig_rest_regu, new_rest_regu;
     int valptr_idx;
+    size_t size;
+    QFILE_LIST_ID *list_id;
+    int i;
     m_vd = vd;
     qdata_get_valptr_type_list (thread_p, m_outptr_list, &type_list);
 
     (*m_list_id_p) = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL);
 
-    if ((*m_list_id_p) == NULL)
+    if (!*m_list_id_p)
       {
 	return false;
+      }
+    list_id = *m_list_id_p;
+
+    size = list_id->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
+
+    list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
+    if (list_id->tpl_descr.f_valp == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	return false;
+      }
+
+    size = list_id->type_list.type_cnt * sizeof (bool);
+    list_id->tpl_descr.clear_f_val_at_clone_decache = (bool *) malloc (size);
+    if (list_id->tpl_descr.clear_f_val_at_clone_decache == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	return false;
+      }
+    for (i = 0; i < list_id->type_list.type_cnt; i++)
+      {
+	list_id->tpl_descr.clear_f_val_at_clone_decache[i] = false;
       }
 
     return true;
@@ -111,38 +139,59 @@ namespace parallel_heap_scan
   int mergable_list_writer::write (THREAD_ENTRY *thread_p)
   {
     int err_code = NO_ERROR;
-    QFILE_TUPLE_RECORD *tplrec = make_tuple_record (thread_p);
-    if (m_error_code != NO_ERROR)
+    QPROC_TPLDESCR_STATUS status;
+    QFILE_TUPLE_RECORD *tplrec;
+
+    __builtin_prefetch ((*m_list_id_p), 1, 3);
+
+    status = qdata_generate_tuple_desc_for_valptr_list (thread_p, m_outptr_list, m_vd, & ((*m_list_id_p)->tpl_descr));
+
+    if (unlikely (!m_is_list_id_domain_resolved))
       {
-	return m_error_code;
+	qfile_update_domains_on_type_list (thread_p, *m_list_id_p, m_outptr_list);
+	m_is_list_id_domain_resolved = (*m_list_id_p)->is_domain_resolved;
       }
-    err_code = qfile_add_tuple_to_list (thread_p, *m_list_id_p, tplrec->tpl);
-    return err_code;
+
+    if (likely (status == QPROC_TPLDESCR_SUCCESS))
+      {
+	if (qfile_generate_tuple_into_list (thread_p, (*m_list_id_p), T_NORMAL) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+
+	return NO_ERROR;
+      }
+    else if (unlikely (status == QPROC_TPLDESCR_FAILURE))
+      {
+	return ER_FAILED;
+      }
+    else if (unlikely (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
+      {
+	tplrec = make_tuple_record (thread_p);
+	if (tplrec == nullptr)
+	  {
+	    return ER_FAILED;
+	  }
+	err_code = qfile_add_tuple_to_list (thread_p, (*m_list_id_p), tplrec->tpl);
+	return err_code;
+      }
+    assert (0);
+    return ER_FAILED;
   }
 
   QFILE_TUPLE_RECORD *mergable_list_writer::make_tuple_record (THREAD_ENTRY *thread_p)
   {
-    REGU_VARIABLE_LIST p;
-    int n_preds, n_rests, n_all;
-    char *tuple_p;
-    int i = 0, tval_size = 0, tlen, tpl_size;
-    int type_list_index = 0;
-    DB_TYPE dom_type;
-    int n_size, toffset;
-    bool clear_compressed_string = true;
-    int ret;
-    REGU_VARIABLE_LIST outptr_list_p = NULL, m_outptr_list_p = NULL;
-    DB_VALUE *peek_value_p = NULL;
-    m_error_code = NO_ERROR;
+    int error_code = NO_ERROR;
 
-    m_error_code = qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
-    if (m_error_code != NO_ERROR)
+    error_code = qdata_copy_valptr_list_to_tuple (thread_p, m_outptr_list, m_vd, &m_tpl_buf);
+    if (error_code != NO_ERROR)
       {
 	return nullptr;
       }
-    if (! (*m_list_id_p)->is_domain_resolved)
+    if (!m_is_list_id_domain_resolved)
       {
 	qfile_update_domains_on_type_list (thread_p, *m_list_id_p, m_outptr_list);
+	m_is_list_id_domain_resolved = (*m_list_id_p)->is_domain_resolved;
       }
 
     return &m_tpl_buf;
@@ -153,5 +202,3 @@ namespace parallel_heap_scan
     return (*m_list_id_p)->tfile_vfid->temp_vfid.fileid != NULL_FILEID;
   }
 }
-
-#endif /* SERVER_MODE && !WINDOWS */

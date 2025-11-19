@@ -828,6 +828,40 @@ static const unsigned int mht_Primes[NPRIMES] = {
   20507, 21313, 22123, 23131, 24133, 25147, 26153, 27179, 28181, 29123
 };
 
+#define NPRIMES_POW2 30
+static const unsigned int mht_prime_for_pow2[] = {
+  5,				/* 2^2  = 4 */
+  11,				/* 2^3  = 8 */
+  17,				/* 2^4  = 16 */
+  37,				/* 2^5  = 32 */
+  67,				/* 2^6  = 64 */
+  131,				/* 2^7  = 128 */
+  263,				/* 2^8  = 256 */
+  521,				/* 2^9  = 512 */
+  1031,				/* 2^10 = 1024 */
+  2053,				/* 2^11 = 2048 */
+  4099,				/* 2^12 = 4096 */
+  8209,				/* 2^13 = 8192 */
+  16411,			/* 2^14 = 16384 */
+  32771,			/* 2^15 = 32768 */
+  65537,			/* 2^16 = 65536 */
+  131101,			/* 2^17 = 131072 */
+  262147,			/* 2^18 = 262144 */
+  524309,			/* 2^19 = 524288 */
+  1048583,			/* 2^20 = 1048576 */
+  2097169,			/* 2^21 = 2097152 */
+  4194319,			/* 2^22 = 4194304 */
+  8388617,			/* 2^23 = 8388608 */
+  16777259,			/* 2^24 = 16777216 */
+  33554467,			/* 2^25 = 33554432 */
+  67108879,			/* 2^26 = 67108864 */
+  134217757,			/* 2^27 = 134217728 */
+  268435459,			/* 2^28 = 268435456 */
+  536870923,			/* 2^29 = 536870912 */
+  1073741833,			/* 2^30 = 1073741824 */
+  2147483659			/* 2^31 = 2147483648 */
+};
+
 unsigned int
 mht_calculate_htsize (unsigned int ht_size)
 {
@@ -874,6 +908,27 @@ mht_calculate_htsize (unsigned int ht_size)
     }
 
   return ht_size;
+}
+
+unsigned int
+mht_calculate_htsize_for_pow2 (unsigned int ht_size)
+{
+  int i = 0;
+
+  assert (ht_size > 0);
+
+  /* Too large: fallback to UINT_MAX */
+  if (ht_size > mht_prime_for_pow2[NPRIMES_POW2 - 1])
+    {
+      return UINT_MAX;
+    }
+
+  while (i < NPRIMES_POW2 && (1U << (i + 2)) < ht_size)
+    {
+      ++i;
+    }
+
+  return mht_prime_for_pow2[i];
 }
 
 /*
@@ -995,7 +1050,8 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
       est_size = 2;
     }
 
-  ht_estsize = mht_calculate_htsize ((unsigned int) est_size);
+  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
+  ht_estsize = mht_calculate_htsize_for_pow2 ((unsigned int) ht_estsize);
 
   /* Allocate the header information for hash table */
   ht = (MHT_HLS_TABLE *) malloc (DB_SIZEOF (MHT_HLS_TABLE));
@@ -1398,6 +1454,7 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
 	      /* Go over the linked list */
 	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
 		{
+		  fprintf (out_fp, "  KEY %10u, ", hentry->key);
 		  cont = (*print_func) (thread_p, out_fp, hentry->data, type_list, func_args);
 		}
 

@@ -91,7 +91,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 
       db_private_free_and_init (thread_p, type_list.domp);
 
-      if (qfile_copy_list_id (func_p->list_id, list_id_p, true) != NO_ERROR)
+      if (qfile_copy_list_id (func_p->list_id, list_id_p, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
 	{
 	  qfile_free_list_id (list_id_p);
 	  return ER_FAILED;

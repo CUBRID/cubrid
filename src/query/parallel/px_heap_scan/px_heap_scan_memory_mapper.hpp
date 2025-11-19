@@ -24,8 +24,6 @@
 #ifndef _PX_HEAP_SCAN_MEMORY_MAPPER_HPP_
 #define _PX_HEAP_SCAN_MEMORY_MAPPER_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include <unordered_map>
 #include <atomic>
 #include "scan_manager.h"
@@ -127,5 +125,4 @@ namespace parallel_heap_scan
       OUTPTR_LIST *m_outptr_list;
   };
 }
-#endif /* SERVER_MODE && !WINDOWS */
 #endif /*_PX_HEAP_SCAN_MEMORY_MAPPER_HPP_ */

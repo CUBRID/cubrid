@@ -9068,6 +9068,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " NO_SUPPLEMENTAL_LOG ");
 	}
 
+      if (p->info.delete_.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	}
+
       q = pt_append_nulstring (parser, q, " */");
     }
   if (r1)
@@ -14765,6 +14770,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_SUBQUERY ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	    }
+
 	  if (p->info.query.q.select.hint & PT_HINT_PARALLEL)
 	    {
 	      q = pt_append_nulstring (parser, q, "PARALLEL");
@@ -16001,6 +16011,11 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.update.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
 	{
 	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  b = pt_append_nulstring (parser, b, "NO_PARALLEL_HASH_JOIN ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");
@@ -17359,6 +17374,38 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_bytes (parser, p->info.merge.insert.index_hint);
 	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, ")");
+	}
+      if (p->info.merge.hint & PT_HINT_NO_USE_HASH)
+	{
+	  /* disable hash-join */
+	  q = pt_append_nulstring (parser, q, " NO_USE_HASH");
+	  if (p->info.merge.no_use_hash)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.merge.no_use_hash);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+      if (p->info.merge.hint & PT_HINT_USE_HASH)
+	{
+	  /* force hash-join */
+	  q = pt_append_nulstring (parser, q, " USE_HASH");
+	  if (p->info.merge.use_hash)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.merge.use_hash);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
 	}
       q = pt_append_nulstring (parser, q, " */");
     }

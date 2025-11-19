@@ -143,6 +143,7 @@ bool qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE *
 bool qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE ** wherep, int *seqno);
 void qo_move_on_of_explicit_join_to_where (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep);
 void qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement);
+void qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select);
 
 /* qo_auto_parameterize is defined in parser.h */
 void qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);

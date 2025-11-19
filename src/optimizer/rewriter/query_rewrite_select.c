@@ -20,6 +20,7 @@
  * query_select.c
  */
 
+#include "parse_tree.h"
 #ident "$Id$"
 
 #include <assert.h>
@@ -3643,4 +3644,100 @@ qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
       return false;
     }
   return true;
+}
+
+static PT_NODE *
+qo_rewrite_nonnull_count (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *from = (PT_NODE *) arg;
+  PT_NODE *count_arg;
+  PT_NAME_INFO *name_info;
+  MOP cls;
+  SM_CLASS_CONSTRAINT *consp, *cons_iter;
+  SM_ATTRIBUTE *attrp;
+  PT_NODE *spec_node;
+  int i;
+  const char *class_name;
+  bool is_rewrite_to_count_star_available = false;
+  if (node->node_type == PT_FUNCTION && node->info.function.function_type == PT_COUNT
+      && node->info.function.all_or_distinct == PT_ALL)
+    {
+      count_arg = node->info.function.arg_list;
+      assert (count_arg->next == NULL);
+      if (count_arg->node_type == PT_NAME)
+	{
+	  name_info = &count_arg->info.name;
+	  spec_node = pt_find_entity (parser, from, name_info->spec_id);
+	  if (spec_node == NULL || spec_node->info.spec.entity_name == NULL
+	      || spec_node->info.spec.join_type == PT_JOIN_LEFT_OUTER)
+	    {
+	      return node;
+	    }
+	  class_name = spec_node->info.spec.entity_name->info.name.original;
+	  if (class_name == NULL)
+	    {
+	      return node;
+	    }
+	  cls = sm_find_class (class_name);
+	  if (cls == NULL)
+	    {
+	      return node;
+	    }
+	  consp = sm_class_constraints (cls);
+	  if (consp == NULL)
+	    {
+	      return node;
+	    }
+	  for (cons_iter = consp; cons_iter != NULL && !is_rewrite_to_count_star_available; cons_iter = cons_iter->next)
+	    {
+	      if (SM_IS_CONSTRAINT_NOT_NULL_FAMILY (cons_iter->type))
+		{
+		  for (i = 0; cons_iter->attributes[i]; i++)
+		    {
+		      attrp = cons_iter->attributes[i];
+		      if (intl_identifier_casecmp (count_arg->info.name.original, attrp->header.name) == 0)
+			{
+			  is_rewrite_to_count_star_available = true;
+			  break;
+			}
+		    }
+		}
+	    }
+	  for (cons_iter = consp; cons_iter != NULL; cons_iter = cons_iter->next)
+	    {
+	      if (cons_iter->filter_predicate)
+		{
+		  is_rewrite_to_count_star_available = false;
+		}
+	    }
+	  if (is_rewrite_to_count_star_available)
+	    {
+	      node->info.function.function_type = PT_COUNT_STAR;
+	      parser_free_tree (parser, node->info.function.arg_list);
+	      node->info.function.arg_list = NULL;
+	    }
+	}
+    }
+  return node;
+}
+
+void
+qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
+{
+  bool is_rewrite_to_count_star_available = false;
+  PT_NODE *select_list = select->info.query.q.select.list;
+  PT_NODE *from = select->info.query.q.select.from;
+  PT_NODE *spec;
+  SM_ATTRIBUTE *attrp;
+  int i;
+  int continue_walk = PT_LEAF_WALK;
+  for (spec = from; spec; spec = spec->next)
+    {
+      if (spec->info.spec.join_type == PT_JOIN_RIGHT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER
+	  || spec->info.spec.join_type == PT_JOIN_CROSS)
+	{
+	  return;
+	}
+    }
+  parser_walk_tree (parser, select_list, qo_rewrite_nonnull_count, (void *) from, NULL, NULL);
 }

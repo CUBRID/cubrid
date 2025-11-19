@@ -134,9 +134,11 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
-    , m_px_lock ()
+    , m_px_lock_mutex ()
+    , m_px_stats_mutex ()
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
+    , m_skip_end_resource_tracks_in_recycle (false)
       // private:
     , m_id ()
     , m_error ()
@@ -164,7 +166,12 @@ namespace cubthread
 	// cannot recover from this
 	assert (false);
       }
-    if (pthread_mutex_init (&m_px_lock, NULL) != 0)
+    if (pthread_mutex_init (&m_px_lock_mutex, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_init (&m_px_stats_mutex, NULL) != 0)
       {
 	// cannot recover from this
 	assert (false);
@@ -245,7 +252,12 @@ namespace cubthread
       {
 	assert (false);
       }
-    if (pthread_mutex_destroy (&m_px_lock) != 0)
+    if (pthread_mutex_destroy (&m_px_lock_mutex) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_stats_mutex) != 0)
       {
 	// cannot recover from this
 	assert (false);
@@ -373,7 +385,6 @@ namespace cubthread
     m_pgbuf_tracker.clear_all ();
     m_csect_tracker.clear_all ();
     m_qlist_count = 0;
-    emulate_tid = thread_id_t ();
   }
 
   void

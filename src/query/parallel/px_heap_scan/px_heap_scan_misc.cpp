@@ -20,8 +20,6 @@
  * px_heap_scan_misc.cpp - miscellaneous functions for parallel heap scan
  */
 
-#if SERVER_MODE && !WINDOWS
-
 #include "px_heap_scan_misc.hpp"
 #include "memory_alloc.h"
 #include "fetch.h"
@@ -243,25 +241,26 @@ namespace parallel_heap_scan
 	p_current_oid = &hsidp->curr_oid;
       }
 
-    /* set data filter information */
-    scan_init_filter_info (&data_filter, &hsidp->scan_pred, &hsidp->pred_attrs, scan_id->val_list, scan_id->vd,
-			   &hsidp->cls_oid, 0, NULL, NULL, NULL);
+    data_filter =
+    {
+      &hsidp->scan_pred,
+      &hsidp->pred_attrs,
+      NULL,
+      NULL,
+      scan_id->val_list,
+      scan_id->vd,
+      &hsidp->cls_oid,
+      NULL,
+      NULL,
+      NULL,
+      0,
+      -1,
+    };
 
     is_peeking = scan_id->fixed;
     if (scan_id->grouped)
       {
 	is_peeking = PEEK;
-      }
-
-    if (data_filter.val_list)
-      {
-	for (p = data_filter.scan_pred->regu_list; p; p = p->next)
-	  {
-	    if (DB_NEED_CLEAR (p->value.vfetch_to))
-	      {
-		pr_clear_value (p->value.vfetch_to);
-	      }
-	  }
       }
 
     while (1)
@@ -395,4 +394,3 @@ restart_scan_oid:
       }
   }
 }
-#endif /* SERVER_MODE && !WINDOWS */

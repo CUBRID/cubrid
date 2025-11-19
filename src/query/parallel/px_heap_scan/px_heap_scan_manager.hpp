@@ -23,8 +23,6 @@
 #ifndef _PX_HEAP_SCAN_MANAGER_HPP_
 #define _PX_HEAP_SCAN_MANAGER_HPP_
 
-#if SERVER_MODE && !WINDOWS
-
 #include "dbtype.h"
 #include "scan_manager.h"
 #include "thread_manager.hpp"
@@ -141,7 +139,5 @@ scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
 			      parallel_heap_scan::RESULT_GET_METHOD result_get_method, XASL_NODE *xasl);
 extern int
 scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-
-#endif /* SERVER_MODE && !WINDOWS */
 
 #endif /*_PX_HEAP_SCAN_MANAGER_HPP_ */
