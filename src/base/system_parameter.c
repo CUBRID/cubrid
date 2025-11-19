@@ -5085,7 +5085,7 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2}},
+   {false, {.i = 4}},
    {false, {.i = 0}},
    {false, {.i = 32}},
    {false, {.i = 0}},
@@ -5097,9 +5097,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 32}},
+   {false, {.i = 100}},
    {false, {.i = 0}},
-   {false, {.i = 128}},
+   {false, {.i = 1000}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -8076,88 +8076,109 @@ static SYSPRM_ERR
 sysprm_get_param_range (SYSPRM_PARAM * prm, void *min, void *max)
 {
   SYSPRM_ERR error = PRM_ERR_NO_ERROR;
+
+  assert (min != nullptr || max != nullptr);
+
   if (PRM_IS_INTEGER (prm))
     {
-      if (prm->lower_limit.is_null == false)
+      if (min != nullptr)
 	{
-	  *((int *) min) = PRM_GET_INT (prm->lower_limit);
-	  if (PRM_DIFFERENT_UNIT (prm))
+	  if (prm->lower_limit.is_null == false)
 	    {
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) min, (int *) min, &error);
+	      *((int *) min) = PRM_GET_INT (prm->lower_limit);
+	      if (PRM_DIFFERENT_UNIT (prm))
+		{
+		  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) min, (int *) min, &error);
+		}
 	    }
-	}
-      else
-	{
-	  *((int *) min) = INT_MIN;
+	  else
+	    {
+	      *((int *) min) = INT_MIN;
+	    }
 	}
 
-      if (prm->upper_limit.is_null == false)
+      if (max != nullptr)
 	{
-	  *((int *) max) = PRM_GET_INT (prm->upper_limit);
-	  if (PRM_DIFFERENT_UNIT (prm))
+	  if (prm->upper_limit.is_null == false)
 	    {
-	      PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) max, (int *) max, &error);
+	      *((int *) max) = PRM_GET_INT (prm->upper_limit);
+	      if (PRM_DIFFERENT_UNIT (prm))
+		{
+		  PRM_ADJUST_FOR_GET_INTEGER_TO_INTEGER (prm, (int *) max, (int *) max, &error);
+		}
 	    }
-	}
-      else
-	{
-	  *((int *) max) = INT_MAX;
+	  else
+	    {
+	      *((int *) max) = INT_MAX;
+	    }
 	}
     }
   else if (PRM_IS_FLOAT (prm))
     {
-      if (prm->lower_limit.is_null == false)
+      if (min != nullptr)
 	{
-	  *((float *) min) = PRM_GET_FLOAT (prm->lower_limit);
-	  if (PRM_DIFFERENT_UNIT (prm))
+	  if (prm->lower_limit.is_null == false)
 	    {
-	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) min, (float *) min, &error);
+	      *((float *) min) = PRM_GET_FLOAT (prm->lower_limit);
+	      if (PRM_DIFFERENT_UNIT (prm))
+		{
+		  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) min, (float *) min, &error);
+		}
 	    }
-	}
-      else
-	{
-	  *((float *) min) = FLT_MIN;
+	  else
+	    {
+	      *((float *) min) = FLT_MIN;
+	    }
 	}
 
-      if (prm->upper_limit.is_null == false)
+      if (max != nullptr)
 	{
-	  *((float *) max) = PRM_GET_FLOAT (prm->upper_limit);
-	  if (PRM_DIFFERENT_UNIT (prm))
+	  if (prm->upper_limit.is_null == false)
 	    {
-	      PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) max, (float *) max, &error);
+	      *((float *) max) = PRM_GET_FLOAT (prm->upper_limit);
+	      if (PRM_DIFFERENT_UNIT (prm))
+		{
+		  PRM_ADJUST_FOR_GET_FLOAT_TO_FLOAT (prm, (float *) max, (float *) max, &error);
+		}
 	    }
-	}
-      else
-	{
-	  *((float *) max) = FLT_MAX;
+	  else
+	    {
+	      *((float *) max) = FLT_MAX;
+	    }
 	}
     }
   else if (PRM_IS_BIGINT (prm))
     {
-      if (prm->lower_limit.is_null == false)
+      if (min != nullptr)
 	{
-	  *((UINT64 *) min) = PRM_GET_BIGINT (prm->lower_limit);
-	  if (PRM_DIFFERENT_UNIT (prm))
+	  if (prm->lower_limit.is_null == false)
 	    {
-	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) min, (UINT64 *) min, &error);
+	      *((UINT64 *) min) = PRM_GET_BIGINT (prm->lower_limit);
+	      if (PRM_DIFFERENT_UNIT (prm))
+		{
+		  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) min, (UINT64 *) min, &error);
+		}
 	    }
-	}
-      else
-	{
-	  *((UINT64 *) min) = 0ULL;
+	  else
+	    {
+	      *((UINT64 *) min) = 0ULL;
+	    }
 	}
 
-      if (prm->upper_limit.is_null == false)
+      if (max != nullptr)
 	{
-	  *((UINT64 *) max) = PRM_GET_BIGINT (prm->upper_limit);
-	  if (PRM_DIFFERENT_UNIT (prm))
+	  if (prm->upper_limit.is_null == false)
 	    {
-	      PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) max, (UINT64 *) max, &error);
+	      *((UINT64 *) max) = PRM_GET_BIGINT (prm->upper_limit);
+	      if (PRM_DIFFERENT_UNIT (prm))
+		{
+		  PRM_ADJUST_FOR_GET_BIGINT_TO_BIGINT (prm, (UINT64 *) max, (UINT64 *) max, &error);
+		}
 	    }
-	}
-      else
-	{
-	  *((UINT64 *) max) = ULLONG_MAX;
+	  else
+	    {
+	      *((UINT64 *) max) = ULLONG_MAX;
+	    }
 	}
     }
   else
@@ -9687,6 +9708,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *thread_core_count_prm;
+  SYSPRM_PARAM *parallelism_prm;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -9744,6 +9766,13 @@ prm_tune_parameters (void)
 	{
 	  sprintf (newval, "%d", core_upper_limit);
 	  (void) prm_set (thread_core_count_prm, newval, false);
+	}
+
+      parallelism_prm = GET_PRM (PRM_ID_PARALLELISM);
+      if (PRM_GET_INT (parallelism_prm->value) > system_cpu_count)
+	{
+	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (parallelism_prm, newval, false);
 	}
 #endif
     }

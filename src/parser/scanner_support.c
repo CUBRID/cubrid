@@ -767,74 +767,86 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    }
 	  break;
 	case PT_HINT_PARALLEL:
-	  if (node->node_type == PT_SELECT)
-	    {
-	      if (hint_table[i].arg_list != NULL)
-		{
-		  char *p;
-		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
-		  if (*p == '\0')
-		    {
-		      node->info.query.q.select.hint =
-			(PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
-			{
-			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
-			}
-		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
-			{
-			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
-			}
-		      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
-		      hint_table[i].arg_list = NULL;
-		    }
-		}
-	    }
-	  else if (node->node_type == PT_DELETE)
-	    {
-	      if (hint_table[i].arg_list != NULL)
-		{
-		  char *p;
-		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
-		  if (*p == '\0')
-		    {
-		      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
-			{
-			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
-			}
-		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
-			{
-			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
-			}
-		      node->info.delete_.num_parallel_threads = num_parallel_threads;
-		      hint_table[i].arg_list = NULL;
-		    }
-		}
-	    }
-	  else if (node->node_type == PT_UPDATE)
-	    {
-	      if (hint_table[i].arg_list != NULL)
-		{
-		  char *p;
-		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
-		  if (*p == '\0')
-		    {
-		      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
-			{
-			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
-			}
-		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
-			{
-			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
-			}
-		      node->info.update.num_parallel_threads = num_parallel_threads;
-		      hint_table[i].arg_list = NULL;
-		    }
-		}
-	    }
-	  break;
+	  {
+	    static std::once_flag once;
+	    static int prm_lower_limit_parallelism = 0;
+	    static int prm_upper_limit_parallelism = 0;
+
+	    // *INDENT-OFF*
+	    std::call_once(once, [] {
+	      sysprm_get_range(PRM_ID_PARALLELISM, &prm_lower_limit_parallelism, &prm_upper_limit_parallelism);
+	    });
+	    // *INDENT-ON*
+
+	    if (node->node_type == PT_SELECT)
+	      {
+		if (hint_table[i].arg_list != NULL)
+		  {
+		    char *p;
+		    num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		    if (*p == '\0')
+		      {
+			node->info.query.q.select.hint =
+			  (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+			if (num_parallel_threads < prm_lower_limit_parallelism)
+			  {
+			    num_parallel_threads = prm_lower_limit_parallelism;
+			  }
+			else if (num_parallel_threads > prm_upper_limit_parallelism)
+			  {
+			    num_parallel_threads = prm_upper_limit_parallelism;
+			  }
+			node->info.query.q.select.num_parallel_threads = num_parallel_threads;
+			hint_table[i].arg_list = NULL;
+		      }
+		  }
+	      }
+	    else if (node->node_type == PT_DELETE)
+	      {
+		if (hint_table[i].arg_list != NULL)
+		  {
+		    char *p;
+		    num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		    if (*p == '\0')
+		      {
+			node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+			if (num_parallel_threads < prm_lower_limit_parallelism)
+			  {
+			    num_parallel_threads = prm_lower_limit_parallelism;
+			  }
+			else if (num_parallel_threads > prm_upper_limit_parallelism)
+			  {
+			    num_parallel_threads = prm_upper_limit_parallelism;
+			  }
+			node->info.delete_.num_parallel_threads = num_parallel_threads;
+			hint_table[i].arg_list = NULL;
+		      }
+		  }
+	      }
+	    else if (node->node_type == PT_UPDATE)
+	      {
+		if (hint_table[i].arg_list != NULL)
+		  {
+		    char *p;
+		    num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		    if (*p == '\0')
+		      {
+			node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+			if (num_parallel_threads < prm_lower_limit_parallelism)
+			  {
+			    num_parallel_threads = prm_lower_limit_parallelism;
+			  }
+			else if (num_parallel_threads > prm_upper_limit_parallelism)
+			  {
+			    num_parallel_threads = prm_upper_limit_parallelism;
+			  }
+			node->info.update.num_parallel_threads = num_parallel_threads;
+			hint_table[i].arg_list = NULL;
+		      }
+		  }
+	      }
+	    break;
+	  }
 	case PT_HINT_NO_ELIMINATE_JOIN:
 	  if (node->node_type == PT_SELECT)
 	    {

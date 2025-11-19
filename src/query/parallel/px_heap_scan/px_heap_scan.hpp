@@ -30,6 +30,7 @@
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan_result_type.hpp"
 #include "query_manager.h"
+#include "thread_worker_pool.hpp"	/* cubthread::system_core_count */
 
 #define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
 
@@ -117,34 +118,66 @@ namespace parallel_heap_scan
       bool m_g_agg_domain_resolve_need;
   };
 
-  constexpr int log2_floor_constexpr (UINT64 n)
-  {
-    int r = -1;
-    while (n)
-      {
-	n >>= 1;
-	++r;
-      }
-    return r;
-  }
-
-  static constexpr UINT64 px_heap_scan_lower_bound = 100; // TODO: by youngjinj - 4096
-  static constexpr int px_heap_scan_start_degree = 2;
-  static constexpr int px_heap_scan_lower_bound_degree = log2_floor_constexpr (px_heap_scan_lower_bound);
+  static constexpr UINT64 px_heap_scan_parallel_threshold_pages = 100; // TODO: by youngjinj - 4096
+  static constexpr int px_heap_scan_min_parallel_degree = 2;
 
   inline int
-  px_heap_scan_compute_parallel_degree (UINT64 n) noexcept
+  px_heap_scan_compute_parallel_degree (UINT64 num_pages, int hint_degree = -1) noexcept
   {
-    int px_heap_scan_upper_bound_degee = prm_get_integer_value (PRM_ID_PARALLELISM);
+    static std::once_flag once;
+    static int upper_limit = 0;
 
-    if (n < px_heap_scan_lower_bound)
+    // *INDENT-OFF*
+    std::call_once(once, [] {
+      sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &upper_limit);
+      upper_limit = MIN (upper_limit, cubthread::system_core_count ());
+    });
+    // *INDENT-ON*
+
+    /* threshold check */
+    if (num_pages < px_heap_scan_parallel_threshold_pages)
       {
 	return 0;
       }
 
-    int degree = log2_floor_constexpr (n / px_heap_scan_lower_bound) + px_heap_scan_start_degree;
+    /* hint handling */
+    if (hint_degree < 0)
+      {
+	/* fall through */
+      }
+    else if (hint_degree > 1)
+      {
+	return MIN (hint_degree, upper_limit);
+      }
+    else
+      {
+	/* hint 0 or 1 disables parallel execution */
+	return 0;
+      }
 
-    return MIN (degree, px_heap_scan_upper_bound_degee);
+    UINT64 x = num_pages / px_heap_scan_parallel_threshold_pages;
+    int degree;
+
+    // *INDENT-OFF*
+#if defined(__GNUC__) || defined(__clang__)
+    degree = (63 - __builtin_clzll (x)) + px_heap_scan_min_parallel_degree;
+#else
+    {
+      int msb = 0;
+
+      if (x >= (1ull << 32)) { x >>= 32; msb += 32; }
+      if (x >= (1ull << 16)) { x >>= 16; msb += 16; }
+      if (x >= (1ull <<  8)) { x >>=  8; msb +=  8; }
+      if (x >= (1ull <<  4)) { x >>=  4; msb +=  4; }
+      if (x >= (1ull <<  2)) { x >>=  2; msb +=  2; }
+      if (x >= (1ull <<  1)) {           msb +=  1; }
+
+      degree = msb + px_heap_scan_min_parallel_degree;
+    }
+#endif
+    // *INDENT-ON*
+
+    return MIN (degree, upper_limit);
   }
 }
 

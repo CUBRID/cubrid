@@ -97,15 +97,8 @@ extern "C"
 	return er_errid ();
       }
 
-    num_parallel_threads = parallel_heap_scan::px_heap_scan_compute_parallel_degree (num_user_pages);
-
-    if (ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS))
-      {
-	/* use the number of parallel heap scan threads set by hint */
-	num_parallel_threads = MIN (curr_spec->num_parallel_threads,
-				    1000 /* px_heap_scan_upper_bound_degee */); /* TODO: by youngjinj */
-      }
-
+    num_parallel_threads = parallel_heap_scan::px_heap_scan_compute_parallel_degree (num_user_pages,
+			   curr_spec->num_parallel_threads /* hint */);
     if (num_parallel_threads <= 0)
       {
 	/* try single-thread heap scan */
