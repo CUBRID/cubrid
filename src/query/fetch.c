@@ -2848,7 +2848,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  printf ("[3]\n");	//heexoo_test;
 	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
@@ -2872,7 +2871,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  else if (DB_IS_NULL (peek_left))
 	    {
-	      printf ("[4]\n");	//heexoo_test;
 	      dom_status = tp_value_auto_cast (peek_right, arithptr->value, regu_var->domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
@@ -2882,7 +2880,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  else if (DB_IS_NULL (peek_right))
 	    {
-	      printf ("[5]\n");	//heexoo_test;
 	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
@@ -2915,7 +2912,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  else
 	    {
-	      printf ("[6]\n");	//heexoo_test;
 	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
@@ -3032,7 +3028,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       else
 	{
 	  DB_VALUE tmp_val, tmp_val2;
-	  printf ("[7]\n");	//heexoo_test;
 	  dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
@@ -3076,7 +3071,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      PRIM_SET_NULL (arithptr->value);
 	      break;
 	    }
-	  printf ("[8]\n");	//heexoo_test;
 	  dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
@@ -3408,7 +3402,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    goto error;
 	  }
-	printf ("[9]\n");	//heexoo_test;
 	dom_status = tp_value_auto_cast (arithptr->value, arithptr->value, regu_var->domain);
 	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
