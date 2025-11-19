@@ -499,6 +499,8 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
+    thread_sleep (1000);
+
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);
     ctx->m_conn->fd = INVALID_SOCKET;
