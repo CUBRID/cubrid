@@ -4626,12 +4626,11 @@ void
 shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   BTID btid;
-  int dimension, hnsw_M, hnsw_efConstruction, metric_type;
+  int dimension, hnsw_M, hnsw_efConstruction, metric_type, attrid;
   OID class_oid;
   char *ptr;
-  int deduplicate_key_pos = -1;
 
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_btid (request, &btid);
@@ -4639,6 +4638,8 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &hnsw_M);
   ptr = or_unpack_int (ptr, &hnsw_efConstruction);
   ptr = or_unpack_int (ptr, &metric_type);
+  ptr = or_unpack_oid (ptr, &class_oid);
+  ptr = or_unpack_int (ptr, &attrid);
 
   hnsw_build_params params;
 
@@ -4647,7 +4648,7 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   params.ef_construction = hnsw_efConstruction;
   params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
 
-  int error = xhnsw_add_index (thread_p, params, btid);
+  int error = xhnsw_add_index (thread_p, &class_oid, attrid, params, btid);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

@@ -133,7 +133,7 @@ xhnsw_finalize (THREAD_ENTRY *thread_p)
 }
 
 int
-xhnsw_add_index (THREAD_ENTRY *thread_p, const hnsw_build_params &params, BTID &btid_out)
+xhnsw_add_index (THREAD_ENTRY *thread_p, OID* class_oid, int attrid, const hnsw_build_params &params, BTID &btid_out)
 {
   hnsw_index_backend *backend_instance = index_manager->get_backend ();
   if (!backend_instance)
@@ -197,7 +197,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
   OID_SET_NULL (&cur_oid);
   BTID new_btid;
 
-  if (xhnsw_add_index (thread_p, params, new_btid) != NO_ERROR)
+  if (xhnsw_add_index (thread_p, oid, attr_ids[0], params, new_btid) != NO_ERROR)
     {
       assert (false);
       return ER_FAILED;
