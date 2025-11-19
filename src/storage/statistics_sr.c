@@ -309,9 +309,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
       goto error;
     }
 
-  (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error_code);
-
-  error_code = catcls_update_class_stats (thread_p, class_name, cls_info_p->ci_time_stamp, with_fullscan);
+  error_code = catcls_update_class_stats (thread_p, class_name, class_id_p, cls_info_p, with_fullscan);
   if (error_code != NO_ERROR)
     {
       goto error;
