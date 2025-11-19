@@ -7548,14 +7548,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     {
       target = dest;
     }
-  printf ("[START] tp_value_cast_internal: src_type=%d, dest_type=%d, target_type=%d, desired_type=%d\n", original_type,
-	  DB_VALUE_TYPE (dest), DB_VALUE_TYPE (target), desired_type);
-  printf ("---------------%s---------------\n", __func__);
-  printf ("src : ");
-  db_value_fprint (stdout, src);
-  printf ("\ndest (should be NULL)): ");
-  db_value_fprint (stdout, dest);
-  printf ("\n--------------------\n");
   if (DB_VALUE_TYPE (dest) == desired_type && DB_VALUE_TYPE (src) == desired_type)
     {
       status = DOMAIN_COMPATIBLE;
@@ -7731,7 +7723,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -7751,7 +7742,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_short (target, db_get_enum_short (src));
 	  break;
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -7850,7 +7840,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -7870,7 +7859,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_int (target, db_get_enum_short (src));
 	  break;
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -7907,7 +7895,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 	      }
 	  }
-	  assert (false);	// heexoo_test
 	  break;
 	case DB_TYPE_FLOAT:
 	  {
@@ -7996,7 +7983,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -8014,7 +8000,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_bigint (target, db_get_enum_short (src));
 	  break;
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8076,7 +8061,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -8096,7 +8080,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_float (target, (float) db_get_enum_short (src));
 	  break;
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8164,7 +8147,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_double (target, (double) db_get_enum_short (src));
 	  break;
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8194,7 +8176,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;
 		  }
 	      }
@@ -8214,7 +8195,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	    else if (error_code != NO_ERROR)
 	      {
-		assert (false);	// heexoo_test
 		status = DOMAIN_INCOMPATIBLE;
 	      }
 	    else
@@ -8267,7 +8247,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  }
 		else
 		  {
-		    assert (false);	// heexoo_test
 		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
 		  }
 		break;
@@ -8287,7 +8266,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_enum_short (src));
 	  break;
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -8403,7 +8381,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      else
 		{
-		  assert (false);	// heexoo_test
 		  status = DOMAIN_INCOMPATIBLE;
 		}
 	    }
@@ -8655,7 +8632,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      else
 		{
-		  assert (false);	// heexoo_test
 		  status = DOMAIN_INCOMPATIBLE;
 		}
 	    }
@@ -8756,7 +8732,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -10120,7 +10095,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	  break;
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -10153,7 +10127,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    break;
 	  }
 	default:
-	  assert (false);	// heexoo_test
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
@@ -10614,8 +10587,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     }
 
   pr_clear_value (&src_replacement);
-  printf ("[END  ] tp_value_cast_internal: src_type=%d, dest_type=%d, target_type=%d, desired_type=%d\n", original_type,
-	  DB_VALUE_TYPE (dest), DB_VALUE_TYPE (target), desired_type);
   return status;
 }
 
@@ -10635,7 +10606,6 @@ tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  printf ("[DEBUG] tp_value_cast\n");
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
 }
 
@@ -10645,7 +10615,6 @@ tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * de
   TP_COERCION_MODE mode;
 
   mode = TP_FORCE_COERCION;
-  printf ("[DEBUG] tp_value_cast_force\n");
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
 }
 
@@ -11950,17 +11919,7 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 
   if (dom_status != DOMAIN_OVERFLOW)
     {
-      printf ("[28]\n");	//heexoo_test;
-      printf ("---------------%s---------------\n", __func__);
-      printf ("src : ");
-      db_value_fprint (stdout, src);
-      printf ("\n");
       dom_status = tp_value_auto_cast (src, dest, desired_domain);
-      printf ("dest : ");
-      db_value_fprint (stdout, dest);
-      printf ("\n--------------------\n");
-
-
     }
 
   return dom_status;
@@ -12035,7 +11994,6 @@ tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val
     {
       return ER_FAILED;
     }
-  printf ("[29]\n");		//heexoo_test;
   dom_status = tp_value_auto_cast (src, dest, cast_dom);
   if (dom_status != DOMAIN_COMPATIBLE)
     {

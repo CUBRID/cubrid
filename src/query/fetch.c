@@ -2672,7 +2672,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	default:
 	  goto error;
 	}
-      printf ("[1]\n");		//heexoo_test;
       dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -2702,7 +2701,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	default:
 	  goto error;
 	}
-      printf ("[2]\n");		//heexoo_test;
       dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{

@@ -12149,7 +12149,6 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_V
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 
       db_make_null (&new_time_value);
-      printf ("[25]\n");	//heexoo_test;
       TP_DOMAIN_STATUS status = tp_value_auto_cast (value_ptr, &new_time_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -27328,7 +27327,6 @@ coerce_pos:
       param_domain = tp_domain_resolve_default (param_type);
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       /* don't mind error code here, we need to know if param is out of range */
-      printf ("[26]\n");	//heexoo_test;
       (void) tp_value_auto_cast (param, &param_db_bigint, domain);
       if (DB_IS_NULL (&param_db_bigint))
 	{
@@ -27572,7 +27570,6 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       DB_VALUE new_value;
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
       db_make_null (&new_value);
-      printf ("[27]\n");	//heexoo_test;
       TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{

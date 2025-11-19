@@ -390,7 +390,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	}
 
       value->data.ch.info.codeset = LANG_SYS_CODESET;
-      printf ("\n\n######\ndb_value_domain_init: codeset(%d)\n\n", value->data.ch.info.codeset);
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
 
