@@ -800,8 +800,6 @@ db_fprint_value (FILE *fp, const db_value *value)
   string_buffer sb (cubmem::PRIVATE_BLOCK_ALLOCATOR, BUFFER_SIZE);
 
   db_value_printer printer (sb);
-  printer.describe_type (value);
-  sb += '/';
   printer.describe_value (value);
   fprintf (fp, "%.*s", (int) sb.len (), sb.get_buffer ());
 }

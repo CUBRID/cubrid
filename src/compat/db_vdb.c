@@ -807,7 +807,6 @@ db_compile_statement_local (DB_SESSION * session)
 	}
 
       /* now, prepare the statement by calling do_prepare_statement() */
-
       err = do_prepare_statement (parser, statement);
 #if 0
       if (err == ER_QPROC_INVALID_XASLNODE)

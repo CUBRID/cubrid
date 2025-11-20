@@ -7552,7 +7552,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     {
       status = DOMAIN_COMPATIBLE;
       pr_clear_value (&src_replacement);
-      printf ("[END2 ] tp_value_cast_interna\n");
       return status;
     }
 

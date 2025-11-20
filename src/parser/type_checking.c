@@ -20019,23 +20019,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  {
 	    if (err == NO_ERROR)
 	      {
-		printf ("src.buf=%p need_clear=%d, dest.buf=%p need_clear=%d\n",
-			db_src->data.ch.medium.buf, db_src->need_clear, db_dest.data.ch.medium.buf, db_dest.need_clear);
-
-		printf ("\n============================\n");
-		printf ("Before pr_clear_value\n");
-		printf ("db_src : %p, ", (void *) db_src);
-		db_value_print (db_src);
-		printf ("\ndb_dest : %p, ", (void *) &db_dest);
-		db_value_print (&db_dest);
-		printf ("\n============================\n");
 		(void) pr_clear_value (db_src);
-		printf ("Cleared db_src\n");
-		printf ("db_src : %p, ", (void *) db_src);
-		db_value_print (db_src);
-		printf ("\ndb_dest : %p, ", (void *) &db_dest);
-		db_value_print (&db_dest);
-		printf ("\n============================\n\n");
 	      }
 	    else
 	      {
@@ -20046,16 +20030,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 
 	if (err >= 0)
 	  {
-	    printf ("============================\n");
-	    printf ("Before pt_dbval_to_value\n");
-	    printf ("db_dest 2 : ");
-	    db_value_print (&db_dest);
-	    printf ("\n");
 	    temp = pt_dbval_to_value (parser, &db_dest);
-	    printf ("db_dest 3 : ");
-	    db_value_print (&db_dest);
-	    printf ("\ntemp: %s", parser_print_tree (parser, temp));
-	    printf ("\n============================\n");
 	    (void) pr_clear_value (&db_dest);
 	    if (!temp)
 	      {
@@ -20069,8 +20044,7 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 		temp->info.value.print_charset = dest->info.value.print_charset;
 		temp->info.value.print_collation = dest->info.value.print_collation;
 		temp->info.value.is_collate_allowed = dest->info.value.is_collate_allowed;
-		printf ("temp 2 : %s", parser_print_tree (parser, temp));
-		printf ("\n============================\n");
+
 		// clear dest before overwriting; make sure data_type is not affected
 		if (data_type == dest->data_type)
 		  {
