@@ -1568,7 +1568,7 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
 	}
       else
 	{
-	  db_make_fixed_numeric_internal (value, num, precision, scale, byte_size);
+	  db_make_fixed_numeric_internal (value, num, byte_size);
 	}
     }
   else
