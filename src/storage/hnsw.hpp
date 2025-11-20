@@ -43,6 +43,7 @@ typedef struct hnsw_header HNSW_HEADER;
 
 struct hnsw_header
 {
+  int hnsw_id;
   int dimension;
   int hnsw_M;
   int hnsw_efConstruction;
@@ -58,10 +59,11 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
 			HFID *hfids, int dimension, int m, int ef_construction, int metric);
 BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			      HFID *hfids, int dimension, int m, int ef_construction, int metric);
-int hnsw_print_index_info (BTID *btid);
+int hnsw_print_index_info (THREAD_ENTRY *thread_p, BTID *btid);
 
-int hnsw_search_element (int hnsw_id, DB_VALUE *key_dbvalue, int k, OID *rec_oids, float *distances);
-int hnsw_add_element (BTID *btid, OID *oid, float *vector, int n_vectors);
+int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
+			 float *distances);
+int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
 void dump_all_hnsw_indices_to_files ();
 void init_hnsw_index_path ();
 
