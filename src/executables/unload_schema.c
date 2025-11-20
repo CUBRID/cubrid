@@ -628,12 +628,6 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
 	  return NULL;
 	}
 
-      filter_system_classes (&classes);
-      if (classes == NULL)
-	{			/* no user class */
-	  return NULL;
-	}
-
       if (input_filename && required_class_only)
 	{
 	  filter_unrequired_classes (&classes);

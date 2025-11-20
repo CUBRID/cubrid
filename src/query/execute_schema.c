@@ -392,7 +392,6 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
-static int check_ha_repl_constraint (DB_OBJECT * class_obj);
 static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
 
 int ib_thread_count = 0;

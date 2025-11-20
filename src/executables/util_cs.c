@@ -62,6 +62,7 @@
 #include "flashback_cl.h"
 #include "connection_support.h"
 #include "memory_monitor_cl.hpp"
+#include "execute_schema.h"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
@@ -2725,6 +2726,92 @@ error_exit:
   return EXIT_FAILURE;
 #endif /* !CS_MODE */
 #endif /* !WINDOWS */
+}
+
+int
+rkcheck (UTIL_FUNCTION_ARG * arg)
+{
+  int error;
+  DB_OBJLIST *classes, *c;
+  UTIL_ARG_MAP *arg_map = arg->arg_map;
+  char *database_name, *user, *password = NULL;
+  int failed_constraints = 0;
+  char **dbs;
+  char er_msg_file[PATH_MAX];
+
+  database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
+  user = utility_get_option_string_value (arg_map, UNLOAD_USER_S, 0);
+  password = utility_get_option_string_value (arg_map, UNLOAD_PASSWORD_S, 0);
+
+  /* error message log file */
+  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  er_init (er_msg_file, ER_NEVER_EXIT);
+  er_set_print_property (ER_PRINT_TO_CONSOLE);
+
+  if (user == NULL || user[0] == '\0')
+    {
+      user = (char *) "DBA";
+    }
+
+  error = db_restart_ex (arg->command_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
+  if (password == NULL && db_error_code () == ER_AU_INVALID_PASSWORD)
+    {
+      /* console input a password */
+      password =
+	getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_PASSWORD_PROMPT));
+      error = db_restart_ex (arg->command_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
+      if (error != NO_ERROR)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
+	  return ER_FAILED;
+	}
+    }
+  else if (error != NO_ERROR)
+    {
+      /* error */
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
+      return ER_FAILED;
+    }
+
+  classes = db_get_all_classes ();
+  if (classes == NULL)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
+      return ER_FAILED;
+    }
+
+  for (c = classes; c != NULL; c = c->next)
+    {
+      if (db_is_system_class (c->op))
+	{
+	  continue;
+	}
+
+      if (sm_is_replication_class (c->op))
+	{
+	  error = check_ha_repl_constraint (c->op);
+	  if (error != NO_ERROR)
+	    {
+	      // TODO: After fixing the error log, include the table name using sm_get_ch_name(c->op).
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      failed_constraints++;
+	    }
+	}
+    }
+
+  if (classes)
+    {
+      db_objlist_free (classes);
+    }
+
+  if (failed_constraints > 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION, 2, failed_constraints,
+	      er_msg_file);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*

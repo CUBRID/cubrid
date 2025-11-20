@@ -44,6 +44,8 @@
 #include "connection_cl.h"
 #include "util_func.h"
 #include "util_support.h"
+#include "locator_cl.h"
+#include "dbi.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -93,7 +95,8 @@ typedef enum
   SC_APPLYLOGDB,
   GET_SHARID,
   TEST,
-  REPLICATION
+  REPLICATION,
+  SC_RKCHECK
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -222,6 +225,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_TEST       "test"
 #define COMMAND_TYPE_REPLICATION	"replication"
 #define COMMAND_TYPE_REPLICATION_SHORT	"repl"
+#define COMMAND_TYPE_RKCHECK   "rkcheck"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL & ~MASK_PL},
@@ -242,6 +246,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION_SHORT, MASK_HEARTBEAT},
+  {RKCHECK, COMMAND_TYPE_RKCHECK, MASK_HEARTBEAT},
   {-1, "", MASK_ALL}
 };
 
@@ -407,6 +412,9 @@ command_string (int command_type)
       break;
     case REPLICATION:
       command = PRINT_CMD_REPLICATION;
+      break;
+    case RKCHECK:
+      command = PRINT_CMD_RKCHECK;
       break;
     case STOP:
     default:
@@ -3205,6 +3213,33 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
   return status;
 }
 
+static int
+us_hb_rkcheck (HA_CONF * ha_conf, const char *db_name)
+{
+  int pid;
+  int status;
+  char **dbs;
+  int i;
+
+  dbs = ha_conf->db_names;
+
+  for (i = 0; dbs[i] != NULL; i++)
+    {
+      db_name = dbs[i];
+      const char *lw_argv[] = { UTIL_ADMIN_NAME, UTIL_RKCHECK,
+	db_name, NULL,
+	NULL, NULL,
+	NULL,
+	NULL
+      };
+
+      status = proc_execute (UTIL_ADMIN_NAME, lw_argv, true, false, false, &pid);
+    }
+
+  print_result (UTIL_COPYLOGDB, status, START);
+  return status;
+}
+
 #if !defined(WINDOWS)
 static int
 us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
@@ -3917,6 +3952,12 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
     }
 
   status = us_hb_server_start (ha_conf, db_name);
+  if (status != NO_ERROR)
+    {
+      goto ret;
+    }
+
+  status = us_hb_rkcheck (ha_conf, db_name);
   if (status != NO_ERROR)
     {
       goto ret;
@@ -4988,6 +5029,9 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
     case SC_APPLYLOGDB:
       status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
+    case SC_RKCHECK:
+      status = us_hb_rkcheck (ha_conf, db_name_p);
+      break;
     }
 
 ret:
@@ -5131,6 +5175,7 @@ process_heartbeat (int command_type, int argc, const char **argv)
       break;
     case SC_COPYLOGDB:
     case SC_APPLYLOGDB:
+    case SC_RKCHECK:
       status = process_heartbeat_util (&ha_conf, command_type, argc, argv);
       break;
     case REPLICATION:
