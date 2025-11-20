@@ -134,6 +134,8 @@ namespace parallel_heap_scan
     });
     // *INDENT-ON*
 
+    assert (upper_limit >= 0);
+
     /* threshold check */
     if (num_pages < px_heap_scan_parallel_threshold_pages)
       {
@@ -176,6 +178,8 @@ namespace parallel_heap_scan
     }
 #endif
     // *INDENT-ON*
+
+    assert (degree >= 0);
 
     return MIN (degree, upper_limit);
   }

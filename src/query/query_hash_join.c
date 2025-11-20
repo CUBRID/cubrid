@@ -29,6 +29,7 @@
 #include "object_representation.h"	/* TP_DOMAIN */
 #include "perf_monitor.h"	/* perfmon_get_from_statistic, PSTAT_... */
 #include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
+#include "px_heap_scan.hpp"	/* parallel_heap_scan::px_heap_scan_compute_parallel_degree */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
@@ -111,7 +112,8 @@ static int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 			      HASH_SCAN_KEY * temp_key);
 
 /* Hash Join Parallel */
-static HASHJOIN_STATUS hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
+static HASHJOIN_STATUS hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+					   HASHJOIN_CONTEXT * single_context);
 
 /* Hash Join Split Info */
 static int hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
@@ -769,12 +771,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->key_cnt = merge_info->ls_column_cnt;
 
   manager->during_join_pred = xasl->during_join_pred;
-#if defined (SERVER_MODE)
-  manager->max_parallel_workers =
-    (xasl->parallelism < 0) ? prm_get_integer_value (PRM_ID_PARALLELISM) : xasl->parallelism;
-#else
-  manager->max_parallel_workers = 0;
-#endif /* defined (SERVER_MODE) */
+  manager->max_parallel_workers = xasl->parallelism;
 
   manager->query_id = query_id;
   manager->val_descr = val_descr;
@@ -1193,12 +1190,14 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
       goto error_exit;
     }
 
-  status = hjoin_try_parallel (thread_p, manager);
+#if defined (SERVER_MODE)
+  status = hjoin_try_parallel (thread_p, manager, single_context);
   single_context->status = status;
   if (status == HASHJOIN_STATUS_ERROR)
     {
       goto error_exit;
     }
+#endif /* defined (SERVER_MODE) */
 
   switch (status)
     {
@@ -1343,6 +1342,7 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 
   min_tuple_cnt =
     (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
+  assert (min_tuple_cnt >= 0);
 
   part_cnt =
     CEIL_PTVDIV ((sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) * min_tuple_cnt,
@@ -1933,10 +1933,14 @@ error_exit:
  *           - HASHJOIN_STATUS_PARALLEL: Parallel execution is applied.
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
+ *   single_context(in): Hash join context for single-threaded execution.
  */
 static HASHJOIN_STATUS
-hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
 {
+  QFILE_LIST_ID *outer_list_id, *inner_list_id;
+  INT64 min_page_cnt;
+
   THREAD_ENTRY *main_thread_p = NULL;
   void *raw_memory = NULL;
   parallel_query::hash_join::worker_pool_manager * px_worker_pool_manager = NULL;
@@ -1944,17 +1948,35 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+  assert (single_context != NULL);
+  assert (single_context == &manager->single_context);
+
+#if !defined (SERVER_MODE)
+  assert (false);
+#endif /* defined (SERVER_MODE) */
+
+  outer_list_id = single_context->outer.list_id;
+  inner_list_id = single_context->inner.list_id;
+  assert (outer_list_id != NULL);
+  assert (inner_list_id != NULL);
 
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
+  /* check if pages are enough for parallel-thread hash join */
+  min_page_cnt =
+    (outer_list_id->page_cnt < inner_list_id->page_cnt) ? outer_list_id->page_cnt : inner_list_id->page_cnt;
+  assert (min_page_cnt >= 0);
+
+  manager->max_parallel_workers =
+    parallel_heap_scan::px_heap_scan_compute_parallel_degree (min_page_cnt, manager->max_parallel_workers);
   if (manager->max_parallel_workers <= 1)
     {
+      /* try single-thread hash join */
       assert (manager->px_worker_pool_manager == NULL);
       return HASHJOIN_STATUS_PARTITION;
     }
 
-#if defined (SERVER_MODE)
   main_thread_p = (thread_p->m_px_orig_thread_entry == NULL) ? thread_p : thread_p->m_px_orig_thread_entry;
 
   // *INDENT-OFF*
@@ -2029,7 +2051,6 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     {
       assert_release_error (er_errid () != NO_ERROR);
     }
-#endif /* defined (SERVER_MODE) */
 
   if (er_errid () == ER_INTERRUPTED)
     {
