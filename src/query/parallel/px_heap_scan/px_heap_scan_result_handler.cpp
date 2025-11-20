@@ -143,7 +143,14 @@ namespace parallel_heap_scan
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
-	/* do nothing */
+	for (QFILE_LIST_ID *list_id : m_.writer_results)
+	  {
+	    if (list_id != nullptr && list_id->type_list.type_cnt > 0)
+	      {
+		qfile_destroy_list (thread_p, list_id);
+	      }
+	  }
+	m_.writer_results.clear();
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -221,7 +228,7 @@ namespace parallel_heap_scan
 	    }
 	}
 	size = tl.writer_result_p->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
-	tl.writer_result_p->tpl_descr.f_valp = (DB_VALUE **) db_private_alloc (thread_p, size);
+	tl.writer_result_p->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
 	if (tl.writer_result_p->tpl_descr.f_valp == NULL)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
@@ -231,19 +238,6 @@ namespace parallel_heap_scan
 	    return;
 	  }
 	size = tl.writer_result_p->type_list.type_cnt * sizeof (bool);
-	tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache = (bool *) db_private_alloc (thread_p, size);
-	if (tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	    m_err_messages_p->move_top_error_message_to_this();
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    /* error occurred, return false to stop the writer */
-	    return;
-	  }
-	for (int i = 0; i < tl.writer_result_p->type_list.type_cnt; i++)
-	  {
-	    tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache[i] = false;
-	  }
 	tl.tpl_buf.tpl = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
 	if (tl.tpl_buf.tpl == nullptr)
 	  {
@@ -292,10 +286,7 @@ namespace parallel_heap_scan
 	assert (tl.writer_result_p->last_pgptr == nullptr);
 	if (tl.writer_result_p != nullptr && tl.writer_result_p->tpl_descr.f_valp != nullptr)
 	  {
-	    db_private_free (thread_p, tl.writer_result_p->tpl_descr.f_valp);
-	    db_private_free (thread_p, tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache);
-	    tl.writer_result_p->tpl_descr.f_valp = nullptr;
-	    tl.writer_result_p->tpl_descr.clear_f_val_at_clone_decache = nullptr;
+	    free_and_init (tl.writer_result_p->tpl_descr.f_valp);
 	  }
 	tl.writer_result_p = nullptr;
 	if (tl.tpl_buf.tpl != nullptr)
@@ -473,15 +464,6 @@ namespace parallel_heap_scan
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
 		  if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 		    {
-		      for (QFILE_LIST_ID *list_id : m_.writer_results)
-			{
-			  if (list_id != nullptr && list_id->type_list.type_cnt > 0)
-			    {
-			      qfile_destroy_list (thread_p, list_id);
-			    }
-			}
-		      m_.writer_results.clear();
-		      m_.result_p = nullptr;
 		      return S_ERROR;
 		    }
 		}
@@ -507,6 +489,7 @@ namespace parallel_heap_scan
 		qfile_destroy_list (thread_p, list_id);
 	      }
 	  }
+	m_.writer_results.clear();
 	if (m_.result_p != nullptr)
 	  {
 	    if (dest->tuple_cnt > 0)

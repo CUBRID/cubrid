@@ -3307,6 +3307,52 @@ pt_is_define_vars (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 }
 
 /*
+ * pt_has_path_expr () - check if a statement has path expr
+ * return	: true if the statement has path expr
+ * parser (in)	: parser context
+ * stmt (in)	: statement
+ */
+bool
+pt_has_path_expr (PARSER_CONTEXT * parser, PT_NODE * stmt)
+{
+  bool pt_has_path_expr = false;
+
+  parser_walk_tree (parser, stmt, pt_is_path_expr, &pt_has_path_expr, NULL, NULL);
+
+  return pt_has_path_expr;
+}
+
+/*
+ * pt_is_path_expr () - check if a node is a path expr
+ * return : node
+ * parser (in) : parser context
+ * node (in)   : node
+ * arg (in)    :
+ * continue_walk (in) :
+ */
+PT_NODE *
+pt_is_path_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *is_path_expr = (bool *) arg;
+  *continue_walk = PT_CONTINUE_WALK;
+  assert (is_path_expr != NULL);
+
+  if (*is_path_expr)
+    {
+      /* stop checking, there already is a parameter in the statement */
+      return node;
+    }
+
+  if (pt_is_attr (node) && node->node_type == PT_DOT_)
+    {
+      *is_path_expr = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
  * pt_has_analytic () -
  *   return: true if statement has an analytic function in its parse tree
  *   parser(in):
@@ -11698,6 +11744,12 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	  if (spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
+	      /* to skip aliased name at rewriting for mariadb and etc. */
+	      if (spec->info.spec.entity_name
+		  && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
+		{
+		  spec->info.spec.range_var = NULL;
+		}
 	    }
 
 	  t_name = (char *) target->info.name.original;

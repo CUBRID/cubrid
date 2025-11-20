@@ -16861,7 +16861,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && qo_plan_skip_orderby (qo_plan) && !qo_plan_multi_range_opt (qo_plan))
+	  if (qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
+	      && !qo_plan_multi_range_opt (qo_plan))
 	    {
 	      orderby_skip = true;
 
@@ -18753,7 +18754,15 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
     {
       pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
+      if (statement->info.insert.spec->info.spec.remote_server_name->node_type == PT_NAME)
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
@@ -20567,7 +20576,15 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (from && from->info.spec.remote_server_name)
     {
       pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
+      if (from->info.spec.remote_server_name->node_type == PT_NAME)
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
@@ -21263,7 +21280,15 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   if (from && from->info.spec.remote_server_name)
     {
       pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
+      if (from->info.spec.remote_server_name->node_type == PT_NAME)
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{

@@ -88,6 +88,19 @@ namespace parallel_query
     db_private_free (thread_p, this);
   }
 
+  void worker_manager::wait_workers ()
+  {
+    if (m_reserved_workers == 0)
+      {
+	return;
+      }
+
+    while (m_working_workers.load () > 0)
+      {
+	;
+      }
+  }
+
   void worker_manager::push_task (cubthread::entry_task *task)
   {
     m_working_workers.fetch_add (1, std::memory_order_release);
