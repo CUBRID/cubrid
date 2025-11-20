@@ -5045,6 +5045,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
    */
   return NO_ERROR;
 
+#if 0
   /* determine invalid grants */
   map_grant_list (grant_list, owner);
 
@@ -5133,6 +5134,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
     }
 
   return (error);
+#endif
 }
 
 /*
