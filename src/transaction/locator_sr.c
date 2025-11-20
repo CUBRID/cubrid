@@ -231,6 +231,9 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
+/* lob */
+static int lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
+
 /*
  * locator_initialize () - Initialize the locator on the server
  *
@@ -13954,7 +13957,8 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 
   for (int i = 0; i < attrid_arr_length; i++)
     {
-      sprintf (rv_path, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid_arr[i]);
+      ret = lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
+
       log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
       es_make_dirs (rv_path, NULL);
@@ -13983,16 +13987,31 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
   addr.pgptr = NULL;
   addr.vfid = NULL;
 
-  if (attrid == -1)		/* DROP TABLE */
-    {
-      snprintf (rv_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
-      log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
-    }
-  else				/* DROP LOB COLUMN */
-    {
-      snprintf (rv_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
-      log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
-    }
+  ret = lob_make_dir_path (rv_path, hfid, attrid);
+
+  log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
 
   return ret;
+}
+
+static int
+lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
+{
+  int ret;
+
+  if (attrid == -1)		/* Remove all LOB directories */
+    {
+      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+    }
+  else
+    {
+      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
+    }
+
+  if (ret < 0 || ret >= PATH_MAX)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
