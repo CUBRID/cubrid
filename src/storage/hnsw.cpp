@@ -133,6 +133,8 @@ xhnsw_initialize (THREAD_ENTRY *thread_p)
 int
 xhnsw_finalize (THREAD_ENTRY *thread_p)
 {
+  assert (index_manager != nullptr);
+
   index_manager->save_all_indices (thread_p);
   return NO_ERROR;
 }
