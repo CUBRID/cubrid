@@ -1019,7 +1019,6 @@ pt_dbval_to_value (PARSER_CONTEXT * parser, const DB_VALUE * val)
       result->data_type = NULL;
       break;
 
-
       /* explicitly treat others as an error condition */
     case DB_TYPE_VARIABLE:
     case DB_TYPE_SUB:

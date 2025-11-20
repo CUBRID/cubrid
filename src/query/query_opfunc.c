@@ -2408,7 +2408,6 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	{
 	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
 	}
-
       dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -6486,7 +6485,6 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
   int result;
   HL_HEAPID save_heapid = 0;
 
-
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
 
@@ -6533,7 +6531,6 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		    }
 
 		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
-
 		  if (save_heapid != 0)
 		    {
 		      (void) db_change_private_heap (thread_p, save_heapid);
@@ -6545,8 +6542,6 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		      return NULL;
 		    }
 
-
-		  /* *** KEEP ORIGINAL ASSERT EXACTLY AS-IS *** */
 		  assert (dom_type == DB_VALUE_TYPE (peek_value_p)
 			  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));
 		}

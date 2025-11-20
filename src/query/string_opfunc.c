@@ -24819,7 +24819,7 @@ db_bit_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
       db_make_null (result_value);
       return NO_ERROR;
     }
-  else if (QSTR_IS_BIT (src_type))
+  else if (QSTR_IS_BIT (src_type) || src_type == DB_TYPE_BLOB)
     {
       error_status = db_create_fbo (result_value, DB_TYPE_BFILE);
       if (error_status == NO_ERROR)
@@ -24865,7 +24865,7 @@ db_char_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
       return NO_ERROR;
     }
 
-  if (QSTR_IS_ANY_CHAR (src_type))
+  if (QSTR_IS_ANY_CHAR (src_type) || src_type == DB_TYPE_CLOB)
     {
       error_status = db_create_fbo (result_value, DB_TYPE_BFILE);
       if (error_status == NO_ERROR)
@@ -25051,7 +25051,7 @@ db_char_to_cfile (const DB_VALUE * src_value, DB_VALUE * result_value)
       return NO_ERROR;
     }
 
-  if (QSTR_IS_ANY_CHAR (src_type))
+  if (QSTR_IS_ANY_CHAR (src_type) || src_type == DB_TYPE_CLOB)
     {
       error_status = db_create_fbo (result_value, DB_TYPE_CFILE);
       if (error_status == NO_ERROR)

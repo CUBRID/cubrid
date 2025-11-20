@@ -11452,6 +11452,10 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	case PT_TYPE_BLOB:
 	  common_type = PT_TYPE_NONE;
 	  break;
+
+	default:
+	  common_type = PT_TYPE_NONE;
+	  break;
 	}
     }
 
@@ -19655,8 +19659,6 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
 
   /* do type checking */
   tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
-
-
   if (pt_has_error (parser))
     {
       tree = NULL;

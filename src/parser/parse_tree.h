@@ -159,7 +159,6 @@ struct json_t;
 	  ((t) == PT_TYPE_VARNCHAR) || \
 	  ((t) == PT_TYPE_BIT)      || \
 	  ((t) == PT_TYPE_VARBIT))
-// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 
 #define PT_IS_NATIONAL_CHAR_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_NCHAR)      || \
@@ -174,12 +173,10 @@ struct json_t;
 	  ((t) == PT_TYPE_VARCHAR)   || \
 	  ((t) == PT_TYPE_NCHAR)     || \
 	  ((t) == PT_TYPE_VARNCHAR))
-// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 
 #define PT_IS_BIT_STRING_TYPE(t) \
         ( ((t) == PT_TYPE_BIT)      || \
 	  ((t) == PT_TYPE_VARBIT))
-// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 
 #define PT_IS_COMPLEX_TYPE(t) \
         ( ((t) == PT_TYPE_MONETARY)  || \
@@ -245,7 +242,6 @@ struct json_t;
 	  ((t) == PT_TYPE_VARBIT)   || \
 	  ((t) == PT_TYPE_BIT)	    || \
 	  ((t) == PT_TYPE_ENUMERATION))
-// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 
 #define PT_IS_LOBFILE_TYPE(t) \
         ( ((t) == PT_TYPE_BFILE)  || \
@@ -260,10 +256,10 @@ struct json_t;
           PT_IS_LOBFILE_TYPE(t))
 
 #define PT_HAS_COLLATION(t) \
-        ( ((t) == PT_TYPE_CHAR)        || \
-	  ((t) == PT_TYPE_VARCHAR)     || \
-	  ((t) == PT_TYPE_NCHAR)       || \
-	  ((t) == PT_TYPE_VARNCHAR)    || \
+        ( ((t) == PT_TYPE_CHAR)     || \
+	  ((t) == PT_TYPE_VARCHAR)  || \
+	  ((t) == PT_TYPE_NCHAR)    || \
+	  ((t) == PT_TYPE_VARNCHAR) || \
 	  ((t) == PT_TYPE_ENUMERATION))
 
 #define PT_VALUE_GET_BYTES(node) \

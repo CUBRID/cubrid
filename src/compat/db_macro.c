@@ -341,7 +341,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       break;
 
     case DB_TYPE_BLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;
@@ -367,7 +366,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       break;
 
     case DB_TYPE_CLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       if (precision == DB_DEFAULT_PRECISION)
 	{
 	  value->domain.char_info.length = DB_MAX_LOB_PRECISION;

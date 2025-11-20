@@ -21,7 +21,6 @@
  */
 
 #ident "$Id$"
-#include "stack_dump.h"
 #include "config.h"
 
 #include <stdio.h>

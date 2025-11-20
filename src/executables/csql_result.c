@@ -363,7 +363,6 @@ csql_results (const CSQL_ARGUMENT * csql_arg, DB_QUERY_RESULT * result, DB_QUERY
     {
       if (csql_Error_code == CSQL_ERR_SQL_ERROR)
 	{
-	  assert (false);
 	  goto error;
 	}
       else

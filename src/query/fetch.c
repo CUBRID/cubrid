@@ -2586,15 +2586,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST) && arithptr->opcode == T_CAST_WRAP)
 	    {
-	      assert (dom_status == DOMAIN_COMPATIBLE);
 	      dom_status = tp_value_cast (peek_right, arithptr->value, arithptr->domain, false);
-	      assert (dom_status == DOMAIN_COMPATIBLE);
 	    }
 	  else
 	    {
-	      assert (dom_status == DOMAIN_COMPATIBLE);
 	      dom_status = tp_value_cast_force (peek_right, arithptr->value, arithptr->domain, false);
-	      assert (dom_status == DOMAIN_COMPATIBLE);
 	    }
 
 	  if (dom_status != DOMAIN_COMPATIBLE)
@@ -2672,6 +2668,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	default:
 	  goto error;
 	}
+
       dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -2701,6 +2698,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	default:
 	  goto error;
 	}
+
       dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -3028,6 +3026,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       else
 	{
 	  DB_VALUE tmp_val, tmp_val2;
+
 	  dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
@@ -3071,6 +3070,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      PRIM_SET_NULL (arithptr->value);
 	      break;
 	    }
+
 	  dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
@@ -3402,6 +3402,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  {
 	    goto error;
 	  }
+
 	dom_status = tp_value_auto_cast (arithptr->value, arithptr->value, regu_var->domain);
 	if (dom_status != DOMAIN_COMPATIBLE)
 	  {

@@ -12833,9 +12833,8 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	      else
 		{
 		  DB_TYPE lhs_dbtype;
-		  bool a = (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
-			    || lhs->data_type != NULL);
-		  assert_release (a);
+		  assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
+				  || lhs->data_type != NULL);
 		  lhs_dbtype = pt_type_enum_to_db (lhs->type_enum);
 
 		  if (rhs->node_type != PT_HOST_VAR)
@@ -12913,11 +12912,9 @@ pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs)
 	    {
 	      bool rhs_is_collection_with_str = false;
 	      PT_NODE *cast_dt = NULL;
-	      if (!PT_IS_LOB_TYPE (lhs->type_enum))
-		{
-		  assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
-				  || lhs->data_type != NULL);
-		}
+
+	      assert_release (!(PT_IS_STRING_TYPE (lhs->type_enum) || lhs->type_enum == PT_TYPE_NUMERIC)
+			      || lhs->data_type != NULL);
 
 	      if (PT_IS_COLLECTION_TYPE (rhs->type_enum) && lhs->data_type == NULL && rhs->data_type != NULL)
 		{

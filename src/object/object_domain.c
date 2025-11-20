@@ -78,7 +78,7 @@
 
 #define ARE_COMPARABLE(typ1, typ2)                        \
     ((typ1 == typ2) ||                                    \
-     (QSTR_IS_CHAR(typ1) && QSTR_IS_CHAR(typ2)) ||       \
+     (QSTR_IS_CHAR(typ1) && QSTR_IS_CHAR(typ2)) ||    \
      (QSTR_IS_NATIONAL_CHAR(typ1) && QSTR_IS_NATIONAL_CHAR(typ2)))
 
 #define DBL_MAX_DIGITS    ((int)ceil(DBL_MAX_EXP * log10((double) FLT_RADIX)))
@@ -91,7 +91,6 @@
 	  ((t1) == DB_TYPE_VARNCHAR && (t2) == DB_TYPE_VARCHAR) ||  \
 	  ((t1) == DB_TYPE_BIT      && (t2) == DB_TYPE_VARBIT) ||   \
 	  ((t1) == DB_TYPE_VARBIT   && (t2) == DB_TYPE_BIT))
-
 
 #define TP_NUM_MIDXKEY_DOMAIN_LIST      (10)
 
@@ -271,7 +270,6 @@ TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
   {NULL, NULL, &tp_Midxkey, DOMAIN_INIT3}
 };
 TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };	/* todo: remove me */
-
 TP_DOMAIN tp_Bfile_domain = { NULL, NULL, &tp_Bfile, DOMAIN_INIT };
 TP_DOMAIN tp_Cfile_domain = { NULL, NULL, &tp_Cfile, DOMAIN_INIT };
 
@@ -9939,7 +9937,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    int max_size;
 	    char *new_string;
 	    int convert_error;
-	    assert (status != DOMAIN_INCOMPATIBLE);
+
 	    max_size = ((db_get_string_length (src) + 3) / 4) + 1;
 	    new_string = (char *) db_private_alloc (NULL, max_size);
 	    if (!new_string)
@@ -10635,7 +10633,7 @@ tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest, const TP_D
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  printf ("[DEBUG] tp_value_cast_preserve_domain\n");
+
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, true);
 }
 
@@ -10656,7 +10654,7 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest, const TP_
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-  printf ("[DEBUG] tp_value_cast_no_domain_select\n");
+
   return tp_value_cast_internal (src, dest, desired_domain, mode, false, false);
 }
 
@@ -11248,6 +11246,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	  if (can_compare != NULL)
 	    {
 	      *can_compare = false;
+
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (vtype1),
 		      pr_type_name (vtype2));
 	    }
@@ -11273,7 +11272,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	      else if (db_get_string_collation (v1) == db_get_string_collation (v2))
 		{
 		  common_coll = db_get_string_collation (v1);
-		  assert (common_coll != -1);
 		}
 	      else if (TP_IS_CHAR_TYPE (vtype1) && (use_collation_of_v1 || use_collation_of_v2))
 		{
@@ -11294,7 +11292,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		      assert (use_collation_of_v2 == true);
 		      common_coll = db_get_string_collation (v2);
 		    }
-		  assert (common_coll != -1);
+
 		  codeset = lang_get_collation (common_coll)->codeset;
 
 		  if (db_get_string_codeset (v1) != codeset)
@@ -11316,7 +11314,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 			}
 
 		      assert (data_status == DATA_STATUS_OK);
-		      assert (common_coll != -1);
 
 		      v1 = &tmp_char_conv;
 		    }
@@ -11339,7 +11336,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 			}
 
 		      assert (data_status == DATA_STATUS_OK);
-		      assert (common_coll != -1);
 
 		      v2 = &tmp_char_conv;
 		    }
@@ -11348,7 +11344,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		       (db_get_string_codeset (v1) == db_get_string_codeset (v2)))
 		{
 		  LANG_RT_COMMON_COLL (db_get_string_collation (v1), db_get_string_collation (v2), common_coll);
-		  assert (common_coll != -1);
 		}
 	      else if ((TP_IS_LOB_TYPE (vtype1) || TP_IS_LOB_TYPE (vtype2)))
 		{
@@ -11942,9 +11937,6 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * des
 {
   TP_DOMAIN_STATUS status;
 
-  printf ("[START] tp_value_auto_cast: src(%d), dest(%d), desired_domain(%d)\n", DB_VALUE_TYPE (src),
-	  DB_VALUE_TYPE (dest), TP_DOMAIN_TYPE (desired_domain));
-
   status = tp_value_cast (src, dest, desired_domain, false);
   if (status != DOMAIN_COMPATIBLE)
     {
@@ -11956,8 +11948,7 @@ tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * des
 	  er_clear ();
 	}
     }
-  printf ("[END  ] tp_value_auto_cast: src(%d), dest(%d), desired_domain(%d)\n", DB_VALUE_TYPE (src),
-	  DB_VALUE_TYPE (dest), TP_DOMAIN_TYPE (desired_domain));
+
   return status;
 }
 
@@ -11993,6 +11984,7 @@ tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val
     {
       return ER_FAILED;
     }
+
   dom_status = tp_value_auto_cast (src, dest, cast_dom);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
