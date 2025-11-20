@@ -13976,7 +13976,6 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 int
 xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
 {
-  char dirbuf[PATH_MAX];
   char rv_path[PATH_MAX];
   int ret = NO_ERROR;
   LOG_DATA_ADDR addr;
