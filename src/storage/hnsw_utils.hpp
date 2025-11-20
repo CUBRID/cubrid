@@ -17,7 +17,7 @@
  */
 
 //
-// hnsw_storage_utils.hpp
+// hnsw_utils.hpp
 //
 
 #pragma once
@@ -200,7 +200,6 @@ template <typename at> at misaligned_load (void const *ptr) noexcept
   return v;
 }
 
-
 template <typename at> class misaligned_ref_gt
 {
     using element_t = at;
@@ -331,5 +330,216 @@ template <typename at> class misaligned_ptr_gt
     bool operator>= (misaligned_ptr_gt const &other) const noexcept
     {
       return ptr_ >= other.ptr_;
+    }
+};
+
+template <typename at, typename other_at = at> at exchange (at &obj, other_at&& new_value)
+{
+  at old_value = std::move (obj);
+  obj = std::forward<other_at> (new_value);
+  return old_value;
+}
+
+/**
+ *  @brief  Similar to `std::priority_queue`, but allows raw access to underlying
+ *          memory and always keeps the data sorted. Ideal for small collections
+ *          under 128 elements.
+ */
+template <typename element_at,                                //
+	  typename comparator_at = std::less<void>,           // <void> is needed before C++14.
+	  typename allocator_at = std::allocator<element_at>> //
+class sorted_buffer_gt
+{
+  public:
+    using element_t = element_at;
+    using comparator_t = comparator_at;
+    using allocator_t = allocator_at;
+
+    static_assert (std::is_trivially_destructible<element_t>(), "This heap is designed for trivial structs");
+    static_assert (std::is_trivially_copy_constructible<element_t>(), "This heap is designed for trivial structs");
+
+    using value_type = element_t;
+
+  private:
+    element_t *elements_;
+    std::size_t size_;
+    std::size_t capacity_;
+
+  public:
+    sorted_buffer_gt() noexcept : elements_ (nullptr), size_ (0), capacity_ (0) {}
+
+    sorted_buffer_gt (sorted_buffer_gt &&other) noexcept
+      : elements_ (exchange (other.elements_, nullptr)), size_ (exchange (other.size_, 0)),
+	capacity_ (exchange (other.capacity_, 0)) {}
+
+    sorted_buffer_gt &operator= (sorted_buffer_gt &&other) noexcept
+    {
+      std::swap (elements_, other.elements_);
+      std::swap (size_, other.size_);
+      std::swap (capacity_, other.capacity_);
+      return *this;
+    }
+
+    sorted_buffer_gt (sorted_buffer_gt const &) = delete;
+    sorted_buffer_gt &operator= (sorted_buffer_gt const &) = delete;
+
+    ~sorted_buffer_gt() noexcept
+    {
+      reset();
+    }
+
+    void reset() noexcept
+    {
+      if (elements_)
+	allocator_t{}.deallocate (elements_, capacity_);
+      elements_ = nullptr;
+      capacity_ = 0;
+      size_ = 0;
+    }
+
+    inline bool empty() const noexcept
+    {
+      return !size_;
+    }
+    inline std::size_t size() const noexcept
+    {
+      return size_;
+    }
+    inline std::size_t capacity() const noexcept
+    {
+      return capacity_;
+    }
+    inline element_t const &top() const noexcept
+    {
+      return elements_[size_ - 1];
+    }
+    inline void clear() noexcept
+    {
+      size_ = 0;
+    }
+
+    /*
+        static inline std::size_t ceil2 (std::size_t v) noexcept
+        {
+          v--;
+          v |= v >> 1;
+          v |= v >> 2;
+          v |= v >> 4;
+          v |= v >> 8;
+          v |= v >> 16;
+    #ifdef USEARCH_64BIT_ENV
+          v |= v >> 32;
+    #endif
+          v++;
+          return v;
+        }
+    */
+
+    static inline std::size_t ceil2 (std::size_t v) noexcept
+    {
+      if (v <= 1)
+	{
+	  return 1;
+	}
+
+#if INTPTR_MAX == INT64_MAX
+      return 1ull << (64 - __builtin_clzl (v - 1));
+#else
+      return 1u << (32 - __builtin_clz (v - 1));
+#endif
+    }
+
+
+    bool reserve (std::size_t new_capacity) noexcept
+    {
+      if (new_capacity < capacity_)
+	{
+	  return true;
+	}
+
+      new_capacity = ceil2 (new_capacity);
+      new_capacity = (std::max<std::size_t>) (new_capacity, (std::max<std::size_t>) (capacity_ * 2u, 16u));
+      auto allocator = allocator_t{};
+      auto new_elements = allocator.allocate (new_capacity);
+      if (!new_elements)
+	{
+	  return false;
+	}
+
+      if (size_)
+	{
+	  std::memcpy (new_elements, elements_, size_ * sizeof (element_t));
+	}
+      if (elements_)
+	{
+	  allocator.deallocate (elements_, capacity_);
+	}
+
+      elements_ = new_elements;
+      capacity_ = new_capacity;
+      return true;
+    }
+
+    inline void insert_reserved (element_t &&element) noexcept
+    {
+      std::size_t slot = size_ ? std::lower_bound (elements_, elements_ + size_, element, &less) - elements_ : 0;
+      std::size_t to_move = size_ - slot;
+      element_t *source = elements_ + size_ - 1;
+      for (; to_move; --to_move, --source)
+	{
+	  source[1] = source[0];
+	}
+      elements_[slot] = element;
+      size_++;
+    }
+
+    /**
+    *  @return `true` if the entry was added, `false` if it wasn't relevant enough.
+    */
+    inline bool insert (element_t &&element, std::size_t limit) noexcept
+    {
+      std::size_t slot = size_ ? std::lower_bound (elements_, elements_ + size_, element, &less) - elements_ : 0;
+      if (slot == limit)
+	{
+	  return false;
+	}
+      std::size_t to_move = size_ - slot - (size_ == limit);
+      element_t *source = elements_ + size_ - 1 - (size_ == limit);
+      for (; to_move; --to_move, --source)
+	{
+	  source[1] = source[0];
+	}
+      elements_[slot] = element;
+      size_ += size_ != limit;
+      return true;
+    }
+
+    inline element_t pop() noexcept
+    {
+      size_--;
+      element_t result = elements_[size_];
+      elements_[size_].~element_t();
+      return result;
+    }
+
+    void sort_ascending() noexcept {}
+    inline void shrink (std::size_t n) noexcept
+    {
+      size_ = (std::min<std::size_t>) (n, size_);
+    }
+
+    inline element_t *data() noexcept
+    {
+      return elements_;
+    }
+    inline element_t const *data() const noexcept
+    {
+      return elements_;
+    }
+
+  private:
+    static bool less (element_t const &a, element_t const &b) noexcept
+    {
+      return comparator_t{} (a, b);
     }
 };

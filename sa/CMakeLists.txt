@@ -514,6 +514,8 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/hnsw_usearch_disk.cpp
   ${STORAGE_DIR}/hnsw.cpp
   ${STORAGE_DIR}/hnsw_api.cpp
+  # ${STORAGE_DIR}/hnsw_storage_mem.cpp
+  ${STORAGE_DIR}/hnsw_storage_disk.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/hnsw_storage.hpp
