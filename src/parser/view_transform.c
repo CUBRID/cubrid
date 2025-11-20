@@ -5438,6 +5438,9 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
   derived->info.query.q.select.use_hash = agg_sel->info.query.q.select.use_hash;
   agg_sel->info.query.q.select.use_hash = NULL;
 
+  derived->info.query.q.select.num_parallel_threads = agg_sel->info.query.q.select.num_parallel_threads;
+  agg_sel->info.query.q.select.num_parallel_threads = 0;
+
   derived->info.query.q.select.from = agg_sel->info.query.q.select.from;
   agg_sel->info.query.q.select.from = NULL;
 
