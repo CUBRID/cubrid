@@ -124,6 +124,11 @@ static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
+const int _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
+  1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15,
+  15, 15, 16, 16, 17, 17, 18, 18, 18
+};
+
 #if 0				// used in phase-3
 typedef enum fp_value_type
 {
@@ -249,7 +254,7 @@ static int compare_mantissa_same_exponent (const uint8_t * u_src, const uint8_t 
 static bool
 numeric_is_negative (DB_C_NUMERIC arg)
 {
-  return (arg[0] & 0x80) ? true : false;
+  return (arg[0] & NUMERIC_VALUE_SIGN_BIT_MASK) ? true : false;
 }
 
 /*
@@ -928,7 +933,7 @@ numeric_is_long (DB_C_NUMERIC arg)
 	}
     }
 
-  return (arg[digit] & 0x80) == (pad & 0x80) ? true : false;
+  return (arg[digit] & NUMERIC_VALUE_SIGN_BIT_MASK) == (pad & NUMERIC_VALUE_SIGN_BIT_MASK) ? true : false;
 }
 
 /*
@@ -963,7 +968,7 @@ numeric_is_bigint (DB_C_NUMERIC arg)
 	}
     }
 
-  return (arg[digit] & 0x80) == (pad & 0x80) ? true : false;
+  return (arg[digit] & NUMERIC_VALUE_SIGN_BIT_MASK) == (pad & NUMERIC_VALUE_SIGN_BIT_MASK) ? true : false;
 }
 
 /*
@@ -1852,7 +1857,7 @@ numeric_is_longnum_value (DB_C_NUMERIC arg)
 	    }
 	}
 
-      if (!(arg[i] & 0x80))
+      if (!(arg[i] & NUMERIC_VALUE_SIGN_BIT_MASK))
 	{
 	  return true;
 	}
@@ -1868,7 +1873,7 @@ numeric_is_longnum_value (DB_C_NUMERIC arg)
 	    }
 	}
 
-      if (arg[i] & 0x80)
+      if (arg[i] & NUMERIC_VALUE_SIGN_BIT_MASK)
 	{
 	  return true;
 	}

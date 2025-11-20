@@ -91,8 +91,7 @@ STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, con
 STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
 static void db_make_fp_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num);
-static void db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int precision,
-					    const int scale, const int byte_size);
+static void db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int byte_size);
 STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
 				   const int byte_size, const bool is_floating_point) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
@@ -1526,13 +1525,10 @@ db_make_fp_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num)
  * return :
  * value(out) :
  * num(in):
- * precision(in):
- * scale(in):
  * byte_size(in):
  */
 static void
-db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
-				const int byte_size)
+db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int byte_size)
 {
   memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - byte_size), num, byte_size);
 }

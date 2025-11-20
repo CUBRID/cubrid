@@ -8370,7 +8370,7 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 
 	      if (value->data.num.header.scale < 0)
 		{
-		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | 0x80;
+		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
 		  header[1] = -(DB_VALUE_NUMERIC_HEADER_SCALE (value));
 		}
 	      else
@@ -8413,7 +8413,7 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     {
       int header_size = 2;
       int precision = num[0] & 0x7F;
-      bool is_negative_scale = (num[0] & 0x80) != 0;
+      bool is_negative_scale = (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
       int scale = is_negative_scale ? -num[1] : num[1];
 
       error = db_make_numeric (value, num + header_size, precision, scale, DB_NUMERIC_BUF_SIZE, true);
@@ -8425,7 +8425,7 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       byte_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
 
-      if (num[0] & 0x80)
+      if (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK)
 	{
 	  memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - byte_size);
 	}
@@ -8646,7 +8646,7 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 
 	      if (DB_VALUE_NUMERIC_HEADER_SCALE (value) < 0)
 		{
-		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | 0x80;
+		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
 		  header[1] = -(DB_VALUE_NUMERIC_HEADER_SCALE (value));
 		}
 	      else
@@ -8728,7 +8728,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	  size -= header_size;
 
 	  int precision = header[0] & 0x7F;
-	  bool is_negative_scale = (header[0] & 0x80) != 0;
+	  bool is_negative_scale = (header[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
 	  int scale = is_negative_scale ? -(header[1]) : header[1];
 
 	  (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, precision, scale, DB_NUMERIC_BUF_SIZE, true);
@@ -8741,7 +8741,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
 	  size = DB_ALIGN (size, INT_ALIGNMENT);
 
-	  if (num[0] & 0x80)
+	  if (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK)
 	    {
 	      memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - size);
 	    }
