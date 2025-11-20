@@ -367,6 +367,7 @@ css_net_send_no_block (SOCKET fd, const char *buffer, int size)
  *   nbytes(in): count of bytes will be read
  *   timeout(in): timeout in milli-second
  */
+#include <sys/ioctl.h>
 int
 css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 {
@@ -421,8 +422,22 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	}
       else
 	{
-	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	  if (po[0].revents & POLLERR || ((po[0].revents & POLLHUP) && ! (po[0].revents & POLLIN)))
 	    {
+	      int nbytes = 0;
+	      if (ioctl (fd, FIONREAD, &nbytes) >= 0)
+		{
+		  if (nbytes > 0)
+		    {
+		      printf ("[css_readn] Warning: %d bytes of data pending in buffer before handling POLLERR/POLLHUP (fd = %d)\n", nbytes,
+			      fd);
+		    }
+		  else
+		    {
+		      printf ("[css_readn] No pending data in buffer (fd = %d)\n", fd);
+		    }
+		}
+
 	      errno = EINVAL;
 	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
 			    strerror (errno));
