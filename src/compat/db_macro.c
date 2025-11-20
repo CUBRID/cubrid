@@ -153,7 +153,7 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   /* It's important to initialize the codeset of the data portion since it is considered domain information.  It
    * doesn't matter what we set it to, since it will be reset correctly when data is stored in the DB_VALUE by one of
    * the db_make* function. */
-  value->data.ch.info.codeset = INTL_CODESET_NONE;
+  value->data.ch.info.codeset = 0;
   value->domain.general_info.type = type;
   value->domain.numeric_info.precision = precision;
   value->domain.numeric_info.scale = scale;
