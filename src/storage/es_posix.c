@@ -115,7 +115,7 @@ es_get_unique_name (char *dirname1, char *dirname2, const char *metaname, char *
  * dirname1(in): first level directory name
  * dirname2(in): second level directory name
  */
-extern int
+int
 es_make_dirs (const char *dirname1, const char *dirname2)
 {
   char dirbuf[PATH_MAX];
