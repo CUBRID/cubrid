@@ -16449,6 +16449,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	   * happening before making adjustments */
 
 	  ANALYTIC_INFO analytic_info, analytic_info_clone;
+	  ANALYTIC_EVAL_TYPE *eval;
+	  ANALYTIC_TYPE *a_func_list;
 	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
 	  int idx, final_idx, final_count, *sort_adjust = NULL;
 	  bool no_optimization_done = false;
@@ -16633,12 +16635,38 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  xasl->proc.buildlist.a_eval_list =
 	    pt_optimize_analytic_list (parser, &analytic_info, select_node->info.query.order_by, &no_optimization_done);
 
-	  ANALYTIC_EVAL_TYPE *eval;
 	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
 	    {
 	      eval->curr_group_tuple_count = 0;
 	      eval->curr_sort_key_tuple_count = 0;
-	      eval->is_sorted = (eval->sort_list == NULL && xasl->limit_row_count == NULL) ? true : false;
+	      eval->is_sorted = true;
+
+	      for (a_func_list = eval->head; a_func_list && eval->is_sorted; a_func_list = a_func_list->next)
+		{
+		  switch (a_func_list->function)
+		    {
+		    case PT_LEAD:
+		    case PT_LAG:
+		    case PT_NTH_VALUE:
+		      eval->is_sorted = false;
+		      break;
+		    case PT_ROW_NUMBER:
+		    case PT_RANK:
+		      if (xasl->limit_row_count == NULL)
+			{
+			  eval->is_sorted = false;
+			}
+		      break;
+
+		    default:
+		      if (xasl->limit_row_count != NULL)
+			{
+			  eval->is_sorted = false;
+			}
+		      break;
+		    }
+		}
+	      eval->is_sorted = (eval->sort_list == NULL && eval->is_sorted) ? true : false;
 	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
@@ -16740,7 +16768,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  select_list_ex = NULL;
 
 	  /* register initial outlist */
-	  xasl->outptr_list = buildlist->a_outptr_list_ex;
+	  xasl->outptr_list = (xasl->proc.buildlist.a_eval_list
+			       && xasl->proc.buildlist.a_eval_list->
+			       is_sorted) ? buildlist->a_outptr_list_interm : buildlist->a_outptr_list_ex;
 
 	  /* all done */
 	  goto analytic_exit;

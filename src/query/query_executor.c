@@ -1200,37 +1200,29 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
+	  && xasl->proc.buildlist.a_eval_list->is_sorted)
 	{
 	  buildlist = &xasl->proc.buildlist;
 	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
 	    {
-	      if (a_eval_list->is_sorted)
+	      if (fetch_val_list
+		  (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true) != NO_ERROR)
 		{
-		  if (fetch_val_list
-		      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl,
-		       true) != NO_ERROR)
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+		{
+		  ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
+		  if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
-
-		  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
-		    {
-		      ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
-		      if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-
-		      if (a_func_list->function == PT_ROW_NUMBER)
-			{
-			  pr_clone_value (a_func_list->out_value, a_func_list->value);
-			}
-		    }
-
-		  a_eval_list->curr_group_tuple_count++;
-		  a_eval_list->curr_sort_key_tuple_count++;
 		}
+
+	      a_eval_list->curr_group_tuple_count++;
+	      a_eval_list->curr_sort_key_tuple_count++;
 	    }
 	}
 
@@ -19691,6 +19683,78 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
     }
 
   return bf2df_str_compare (string1, (int) db_get_string_size (value1), string2, (int) db_get_string_size (value2));
+}
+
+
+static int
+qexec_resolve_domains_for_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, VAL_DESCR * vd)
+{
+  DB_VALUE dbval;
+  int error = NO_ERROR;
+
+  db_make_null (&dbval);
+
+  /* fetch operand value, analytic regulator variable should only contain constants */
+  if (fetch_copy_dbval (thread_p, &func_p->operand, vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if ((func_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
+      && !DB_IS_NULL (&dbval))
+    {
+      /* set function default domain when late binding */
+      switch (func_p->function)
+	{
+	case PT_COUNT:
+	case PT_COUNT_STAR:
+	  func_p->domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
+	  break;
+
+	case PT_AVG:
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
+	  func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  break;
+
+	case PT_SUM:
+	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
+	    {
+	      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	    }
+	  else
+	    {
+	      func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	    }
+	  break;
+
+	default:
+	  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	  break;
+	}
+
+      if (func_p->domain == NULL)
+	{
+	  error = ER_FAILED;
+	  return error;
+	}
+
+      /* coerce operand */
+      if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
+	{
+	  error = ER_FAILED;
+	  return error;
+	}
+
+      func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
+      db_value_domain_init (func_p->value, func_p->opr_dbtype, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+    }
+
+  return NO_ERROR;
 }
 
 /*
