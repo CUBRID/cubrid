@@ -31,6 +31,10 @@
 #error Does not belong to server module
 #endif /* defined (SERVER_MODE) */
 
+#ifndef __cplusplus
+#error Requires C++
+#endif // not c++
+
 #include <stdio.h>
 #include <stdlib.h>
 
