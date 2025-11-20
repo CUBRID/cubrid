@@ -4266,7 +4266,6 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_VARNCHAR:
-    case DB_TYPE_CLOB:
       {
 	int def_size = db_get_string_size (def);
 	const char *def_str_p = db_get_string (def);
