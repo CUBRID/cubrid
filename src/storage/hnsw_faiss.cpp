@@ -451,7 +451,7 @@ BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_clas
   int attr_offset = 0;
   OID_SET_NULL (&cur_oid);
 
-  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
+  BTID *new_btid = xhnsw_add_index (thread_p, oid, attr_ids[0], btid, dimension, m, ef_construction, metric);
 
   while (cur_class < n_classes && HFID_IS_NULL (&hfids[cur_class]))
     {
@@ -515,7 +515,7 @@ BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int 
   int attr_offset = 0;
   OID_SET_NULL (&cur_oid);
 
-  BTID *new_btid = xhnsw_add_index (thread_p, btid, dimension, m, ef_construction, metric);
+  BTID *new_btid = xhnsw_add_index (thread_p, oid, attr_ids[0], btid, dimension, m, ef_construction, metric);
   if (new_btid == NULL)
     {
       return NULL;
