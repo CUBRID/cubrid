@@ -554,20 +554,11 @@ msgcat_final (void)
  *
  * Note:
  */
-#include "stack_dump.h"
-
 char *
 msgcat_message (int cat_id, int set_id, int msg_id)
 {
   char *msg;
   static char *empty = (char *) "";
-
-  // if (msg_id == 71)
-  //   {
-  //     printf ("\n\n===========\nmsg debug\n");
-  //     er_dump_call_stack (stdout);
-  //     assert (false);
-  //   }
 
   if (cat_id < 0 || ((size_t) cat_id) >= MSGCAT_SYSTEM_DIM)
     {
