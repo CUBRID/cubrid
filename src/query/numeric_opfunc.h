@@ -145,16 +145,16 @@ extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * d
 extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
-extern int fp_numeric_precision_to_bytes (int prec);
-extern int fp_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				    FP_VALUE_TYPE * num_op_type);
-extern int fp_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				    FP_VALUE_TYPE * num_op_type);
-extern int fp_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				    FP_VALUE_TYPE * num_op_type);
-extern int fp_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-				    FP_VALUE_TYPE * num_op_type);
-extern int fp_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
+extern int float_numeric_precision_to_bytes (int prec);
+extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				       FP_VALUE_TYPE * num_op_type);
+extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				       FP_VALUE_TYPE * num_op_type);
+extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				       FP_VALUE_TYPE * num_op_type);
+extern int float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
+				       FP_VALUE_TYPE * num_op_type);
+extern int float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);

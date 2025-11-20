@@ -13858,7 +13858,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 #if 1				// used in phase-1, phase-2
 	      {
 		TP_DOMAIN *tmp_domain = domain;
-		if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		if (float_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		  {
 		    PT_ERRORc (parser, o1, er_msg ());
 		    return 0;
@@ -13880,7 +13880,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 	      }
 #else // used in phase-3
-	      if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
+	      if (float_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
@@ -14563,7 +14563,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 #if 1				// used in phase-1, phase-2
 	      {
 		TP_DOMAIN *tmp_domain = domain;
-		if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		if (float_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		  {
 		    PT_ERRORc (parser, o1, er_msg ());
 		    return 0;
@@ -14585,7 +14585,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 	      }
 #else // used in phase-3
-	      if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
+	      if (float_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
@@ -14986,7 +14986,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 #if 1				// used in phase-1, phase-2
 	      {
 		TP_DOMAIN *tmp_domain = domain;
-		error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
+		error = float_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
 		if (error == ER_IT_DATA_OVERFLOW)
 		  {
 		    goto overflow;
@@ -15013,7 +15013,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 	      }
 #else
-	      error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
+	      error = float_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
 	      if (error == ER_IT_DATA_OVERFLOW)
 		{
 		  goto overflow;
@@ -15121,7 +15121,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		{
 #if 1				// used in phase-1, phase-2
 		  TP_DOMAIN *tmp_domain = domain;
-		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
+		  error = float_numeric_db_value_div (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;
@@ -15149,7 +15149,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		  return 1;
 #else // used in phase-3
-		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
+		  error = float_numeric_db_value_div (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;
