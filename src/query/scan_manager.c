@@ -163,7 +163,7 @@ static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt);
 static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
-				   int key_minmax, bool is_iss);
+				   int key_minmax, bool is_iss, TP_DOMAIN ** outer_table_midxkey_build_domain);
 static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
@@ -305,6 +305,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->need_count_only = false;
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
+  isidp->outer_table_midxkey_build_domain = NULL;
 }
 
 /*
@@ -1463,7 +1464,8 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
  */
 static int
 scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexable, TP_DOMAIN * btree_domainp,
-			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss)
+			int num_term, REGU_VARIABLE * func, VAL_DESCR * vd, int key_minmax, bool is_iss,
+			TP_DOMAIN ** outer_table_midxkey_build_domain)
 {
   int ret = NO_ERROR;
   DB_VALUE *val = NULL;
@@ -1481,11 +1483,12 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
   bool need_new_setdomain = false;
   TP_DOMAIN *idx_setdomain = NULL, *vals_setdomain = NULL;
-  TP_DOMAIN *idx_dom = NULL, *val_dom = NULL, *dom = NULL, *next = NULL;
+  TP_DOMAIN *idx_dom = NULL, *val_dom = NULL, *dom = NULL, *next = NULL, *prebuilt_domain = NULL;
   DB_TYPE idx_type_id;
   TP_DOMAIN dom_buf;
   DB_VALUE *coerced_values = NULL;
   bool *has_coerced_values = NULL;
+  bool new_setdomain_built = *outer_table_midxkey_build_domain != NULL;
 
   *indexable = false;
 
@@ -1642,6 +1645,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
    * Remaining key values including MAX_COLUMN position will be filled as NULL
    * by btree_coerce_key at the end of this function.
    */
+  if (new_setdomain_built)
+    {
+      prebuilt_domain = (*outer_table_midxkey_build_domain)->setdomain;
+    }
   for (operand = func->value.funcp->operand, idx_dom = idx_setdomain, natts = 0;
        operand != NULL && idx_dom != NULL
        && (midxkey.min_max_val.position == -1 || natts < midxkey.min_max_val.position);
@@ -1662,7 +1669,12 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 	}
 
-      if (need_new_setdomain == true)
+      if (new_setdomain_built)
+	{
+	  dom = prebuilt_domain;
+	  prebuilt_domain = prebuilt_domain->next;
+	}
+      else if (need_new_setdomain == true)
 	{
 	  /* make a value's domain */
 	  val_dom = tp_domain_resolve_value (val, &dom_buf);
@@ -1716,7 +1728,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
     }
 
   /* add more domain to setdomain for partial key */
-  if (need_new_setdomain == true)
+  if (need_new_setdomain == true && !new_setdomain_built)
     {
       assert (dom != NULL);
       if (idx_dom != NULL)
@@ -1748,7 +1760,16 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   or_advance (&buf, or_multi_header_size (idx_ncols));
 
   /* generate multi columns key (values -> midxkey.buf) */
-  for (operand = func->value.funcp->operand, i = 0, dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
+  if (new_setdomain_built)
+    {
+      dom = (*outer_table_midxkey_build_domain)->setdomain;
+    }
+  else
+    {
+      dom = (vals_setdomain != NULL) ? vals_setdomain : idx_setdomain;
+    }
+
+  for (operand = func->value.funcp->operand, i = 0;
        operand != NULL && dom != NULL && (i < natts); operand = operand->next, dom = dom->next, i++)
     {
       if (has_coerced_values != NULL && has_coerced_values[i] == true)
@@ -1810,10 +1831,16 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
 
       midxkey.domain = tp_domain_cache (midxkey.domain);
+      *outer_table_midxkey_build_domain = midxkey.domain;
     }
   else
     {
       midxkey.domain = btree_domainp;
+    }
+
+  if (new_setdomain_built)
+    {
+      midxkey.domain = *outer_table_midxkey_build_domain;
     }
 
   ret = db_make_midxkey (retval, &midxkey);
@@ -1950,7 +1977,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use);
+				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
+				    &iscan_id->outer_table_midxkey_build_domain);
 	}
       else
 	{
@@ -1997,7 +2025,8 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
-				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use);
+				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
+				    &iscan_id->outer_table_midxkey_build_domain);
 	}
       else
 	{

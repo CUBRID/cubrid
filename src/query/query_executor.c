@@ -2004,6 +2004,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
 	      isidp->caches_inited = false;
 	    }
+	  if (isidp->outer_table_midxkey_build_domain)
+	    {
+	      tp_domain_free (isidp->outer_table_midxkey_build_domain);
+	      isidp->outer_table_midxkey_build_domain = NULL;
+	    }
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
 	  isidp = &p->s_id.s.isid;
