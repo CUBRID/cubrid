@@ -716,6 +716,8 @@ retry:
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", suffix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (n < 0)
     {
+      close (rd_fd);
+
       assert (false);
       return ER_ES_INVALID_PATH;
     }
