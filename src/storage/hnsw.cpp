@@ -119,8 +119,13 @@ static hnsw_index_manager *index_manager = nullptr;
 int
 xhnsw_initialize (THREAD_ENTRY *thread_p)
 {
-  index_manager = &hnsw_index_manager::instance();
-  index_manager->create_index_directory();
+  assert (index_manager == nullptr);
+  
+  if (index_manager == nullptr)
+    {
+      index_manager = &hnsw_index_manager::instance();
+      index_manager->create_index_directory();
+    }
 
   return NO_ERROR;
 }
