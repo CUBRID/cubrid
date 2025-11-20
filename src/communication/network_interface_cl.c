@@ -6881,7 +6881,7 @@ btree_class_test_unique (char *buf, int buf_size)
 
 int
 hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hnsw_M, int hnsw_efConstruction,
-                 int metric)
+		int metric)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
