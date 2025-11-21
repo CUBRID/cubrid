@@ -11612,8 +11612,9 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       break;
     case FILE_OOS:
       {
-	assert (false);
-	// break; // spacedb_ftype uninitialized error if uncommented
+	assert_release (false);
+	spacedb_ftype = SPACEDB_HEAP_FILE; // ?????
+	break;
       }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
