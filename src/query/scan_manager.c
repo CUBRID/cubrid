@@ -165,7 +165,8 @@ static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, b
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
 				   int key_minmax, bool is_iss, TP_DOMAIN ** outer_table_midxkey_build_domain);
 static int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
-				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd);
+				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd,
+				       int key_range_idx);
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
@@ -305,7 +306,7 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
   isidp->need_count_only = false;
   isidp->check_not_vacuumed = false;
   isidp->not_vacuumed_res = DISK_VALID;
-  isidp->outer_table_midxkey_build_domain = NULL;
+  isidp->outer_table_midxkey_build_domains = NULL;
 }
 
 /*
@@ -1488,7 +1489,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   TP_DOMAIN dom_buf;
   DB_VALUE *coerced_values = NULL;
   bool *has_coerced_values = NULL;
-  bool new_setdomain_built = *outer_table_midxkey_build_domain != NULL;
+  bool new_setdomain_built = *outer_table_midxkey_build_domain != NULL && !is_iss;
 
   *indexable = false;
 
@@ -1645,6 +1646,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
    * Remaining key values including MAX_COLUMN position will be filled as NULL
    * by btree_coerce_key at the end of this function.
    */
+  if (!need_new_setdomain)
+    {
+      new_setdomain_built = false;
+    }
   if (new_setdomain_built)
     {
       prebuilt_domain = (*outer_table_midxkey_build_domain)->setdomain;
@@ -1909,7 +1914,7 @@ err_exit:
  */
 static int
 scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
-			    INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd)
+			    INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd, int key_range_idx)
 {
   bool indexable = true;
   int key_minmax;
@@ -1978,7 +1983,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
-				    &iscan_id->outer_table_midxkey_build_domain);
+				    &(iscan_id->outer_table_midxkey_build_domains[key_range_idx]));
 	}
       else
 	{
@@ -2026,7 +2031,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
-				    &iscan_id->outer_table_midxkey_build_domain);
+				    &(iscan_id->outer_table_midxkey_build_domains[key_range_idx]));
 	}
       else
 	{
@@ -2271,7 +2276,7 @@ scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_
 
 	  ret =
 	    scan_regu_key_to_index_key (thread_p, &key_ranges[i], &key_vals[i], iscan_id, bts->btid_int.key_type,
-					s_id->vd);
+					s_id->vd, i);
 
 	  if (ret != NO_ERROR)
 	    {
@@ -3330,6 +3335,20 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
     scan_id->scan_stats.multi_range_opt = isidp->multi_range_opt.use;
   }
+
+  if (isidp->outer_table_midxkey_build_domains == NULL && isidp->indx_info->key_info.key_cnt > 0)
+    {
+      isidp->outer_table_midxkey_build_domains =
+	(TP_DOMAIN **) db_private_alloc (thread_p, isidp->indx_info->key_info.key_cnt * sizeof (TP_DOMAIN *));
+      if (isidp->outer_table_midxkey_build_domains == NULL)
+	{
+	  return ER_FAILED;
+	}
+      for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
+	{
+	  isidp->outer_table_midxkey_build_domains[i] = NULL;
+	}
+    }
 
   return ret;
 
@@ -4855,6 +4874,21 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_INDX_SCAN:
       isidp = &scan_id->s.isid;
+
+      if (isidp->outer_table_midxkey_build_domains != NULL)
+	{
+	  for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
+	    {
+	      if (isidp->outer_table_midxkey_build_domains[i])
+		{
+		  tp_domain_free (isidp->outer_table_midxkey_build_domains[i]);
+		  isidp->outer_table_midxkey_build_domains[i] = NULL;
+		}
+	    }
+	  db_private_free_and_init (thread_p, isidp->outer_table_midxkey_build_domains);
+	  isidp->outer_table_midxkey_build_domains = NULL;
+	}
+
       if (isidp->key_vals)
 	{
 	  isidp->key_vals = NULL;
