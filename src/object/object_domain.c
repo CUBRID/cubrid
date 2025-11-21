@@ -11337,14 +11337,9 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		      v2 = &tmp_char_conv;
 		    }
 		}
-	      else if ((TP_IS_CHAR_TYPE (vtype1) && !(TP_IS_LOB_TYPE (vtype1) || TP_IS_LOB_TYPE (vtype2))) &&
-		       (db_get_string_codeset (v1) == db_get_string_codeset (v2)))
+	      else if (TP_IS_CHAR_TYPE (vtype1) && db_get_string_codeset (v1) == db_get_string_codeset (v2))
 		{
 		  LANG_RT_COMMON_COLL (db_get_string_collation (v1), db_get_string_collation (v2), common_coll);
-		}
-	      else if ((TP_IS_LOB_TYPE (vtype1) || TP_IS_LOB_TYPE (vtype2)))
-		{
-		  common_coll = LANG_COLL_DEFAULT;
 		}
 
 	      if (common_coll == -1)
