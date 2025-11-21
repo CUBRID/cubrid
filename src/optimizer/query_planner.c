@@ -11274,7 +11274,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
   /* we must have the first index column appear as the first sort column, so we pretend the number of index_equi
    * columns is zero, to force it to match the sort list and the index columns one-for-one.
    */
-  if (qo_is_index_iss_scan (plan) || index_entryp->constraints->func_index_info != NULL)
+  if (qo_is_index_iss_scan (plan))
     {
       equi_nterms = 0;
     }
@@ -11299,7 +11299,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       goto exit_on_end;		/* nop */
     }
 
-  if (asc_or_desc == PT_DESC || index_entryp->constraints->func_index_info != NULL)
+  if (asc_or_desc == PT_DESC)
     {
       col_type = NULL;		/* nop; do not care asc_or_desc anymore */
     }
@@ -11358,11 +11358,13 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	  break;		/* give up */
 	}
 
-      if (index_entryp->constraints->func_index_info != NULL)
+
+      if (QO_SEG_FUNC_INDEX (seg) == true)
 	{
-	  if (QO_SEG_FUNC_INDEX (seg) == true)
+	  asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
+	  if (col_type)
 	    {
-	      asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
+	      col_type = col_type->next;
 	    }
 	}
       else

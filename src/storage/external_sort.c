@@ -4567,6 +4567,12 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
 	  sort_info_p->output_file = NULL;
 	}
     }
+  /* reopen final output file */
+  error = qfile_reopen_list_as_append_mode (thread_p, origin_list_id);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
 cleanup:
   /* clear input_file for px */
