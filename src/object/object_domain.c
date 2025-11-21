@@ -7558,11 +7558,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
    */
   db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
-  if (TP_IS_CHAR_TYPE (desired_type))
+  if (TP_IS_CHAR_TYPE (desired_type) || desired_type == DB_TYPE_CLOB)
     {
       if (desired_domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
-	  if (TP_IS_CHAR_TYPE (original_type))
+	  if (TP_IS_CHAR_TYPE (original_type) || desired_type == DB_TYPE_CLOB)
 	    {
 	      db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
 					      TP_DOMAIN_COLLATION (desired_domain));
@@ -7597,7 +7597,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  new_elem_dom = tp_domain_copy (elem_dom, false);
 		  elem_dom->next = save_elem_dom_next;
 
-		  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (elem_dom)))
+		  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (elem_dom)) || TP_DOMAIN_TYPE (elem_dom) == DB_TYPE_CLOB)
 		    {
 		      /* for string domains overwrite collation */
 		      new_elem_dom->collation_id = TP_DOMAIN_COLLATION (desired_domain);
