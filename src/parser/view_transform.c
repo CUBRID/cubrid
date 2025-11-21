@@ -4365,11 +4365,6 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
   int num_node = 0, ori_num_node = 0;
   bool result;
 
-  if (!pt_is_select (node))
-    {
-      return false;
-    }
-
   if (PT_IS_VALUE_QUERY (subquery))
     {
       return false;
@@ -4423,8 +4418,8 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
 
   /* substitute attributes for query_spec_columns in statement */
   on_cond = mq_lambda (parser, on_cond, attributes, query_spec_columns);
-
   result = true;
+
   ori_on_cond = spec->info.spec.on_cond;
   pred = on_cond;
   ori_pred = ori_on_cond;
@@ -4438,8 +4433,8 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
       (void) parser_walk_tree (parser, pred, pt_count_name_nodes, &num_node, NULL, NULL);
       (void) parser_walk_tree (parser, ori_pred, pt_count_name_nodes, &ori_num_node, NULL, NULL);
 
-      pred->next = save_next;
-      ori_pred->next = ori_save_next;
+      pred = pred->next = save_next;
+      ori_pred = ori_pred->next = ori_save_next;
 
       /* check if join pred change to const pred */
       if (ori_num_node >= 2 && ori_num_node != num_node)
@@ -4447,8 +4442,6 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
 	  result = false;
 	  break;
 	}
-
-      pred = pred->next;
     }
 
   if (on_cond != NULL)
