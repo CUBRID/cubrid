@@ -11611,11 +11611,9 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_OOS:
-      {
-	assert_release (false);
-	spacedb_ftype = SPACEDB_HEAP_FILE; // ?????
-	break;
-      }
+      assert (false);
+      //TODO: spacedb_ftype = SPACEDB_OOS_FILE;
+      break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
     case FILE_MULTIPAGE_OBJECT_HEAP:

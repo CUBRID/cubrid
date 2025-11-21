@@ -32,6 +32,14 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+struct oos_record_header
+{
+  int total_size;
+  int chunk_index;
+  OID next_chunk_oid;
+};
+using OOS_RECORD_HEADER = struct oos_record_header;
+
 // ****************************************************************************
 // static functions
 // ****************************************************************************
@@ -86,18 +94,19 @@ using namespace oos_log;
 // review point: should it be 8?
 static constexpr int OOS_ALIGNMENT = 8;
 
-
 int
 oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
   FILE_DESCRIPTORS des; // unused
   int err = NO_ERROR;
+
   err = file_create_with_npages (thread_p, FILE_OOS, 1, &des, &oos_vfid);
   if (err != NO_ERROR)
     {
       oos_error ("file_create_with_npages failed");
       return err;
     }
+
   return NO_ERROR;
 }
 
