@@ -137,6 +137,7 @@ static int oos_prepend_record_header (RECDES &rec_in, const OOS_RECORD_HEADER &o
   rec_out.length = rec_in.length + (int)sizeof (OOS_RECORD_HEADER);
   std::memcpy (rec_out.data, &oos_header, (int)sizeof (OOS_RECORD_HEADER));
   std::memcpy (rec_out.data + (int)sizeof (OOS_RECORD_HEADER), rec_in.data, rec_in.length);
+
   return NO_ERROR;
 }
 
@@ -147,16 +148,19 @@ static int oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out,
   assert (&rec_in != &rec_out);
 
   int err;
+
   err = recdes_allocate_data_area (&rec_out, rec_in.length - (int)sizeof (OOS_RECORD_HEADER));
   if (err != NO_ERROR)
     {
       oos_error ("recdes_allocate_data_area failed");
       return err;
     }
+
   rec_out.type = REC_HOME;
   rec_out.length = rec_in.length - (int)sizeof (OOS_RECORD_HEADER);
   std::memcpy (&header_out, rec_in.data, (int)sizeof (OOS_RECORD_HEADER));
   std::memcpy (rec_out.data, rec_in.data + (int)sizeof (OOS_RECORD_HEADER), rec_out.length);
+
   return NO_ERROR;
 }
 
@@ -259,6 +263,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 	oos_error ("oos_prepend_record_header failed");
 	return err;
       }
+
     // oos_prepend_record_header allocates data area for oos_rec
     // therefore, we need to free it after use
     scope_exit oos_rec_freer ([&]()
@@ -274,6 +279,7 @@ static int oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 	oos_error ("spage_insert failed with status %d", sp_status);
 	return ER_FAILED;
       }
+
     assert (slotid != NULL_SLOTID);
 
     try
@@ -335,6 +341,7 @@ static int oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid,
 	    oos_error ("oos_read_within_page failed for chunk index=%d", idx);
 	    return err;
 	  }
+
 	scope_exit defer_free_chunk_recdes ([&]()
 	{
 	  recdes_free_data_area (&chunk_recdes);
@@ -374,6 +381,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES 
       oos_error ("oos_read_within_page: pgbuf_fix failed for volid=%d, pageid=%d", volid, pageid);
       return ER_FAILED;
     }
+
   scope_exit page_unfixer ([&]()
   {
     pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
@@ -395,6 +403,7 @@ static int oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES 
 		 volid, pageid, slotid);
       return err;
     }
+
   return NO_ERROR;
 }
 
@@ -421,6 +430,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   // try reading just one slot
   OOS_RECORD_HEADER first_chunk_header;
   RECDES first_chunk_recdes;
+
   err = oos_read_within_page (thread_p, oid, first_chunk_recdes, first_chunk_header);
   if (err != NO_ERROR)
     {
@@ -471,12 +481,14 @@ static auto_unfix_page_ptr oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFI
 {
   int err = NO_ERROR;
   PAGE_TYPE page_type = PAGE_OOS;
+
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, nullptr);
   if (err)
     {
       oos_error ("file_alloc failed");
       return nullptr;
     }
+
   oos_trace ("allocated new page {volid=%d, pageid=%d}",
 	     vpid_out.volid, vpid_out.pageid);
 
@@ -517,6 +529,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 
   auto [pageid, volid] = recently_inserted_oos_vpid;
   int freespace = spage_get_free_space (thread_p, page_ptr);
+
   oos_trace ("recently inserted page {volid=%d, pageid=%d} has freespace=%d",
 	     volid, pageid, freespace);
 
@@ -545,6 +558,7 @@ oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
     {
       return err;
     }
+
   spage_initialize (thread_p, page, ANCHORED, OOS_ALIGNMENT, false);
   return err;
 }
