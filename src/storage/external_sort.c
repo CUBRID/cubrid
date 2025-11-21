@@ -56,6 +56,7 @@
 #include "px_worker_manager.hpp"
 #include "px_callable_task.hpp"
 #include "px_sort.h"
+#include "parallel.hpp"		/* parallel_query::compute_parallel_degree */
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -4658,43 +4659,31 @@ int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   SORT_INFO *sort_info_p;
-  int parallel_num = 1;
+  int num_parallel_threads = -1;
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      if (sort_info_p->parallelism > 0)
+      num_parallel_threads =
+	parallel_query::compute_parallel_degree (parallel_query::PARALLEL_SORT, sort_info_p->input_file->page_cnt,
+						 sort_info_p->parallelism /* hint */ );
+      if (num_parallel_threads <= 0)
 	{
-	  parallel_num = sort_info_p->parallelism;
-	}
-      else
-	{
-	  parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
-	}
-
-      if (parallel_num <= 1)
-	{
-	  return 1;
-	}
-
-      /* Find the number of parallel processes by page_cnt and tuple_cnt */
-      if (sort_info_p->input_file->page_cnt <= parallel_num || sort_info_p->input_file->tuple_cnt <= parallel_num)
-	{
-	  /* TO_DO : need to check the appropriate number of parallels depending on the number of pages */
+	  /* single process */
 	  return 1;
 	}
 
       /* check worker */
-      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
+      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (num_parallel_threads);
       if (sort_param->px_worker_manager == NULL)
 	{
 	  return 1;
 	}
       else
 	{
-	  return parallel_num;
+	  return num_parallel_threads;
 	}
     }
   else

@@ -27,9 +27,9 @@
 #include "list_file.h"		/* qfile_open_list, qfile_close_list */
 #include "memory_alloc.h"	/* CEIL_PTVDIV */
 #include "object_representation.h"	/* TP_DOMAIN */
+#include "parallel.hpp"		/* parallel_query::compute_parallel_degree */
 #include "perf_monitor.h"	/* perfmon_get_from_statistic, PSTAT_... */
 #include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
-#include "px_heap_scan.hpp"	/* parallel_heap_scan::px_heap_scan_compute_parallel_degree */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
@@ -1969,7 +1969,8 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   assert (min_page_cnt >= 0);
 
   manager->max_parallel_workers =
-    parallel_heap_scan::px_heap_scan_compute_parallel_degree (min_page_cnt, manager->max_parallel_workers);
+    parallel_query::compute_parallel_degree (parallel_query::PARALLEL_HASH_JOIN, min_page_cnt,
+					     manager->max_parallel_workers);
   if (manager->max_parallel_workers <= 1)
     {
       /* try single-thread hash join */

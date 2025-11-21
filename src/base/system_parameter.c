@@ -775,6 +775,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
+#define PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD "parallel_heap_scan_page_threshold"
+#define PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD "parallel_hash_join_page_threshold"
+#define PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD "parallel_sort_page_threshold"
+
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
 // #endregion 
@@ -5086,8 +5090,12 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 4}},
+   {false, {.i = 4}},
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
    {false, {.i = 0}},
-   {false, {.i = 32}},
+#endif
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5100,6 +5108,42 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 100}},
    {false, {.i = 0}},
    {false, {.i = 1000}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER, PRM_TEST_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 4096}},
+   {false, {.i = 4096}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER, PRM_TEST_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 4096}},
+   {false, {.i = 4096}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER, PRM_TEST_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 4096}},
+   {false, {.i = 4096}},
+   {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

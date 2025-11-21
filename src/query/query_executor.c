@@ -85,6 +85,7 @@
 #include "memoize.hpp"
 
 #if SERVER_MODE && !WINDOWS
+#include "parallel.hpp"
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
@@ -15320,39 +15321,34 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      if (!XASL_IS_FLAGED (xasl, XASL_NO_PARALLEL_SUBQUERY) && XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
 			  && xasl->px_executor == nullptr)
 			{
-			  int n_workers_to_reserve = 0;
-			  if (xasl->parallelism == -1)
-			    {
-			      /* NO PARALLEL() HINT */
-			      n_workers_to_reserve = prm_get_integer_value (PRM_ID_PARALLELISM) - 1;
-			    }
-			  else
-			    {
-			      n_workers_to_reserve = xasl->parallelism - 1;
-			    }
+			  int executed_parallelism = 0;
 
-			  if (n_workers_to_reserve <= 0)
+			  executed_parallelism =
+			    parallel_query::compute_parallel_degree (parallel_query::PARALLEL_SUBQUERY, 0,
+								     xasl->parallelism);
+			  if (executed_parallelism <= 0)
 			    {
+			      /* try single-threaded subquery execution */
 			      xasl->executed_parallelism = 0;
 			    }
 			  else
 			    {
-			      using dpool = parallel_query::worker_manager;
-			      using pexec = parallel_query_execute::query_executor;
 			      /* TODO: Temporarily limited to 2. 
 			       * Remove this when exact parallel count is available 
 			       * for better performance with many uncorrelated subqueries.*/
-			      n_workers_to_reserve = 1;
+			      assert (executed_parallelism == 1);
 
-			      dpool *px_worker_manager_p = dpool::try_reserve_workers (n_workers_to_reserve);
+			      using dpool = parallel_query::worker_manager;
+
+			      dpool *px_worker_manager_p = dpool::try_reserve_workers (executed_parallelism);
 			      if (px_worker_manager_p == nullptr || make_parallel_query_executor_recursively
-				  (thread_p, xasl, px_worker_manager_p, n_workers_to_reserve, xasl_state) != true)
+				  (thread_p, xasl, px_worker_manager_p, executed_parallelism, xasl_state) != true)
 				{
 				  xasl->executed_parallelism = 0;
 				}
 			      else
 				{
-				  xasl->executed_parallelism = n_workers_to_reserve + 1;
+				  xasl->executed_parallelism = executed_parallelism + 1 /* main thread */ ;
 				}
 			    }
 			}

@@ -25,16 +25,17 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "error_code.h"
-#include "object_primitive.h"
-#include "perf_monitor.h"
-#include "query_evaluator.h"
 #include "error_context.hpp"
+#include "fetch.h"
+#include "object_primitive.h"
+#include "parallel.hpp"			/* parallel_query::compute_parallel_degree */
+#include "perf_monitor.h"
+#include "px_heap_scan_input_handler_single_table.hpp"
+#include "px_heap_scan_task.hpp"
+#include "query_evaluator.h"
 #include "query_executor.h"
 #include "system.h"
 #include "xasl.h"
-#include "fetch.h"
-#include "px_heap_scan_task.hpp"
-#include "px_heap_scan_input_handler_single_table.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -48,7 +49,7 @@ extern "C"
     HFID *class_hfid = nullptr;
     int num_user_pages = -1;
     parallel_query::worker_manager *worker_manager_p = nullptr;
-    UINT64 num_parallel_threads = -1;
+    int num_parallel_threads = -1;
     int error = NO_ERROR;
 
     assert (thread_p != nullptr);
@@ -97,7 +98,7 @@ extern "C"
 	return er_errid ();
       }
 
-    num_parallel_threads = parallel_heap_scan::px_heap_scan_compute_parallel_degree (num_user_pages,
+    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::PARALLEL_HEAP_SCAN, num_user_pages,
 			   curr_spec->num_parallel_threads /* hint */);
     if (num_parallel_threads <= 0)
       {

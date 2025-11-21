@@ -337,6 +337,7 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   )
 
 set(PARALLEL_QUERY_SOURCES
+  ${PARALLEL_QUERY_DIR}/parallel.cpp
   ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
@@ -346,6 +347,7 @@ set(PARALLEL_QUERY_SOURCES
   )
 
 set(PARALLEL_QUERY_HEADERS
+  ${PARALLEL_QUERY_DIR}/parallel.hpp
   ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
