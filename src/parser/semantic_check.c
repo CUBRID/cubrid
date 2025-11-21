@@ -12248,6 +12248,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  if (!pt_has_error (parser))
 	    {
+	      /* remove unnecessary variable */
 	      node = parser_walk_tree (parser, node, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
 
 	      if (!pt_has_error (parser))
@@ -15725,7 +15726,7 @@ pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func)
 	  continue;
 	}
 
-      if (PT_IS_LOBFILE_TYPE (r->type_enum) || PT_IS_LOB_TYPE (r->type_enum))
+      if (PT_IS_LOB_FAMILY_TYPE (r->type_enum))
 	{
 	  PT_ERRORmf (parser, r, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_ORDERBY_ALLOWED,
 		      pt_short_print (parser, r));
