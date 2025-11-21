@@ -20,51 +20,63 @@
  * scope_exit.hpp
  */
 
-#ifndef _SCOPE_EXIT_HPP_
-#define _SCOPE_EXIT_HPP_
+#pragma once
 
-// Scope Guard: execute something when it goes out of scope (no extra cost when optimization is enabled)
 #include <type_traits>
 #include <utility>
 
-template<typename Callable>//Callable=function, function address, function pointer, functor, lambda, std::function
-class scope_exit final
+template<class F>
+class scope_exit
 {
   public:
-    explicit scope_exit (Callable &&callable) noexcept
-      : m_valid (true)
-      , m_callable (std::is_lvalue_reference<decltype (callable)>::value ? callable : std::forward<Callable> (callable))
-    {}
+    using fun_t = std::decay_t<F>;
 
-    scope_exit (scope_exit &&sg) noexcept
-      : m_valid (sg.m_valid)
-      , m_callable (sg.m_callable)
+    // constructors
+    explicit constexpr scope_exit (F &&f) noexcept (std::is_nothrow_constructible_v<fun_t, F &&>)
+      : active_ (true), f_ (std::forward<F> (f)) {}
+
+    scope_exit (const scope_exit &) = delete;
+    scope_exit &operator= (const scope_exit &) = delete;
+    scope_exit &operator= (scope_exit &&) = delete; // avoid double-run on assign
+
+    constexpr scope_exit (scope_exit &&other) noexcept (std::is_nothrow_move_constructible_v<fun_t>)
+      : active_ (other.active_), f_ (std::move (other.f_))
     {
-      sg.m_valid = false;
+      other.release();
     }
 
-    ~scope_exit() noexcept
+    // destructor calls the functor if engaged
+    ~scope_exit() noexcept (noexcept (std::declval<fun_t &>()()))
     {
-      if (m_valid)
+      if (active_)
 	{
-	  m_callable();
+	  f_();
 	}
     }
 
-    void release() noexcept
+    // control
+    constexpr void release() noexcept
     {
-      m_valid = false;
+      active_ = false;
     }
+    [[nodiscard]] constexpr bool engaged() const noexcept
+    {
+      return active_;
+    }
+
   private:
-    using func_t = std::function<void (void)>;
-
-    bool m_valid;
-    func_t m_callable;
-
-    scope_exit() = delete;
-    scope_exit (scope_exit &) = delete;
-    scope_exit &operator= (const scope_exit &) = delete;
-    scope_exit &operator= (scope_exit &&) = delete;
+    bool active_{false};
+    // [[no_unique_address]] fun_t f_; // EBO when possible <- use this line when C++20 is available later.
+    fun_t f_;
 };
 
-#endif /* _SCOPE_EXIT_HPP_ */
+// CTAD: scope_exit se{[]{}};
+template<class F>
+scope_exit (F) -> scope_exit<std::decay_t<F>>;
+
+template<class F>
+[[nodiscard]] constexpr auto make_scope_exit (F &&f) -> scope_exit<std::decay_t<F>>
+{
+  return scope_exit<std::decay_t<F>> (std::forward<F> (f));
+}
+
