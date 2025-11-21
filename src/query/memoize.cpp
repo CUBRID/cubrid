@@ -860,6 +860,7 @@ namespace memoize
 	hit++;
 	has_range = true;
 	db_change_private_heap (this->m_thread_p, heap_id);
+	restore_heap_id.release();
 	return set_value (v);
       }
 
@@ -878,6 +879,7 @@ namespace memoize
 	v = m_current_value_list.back();
 	m_current_value_list.pop_back();
 	db_change_private_heap (this->m_thread_p, heap_id);
+	restore_heap_id.release();
 	return set_value (v);
       }
     else
