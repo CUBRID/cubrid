@@ -8197,44 +8197,6 @@ loop:
       goto error;
     }
 
-  /*
-   * -------------------------------------------------------------------------
-   * WORKAROUND: Preventing Restore of Post-Backup Transactions
-   * -------------------------------------------------------------------------
-   *
-   * Problem:
-   * The restore process ('restoredb -d backuptime') compares the backup end time
-   * (stored in the backup volume header) with each transaction’s commit timestamp
-   * (LOG_COMMIT / LOG_ABORT).
-   *
-   * Issue:
-   * Since time(NULL) does not guarantee monotonic increase, the commit time
-   * obtained after backup completion can be equal to or earlier than the backup
-   * end time. In such cases, point-in-time restore may include transactions that
-   * were executed after the backup, which should have been excluded.
-   *
-   * Workaround:
-   * Enforce a 1-second delay after setting the backup end time so that any
-   * subsequent transaction obtains a strictly later commit timestamp.
-   *
-   * Limitation:
-   * This workaround resolves timing overlaps for transactions executed
-   * immediately after a backup in the same session, but cannot fully separate
-   * concurrent transactions across sessions due to second-level timestamp limits.
-   *
-   * TODO (Permanent Fix):
-   * - Use millisecond-level precision in LOG_COMMIT / LOG_ABORT timestamps to
-   *   accurately separate concurrent transactions.
-   * -------------------------------------------------------------------------
-   */
-  assert (session.bkup.bkuphdr->end_time > 0);
-
-  do
-    {
-      thread_sleep (1000);
-    }
-  while (session.bkup.bkuphdr->end_time >= time (NULL));
-
 #if defined(SERVER_MODE)
   logpb_destroy_backup_read_worker_pool ();
 #endif
