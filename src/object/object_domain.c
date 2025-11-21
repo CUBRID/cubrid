@@ -5938,7 +5938,7 @@ tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result)
   int ret;
   DB_TYPE type = DB_VALUE_TYPE (value);
 
-  if (!TP_IS_CHAR_TYPE (type))
+  if (!(TP_IS_CHAR_TYPE (type) && TP_IS_LOB_TYPE (type)))
     {
       db_make_double (result, 0);
       return ER_FAILED;
