@@ -13943,7 +13943,6 @@ xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
  * attrid_arr (in): An array that stores LOB attribute ids of the table.
                     When creating the LOB directory, each LOB attribute is distinguished by its id
  * attrid_arr_length (in)	 : Length of the attrid_arr array
- *
  */
 int
 xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attrid_arr_length)
@@ -13972,7 +13971,7 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
  *
  * thread_p (in) : thread_entry
  * hfid (in) : Used to identify the table when removing the LOB directory
- * attrid (in)	 : Used to identify the table's LOB attribute when removing the LOB directory
+ * attrid (in) : Used to identify the table's LOB attribute when removing the LOB directory.
  *
  * NOTE: A LOB directory is created immediately,
  *       whereas deletion is deferred using the log_append_postpone() function and executed at commit time.
@@ -13994,12 +13993,21 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
   return ret;
 }
 
+/*
+ * lob_make_dir_path () - Construct the directory path for the LOB directory.
+ *
+ * lob_path (in) : A buffer that stores the LOB path to be constructed and returned.
+ * hfid (in) : Used to construct the LOB directory.
+ * attrid (in) : Used to construct the LOB directory.
+ *               If attrid is -1, it represents all LOB directories for the table.
+ *               In this case, the path is constructed using the hfid as a prefix.
+ */
 static int
 lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
 {
   int ret;
 
-  if (attrid == -1)		/* Remove all LOB directories */
+  if (attrid == -1)
     {
       ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
     }
