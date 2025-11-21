@@ -1859,8 +1859,15 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	}
       break;
 
-    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      if (dom1->collation_id != dom2->collation_id)
+	{
+	  match = 0;
+	  break;
+	}
+      [[fallthrough]];
+    case DB_TYPE_BLOB:
       if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
 	{
 	  match = dom1->precision == dom2->precision;
@@ -1886,15 +1893,6 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	  match = 1;
 	}
       break;
-
-    case DB_TYPE_CLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-      if (dom1->collation_id != dom2->collation_id)
-	{
-	  match = 0;
-	  break;
-	}
-      [[fallthrough]];
 
     case DB_TYPE_NUMERIC:
       /*
