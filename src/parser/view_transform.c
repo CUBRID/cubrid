@@ -1957,6 +1957,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
 
+  /* select node from UPDATE, DELETE */
+  if (pt_is_select (mainquery) &&
+      (mainquery->info.query.scan_op_type == S_DELETE || mainquery->info.query.scan_op_type == S_UPDATE))
+    {
+      return NON_PUSHABLE;
+    }
+
   /* determine if class_spec is the only spec in the statement */
   is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by, subquery, class_);
   is_only_spec =
