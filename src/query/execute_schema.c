@@ -683,9 +683,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      {
 		HFID lob_hfid = class_->header.ch_heap;
 		error =
-		  lob_create_or_remove_dir (NULL, &lob_hfid,
-					    lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
-					    lob_attrid_arr_length);
+		  locator_lob_create_or_remove_dir (NULL, &lob_hfid,
+						    lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
+						    lob_attrid_arr_length);
 		free (lob_alloc_attrid_arr);
 
 		if (error != NO_ERROR)
@@ -851,7 +851,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		      }
 
 		    lob_attrid_arr[0] = attr.id;
-		    error = lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
+		    error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
 		    if (error != NO_ERROR)
 		      {
 			dbt_abort_class (ctemplate);

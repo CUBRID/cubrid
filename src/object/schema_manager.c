@@ -15816,9 +15816,9 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (lob_attrid_arr_length)
     {
       error =
-	lob_create_or_remove_dir (&old_hfid, insts_hfid,
-				  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
-				  lob_attrid_arr_length);
+	locator_lob_create_or_remove_dir (&old_hfid, insts_hfid,
+					  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
+					  lob_attrid_arr_length);
     }
 
   if (error != NO_ERROR)
@@ -15831,57 +15831,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
 end:
   free (lob_alloc_attrid_arr);
-
-  return error;
-}
-
-/*
- * lob_create_or_remove_dir() - Unified interface for creating or removing LOB directories.
- *   return: error code
- *   old_hfid(in): HFID of an existing LOB directory to remove.
- *   new_hfid(in): HFID for the new LOB directory to create.
- *   lob_attrid_arr(in): Array of LOB attribute IDs used for create/remove operations.
- *   lob_attrid_arr_length(in): Number of elements in lob_attrid_arr.
- *
- * NOTE: This function abstracts the logic of calling lob_create_dir() and lob_remove_dir(),
- *       allowing the caller to handle both operations through a single interface.
- */
-int
-lob_create_or_remove_dir (HFID * old_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
-{
-  int error = NO_ERROR;
-
-  assert (old_hfid != NULL || new_hfid != NULL);
-
-  if (old_hfid != NULL && new_hfid != NULL)	/* truncate case */
-    {
-      error = lob_remove_dir (old_hfid, -1);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-  else if (old_hfid != NULL)
-    {
-      error = lob_remove_dir (old_hfid, lob_attrid_arr[0]);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-  else if (new_hfid != NULL)
-    {
-      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
 
   return error;
 }
