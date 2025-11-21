@@ -716,19 +716,22 @@ if(WIN32)
 endif(WIN32)
 
 # include target_external_dependencies function
-include (expand_dependency)
+include(expand_dependency)
 
-target_include_directories(cubridsa PRIVATE
-  ${FLEX_INCLUDE_DIRS}
-  ${EP_INCLUDES}
+target_include_directories(cubridsa
+  PRIVATE
+    ${FLEX_INCLUDE_DIRS}
+    ${EP_INCLUDES}
   )
 
-target_link_libraries(cubridsa PRIVATE ${EP_LIBS})
-target_link_libraries(cubridsa PUBLIC
-  ${CMAKE_DL_LIBS}
-  stdc++fs 
-  rt
-  cascci
+target_link_libraries(cubridsa
+  PRIVATE
+    ${EP_LIBS}
+  PUBLIC
+    ${CMAKE_DL_LIBS}
+    stdc++fs
+    rt
+    cascci
   )
 
 add_dependencies(cubridsa
@@ -737,7 +740,7 @@ add_dependencies(cubridsa
   gen_loader_grammar
   gen_loader_lexer
   ${EP_TARGETS}
-)
+  )
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})
