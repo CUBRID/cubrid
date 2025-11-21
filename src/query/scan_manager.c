@@ -7923,11 +7923,6 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
 {
   int error;
   regu_variable_list_node *p;
-  int func_attr_index_start = -1;
-  OR_CLASSREP *classrepr = NULL;
-  int classrepr_cacheindex = -1;
-  OR_INDEX *indexp = NULL;
-  int idx;
 
   if (iscan_id == NULL || iscan_id->indx_cov.val_descr == NULL || iscan_id->indx_cov.output_val_list == NULL
       || iscan_id->rest_attrs.attr_cache == NULL)
@@ -7935,28 +7930,8 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
       return ER_FAILED;
     }
 
-  /* 함수 인덱스인 경우 func_attr_index_start 정보를 가져옵니다 */
-  if (iscan_id->indx_cov.func_index_col_id != -1)
-    {
-      classrepr = heap_classrepr_get (thread_p, &iscan_id->cls_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
-      if (classrepr != NULL)
-	{
-	  idx = heap_classrepr_find_index_id (classrepr, &iscan_id->indx_info->btid);
-	  if (idx >= 0)
-	    {
-	      indexp = &classrepr->indexes[idx];
-	      if (indexp->func_index_info != NULL)
-		{
-		  func_attr_index_start = indexp->func_index_info->attr_index_start;
-		}
-	    }
-	  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
-	}
-    }
-
   error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, iscan_id->indx_cov.func_index_col_id,
-					func_attr_index_start, NULL);
+					iscan_id->rest_attrs.attr_cache, -1, NULL);
   if (error != NO_ERROR)
     {
       return error;

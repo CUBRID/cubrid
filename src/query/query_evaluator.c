@@ -2921,23 +2921,6 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 
 	      if (j < filterp->btree_num_attrs)
 		{
-		  /* If this is the function index column itself, we cannot read the original attribute value
-		   * from midxkey because midxkey only contains the function result, not the original attribute value.
-		   * The original attribute value must be read from the heap, so skip it in key-filter. */
-		  if (j == func_idx_col_id)
-		    {
-		      /* Set state to HEAP_READ_ATTRVALUE so it can be read from heap later */
-		      attrvalue = heap_attrvalue_locate (scan_attrsp->attr_ids[i], scan_attrsp->attr_cache);
-		      if (attrvalue != NULL)
-			{
-			  /* Initialize dbvalue to NULL and set state to HEAP_READ_ATTRVALUE */
-			  db_make_null (&attrvalue->dbvalue);
-			  attrvalue->state = HEAP_READ_ATTRVALUE;
-			}
-		      /* Skip this attribute in key-filter - it should be read from heap later */
-		      continue;
-		    }
-
 		  /* now, found the attr */
 
 		  attrvalue = heap_attrvalue_locate (scan_attrsp->attr_ids[i], scan_attrsp->attr_cache);

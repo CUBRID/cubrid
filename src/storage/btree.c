@@ -16668,7 +16668,7 @@ exit_on_error:
 int
 btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTREE_SCAN * bts,
 			      int *btree_att_ids, int btree_num_att, HEAP_CACHE_ATTRINFO * attr_info,
-			      int func_index_col_id, int func_attr_index_start, int *attr_idx_ptr)
+			      int func_index_col_id, int *attr_idx_ptr)
 {
   int i, j, error = NO_ERROR;
   HEAP_ATTRVALUE *attr_value;
@@ -16721,15 +16721,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	  if (filled_match_idx)
 	    {
 	      j = attr_idx_ptr[i];
-	      if (j == -1)
-		{
-		  /* This attribute is not in the index (e.g., function index column's original attribute) */
-		  found = false;
-		}
-	      else
-		{
-		  found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
-		}
+	      found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
 	    }
 	  else
 	    {
@@ -16738,21 +16730,17 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 		{
 		  if (attr_value->attrid == btree_att_ids[j])
 		    {
-		      if (func_index_col_id != -1 && j == func_index_col_id)
+		      found = true;
+		      if (func_index_col_id != -1)
 			{
-			  /* If this is the function index column itself, we cannot read the original attribute value
-			   * from midxkey because midxkey only contains the function result, not the original attribute value.
-			   * The original attribute value must be read from the heap. */
-			  found = false;
-			  if (attr_idx_ptr)
+			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
+			   * in attributes */
+			  if (j >= func_index_col_id)
 			    {
-			      /* Store a special value to indicate this attribute is not in the index */
-			      attr_idx_ptr[i] = -1;
+			      j++;
 			    }
-			  break;
 			}
 
-		      found = true;
 		      break;
 		    }
 		}
@@ -16763,21 +16751,10 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 		}
 	    }
 
-	  if (found && func_attr_index_start != -1 && j >= func_attr_index_start && j < btree_num_att)
-	    {
-	      attr_value->state = HEAP_UNINIT_ATTRVALUE;
-	      attr_value++;
-	      continue;
-	    }
-
 	  if (found == false)
 	    {
-	      /* This attribute is not in the index (e.g., function index column's original attribute).
-	       * It should be read from the heap later. */
-	      db_make_null (&attr_value->dbvalue);
-	      attr_value->state = HEAP_READ_ATTRVALUE;
-	      attr_value++;
-	      continue;
+	      error = ER_FAILED;
+	      goto error;
 	    }
 
 	  if (pr_clear_value (&(attr_value->dbvalue)) != NO_ERROR)
@@ -16857,7 +16834,7 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
   check_validate (bts);
   error = btree_attrinfo_read_dbvalues (thread_p, &(bts->cur_key), bts,
 					filter->btree_attr_ids, filter->btree_num_attrs, attr_info,
-					iscan_id->indx_cov.func_index_col_id, -1, filter->matched_attid_idx_4_readval);
+					iscan_id->indx_cov.func_index_col_id, filter->matched_attid_idx_4_readval);
   if (error != NO_ERROR)
     {
       return error;
