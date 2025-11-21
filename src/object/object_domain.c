@@ -10582,6 +10582,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     }
 
   pr_clear_value (&src_replacement);
+
   return status;
 }
 
@@ -10631,7 +10632,6 @@ tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest, const TP_D
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, true);
 }
 
@@ -10652,7 +10652,6 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest, const TP_
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
-
   return tp_value_cast_internal (src, dest, desired_domain, mode, false, false);
 }
 
