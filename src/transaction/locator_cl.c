@@ -5801,7 +5801,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       if (lob_attrid_arr_length)
 	{
 	  HFID lob_hfid = *hfid;
-	  if (lob_create_or_remove_dir
+	  if (locator_lob_create_or_remove_dir
 	      (NULL, &lob_hfid, lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
 	       lob_attrid_arr_length) != NO_ERROR)
 	    {
@@ -5974,7 +5974,7 @@ locator_remove_class (MOP class_mop)
 	      int attrid_arr[1];
 
 	      attrid_arr[0] = -1;
-	      error_code = lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
+	      error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
@@ -7030,4 +7030,55 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_VERSION_TYPE 
 
   /* We are here because we need to upgrade lock on object. */
   return false;
+}
+
+/*
+ * locator_lob_create_or_remove_dir() - Unified interface for creating or removing LOB directories.
+ *   return: error code
+ *   old_hfid(in): HFID of an existing LOB directory to remove.
+ *   new_hfid(in): HFID for the new LOB directory to create.
+ *   lob_attrid_arr(in): Array of LOB attribute IDs used for create/remove operations.
+ *   lob_attrid_arr_length(in): Number of elements in lob_attrid_arr.
+ *
+ * NOTE: This function abstracts the logic of calling lob_create_dir() and lob_remove_dir(),
+ *       allowing the caller to handle both operations through a single interface.
+ */
+int
+locator_lob_create_or_remove_dir (HFID * old_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
+{
+  int error = NO_ERROR;
+
+  assert (old_hfid != NULL || new_hfid != NULL);
+
+  if (old_hfid != NULL && new_hfid != NULL)	/* truncate case */
+    {
+      error = lob_remove_dir (old_hfid, -1);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (old_hfid != NULL)
+    {
+      error = lob_remove_dir (old_hfid, lob_attrid_arr[0]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (new_hfid != NULL)
+    {
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return error;
 }
