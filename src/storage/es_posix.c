@@ -615,6 +615,8 @@ retry:
 #endif
   if (n < 0)
     {
+      close (rd_fd);
+
       assert (false);
       return ER_ES_INVALID_PATH;
     }
