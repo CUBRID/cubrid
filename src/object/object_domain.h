@@ -232,6 +232,7 @@ typedef enum tp_match
  * TP_IS_BIT_TYPE
  *    Tests to see if the type id is one of the binary string types.
  */
+
 #define TP_IS_BIT_TYPE(typeid) \
   (((typeid) == DB_TYPE_VARBIT) || ((typeid) == DB_TYPE_BIT))
 
@@ -239,6 +240,7 @@ typedef enum tp_match
  * TP_IS_CHAR_TYPE
  *    Tests to see if a type is any one of the character types.
  */
+
 #define TP_IS_CHAR_TYPE(typeid) \
   (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
    ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
