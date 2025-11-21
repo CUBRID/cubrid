@@ -95,7 +95,7 @@ using namespace oos_log;
 static constexpr int OOS_ALIGNMENT = 8;
 
 int
-oos_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
+oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 {
   FILE_DESCRIPTORS des; // unused
   int err = NO_ERROR;
