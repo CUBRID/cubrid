@@ -2328,7 +2328,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			  }
 		      }
 
-		    if (pt_is_expr_node (left) || pt_is_function (left))
+		    if (!pt_is_name_node (left))
 		      {
 			/* append to the expr list */
 			left_elist = parser_append_node (pt_point (parser, left), left_elist);
@@ -2339,7 +2339,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
 		      }
 
-		    if (pt_is_expr_node (rght) || pt_is_function (rght))
+		    if (!pt_is_name_node (rght))
 		      {
 			/* append to the expr list */
 			rght_elist = parser_append_node (pt_point (parser, rght), rght_elist);
@@ -5610,13 +5610,13 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	      goto error_exit;
 	    }
 
-	  if (pt_is_expr_node (outer_part) || pt_is_function (outer_part))
+	  if (!pt_is_name_node (outer_part))
 	    {
 	      outer_info->expr_list = parser_append_node (pt_point (parser, outer_part), outer_info->expr_list);
 	      bitset_add (&outer_info->exprs_set, term_index);
 	    }
 
-	  if (pt_is_expr_node (inner_part) || pt_is_function (inner_part))
+	  if (!pt_is_name_node (inner_part))
 	    {
 	      inner_info->expr_list = parser_append_node (pt_point (parser, inner_part), inner_info->expr_list);
 	      bitset_add (&inner_info->exprs_set, term_index);
