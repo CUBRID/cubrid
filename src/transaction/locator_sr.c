@@ -232,7 +232,7 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
 
 /* lob */
-static int lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
+static int locator_lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -13956,7 +13956,7 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
 
   for (int i = 0; i < attrid_arr_length; i++)
     {
-      ret = lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
+      ret = locator_lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
 
       log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
@@ -13986,7 +13986,7 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
   addr.pgptr = NULL;
   addr.vfid = NULL;
 
-  ret = lob_make_dir_path (rv_path, hfid, attrid);
+  ret = locator_lob_make_dir_path (rv_path, hfid, attrid);
 
   log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
 
@@ -13994,7 +13994,7 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
 }
 
 /*
- * lob_make_dir_path () - Construct the directory path for the LOB directory.
+ * locator_lob_make_dir_path () - Construct the directory path for the LOB directory.
  *
  * lob_path (in) : A buffer that stores the LOB path to be constructed and returned.
  * hfid (in) : Used to construct the LOB directory.
@@ -14003,7 +14003,7 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
  *               In this case, the path is constructed using the hfid as a prefix.
  */
 static int
-lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
+locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
 {
   int ret;
 
