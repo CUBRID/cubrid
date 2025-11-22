@@ -18,20 +18,16 @@
 
 #pragma once
 
+#include <optional> // std::optional
+
 #include "hnsw_api.hpp"
-#include "hnsw_utils.hpp"
+#include "hnsw_graph_base.hpp"
 
 #include "thread_entry.hpp"
 #include "scope_exit.hpp"
 
 namespace cubhnsw
 {
-  using level_t = int16_t;
-  using byte_t = std::byte;
-
-  constexpr level_t MAX_LEVELS = 16;
-  using neighbors_count_t = uint32_t;
-
   // =====================================================================
   // traits
   // =====================================================================
@@ -60,7 +56,7 @@ namespace cubhnsw
     exclusive   // single writer (insert/update)
   };
 
-  template <typename Traits>
+  template <typename Traits, typename F>
   class pinned_block
   {
     public:
@@ -70,7 +66,7 @@ namespace cubhnsw
 		    slot_id_t id,
 		    std::byte *data,
 		    lock_mode mode,
-		    scope_exit <std::function<void (void)>> &&guard) noexcept
+		    std::optional<scope_exit<F>> guard) noexcept
 	: m_storage (storage)
 	, m_id (id)
 	, m_data (data)
@@ -119,7 +115,10 @@ namespace cubhnsw
 
       void release() noexcept
       {
-	m_guard.release();
+        if (m_guard)
+        {
+	m_guard->release();
+        }
       }
 
     private:
@@ -128,8 +127,12 @@ namespace cubhnsw
       std::byte        *m_data {};
       lock_mode         m_mode = lock_mode::none;
 
-      scope_exit<std::function<void()>> m_guard; // scoped exit object
+      std::optional<scope_exit<F>> m_guard; // scoped exit object
   };
+
+  // =====================================================================
+  // algo's graph structs
+  // =====================================================================
 
   // =====================================================================
   // storage
@@ -140,10 +143,7 @@ namespace cubhnsw
     public:
       using traits      = Traits;
       using slot_id_t  = typename traits::slot_id_t;
-      using pinned_t   = pinned_block<Traits>;
-      using root_type       = root_t<traits>;
-      using node_type       = node_t<traits>;
-      using neighbors_ref_type = neighbors_ref_t<traits>;
+      using pinned_t   = pinned_block<Traits, std::function<void()>>;
 
       storage (const BTID &giid, const hnsw_build_params &build_params)
 	: m_giid (giid), m_build_params (build_params)
@@ -154,24 +154,28 @@ namespace cubhnsw
       // The root is not initialized yet
       virtual bool is_empty () = 0;
 
-      virtual pinned_t init_root (std::byte *root_block) = 0;
+      // not yet
+      virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
 
       virtual slot_id_t add_vector (const OID &key, const float *vector) = 0;
       virtual slot_id_t add_node (const OID &key, const level_t &level) = 0;
 
-      virtual pinned_t get_node (const OID &key, lock_mode mode) = 0;
-      virtual pinned_t get_node (slot_id_t id, lock_mode mode) = 0;
-      virtual pinned_t get_neighbors (slot_id_t id, level_t level,
-				      lock_mode mode) = 0;
-      virtual pinned_t get_vector (const OID &key, lock_mode mode) = 0;
+      virtual pinned_t get_root (lock_mode mode) = 0;
+      virtual pinned_t get_node_by_slot_id (const slot_id_t &id, const lock_mode &mode) = 0;
 
+      virtual pinned_t get_neighbors (const slot_id_t &id, const level_t &level,
+				      const lock_mode &mode) = 0;
+      virtual pinned_t get_vector (const OID &key, const lock_mode &mode) = 0;
+
+      virtual pinned_t get_node_by_key (const OID &key, const lock_mode &mode) = 0;
+
+      // promote lockmode from shared to exclusive
+      virtual pinned_t promote_root (pinned_t &old) = 0;
 #if 0
       // specialized helpers
       virtual pinned_t get_root (lock_mode mode) = 0;
       virtual pinned_t get_node (slot_id_t id, lock_mode mode) = 0;
 
-      // promote lockmode from shared to exclusive
-      virtual pinned_t promote_root (pinned_t &old) = 0;
 
       virtual root_type init_root (std::byte *root_block) = 0;
       virtual root_type get_root () = 0;
@@ -196,12 +200,13 @@ namespace cubhnsw
     protected:
 
       // specialized helpers
+#if 0
       virtual pinned_t pin_root (lock_mode mode) = 0;
       virtual pinned_t pin_node (slot_id_t id, lock_mode mode) = 0;
       virtual pinned_t pin_neighbors (slot_id_t id, level_t level,
 				      lock_mode mode) = 0;
-
-      virtual byte_t *get_new_block (VFID &vfid, std::size_t size, slot_id_t &out_block_id) = 0;
+#endif
+      virtual std::byte *get_new_block (VFID &vfid, std::size_t size, slot_id_t &out_block_id) = 0;
 
       virtual void init_invalid_block_id () noexcept
       {
@@ -229,6 +234,7 @@ namespace cubhnsw
 	return static_cast<std::size_t> (m_build_params.dimension);
       }
 
+#if 0
       inline std::size_t node_bytes_ (level_t level) const noexcept
       {
 	return node_type::node_head_bytes_() + node_neighbors_bytes_ (level);
@@ -245,6 +251,7 @@ namespace cubhnsw
 	node_type n = get_node (blk);
 	return neighbors_ref_type (n.neighbors_tape() + node_neighbors_bytes_ (level));
       }
+#endif
 
       cubthread::entry *m_thread_p;
       BTID m_giid; // general index identifier

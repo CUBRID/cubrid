@@ -63,6 +63,7 @@ class scope_exit final
 
     scope_exit() = delete;
     scope_exit (scope_exit &) = delete;
+    scope_exit (const scope_exit &) = delete;
     scope_exit &operator= (const scope_exit &) = delete;
     scope_exit &operator= (scope_exit &&) = delete;
 };

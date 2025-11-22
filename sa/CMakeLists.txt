@@ -511,7 +511,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
-  ${STORAGE_DIR}/hnsw_usearch_disk.cpp
+  ${STORAGE_DIR}/hnsw_usearch_ng.cpp
   ${STORAGE_DIR}/hnsw.cpp
   ${STORAGE_DIR}/hnsw_api.cpp
   # ${STORAGE_DIR}/hnsw_storage_mem.cpp
