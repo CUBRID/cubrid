@@ -91,7 +91,7 @@ namespace cubhnsw
       }
       byte_t *neighbors_tape() const noexcept
       {
-	return tape_ + node_head_bytes_();
+	return tape_ + offset_neighbors;
       }
       explicit operator bool() const noexcept
       {
@@ -105,6 +105,7 @@ namespace cubhnsw
       static constexpr std::size_t offset_key = 0;
       static constexpr std::size_t offset_vec_slot = sizeof (OID);
       static constexpr std::size_t offset_level = offset_vec_slot + sizeof (slot_id_t);
+      static constexpr std::size_t offset_neighbors = offset_level + sizeof (level_t);
 
       misaligned_ref_gt<OID> get_key() const noexcept
       {
@@ -133,11 +134,7 @@ namespace cubhnsw
 	return misaligned_store<level_t> (tape_ + offset_level, v);
       }
 
-      // from usearch
-      static constexpr std::size_t node_head_bytes_() noexcept
-      {
-	return sizeof (slot_id_t) + sizeof (level_t);
-      }
+
   };
 
   template <class ID_TRAITS>

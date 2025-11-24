@@ -72,7 +72,7 @@ class hnsw_usearch_ng final:public hnsw_index
     using storage_type = cubhnsw::disk_storage;
 
     hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
-		       const hnsw_build_params &build_params, PAGE_PTR page_ptr, RECDES &rec);
+		     const hnsw_build_params &build_params, PAGE_PTR page_ptr, RECDES &rec);
     ~hnsw_usearch_ng () = default;
 
     virtual int prepare_to_add (int n_vectors, const OID *oid, const float *vector) override;
@@ -119,7 +119,7 @@ hnsw_usearch_ng_backend::is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &m
 
 hnsw_index *
 hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid, const std::string &name,
-    const hnsw_build_params &build_params)
+				       const hnsw_build_params &build_params)
 {
   VPID root_vpid = {btid->root_pageid, btid->vfid.volid};
   PAGE_PTR page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -173,17 +173,17 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid,
 // =====================================================================
 
 hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
-				      const hnsw_build_params &build_params, PAGE_PTR page_ptr, RECDES &rec)
+				  const hnsw_build_params &build_params, PAGE_PTR page_ptr, RECDES &rec)
   : hnsw_index (backend, btid, name, build_params)
 {
   m_root_vpid = { btid.root_pageid, btid.vfid.volid};
   this->m_thread_p = thread_get_thread_entry_info();
 
   m_storage = std::make_unique<cubhnsw::disk_storage> (btid, build_params);
-  m_storage->set_thread_entry(this->m_thread_p);
+  m_storage->set_thread_entry (thread_get_thread_entry_info());
 
   std::size_t root_size;
-  m_storage->init_root(reinterpret_cast<std::byte *>(rec.data), root_size);
+  m_storage->init_root (reinterpret_cast<std::byte *> (rec.data), root_size);
   rec.length = root_size;
 
   if (spage_insert_at (this->m_thread_p, page_ptr, 1, &rec) != SP_SUCCESS)
@@ -254,7 +254,7 @@ hnsw_usearch_ng::update (const OID *oid, const float *vector)
 
 int
 hnsw_usearch_ng::filtered_search (const float *query, const int k, const SCAN_PRED &filter, OID *rec_oids,
-				    float *distances)
+				  float *distances)
 {
   return ER_FAILED;
 }

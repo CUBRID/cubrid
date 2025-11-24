@@ -56,45 +56,93 @@ namespace cubhnsw
     exclusive   // single writer (insert/update)
   };
 
+  template <typename Res, typename Cleanup>
+  class scoped_resource
+  {
+    public:
+      scoped_resource (Res res, Cleanup cleanup)
+	: m_res (res)
+	, m_guard (std::move (cleanup))
+      {}
+
+      scoped_resource (const scoped_resource &) = delete;
+      scoped_resource &operator= (const scoped_resource &) = delete;
+
+      scoped_resource (scoped_resource &&other) noexcept
+	: m_res (other.m_res)
+	, m_guard (std::move (other.m_guard))
+      {
+	other.m_res = Res{};
+      }
+
+      ~scoped_resource() = default;
+
+      Res get() const noexcept
+      {
+	return m_res;
+      }
+      explicit operator Res() const noexcept
+      {
+	return m_res;
+      }
+
+      void release() noexcept
+      {
+	m_guard.release();
+      }
+
+    private:
+      Res m_res{};
+      scope_exit<std::decay_t<Cleanup>> m_guard;
+  };
+
   template <typename Traits, typename F>
   class pinned_block
   {
     public:
       using slot_id_t = typename Traits::slot_id_t;
 
-      pinned_block (storage<Traits> *storage,
-		    slot_id_t id,
+      pinned_block (slot_id_t id,
 		    std::byte *data,
+		    std::size_t data_size,
 		    lock_mode mode,
-		    std::optional<scope_exit<F>> guard) noexcept
-	: m_storage (storage)
-	, m_id (id)
+		    F &&fn) noexcept
+	: m_id (id)
 	, m_data (data)
+	, m_data_size (data_size)
 	, m_mode (mode)
-	, m_guard (std::move (guard))
+	, m_guard (std::forward<F> (fn))
+      {}
+
+      pinned_block (slot_id_t id, std::byte *data, std::size_t size,
+		    lock_mode mode)
+      noexcept
+	: m_id (id)
+	, m_data (data)
+	, m_data_size (size)
+	, m_mode (mode)
+	, m_guard ([]() {}) // no-op destructor
       {}
 
       // movable but not copyable
       pinned_block (pinned_block &&other) noexcept
-	: m_storage (other.m_storage)
-	, m_id (other.m_id)
+	: m_id (other.m_id)
 	, m_data (other.m_data)
+	, m_data_size (other.m_data_size)
 	, m_mode (other.m_mode)
 	, m_guard (std::move (other.m_guard))
       {
-	other.m_storage = nullptr;
       }
 
       pinned_block &operator= (pinned_block &&other) noexcept
       {
 	if (this != &other)
 	  {
-	    m_storage = other.m_storage;
 	    m_id    = other.m_id;
 	    m_data  = other.m_data;
+	    m_data_size = other.m_data_size;
 	    m_mode  = other.m_mode;
 	    m_guard = std::move (other.m_guard);
-	    other.m_storage = nullptr;
 	  }
 	return *this;
       }
@@ -113,21 +161,23 @@ namespace cubhnsw
 	return m_id;
       }
 
+      std::size_t data_size() const noexcept
+      {
+	return m_data_size;
+      }
+
       void release() noexcept
       {
-        if (m_guard)
-        {
-	m_guard->release();
-        }
+	m_guard.release();
       }
 
     private:
-      storage<Traits> *m_storage = nullptr;
       slot_id_t        m_id {};
       std::byte        *m_data {};
+      std::size_t       m_data_size {};
       lock_mode         m_mode = lock_mode::none;
 
-      std::optional<scope_exit<F>> m_guard; // scoped exit object
+      scope_exit<F> m_guard;  // always exists (may be no-op)
   };
 
   // =====================================================================
@@ -158,16 +208,16 @@ namespace cubhnsw
       virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
 
       virtual slot_id_t add_vector (const OID &key, const float *vector) = 0;
-      virtual slot_id_t add_node (const OID &key, const level_t &level) = 0;
+      virtual slot_id_t add_node (const OID &key, const slot_id_t &vec_slot, const level_t &level) = 0;
 
       virtual pinned_t get_root (lock_mode mode) = 0;
-      virtual pinned_t get_node_by_slot_id (const slot_id_t &id, const lock_mode &mode) = 0;
+      virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
 
-      virtual pinned_t get_neighbors (const slot_id_t &id, const level_t &level,
-				      const lock_mode &mode) = 0;
-      virtual pinned_t get_vector (const OID &key, const lock_mode &mode) = 0;
+      //virtual pinned_t get_neighbors (const slot_id_t &id, const level_t &level,
+      //			      const lock_mode &mode) = 0;
+      virtual pinned_t get_vector (const OID &key, const slot_id_t &vec_slot, const lock_mode &mode) = 0;
 
-      virtual pinned_t get_node_by_key (const OID &key, const lock_mode &mode) = 0;
+      // virtual pinned_t get_node_by_key (const OID &key, const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive
       virtual pinned_t promote_root (pinned_t &old) = 0;
@@ -196,6 +246,12 @@ namespace cubhnsw
       {
 	m_thread_p = thread_p;
       }
+
+      virtual cubthread::entry *get_thread_entry() const noexcept
+      {
+	return m_thread_p;
+      }
+
 
     protected:
 
@@ -234,17 +290,29 @@ namespace cubhnsw
 	return static_cast<std::size_t> (m_build_params.dimension);
       }
 
+      inline std::size_t node_neighbors_bytes_ (level_t level) const noexcept
+      {
+	std::size_t neighbors_byte = get_connectivity() * sizeof (slot_id_t) + sizeof (neighbors_count_t);
+	return neighbors_byte * (level);
+      }
+
+      inline std::size_t node_bytes_ (level_t level) const noexcept
+      {
+	return node_head_bytes_() + node_neighbors_bytes_ (level);
+      }
+
+      inline std::size_t node_head_bytes_() const noexcept
+      {
+	return sizeof (OID) + sizeof (slot_id_t) + sizeof (level_t);
+      }
+
+
 #if 0
       inline std::size_t node_bytes_ (level_t level) const noexcept
       {
 	return node_type::node_head_bytes_() + node_neighbors_bytes_ (level);
       }
 
-      inline std::size_t node_neighbors_bytes_ (level_t level) const noexcept
-      {
-	std::size_t neighbors_byte = get_connectivity() * sizeof (slot_id_t) + sizeof (neighbors_count_t);
-	return neighbors_byte * (level);
-      }
 
       inline neighbors_ref_type neighbors_ (const slot_id_t blk, const level_t level) const noexcept
       {

@@ -6893,7 +6893,7 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hns
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4 + OR_OID_SIZE;
+  request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4 + OR_OID_SIZE + OR_INT_SIZE;
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
