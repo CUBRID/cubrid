@@ -3228,31 +3228,8 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
     {
     case TEMP_FILE_MEMBUF_NONE:
       break;
-    case TEMP_FILE_MEMBUF_NORMAL:
-      {
-	tfile_vfid_p->membuf_last = -1;
-	page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
-			     + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
-	for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
-	  {
-	    tfile_vfid_p->membuf[i] = page_p;
-	    OR_PUT_INT ((page_p) + QFILE_TUPLE_COUNT_OFFSET, pgheader.pg_tplcnt);
-	    OR_PUT_INT ((page_p) + QFILE_PREV_PAGE_ID_OFFSET, pgheader.prev_pgid);
-	    OR_PUT_INT ((page_p) + QFILE_NEXT_PAGE_ID_OFFSET, pgheader.next_pgid);
-	    OR_PUT_INT ((page_p) + QFILE_LAST_TUPLE_OFFSET, pgheader.lasttpl_off);
-	    OR_PUT_INT ((page_p) + QFILE_OVERFLOW_PAGE_ID_OFFSET, pgheader.ovfl_pgid);
-	    OR_PUT_SHORT ((page_p) + QFILE_PREV_VOL_ID_OFFSET, pgheader.prev_volid);
-	    OR_PUT_SHORT ((page_p) + QFILE_NEXT_VOL_ID_OFFSET, pgheader.next_volid);
-	    OR_PUT_SHORT ((page_p) + QFILE_OVERFLOW_VOL_ID_OFFSET, pgheader.ovfl_volid);
-#if !defined(NDEBUG)
-	    /* suppress valgrind UMW error */
-	    memset (page_p + QFILE_RESERVED_OFFSET, 0, QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
-#endif
-	    page_p += DB_PAGESIZE;
-	  }
-      }
-      break;
     case TEMP_FILE_MEMBUF_KEY_BUFFER:
+    case TEMP_FILE_MEMBUF_NORMAL:
       {
 	tfile_vfid_p->membuf_last = -1;
 	page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
