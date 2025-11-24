@@ -11611,8 +11611,14 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_OOS:
-      assert (false);
+      assert_release (false);
       //TODO: spacedb_ftype = SPACEDB_OOS_FILE;
+      spacedb_ftype = SPACEDB_HEAP_FILE;
+      // TODO oos: why heap file, instead of OOS file?
+      // I did not add SPACEDB_OOS_FILE yet, and
+      // if spacedb_ftype is not initialized,
+      // the build fails in github cubridci.
+      // This is just a workaround.
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
