@@ -166,11 +166,6 @@ namespace cubhnsw
 	return m_data_size;
       }
 
-      void release() noexcept
-      {
-	m_guard.release();
-      }
-
     private:
       slot_id_t        m_id {};
       std::byte        *m_data {};
@@ -293,7 +288,7 @@ namespace cubhnsw
       inline std::size_t node_neighbors_bytes_ (level_t level) const noexcept
       {
 	std::size_t neighbors_byte = get_connectivity() * sizeof (slot_id_t) + sizeof (neighbors_count_t);
-	return neighbors_byte * (level);
+	return neighbors_byte * (level + 1);
       }
 
       inline std::size_t node_bytes_ (level_t level) const noexcept
@@ -303,9 +298,8 @@ namespace cubhnsw
 
       inline std::size_t node_head_bytes_() const noexcept
       {
-	return sizeof (OID) + sizeof (slot_id_t) + sizeof (level_t);
+	return node_t<Traits>::get_size();
       }
-
 
 #if 0
       inline std::size_t node_bytes_ (level_t level) const noexcept

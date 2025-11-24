@@ -11,6 +11,34 @@ namespace cubhnsw
 
   constexpr level_t MAX_LEVELS = 16;
 
+  static std::string dump_oid (const OID &oid)
+  {
+    return std::string (std::to_string (oid.volid)) + "|" + std::string (std::to_string (oid.pageid)) + "|" + std::string (
+		   std::to_string (oid.slotid));
+  }
+
+  template <typename T>
+  static inline std::string dump_slot (const T &v)
+  {
+    // 기본: 그냥 숫자로 찍기
+    if constexpr (std::is_integral_v<T>)
+      {
+	return std::to_string (v);
+      }
+    else
+      {
+	std::ostringstream oss;
+	oss << v;
+	return oss.str ();
+      }
+  }
+
+  template <>
+  inline std::string dump_slot<OID> (const OID &oid)
+  {
+    return dump_oid (oid);
+  }
+
   // =====================================================================
   // graph
   // =====================================================================
@@ -42,27 +70,27 @@ namespace cubhnsw
       static constexpr std::size_t offset_level = sizeof (hnsw_build_params);
       static constexpr std::size_t offset_entry = offset_level + sizeof (level_t);
 
-      misaligned_ref_gt<hnsw_build_params> get_params () const noexcept
+      hnsw_build_params get_params () const noexcept
       {
-	return {tape_};
+	return misaligned_load<hnsw_build_params> (tape_);
       }
       void set_params (hnsw_build_params v) noexcept
       {
 	return misaligned_store<hnsw_build_params> (tape_, v);
       }
 
-      misaligned_ref_gt<level_t> get_level() const noexcept
+      level_t get_level() const noexcept
       {
-	return {tape_ + offset_level};
+	return misaligned_load<level_t> (tape_ + offset_level);
       }
       void set_level (level_t v) noexcept
       {
 	return misaligned_store<level_t> (tape_ + offset_level, v);
       }
 
-      misaligned_ref_gt<slot_id_t> get_entry() const noexcept
+      slot_id_t get_entry() const noexcept
       {
-	return {tape_ + offset_entry};
+	return misaligned_load<slot_id_t> (tape_ + offset_entry);
       }
       void set_entry (slot_id_t v) noexcept
       {
@@ -72,6 +100,19 @@ namespace cubhnsw
       static constexpr std::size_t get_size() noexcept
       {
 	return sizeof (hnsw_build_params) + sizeof (level_t) + sizeof (slot_id_t);
+      }
+
+      std::string dump() const noexcept
+      {
+	std::stringstream ss;
+	ss << "params: " << get_params() << ", level: " << get_level() << ", entry: " << dump_oid (get_entry());
+	return ss.str();
+      }
+
+      friend std::ostream &operator<< (std::ostream &os, const root_t &root)
+      {
+	os << root.dump();
+	return os;
       }
   };
 
@@ -84,7 +125,13 @@ namespace cubhnsw
     public:
       using slot_id_t = typename ID_TRAITS::slot_id_t;
 
-      explicit node_t (byte_t *tape) noexcept : tape_ (tape) {}
+      explicit node_t (byte_t *tape) noexcept : tape_ (tape)
+      {
+#if !defined (NDEBUG)
+	std::string dump_str = dump ();
+	fprintf (stdout, "node_t: %s\n", dump_str.c_str());
+#endif
+      }
       byte_t *tape() const noexcept
       {
 	return tape_;
@@ -107,34 +154,50 @@ namespace cubhnsw
       static constexpr std::size_t offset_level = offset_vec_slot + sizeof (slot_id_t);
       static constexpr std::size_t offset_neighbors = offset_level + sizeof (level_t);
 
-      misaligned_ref_gt<OID> get_key() const noexcept
+      OID get_key() const noexcept
       {
-	return {tape_};
+	return misaligned_load<OID> (tape_);
       }
       void set_key (OID v) noexcept
       {
 	return misaligned_store<OID> (tape_, v);
       }
 
-      misaligned_ref_gt<slot_id_t> get_vec_slot() const noexcept
+      slot_id_t get_vec_slot() const noexcept
       {
-	return {tape_ + offset_vec_slot};
+	return misaligned_load<slot_id_t> (tape_ + offset_vec_slot);
       }
       void set_vec_slot (slot_id_t v) noexcept
       {
 	return misaligned_store<slot_id_t> (tape_ + offset_vec_slot, v);
       }
 
-      misaligned_ref_gt<level_t> get_level() const noexcept
+      level_t get_level() const noexcept
       {
-	return {tape_ + offset_level};
+	return misaligned_load<level_t> (tape_ + offset_level);
       }
       void set_level (level_t v) noexcept
       {
 	return misaligned_store<level_t> (tape_ + offset_level, v);
       }
 
+      static constexpr std::size_t get_size() noexcept
+      {
+	return offset_neighbors;
+      }
 
+      std::string dump() const noexcept
+      {
+	std::stringstream ss;
+	ss << "key: " << dump_oid (get_key()) << ", vec_slot: " << dump_slot (get_vec_slot()) << ", level: " << get_level();
+	return ss.str();
+      }
+
+      friend std::ostream &operator<< (std::ostream &os, const node_t &node)
+      {
+	os << node.dump();
+	return os;
+      }
   };
 
   template <class ID_TRAITS>
@@ -205,6 +268,23 @@ namespace cubhnsw
 	  }
 	misaligned_store<neighbors_count_t> (tape_, old_count - removed_count);
 	return removed_count;
+      }
+
+      std::string dump() const noexcept
+      {
+	std::stringstream ss;
+	ss << "size: " << size();
+	for (std::size_t i = 0; i < size(); ++i)
+	  {
+	    ss << " " << dump_slot (at (i));
+	  }
+	return ss.str();
+      }
+
+      friend std::ostream &operator<< (std::ostream &os, const neighbors_ref_t &neighbors_ref)
+      {
+	os << neighbors_ref.dump();
+	return os;
       }
   };
 }

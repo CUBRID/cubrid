@@ -324,15 +324,14 @@ namespace cubhnsw
     if (new_target_level <= curr_max_level)
       {
 	// unlock root
-	root_block.release();
+	pinned_t cleanup {std::move (root_block)};
       }
 
     {
 
-      slot_id_t closest_slot;
+      slot_id_t closest_slot {};
       {
 	pinned_t entry_block = m_storage->get_node_by_slot_id (entry_slot, lock_mode::shared);
-
 	(void) search_for_one_ (vector, entry_block, curr_max_level, new_target_level, closest_slot);
       }
 
@@ -444,7 +443,7 @@ namespace cubhnsw
 				    lock_mode::shared);
 
       closest_dist = compute_distance_ (query, reinterpret_cast<float *> (closest_vector_blk.data()));
-      closest_slot = closest_vector_blk.id();
+      closest_slot = start_slot.id ();
     }
 
     node_type closest_node;
@@ -525,16 +524,18 @@ namespace cubhnsw
 	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
 	  {
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
+
+	    if (visits.find (successor_slot) != visits.end())
+	      {
+		continue;
+	      }
+	    visits.insert (successor_slot);
+
 	    pinned_t successor_node_blk = m_storage->get_node_by_slot_id (successor_slot, lock_mode::shared);
 	    node_type successor_node = node_type (successor_node_blk.data());
 
 	    // TODO: refactor the following block
-	    OID successor_oid = successor_node.get_key();
-	    bool already_visited = !visits.insert (successor_oid).second;
-	    if (already_visited)
-	      {
-		continue;
-	      }
+	    // OID successor_oid = successor_node_blk.id ();
 
 	    distance_t sucessor_dist;
 	    {
@@ -595,16 +596,16 @@ namespace cubhnsw
 
 	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
 	  {
-	    slot_id_t successor_id = candidate_neighbors.at (i);
+	    slot_id_t successor_slot = candidate_neighbors.at (i);
 
-	    pinned_t successor_node_blk = m_storage->get_node_by_slot_id (successor_id, lock_mode::shared);
-	    node_type successor_node = node_type (successor_node_blk.data());
-
-	    bool already_visited = !visits.insert (successor_id).second;
-	    if (already_visited)
+	    if (visits.find (successor_slot) != visits.end())
 	      {
 		continue;
 	      }
+	    visits.insert (successor_slot);
+
+	    pinned_t successor_node_blk = m_storage->get_node_by_slot_id (successor_slot, lock_mode::shared);
+	    node_type successor_node = node_type (successor_node_blk.data());
 
 	    distance_t sucessor_dist;
 	    {
@@ -615,8 +616,8 @@ namespace cubhnsw
 
 	    if (top.size() < expansion || sucessor_dist < radius)
 	      {
-		next.push (candidate_t<Traits> (-sucessor_dist, successor_node.get_key ()));
-		top.insert_reserved (candidate_t<Traits> (sucessor_dist, successor_node.get_key ()));
+		next.push (candidate_t<Traits> (-sucessor_dist, successor_slot));
+		top.insert_reserved (candidate_t<Traits> (sucessor_dist, successor_slot));
 		radius = top.top().distance;
 	      }
 	  }

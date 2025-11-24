@@ -1,5 +1,6 @@
 #include "hnsw_storage_disk.hpp"
 
+#include "memory_alloc.h"
 #include "oid.h"
 
 #include "file_manager.h" // FILE_DESCRIPTORS
@@ -168,15 +169,22 @@ namespace cubhnsw
     page_handle page_ptr = get_page_to_insert (m_vfid, m_last_node_vpid, bytes);
 
     std::size_t rec_buf_size = bytes;
-    std::byte *rec_buf = new std::byte[bytes];
-    std::memset (rec_buf, 0, bytes);
 
-    RECDES recdes = { IO_MAX_PAGE_SIZE, static_cast<int> (rec_buf_size), REC_HOME, reinterpret_cast<char *> (rec_buf) };
+    RECDES recdes;
+    char rec_buf[IO_MAX_PAGE_SIZE];
+
+    /* create header record */
+    recdes.area_size = DB_PAGESIZE;
+    recdes.data = rec_buf;
+    recdes.type = REC_HOME;
+    recdes.length = rec_buf_size;
+
+    node_t<disk_traits_t> node { reinterpret_cast<byte_t *> (rec_buf) };
+    node.set_key (key);
+    node.set_vec_slot (vec_slot);
+    node.set_level (level);
+
     PGSLOTID slot_id;
-
-    misaligned_store<OID> (rec_buf, key);
-    misaligned_store<slot_id_t> (rec_buf + node_t<disk_traits_t>::offset_vec_slot, vec_slot);
-    misaligned_store<level_t> (rec_buf + node_t<disk_traits_t>::offset_level, level);
 
     int error_code = spage_insert (m_thread_p, page_ptr.get(), &recdes, &slot_id);
     if (error_code != SP_SUCCESS)
@@ -185,7 +193,6 @@ namespace cubhnsw
 	return slot_id_t { -1, -1, -1 };
       }
 
-    delete[] rec_buf;
     return { m_last_node_vpid.pageid, slot_id, m_last_node_vpid.volid };
   }
 
@@ -231,6 +238,7 @@ namespace cubhnsw
       {
 	pgbuf_mode = PGBUF_LATCH_WRITE;
       }
+
     PAGE_PTR node_page_ptr = pgbuf_fix (m_thread_p, &vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
     SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
 
