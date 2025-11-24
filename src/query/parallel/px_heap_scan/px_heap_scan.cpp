@@ -98,6 +98,9 @@ extern "C"
 	return er_errid ();
       }
 
+    assert (curr_spec->num_parallel_threads == -1
+	    || ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
+
     num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::PARALLEL_HEAP_SCAN, num_user_pages,
 			   curr_spec->num_parallel_threads /* hint */);
     if (num_parallel_threads <= 0)

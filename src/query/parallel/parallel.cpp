@@ -31,12 +31,17 @@ namespace parallel_query
   UINT32 compute_parallel_degree (PARALLEL_TYPE type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
-    static UINT32 upper_limit = 0;
+    static int prm_upper_limit = 0;
+    static int prm_value = 0;
 
     // *INDENT-OFF*
     std::call_once(once, [] {
-      sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &upper_limit);
-      upper_limit = MIN (upper_limit, cubthread::system_core_count ());
+      sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &prm_upper_limit);
+      prm_upper_limit = MIN (prm_upper_limit, cubthread::system_core_count ());
+      assert (prm_upper_limit >= 0);
+
+      prm_value = prm_get_integer_value (PRM_ID_PARALLELISM);
+      assert (prm_value >= 0);
     });
     // *INDENT-ON*
 
@@ -76,11 +81,11 @@ namespace parallel_query
     /* hint handling */
     if (hint_degree < 0)
       {
-	/* fall through */
+	/* compute degree based on number of pages */
       }
     else if (hint_degree > 1)
       {
-	return MIN (hint_degree, upper_limit);
+	return MIN (hint_degree, (UINT32) prm_upper_limit);
       }
     else
       {
@@ -105,11 +110,11 @@ namespace parallel_query
       if (x >= (1ull <<  2)) { x >>=  2; msb +=  2; }
       if (x >= (1ull <<  1)) {           msb +=  1; }
 
-      degree = msb + px_heap_scan_min_parallel_degree;
+      degree = msb + min_parallel_degree;
     }
 #endif
     // *INDENT-ON*
 
-    return MIN (degree, upper_limit);
+    return MIN (degree, (UINT32) prm_value);
   }
 }				/* namespace parallel_query */

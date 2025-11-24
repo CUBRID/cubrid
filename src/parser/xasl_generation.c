@@ -4847,6 +4847,7 @@ pt_make_access_spec (TARGET_TYPE spec_type, ACCESS_METHOD access, INDX_INFO * in
       spec->where_range = where_range;
       spec->next = NULL;
       spec->pruning_type = DB_NOT_PARTITIONED_CLASS;
+      spec->num_parallel_threads = -1;
     }
 
   return spec;

@@ -5114,7 +5114,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
    PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
-   (PRM_FOR_SERVER, PRM_TEST_CHANGE),
+   (PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 4096}},
@@ -5126,7 +5126,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
    PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
-   (PRM_FOR_SERVER, PRM_TEST_CHANGE),
+   (PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 4096}},
@@ -5138,7 +5138,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD,
    PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD,
-   (PRM_FOR_SERVER, PRM_TEST_CHANGE),
+   (PRM_FOR_SERVER | PRM_TEST_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 4096}},
@@ -9752,6 +9752,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *thread_core_count_prm;
+  SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
 #endif
   char newval[LINE_MAX];
@@ -9812,10 +9813,19 @@ prm_tune_parameters (void)
 	  (void) prm_set (thread_core_count_prm, newval, false);
 	}
 
+      /* set parallelism to system_cpu_count if it is greater than cubthread::system_core_count () */
       parallelism_prm = GET_PRM (PRM_ID_PARALLELISM);
       if (PRM_GET_INT (parallelism_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (parallelism_prm, newval, false);
+	}
+
+      /* set parallelism to max_parallel_workers if it is greater than max_parallel_workers */
+      max_parallel_workers_prm = GET_PRM (PRM_ID_MAX_PARALLEL_WORKERS);
+      if (PRM_GET_INT (parallelism_prm->value) > PRM_GET_INT (max_parallel_workers_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_parallel_workers_prm->value));
 	  (void) prm_set (parallelism_prm, newval, false);
 	}
 #endif

@@ -24,7 +24,6 @@
 #define _PX_HEAP_SCAN_MANAGER_HPP_
 
 #include "xasl.h"
-
 #include "px_worker_manager.hpp"
 #include "px_heap_scan_result_handler.hpp"
 #include "px_heap_scan_input_handler.hpp"
