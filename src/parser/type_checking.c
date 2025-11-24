@@ -19985,13 +19985,6 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  }
 
 	err = tp_value_cast (db_src, &db_dest, desired_domain, implicit_coercion);
-	printf ("db_dest 1 : ");
-	db_value_print (&db_dest);
-	printf ("\n=============================\n");
-	printf ("src->node_type: %d, prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING): %d\n", src->node_type,
-		prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING));
-	printf ("src->info.value.db_value_is_in_workspace: %d\n", src->info.value.db_value_is_in_workspace);
-	printf ("err: %d\n", err);
 	switch (err)
 	  {
 	  case DOMAIN_INCOMPATIBLE:
