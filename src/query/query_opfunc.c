@@ -344,7 +344,6 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
  * qdata_copy_db_value_to_tuple_value () -
  *   return: int (true on success, false on failure)
  *   dbval(in)  : Source dbval node
- *   clear_compressed_string(in): true, if need to clear compressed string
  *   tvalp(in)  :  Tuple value
  *   tval_size(out)      : Set to the tuple value size
  *
@@ -352,8 +351,7 @@ qdata_copy_db_value (DB_VALUE * dest_p, const DB_VALUE * src_p)
  * THIS ROUTINE ASSUMES THAT THE VALUE WILL FIT IN THE TPL!!!!
  */
 int
-qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_string, char *tuple_val_p,
-				    int *tuple_val_size)
+qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *tuple_val_size)
 {
   char *val_p;
   int val_size, align, rc;
@@ -428,7 +426,6 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   int k, tval_size, tlen, tpl_size;
   int n_size, toffset;
   int flags;
-  bool clear_compressed_string = false;
 
   tpl_size = 0;
   tlen = QFILE_TUPLE_LENGTH_SIZE;
@@ -454,7 +451,6 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	  return ER_FAILED;
 	}
 
-      clear_compressed_string = (bool) (flags & REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 
       n_size = qdata_get_tuple_value_size_from_dbval (dbval_p);
       if (n_size == ER_FAILED)
@@ -490,7 +486,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	  tuple_p = (char *) (tuple_record_p->tpl) + toffset;
 	}
 
-      if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (dbval_p, tuple_p, &tval_size) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -517,7 +513,6 @@ qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
   int tval_size, tlen, tpl_size;
   int n_size, toffset;
   int flags;
-  bool clear_compressed_string = false;
 
   tpl_size = 0;
   tlen = QFILE_TUPLE_LENGTH_SIZE;
@@ -561,7 +556,7 @@ qdata_copy_val_list_to_tuple (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
 	  tuple_record_p->size = tpl_size;
 	  tuple_p = (char *) (tuple_record_p->tpl) + toffset;
 	}
-      if (qdata_copy_db_value_to_tuple_value (dbval_p, clear_compressed_string, tuple_p, &tval_size) != NO_ERROR)
+      if (qdata_copy_db_value_to_tuple_value (dbval_p, tuple_p, &tval_size) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -658,10 +653,7 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 	  goto exit_with_status;
 	}
 
-      /* Set clear_f_val_at_clone_decache to avoid memory issues */
-      assert (tuple_desc_p->clear_f_val_at_clone_decache != NULL);
-      tuple_desc_p->clear_f_val_at_clone_decache[tuple_desc_p->f_cnt] =
-	(bool) (flags & REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
+
 
       dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
 
