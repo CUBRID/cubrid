@@ -88,7 +88,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
   DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
-  TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
+  TP_DOMAIN_STATUS dom_status;
 
   assert (regu_var != NULL);
   arithptr = regu_var->value.arithptr;
