@@ -181,9 +181,6 @@ static void catcls_copy_or_value_times_and_statistics (OR_VALUE * value_p, OR_VA
 static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, unsigned int ci_time_stamp,
 						       bool with_fullscan);
 static int catcls_cache_fixed_attr_indexes (THREAD_ENTRY * thread_p);
-static int catcls_update_class_stats_instance (THREAD_ENTRY * thread_p, const char *class_name,
-					       unsigned int ci_time_stamp, bool with_fullscan, HFID * hfid_p,
-					       HEAP_SCANCACHE * scan_p);
 
 static int _gv_ct_Class_created_time_idx = -1;
 static int _gv_ct_Class_updated_time_idx = -1;
@@ -4453,60 +4450,16 @@ error:
 }
 
 int
-catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, OID * class_id_p, CLS_INFO * cls_info_p,
+catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
 			   bool with_fullscan)
-{
-  bool is_ct_Class = OID_EQ (class_id_p, &ct_Class.cc_classoid);
-  int error = NO_ERROR;
-  OID *catalog_class_oid_p = &ct_Class.cc_classoid;
-  HFID *hfid_p = NULL;
-  HEAP_SCANCACHE scan;
-  bool is_scan_inited = false;
-  unsigned int ci_time_stamp = cls_info_p->ci_time_stamp;
-
-  /* use the provided cls_info_p for ct_Class; otherwise fetch a new one. */
-  if (is_ct_Class == false)
-    {
-      cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p, NULL);
-      if (cls_info_p == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  goto error;
-	}
-    }
-
-  hfid_p = &cls_info_p->ci_hfid;
-  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, catalog_class_oid_p, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto error;
-    }
-
-  is_scan_inited = true;
-
-  error = catcls_update_class_stats_instance (thread_p, class_name, ci_time_stamp, with_fullscan, hfid_p, &scan);
-
-error:
-  if (is_scan_inited)
-    {
-      heap_scancache_end_modify (thread_p, &scan);
-    }
-
-  if (cls_info_p && (is_ct_Class == false))
-    {
-      catalog_free_class_info_and_init (cls_info_p);
-    }
-
-  return error;
-}
-
-static int
-catcls_update_class_stats_instance (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
-				    bool with_fullscan, HFID * hfid_p, HEAP_SCANCACHE * scan_p)
 {
   int error = NO_ERROR;
   OID oid;
-  OID *catalog_class_oid_p = &ct_Class.cc_classoid;
+  OID *catalog_class_oid_p = NULL;
+  CLS_INFO *cls_info_p = NULL;
+  HFID *hfid_p = NULL;
+  HEAP_SCANCACHE scan;
+  bool is_scan_inited = false;
   int old_chn;
   OR_VALUE *value_p = NULL;
   RECDES record = RECDES_INITIALIZER;
@@ -4518,7 +4471,22 @@ catcls_update_class_stats_instance (THREAD_ENTRY * thread_p, const char *class_n
       goto error;
     }
 
-  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  catalog_class_oid_p = &ct_Class.cc_classoid;
+  cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p, NULL);
+  if (cls_info_p == NULL)
+    {
+      goto error;
+    }
+
+  hfid_p = &cls_info_p->ci_hfid;
+  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, catalog_class_oid_p, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  is_scan_inited = true;
+
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) != S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;
@@ -4553,13 +4521,13 @@ catcls_update_class_stats_instance (THREAD_ENTRY * thread_p, const char *class_n
     }
 
   if (locator_update_index (thread_p, &record, &record, NULL, 0, &oid, catalog_class_oid_p, SINGLE_ROW_UPDATE,
-			    scan_p, NULL) != NO_ERROR)
+			    &scan, NULL) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;
     }
 
-  heap_create_update_context (&update_context, hfid_p, &oid, catalog_class_oid_p, &record, scan_p, UPDATE_INPLACE_NONE);
+  heap_create_update_context (&update_context, hfid_p, &oid, catalog_class_oid_p, &record, &scan, UPDATE_INPLACE_NONE);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -4575,6 +4543,16 @@ error:
   if (value_p)
     {
       catcls_free_or_value (value_p);
+    }
+
+  if (is_scan_inited)
+    {
+      heap_scancache_end_modify (thread_p, &scan);
+    }
+
+  if (cls_info_p)
+    {
+      catalog_free_class_info_and_init (cls_info_p);
     }
 
   return error;
