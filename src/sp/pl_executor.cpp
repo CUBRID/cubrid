@@ -241,10 +241,10 @@ namespace cubpl
       case DB_TYPE_OBJECT:
       case DB_TYPE_RESULTSET:
       case DB_TYPE_NULL:
-      case DB_TYPE_CLOB:
 	res = true;
 	break;
       // unsupported types
+      case DB_TYPE_CLOB:
       case DB_TYPE_BLOB:
       case DB_TYPE_BIT:
       case DB_TYPE_VARBIT:
