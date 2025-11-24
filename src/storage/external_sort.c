@@ -57,6 +57,7 @@
 #include "px_callable_task.hpp"
 #include "px_sort.h"
 #include "parallel.hpp"		/* parallel_query::compute_parallel_degree */
+#include "thread_worker_pool.hpp"	/* cubthread::system_core_count */
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -4331,12 +4332,24 @@ int
 sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			    int parallel_num)
 {
+  static std::once_flag once;
+  static int parallelism_upper_limit = 0;
+
+  // *INDENT-OFF*
+  std::call_once(once, [] {
+    sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &parallelism_upper_limit);
+    parallelism_upper_limit = MIN (parallelism_upper_limit, cubthread::system_core_count ());
+    assert (parallelism_upper_limit >= 0);
+  });
+  // *INDENT-ON*
+
+  assert (parallel_num <= parallelism_upper_limit);
+
   int error = NO_ERROR;
   int i = 0, j = 0, splitted_num_page;
   bool is_first_vpid = false;
   PAGE_PTR page_p;
-  VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
-  QFILE_LIST_SCAN_ID *scan_id_p;
+  VPID next_vpid, prev_vpid, first_vpid[parallelism_upper_limit], last_vpid[parallelism_upper_limit];
   SORT_INFO *sort_info_p, *org_sort_info_p;
 
   /* init vpid */
@@ -4441,17 +4454,25 @@ int
 sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			     int parallel_num)
 {
-  int error = NO_ERROR;
-  int i = 0, idx = 0, file_pg_cnt_est;
-  int remaining_run, level, merge_num;
-  RESULT_RUN result_run[SORT_MAX_PARALLEL];
-  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
-  SORT_INFO *sort_info_p;
+  static std::once_flag once;
+  static int parallelism_upper_limit = 0;
 
-  if (parallel_num > SORT_MAX_PARALLEL)
-    {
-      return ER_FAILED;
-    }
+  // *INDENT-OFF*
+  std::call_once(once, [] {
+    sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &parallelism_upper_limit);
+    parallelism_upper_limit = MIN (parallelism_upper_limit, cubthread::system_core_count ());
+    assert (parallelism_upper_limit >= 0);
+  });
+  // *INDENT-ON*
+
+  assert (parallel_num <= parallelism_upper_limit);
+
+  int error = NO_ERROR;
+  int i = 0, idx = 0;
+  int remaining_run, level, merge_num;
+  RESULT_RUN result_run[parallelism_upper_limit];
+  QFILE_LIST_ID *origin_list_id;
+  SORT_INFO *sort_info_p;
 
   /* init result_run */
   for (i = 0; i < parallel_num; i++)

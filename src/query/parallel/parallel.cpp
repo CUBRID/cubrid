@@ -31,17 +31,30 @@ namespace parallel_query
   UINT32 compute_parallel_degree (PARALLEL_TYPE type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
-    static int prm_upper_limit = 0;
-    static int prm_value = 0;
+    static int parallelism_upper_limit = 0;
+    static int parallelism = 0;
+
+    static int heap_scan_page_threshold;
+    static int hash_join_page_threshold;
+    static int sort_page_threshold;
 
     // *INDENT-OFF*
     std::call_once(once, [] {
-      sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &prm_upper_limit);
-      prm_upper_limit = MIN (prm_upper_limit, cubthread::system_core_count ());
-      assert (prm_upper_limit >= 0);
+      sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &parallelism_upper_limit);
+      parallelism_upper_limit = MIN (parallelism_upper_limit, cubthread::system_core_count ());
+      assert (parallelism_upper_limit >= 0);
 
-      prm_value = prm_get_integer_value (PRM_ID_PARALLELISM);
-      assert (prm_value >= 0);
+      parallelism = prm_get_integer_value (PRM_ID_PARALLELISM);
+      assert (parallelism >= 0);
+
+      heap_scan_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
+      assert (heap_scan_page_threshold >= 0);
+
+      hash_join_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
+      assert (hash_join_page_threshold >= 0);
+
+      sort_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
+      assert (sort_page_threshold >= 0);
     });
     // *INDENT-ON*
 
@@ -50,15 +63,15 @@ namespace parallel_query
     switch (type)
       {
       case PARALLEL_HEAP_SCAN:
-	page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
+	page_threshold = (UINT32) heap_scan_page_threshold;
 	break;
 
       case PARALLEL_HASH_JOIN:
-	page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
+	page_threshold = (UINT32) hash_join_page_threshold;
 	break;
 
       case PARALLEL_SORT:
-	page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
+	page_threshold = (UINT32) sort_page_threshold;
 	break;
 
       case PARALLEL_SUBQUERY:
@@ -85,7 +98,7 @@ namespace parallel_query
       }
     else if (hint_degree > 1)
       {
-	return MIN (hint_degree, (UINT32) prm_upper_limit);
+	return MIN (hint_degree, (UINT32) parallelism_upper_limit);
       }
     else
       {
@@ -115,6 +128,6 @@ namespace parallel_query
 #endif
     // *INDENT-ON*
 
-    return MIN (degree, (UINT32) prm_value);
+    return MIN (degree, (UINT32) parallelism);
   }
 }				/* namespace parallel_query */

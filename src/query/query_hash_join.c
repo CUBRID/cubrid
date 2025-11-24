@@ -1940,6 +1940,7 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 {
   QFILE_LIST_ID *outer_list_id, *inner_list_id;
   INT64 min_page_cnt;
+  bool has_hint_degree = false;
 
   THREAD_ENTRY *main_thread_p = NULL;
   void *raw_memory = NULL;
@@ -1963,6 +1964,11 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
+  if (manager->max_parallel_workers >= 0)
+    {
+      has_hint_degree = true;
+    }
+
   /* check if pages are enough for parallel-thread hash join */
   min_page_cnt =
     (outer_list_id->page_cnt < inner_list_id->page_cnt) ? outer_list_id->page_cnt : inner_list_id->page_cnt;
@@ -1976,6 +1982,11 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       /* try single-thread hash join */
       assert (manager->px_worker_pool_manager == NULL);
       return HASHJOIN_STATUS_PARTITION;
+    }
+
+  if (!has_hint_degree)
+    {
+      manager->max_parallel_workers = MIN (manager->max_parallel_workers, manager->context_cnt /* part_cnt */ );
     }
 
   main_thread_p = (thread_p->m_px_orig_thread_entry == NULL) ? thread_p : thread_p->m_px_orig_thread_entry;
