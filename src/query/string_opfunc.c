@@ -6880,7 +6880,7 @@ db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int
   assert (db_val != NULL);
   assert (precision >= DB_DEFAULT_PRECISION);
 
-  if (!TP_IS_STRING_TYPE(db_type) && !TP_IS_LOB_TYPE(db_type))
+  if (!TP_IS_STRING_TYPE (db_type) && !TP_IS_LOB_TYPE (db_type))
     {
       return ER_QSTR_INVALID_DATA_TYPE;
     }
@@ -25470,6 +25470,8 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
       return error_status;
     }
 
+  result_value->domain.general_info.type = DB_TYPE_BLOB;
+
   return error_status;
 }
 
@@ -25693,6 +25695,8 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
     {
       return error_status;
     }
+
+  result_value->domain.general_info.type = DB_TYPE_CLOB;
 
   return error_status;
 }
