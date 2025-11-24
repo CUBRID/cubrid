@@ -4658,8 +4658,15 @@ au_grant (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
     {
       if (ws_is_same_object (classobj->owner, user))
 	{
-	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	    {
+	      goto fail_end;
+	    }
+	  else
+	    {
+	      error = ER_AU_CANT_GRANT_OWNER;
+	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
 	}
       else if ((error = check_grant_option (class_mop, classobj, type)) == NO_ERROR)
 	{
@@ -5019,6 +5026,26 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
   AU_GRANT *g;
   int i, length;
 
+  /* 
+   * This function immediately returns NO_ERROR to skip propagate_revoke() for the following two reasons.
+   *
+   * 1. In versions 11.3 and below, propagate_revoke (cascade revoke) does not work correctly.
+   *    (fixed to work correctly from version 11.4 onwards)
+   * 2. In debug mode, when the granter is different from the owner, propagate_revoke executes and
+   *    an assert statement in au_propagate_del_new_auth() triggers, causing a core dump.
+   *    Example:
+   *       CALL LOGIN('dba','') on class db_user;
+   *       CREATE USER user1;
+   *       CREATE USER user2;
+   *       CREATE USER user3;
+   *       CREATE TABLE user1.tbl (i int);
+   *       GRANT select ON user1.tbl TO user2;
+   *       GRANT select ON user1.tbl TO user3;
+   *       REVOKE select ON user1.tbl FROM user2;
+   */
+  return NO_ERROR;
+
+#if 0
   /* determine invalid grants */
   map_grant_list (grant_list, owner);
 
@@ -5107,6 +5134,7 @@ propagate_revoke (AU_GRANT * grant_list, MOP owner, DB_AUTH mask)
     }
 
   return (error);
+#endif
 }
 
 /*
