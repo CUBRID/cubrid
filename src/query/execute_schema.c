@@ -6972,18 +6972,20 @@ do_promote_partition_by_name (const char *class_name, const char *part_num, char
 }
 
 /*
- * need_reset_notnull_unique_flags() - Determine whether NOT NULL/UNIQUE flags need reset
- *    return: true if reset is required, false otherwise
+ * has_notnull_unique_constraints() - Check if attribute is NOT NULL and UNIQUE
+ *    return: true if the attribute has both NOT NULL and UNIQUE constraints,
+ *            false otherwise
  *    smattr(in): attribute to check
  *
  * Note:
  *    The decision is based on both smattr->flags (for NOT NULL)
  *    and smattr->constraints (for UNIQUE).
- *    - If the attribute has both NOT NULL and UNIQUE constraints, return false (do not reset)
- *    - Otherwise, return true (reset required)
+ *    - If the attribute has both NOT NULL and UNIQUE constraints, return true
+ *      so that the UNIQUE flags are preserved.
+ *    - Otherwise, return false and the UNIQUE-related flags will be reset.
  */
 static bool
-need_reset_notnull_unique_flags (const SM_ATTRIBUTE * smattr)
+has_notnull_unique_constraints (const SM_ATTRIBUTE * smattr)
 {
   bool has_not_null = false;
   bool has_unique = false;
@@ -7000,7 +7002,7 @@ need_reset_notnull_unique_flags (const SM_ATTRIBUTE * smattr)
 	}
     }
 
-  return !(has_not_null && has_unique);
+  return has_not_null && has_unique;
 }
 
 /*
@@ -7077,14 +7079,14 @@ do_promote_partition (SM_CLASS * class_)
       /* reset flags that belong to the root partitioned table */
       smattr->auto_increment = NULL;
       smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
-      if (need_reset_notnull_unique_flags (smattr))
+      if (has_notnull_unique_constraints (smattr))
 	{
-	  smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
-	  smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+	  has_notnull_unique = true;
 	}
       else
 	{
-	  has_notnull_unique = true;
+	  smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
+	  smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
 	}
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
       smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
