@@ -1947,6 +1947,10 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
+		    case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >
+			*)p->s_id.s.phsid.manager)->close ();
+		      break;
 		    default:
 		      assert (false);
 		      break;
@@ -7327,6 +7331,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 	      result_get_method = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
 	    }
+	  else if (curr_spec->flags & ACCESS_SPEC_FLAG_COUNT_DISTINCT)
+	    {
+	      result_get_method = parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT;
+	    }
 	  error_code =
 	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					  curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
@@ -8785,6 +8793,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	  if (spec->flags & ACCESS_SPEC_FLAG_MERGEABLE_LIST)
 	    {
 	      result_get_method = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
+	    }
+	  else if (spec->flags & ACCESS_SPEC_FLAG_COUNT_DISTINCT)
+	    {
+	      result_get_method = parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT;
 	    }
 	  error =
 	    scan_open_parallel_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed,
@@ -19941,6 +19953,15 @@ qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (THREAD_ENTRY * thr
   VAL_DESCR *vd_p = (VAL_DESCR *) vd;
   return qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildlist.g_agg_list, vd_p, &tpl,
 						xasl->proc.buildlist.g_scan_regu_list, resolved);
+}
+
+int
+qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+									void *vd, int *resolved)
+{
+  QFILE_TUPLE_RECORD tpl = { NULL, 0 };
+  VAL_DESCR *vd_p = (VAL_DESCR *) vd;
+  return qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildvalue.agg_list, vd_p, &tpl, NULL, resolved);
 }
 
 /*

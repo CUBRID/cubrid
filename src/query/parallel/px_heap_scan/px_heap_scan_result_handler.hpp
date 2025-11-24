@@ -23,6 +23,7 @@
 #ifndef _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
 #define _PX_HEAP_SCAN_RESULT_HANDLER_HPP_
 
+#include "query_list.h"
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
@@ -211,6 +212,41 @@ namespace parallel_heap_scan
     bool read_ended;
     bool list_scan_id_opened;
     QFILE_LIST_SCAN_ID list_scan_id;
+  };
+
+  template <>
+  class result_handler <RESULT_TYPE::COUNT_DISTINCT>
+  {
+      using interrupt = parallel_query::interrupt;
+      using err_messages_with_lock = parallel_query::err_messages_with_lock;
+      using read_dest_type = AGGREGATE_TYPE;
+      using write_dest_type = AGGREGATE_TYPE;
+    public:
+      result_handler (QUERY_ID query_id, interrupt *interrupt_p, err_messages_with_lock *err_messages_p, int parallelism,
+		      AGGREGATE_TYPE *orig_agg_list);
+      void read_initialize (THREAD_ENTRY *thread_p);
+      SCAN_CODE read (THREAD_ENTRY *thread_p, read_dest_type *dest);
+      void read_finalize (THREAD_ENTRY *thread_p);
+      void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, write_dest_type *agg_list, VAL_DESCR *vd,
+			     xasl_node *xasl_p);
+      bool write (THREAD_ENTRY *thread_p);
+      void write_finalize (THREAD_ENTRY *thread_p);
+    private:
+      int m_parallelism;
+      std::mutex m_result_mutex;
+      std::condition_variable m_result_cv;
+      int m_result_completed;
+      QUERY_ID m_query_id;
+      interrupt *m_interrupt_p; /* for interrupt */
+      err_messages_with_lock *m_err_messages_p; /* for error messages */
+      AGGREGATE_TYPE *m_orig_agg_list;
+      std::mutex writer_results_mutex;
+      thread_local static AGGREGATE_TYPE *tl_agg_p;
+      thread_local static OUTPTR_LIST *tl_outptr_list_p;
+      thread_local static VAL_DESCR *tl_vd;
+      thread_local static xasl_node *tl_xasl_p;
+      thread_local static QFILE_TUPLE_RECORD tl_tpl_buf;
+      thread_local static OR_BUF tl_or_buf;
   };
 }
 
