@@ -336,6 +336,4 @@ SM_DOMAIN *sm_domain_alloc ();
 void sm_domain_free (SM_DOMAIN * ptr);
 SM_DOMAIN *sm_domain_copy (SM_DOMAIN * ptr);
 
-int sm_update_class_timestamp (SM_CLASS * class_);
-
 #endif /* _SCHEMA_MANAGER_H_ */

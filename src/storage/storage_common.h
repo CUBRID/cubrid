@@ -1041,18 +1041,16 @@ typedef enum
 
 /*
  * Enum values represent reverse indexes from the end of the constraint sequence to optional info:
- * e.g., UPDATED_TIME_INDEX == seq_len - 1, CREATED_TIME_INDEX == seq_len - 2, ...
+ * e.g., COMMENT_INDEX == seq_len - 1, OPTIONS_INDEX == seq_len - 2, ...
  * See SM_CLASS_CONSTRAINT in class_object.h for structure details.
 */
 typedef enum
 {
-  SM_CONSTRAINT_UPDATED_TIME_INDEX = 1,	// seq_len - 1
-  SM_CONSTRAINT_CREATED_TIME_INDEX = 2,	// seq_len - 2
-  SM_CONSTRAINT_COMMENT_INDEX = 3,	// seq_len - 3
-  SM_CONSTRAINT_OPTIONS_INDEX = 4,	// seq_len - 4
-  SM_CONSTRAINT_INDEX_TYPE_INDEX = 5,	// seq_len - 5
-  SM_CONSTRAINT_STATUS_INDEX = 6,	// seq_len - 6
-  SM_CONSTRAINT_OPTIONAL_INFO_INDEX = 7,	// seq_len - 7 (optional)
+  SM_CONSTRAINT_COMMENT_INDEX = 1,	// seq_len - 1
+  SM_CONSTRAINT_OPTIONS_INDEX = 2,	// seq_len - 2
+  SM_CONSTRAINT_INDEX_TYPE_INDEX = 3,	// seq_len - 3
+  SM_CONSTRAINT_STATUS_INDEX = 4,	// seq_len - 4
+  SM_CONSTRAINT_OPTIONAL_INFO_INDEX = 5,	// seq_len - 5 (optional)
   // [att_name|id, asc_desc]... (forward from here)
   // BTID
 
@@ -1088,7 +1086,7 @@ get_class_constraint_att_count (int size)
 
 /*
  * Given the total size of a class constraint sequence, this function computes
- * the absolute index of a fixed field (e.g., status, index_type, created_time)
+ * the absolute index of a fixed field (e.g., status, index_type, comment)
  * based on its reverse position from the end of the sequence.
 */
 static inline int

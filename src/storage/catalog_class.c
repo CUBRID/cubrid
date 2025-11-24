@@ -27,6 +27,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "catalog_class.h"
 #include "system_catalog.h"
 
 #include "btree.h"		// for single/multi ops
@@ -60,7 +61,6 @@
   } while (0)
 
 #define CATCLS_INDEX_NAME "i__db_class_unique_name"
-#define CATCLS_INDEX_KEY   CT_CLASS_UNIQUE_NAME_INDEX
 
 #define CATCLS_OID_TABLE_SIZE   1024
 
@@ -105,26 +105,11 @@ struct catcls_property
   int is_foreign_key;
 };
 
-/* TODO: add to ct_class.h */
 bool catcls_Enable = false;
 
 static BTID catcls_Btid;
 static CATCLS_ENTRY *catcls_Free_entry_list = NULL;
 static MHT_TABLE *catcls_Class_oid_to_oid_hash_table = NULL;
-
-/* TODO: move to ct_class.h */
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record);
-extern int catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name, OID * class_oid);
-extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name, RECDES * record, OID * class_oid_p,
-					  UPDATE_INPLACE_STYLE force_in_place);
-extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
-extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
-					  const int lang_buf_size, char *timezone_checksum);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
-extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
-extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 static int catcls_initialize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p, int num_entry);
 static int catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
@@ -189,6 +174,20 @@ static int catcls_resolution_space (int name_space);
 static void catcls_apply_resolutions (OR_VALUE * value_p, OR_VALUE * resolution_p);
 static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_oid, OID * entry_new_oid);
 static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
+
+static void catcls_set_or_value_timestamps (OR_VALUE * value_p);
+static void catcls_update_or_value_updated_time (OR_VALUE * value_p);
+static void catcls_copy_or_value_times_and_statistics (OR_VALUE * value_p, OR_VALUE * old_value_p);
+static void catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, unsigned int ci_time_stamp,
+						       bool with_fullscan);
+static int catcls_cache_fixed_attr_indexes (THREAD_ENTRY * thread_p);
+
+static int _gv_ct_Class_created_time_idx = -1;
+static int _gv_ct_Class_updated_time_idx = -1;
+static int _gv_ct_Index_created_time_idx = -1;
+static int _gv_ct_Index_updated_time_idx = -1;
+static int _gv_ct_Class_checked_time_idx = -1;
+static int _gv_ct_Class_statistics_strategy_idx = -1;
 
 /*
  * catcls_allocate_entry () -
@@ -630,7 +629,7 @@ catcls_find_btid_of_class_name (THREAD_ENTRY * thread_p, BTID * btid_p)
   int error = NO_ERROR;
 
   index_class_p = &ct_Class.cc_classoid;
-  index_key = (ct_Class.cc_atts)[CATCLS_INDEX_KEY].ca_id;
+  index_key = (ct_Class.cc_atts)[CT_CLASS_UNIQUE_NAME_INDEX].ca_id;
 
   error = catalog_get_last_representation_id (thread_p, index_class_p, &repr_id);
   if (error != NO_ERROR)
@@ -1071,18 +1070,6 @@ catcls_get_or_value_from_class (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALU
 
   /* tde_algorithm */
   tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_TDE_ALGORITHM_INDEX].value, NULL, -1, true, NULL, 0);
-
-  /* statistics_strategy */
-  tp_Integer.data_readval (buf_p, &attrs[CT_CLASS_STATISTICS_STRATEGY_INDEX].value, NULL, -1, true, NULL, 0);
-
-  /* created_time */
-  tp_Datetime.data_readval (buf_p, &attrs[CT_CLASS_CREATED_TIME_INDEX].value, NULL, -1, true, NULL, 0);
-
-  /* updated_time */
-  tp_Datetime.data_readval (buf_p, &attrs[CT_CLASS_UPDATED_TIME_INDEX].value, NULL, -1, true, NULL, 0);
-
-  /* checked_time */
-  tp_Datetime.data_readval (buf_p, &attrs[CT_CLASS_CHECKED_TIME_INDEX].value, NULL, -1, true, NULL, 0);
 
   /* variable */
 
@@ -2310,8 +2297,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       attrs = values[j].sub.value;
 
-      /* index_name */
-      attr_val_p = &attrs[1].value;
+      attr_val_p = &attrs[CT_INDEX_INDEX_NAME_INDEX].value;
       error = set_get_element (seq_p, i, attr_val_p);
       if (error != NO_ERROR)
 	{
@@ -2319,8 +2305,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	}
       db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
-      /* (is_unique) */
-      db_make_int (&attrs[2].value, is_unique);
+      db_make_int (&attrs[CT_INDEX_IS_UNIQUE_INDEX].value, is_unique);
 
       error = set_get_element (seq_p, i + 1, &keys);
       if (error != NO_ERROR)
@@ -2345,7 +2330,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_STATUS_INDEX),
-			 &attrs[10].value);
+			 &attrs[CT_INDEX_STATUS_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2375,7 +2360,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    }
 	  if (db_value_is_null (&val) == false)
 	    {
-	      db_make_oid (&attrs[11].value, db_get_oid (&val));
+	      db_make_oid (&attrs[CT_INDEX_REFERENTIAL_INDEX_INDEX].value, db_get_oid (&val));
 	    }
 
 	  error = set_get_element (seq, SM_FK_INFO_DELETE_ACTION_INDEX, &val);
@@ -2383,14 +2368,14 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[12].value, db_get_int (&val));
+	  db_make_int (&attrs[CT_INDEX_DELETE_RULE_INDEX].value, db_get_int (&val));
 
 	  error = set_get_element (seq, SM_FK_INFO_UPDATE_ACTION_INDEX, &val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[13].value, db_get_int (&val));
+	  db_make_int (&attrs[CT_INDEX_UPDATE_RULE_INDEX].value, db_get_int (&val));
 
 	  seq = db_get_set (&svalue);
 	  error = set_get_element (seq, SM_FK_INFO_REF_MATCH_OPTION_INDEX, &val);
@@ -2398,12 +2383,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    {
 	      goto error;
 	    }
-	  db_make_int (&attrs[14].value, db_get_int (&val));
+	  db_make_int (&attrs[CT_INDEX_REFERENTIAL_MATCH_OPTION_INDEX].value, db_get_int (&val));
 	}
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_INDEX_TYPE_INDEX),
-			 &attrs[15].value);
+			 &attrs[CT_INDEX_INDEX_TYPE_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2411,7 +2396,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_OPTIONS_INDEX),
-			 &attrs[16].value);
+			 &attrs[CT_INDEX_OPTIONS_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
@@ -2419,28 +2404,12 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       error =
 	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_COMMENT_INDEX),
-			 &attrs[17].value);
+			 &attrs[CT_INDEX_COMMENT_INDEX].value);
       if (error != NO_ERROR)
 	{
 	  goto error;
 	}
-      db_string_truncate (&attrs[17].value, DB_MAX_COMMENT_LENGTH);
-
-      error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_CREATED_TIME_INDEX),
-			 &attrs[18].value);
-      if (error != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      error =
-	set_get_element (key_seq_p, get_class_constraint_index (key_size, SM_CONSTRAINT_UPDATED_TIME_INDEX),
-			 &attrs[19].value);
-      if (error != NO_ERROR)
-	{
-	  goto error;
-	}
+      db_string_truncate (&attrs[CT_INDEX_COMMENT_INDEX].value, DB_MAX_COMMENT_LENGTH);
 
       if (!is_primary_key && !is_foreign_key)
 	{
@@ -2536,7 +2505,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 		    {
 		    case SM_INDEX_FLAG_FILTER:
 		      pred_seq = db_get_set (&avalue);
-		      attr_val_p = &attrs[8].value;
+		      attr_val_p = &attrs[CT_INDEX_FILTER_EXPRESSION_INDEX].value;
 		      error = set_get_element (pred_seq, 0, attr_val_p);
 		      if (error != NO_ERROR)
 			{
@@ -2565,8 +2534,7 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
 		      att_cnt = att_index_start + 1;
 
-		      /* key_count */
-		      db_make_int (&attrs[3].value, att_cnt);
+		      db_make_int (&attrs[CT_INDEX_KEY_COUNT_INDEX].value, att_cnt);
 
 		      subset_p = catcls_allocate_or_value (att_cnt);
 		      if (subset_p == NULL)
@@ -2575,8 +2543,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 			  goto error;
 			}
 
-		      attrs[4].sub.value = subset_p;
-		      attrs[4].sub.count = att_cnt;
+		      attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.value = subset_p;
+		      attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.count = att_cnt;
 
 		      /* key_attrs */
 		      e = 1;
@@ -2693,10 +2661,9 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pr_clear_value (&val);
 	}
 
-      /* key_count */
       if (has_function_index == 0)
 	{
-	  db_make_int (&attrs[3].value, att_cnt);
+	  db_make_int (&attrs[CT_INDEX_KEY_COUNT_INDEX].value, att_cnt);
 
 	  subset_p = catcls_allocate_or_value (att_cnt);
 	  if (subset_p == NULL)
@@ -2705,8 +2672,8 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	      goto error;
 	    }
 
-	  attrs[4].sub.value = subset_p;
-	  attrs[4].sub.count = att_cnt;
+	  attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.value = subset_p;
+	  attrs[CT_INDEX_KEY_ATTRS_INDEX].sub.count = att_cnt;
 
 	  /* key_attrs */
 	  e = 1;
@@ -2770,17 +2737,13 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	  pvalue = NULL;
 	}
 
-      /* is_reverse */
-      db_make_int (&attrs[5].value, is_reverse);
+      db_make_int (&attrs[CT_INDEX_IS_REVERSE_INDEX].value, is_reverse);
 
-      /* is_primary_key */
-      db_make_int (&attrs[6].value, is_primary_key);
+      db_make_int (&attrs[CT_INDEX_IS_PRIMARY_KEY_INDEX].value, is_primary_key);
 
-      /* is_foreign_key */
-      db_make_int (&attrs[7].value, is_foreign_key);
+      db_make_int (&attrs[CT_INDEX_IS_FOREIGN_KEY_INDEX].value, is_foreign_key);
 
-      /* have_function */
-      db_make_int (&attrs[9].value, has_function_index);
+      db_make_int (&attrs[CT_INDEX_HAVE_FUNCTION_INDEX].value, has_function_index);
     }
 
   return NO_ERROR;
@@ -3899,6 +3862,11 @@ catcls_insert_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
       COPY_OID (root_oid_p, oid_p);
     }
 
+  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
+    {
+      catcls_set_or_value_timestamps (value_p);
+    }
+
   for (attrs = value_p->sub.value, i = 0; i < value_p->sub.count; i++)
     {
       if (IS_SUBSET (attrs[i]))
@@ -4091,6 +4059,87 @@ error:
   return error;
 }
 
+static void
+catcls_set_or_value_timestamps (OR_VALUE * value_p)
+{
+  DB_VALUE datetime_val;
+  DB_DATETIME *datetime;
+  int created_time_idx, updated_time_idx;
+
+  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid))
+    {
+      created_time_idx = CT_CLASS_CREATED_TIME_INDEX;
+      updated_time_idx = CT_CLASS_UPDATED_TIME_INDEX;
+    }
+  else
+    {
+      /* OID_EQ(value_p->id.classoid, &ct_Index.cc_classoid) */
+      created_time_idx = CT_INDEX_CREATED_TIME_INDEX;
+      updated_time_idx = CT_INDEX_UPDATED_TIME_INDEX;
+    }
+
+  db_sys_datetime (&datetime_val);
+  datetime = db_get_datetime (&datetime_val);
+
+  db_make_datetime (&value_p->sub.value[created_time_idx].value, datetime);
+  db_make_datetime (&value_p->sub.value[updated_time_idx].value, datetime);
+}
+
+static void
+catcls_copy_or_value_times_and_statistics (OR_VALUE * value_p, OR_VALUE * old_value_p)
+{
+  int created_time_idx, updated_time_idx;
+  DB_DATETIME *created_time_dt = NULL;
+  DB_DATETIME *updated_time_dt = NULL;
+  OR_VALUE *new_value = value_p->sub.value;
+  OR_VALUE *old_value = old_value_p->sub.value;
+
+  if (OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid))
+    {
+      if (!db_value_is_null (&old_value[_gv_ct_Class_checked_time_idx].value) &&
+	  !db_value_is_null (&old_value[_gv_ct_Class_statistics_strategy_idx].value))
+	{
+	  db_make_datetime (&new_value[_gv_ct_Class_checked_time_idx].value,
+			    db_get_datetime (&old_value[_gv_ct_Class_checked_time_idx].value));
+	  db_make_int (&new_value[_gv_ct_Class_statistics_strategy_idx].value,
+		       db_get_int (&old_value[_gv_ct_Class_statistics_strategy_idx].value));
+	}
+      created_time_idx = _gv_ct_Class_created_time_idx;
+      updated_time_idx = _gv_ct_Class_updated_time_idx;
+    }
+  else
+    {
+      /* OID_EQ(value_p->id.classoid, &ct_Index.cc_classoid) */
+      created_time_idx = _gv_ct_Index_created_time_idx;
+      updated_time_idx = _gv_ct_Index_updated_time_idx;
+    }
+
+  created_time_dt = db_get_datetime (&old_value[created_time_idx].value);
+  updated_time_dt = db_get_datetime (&old_value[updated_time_idx].value);
+
+  db_make_datetime (&new_value[created_time_idx].value, created_time_dt);
+  db_make_datetime (&new_value[updated_time_idx].value, updated_time_dt);
+}
+
+static void
+catcls_update_or_value_updated_time (OR_VALUE * value_p)
+{
+  int updated_time_idx = OID_EQ (&value_p->id.classoid, &ct_Class.cc_classoid) ?
+    _gv_ct_Class_updated_time_idx : _gv_ct_Index_updated_time_idx;
+  db_sys_datetime (&value_p->sub.value[updated_time_idx].value);
+}
+
+static void
+catcls_update_or_value_class_stats_fields (OR_VALUE * value_p, unsigned int ci_time_stamp, bool with_fullscan)
+{
+  DB_VALUE timestamp_val;
+
+  db_make_timestamp (&timestamp_val, ci_time_stamp);
+
+  db_timestamp_to_datetime (&timestamp_val, &value_p->sub.value[_gv_ct_Class_checked_time_idx].value);
+  db_make_int (&value_p->sub.value[_gv_ct_Class_statistics_strategy_idx].value, with_fullscan);
+}
+
 /*
  * catcls_update_instance () -
  *   return:
@@ -4134,6 +4183,11 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   if (error != NO_ERROR)
     {
       goto error;
+    }
+
+  if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
+    {
+      catcls_copy_or_value_times_and_statistics (value_p, old_value_p);
     }
 
   /* update old_value */
@@ -4183,6 +4237,11 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   if (uflag == true)
     {
       HEAP_OPERATION_CONTEXT update_context;
+
+      if (OID_EQ (class_oid_p, &ct_Class.cc_classoid) || OID_EQ (class_oid_p, &ct_Index.cc_classoid))
+	{
+	  catcls_update_or_value_updated_time (value_p);
+	}
 
       record.length = catcls_guess_record_length (value_p);
       record.area_size = record.length;
@@ -4390,6 +4449,115 @@ error:
   return ER_FAILED;
 }
 
+int
+catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
+			   bool with_fullscan)
+{
+  int error = NO_ERROR;
+  OID oid;
+  OID *catalog_class_oid_p = NULL;
+  CLS_INFO *cls_info_p = NULL;
+  HFID *hfid_p = NULL;
+  HEAP_SCANCACHE scan;
+  bool is_scan_inited = false;
+  int old_chn;
+  OR_VALUE *value_p = NULL;
+  RECDES record = RECDES_INITIALIZER;
+  HEAP_OPERATION_CONTEXT update_context;
+
+  error = catcls_find_oid_by_class_name (thread_p, class_name, &oid);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  catalog_class_oid_p = &ct_Class.cc_classoid;
+  cls_info_p = catalog_get_class_info (thread_p, catalog_class_oid_p, NULL);
+  if (cls_info_p == NULL)
+    {
+      goto error;
+    }
+
+  hfid_p = &cls_info_p->ci_hfid;
+  if (heap_scancache_start_modify (thread_p, &scan, hfid_p, catalog_class_oid_p, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
+    {
+      goto error;
+    }
+
+  is_scan_inited = true;
+
+  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+  old_chn = or_chn (&record);
+  value_p = catcls_get_or_value_from_record (thread_p, &record, catalog_class_oid_p);
+  if (value_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+  catcls_update_or_value_class_stats_fields (value_p, ci_time_stamp, with_fullscan);
+
+  record.length = catcls_guess_record_length (value_p);
+  record.area_size = record.length;
+  record.type = REC_HOME;
+  record.data = (char *) malloc (record.length);
+
+  if (record.data == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) record.length);
+      goto error;
+    }
+
+  error = catcls_put_or_value_into_record (thread_p, value_p, old_chn + 1, &record, catalog_class_oid_p);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (locator_update_index (thread_p, &record, &record, NULL, 0, &oid, catalog_class_oid_p, SINGLE_ROW_UPDATE,
+			    &scan, NULL) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+  heap_create_update_context (&update_context, hfid_p, &oid, catalog_class_oid_p, &record, &scan, UPDATE_INPLACE_NONE);
+  if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error;
+    }
+
+error:
+  if (record.data)
+    {
+      free_and_init (record.data);
+    }
+
+  if (value_p)
+    {
+      catcls_free_or_value (value_p);
+    }
+
+  if (is_scan_inited)
+    {
+      heap_scancache_end_modify (thread_p, &scan);
+    }
+
+  if (cls_info_p)
+    {
+      catalog_free_class_info_and_init (cls_info_p);
+    }
+
+  return error;
+}
+
 /*
  * catcls_update_catalog_classes () -
  *   return:
@@ -4473,6 +4641,91 @@ error:
     }
 
   return ER_FAILED;
+}
+
+static int
+catcls_cache_fixed_attr_indexes (THREAD_ENTRY * thread_p)
+{
+  OID *ct_Class_oid_p = &ct_Class.cc_classoid;
+  OID *ct_Index_oid_p = &ct_Index.cc_classoid;
+  int error = NO_ERROR;
+  REPR_ID ct_Class_repr_id, ct_Index_repr_id;
+  DISK_REPR *ct_Class_repr_p = NULL;
+  DISK_REPR *ct_Index_repr_p = NULL;
+  DISK_ATTR *ct_Class_fixed_p = NULL;
+  DISK_ATTR *ct_Index_fixed_p = NULL;
+
+  error = catalog_get_last_representation_id (thread_p, ct_Class_oid_p, &ct_Class_repr_id);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  ct_Class_repr_p = catalog_get_representation (thread_p, ct_Class_oid_p, ct_Class_repr_id, NULL);
+  if (ct_Class_repr_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  ct_Class_fixed_p = ct_Class_repr_p->fixed;
+  for (int i = 0; i < ct_Class_repr_p->n_fixed; i++)
+    {
+      if (ct_Class_fixed_p[i].id == ct_Class.cc_atts[CT_CLASS_CREATED_TIME_INDEX].ca_id)
+	{
+	  _gv_ct_Class_created_time_idx = i;
+	}
+      else if (ct_Class_fixed_p[i].id == ct_Class.cc_atts[CT_CLASS_UPDATED_TIME_INDEX].ca_id)
+	{
+	  _gv_ct_Class_updated_time_idx = i;
+	}
+      else if (ct_Class_fixed_p[i].id == ct_Class.cc_atts[CT_CLASS_CHECKED_TIME_INDEX].ca_id)
+	{
+	  _gv_ct_Class_checked_time_idx = i;
+	}
+      else if (ct_Class_fixed_p[i].id == ct_Class.cc_atts[CT_CLASS_STATISTICS_STRATEGY_INDEX].ca_id)
+	{
+	  _gv_ct_Class_statistics_strategy_idx = i;
+	}
+    }
+
+  assert (_gv_ct_Class_created_time_idx != -1);
+  assert (_gv_ct_Class_updated_time_idx != -1);
+  assert (_gv_ct_Class_checked_time_idx != -1);
+  assert (_gv_ct_Class_statistics_strategy_idx != -1);
+
+  error = catalog_get_last_representation_id (thread_p, ct_Index_oid_p, &ct_Index_repr_id);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  ct_Index_repr_p = catalog_get_representation (thread_p, ct_Index_oid_p, ct_Index_repr_id, NULL);
+  if (ct_Index_repr_p == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  ct_Index_fixed_p = ct_Index_repr_p->fixed;
+  for (int i = 0; i < ct_Index_repr_p->n_fixed; i++)
+    {
+      if (ct_Index_fixed_p[i].id == ct_Index.cc_atts[CT_INDEX_CREATED_TIME_INDEX].ca_id)
+	{
+	  _gv_ct_Index_created_time_idx = i;
+	}
+      else if (ct_Index_fixed_p[i].id == ct_Index.cc_atts[CT_INDEX_UPDATED_TIME_INDEX].ca_id)
+	{
+	  _gv_ct_Index_updated_time_idx = i;
+	}
+    }
+
+  assert (_gv_ct_Index_created_time_idx != -1);
+  assert (_gv_ct_Index_updated_time_idx != -1);
+
+end:
+  catalog_free_representation_and_init (ct_Class_repr_p);
+  catalog_free_representation_and_init (ct_Index_repr_p);
+
+  return error;
 }
 
 /*
@@ -4592,6 +4845,12 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   if (catcls_initialize_class_oid_to_oid_hash_table (thread_p, CATCLS_OID_TABLE_SIZE) != NO_ERROR)
     {
       return ER_FAILED;
+    }
+
+  error = catcls_cache_fixed_attr_indexes (thread_p);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   return NO_ERROR;

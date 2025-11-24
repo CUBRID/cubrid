@@ -5940,10 +5940,13 @@ stats_update_all_statistics (int with_fullscan)
   for (int i = 0; i < lmops->num; i++)
     {
       class_mop = lmops->mops[i];
-      error = stats_update_statistics (class_mop, with_fullscan);
-      if (error != NO_ERROR)
+      if (locator_fetch_class (class_mop, DB_FETCH_READ) != NULL)
 	{
-	  break;
+	  error = stats_update_statistics (class_mop, with_fullscan);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
 	}
     }
 
