@@ -4460,13 +4460,10 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 	  if (indx_cov_p->list_id != NULL)
 	    {
-	      qfile_destroy_list (thread_p, indx_cov_p->list_id);
-
-	      indx_cov_p->list_id =
-		qfile_open_list (thread_p, indx_cov_p->type_list, NULL, indx_cov_p->query_id, 0, indx_cov_p->list_id);
-	      if (indx_cov_p->list_id == NULL)
+	      if (qfile_truncate_list (thread_p, indx_cov_p->list_id) != NO_ERROR)
 		{
 		  status = S_ERROR;
+		  break;
 		}
 	    }
 	}

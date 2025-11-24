@@ -3201,6 +3201,90 @@ error_exit:
   return er_errid ();
 }
 
+int
+qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
+{
+  int error_code = NO_ERROR;
+  int i;
+  PAGE_PTR page_p;
+  QFILE_PAGE_HEADER pgheader = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID };
+  QMGR_TEMP_FILE *tfile_vfid_p = list_id->tfile_vfid;
+  if (list_id->last_pgptr != NULL)
+    {
+      qfile_close_list (thread_p, list_id);
+    }
+
+  list_id->tuple_cnt = 0;
+  list_id->page_cnt = 0;
+  list_id->first_vpid.pageid = NULL_PAGEID;
+  list_id->first_vpid.volid = NULL_VOLID;
+  list_id->last_vpid.pageid = NULL_PAGEID;
+  list_id->last_vpid.volid = NULL_VOLID;
+  list_id->last_pgptr = NULL;
+  list_id->last_offset = QFILE_NULL_PAGE_OFFSET;
+  list_id->lasttpl_len = 0;
+
+  switch (tfile_vfid_p->membuf_type)
+    {
+    case TEMP_FILE_MEMBUF_NONE:
+      break;
+    case TEMP_FILE_MEMBUF_NORMAL:
+      {
+	tfile_vfid_p->membuf_last = -1;
+	page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
+			     + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
+	for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
+	  {
+	    tfile_vfid_p->membuf[i] = page_p;
+	    OR_PUT_INT ((page_p) + QFILE_TUPLE_COUNT_OFFSET, pgheader.pg_tplcnt);
+	    OR_PUT_INT ((page_p) + QFILE_PREV_PAGE_ID_OFFSET, pgheader.prev_pgid);
+	    OR_PUT_INT ((page_p) + QFILE_NEXT_PAGE_ID_OFFSET, pgheader.next_pgid);
+	    OR_PUT_INT ((page_p) + QFILE_LAST_TUPLE_OFFSET, pgheader.lasttpl_off);
+	    OR_PUT_INT ((page_p) + QFILE_OVERFLOW_PAGE_ID_OFFSET, pgheader.ovfl_pgid);
+	    OR_PUT_SHORT ((page_p) + QFILE_PREV_VOL_ID_OFFSET, pgheader.prev_volid);
+	    OR_PUT_SHORT ((page_p) + QFILE_NEXT_VOL_ID_OFFSET, pgheader.next_volid);
+	    OR_PUT_SHORT ((page_p) + QFILE_OVERFLOW_VOL_ID_OFFSET, pgheader.ovfl_volid);
+#if !defined(NDEBUG)
+	    /* suppress valgrind UMW error */
+	    memset (page_p + QFILE_RESERVED_OFFSET, 0, QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
+#endif
+	    page_p += DB_PAGESIZE;
+	  }
+      }
+      break;
+    case TEMP_FILE_MEMBUF_KEY_BUFFER:
+      {
+	tfile_vfid_p->membuf_last = -1;
+	page_p = (PAGE_PTR) ((PAGE_PTR) tfile_vfid_p->membuf
+			     + DB_ALIGN (sizeof (PAGE_PTR) * tfile_vfid_p->membuf_npages, MAX_ALIGNMENT));
+	for (i = 0; i < tfile_vfid_p->membuf_npages; i++)
+	  {
+	    tfile_vfid_p->membuf[i] = page_p;
+	    OR_PUT_INT ((page_p) + QFILE_TUPLE_COUNT_OFFSET, pgheader.pg_tplcnt);
+	    OR_PUT_INT ((page_p) + QFILE_PREV_PAGE_ID_OFFSET, pgheader.prev_pgid);
+	    OR_PUT_INT ((page_p) + QFILE_NEXT_PAGE_ID_OFFSET, pgheader.next_pgid);
+	    OR_PUT_INT ((page_p) + QFILE_LAST_TUPLE_OFFSET, pgheader.lasttpl_off);
+	    OR_PUT_INT ((page_p) + QFILE_OVERFLOW_PAGE_ID_OFFSET, pgheader.ovfl_pgid);
+	    OR_PUT_SHORT ((page_p) + QFILE_PREV_VOL_ID_OFFSET, pgheader.prev_volid);
+	    OR_PUT_SHORT ((page_p) + QFILE_NEXT_VOL_ID_OFFSET, pgheader.next_volid);
+	    OR_PUT_SHORT ((page_p) + QFILE_OVERFLOW_VOL_ID_OFFSET, pgheader.ovfl_volid);
+#if !defined(NDEBUG)
+	    /* suppress valgrind UMW error */
+	    memset (page_p + QFILE_RESERVED_OFFSET, 0, QFILE_PAGE_HEADER_SIZE - QFILE_RESERVED_OFFSET);
+#endif
+	    page_p += DB_PAGESIZE;
+	  }
+      }
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+  error_code = file_temp_truncate (thread_p, &list_id->temp_vfid);
+  return error_code;
+}
+
 /*
  * qfile_copy_tuple_descr_to_tuple () - generate a tuple into a tuple record
  *                                      structure from a tuple descriptor
