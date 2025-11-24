@@ -197,7 +197,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
       if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
 	{
-	  err = jsp_find_sp_of_another_owner (name, &mop);
+	  err = jsp_find_sp_of_another_owner (checked_name, &mop);
 	}
       else
 	{

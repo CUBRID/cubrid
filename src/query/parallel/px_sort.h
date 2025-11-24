@@ -74,6 +74,7 @@
 	  pthread_cond_wait (sort_param->complete_cond, sort_param->px_mtx); \
 	} \
       pthread_mutex_unlock (sort_param->px_mtx); \
+      sort_param->px_worker_manager->wait_workers (); \
     } while (0)
 
 enum px_status

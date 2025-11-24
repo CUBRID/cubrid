@@ -22460,6 +22460,7 @@ btree_compare_btids (void *mem_btid1, void *mem_btid2)
   return 0;
 }
 
+#if !defined (NDEBUG)
 /*
  * btree_check_valid_record () - Check that record data is valid.
  *
@@ -22485,6 +22486,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
   bool has_fixed_size = false;
   bool has_overflow_pages = false;
   VPID first_overflow_vpid = VPID_INITIALIZER;
+  char copy_buf[DBVAL_BUFSIZE];
 
   assert (btid != NULL);
   assert (recp != NULL && recp->data != NULL && recp->length > 0);
@@ -22604,7 +22606,8 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 	      db_make_null (&rec_key_value);
 	      key_domain = btid->key_type;
 	      pr_type = key_domain->type;
-	      if (pr_type->index_readval (&buffer, &rec_key_value, key_domain, -1, true, NULL, 0) != NO_ERROR)
+	      if (pr_type->index_readval (&buffer, &rec_key_value, key_domain, -1, false, copy_buf, DBVAL_BUFSIZE) !=
+		  NO_ERROR)
 		{
 		  assert (false);
 		  return ER_FAILED;
@@ -22634,6 +22637,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
     }
   return NO_ERROR;
 }
+#endif
 
 /*
  * btree_check_foreign_key () -

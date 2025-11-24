@@ -703,50 +703,14 @@ crypt_generate_random_bytes (char *dest, int length)
 }
 
 
-// 
-// *INDENT-OFF*
-DBLINK_CHPHER_KEY dblink_Cipher = {false, {0x00, }};
-static struct
-{
-  unsigned char nonce[16];
-  unsigned char *crypt_key;
-} evp_cipher = { {0, }, dblink_Cipher.crypt_key };  // Do not omit the this initialization settings.
-// *INDENT-ON*
+static const unsigned char dblink_cipher_nonce[16] = {
+  0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07,
+  0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07, 0x07
+};
 
 static int
 init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool is_aes_algorithm)
 {
-  static int is_init_done = 0;
-
-  if (is_init_done == 0)
-    {
-      memset (evp_cipher.nonce, 0x07, sizeof (evp_cipher.nonce));
-      is_init_done = 1;
-    }
-
-#if defined(CS_MODE)
-  if (dblink_Cipher.is_loaded == false)
-    {
-      int err;
-      extern int dblink_get_cipher_master_key ();	// declared in "network_interface_cl.c"
-      if ((err = dblink_get_cipher_master_key ()) != NO_ERROR)
-	{
-	  if (err != ER_TDE_CIPHER_IS_NOT_LOADED)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	      return err;
-	    }
-
-	  /* TODO: 
-	   * We need to analyze why er_errid() returns -1 even though no error was set. 
-	   * Until then, let's clear the error. 
-	   * err = er_errid();
-	   */
-	  er_clearid ();	/* er_clear() */
-	}
-    }
-#endif
-
   if ((*ctx = EVP_CIPHER_CTX_new ()) == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
@@ -786,32 +750,22 @@ init_dblink_cipher (EVP_CIPHER_CTX ** ctx, const EVP_CIPHER ** cipher_type, bool
  *          Otherwise, it is selected between AES and ARIA algorithms according to the value of a specific location.                             
  */
 int
-crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer, unsigned char *pk)
+crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer, unsigned char *key)
 {
   int len, cipher_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
-  unsigned char *key;
 
-  assert (pk);
-  err = init_dblink_cipher (&ctx, &cipher_type, (*pk) ? ((pk[13] & 0x01) == 0x00) : true);
+  assert (key && *key);
+  assert ((int) strlen ((char *) key) < DBLINK_CRYPT_KEY_LENGTH);
+
+  err = init_dblink_cipher (&ctx, &cipher_type, (key[13] & 0x01) == 0x00);
   if (err != NO_ERROR)
     {
       return err;
     }
-  if (pk[0] == 0x00)
-    {
-      key = evp_cipher.crypt_key;
-    }
-  else
-    {
-      assert ((int) strlen ((char *) pk) < DBLINK_CRYPT_KEY_LENGTH);
-      strcpy ((char *) crypt_key, (char *) pk);
-      key = crypt_key;
-    }
 
-  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
+  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, dblink_cipher_nonce) != 1)
     {
       goto cleanup;
     }
@@ -836,7 +790,6 @@ crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *ciph
 cleanup:
   EVP_CIPHER_CTX_free (ctx);
 
-exit:
   if (err != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
@@ -858,33 +811,22 @@ exit:
  *                        
  */
 int
-crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer, unsigned char *pk)
+crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char *str_buffer, unsigned char *key)
 {
   int len, str_len, err;
   EVP_CIPHER_CTX *ctx;
   const EVP_CIPHER *cipher_type;
-  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
-  unsigned char *key;
 
-  assert (pk);
-  err = init_dblink_cipher (&ctx, &cipher_type, (*pk) ? ((pk[13] & 0x01) == 0x00) : true);
+  assert (key && *key);
+  assert ((int) strlen ((char *) key) < DBLINK_CRYPT_KEY_LENGTH);
+
+  err = init_dblink_cipher (&ctx, &cipher_type, (key[13] & 0x01) == 0x00);
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  if (pk[0] == 0x00)
-    {
-      key = evp_cipher.crypt_key;
-    }
-  else
-    {
-      assert ((int) strlen ((char *) pk) < DBLINK_CRYPT_KEY_LENGTH);
-      strcpy ((char *) crypt_key, (char *) pk);
-      key = crypt_key;
-    }
-
-  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, evp_cipher.nonce) != 1)
+  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, dblink_cipher_nonce) != 1)
     {
       goto cleanup;
     }
@@ -908,7 +850,6 @@ crypt_dblink_decrypt (const unsigned char *cipher, int cipher_len, unsigned char
 cleanup:
   EVP_CIPHER_CTX_free (ctx);
 
-exit:
   if (err != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
@@ -1294,30 +1235,3 @@ reverse_shake_dblink_password (char *confused, int length, char *passwd)
 
   return NO_ERROR;
 }
-
-#if !defined(CS_MODE)
-/*
- * dblink_get_encrypt_key () - Passing log key to support DBLINK.
- *
- * return               : length of copied or error code.
- * key_buf (in)         : Copied log key
- * key_buf_sz (in/out)  : size of key_buf
- */
-int
-dblink_get_encrypt_key (unsigned char *key_buf, int key_buf_sz)
-{
-  if (!tde_Cipher.is_loaded)
-    {
-      return ER_TDE_CIPHER_IS_NOT_LOADED;
-    }
-
-  if (key_buf_sz >= TDE_DATA_KEY_LENGTH)
-    {
-      memcpy (key_buf, tde_Cipher.data_keys.log_key, TDE_DATA_KEY_LENGTH);
-      return TDE_DATA_KEY_LENGTH;
-    }
-
-  memcpy (key_buf, tde_Cipher.data_keys.log_key, key_buf_sz);
-  return key_buf_sz;
-}
-#endif
