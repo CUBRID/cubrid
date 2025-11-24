@@ -6880,8 +6880,7 @@ db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int
   assert (db_val != NULL);
   assert (precision >= DB_DEFAULT_PRECISION);
 
-  if (db_type != DB_TYPE_BIT && db_type != DB_TYPE_VARBIT && db_type != DB_TYPE_CHAR && db_type != DB_TYPE_VARCHAR
-      && db_type != DB_TYPE_NCHAR && db_type != DB_TYPE_VARNCHAR && db_type != DB_TYPE_CLOB && db_type != DB_TYPE_BLOB)
+  if (!TP_IS_STRING_TYPE(db_type) && !TP_IS_LOB_TYPE(db_type))
     {
       return ER_QSTR_INVALID_DATA_TYPE;
     }
