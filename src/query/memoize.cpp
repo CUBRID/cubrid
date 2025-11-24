@@ -764,6 +764,7 @@ namespace memoize
 
   storage::~storage()
   {
+    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
     if (m_last_key != nullptr)
       {
 	m_last_key->~key();
@@ -784,6 +785,7 @@ namespace memoize
 
     m_keyptr_src.clear();
     m_key_value_map.clear();
+    db_change_private_heap (m_thread_p, heap_id);
   }
 
   void storage::start_timer()
@@ -1063,11 +1065,9 @@ extern "C"
   {
     if (xasl->memoize_storage)
       {
-	HL_HEAPID heap_id = db_change_private_heap (thread_p, 0);
 	xasl->memoize_storage->storage::~storage();
 	free (xasl->memoize_storage);
 	xasl->memoize_storage = nullptr;
-	db_change_private_heap (thread_p, heap_id);
       }
   }
 
