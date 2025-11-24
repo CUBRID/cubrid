@@ -6989,6 +6989,10 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	      regu->type = TYPE_LIST_ID;
 	      regu->value.srlist_id = srlist_id;
 	      srlist_id->list_id = xasl->list_id;
+	      if (pt_prepare_corr_subquery_hash_result_cache (parser, (PT_NODE *) node, xasl))
+		{
+		  XASL_SET_FLAG (xasl, XASL_USES_SQ_CACHE);
+		}
 	    }
 	  else
 	    {
