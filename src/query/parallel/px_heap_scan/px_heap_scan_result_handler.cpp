@@ -865,8 +865,7 @@ namespace parallel_heap_scan
 	      }
 	    else
 	      {
-		db_make_bigint (orig_agg_p->accumulator.value,
-				db_get_bigint (orig_agg_p->accumulator.value) + (INT64) orig_agg_p->accumulator.curr_cnt);
+		db_make_bigint (orig_agg_p->accumulator.value, (INT64) orig_agg_p->accumulator.curr_cnt);
 	      }
 	  }
       }
