@@ -139,6 +139,7 @@ extern CSS_THREAD_FN css_Request_handler;
   if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) er_print_callstack (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
 
 extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
+extern void css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern int css_init_conn_list (void);
 extern void css_final_conn_list (void);
@@ -163,7 +164,7 @@ extern void css_register_handler_routines (css_error_code (*connect_handler) (CS
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
 extern int css_get_session_ids_for_active_connections (SESSION_ID ** ids, int *count);
-extern int css_shutdown_conn_by_tran_index (int tran_index);
+extern int css_shutdown_conn_by_tran_index (int tran_index, int wait_time);
 
 extern int css_send_abort_request (CSS_CONN_ENTRY * conn, unsigned short request_id);
 extern int css_read_header (CSS_CONN_ENTRY * conn, const NET_HEADER * local_header);
@@ -208,7 +209,7 @@ extern void css_free_wait_queue_entry (CSS_CONN_ENTRY * conn, CSS_WAIT_QUEUE_ENT
 
 extern char *css_get_exec_path (void);
 extern char **css_get_argv (void);
-extern void css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, bool wait);
+extern void css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, int wait_time);
 extern void css_request_release_packet (css_conn_entry * conn, void *buffer);
 extern void css_wakeup_handler (css_conn_entry * conn);
 

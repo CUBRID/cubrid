@@ -267,6 +267,7 @@ namespace cubconn
       }
     else
       {
+	css_prepare_shutdown_conn (ctx->m_conn);
 	css_free_conn (ctx->m_conn);
       }
     delete ctx;
@@ -719,6 +720,7 @@ namespace cubconn
 
     /* only connected file descriptor is needed */
     (void) ::unlink (m_unixpath.c_str ());
+    css_prepare_shutdown_conn (ctx->m_conn);
     css_free_conn (ctx->m_conn);
     ::close (m_unixsocket);
 
@@ -868,6 +870,7 @@ namespace cubconn
     new_ctx->m_conn->request_id = request_id;
     if (!this->prepare_reply (new_ctx, SERVER_CONNECTED))
       {
+	css_prepare_shutdown_conn (new_ctx->m_conn);
 	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
 
@@ -884,6 +887,7 @@ namespace cubconn
       }
     else if (status == result::PeerReset || status == result::Error)
       {
+	css_prepare_shutdown_conn (new_ctx->m_conn);
 	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
 
@@ -896,6 +900,7 @@ namespace cubconn
       {
 	er_log_conn (__FILE__, __LINE__,
 		     "master_connector->request_new_client: m_events->add_descriptor failed: %s", strerror (errno));
+	css_prepare_shutdown_conn (new_ctx->m_conn);
 	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
 
@@ -1216,6 +1221,7 @@ namespace cubconn
 
     if (m_master_state != master_state::CLOSED && m_context.m_conn)
       {
+	css_prepare_shutdown_conn (m_context.m_conn);
 	css_free_conn (m_context.m_conn);
 	m_context.m_conn = nullptr;
       }

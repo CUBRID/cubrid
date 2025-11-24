@@ -120,7 +120,11 @@ static pthread_mutex_t css_Client_id_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t css_Conn_rule_lock = PTHREAD_MUTEX_INITIALIZER;
 static CSS_CONN_ENTRY *css_Free_conn_anchor = NULL;
 static int css_Num_free_conn = 0;
-static int css_Num_max_conn = 101;	/* default max_clients + 1 for conn with master */
+static int css_Num_current_client = 0;	/* default max_clients + 1 for conn with master */
+static int css_Num_max_client = 101;	/* default max_clients + 1 for conn with master */
+static int css_Num_max_conn = 202;	/* must have a extra conn to avoid issuing the new conn
+					   when there is no conn even if the actual connceted client
+					   is lower than css_Num_max_client */
 
 CSS_CONN_ENTRY *css_Conn_array = NULL;
 CSS_CONN_ENTRY *css_Active_conn_anchor = NULL;
@@ -331,6 +335,27 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
 }
 
 /*
+ * css_prepare_shutdown_conn() - prepare to close connection entry
+ *   return: void
+ *   conn(in):
+ */
+void
+css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn)
+{
+  int r;
+
+  conn->stop_talk = false;
+  conn->in_flashback = false;
+
+  START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
+
+  css_Num_current_client--;
+  assert (css_Num_current_client >= 0);
+
+  END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
+}
+
+/*
  * css_shutdown_conn() - close connection entry
  *   return: void
  *   conn(in):
@@ -353,10 +378,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
   if (conn->status == CONN_OPEN || conn->status == CONN_CLOSING)
     {
       conn->status = CONN_CLOSED;
-      conn->stop_talk = false;
-      conn->in_flashback = false;
       conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
-
       if (conn->version_string)
 	{
 	  free_and_init (conn->version_string);
@@ -409,7 +431,7 @@ css_init_conn_list (void)
 
   css_init_conn_rules ();
 
-  css_Num_max_conn = css_get_max_conn () + NUM_MASTER_CHANNEL;
+  css_Num_max_client = css_get_max_conn () + NUM_MASTER_CHANNEL;
 
   if (css_Conn_array != NULL)
     {
@@ -435,6 +457,7 @@ css_init_conn_list (void)
    * allocate NUM_MASTER_CHANNEL + the total number of
    *  conn entries
    */
+  css_Num_max_conn = css_Num_max_client * 2;
   css_Conn_array = (CSS_CONN_ENTRY *) malloc (sizeof (CSS_CONN_ENTRY) * (css_Num_max_conn));
   if (css_Conn_array == NULL)
     {
@@ -486,6 +509,7 @@ css_init_conn_list (void)
   /* initialize active conn list, used for stopping all threads */
   css_Active_conn_anchor = NULL;
   css_Free_conn_anchor = &css_Conn_array[0];
+  css_Num_current_client = 0;
   css_Num_free_conn = css_Num_max_conn;
 
   return NO_ERROR;
@@ -564,16 +588,25 @@ css_make_conn (SOCKET fd)
 
   START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
-  if (css_Free_conn_anchor != NULL)
-    {
-      conn = css_Free_conn_anchor;
-      css_Free_conn_anchor = css_Free_conn_anchor->next;
-      conn->next = NULL;
+  assert (css_Num_current_client <= css_Num_max_client);
 
-      css_Num_free_conn--;
-      assert (css_Num_free_conn >= 0);
+  if (css_Num_current_client < css_Num_max_client)
+    {
+      if (css_Free_conn_anchor != NULL)
+	{
+	  conn = css_Free_conn_anchor;
+	  css_Free_conn_anchor = css_Free_conn_anchor->next;
+	  conn->next = NULL;
+
+	  css_Num_free_conn--;
+	  css_Num_current_client++;
+
+	  CSS_LOG_STACK ("css_make_conn: conn = %d, " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
+	}
     }
-  CSS_LOG_STACK ("css_make_conn: conn = %d, " CSS_FREE_CONN_MSG, CSS_CONN_IDX (conn), CSS_FREE_CONN_ARGS);
+
+  assert (css_Num_free_conn >= 0);
+  assert (css_Num_current_client <= css_Num_max_client);
 
   END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
@@ -581,6 +614,8 @@ css_make_conn (SOCKET fd)
     {
       if (css_initialize_conn (conn, fd) != NO_ERROR)
 	{
+	  css_prepare_shutdown_conn (conn);
+	  css_free_conn (conn);
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_INIT, 0);
 	  return NULL;
 	}
@@ -1348,9 +1383,10 @@ error_return:
  *                                     transaction id
  *   return: error code
  *   tran_index(in): transaction id
+ *   wait_time(in): wait time (-1: infinite, 0: no wait, : wait time)
  */
 int
-css_shutdown_conn_by_tran_index (int tran_index)
+css_shutdown_conn_by_tran_index (int tran_index, int wait_time)
 {
   CSS_CONN_ENTRY *conn = NULL;
   int error = ER_FAILED;
@@ -1370,7 +1406,7 @@ css_shutdown_conn_by_tran_index (int tran_index)
 
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
-					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, true);
+					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, wait_time);
 
 		  error = NO_ERROR;
 		}
@@ -3104,7 +3140,7 @@ css_get_argv (void)
 }
 
 void
-css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, bool wait)
+css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, int wait_time)
 {
   cubconn::connection_worker::message request;
   int r;
@@ -3138,7 +3174,8 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, bo
     rmutex_unlock (NULL, &conn->cmutex);
   };
 
-  if (!conn->worker->enqueue_and_notify (cubconn::connection_worker::queue_type::LAZY, std::move (request), func, wait))
+  if (!conn->worker->enqueue_and_notify (cubconn::connection_worker::queue_type::LAZY,
+					 std::move (request), func, wait_time))
     {
       assert_release (false);
     }

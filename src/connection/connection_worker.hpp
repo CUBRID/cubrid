@@ -192,7 +192,7 @@ namespace cubconn
       void enqueue (queue_type type, message &&item);
       bool notify ();
       bool enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func = nullptr,
-			       bool need_wait = false);
+			       int wait_time = 0 /* no wait */);
 
       /* statistics */
       void stats ();

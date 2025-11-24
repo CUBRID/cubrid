@@ -212,12 +212,12 @@ namespace cubconn
   }
 
   bool connection_worker::enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func,
-      bool need_wait)
+      int wait_time)
   {
     std::shared_ptr<message_blocker> handle;
     std::unique_lock<std::mutex> lock;
 
-    if (need_wait)
+    if (wait_time)
       {
 	/* acquire the lock to prevent a lost wakeup */
 	handle = std::make_shared<message_blocker> ();
@@ -242,11 +242,15 @@ namespace cubconn
 	func ();
       }
 
-    if (need_wait)
+    if (wait_time)
       {
-	if (!handle->cv.wait_for (lock, std::chrono::seconds (10), [&] { return handle->done; }))
+	if (wait_time < 0)
 	  {
-	    return false;
+	    handle->cv.wait (lock, [&] { return handle->done; });
+	  }
+	else
+	  {
+	    handle->cv.wait_for (lock, std::chrono::seconds (wait_time), [&] { return handle->done; });
 	  }
       }
 
@@ -372,6 +376,9 @@ namespace cubconn
 
     if (ctx->m_removed)
       {
+	/* wake up the thread blocked until this request is complete */
+	this->wakeup_blocked_worker (handle);
+
 	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: already removed context. conn = %p\n",
 		     ctx->m_conn);
 	return true;
@@ -492,12 +499,15 @@ namespace cubconn
     end = std::chrono::steady_clock::now ();
     m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
-    /* wake up the thread blocked until this request is complete */
-    this->wakeup_blocked_worker (handle);
-
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);
     ctx->m_conn->fd = INVALID_SOCKET;
+
+    /* wake up the thread blocked until this request is complete */
+    this->wakeup_blocked_worker (handle);
+
+    /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
+    css_prepare_shutdown_conn (ctx->m_conn);
 
     /* mark deleted and lazily release this */
     ctx->m_removed = true;

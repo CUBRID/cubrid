@@ -782,6 +782,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
 #define PRM_NAME_CSS_CONNECTION_THREAD_COUNT "connection_thread_count"
 
+#define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
+
 // #endregion 
 
 /*

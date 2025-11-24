@@ -29,6 +29,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <assert.h>
 
 #if defined(WINDOWS)
@@ -371,6 +372,7 @@ int
 css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 {
   int nleft, n;
+  int remains;
 
 #if defined (WINDOWS)
   int winsock_error;
@@ -421,8 +423,16 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	}
       else
 	{
-	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
+	  if (po[0].revents & POLLERR || ((po[0].revents & POLLHUP) && ! (po[0].revents & POLLIN)))
 	    {
+	      if (ioctl (fd, FIONREAD, &remains) >= 0)
+		{
+		  if (remains > 0)
+		    {
+		      er_log_debug (ARG_FILE_LINE, "%d bytes of data pending in buffer (fd = %d)\n", remains, fd);
+		    }
+		}
+
 	      errno = EINVAL;
 	      er_log_debug (ARG_FILE_LINE, "css_readn: %s %s", (po[0].revents & POLLERR ? "POLLERR" : "POLLHUP"),
 			    strerror (errno));
