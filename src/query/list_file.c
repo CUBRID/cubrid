@@ -3281,7 +3281,7 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
       break;
     }
 
-  error_code = file_temp_truncate (thread_p, &list_id->temp_vfid);
+  error_code = file_temp_truncate (thread_p, &tfile_vfid_p->temp_vfid);
   return error_code;
 }
 
