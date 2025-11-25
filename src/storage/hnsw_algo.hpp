@@ -136,12 +136,12 @@ namespace cubhnsw
   template <typename Traits>
   using candidates_view_t = std::vector<candidate_t<Traits>>;
 
-  // template <typename Traits>
-  //using top_candidates_t =
-  // 	  sorted_buffer_gt<candidate_t<Traits>, closer_candidate_t<Traits>, std::allocator<candidate_t<Traits>>>;
-
   template <typename Traits>
-  using top_candidates_t = std::vector<candidate_t<Traits>>;
+  using top_candidates_t =
+	  sorted_buffer_gt<candidate_t<Traits>, closer_candidate_t<Traits>, std::allocator<candidate_t<Traits>>>;
+
+  //template <typename Traits>
+  //using top_candidates_t = std::vector<candidate_t<Traits>>;
   template <typename Traits>
   using next_candidates_t =
 	  std::priority_queue<candidate_t<Traits>, std::vector<candidate_t<Traits>>, closer_candidate_t<Traits>>;
@@ -186,7 +186,6 @@ namespace cubhnsw
       using root_type   = root_t<traits>;
       using node_type   = node_t<traits>;
       using neighbors_ref_type = neighbors_ref_t<traits>;
-
       using key_id_t    = OID;
 
       struct context_t
@@ -208,7 +207,7 @@ namespace cubhnsw
 
       algo (const hnsw_build_params &build_params);
 
-      add_result_t<Traits> add (const OID &oid, const float *vector, const std::size_t expansion);
+      add_result_t<Traits> add (const key_id_t &oid, const float *vector, const std::size_t expansion);
       search_result_t<Traits> search (const float *query, const std::size_t k, const std::size_t expansion);
 
       void set_storage (storage_t *storage) noexcept
@@ -287,11 +286,14 @@ namespace cubhnsw
 
     // precompute inverse log connectivity
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.m));
+
+    // pre-reserve top_for_refine
+    m_context.m_top_for_refine.reserve (m_connectivity + 1);
   }
 
   template <typename Traits>
   add_result_t<Traits>
-  algo<Traits>::add (const OID &key, const float *vector, const std::size_t expansion)
+  algo<Traits>::add (const key_id_t &key, const float *vector, const std::size_t expansion)
   {
     add_result_t<Traits> result;
 
@@ -301,16 +303,16 @@ namespace cubhnsw
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
     // next_candidates_t &next = m_context.m_next_candidates;
 
+    fprintf (stdout, "[add] key: %s, expansion: %zu\n", dump_oid (key).c_str(), expansion);
+
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
     std::size_t top_limit = std::max (m_connectivity + 1, expansion);
-#if 0
     if (!top.reserve (top_limit))
       {
 	assert (false);
 	return {ER_FAILED, OID_INITIALIZER};
       }
-#endif
 
     level_t curr_max_level;
     level_t new_target_level;
@@ -357,6 +359,8 @@ namespace cubhnsw
 	(void) search_for_one_ (vector, entry_block, curr_max_level, new_target_level, closest_slot);
       }
 
+      fprintf (stdout, "[add] closest_slot: %s\n", dump_oid (closest_slot).c_str());
+
       level_t level = (std::min) (new_target_level, curr_max_level);
 
       pinned_t new_node_blk = m_storage->get_node_by_slot_id (new_slot, lock_mode::shared);
@@ -386,8 +390,11 @@ namespace cubhnsw
     if (new_target_level > curr_max_level)
       {
 	// promotion required
-	// TODO: implement promotion
-	pinned_block promoted_root = m_storage->promote_root (root_block);
+	{
+	  pinned_t cleanup {std::move (root_block)};
+	}
+	// pinned_block promoted_root = m_storage->promote_root (root_block);
+	pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
 	root_type root_node = root_type (promoted_root.data());
 	root_node.set_entry (new_slot);
 	root_node.set_level (new_target_level);
@@ -437,14 +444,15 @@ namespace cubhnsw
 	assert (false);
       }
 
-    //top.sort_ascending();
-    //top.shrink (k);
-    shrink_vector (top, k);
+    top.sort_ascending();
+    top.shrink (k);
+    // shrink_vector (top, k);
+    // std::sort (top.begin(), top.end(), closer_candidate_t<Traits>());
 
     result.results = candidates_view_t<Traits> (top.data(), top.data() + top.size());
     for (std::size_t i = 0; i < top.size (); ++i)
       {
-	pinned_t node_blk = m_storage->get_node_by_slot_id (top[i].slot, lock_mode::shared);
+	pinned_t node_blk = m_storage->get_node_by_slot_id (result.results[i].slot, lock_mode::shared);
 	node_type node = node_type (node_blk.data());
 	result.oids.push_back (node.get_key());
       }
@@ -499,6 +507,10 @@ namespace cubhnsw
 		    closest_dist = candidate_dist;
 		    closest_slot = closest_node_blk.id();
 		    changed = true;
+
+		    fprintf (stdout, "[search_for_one] closest_dist: %f\n", closest_dist);
+		    fprintf (stdout, "[search_for_one] candidate_dist: %f\n", candidate_dist);
+		    fprintf (stdout, "[search_for_one] closest_slot: %s\n", dump_oid (closest_slot).c_str());
 		  }
 	      }
 	  }
@@ -519,6 +531,7 @@ namespace cubhnsw
 
     m_context.clear_candidates();
 
+
     distance_t radius;
     {
       pinned_t start_node_blk = m_storage->get_node_by_slot_id (start_slot, lock_mode::shared);
@@ -528,8 +541,8 @@ namespace cubhnsw
     }
 
     next.push (candidate_t<Traits> (radius, start_slot));
-    top.emplace_back (candidate_t<Traits> (radius, start_slot));
-//     top.insert_reserved (candidate_t<Traits> (radius, start_slot));
+    //top.emplace_back (candidate_t<Traits> (radius, start_slot));
+    top.insert_reserved (candidate_t<Traits> (radius, start_slot));
     visits.insert (start_slot);
 
     while (!next.empty ())
@@ -573,9 +586,14 @@ namespace cubhnsw
 	    if (top.size () < top_limit || sucessor_dist < radius)
 	      {
 		next.push (candidate_t<Traits> (sucessor_dist, successor_slot));
-		//top.insert_reserved (candidate_t<Traits> (sucessor_dist, successor_slot));
-		top.emplace_back (candidate_t<Traits> (sucessor_dist, successor_slot));
-		radius = top.back().distance;
+		top.insert_reserved (candidate_t<Traits> (sucessor_dist, successor_slot));
+		//top.emplace_back (candidate_t<Traits> (sucessor_dist, successor_slot));
+		// radius = top.back().distance;
+		radius = top.top ().distance;
+
+		fprintf (stdout, "[search_to_insert] radius: %f\n", radius);
+		fprintf (stdout, "[search_to_insert] sucessor_dist: %f\n", sucessor_dist);
+		fprintf (stdout, "[search_to_insert] top.size(): %zu\n", top.size());
 	      }
 	  }
       }
@@ -603,14 +621,14 @@ namespace cubhnsw
     }
 
     next.push (candidate_t<Traits> (radius, start_slot));
-    top.emplace_back (candidate_t<Traits> (radius, start_slot));
-//     top.insert_reserved (candidate_t<Traits> (radius, start_slot));
+    //top.emplace_back (candidate_t<Traits> (radius, start_slot));
+    top.insert_reserved (candidate_t<Traits> (radius, start_slot));
     visits.insert (start_slot);
 
     while (!next.empty())
       {
 	candidate_t candidacy = next.top();
-	if ((-candidacy.distance) > radius && top.size() == top_limit)
+	if ((candidacy.distance) > radius && top.size() == top_limit)
 	  {
 	    break;
 	  }
@@ -649,9 +667,10 @@ namespace cubhnsw
 	    if (top.size() < expansion || sucessor_dist < radius)
 	      {
 		next.push (candidate_t<Traits> (sucessor_dist, successor_slot));
-		// top.insert_reserved (candidate_t<Traits> (sucessor_dist, successor_slot));
-		top.emplace_back (candidate_t<Traits> (sucessor_dist, successor_slot));
-		radius = top.back().distance;
+		top.insert_reserved (candidate_t<Traits> (sucessor_dist, successor_slot));
+		// top.emplace_back (candidate_t<Traits> (sucessor_dist, successor_slot));
+		// radius = top.back().distance;
+		radius = top.top ().distance;
 
 		fprintf (stdout, "radius: %f\n", radius);
 	      }
@@ -712,8 +731,8 @@ namespace cubhnsw
 	{
 	  pinned_t close_vector_blk = m_storage->get_vector (close_node.get_key(), close_node.get_vec_slot(),  lock_mode::shared);
 	  dist = compute_distance_ (value, reinterpret_cast<float *> (close_vector_blk.data()));
-	  // top_for_refine.insert_reserved (candidate_t<Traits> (dist, close_slot));
-	  top_for_refine.emplace_back (candidate_t<Traits> (dist, close_slot));
+	  top_for_refine.insert_reserved (candidate_t<Traits> (dist, close_slot));
+	  // top_for_refine.emplace_back (candidate_t<Traits> (dist, close_slot));
 	}
 
 	for (std::size_t i = 0; i < close_header.size (); i++)
@@ -730,8 +749,8 @@ namespace cubhnsw
 	      float *close_oid_vec = reinterpret_cast<float *> (close_vector_blk.data());
 	      float *successor_oid_vec = reinterpret_cast<float *> (successor_vector_blk.data());
 	      dist = compute_distance_ (close_oid_vec, successor_oid_vec);
-	      // top_for_refine.insert_reserved (candidate_t<Traits> (dist, successor_slot));
-	      top_for_refine.emplace_back (candidate_t<Traits> (dist, successor_slot));
+	      top_for_refine.insert_reserved (candidate_t<Traits> (dist, successor_slot));
+	      // top_for_refine.emplace_back (candidate_t<Traits> (dist, successor_slot));
 	    }
 	  }
 
@@ -764,7 +783,7 @@ namespace cubhnsw
 	return;
       }
 
-    // top.sort_ascending();
+    top.sort_ascending();
 
     std::size_t submitted_count = 1;
     std::size_t consumed_count = 1; /// Always equal or greater than `submitted_count`.
@@ -809,8 +828,8 @@ namespace cubhnsw
 	consumed_count++;
       }
 
-    // top.shrink (submitted_count);
-    shrink_vector (top, submitted_count);
+    top.shrink (submitted_count);
+    // shrink_vector (top, submitted_count);
     out = candidates_view_t<Traits> (top_data, top_data + submitted_count);
   }
 

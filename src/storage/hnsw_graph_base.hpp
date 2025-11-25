@@ -63,8 +63,14 @@ namespace cubhnsw
       }
 
       root_t() = default;
-      root_t (root_t const &) = default;
-      root_t &operator= (root_t const &) = default;
+
+      // delete copy constructor and assignment operator
+      root_t (root_t const &) = delete;
+      root_t &operator= (root_t const &) = delete;
+
+      // implement move
+      root_t (root_t &&) noexcept = default;
+      root_t &operator= (root_t &&) noexcept = default;
 
       static constexpr std::size_t offset_params = 0;
       static constexpr std::size_t offset_level = sizeof (hnsw_build_params);
@@ -146,8 +152,14 @@ namespace cubhnsw
       }
 
       node_t() = default;
-      node_t (node_t const &) = default;
-      node_t &operator= (node_t const &) = default;
+
+      // delete copy constructor and assignment operator
+      node_t (node_t const &) = delete;
+      node_t &operator= (node_t const &) = delete;
+
+      // implement move
+      node_t (node_t &&) noexcept = default;
+      node_t &operator= (node_t &&) noexcept = default;
 
       static constexpr std::size_t offset_key = 0;
       static constexpr std::size_t offset_vec_slot = sizeof (OID);
@@ -225,8 +237,14 @@ namespace cubhnsw
       }
 
       neighbors_ref_t() = default;
-      neighbors_ref_t (neighbors_ref_t const &) = default;
-      neighbors_ref_t &operator= (neighbors_ref_t const &) = default;
+
+      // delete copy constructor and assignment operator
+      neighbors_ref_t (neighbors_ref_t const &) = delete;
+      neighbors_ref_t &operator= (neighbors_ref_t const &) = delete;
+
+      // implement move
+      neighbors_ref_t (neighbors_ref_t &&) noexcept = default;
+      neighbors_ref_t &operator= (neighbors_ref_t &&) noexcept = default;
 
       std::size_t size() const noexcept
       {
