@@ -24,8 +24,12 @@
 #include "ifsys.hpp"
 #include "hardware_topology.hpp"
 
+#include <iostream>
+#include <cstdio>
+#include <string>
 #include <algorithm>
 #include <cinttypes>
+
 #include <hwloc.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -190,11 +194,37 @@ namespace cubbase
       }
   }
 
+  std::string hardware_topology::execute_command (const char *cmd)
+  {
+    std::string pipe_cmd;
+    std::string result;
+    char buffer[256];
+    FILE *pipe;
+
+    pipe_cmd = std::string (cmd) + " 2>&1";
+    pipe = popen (pipe_cmd.c_str (), "r");
+    if (!pipe)
+      {
+	return "failed to popen ()";
+      }
+
+    result = "";
+    while (fgets (buffer, sizeof (buffer), pipe) != nullptr)
+      {
+	result += buffer;
+      }
+
+    pclose (pipe);
+
+    return result;
+  }
+
   bool hardware_topology::set_nic_channels (std::string &ifname, unsigned int combined)
   {
     struct ethtool_channels channel;
     struct ifreq ifr;
-    char cmd[256];
+    std::string output;
+    char command[256];
     int success;
     int fd;
 
@@ -216,10 +246,11 @@ namespace cubbase
     success = ioctl (fd, SIOCETHTOOL, &ifr);
     if (success)
       {
-	snprintf (cmd, sizeof (cmd), "ethtool -L %s combined %u", ifname.c_str (), combined);
-	success = system (cmd);
-	if (success)
+	snprintf (command, sizeof (command), "ethtool -L %s combined %u", ifname.c_str (), combined);
+	output = execute_command (command);
+	if (!output.empty ())
 	  {
+	    _er_log_debug (__FILE__, __LINE__, "warning: %s.\n", output.c_str ());
 	    ::close (fd);
 	    return false;
 	  }
