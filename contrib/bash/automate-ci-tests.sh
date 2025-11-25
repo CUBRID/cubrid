@@ -13,7 +13,7 @@
 #
 # Summary:
 # If new commits are detected in cubrid develop branch, then push each commit into shell-test branch of
-# myfork repository and issue '/run all' comment in pull request 6571 for the shell-test branch.
+# myfork repository and issue '/run all' comment in some pull request for the shell-test branch.
 # If no new commits in cubrid develop branch, then check develop branches of cubrid-testcases and
 # cubrid-testcases-private-ex for a new commit and, if one found, issue an appropriate '/run ...' comment
 # in the pull request.
