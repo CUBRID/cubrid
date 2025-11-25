@@ -134,8 +134,8 @@ namespace cubhnsw
       explicit node_t (byte_t *tape) noexcept : tape_ (tape)
       {
 #if !defined (NDEBUG)
-	std::string dump_str = dump ();
-	fprintf (stdout, "node_t: %s\n", dump_str.c_str());
+	//std::string dump_str = dump ();
+	//fprintf (stdout, "node_t: %s\n", dump_str.c_str());
 #endif
       }
       byte_t *tape() const noexcept

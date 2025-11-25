@@ -303,7 +303,7 @@ namespace cubhnsw
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
     // next_candidates_t &next = m_context.m_next_candidates;
 
-    fprintf (stdout, "[add] key: %s, expansion: %zu\n", dump_oid (key).c_str(), expansion);
+    // fprintf (stdout, "[add] key: %s, expansion: %zu\n", dump_oid (key).c_str(), expansion);
 
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
@@ -359,7 +359,7 @@ namespace cubhnsw
 	(void) search_for_one_ (vector, entry_block, curr_max_level, new_target_level, closest_slot);
       }
 
-      fprintf (stdout, "[add] closest_slot: %s\n", dump_oid (closest_slot).c_str());
+      // fprintf (stdout, "[add] closest_slot: %s\n", dump_oid (closest_slot).c_str());
 
       level_t level = (std::min) (new_target_level, curr_max_level);
 
@@ -508,9 +508,9 @@ namespace cubhnsw
 		    closest_slot = closest_node_blk.id();
 		    changed = true;
 
-		    fprintf (stdout, "[search_for_one] closest_dist: %f\n", closest_dist);
-		    fprintf (stdout, "[search_for_one] candidate_dist: %f\n", candidate_dist);
-		    fprintf (stdout, "[search_for_one] closest_slot: %s\n", dump_oid (closest_slot).c_str());
+		    // fprintf (stdout, "[search_for_one] closest_dist: %f\n", closest_dist);
+		    // fprintf (stdout, "[search_for_one] candidate_dist: %f\n", candidate_dist);
+		    // fprintf (stdout, "[search_for_one] closest_slot: %s\n", dump_oid (closest_slot).c_str());
 		  }
 	      }
 	  }
@@ -591,9 +591,9 @@ namespace cubhnsw
 		// radius = top.back().distance;
 		radius = top.top ().distance;
 
-		fprintf (stdout, "[search_to_insert] radius: %f\n", radius);
-		fprintf (stdout, "[search_to_insert] sucessor_dist: %f\n", sucessor_dist);
-		fprintf (stdout, "[search_to_insert] top.size(): %zu\n", top.size());
+		// fprintf (stdout, "[search_to_insert] radius: %f\n", radius);
+		// fprintf (stdout, "[search_to_insert] sucessor_dist: %f\n", sucessor_dist);
+		// fprintf (stdout, "[search_to_insert] top.size(): %zu\n", top.size());
 	      }
 	  }
       }
@@ -672,7 +672,7 @@ namespace cubhnsw
 		// radius = top.back().distance;
 		radius = top.top ().distance;
 
-		fprintf (stdout, "radius: %f\n", radius);
+		// fprintf (stdout, "radius: %f\n", radius);
 	      }
 	  }
       }
