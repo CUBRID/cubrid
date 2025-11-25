@@ -6908,7 +6908,6 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attr_id, int dimension, int hn
   ptr = or_pack_int (ptr, hnsw_M);
   ptr = or_pack_int (ptr, hnsw_efConstruction);
   ptr = or_pack_int (ptr, metric);
-  ptr = or_pack_oid (ptr, class_oid);
 
   req_error =
     net_client_request (NET_SERVER_HNSW_ADDINDEX, request, request_size, reply,

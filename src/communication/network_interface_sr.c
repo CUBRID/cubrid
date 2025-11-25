@@ -4640,8 +4640,6 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &hnsw_M);
   ptr = or_unpack_int (ptr, &hnsw_efConstruction);
   ptr = or_unpack_int (ptr, &metric_type);
-  ptr = or_unpack_oid (ptr, &class_oid);
-  ptr = or_unpack_int (ptr, &attrid);
 
   hnsw_build_params params;
 
