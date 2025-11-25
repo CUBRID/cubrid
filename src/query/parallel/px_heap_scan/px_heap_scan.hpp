@@ -120,13 +120,13 @@ namespace parallel_heap_scan
 
 extern "C"
 {
-  extern int scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, ACCESS_SPEC_TYPE *curr_spec,
-      int fixed_scan, int grouped_scan, bool mvcc_select_lock_needed, XASL_NODE *xasl, QUERY_ID query_id, VAL_DESCR *vd);
-  extern void scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern int scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
-  extern void scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
   extern SCAN_CODE scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
   extern int scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern void scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
+  extern int scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, ACCESS_SPEC_TYPE *curr_spec,
+      int fixed_scan, int grouped_scan, bool mvcc_select_lock_needed, XASL_NODE *xasl, QUERY_ID query_id, VAL_DESCR *vd);
+  extern int scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 }
 
 #endif /*_PX_HEAP_SCAN_MANAGER_HPP_ */
