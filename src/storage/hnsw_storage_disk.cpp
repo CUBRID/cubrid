@@ -289,6 +289,7 @@ namespace cubhnsw
 	pgbuf_mode = PGBUF_LATCH_WRITE;
       }
     PAGE_PTR vec_page_ptr = pgbuf_fix (m_thread_p, &vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
+    SPAGE_SLOT *slotp = spage_get_slot (vec_page_ptr, vec_slot.slotid);
 
     std::size_t dim = this->get_dimension ();
     std::size_t bytes = dim * sizeof (float);
@@ -297,7 +298,8 @@ namespace cubhnsw
     {
       pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (vec_page_ptr));
     };
-    return disk_storage::pinned_t (vec_slot, (std::byte *) vec_page_ptr, bytes, lock_mode::shared, scoped_guard);
+    return disk_storage::pinned_t (vec_slot, (std::byte *) vec_page_ptr + slotp->offset_to_record, slotp->record_length,
+				   lock_mode::shared, scoped_guard);
   }
 
 

@@ -288,12 +288,12 @@ namespace cubhnsw
       inline std::size_t node_neighbors_bytes_ (level_t level) const noexcept
       {
 	std::size_t neighbors_byte = get_connectivity() * sizeof (slot_id_t) + sizeof (neighbors_count_t);
-	return neighbors_byte * (level + 1);
+	return neighbors_byte * (level);
       }
 
       inline std::size_t node_bytes_ (level_t level) const noexcept
       {
-	return node_head_bytes_() + node_neighbors_bytes_ (level);
+	return node_head_bytes_() + node_neighbors_bytes_ (level + 1);
       }
 
       inline std::size_t node_head_bytes_() const noexcept
