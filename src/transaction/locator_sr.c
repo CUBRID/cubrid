@@ -7823,7 +7823,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 
   if (num_found == 0)
     {
-      //return NO_ERROR;
+      return NO_ERROR;
     }
   else if (num_found < 0)
     {
