@@ -4630,7 +4630,7 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   OID class_oid;
   char *ptr;
 
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   ptr = or_unpack_btid (request, &btid);
