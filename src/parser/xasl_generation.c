@@ -15834,7 +15834,7 @@ pt_generate_simple_analytic_eval_type (PARSER_CONTEXT * parser, ANALYTIC_INFO * 
  * that share the same window.
  */
 static ANALYTIC_EVAL_TYPE *
-pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, PT_NODE * orderby, bool * no_optimization)
+pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool * no_optimization)
 {
   ANALYTIC_EVAL_TYPE *ret = NULL;
   ANALYTIC_TYPE *func_p;
@@ -16632,8 +16632,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* optimize analytic function list */
-	  xasl->proc.buildlist.a_eval_list =
-	    pt_optimize_analytic_list (parser, &analytic_info, select_node->info.query.order_by, &no_optimization_done);
+	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
 
 	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
 	    {
@@ -16755,9 +16754,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  select_list_ex = NULL;
 
 	  /* register initial outlist */
-	  xasl->outptr_list = (xasl->proc.buildlist.a_eval_list
-			       && xasl->proc.buildlist.a_eval_list->
-			       is_sorted) ? buildlist->a_outptr_list_interm : buildlist->a_outptr_list_ex;
+	  if (xasl->proc.buildlist.a_eval_list && xasl->proc.buildlist.a_eval_list->is_sorted)
+	    {
+	      xasl->outptr_list = buildlist->a_outptr_list_interm;
+	    }
+	  else
+	    {
+	      xasl->outptr_list = buildlist->a_outptr_list_ex;
+	    }
 
 	  /* all done */
 	  goto analytic_exit;
@@ -16957,17 +16961,20 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	{
 	  ANALYTIC_EVAL_TYPE *eval;
 	  ANALYTIC_TYPE *a_func_list;
-	  bool evaluatable = true;
 
 	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
 	    {
 	      if (!eval->is_sorted)
 		{
-		  evaluatable = false;
+		  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
+		   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
+		  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
 		  break;
 		}
 
-	      for (a_func_list = eval->head; a_func_list && evaluatable; a_func_list = a_func_list->next)
+	      for (a_func_list = eval->head;
+		   a_func_list && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC);
+		   a_func_list = a_func_list->next)
 		{
 		  switch (a_func_list->function)
 		    {
@@ -16976,18 +16983,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		    case PT_RANK:
 		      break;
 
-
 		    default:
-		      evaluatable = false;
+		      xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
 		      break;
 		    }
 		}
-	    }
-	  if (!evaluatable)
-	    {
-	      /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
-	       * qexec_execute_analytic(post-processing stage) will use it in the final sort */
-	      xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
 	    }
 	}
 
