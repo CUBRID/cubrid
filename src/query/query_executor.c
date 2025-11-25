@@ -317,6 +317,7 @@ struct analytic_state
   RECDES analytic_rec;
   QFILE_TUPLE_RECORD input_tplrec;
   QFILE_TUPLE_RECORD *output_tplrec;
+  bool is_sorted;
 
   struct
   {
@@ -20817,6 +20818,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
     if (analytic_eval->is_sorted)
       {
+	analytic_state.is_sorted = true;
 	analytic_state.interm_file = list_id;
       }
     else
@@ -22768,7 +22770,14 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 	}
 
       /* evaluate inst_num() predicate */
-      rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC);
+      if (analytic_state->is_sorted)
+	{
+	  rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_INTERM_PROC);
+	}
+      else
+	{
+	  rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC);
+	}
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
