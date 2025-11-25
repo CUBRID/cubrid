@@ -417,7 +417,7 @@ int ib_thread_count = 0;
  *       dedicated processing functions. See do_alter() for details.
  */
 static int
-do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
+do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter, bool * need_check_repl_constraint)
 {
   const char *entity_name, *new_query;
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
@@ -640,6 +640,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	  assert (alter->info.alter.create_index == NULL);
 	}
+
+      *need_check_repl_constraint = true;
+
       break;
 
     case PT_RESET_QUERY:
@@ -761,6 +764,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      return error;
 	    }
 	}
+
+      *need_check_repl_constraint = true;
 
       break;
 
@@ -1237,6 +1242,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    error = er_errid ();
 	  }
       }
+
+      if (alter_code == PT_DROP_CONSTRAINT || alter_code == PT_DROP_PRIMARY_CLAUSE)
+	{
+	  *need_check_repl_constraint = true;
+	}
+
       break;
 
     case PT_APPLY_PARTITION:
@@ -1393,6 +1404,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
+
       break;
 
     default:
@@ -1644,6 +1656,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   bool do_semantic_checks = false;
   bool do_rollback = false;
   DB_OBJECT *vclass;
+  bool need_check_repl_constraint = false;
   const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
   CHECK_MODIFICATION_ERROR ();
@@ -1689,6 +1702,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   */
 	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
+	  need_check_repl_constraint = true;
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
 	  error_code = do_alter_clause_add_index (parser, crt_clause);
@@ -1722,7 +1736,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   * its execution just to be on the safe side. */
 	  crt_clause->next = NULL;
 
-	  error_code = do_alter_one_clause_with_template (parser, crt_clause);
+	  error_code = do_alter_one_clause_with_template (parser, crt_clause, &need_check_repl_constraint);
 
 	  crt_clause->next = save_next;
 	}
@@ -1734,12 +1748,15 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       do_semantic_checks = true;
     }
 
-  vclass = db_find_class (entity_name);
-  error_code = check_ha_repl_constraint (vclass);
-  if (error_code != NO_ERROR)
+  if (error_code == NO_ERROR && need_check_repl_constraint)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-      goto error_exit;
+      vclass = db_find_class (entity_name);
+      error_code = check_ha_repl_constraint (vclass);
+      if (error_code != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  goto error_exit;
+	}
     }
 
   return error_code;
