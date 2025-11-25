@@ -121,7 +121,7 @@
 #if defined (SERVER_MODE)
 #include "thread_entry_task.hpp"
 #endif // SERVER_MODE
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 #endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -7287,6 +7287,7 @@ fileio_read_backup_end_time_from_last_page (FILEIO_BACKUP_SESSION * session_p)
   memcpy ((char *) &(session_p->bkup.bkuphdr->end_time), read_from, sizeof (INT64));
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_finish_backup () - Finish the backup session successfully
  *   return: session or NULL
@@ -7388,8 +7389,45 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
       free (msg_area);
     }
 
+  /*
+   * -------------------------------------------------------------------------
+   * WORKAROUND: Preventing Restore of Post-Backup Transactions
+   * -------------------------------------------------------------------------
+   *
+   * Problem:
+   * The restore process ('restoredb -d backuptime') compares the backup end time
+   * (stored in the backup volume header) with each transaction’s commit timestamp
+   * (LOG_COMMIT / LOG_ABORT).
+   *
+   * Issue:
+   * Since time(NULL) does not guarantee monotonic increase, the commit time
+   * obtained after backup completion can be equal to or earlier than the backup
+   * end time. In such cases, point-in-time restore may include transactions that
+   * were executed after the backup, which should have been excluded.
+   *
+   * Workaround:
+   * Enforce a 1-second delay after setting the backup end time so that any
+   * subsequent transaction obtains a strictly later commit timestamp.
+   *
+   * Limitation:
+   * This workaround resolves timing overlaps for transactions executed
+   * immediately after a backup in the same session, but cannot fully separate
+   * concurrent transactions across sessions due to second-level timestamp limits.
+   *
+   * TODO (Permanent Fix):
+   * - Use millisecond-level precision in LOG_COMMIT / LOG_ABORT timestamps to
+   *   accurately separate concurrent transactions.
+   * -------------------------------------------------------------------------
+   */
+  do
+    {
+      thread_sleep (1000);
+    }
+  while (end_time >= time (NULL));
+
   return session_p;
 }
+#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * fileio_remove_all_backup () - REMOVE ALL BACKUP VOLUMES
