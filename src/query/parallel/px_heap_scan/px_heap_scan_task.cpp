@@ -29,9 +29,6 @@
 #include "query_executor.h"
 #include "stream_to_xasl.h"
 #include "xasl_unpack_info.hpp"
-#include "fetch.h"
-#include "query_analytic.hpp"
-#include "xasl_analytic.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -310,30 +307,6 @@ namespace parallel_heap_scan
 	      }
 	    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
 	      {
-		ANALYTIC_EVAL_TYPE *a_eval_list;
-		ANALYTIC_TYPE *a_func_list;
-
-		if (m_xasl->type == BUILDLIST_PROC && m_xasl->proc.buildlist.a_eval_list
-		    && m_xasl->proc.buildlist.a_eval_list->is_sorted)
-		  {
-		    for (a_eval_list = m_xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
-		      {
-			if (fetch_val_list
-			    (&thread_ref, m_xasl->proc.buildlist.a_scan_regu_list, m_vd, NULL, NULL, NULL, true) != NO_ERROR)
-			  {
-			    break;
-			  }
-
-			for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
-			  {
-			    ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
-			    if (qdata_evaluate_analytic_func (&thread_ref, a_func_list, m_vd) != NO_ERROR)
-			      {
-				break;
-			      }
-			  }
-		      }
-		  }
 		result_handler_p->write (&thread_ref, m_xasl->val_list);
 	      }
 	    else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
