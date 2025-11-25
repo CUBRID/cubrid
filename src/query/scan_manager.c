@@ -1489,7 +1489,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   TP_DOMAIN dom_buf;
   DB_VALUE *coerced_values = NULL;
   bool *has_coerced_values = NULL;
-  bool new_setdomain_built = *outer_table_midxkey_build_domain != NULL && !is_iss;
+  bool new_setdomain_built = *outer_table_midxkey_build_domain != NULL;
 
   *indexable = false;
 
@@ -1660,6 +1660,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
        operand = operand->next, idx_dom = idx_dom->next, natts++)
     {
       /* If there is coerced value, we will use it regardless of whether a new setdomain is required or not. */
+    retry:
       if (has_coerced_values != NULL && has_coerced_values[natts] == true)
 	{
 	  assert (coerced_values != NULL);
@@ -1678,6 +1679,13 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	{
 	  dom = prebuilt_domain;
 	  prebuilt_domain = prebuilt_domain->next;
+	  if (natts == 0 && dom->type->id == DB_TYPE_NULL && !DB_IS_NULL (val))
+	    {
+	      need_new_setdomain = true;
+	      new_setdomain_built = false;
+	      dom = NULL;
+	      goto retry;
+	    }
 	}
       else if (need_new_setdomain == true)
 	{
@@ -1793,7 +1801,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 
       or_multi_put_element_offset (nullmap_ptr, idx_ncols, CAST_BUFLEN (buf.ptr - buf.buffer), i);
 
-      if (DB_IS_NULL (val))
+      if (DB_IS_NULL (val) || dom->type->id == DB_TYPE_NULL)
 	{
 	  if (is_iss && i == 0)
 	    {
