@@ -16637,8 +16637,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
 	    {
-	      eval->curr_group_tuple_count = 0;
-	      eval->curr_sort_key_tuple_count = 0;
 	      eval->is_sorted = true;
 
 	      for (a_func_list = eval->head; a_func_list && eval->is_sorted; a_func_list = a_func_list->next)

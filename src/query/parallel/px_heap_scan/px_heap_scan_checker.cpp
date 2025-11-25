@@ -26,6 +26,7 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
 #include <set>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -505,7 +506,18 @@ namespace parallel_heap_scan
 	  }
 	if (xasl->proc.buildlist.a_eval_list)
 	  {
-	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	    for (ANALYTIC_EVAL_TYPE *eval = xasl->proc.buildlist.a_eval_list; eval; eval = eval->next)
+	      {
+		if (eval->is_sorted)
+		  {
+		    result = CHECK_RESULT::CANNOT_PARALLEL;
+		    break;
+		  }
+	      }
+	    if (result != CHECK_RESULT::CANNOT_PARALLEL)
+	      {
+		result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	      }
 	  }
 	break;
       case BUILDVALUE_PROC:

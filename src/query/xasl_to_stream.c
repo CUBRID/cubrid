@@ -5756,8 +5756,6 @@ xts_process_analytic_eval_type (char *ptr, const ANALYTIC_EVAL_TYPE * analytic_e
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, analytic_eval->is_sorted);
-  ptr = or_pack_int (ptr, analytic_eval->curr_group_tuple_count);
-  ptr = or_pack_int (ptr, analytic_eval->curr_sort_key_tuple_count);
 
   return ptr;
 }
@@ -7524,8 +7522,6 @@ xts_sizeof_analytic_eval_type (const ANALYTIC_EVAL_TYPE * analytic_eval)
   size = (PTR_SIZE		/* next */
 	  + PTR_SIZE		/* head */
 	  + PTR_SIZE		/* sort_list */
-	  + OR_INT_SIZE		/* curr_group_tuple_count */
-	  + OR_INT_SIZE		/* curr_sort_key_tuple_count */
 	  + OR_INT_SIZE);	/* is_sorted */
 
   return size;

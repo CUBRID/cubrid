@@ -6371,8 +6371,6 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic_eval->is_sorted = (bool) tmp_i;
 
-  ptr = or_unpack_int (ptr, &analytic_eval->curr_group_tuple_count);
-  ptr = or_unpack_int (ptr, &analytic_eval->curr_sort_key_tuple_count);
 
   return ptr;
 

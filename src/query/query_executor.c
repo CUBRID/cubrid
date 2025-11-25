@@ -1209,9 +1209,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
-
-	      a_eval_list->curr_group_tuple_count++;
-	      a_eval_list->curr_sort_key_tuple_count++;
 	    }
 	}
 
@@ -19672,78 +19669,6 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   return bf2df_str_compare (string1, (int) db_get_string_size (value1), string2, (int) db_get_string_size (value2));
 }
 
-
-static int
-qexec_resolve_domains_for_analytic_func (THREAD_ENTRY * thread_p, ANALYTIC_TYPE * func_p, VAL_DESCR * vd)
-{
-  DB_VALUE dbval;
-  int error = NO_ERROR;
-
-  db_make_null (&dbval);
-
-  /* fetch operand value, analytic regulator variable should only contain constants */
-  if (fetch_copy_dbval (thread_p, &func_p->operand, vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  if ((func_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
-      && !DB_IS_NULL (&dbval))
-    {
-      /* set function default domain when late binding */
-      switch (func_p->function)
-	{
-	case PT_COUNT:
-	case PT_COUNT_STAR:
-	  func_p->domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
-	  break;
-
-	case PT_AVG:
-	case PT_STDDEV:
-	case PT_STDDEV_POP:
-	case PT_STDDEV_SAMP:
-	case PT_VARIANCE:
-	case PT_VAR_POP:
-	case PT_VAR_SAMP:
-	  func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	  break;
-
-	case PT_SUM:
-	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
-	    {
-	      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
-	    }
-	  else
-	    {
-	      func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	    }
-	  break;
-
-	default:
-	  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
-	  break;
-	}
-
-      if (func_p->domain == NULL)
-	{
-	  error = ER_FAILED;
-	  return error;
-	}
-
-      /* coerce operand */
-      if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
-	{
-	  error = ER_FAILED;
-	  return error;
-	}
-
-      func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
-      db_value_domain_init (func_p->value, func_p->opr_dbtype, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-    }
-
-  return NO_ERROR;
-}
-
 /*
  * qexec_resolve_domains_on_sort_list () - checks if the domains in the
  *	'order_list' are all solved, and if any is still unresolved (VARIABLE)
@@ -20963,8 +20888,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     {
       for (i = 0; i < analytic_state.func_count; i++)
 	{
-	  analytic_state.func_state_list[i].curr_group_tuple_count = analytic_eval->curr_group_tuple_count;
-	  analytic_state.func_state_list[i].curr_sort_key_tuple_count = analytic_eval->curr_sort_key_tuple_count;
+	  analytic_state.func_state_list[i].curr_group_tuple_count = list_id->tuple_cnt;
+	  analytic_state.func_state_list[i].curr_sort_key_tuple_count = list_id->tuple_cnt;
 
 	  if (qexec_analytic_finalize_group
 	      (thread_p, analytic_state.xasl_state, &analytic_state.func_state_list[i], false) != NO_ERROR)
