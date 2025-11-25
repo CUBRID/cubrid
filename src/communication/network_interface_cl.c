@@ -6908,6 +6908,8 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attr_id, int dimension, int hn
   ptr = or_pack_int (ptr, hnsw_M);
   ptr = or_pack_int (ptr, hnsw_efConstruction);
   ptr = or_pack_int (ptr, metric);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, attr_id);
 
   req_error =
     net_client_request (NET_SERVER_HNSW_ADDINDEX, request, request_size, reply,
@@ -6930,7 +6932,14 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attr_id, int dimension, int hn
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xhnsw_add_index (thread_p, btid, class_oid, attr_id, dimension, hnsw_M, hnsw_efConstruction, metric);
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = hnsw_M;
+  params.ef_construction = hnsw_efConstruction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
+
+  error = xhnsw_add_index (thread_p, class_oid, attr_id, params, *btid);
 
   exit_server (*thread_p);
 
@@ -7051,9 +7060,14 @@ hnsw_load_index (BTID * btid, OID * class_oids, int n_classes, int n_attrs, int 
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid =
-    xhnsw_load_index (thread_p, btid, class_oids, n_classes, n_attrs, attr_ids, hfids, dimension, m, ef_construction,
-		      metric);
+  hnsw_build_params params;
+
+  params.dimension = dimension;
+  params.m = m;
+  params.ef_construction = ef_construction;
+  params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
+
+  error = xhnsw_load_index (thread_p, btid, class_oids, n_classes, n_attrs, attr_ids, hfids, params);
 
   exit_server (*thread_p);
 

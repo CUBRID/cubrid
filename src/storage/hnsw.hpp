@@ -34,6 +34,7 @@
 #include "dbtype_def.h"
 #include "vector_distance_enum.h"
 #include "thread_compat.hpp"
+#include "hnsw_api.hpp"
 
 /* Maximum Alignment */
 #define HNSW_MAX_ALIGN INT_ALIGNMENT
@@ -43,7 +44,6 @@ typedef struct hnsw_header HNSW_HEADER;
 
 struct hnsw_header
 {
-  int hnsw_id;
   int dimension;
   int hnsw_M;
   int hnsw_efConstruction;
@@ -51,20 +51,29 @@ struct hnsw_header
   int hnsw_efSearch;
 };
 
-BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, OID * class_oid, int attr_id, int dimension = 10,
+int xhnsw_initialize (THREAD_ENTRY *thread_p);
+int xhnsw_finalize (THREAD_ENTRY *thread_p);
+int xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_build_params &params,
+		     BTID &btid_out);
+int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
+int xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
+		      HFID *hfids, const hnsw_build_params &params);
+
+#if 0
+BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, OID *class_oid, int attr_id, int dimension = 10,
 		       int hnsw_M = 16, int hnsw_efConstruction = 64,
 		       int metric = DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN);
-int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
+
 BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			HFID *hfids, int dimension, int m, int ef_construction, int metric);
 BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			      HFID *hfids, int dimension, int m, int ef_construction, int metric);
+#endif
+
 int hnsw_print_index_info (THREAD_ENTRY *thread_p, BTID *btid);
 
 int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
 			 float *distances);
 int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
-void dump_all_hnsw_indices_to_files ();
-void init_hnsw_index_path ();
 
 #endif
