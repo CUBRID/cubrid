@@ -250,7 +250,7 @@ namespace cubbase
 	output = execute_command (command);
 	if (!output.empty ())
 	  {
-	    _er_log_debug (__FILE__, __LINE__, "warning: %s.\n", output.c_str ());
+	    _er_log_debug (__FILE__, __LINE__, "warning: %s", output.c_str ());
 	    ::close (fd);
 	    return false;
 	  }
