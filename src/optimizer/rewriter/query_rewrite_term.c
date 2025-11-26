@@ -1447,7 +1447,7 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
   DB_VALUE value;
   bool found;
   PT_NODE *node_prior, *sibling_prior;
-  PT_NODE *spec;
+  PT_NODE *spec = NULL;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   prev = NULL;
@@ -1537,8 +1537,8 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
       else
 	{
 	  node_prior =
-	    (PT_IS_EXPR_NODE_WITH_OPERATOR (node_prior, PT_CAST)) ? node_prior->info.
-	    expr.arg1 : pt_get_end_path_node (node_prior);
+	    (PT_IS_EXPR_NODE_WITH_OPERATOR (node_prior, PT_CAST)) ? node_prior->info.expr.
+	    arg1 : pt_get_end_path_node (node_prior);
 	  if (node_prior->node_type == PT_NAME)
 	    {
 	      spec = pt_find_entity (parser, from, node_prior->info.name.spec_id);
