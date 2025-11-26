@@ -7532,7 +7532,6 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
-  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 exit_on_error:
@@ -8714,11 +8713,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		}
 	      hsidp->scancache_inited = false;
 
-	      if (spec->curent == NULL)
-		{
-		  return S_END;
-		}
-
 #if SERVER_MODE && !WINDOWS
 	      error =
 		scan_open_parallel_heap_scan (thread_p, &spec->s_id, spec, spec->s_id.fixed, spec->s_id.grouped,
@@ -8784,11 +8778,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		}
 	      hsidp->scancache_inited = false;
 
-	      if (spec->curent == NULL)
-		{
-		  return S_END;
-		}
-
 	      error =
 		scan_open_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed, spec->s_id.scan_op_type,
 				     spec->s_id.fixed, spec->s_id.grouped, spec->s_id.single_fetch, spec->s_dbval,
@@ -8818,11 +8807,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		    {
 		      pr_clear_value (hpsidp->cache_page_info[i]);
 		    }
-		}
-
-	      if (spec->curent == NULL)
-		{
-		  return S_END;
 		}
 
 	      error =
@@ -8863,11 +8847,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		  isidp->caches_inited = false;
 		}
 	      spec->s_id.s.isid.scancache_inited = false;
-
-	      if (spec->curent == NULL)
-		{
-		  return S_END;
-		}
 
 	      spec->indexptr->btid = btid;
 
@@ -8917,11 +8896,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    spec->s_id.s.hsid.caches_inited = false;
 	  }
 
-	if (spec->curent == NULL)
-	  {
-	    return S_END;
-	  }
-
 	error =
 	  scan_open_class_attr_scan (thread_p, &spec->s_id, spec->s_id.grouped, spec->single_fetch, spec->s_dbval,
 				     spec->s_id.val_list, spec->s_id.vd, &class_oid, &class_hfid,
@@ -8944,7 +8918,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_ERROR;
     }				/* switch (spec->type) */
 
-  assert (spec->curent != NULL);
+  if (spec->curent == NULL)
+    {
+      return S_END;
+    }
 
   error = scan_start_scan (thread_p, &spec->s_id);
   if (error != NO_ERROR)
