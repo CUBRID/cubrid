@@ -6043,11 +6043,12 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			  INDX_COV *indx_cov_p = &isidp->indx_cov;
 			  static int temp_cache_max_pages = prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE);
 
+			  qfile_close_scan (thread_p, indx_cov_p->lsid);
+
 			  if (indx_cov_p->list_id->page_cnt - indx_cov_p->list_id->tfile_vfid->membuf_npages >
 			      temp_cache_max_pages)
 			    {
 			      /* close current list and start a new one */
-			      qfile_close_scan (thread_p, indx_cov_p->lsid);
 			      qfile_destroy_list (thread_p, indx_cov_p->list_id);
 
 			      indx_cov_p->list_id =
