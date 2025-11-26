@@ -625,7 +625,7 @@ qfile_free_list_id (QFILE_LIST_ID * list_id_p)
   /* This function is remained for debugging purpose. Do not call this function directly. Use
    * QFILE_FREE_AND_INIT_LIST_ID macro. */
   qfile_clear_list_id (list_id_p);
-  // free (list_id_p);
+  free (list_id_p);
 }
 
 

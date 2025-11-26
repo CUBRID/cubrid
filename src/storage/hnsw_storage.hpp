@@ -301,6 +301,20 @@ namespace cubhnsw
 	return node_t<Traits>::get_size();
       }
 
+#if 0
+      inline std::size_t node_bytes_ (level_t level) const noexcept
+      {
+	return node_type::node_head_bytes_() + node_neighbors_bytes_ (level);
+      }
+
+
+      inline neighbors_ref_type neighbors_ (const slot_id_t blk, const level_t level) const noexcept
+      {
+	node_type n = get_node (blk);
+	return neighbors_ref_type (n.neighbors_tape() + node_neighbors_bytes_ (level));
+      }
+#endif
+
       cubthread::entry *m_thread_p;
       BTID m_giid; // general index identifier
       hnsw_build_params m_build_params;

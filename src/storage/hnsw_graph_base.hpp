@@ -123,104 +123,6 @@ namespace cubhnsw
   };
 
   template <class ID_TRAITS>
-  class neighbors_ref_t
-  {
-    protected:
-      byte_t *tape_ {};
-
-      static constexpr std::size_t shift (std::size_t i = 0) noexcept
-      {
-	return sizeof (neighbors_count_t) + sizeof (slot_id_t) * i;
-      }
-
-    public:
-      using slot_id_t = typename ID_TRAITS::slot_id_t;
-
-      explicit neighbors_ref_t (byte_t *tape) noexcept : tape_ (tape) {}
-      byte_t *tape() const noexcept
-      {
-	return tape_;
-      }
-      explicit operator bool() const noexcept
-      {
-	return tape_;
-      }
-
-      neighbors_ref_t() = default;
-
-      // delete copy constructor and assignment operator
-      neighbors_ref_t (neighbors_ref_t const &) = delete;
-      neighbors_ref_t &operator= (neighbors_ref_t const &) = delete;
-
-      // implement move
-      neighbors_ref_t (neighbors_ref_t &&) noexcept = default;
-      neighbors_ref_t &operator= (neighbors_ref_t &&) noexcept = default;
-
-      std::size_t size() const noexcept
-      {
-	return misaligned_load<neighbors_count_t> (tape_);
-      }
-      void clear() noexcept
-      {
-	neighbors_count_t n = misaligned_load<neighbors_count_t> (tape_);
-        for (std::size_t i = 0; i < n; ++i)
-          {
-            misaligned_store<slot_id_t> (tape_ + shift (i), slot_id_t { NULL_PAGEID, NULL_SLOTID, NULL_VOLID });
-          }
-	misaligned_store<neighbors_count_t> (tape_, 0);
-      }
-      void push_back (slot_id_t slot) noexcept
-      {
-	neighbors_count_t n = misaligned_load<neighbors_count_t> (tape_);
-	misaligned_store<slot_id_t> (tape_ + shift (n), slot);
-	misaligned_store<neighbors_count_t> (tape_, n + 1);
-      }
-
-      slot_id_t at (std::size_t index) const noexcept
-      {
-	return misaligned_load<slot_id_t> (tape_ + shift (index));
-      }
-
-      template <typename allow_slot_at> std::size_t erase_if (allow_slot_at &&allow_slot) noexcept
-      {
-	std::size_t old_count = misaligned_load<neighbors_count_t> (tape_);
-	std::size_t removed_count = 0;
-	for (std::size_t i = 0; i < old_count; ++i)
-	  {
-	    slot_id_t slot = misaligned_load<slot_id_t> (tape_ + shift (i));
-	    if (allow_slot (slot))
-	      {
-		removed_count++;
-	      }
-	    else
-	      {
-		misaligned_store<slot_id_t> (tape_ + shift (i - removed_count), slot);
-	      }
-	  }
-	misaligned_store<neighbors_count_t> (tape_, old_count - removed_count);
-	return removed_count;
-      }
-
-      std::string dump() const noexcept
-      {
-	std::stringstream ss;
-	ss << "size: " << size();
-	for (std::size_t i = 0; i < size(); ++i)
-	  {
-	    ss << " " << dump_slot (at (i));
-	  }
-	return ss.str();
-      }
-
-      friend std::ostream &operator<< (std::ostream &os, const neighbors_ref_t &neighbors_ref)
-      {
-	os << neighbors_ref.dump();
-	return os;
-      }
-  };
-
-
-  template <class ID_TRAITS>
   class node_t
   {
     protected:
@@ -291,11 +193,6 @@ namespace cubhnsw
 	return misaligned_store<level_t> (tape_ + offset_level, v);
       }
 
-      void set_neighbors (level_t level, int idx) noexcept
-      {
-        neighbors_ref_t neighbors (neighbors_tape());
-      }
-
       static constexpr std::size_t get_size() noexcept
       {
 	return offset_neighbors;
@@ -315,4 +212,97 @@ namespace cubhnsw
       }
   };
 
+  template <class ID_TRAITS>
+  class neighbors_ref_t
+  {
+    protected:
+      byte_t *tape_ {};
+
+      static constexpr std::size_t shift (std::size_t i = 0) noexcept
+      {
+	return sizeof (neighbors_count_t) + sizeof (slot_id_t) * i;
+      }
+
+    public:
+      using slot_id_t = typename ID_TRAITS::slot_id_t;
+
+      explicit neighbors_ref_t (byte_t *tape) noexcept : tape_ (tape) {}
+      byte_t *tape() const noexcept
+      {
+	return tape_;
+      }
+      explicit operator bool() const noexcept
+      {
+	return tape_;
+      }
+
+      neighbors_ref_t() = default;
+
+      // delete copy constructor and assignment operator
+      neighbors_ref_t (neighbors_ref_t const &) = delete;
+      neighbors_ref_t &operator= (neighbors_ref_t const &) = delete;
+
+      // implement move
+      neighbors_ref_t (neighbors_ref_t &&) noexcept = default;
+      neighbors_ref_t &operator= (neighbors_ref_t &&) noexcept = default;
+
+      std::size_t size() const noexcept
+      {
+	return misaligned_load<neighbors_count_t> (tape_);
+      }
+      void clear() noexcept
+      {
+	neighbors_count_t n = misaligned_load<neighbors_count_t> (tape_);
+	std::memset (tape_, 0, shift (n));
+	misaligned_store<neighbors_count_t> (tape_, 0);
+      }
+      void push_back (slot_id_t slot) noexcept
+      {
+	neighbors_count_t n = misaligned_load<neighbors_count_t> (tape_);
+	misaligned_store<slot_id_t> (tape_ + shift (n), slot);
+	misaligned_store<neighbors_count_t> (tape_, n + 1);
+      }
+
+      slot_id_t at (std::size_t index) const noexcept
+      {
+	return misaligned_load<slot_id_t> (tape_ + shift (index));
+      }
+
+      template <typename allow_slot_at> std::size_t erase_if (allow_slot_at &&allow_slot) noexcept
+      {
+	std::size_t old_count = misaligned_load<neighbors_count_t> (tape_);
+	std::size_t removed_count = 0;
+	for (std::size_t i = 0; i < old_count; ++i)
+	  {
+	    slot_id_t slot = misaligned_load<slot_id_t> (tape_ + shift (i));
+	    if (allow_slot (slot))
+	      {
+		removed_count++;
+	      }
+	    else
+	      {
+		misaligned_store<slot_id_t> (tape_ + shift (i - removed_count), slot);
+	      }
+	  }
+	misaligned_store<neighbors_count_t> (tape_, old_count - removed_count);
+	return removed_count;
+      }
+
+      std::string dump() const noexcept
+      {
+	std::stringstream ss;
+	ss << "size: " << size();
+	for (std::size_t i = 0; i < size(); ++i)
+	  {
+	    ss << " " << dump_slot (at (i));
+	  }
+	return ss.str();
+      }
+
+      friend std::ostream &operator<< (std::ostream &os, const neighbors_ref_t &neighbors_ref)
+      {
+	os << neighbors_ref.dump();
+	return os;
+      }
+  };
 }

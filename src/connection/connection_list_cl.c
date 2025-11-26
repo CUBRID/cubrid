@@ -83,7 +83,6 @@ css_make_queue_entry (unsigned int key, char *buffer, int size, CSS_QUEUE_ENTRY 
   entry_p->size = size;
   entry_p->rc = rc;
   entry_p->transaction_id = transid;
-  entry_p->in_method = false;
   entry_p->invalidate_snapshot = invalidate_snapshot;
   entry_p->db_error = db_error;
 
