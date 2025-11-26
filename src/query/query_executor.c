@@ -8578,6 +8578,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   OID class_oid;
   HFID class_hfid;
   BTID btid;
+  int i;
 
   if (spec->type != TARGET_CLASS && spec->type != TARGET_CLASS_ATTR)
     {
@@ -8695,7 +8696,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      QUERY_ID query_id = spec->s_id.vd->xasl_state->query_id;
 	      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
-	      int i;
 
 	      /* clear caches */
 	      if (hsidp->caches_inited)
@@ -8761,7 +8761,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
 	      SCAN_TYPE scan_type =
 		(spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO) ? S_HEAP_SCAN_RECORD_INFO : S_HEAP_SAMPLING_SCAN;
-	      int i;
 
 	      /* clear caches */
 	      if (hsidp->caches_inited)
