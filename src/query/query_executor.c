@@ -20818,7 +20818,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
     if (analytic_eval->is_sorted)
       {
-	analytic_state.is_sorted = true;
 	analytic_state.interm_file = list_id;
       }
     else
@@ -21172,7 +21171,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
 
   analytic_state->is_last_run = is_last_run;
 
-  analytic_state->is_sorted = false;
+  analytic_state->is_sorted = (xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC) ? true : false;
 
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
@@ -22680,7 +22679,8 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
   QFILE_LIST_SCAN_ID interm_scan_id;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   SCAN_CODE sc = S_SUCCESS;
-  int i, rc = NO_ERROR;
+  int instnum_flag, i, rc = NO_ERROR;
+  DB_LOGICAL is_output_rec;
 
   assert (analytic_state != NULL);
 
@@ -22774,7 +22774,24 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
       /* evaluate inst_num() predicate */
       if (analytic_state->is_sorted)
 	{
-	  rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_INTERM_PROC);
+	  instnum_flag = analytic_state->xasl->instnum_flag;
+	  analytic_state->xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC);
+
+	  /* evaluate inst_num() */
+	  is_output_rec = qexec_eval_instnum_pred (thread_p, analytic_state->xasl, analytic_state->xasl_state);
+	  if (instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)
+	    {
+	      analytic_state->xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
+	    }
+
+	  if (is_output_rec == V_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  else
+	    {
+	      analytic_state->is_output_rec = (is_output_rec == V_TRUE);
+	    }
 	}
       else
 	{
