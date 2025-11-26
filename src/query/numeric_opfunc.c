@@ -3213,7 +3213,6 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
     {
       numeric_negate (num);
     }
-
   db_make_numeric (result, num, prec, scale);
 
   return ret;
