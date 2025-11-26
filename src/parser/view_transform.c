@@ -4369,7 +4369,7 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
 {
   PT_NODE *on_cond, *from, *attributes, *query_spec_columns, *col, *attr, *pred, *ori_on_cond, *ori_pred;
   PT_NODE *arg1, *arg2, *sub_where, *sub_sel_list, *sub_order_by, *save_next, *ori_save_next;
-  int num_node = 0, ori_num_node = 0;
+  int num_node, ori_num_node;
   bool result;
 
   if (PT_IS_VALUE_QUERY (subquery))
@@ -4436,6 +4436,7 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
       pred->next = NULL;
       ori_save_next = ori_pred->next;
       ori_pred->next = NULL;
+      num_node = ori_num_node = 0;
 
       (void) parser_walk_tree (parser, pred, pt_count_name_nodes, &num_node, NULL, NULL);
       (void) parser_walk_tree (parser, ori_pred, pt_count_name_nodes, &ori_num_node, NULL, NULL);
