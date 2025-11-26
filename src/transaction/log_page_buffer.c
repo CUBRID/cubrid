@@ -3059,10 +3059,12 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
 	{
 	  free_and_init (node->udata);
 	}
+#if 0
       if (node->rdata != NULL)
 	{
 	  free_and_init (node->rdata);
 	}
+#endif
 
       free_and_init (node);
     }
