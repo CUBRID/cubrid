@@ -21172,6 +21172,8 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
 
   analytic_state->is_last_run = is_last_run;
 
+  analytic_state->is_sorted = false;
+
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
   analytic_state->analytic_rec.type = 0;	/* Unused */
