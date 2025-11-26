@@ -6880,7 +6880,11 @@ btree_class_test_unique (char *buf, int buf_size)
 }
 
 int
+<<<<<<< HEAD
 hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hnsw_M, int hnsw_efConstruction,
+=======
+hnsw_add_index (BTID * btid, OID * class_oid, int attr_id, int dimension, int hnsw_M, int hnsw_efConstruction,
+>>>>>>> yj/CUBVEC-135
 		int metric)
 {
 #if defined(CS_MODE)
@@ -6893,7 +6897,11 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hns
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
+<<<<<<< HEAD
   request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4 + OR_OID_SIZE + OR_INT_SIZE;
+=======
+  request_size = OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + OR_INT_SIZE * 5;
+>>>>>>> yj/CUBVEC-135
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -6902,6 +6910,8 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hns
     }
 
   ptr = or_pack_btid (request, btid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, dimension);
   ptr = or_pack_int (ptr, hnsw_M);
   ptr = or_pack_int (ptr, hnsw_efConstruction);
@@ -6937,7 +6947,11 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hns
   params.ef_construction = hnsw_efConstruction;
   params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
 
+<<<<<<< HEAD
   error = xhnsw_add_index (thread_p, class_oid, attrid, params, *btid);
+=======
+  error = xhnsw_add_index (thread_p, class_oid, attr_id, params, *btid);
+>>>>>>> yj/CUBVEC-135
 
   exit_server (*thread_p);
 

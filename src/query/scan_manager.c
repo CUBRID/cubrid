@@ -3696,7 +3696,11 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   visid->rest_regu_list = regu_list_rest;
   /* index scan info */
 
+<<<<<<< HEAD
   visid->btid = indx_info->btid;
+=======
+  visid->hnsw_btid = indx_info->btid;
+>>>>>>> yj/CUBVEC-135
 
   return NO_ERROR;
 }
@@ -6360,7 +6364,7 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  visid->distp = (float *) db_private_alloc (thread_p, k * sizeof (float));
 	  visid->oid_cnt = k;
 
-	  if (hnsw_search_element (thread_p, &visid->btid, visid->query_dbvalue, k, visid->oidp, visid->distp) !=
+	  if (hnsw_search_element (thread_p, &visid->hnsw_btid, visid->query_dbvalue, k, visid->oidp, visid->distp) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;

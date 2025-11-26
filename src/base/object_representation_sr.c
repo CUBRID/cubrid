@@ -2269,7 +2269,10 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	    }
 	}
 
-      (void) or_install_btids_attribute (rep, att_id, &id);
+      if (type != VECTOR_INDEX)
+	{
+	  (void) or_install_btids_attribute (rep, att_id, &id);
+	}
     }
 
   /*

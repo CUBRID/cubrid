@@ -159,6 +159,7 @@ typedef enum
   PAGE_AREA,			/* area page */
   PAGE_CATALOG,			/* catalog page */
   PAGE_BTREE,			/* b+tree index page (with ovf_OIDs) */
+  PAGE_HNSW,			/* hnsw vector index page */
   PAGE_LOG,			/* NONE - log page (unused) */
   PAGE_DROPPED_FILES,		/* Dropped files page.  */
   PAGE_VACUUM_DATA,		/* Vacuum data. */
