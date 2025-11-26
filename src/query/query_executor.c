@@ -2008,17 +2008,17 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
 	      isidp->caches_inited = false;
 	    }
-	  if (isidp->outer_table_midxkey_build_domains)
+	  if (isidp->prebuilt_midxkey_domains)
 	    {
 	      for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
 		{
-		  if (isidp->outer_table_midxkey_build_domains[i])
+		  if (isidp->prebuilt_midxkey_domains[i])
 		    {
-		      tp_domain_free (isidp->outer_table_midxkey_build_domains[i]);
-		      isidp->outer_table_midxkey_build_domains[i] = NULL;
+		      tp_domain_free (isidp->prebuilt_midxkey_domains[i]);
+		      isidp->prebuilt_midxkey_domains[i] = NULL;
 		    }
 		}
-	      db_private_free_and_init (thread_p, isidp->outer_table_midxkey_build_domains);
+	      db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
 	    }
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
