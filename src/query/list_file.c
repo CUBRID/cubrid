@@ -3207,7 +3207,6 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
   int error_code = NO_ERROR;
   int i;
   PAGE_PTR page_p;
-  QFILE_PAGE_HEADER pgheader = { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID };
   QMGR_TEMP_FILE *tfile_vfid_p = list_id->tfile_vfid;
   if (list_id->last_pgptr != NULL)
     {
