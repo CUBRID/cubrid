@@ -649,12 +649,12 @@ qo_plan_compute_cost (QO_PLAN * plan)
   (*(plan->vtbl)->cost_fn) (plan);
 
   /* Now add in the subquery costs; this cost is incurred for each row produced by this plan, so multiply it by the
-   * estimated cardinality and add it to the access cost.
+   * estimated scan_rows and add it to the access cost.
    */
   if (plan->info)
     {
-      plan->variable_cpu_cost += (plan->info)->cardinality * subq_cpu_cost;
-      plan->variable_io_cost += (plan->info)->cardinality * subq_io_cost;
+      plan->variable_cpu_cost += (plan->info)->scan_rows * subq_cpu_cost;
+      plan->variable_io_cost += (plan->info)->scan_rows * subq_io_cost;
     }
 }
 
@@ -1583,6 +1583,7 @@ qo_sscan_cost (QO_PLAN * planp)
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
   planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
+  planp->info->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nSequential Scan Cost: \n");
@@ -2108,6 +2109,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
+  planp->info->scan_rows = MAX (1, heap_access);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -5479,6 +5481,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   qo_compute_projected_segs (planner, nodes, terms, &info->projected_segs);
   info->projected_size = qo_compute_projected_size (planner, &info->projected_segs);
   info->cardinality = cardinality;
+  info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
 
   qo_init_planvec (&info->best_no_order);
 
