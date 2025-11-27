@@ -1040,12 +1040,13 @@ tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 	  domain->enumeration.collation_id = LANG_SYS_COLLATION;
 	}
     }
-  else if (TP_IS_BIT_TYPE (type_id))
+  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+  else if (TP_IS_BIT_TYPE (type_id) || type_id == DB_TYPE_BLOB)
     {
       domain->codeset = INTL_CODESET_RAW_BITS;
       domain->collation_id = 0;
     }
-  else if (TP_IS_LOB_TYPE (type_id))
+  else if (type_id == DB_TYPE_CLOB)
     {
       domain->codeset = LANG_SYS_CODESET;
       domain->collation_id = LANG_SYS_COLLATION;
