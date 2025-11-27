@@ -1829,6 +1829,7 @@ fileio_unlock (const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TYPE lockf_type
  *   vdes(in): Volume descriptor
  *   io_pgptr(in): Initialization content of all pages
  *   npages(in): Number of pages to initialize
+ *   metadata(in): Include metadata when syncing.
  *   kbytes_to_be_written_per_sec : size to add volume per sec
  */
 void *
@@ -3980,6 +3981,7 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
  *   io_page_p(in): In-memory address where the current content of page resides
  *   page_id(in): Page identifier
  *   page_size(in): Page size
+ *   metadata(in): Include metadata when syncing.
  *
  */
 void *
@@ -4426,6 +4428,7 @@ fileio_fsync_pending (void)
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
+ *   metadata(in): Include metadata when syncing.
  */
 int
 fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool metadata)

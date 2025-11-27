@@ -1828,16 +1828,6 @@ dwb_compare_slots (const void *arg1, const void *arg2)
       return -1;
     }
 
-  diff2 = slot1->metadata - slot2->metadata;
-  if (diff2 > 0)
-    {
-      return 1;
-    }
-  else if (diff2 < 0)
-    {
-      return -1;
-    }
-
   return 0;
 }
 
@@ -1960,6 +1950,7 @@ dwb_compare_vol_fd (const void *v1, const void *v2)
  * thread_p (in): The thread entry.
  * block(in): The block where the flush area reside.
  * vol_fd(in): The volume to add.
+ * metadata(in): Include metadata when syncing.
  *
  * Note: The volume is added if is not already in block flush area.
  */
@@ -2611,6 +2602,7 @@ start:
  * thread_p(in): Thread entry
  * dwb_slot(in/out): DWB slot that contains the location where the data must be set.
  * io_page_p(in): The data.
+ * metadata(in): Include metadata when syncing.
  */
 STATIC_INLINE void
 dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_page_p, bool metadata)
@@ -2683,6 +2675,7 @@ dwb_get_next_block_for_flush (THREAD_ENTRY *thread_p, unsigned int *block_no)
  * thread_p(in): The thread entry.
  * io_page_p(in): The data that will be set on next slot.
  * can_wait(in): True, if waiting is allowed.
+ * metadata(in): Include metadata when syncing.
  * p_dwb_slot(out): Pointer to the next free DWB slot.
  */
 int
@@ -2720,6 +2713,7 @@ dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool 
  * thread_p (in): The thread entry.
  * io_page_p(in): In-memory address where the current content of page resides.
  * vpid(in): Page identifier.
+ * metadata(in): Include metadata when syncing.
  * p_dwb_slot(in/out): DWB slot where the page content must be added.
  *
  *  Note: thread may flush the block, if flush thread is not available or we are in stand alone.
