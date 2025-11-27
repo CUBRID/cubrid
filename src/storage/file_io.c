@@ -4499,6 +4499,7 @@ fileio_synchronize_directory (THREAD_ENTRY * thread_p, const char *label)
     }
   if (fileio_synchronize (thread_p, fd, path, true) != fd)
     {
+      fileio_close (fd);
       return ER_FAILED;
     }
   fileio_close (fd);

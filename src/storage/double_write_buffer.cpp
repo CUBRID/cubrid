@@ -3347,8 +3347,8 @@ dwb_load_and_recover_pages (THREAD_ENTRY *thread_p, const char *dwb_path_p, cons
 	      /* Now, flush the volumes having pages in current block. */
 	      for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
 		{
-		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL,
-					  rcv_block->flush_volumes_info[i].metadata) == NULL_VOLDES)
+		  /* rcv_block->flush_volumes_info[i].metadata is invalid at this point */
+		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL, true) == NULL_VOLDES)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
