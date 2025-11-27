@@ -55,60 +55,48 @@ using namespace unum;
 
 static hnsw_oid_encoder_default default_oid_encoder;
 
-#if 0
-static int dump_hnsw_index (int hnsw_id, const std::unique_ptr<usearch::index_dense_t> &index);
-static int get_hnsw_index_file_path (int hnsw_id, char *out_path);
-static int create_hnsw_index_directory ();
-static bool is_hnsw_index_file_exists (int hnsw_id);
-static int load_hnsw_index_from_file (int hnsw_id);
-static int hnsw_check_and_load_index (int hnsw_id);
-static void get_new_hnsw_index_id ();
-static int64_t encode_oid (const OID &oid);
-static OID decode_oid (int64_t encoded_oid);
-#endif
-
 class hnsw_usearch_backend final : public hnsw_index_backend
 {
-  public:
-    hnsw_usearch_backend (const std::string &id) : hnsw_index_backend (id) {}
-    ~hnsw_usearch_backend() override = default;
+public:
+  hnsw_usearch_backend (const std::string &id) : hnsw_index_backend (id) {}
+  ~hnsw_usearch_backend() override = default;
 
-    virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const override;
+  virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const override;
 
-    virtual hnsw_index *create_index (THREAD_ENTRY *thread_p, const BTID *btid, const std::string &name,
-				      const hnsw_build_params &build_params) override;
-    virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) override;
+  virtual hnsw_index *create_index (THREAD_ENTRY *thread_p, const BTID *btid, const std::string &name,
+				    const hnsw_build_params &build_params) override;
+  virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) override;
 
-  private:
-    usearch::metric_kind_t to_usearch_metric_kind (const DB_VECTOR_DISTANCE_METRIC &metric) const;
+private:
+  usearch::metric_kind_t to_usearch_metric_kind (const DB_VECTOR_DISTANCE_METRIC &metric) const;
 };
 
 class hnsw_index_usearch final: public hnsw_index
 {
-  public:
+public:
 
-    hnsw_index_usearch (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
-			const hnsw_build_params &build_params, std::unique_ptr<usearch::index_dense_t> index);
-    ~hnsw_index_usearch() = default;
+  hnsw_index_usearch (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
+		      const hnsw_build_params &build_params, std::unique_ptr<usearch::index_dense_t> index);
+  ~hnsw_index_usearch() = default;
 
-    virtual int prepare_to_add (int n_vectors, const OID *oid, const float *vector) override;
-    virtual int add (int n_vectors, const OID *oid, const float *vector) override;
+  virtual int prepare_to_add (int n_vectors, const OID *oid, const float *vector) override;
+  virtual int add (int n_vectors, const OID *oid, const float *vector) override;
 
-    virtual int search (const float *query, const int k, const int ef_search, OID *rec_oids, float *distances) override;
-    virtual int remove (const OID *oid) override;
-    virtual int update (const OID *oid, const float *vector) override;
+  virtual int search (const float *query, const int k, const int ef_search, OID *rec_oids, float *distances) override;
+  virtual int remove (const OID *oid) override;
+  virtual int update (const OID *oid, const float *vector) override;
 
-    // SCAN_PRED from query_evaluator.h
-    virtual int filtered_search (const float *query, const int k, const SCAN_PRED &filter, OID *rec_oids,
-				 float *distances) override;
-    virtual int dump (FILE *fp) override;
+  // SCAN_PRED from query_evaluator.h
+  virtual int filtered_search (const float *query, const int k, const SCAN_PRED &filter, OID *rec_oids,
+			       float *distances) override;
+  virtual int dump (FILE *fp) override;
 
-    virtual int save (const std::string &path) override;
-    virtual int load (const std::string &path) override;
+  virtual int save (const std::string &path) override;
+  virtual int load (const std::string &path) override;
 
-  private:
-    std::mutex m_index_mutex;
-    std::unique_ptr<usearch::index_dense_t> m_index;
+private:
+  std::mutex m_index_mutex;
+  std::unique_ptr<usearch::index_dense_t> m_index;
 };
 
 // ===========================

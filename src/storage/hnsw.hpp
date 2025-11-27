@@ -48,7 +48,6 @@ struct hnsw_header
   int hnsw_M;
   int hnsw_efConstruction;
   int metric;
-  int hnsw_efSearch;
 };
 
 int xhnsw_initialize (THREAD_ENTRY *thread_p);
@@ -58,17 +57,6 @@ int xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const h
 int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 int xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 		      HFID *hfids, const hnsw_build_params &params);
-
-#if 0
-BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, OID *class_oid, int attr_id, int dimension = 10,
-		       int hnsw_M = 16, int hnsw_efConstruction = 64,
-		       int metric = DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN);
-
-BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
-			HFID *hfids, int dimension, int m, int ef_construction, int metric);
-BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
-			      HFID *hfids, int dimension, int m, int ef_construction, int metric);
-#endif
 
 int hnsw_print_index_info (THREAD_ENTRY *thread_p, BTID *btid);
 
