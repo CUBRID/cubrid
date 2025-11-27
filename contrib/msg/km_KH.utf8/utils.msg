@@ -195,7 +195,6 @@ Available administrator's utilities:\n\
     tde\n\
     flashback\n\
     memmon\n\
-    rkcheck\n\
 \n\
 %4$s is a tool for DBMS.\n\
 For additional information, see http://www.cubrid.org\n

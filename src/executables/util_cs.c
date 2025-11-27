@@ -2735,7 +2735,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   DB_OBJLIST *classes, *c;
   UTIL_ARG_MAP *arg_map = arg->arg_map;
   char *database_name, *user, *password = NULL;
-  int failed_constraints = 0;
+  int violation_count = 0;
   char **dbs;
   char er_msg_file[PATH_MAX];
 
@@ -2754,21 +2754,9 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
     }
 
   error = db_restart_ex (arg->command_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (password == NULL && db_error_code () == ER_AU_INVALID_PASSWORD)
+  if (error != NO_ERROR)
     {
-      /* console input a password */
-      password =
-	getpass (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_PASSWORD_PROMPT));
-      error = db_restart_ex (arg->command_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
-      if (error != NO_ERROR)
-	{
-	  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
-	  return ER_FAILED;
-	}
-    }
-  else if (error != NO_ERROR)
-    {
-      /* error */
+      // TODO: Check if password-error handling (like unloaddb) is needed, even though this logic doesn’t use authentication.
       PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
       return ER_FAILED;
     }
@@ -2794,7 +2782,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
 	    {
 	      // TODO: After fixing the error log, include the table name using sm_get_ch_name(c->op).
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      failed_constraints++;
+	      violation_count++;
 	    }
 	}
     }
@@ -2804,9 +2792,9 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
       db_objlist_free (classes);
     }
 
-  if (failed_constraints > 0)
+  if (violation_count > 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION, 2, failed_constraints,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION, 2, violation_count,
 	      er_msg_file);
       return ER_FAILED;
     }

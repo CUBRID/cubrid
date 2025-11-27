@@ -3214,10 +3214,10 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 }
 
 static int
-us_hb_rkcheck (HA_CONF * ha_conf, const char *db_name)
+us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
 {
   int pid;
-  int status;
+  int error;
   char **dbs;
   int i;
 
@@ -3233,11 +3233,16 @@ us_hb_rkcheck (HA_CONF * ha_conf, const char *db_name)
 	NULL
       };
 
-      status = proc_execute (UTIL_ADMIN_NAME, lw_argv, true, false, false, &pid);
+      error = proc_execute (UTIL_ADMIN_NAME, lw_argv, true, false, false, &pid);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
     }
 
-  print_result (UTIL_COPYLOGDB, status, START);
-  return status;
+  print_result (UTIL_RKCHECK, error, START);
+
+  return error;
 }
 
 #if !defined(WINDOWS)
@@ -3957,7 +3962,7 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
       goto ret;
     }
 
-  status = us_hb_rkcheck (ha_conf, db_name);
+  status = us_hb_process_rkcheck (ha_conf, db_name);
   if (status != NO_ERROR)
     {
       goto ret;
@@ -5030,7 +5035,7 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
       status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
     case SC_RKCHECK:
-      status = us_hb_rkcheck (ha_conf, db_name_p);
+      status = us_hb_process_rkcheck (ha_conf, db_name_p);
       break;
     }
 
