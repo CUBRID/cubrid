@@ -719,38 +719,31 @@ if(WIN32)
 endif(WIN32)
 
 # include target_external_dependencies function
-include (expand_dependency)
+include(expand_dependency)
 
-if(UNIX)
-target_external_dependencies(cubridsa
-  LIBNCURSES
-  LIBEDIT
+target_include_directories(cubridsa
+  PRIVATE
+    ${FLEX_INCLUDE_DIRS}
+    ${EP_INCLUDES}
   )
-endif(UNIX)
-target_external_dependencies(cubridsa
-  LIBEXPAT
-  LIBJANSSON
-  LIBEDIT
-  LIBOPENSSL
-  LZ4
-  RAPIDJSON
-  RE2
-  )
-target_include_directories(cubridsa PRIVATE
-  ${FLEX_INCLUDE_DIRS}
-  )
-if(UNIX)
-  # find out what this means:
-  # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
-  target_link_libraries(cubridsa PUBLIC stdc++fs)
-  target_link_libraries(cubridsa PUBLIC rt)
-endif(UNIX)
-# for dblink
-target_link_libraries(cubridsa PUBLIC cascci)
 
-add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-#add_dependencies(cubridsa ${EP_TARGETS})
+target_link_libraries(cubridsa
+  PRIVATE
+    ${EP_LIBS}
+  PUBLIC
+    ${CMAKE_DL_LIBS}
+    stdc++fs
+    rt
+    cascci
+  )
+
+add_dependencies(cubridsa
+  gen_csql_grammar
+  gen_csql_lexer
+  gen_loader_grammar
+  gen_loader_lexer
+  ${EP_TARGETS}
+  )
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})
