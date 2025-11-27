@@ -4682,6 +4682,12 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  return 1;
 	}
 
+      if (sort_info_p->input_file->page_cnt < parallel_num)
+	{
+	  /* single process */
+	  return 1;
+	}
+
       /* check worker */
       sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
       if (sort_param->px_worker_manager == NULL)

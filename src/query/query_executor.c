@@ -7213,8 +7213,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 #if SERVER_MODE && !WINDOWS
 	      error_code =
-		scan_open_parallel_heap_scan (thread_p, s_id, curr_spec, fixed, grouped, mvcc_select_lock_needed, xasl,
-					      query_id, vd);
+		scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, fixed, grouped, vd, curr_spec,
+					      &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec), xasl,
+					      query_id);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -7229,6 +7230,12 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		{
 		  /* fallback to single-thread heap scan */
 		  assert (s_id->type == S_HEAP_SCAN);
+
+		  /* for partitioned class */
+		  if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
+		    {
+		      qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		    }
 #endif /* SERVER_MODE && !WINDOWS */
 		  error_code =
 		    scan_open_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
@@ -8575,6 +8582,17 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_END;
     }
 
+  /* close current scan and open a new one on the next partition */
+  scan_end_scan (thread_p, &spec->s_id);
+  scan_close_scan (thread_p, &spec->s_id);
+
+  /* we also need to reset caches for attributes */
+  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
+  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_rest);
+  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
+  qexec_reset_pred_expr (spec->where_pred);
+  qexec_reset_pred_expr (spec->where_key);
+
   if (spec->curent == NULL)
     {
       /* first partition */
@@ -8640,17 +8658,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	}
     }
 
-  /* close current scan and open a new one on the next partition */
-  scan_end_scan (thread_p, &spec->s_id);
-  scan_close_scan (thread_p, &spec->s_id);
-
-  /* we also need to reset caches for attributes */
-  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
-  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_rest);
-  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
-  qexec_reset_pred_expr (spec->where_pred);
-  qexec_reset_pred_expr (spec->where_key);
-
   if (spec->curent == NULL)
     {
       /* reset back to root class */
@@ -8700,8 +8707,9 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 
 #if SERVER_MODE && !WINDOWS
 	      error =
-		scan_open_parallel_heap_scan (thread_p, &spec->s_id, spec, spec->s_id.fixed, spec->s_id.grouped,
-					      spec->s_id.mvcc_select_lock_needed, xasl, query_id, spec->s_id.vd);
+		scan_open_parallel_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
+					      spec->s_id.fixed, spec->s_id.grouped, spec->s_id.vd, spec, &class_oid,
+					      &class_hfid, xasl, query_id);
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -8717,6 +8725,12 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		{
 		  /* fallback to single-thread heap scan */
 		  assert (spec->s_id.type == S_HEAP_SCAN);
+
+		  /* for partitioned class */
+		  if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
+		    {
+		      qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		    }
 #endif /* SERVER_MODE && !WINDOWS */
 		  error =
 		    scan_open_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,

@@ -39,6 +39,7 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+#include <cassert>
 
 extern "C"
 {
@@ -260,10 +261,10 @@ extern "C"
   }
 
   int
-  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, ACCESS_SPEC_TYPE *curr_spec, int fixed_scan,
-				int grouped_scan, bool mvcc_select_lock_needed, XASL_NODE *xasl, QUERY_ID query_id, VAL_DESCR *val_desc_p)
+  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed, int fixed_scan,
+				int grouped_scan, VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid, XASL_NODE *xasl,
+				QUERY_ID query_id)
   {
-    HFID *class_hfid = nullptr;
     int num_user_pages = -1;
     parallel_query::worker_manager *worker_manager_p = nullptr;
     int num_parallel_threads;
@@ -271,39 +272,39 @@ extern "C"
 
     assert (thread_p != nullptr);
     assert (scan_id != nullptr);
-    assert (curr_spec != nullptr);
-    assert (curr_spec->type == TARGET_CLASS);
-    assert (curr_spec->access == ACCESS_METHOD_SEQUENTIAL);
+    assert (spec != nullptr);
+    assert (spec->type == TARGET_CLASS);
+    assert (spec->access == ACCESS_METHOD_SEQUENTIAL);
     assert (xasl != nullptr);
     assert (query_id != NULL_QUERY_ID);
-    assert (val_desc_p != nullptr);
+    assert (vd != nullptr);
 
     scan_id->type = S_HEAP_SCAN;
 
-    if (oid_is_system_class (&ACCESS_SPEC_CLS_OID (curr_spec))
-	|| mvcc_is_mvcc_disabled_class (&ACCESS_SPEC_CLS_OID (curr_spec)) || mvcc_select_lock_needed
+    if (spec->curent == nullptr)
+      {
 	/* DB_PARTITION_CLASS will be parallel-heap-scanned, not DB_PARTITIONED_CLASS */
-	|| curr_spec->pruning_type == DB_PARTITIONED_CLASS
-	/* Why thread_p->private_heap_id != 0 ?
-	 * Because, if it is 0, it means that the scan is not executed in main thread.
-	 * So, we can't use parallel heap scan. */
-	|| thread_p->private_heap_id == 0)
-      {
-	/* parallel-thread heap scan not supported */
-	ACCESS_SPEC_SET_FLAG (curr_spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	if (spec->pruning_type == DB_PARTITIONED_CLASS)
+	  {
+	    /* try single-thread heap scan */
+	    return NO_ERROR;
+	  }
+
+	if (oid_is_system_class (class_oid)
+	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed
+	    /* Why thread_p->private_heap_id != 0 ?
+	     * Because, if it is 0, it means that the scan is not executed in main thread.
+	     * So, we can't use parallel heap scan. */
+	    || thread_p->private_heap_id == 0)
+	  {
+	    /* parallel-thread heap scan not supported */
+	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	  }
       }
 
-    class_hfid = &ACCESS_SPEC_HFID (curr_spec);
-    if (HFID_IS_NULL (class_hfid))
-      {
-	/* parallel-thread heap scan not supported */
-	ACCESS_SPEC_SET_FLAG (curr_spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
-      }
-
-    if (ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN) || HFID_IS_NULL (class_hfid))
       {
 	/* try single-thread heap scan */
-	assert (scan_id->type == S_HEAP_SCAN);
 	return NO_ERROR;
       }
 
@@ -319,11 +320,11 @@ extern "C"
 	return er_errid ();
       }
 
-    assert (curr_spec->num_parallel_threads == -1 /* auto-compute */
-	    || ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
+    assert (spec->num_parallel_threads == -1 /* auto-compute */
+	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
     num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::PARALLEL_HEAP_SCAN, num_user_pages,
-			   curr_spec->num_parallel_threads /* hint */);
+			   spec->num_parallel_threads /* hint */);
     if (num_parallel_threads < 2)
       {
 	/* try single-thread heap scan */
@@ -341,15 +342,15 @@ extern "C"
 
     if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
-	ACCESS_SPEC_UNSET_FLAG (curr_spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
+	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
       }
 
     /* should check LIST_MERGE in checker */
-    if (ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
 	scan_id->s.phsid.result_type = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
       }
-    else if (ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_COUNT_DISTINCT))
+    else if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_COUNT_DISTINCT))
       {
 	scan_id->s.phsid.result_type = parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT;
       }
@@ -375,11 +376,8 @@ extern "C"
 	    break;
 	  }
 
-	scan_id->s.phsid.manager =
-		placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-			       num_parallel_threads, ACCESS_SPEC_HFID (curr_spec),
-			       ACCESS_SPEC_CLS_OID (curr_spec), val_desc_p, (bool) fixed_scan, (bool) grouped_scan	,
-			       worker_manager_p);
+	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -409,11 +407,8 @@ extern "C"
 	    break;
 	  }
 
-	scan_id->s.phsid.manager =
-		placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-			       num_parallel_threads, ACCESS_SPEC_HFID (curr_spec),
-			       ACCESS_SPEC_CLS_OID (curr_spec), val_desc_p, (bool) fixed_scan, (bool) grouped_scan,
-			       worker_manager_p);
+	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -443,11 +438,8 @@ extern "C"
 	    break;
 	  }
 
-	scan_id->s.phsid.manager =
-		placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-			       num_parallel_threads, ACCESS_SPEC_HFID (curr_spec),
-			       ACCESS_SPEC_CLS_OID (curr_spec), val_desc_p, (bool) fixed_scan, (bool) grouped_scan,
-			       worker_manager_p);
+	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
