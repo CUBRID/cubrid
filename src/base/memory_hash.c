@@ -48,6 +48,7 @@
 #include "chartype.h"
 #include "misc_string.h"
 #include "error_manager.h"
+#include "numeric_opfunc.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
@@ -598,7 +599,33 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = (unsigned int) db_get_double (val);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+	  {
+	    int precision = 0, scale = 0;
+	    int orig_precision = DB_VALUE_PRECISION (val);
+
+	    if (orig_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	      {
+		precision = DB_VALUE_NUMERIC_HEADER_PRECISION (val);
+		scale = DB_VALUE_NUMERIC_HEADER_SCALE (val);
+	      }
+	    else
+	      {
+		precision = orig_precision;
+		scale = DB_VALUE_SCALE (val);
+	      }
+
+	    if (scale == 0)
+	      {
+		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+	      }
+	    else
+	      {
+		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							 scale);
+		hash = mht_1str_pseudo_key (calc_buf, -1);
+	      }
+	  }
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
@@ -2417,8 +2444,38 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
-	    unsigned int *buf = (unsigned int *) val->data.num.d.buf;
-	    hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3], ht_size);
+	    int precision = 0, scale = 0;
+	    int orig_precision = DB_VALUE_PRECISION (val);
+
+	    if (orig_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	      {
+		precision = DB_VALUE_NUMERIC_HEADER_PRECISION (val);
+		scale = DB_VALUE_NUMERIC_HEADER_SCALE (val);
+	      }
+	    else
+	      {
+		precision = orig_precision;
+		scale = DB_VALUE_SCALE (val);
+	      }
+
+	    if (scale == 0)
+	      {
+		unsigned int *buf = (unsigned int *) db_locate_numeric (val);
+		((char *) buf)[DB_NUMERIC_BUF_SIZE] = 0;
+		((char *) buf)[DB_NUMERIC_BUF_SIZE + 1] = 0;
+		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ buf[4], ht_size);
+	      }
+	    else
+	      {
+		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							 scale);
+
+		unsigned int *buf = (unsigned int *) calc_buf;
+		((char *) buf)[DB_NUMERIC_BUF_SIZE] = 0;
+		((char *) buf)[DB_NUMERIC_BUF_SIZE + 1] = 0;
+		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ buf[4], ht_size);
+	      }
 	  }
 	  break;
 	case DB_TYPE_DATE:

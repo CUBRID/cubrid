@@ -579,12 +579,11 @@ extern "C"
 /* This constant indicates that the system defined default for scale is to be used for a DB_VALUE. */
 #define DB_DEFAULT_SCALE -9999
 
-/* This constant indecates that SP function's default NUMERIC domain */
-#define DB_NUMERIC_PRECISION_SP 38
-#define DB_NUMERIC_SCALE_SP 15
-
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_PRECISION DB_MAX_NUMERIC_PRECISION
+
+/* This constant indicates that the fixed numeric's precision is deferred for later recalculation when float and fixed numeric meet in hash join. */
+#define DB_HJOIN_NUMERIC_PRECISION_DEFERRED DB_DEFAULT_PRECISION
 
 /* This constant defines the legacy default precision of DB_TYPE_NUMERIC (CUBRID 11.4 and earlier). */
 #define DB_LEGACY_DEFAULT_NUMERIC_PRECISION 15

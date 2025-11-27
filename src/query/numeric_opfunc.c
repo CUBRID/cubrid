@@ -132,7 +132,7 @@ const int _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
 /* precomputed lookup table for 10^1 through 10^16 */
 static const uint64_t _gv_mul_normalize_pow10_lookup[16] = {
   10ULL, 100ULL, 1000ULL, 10000ULL, 100000ULL, 1000000ULL, 10000000ULL, 100000000ULL, 1000000000ULL, 10000000000ULL,
-    100000000000ULL, 1000000000000ULL,
+  100000000000ULL, 1000000000000ULL,
   10000000000000ULL, 100000000000000ULL, 1000000000000000ULL, 10000000000000000ULL
 };
 
@@ -4074,6 +4074,79 @@ numeric_coerce_num_to_dec_str (DB_C_NUMERIC num, char *dec_str)
   *dec_str = '\0';
 }
 
+void
+float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale)
+{
+  int tmp_scale = 0;
+  unsigned char base256_of_zero[DB_NUMERIC_BUF_SIZE];
+
+  assert (scale != 0);
+
+  numeric_zero (base256_of_zero, DB_NUMERIC_BUF_SIZE);
+  if (float_numeric_operation_compare (num, base256_of_zero, DB_NUMERIC_BUF_SIZE) == 0)
+    {
+      numeric_zero (calc_buf, DB_NUMERIC_BUF_SIZE);
+      return;
+    }
+
+  numeric_copy (calc_buf, num);
+
+  if (scale > 0)
+    {
+      /* divide by 10 repeatedly
+       * remove trailing zeros by repeatedly dividing by 10
+       * until the remainder becomes non-zero.
+       */
+      int i = 0;
+      unsigned char base256_of_ten[DB_NUMERIC_BUF_SIZE];
+
+      numeric_zero (base256_of_ten, DB_NUMERIC_BUF_SIZE);
+      base256_of_ten[DB_NUMERIC_BUF_SIZE - 1] = 10;
+
+      unsigned char quotient_buf[DB_NUMERIC_BUF_SIZE];
+      unsigned char remainder_buf[DB_NUMERIC_BUF_SIZE];
+      memset (quotient_buf, 0, DB_NUMERIC_BUF_SIZE);
+      memset (remainder_buf, 0, DB_NUMERIC_BUF_SIZE);
+
+      tmp_scale = (scale > DB_MAX_NUMERIC_PRECISION ? DB_MAX_NUMERIC_PRECISION : scale);
+
+      for (i = 0; i < tmp_scale; i++)
+	{
+#if 1
+	  /*
+	   * the float_numeric_div() and float_numeric_knuth_div() functions will be maintained until phase-3.
+	   * after phase-3 completion, we plan to verify division accuracy by comparing whether both functions pass TC validation identically.
+	   */
+	  float_numeric_div (calc_buf, base256_of_ten, quotient_buf, remainder_buf, DB_NUMERIC_BUF_SIZE);
+#else
+	  float_numeric_knuth_div (calc_buf, base256_of_ten, quotient_buf, remainder_buf, DB_NUMERIC_BUF_SIZE);
+#endif
+	  if (float_numeric_operation_compare (remainder_buf, base256_of_zero, DB_NUMERIC_BUF_SIZE) != 0)
+	    {
+	      break;
+	    }
+	  else
+	    {
+	      numeric_copy (calc_buf, quotient_buf);
+	    }
+	}
+    }
+  else
+    {
+      /* multiply by 10
+       * multiplication increases precision, but limited to
+       * DB_MAX_NUMERIC_PRECISION(43) digits maximum.
+       */
+      int max_multiply = DB_MAX_NUMERIC_PRECISION - precision;
+      tmp_scale = (-(scale) > max_multiply) ? max_multiply : -(scale);
+
+      if (tmp_scale > 0)
+	{
+	  float_numeric_mul_normalize (calc_buf, DB_NUMERIC_BUF_SIZE, tmp_scale);
+	}
+    }
+}
+
 /*
  * numeric_coerce_num_to_double () -
  *   return:
@@ -5765,6 +5838,11 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	  {
 	    precision = DB_VALUE_NUMERIC_HEADER_PRECISION (src);
 	    scale = DB_VALUE_NUMERIC_HEADER_SCALE (src);
+	  }
+	else if (precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED)
+	  {
+	    precision = float_numeric_get_precision_digits (db_locate_numeric (src), DB_NUMERIC_BUF_SIZE);
+	    scale = DB_VALUE_SCALE (src);
 	  }
 	else
 	  {
