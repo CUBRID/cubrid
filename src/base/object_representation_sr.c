@@ -2260,12 +2260,12 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	   *     0         1                2      [  3        4  ] *x         5 + x               6 + x
 	   * { btid, dedup_key_attrID, asc_desc, [attrID, asc_desc]+, {fk_info} or {prefix length}, ...}
            * For constraint structure details, see comment on SM_CLASS_CONSTRAINT in class_object.h.
-	   * That is, the size of this constraint_seq set must be 12 or more, and the 3rd position will be attrID.
+	   * That is, the size of this constraint_seq set must be 10 or more, and the 3rd position will be attrID.
 	   * The position 1 is deduplicate_key_attrID, which is virtual information, 
 	   * the position 3 value must be read to obtain actual column information.           
 	   */
           // *INDENT-ON*
-	  assert (seq_size >= 12);
+	  assert (seq_size >= 10);
 	  i = 3;		// index of attrID (for first real column)
 	  if (set_get_element_nocopy (constraint_seq, i, &att_val) == NO_ERROR)
 	    {
