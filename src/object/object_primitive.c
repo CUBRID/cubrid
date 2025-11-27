@@ -39,6 +39,7 @@
 #include "error_manager.h"
 #include "file_io.h"
 #include "compressor.hpp"
+#include "numeric_opfunc.h"
 #include "mem_block.hpp"
 #include "object_representation.h"
 #include "set_object.h"
@@ -8288,8 +8289,22 @@ static void
 mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
 {
   assert (!IS_FLOATING_PRECISION (domain->precision));
+  int mem_length;
 
-  memset (memptr, 0, MR_NUMERIC_SIZE (domain->precision));
+#if 0				// used in phase-3
+  if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      mem_length = OR_SHORT_SIZE;
+      mem_length += OR_NUMERIC_SIZE (domain->precision);
+    }
+  else
+#endif
+    {
+      mem_length = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+      mem_length = DB_ALIGN (mem_length, INT_ALIGNMENT);
+    }
+
+  memset (memptr, 0, mem_length);
 }
 
 /*
@@ -8302,7 +8317,7 @@ static int
 mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  int src_precision, src_scale, byte_size;
+  int orig_src_precision, src_precision, src_scale, byte_size;
   DB_C_NUMERIC num, src_num;
 
   if (value == NULL)
@@ -8313,11 +8328,33 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
     {
       src_num = db_get_numeric (value);
 
+#if 1				// used in phase-2
       src_precision = db_value_precision (value);
       src_scale = db_value_scale (value);
+#else // used in phase-3
+      orig_src_precision = db_value_precision (value);
+      if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  src_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+	  src_scale = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+	}
+      else
+	{
+	  src_precision = orig_src_precision;
+	  src_scale = db_value_scale (value);
+	}
+#endif
 
       /* this should have been handled by now */
-      if (src_num == NULL || src_precision != domain->precision || src_scale != domain->scale)
+#if 1				// used in phase-2
+      if (src_num == NULL
+	  || (src_precision != DB_DEFAULT_NUMERIC_PRECISION
+	      && (src_precision != domain->precision || src_scale != domain->scale)))
+#else // used in phase-3
+      if (src_num == NULL
+	  || (orig_src_precision != DB_DEFAULT_NUMERIC_PRECISION
+	      && (orig_src_precision != domain->precision || src_scale != domain->scale)))
+#endif
 	{
 	  error = ER_OBJ_DOMAIN_CONFLICT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
@@ -8325,8 +8362,35 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
       else
 	{
 	  num = (DB_C_NUMERIC) mem;
-	  byte_size = MR_NUMERIC_SIZE (src_precision);
-	  memcpy (num, src_num, byte_size);
+#if 0				// used in phase-3
+	  if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION && domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      int header_size = 2;
+	      unsigned char header[header_size];
+
+	      if (value->data.num.header.scale < 0)
+		{
+		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
+		  header[1] = -(DB_VALUE_NUMERIC_HEADER_SCALE (value));
+		}
+	      else
+		{
+		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+		  header[1] = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+		}
+	      memcpy (num, header, header_size);
+
+	      byte_size = MR_NUMERIC_SIZE (src_precision);
+	      memcpy (num + header_size, src_num, byte_size);
+	    }
+	  else
+#endif
+	    {
+	      byte_size = _gv_float_numeric_precision_bytes_lookup[src_precision - 1];
+	      byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
+
+	      memcpy (num, src_num + (DB_NUMERIC_BUF_SIZE - byte_size), byte_size);
+	    }
 	}
     }
   return error;
@@ -8344,7 +8408,34 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
 
   num = (DB_C_NUMERIC) mem;
-  error = db_make_numeric (value, num, domain->precision, domain->scale);
+#if 0				// used in phase-3
+  if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      int header_size = 2;
+      int precision = num[0] & 0x7F;
+      bool is_negative_scale = (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+      int scale = is_negative_scale ? -num[1] : num[1];
+
+      error = db_make_numeric (value, num + header_size, precision, scale, DB_NUMERIC_BUF_SIZE, true);
+    }
+  else
+#endif
+    {
+      int byte_size;
+      byte_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+      byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
+
+      if (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK)
+	{
+	  memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - byte_size);
+	}
+      else
+	{
+	  memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - byte_size);
+	}
+
+      error = db_make_numeric (value, num, domain->precision, domain->scale, byte_size, false);
+    }
   value->need_clear = false;
 
   return error;
@@ -8355,7 +8446,18 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
   int disk_size;
 
-  disk_size = OR_NUMERIC_SIZE (domain->precision);
+#if 0				// used in phase-3
+  if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      disk_size = OR_SHORT_SIZE;
+      disk_size += OR_NUMERIC_SIZE (domain->precision);
+    }
+  else
+#endif
+    {
+      disk_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
+    }
   or_put_data (buf, (char *) mem, disk_size);
 }
 
@@ -8377,16 +8479,20 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
     }
   else if (size)
     {
-      if (size != OR_NUMERIC_SIZE (domain->precision))
+#if 0				// used in phase-3
+      if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
-	  assert (false);
-	  return;
+	  size = OR_SHORT_SIZE;
+	  size += OR_NUMERIC_SIZE (domain->precision);
 	}
       else
+#endif
 	{
-	  or_get_data (buf, (char *) mem, size);
+	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+	  size = DB_ALIGN (size, INT_ALIGNMENT);
 	}
+
+      or_get_data (buf, (char *) mem, size);
     }
 }
 
@@ -8401,14 +8507,17 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
 {
   int len;
 
-  /* think about caching this in the domain so we don't have to calculate it */
-  if (disk)
+#if 0				// used in phase-3
+  if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      len = OR_NUMERIC_SIZE (domain->precision);
+      len = OR_SHORT_SIZE;
+      len += MR_NUMERIC_SIZE (domain->precision);
     }
   else
+#endif
     {
-      len = MR_NUMERIC_SIZE (domain->precision);
+      len = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+      len = DB_ALIGN (len, INT_ALIGNMENT);
     }
 
   return len;
@@ -8424,7 +8533,7 @@ static int
 mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
-  int src_precision, src_scale;
+  int orig_src_precision, src_precision, src_scale;
   DB_C_NUMERIC src_numeric;
 
   assert (!db_value_is_corrupted (src));
@@ -8434,8 +8543,22 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
+#if 1				// used in phase-2
       src_precision = db_value_precision (src);
       src_scale = db_value_scale (src);
+#else // used in phase-3
+      orig_src_precision = db_value_precision (src);
+      if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  src_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (src);
+	  src_scale = DB_VALUE_NUMERIC_HEADER_SCALE (src);
+	}
+      else
+	{
+	  src_precision = orig_src_precision;
+	  src_scale = db_value_scale (src);
+	}
+#endif
       src_numeric = (DB_C_NUMERIC) db_get_numeric (src);
 
       if (DB_IS_NULL (src) || src_numeric == NULL)
@@ -8449,7 +8572,16 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	   * difference between the copy and non-copy operations, this may
 	   * need to change.
 	   */
-	  error = db_make_numeric (dest, src_numeric, src_precision, src_scale);
+#if 0				// used in phase-3
+	  if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      error = db_make_numeric (dest, src_numeric, src_precision, src_scale, DB_NUMERIC_BUF_SIZE, true);
+	    }
+	  else
+#endif
+	    {
+	      error = db_make_numeric (dest, src_numeric, src_precision, src_scale, DB_NUMERIC_BUF_SIZE, false);
+	    }
 	}
     }
   return error;
@@ -8471,13 +8603,17 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
     {
       /* better have a non-NULL value by the time writeval is called ! */
       precision = db_value_precision (value);
-      if (disk)
+#if 0				// used in phase-3
+      if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  len = OR_NUMERIC_SIZE (precision);
+	  len = OR_SHORT_SIZE;
+	  len += OR_NUMERIC_SIZE (precision);
 	}
       else
+#endif
 	{
-	  len = MR_NUMERIC_SIZE (precision);
+	  len = _gv_float_numeric_precision_bytes_lookup[precision - 1];
+	  len = DB_ALIGN (len, INT_ALIGNMENT);
 	}
     }
   return len;
@@ -8502,8 +8638,36 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
       if (numeric != NULL)
 	{
 	  precision = db_value_precision (value);
-	  disk_size = OR_NUMERIC_SIZE (precision);
-	  rc = or_put_data (buf, (char *) numeric, disk_size);
+#if 0				// used in phase-3
+	  if (precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      int header_size = 2;
+	      unsigned char header[header_size];
+
+	      if (DB_VALUE_NUMERIC_HEADER_SCALE (value) < 0)
+		{
+		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
+		  header[1] = -(DB_VALUE_NUMERIC_HEADER_SCALE (value));
+		}
+	      else
+		{
+		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+		  header[1] = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+		}
+
+	      or_put_data (buf, (char *) header, header_size);
+
+	      disk_size = OR_NUMERIC_SIZE (precision);
+	      rc = or_put_data (buf, (char *) numeric, disk_size);
+	    }
+	  else
+#endif
+	    {
+	      disk_size = _gv_float_numeric_precision_bytes_lookup[precision - 1];
+	      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
+
+	      rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
+	    }
 	}
     }
   return rc;
@@ -8554,7 +8718,41 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
        * the copy and no copy cases are identical because db_make_numeric
        * will copy the bits into its internal buffer.
        */
-      (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, domain->precision, domain->scale);
+#if 0				// used in phase-3
+      if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  int header_size = 2;
+	  unsigned char header[header_size];
+
+	  or_get_data (buf, (char *) header, header_size);
+	  size -= header_size;
+
+	  int precision = header[0] & 0x7F;
+	  bool is_negative_scale = (header[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+	  int scale = is_negative_scale ? -(header[1]) : header[1];
+
+	  (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, precision, scale, DB_NUMERIC_BUF_SIZE, true);
+	}
+      else
+#endif
+	{
+	  DB_C_NUMERIC num = (DB_C_NUMERIC) buf->ptr;
+
+	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+	  size = DB_ALIGN (size, INT_ALIGNMENT);
+
+	  if (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK)
+	    {
+	      memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - size);
+	    }
+	  else
+	    {
+	      memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - size);
+	    }
+
+	  (void) db_make_numeric (value, num, domain->precision, domain->scale, size, false);
+	}
+
       value->need_clear = false;
       rc = or_advance (buf, size);
     }

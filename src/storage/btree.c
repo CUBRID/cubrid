@@ -21013,8 +21013,20 @@ key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type)
       break;
 
     case DB_TYPE_NUMERIC:
+#if 1				// used in phase-2
       snprintf (buf, buf_size, "%s(%d,%d)", pr_type_name (TP_DOMAIN_TYPE (key_type)), key_type->precision,
 		key_type->scale);
+#else // used in phase-3
+      if (key_type->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  snprintf (buf, buf_size, "%s", pr_type_name (TP_DOMAIN_TYPE (key_type)));
+	}
+      else
+	{
+	  snprintf (buf, buf_size, "%s(%d,%d)", pr_type_name (TP_DOMAIN_TYPE (key_type)), key_type->precision,
+		    key_type->scale);
+	}
+#endif
       break;
 
     case DB_TYPE_MIDXKEY:

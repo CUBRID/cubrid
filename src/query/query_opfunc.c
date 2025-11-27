@@ -2091,7 +2091,7 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
       return qdata_add_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (fp_numeric_db_value_add (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (float_numeric_db_value_add (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 	  return ER_QPROC_OVERFLOW_ADDITION;
@@ -3721,7 +3721,7 @@ qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       break;
 
     case DB_TYPE_NUMERIC:
-      if (fp_numeric_db_value_sub (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (float_numeric_db_value_sub (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
 	  return ER_FAILED;
@@ -5193,7 +5193,7 @@ qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       return qdata_multiply_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (fp_numeric_db_value_mul (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (float_numeric_db_value_mul (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
 	  return ER_FAILED;
@@ -5827,7 +5827,7 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
       break;
 
     case DB_TYPE_NUMERIC:
-      if (fp_numeric_db_value_div (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
+      if (float_numeric_db_value_div (numeric_val_p, dbval_p, result_p, &num_op_type) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
@@ -6156,7 +6156,22 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       break;
 
     case DB_TYPE_NUMERIC:
-      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p));
+#if 1				// used in phase-2
+      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p),
+		       DB_NUMERIC_BUF_SIZE, false);
+#else // used in phase-3
+      if (DB_VALUE_PRECISION (dbval_p) == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_NUMERIC_HEADER_PRECISION (dbval_p),
+			   DB_VALUE_NUMERIC_HEADER_SCALE (dbval_p), DB_NUMERIC_BUF_SIZE, true);
+	}
+      else
+	{
+	  db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p),
+			   DB_NUMERIC_BUF_SIZE, false);
+	}
+#endif
+
       if (numeric_db_value_negate (result_p) != NO_ERROR)
 	{
 	  return ER_FAILED;

@@ -11227,7 +11227,6 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
   PT_NODE *dt = NULL;
   bool do_detect_collation = true;
   TP_DOMAIN_COLL_ACTION collation_flag = TP_DOMAIN_COLL_LEAVE;
-  int phase_1_tmp_max_prec = 38;
 
   if (node->data_type)
     {				/* node has already been resolved */
@@ -11963,11 +11962,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (dt->info.data_type.precision > phase_1_tmp_max_prec)
+	  if (dt->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
 	    {
 	      dt->info.data_type.dec_precision =
-		dt->info.data_type.dec_precision - (dt->info.data_type.precision - phase_1_tmp_max_prec);
-	      dt->info.data_type.precision = phase_1_tmp_max_prec;
+		dt->info.data_type.dec_precision - (dt->info.data_type.precision - DB_MAX_NUMERIC_PRECISION);
+	      dt->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
 	    }
 
 	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_SCALE)
@@ -13018,8 +13017,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      PT_ERRORc (parser, o1, er_msg ());
 	      return 0;
 	    }
-
-	  db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_PRECISION (arg1), DB_VALUE_SCALE (arg1));
+#if 0				// used in phase-3/* set default scale and precision for parametrized types *
+	  if (DB_VALUE_PRECISION (arg1) == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_NUMERIC_HEADER_PRECISION (arg1),
+			       DB_VALUE_NUMERIC_HEADER_SCALE (arg1), DB_NUMERIC_BUF_SIZE, true);
+	    }
+	  else
+#endif
+	    {
+	      db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_PRECISION (arg1), DB_VALUE_SCALE (arg1),
+			       DB_NUMERIC_BUF_SIZE, false);
+	    }
 	  break;
 
 	case DB_TYPE_MONETARY:
@@ -13849,7 +13858,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 #if 1				// used in phase-1, phase-2
 	      {
 		TP_DOMAIN *tmp_domain = domain;
-		if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		if (float_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		  {
 		    PT_ERRORc (parser, o1, er_msg ());
 		    return 0;
@@ -13871,7 +13880,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 	      }
 #else // used in phase-3
-	      if (fp_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
+	      if (float_numeric_db_value_add (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
@@ -14554,7 +14563,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 #if 1				// used in phase-1, phase-2
 	      {
 		TP_DOMAIN *tmp_domain = domain;
-		if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
+		if (float_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		  {
 		    PT_ERRORc (parser, o1, er_msg ());
 		    return 0;
@@ -14576,7 +14585,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 	      }
 #else // used in phase-3
-	      if (fp_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
+	      if (float_numeric_db_value_sub (arg1, arg2, result, &num_op_type) != NO_ERROR)
 		{
 		  PT_ERRORc (parser, o1, er_msg ());
 		  return 0;
@@ -14977,7 +14986,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 #if 1				// used in phase-1, phase-2
 	      {
 		TP_DOMAIN *tmp_domain = domain;
-		error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
+		error = float_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
 		if (error == ER_IT_DATA_OVERFLOW)
 		  {
 		    goto overflow;
@@ -15004,7 +15013,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 	      }
 #else
-	      error = fp_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
+	      error = float_numeric_db_value_mul (arg1, arg2, result, &num_op_type);
 	      if (error == ER_IT_DATA_OVERFLOW)
 		{
 		  goto overflow;
@@ -15112,7 +15121,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		{
 #if 1				// used in phase-1, phase-2
 		  TP_DOMAIN *tmp_domain = domain;
-		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
+		  error = float_numeric_db_value_div (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;
@@ -15140,7 +15149,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		  return 1;
 #else // used in phase-3
-		  error = fp_numeric_db_value_div (arg1, arg2, result, &num_op_type);
+		  error = float_numeric_db_value_div (arg1, arg2, result, &num_op_type);
 		  if (error == ER_IT_DATA_OVERFLOW)
 		    {
 		      goto overflow;

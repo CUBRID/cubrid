@@ -21794,9 +21794,9 @@ primitive_type
 			if (dt)
 			  {
 			    dt->type_enum = typ;
-			    dt->info.data_type.precision = prec ? prec->info.value.data_value.i : 15;
+			    dt->info.data_type.precision = prec ? prec->info.value.data_value.i : DB_DEFAULT_NUMERIC_PRECISION;
 			    dt->info.data_type.dec_precision =
-			      scale ? scale->info.value.data_value.i : 0;
+			      scale ? scale->info.value.data_value.i : DB_DEFAULT_NUMERIC_SCALE;
 
                             if(is_in_sp_func_type && prec)
                               {                                

@@ -90,8 +90,10 @@ STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, con
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
-  __attribute__ ((ALWAYS_INLINE));
+static void db_make_float_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num);
+static void db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int byte_size);
+STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
+				   const int byte_size, const bool is_floating_point) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
@@ -1502,15 +1504,48 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
 }
 
 /*
+ * db_make_float_numeric_internal() -
+ * return :
+ * value(out) :
+ * num(in):
+ */
+static void
+db_make_float_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num)
+{
+  value->data.num.header.precision = DB_VALUE_PRECISION (value);
+  value->data.num.header.scale = DB_VALUE_SCALE (value);
+  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+
+  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+}
+
+/*
+ * db_make_fixed_numeric_internal() -
+ * return :
+ * value(out) :
+ * num(in):
+ * byte_size(in):
+ */
+static void
+db_make_fixed_numeric_internal (DB_VALUE * value, const DB_C_NUMERIC num, const int byte_size)
+{
+  memcpy (value->data.num.d.buf + (DB_NUMERIC_BUF_SIZE - byte_size), num, byte_size);
+}
+
+/*
  * db_make_numeric() -
  * return :
  * value(out) :
  * num(in):
  * precision(in):
  * scale(in):
+ * byte_size(in):
+ * is_floating_point(in):
  */
 int
-db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
+db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale, const int byte_size,
+		 const bool is_floating_point)
 {
   int error = NO_ERROR;
 
@@ -1527,7 +1562,14 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
   if (num)
     {
       value->domain.general_info.is_null = 0;
-      memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+      if (is_floating_point)
+	{
+	  db_make_float_numeric_internal (value, num);
+	}
+      else
+	{
+	  db_make_fixed_numeric_internal (value, num, byte_size);
+	}
     }
   else
     {
