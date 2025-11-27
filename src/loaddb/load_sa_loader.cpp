@@ -3035,21 +3035,17 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
   precision = (int) len - 1 - (str[0] == '+' || str[0] == '-');
   scale = (int) len - (int) strcspn (str, ".") - 1;
 
-#if 0 // used in phase-3
   if (precision > DB_MAX_NUMERIC_PRECISION)
     {
       scale = DB_MAX_NUMERIC_PRECISION - precision;
       precision = DB_MAX_NUMERIC_PRECISION;
     }
-#endif
 
   CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);
-#if 0 // used in phase-3
   if (precision == DB_MAX_NUMERIC_PRECISION)
     {
       FIXED_TO_FLOAT_NUMERIC (val);
     }
-#endif
   CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_NUMERIC, str);
 
 error_exit:

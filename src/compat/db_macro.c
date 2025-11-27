@@ -1772,8 +1772,19 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
       {
 	DB_VALUE tmp_value;
 	unsigned char new_num[DB_NUMERIC_BUF_SIZE];
-	int desired_precision = DB_VALUE_PRECISION (value);
-	int desired_scale = DB_VALUE_SCALE (value);
+	int orig_desired_precision = DB_VALUE_PRECISION (value);
+	int desired_precision, desired_scale;
+
+	if (orig_desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    desired_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+	    desired_scale = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+	  }
+	else
+	  {
+	    desired_precision = orig_desired_precision;
+	    desired_scale = DB_VALUE_SCALE (value);
+	  }
 
 	/* string_to_num will coerce the string to a numeric, but will set the precision and scale based on the value
 	 * passed. Then we call num_to_num to coerce to the desired precision and scale. */
@@ -1782,15 +1793,9 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
-#if 1				// used in phase-2
-	else if (numeric_coerce_num_to_num
-		 (db_get_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
-		  DB_VALUE_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
-#else // used in phase-3
 	else if (numeric_coerce_num_to_num
 		 (db_get_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
 		  DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
-#endif
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	  }
@@ -1798,9 +1803,6 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    /* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
 	     * value. */
-#if 1				// used in phase-2
-	    db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	    if (orig_desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
 	      {
 		db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, true);
@@ -1809,7 +1811,6 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	      {
 		db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
 	      }
-#endif
 	  }
 
 	db_value_clear (&tmp_value);
