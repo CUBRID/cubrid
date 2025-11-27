@@ -57,7 +57,6 @@
 #include "px_callable_task.hpp"
 #include "px_sort.h"
 #include "parallel.hpp"		/* parallel_query::compute_parallel_degree */
-#include "thread_worker_pool.hpp"	/* cubthread::system_core_count */
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -4332,25 +4331,14 @@ int
 sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			    int parallel_num)
 {
-  static std::once_flag once;
-  static int parallelism_upper_limit = 0;
-
-  // *INDENT-OFF*
-  std::call_once(once, [] {
-    sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &parallelism_upper_limit);
-    parallelism_upper_limit = MIN (parallelism_upper_limit, cubthread::system_core_count ());
-    assert (parallelism_upper_limit >= 0);
-  });
-  // *INDENT-ON*
-
-  assert (parallel_num <= parallelism_upper_limit);
-
   int error = NO_ERROR;
   int i = 0, j = 0, splitted_num_page;
   bool is_first_vpid = false;
   PAGE_PTR page_p;
-  VPID next_vpid, prev_vpid, first_vpid[parallelism_upper_limit], last_vpid[parallelism_upper_limit];
+  VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
   SORT_INFO *sort_info_p, *org_sort_info_p;
+
+  assert (parallel_num <= SORT_MAX_PARALLEL);
 
   /* init vpid */
   for (i = 0; i < parallel_num; i++)
@@ -4454,25 +4442,17 @@ int
 sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
 			     int parallel_num)
 {
-  static std::once_flag once;
-  static int parallelism_upper_limit = 0;
-
-  // *INDENT-OFF*
-  std::call_once(once, [] {
-    sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &parallelism_upper_limit);
-    parallelism_upper_limit = MIN (parallelism_upper_limit, cubthread::system_core_count ());
-    assert (parallelism_upper_limit >= 0);
-  });
-  // *INDENT-ON*
-
-  assert (parallel_num <= parallelism_upper_limit);
-
   int error = NO_ERROR;
-  int i = 0, idx = 0;
+  int i = 0, idx = 0, file_pg_cnt_est;
   int remaining_run, level, merge_num;
-  RESULT_RUN result_run[parallelism_upper_limit];
-  QFILE_LIST_ID *origin_list_id;
+  RESULT_RUN result_run[SORT_MAX_PARALLEL];
+  QFILE_LIST_ID *origin_list_id, *mergeable_list_id;
   SORT_INFO *sort_info_p;
+
+  if (parallel_num > SORT_MAX_PARALLEL)
+    {
+      return ER_FAILED;
+    }
 
   /* init result_run */
   for (i = 0; i < parallel_num; i++)
@@ -4686,31 +4666,31 @@ int
 sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   SORT_INFO *sort_info_p;
-  int num_parallel_threads = -1;
+  int parallel_num = 1;
 
   if (sort_param->px_type == SORT_ORDER_BY)
     {
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      num_parallel_threads =
+      parallel_num =
 	parallel_query::compute_parallel_degree (parallel_query::PARALLEL_SORT, sort_info_p->input_file->page_cnt,
 						 sort_info_p->parallelism /* hint */ );
-      if (num_parallel_threads <= 0)
+      if (parallel_num <= 1)
 	{
 	  /* single process */
 	  return 1;
 	}
 
       /* check worker */
-      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (num_parallel_threads);
+      sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
       if (sort_param->px_worker_manager == NULL)
 	{
 	  return 1;
 	}
       else
 	{
-	  return num_parallel_threads;
+	  return parallel_num;
 	}
     }
   else

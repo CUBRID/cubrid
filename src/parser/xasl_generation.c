@@ -4847,7 +4847,6 @@ pt_make_access_spec (TARGET_TYPE spec_type, ACCESS_METHOD access, INDX_INFO * in
       spec->where_range = where_range;
       spec->next = NULL;
       spec->pruning_type = DB_NOT_PARTITIONED_CLASS;
-      spec->num_parallel_threads = -1;
     }
 
   return spec;
@@ -12446,6 +12445,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
 		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
 		}
+	      else
+		{
+		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
+		}
 
 	    }
 	  else if (PT_SPEC_SPECIAL_INDEX_SCAN (spec))
@@ -16794,7 +16797,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     }
   else
     {
-      xasl->parallelism = -1;
+      xasl->parallelism = -1;	/* auto-compute */
     }
 
   if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
@@ -17162,7 +17165,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
     }
   else
     {
-      xasl->parallelism = -1;
+      xasl->parallelism = -1;	/* auto-compute */
     }
 
   if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
@@ -17389,7 +17392,6 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
-      xasl->parallelism = -1;
     }				/* end xasl */
   else
     {

@@ -12478,16 +12478,17 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
   if (tree->info.query.q.select.hint & PT_HINT_PARALLEL)
     {
-      if (tree->info.query.q.select.num_parallel_threads < 0)
+      if (tree->info.query.q.select.num_parallel_threads == -1 /* auto-compute */ )
 	{
 	  /* fall through */
 	}
-      else if (tree->info.query.q.select.num_parallel_threads > 1)
+      else if (tree->info.query.q.select.num_parallel_threads >= 2)
 	{
 	  return PLAN_PARALLEL_OPT_USE;
 	}
       else
 	{
+	  /* hint 0 or 1 disables parallel execution */
 	  return PLAN_PARALLEL_OPT_NO;
 	}
     }

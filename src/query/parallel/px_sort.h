@@ -33,8 +33,9 @@
 #include "error_manager.h"
 #include "thread_compat.hpp"
 
-#define SORT_PX_MERGE_FILES      4
-#define SORT_IS_PARALLEL(t) ((t)->px_parallel_num > 1)
+#define SORT_PX_MERGE_FILES	4
+#define SORT_MAX_PARALLEL	PRM_MAX_PARALLELISM
+#define SORT_IS_PARALLEL(t)	((t)->px_parallel_num >= 2)
 
 // *INDENT-OFF*
 #define SORT_EXECUTE_PARALLEL(num, px_sort_param, function)  \

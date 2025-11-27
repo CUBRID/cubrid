@@ -26,8 +26,6 @@
 
 namespace parallel_query
 {
-  static constexpr int min_parallel_degree = 2;
-
   typedef enum parallel_type
   {
     PARALLEL_HEAP_SCAN = 0,
@@ -36,5 +34,5 @@ namespace parallel_query
     PARALLEL_SUBQUERY = 3,
   } PARALLEL_TYPE;
 
-  UINT32 compute_parallel_degree (PARALLEL_TYPE type, UINT64 num_pages, int hint_degree = -1) noexcept;
+  UINT32 compute_parallel_degree (PARALLEL_TYPE type, UINT64 num_pages, int hint_degree = -1 /* auto-compute */ ) noexcept;
 }				/* namespace parallel_query */

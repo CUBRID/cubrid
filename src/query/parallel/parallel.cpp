@@ -22,6 +22,8 @@
 
 #include "parallel.hpp"
 
+#include <mutex>
+
 #include "system.h"		/* UINT32, UINT64 */
 #include "system_parameter.h"	/* sysprm_get_range, PRM_ID_PARALLELISM */
 #include "thread_worker_pool.hpp"	/* cubthread::system_core_count */
@@ -31,8 +33,7 @@ namespace parallel_query
   UINT32 compute_parallel_degree (PARALLEL_TYPE type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
-    static int parallelism_upper_limit = 0;
-    static int parallelism = 0;
+    static int parallelism;
 
     static int heap_scan_page_threshold;
     static int hash_join_page_threshold;
@@ -40,21 +41,12 @@ namespace parallel_query
 
     // *INDENT-OFF*
     std::call_once(once, [] {
-      sysprm_get_range(PRM_ID_PARALLELISM, nullptr, &parallelism_upper_limit);
-      parallelism_upper_limit = MIN (parallelism_upper_limit, cubthread::system_core_count ());
-      assert (parallelism_upper_limit >= 0);
-
       parallelism = prm_get_integer_value (PRM_ID_PARALLELISM);
-      assert (parallelism >= 0);
+      assert ((std::size_t) parallelism <= cubthread::system_core_count ());
 
       heap_scan_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
-      assert (heap_scan_page_threshold >= 0);
-
       hash_join_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
-      assert (hash_join_page_threshold >= 0);
-
       sort_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
-      assert (sort_page_threshold >= 0);
     });
     // *INDENT-ON*
 
@@ -82,23 +74,24 @@ namespace parallel_query
       default:
 	/* impossible case */
 	assert_release_error (false);
-	return 0;
+	return 0;	/* disable */
       }
 
     /* threshold check */
     if (num_pages < page_threshold)
       {
-	return 0;
+	return 0;	/* disable */
       }
 
     /* hint handling */
-    if (hint_degree < 0)
+    if (hint_degree == -1 /* auto-compute */)
       {
 	/* compute degree based on number of pages */
       }
-    else if (hint_degree > 1)
+    else if (hint_degree >= 2)
       {
-	return MIN (hint_degree, (UINT32) parallelism_upper_limit);
+	assert ((std::size_t) hint_degree <= cubthread::system_core_count ());
+	return hint_degree;
       }
     else
       {
@@ -111,7 +104,7 @@ namespace parallel_query
 
     // *INDENT-OFF*
 #if defined(__GNUC__) || defined(__clang__)
-    degree = (63 - __builtin_clzll (x)) + min_parallel_degree;
+    degree = (63 - __builtin_clzll (x)) + 2;
 #else
     {
       int msb = 0;
@@ -123,7 +116,7 @@ namespace parallel_query
       if (x >= (1ull <<  2)) { x >>=  2; msb +=  2; }
       if (x >= (1ull <<  1)) {           msb +=  1; }
 
-      degree = msb + min_parallel_degree;
+      degree = msb + start_parallel_degree;
     }
 #endif
     // *INDENT-ON*
