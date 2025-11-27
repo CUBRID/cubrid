@@ -764,7 +764,7 @@ namespace memoize
 
   storage::~storage()
   {
-    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
     if (m_last_key != nullptr)
       {
 	m_last_key->~key();
@@ -785,7 +785,7 @@ namespace memoize
 
     m_keyptr_src.clear();
     m_key_value_map.clear();
-    db_change_private_heap (m_thread_p, heap_id);
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
   }
 
   void storage::start_timer()
@@ -812,10 +812,10 @@ namespace memoize
 
   result_code storage::get ()
   {
-    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
     scope_exit restore_heap_id ([heap_id, this]()
     {
-      db_change_private_heap (this->m_thread_p, heap_id);
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
     });
     value *v;
     if (disabled || get_current_size() >= m_max_storage_size)
@@ -861,7 +861,7 @@ namespace memoize
 
 	hit++;
 	has_range = true;
-	db_change_private_heap (this->m_thread_p, heap_id);
+	db_change_private_heap (thread_get_thread_entry_info(), heap_id);
 	restore_heap_id.release();
 	return set_value (v);
       }
@@ -880,7 +880,7 @@ namespace memoize
 	  }
 	v = m_current_value_list.back();
 	m_current_value_list.pop_back();
-	db_change_private_heap (this->m_thread_p, heap_id);
+	db_change_private_heap (thread_get_thread_entry_info(), heap_id);
 	restore_heap_id.release();
 	return set_value (v);
       }
@@ -892,10 +892,10 @@ namespace memoize
 
   result_code storage::put()
   {
-    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
     scope_exit restore_heap_id ([heap_id, this]()
     {
-      db_change_private_heap (this->m_thread_p, heap_id);
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
     });
 
     try
@@ -936,10 +936,10 @@ namespace memoize
 
   result_code storage::put_nullptr()
   {
-    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
     scope_exit restore_heap_id ([heap_id, this]()
     {
-      db_change_private_heap (this->m_thread_p, heap_id);
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
     });
 
     try
