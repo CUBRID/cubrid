@@ -473,7 +473,6 @@ namespace cubmethod
       case DB_TYPE_CHAR:
       case DB_TYPE_NCHAR:
       case DB_TYPE_VARNCHAR:
-      case DB_TYPE_CLOB:
       case DB_TYPE_STRING:
       case DB_TYPE_DATE:
       case DB_TYPE_TIME:
@@ -492,6 +491,7 @@ namespace cubmethod
       case DB_TYPE_BIT:
       case DB_TYPE_VARBIT:
       case DB_TYPE_BLOB:
+      case DB_TYPE_CLOB:
       case DB_TYPE_TABLE:
       case DB_TYPE_BFILE:
       case DB_TYPE_CFILE:
