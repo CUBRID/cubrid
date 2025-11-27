@@ -88,7 +88,7 @@ namespace parallel_query
       {
 	/* compute degree based on number of pages */
       }
-    else if (hint_degree >= 2)
+    else if (hint_degree > 1)
       {
 	assert ((std::size_t) hint_degree <= cubthread::system_core_count ());
 	return hint_degree;

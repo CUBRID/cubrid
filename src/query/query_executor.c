@@ -15268,7 +15268,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  n_workers_to_reserve =
 			    parallel_query::compute_parallel_degree (parallel_query::PARALLEL_SUBQUERY, 0,
 								     xasl->parallelism);
-			  if (n_workers_to_reserve > 0)
+			  if (n_workers_to_reserve > 0 /* only gather */ )
 			    {
 			      /* TODO: Temporarily limited to 2. 
 			       * Remove this when exact parallel count is available 

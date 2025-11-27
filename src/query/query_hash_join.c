@@ -1971,7 +1971,7 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   manager->num_parallel_threads =
     parallel_query::compute_parallel_degree (parallel_query::PARALLEL_HASH_JOIN, min_page_cnt,
 					     manager->num_parallel_threads);
-  if (manager->num_parallel_threads <= 1)
+  if (manager->num_parallel_threads < 2)
     {
       /* try single-thread hash join */
       assert (manager->px_worker_pool_manager == NULL);
