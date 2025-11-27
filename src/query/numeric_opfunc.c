@@ -129,7 +129,6 @@ const int _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
   15, 15, 16, 16, 17, 17, 18, 18, 18
 };
 
-#if 0				// used in phase-3
 typedef enum fp_value_type
 {
   FP_VALUE_TYPE_NUMBER,
@@ -138,7 +137,6 @@ typedef enum fp_value_type
   FP_VALUE_TYPE_ZERO
 }
 FP_VALUE_TYPE;
-#endif
 
 static bool numeric_is_negative (DB_C_NUMERIC arg);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
@@ -244,7 +242,7 @@ static uint16_t float_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes);
 static void float_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
 static int float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
 static void float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
-					  int *result_scale, FP_VALUE_TYPE * num_op_type);
+					  int *result_scale);
 static int compare_mantissa_same_exponent (const uint8_t * u_src, const uint8_t * v_src, int buf_bytes, int prec1,
 					   int prec2);
 
@@ -2499,8 +2497,7 @@ exit_on_error:
  *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
  */
 int
-float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-			    FP_VALUE_TYPE * num_op_type)
+float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int scale1, scale2, result_scale;
@@ -2609,7 +2606,7 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 8) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+  (void) float_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale);
 
   /* 9) store result */
   if (result_sign)
@@ -2739,8 +2736,7 @@ exit_on_error:
  *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
  */
 int
-float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-			    FP_VALUE_TYPE * num_op_type)
+float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int scale1, scale2, result_scale;
@@ -2849,7 +2845,7 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 8) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+  (void) float_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale);
 
   /* 9) store result */
   if (result_sign)
@@ -2956,8 +2952,7 @@ exit_on_error:
  *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
  */
 int
-float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-			    FP_VALUE_TYPE * num_op_type)
+float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int calc_bytes;
@@ -3055,7 +3050,7 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 7) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+  (void) float_numeric_round_and_pack (calc_buf, calc_bytes, result_buf, &result_prec, &result_scale);
 
   /* 8) store result */
   if (result_sign)
@@ -3266,8 +3261,7 @@ exit_on_error:
  *     the value is rounded and stored using only DB_MAX_NUMERIC_PRECISION significant digits.
  */
 int
-float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer,
-			    FP_VALUE_TYPE * num_op_type)
+float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
   int result_prec;
@@ -3417,7 +3411,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 10) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (quotient_work, calc_bytes, result_buf, &result_prec, &result_scale, num_op_type);
+  (void) float_numeric_round_and_pack (quotient_work, calc_bytes, result_buf, &result_prec, &result_scale);
 
   /* 11) store result */
   if (result_sign)
@@ -4251,7 +4245,6 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   int scale1 = 0, scale2 = 0, prec1 = 0, prec2 = 0;
   int calc_bytes;
   int result_prec, result_scale;
-  FP_VALUE_TYPE num_op_type = FP_VALUE_TYPE_NAN;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
   unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (value1);
@@ -4359,8 +4352,7 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
     }
 
   /* 10) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  (void) float_numeric_round_and_pack (remainder_work, calc_bytes, result_buf, &result_prec, &result_scale,
-				       &num_op_type);
+  (void) float_numeric_round_and_pack (remainder_work, calc_bytes, result_buf, &result_prec, &result_scale);
 
   /* 11) store result */
   if (result_sign)
@@ -5461,7 +5453,6 @@ float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_
  * result_buf(out) : final result buffer (DB_NUMERIC_BUF_SIZE)
  * result_prec(in/out): result precision (adjusted after rounding)
  * result_scale(in/out): result scale (may be reduced if rounding overflows)
- * num_op_type(out): result type (set to FP_VALUE_TYPE_NUMBER if rounding occurs)
  *
  * Note:
  *   - Used to reduce extended numeric precision down to DB_MAX_NUMERIC_PRECISION,
@@ -5469,7 +5460,7 @@ float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_
  */
 static void
 float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
-			      int *result_scale, FP_VALUE_TYPE * num_op_type)
+			      int *result_scale)
 {
   uint16_t last_digit = 0;
   int drop = 0;
@@ -5484,7 +5475,6 @@ float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * resu
     }
 
   /* if more than 39 digits, truncate to 38 digits and round at the 39th digit */
-  *num_op_type = FP_VALUE_TYPE_NUMBER;
   *result_prec = DB_MAX_NUMERIC_PRECISION;
 
   /* divide the value up to 38 digits and store the 39th digit in last_digit for rounding check */
