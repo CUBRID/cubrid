@@ -3179,7 +3179,7 @@ qo_nljoin_cost (QO_PLAN * planp)
       }
 
     planp->variable_cpu_cost += MAX (0.0, guessed_result_cardinality - 1.0) * subq_cpu_cost;
-    planp->variable_io_cost += MAX (0.0, outer->variable_io_cost - 1.0) * subq_io_cost;	/* assume IO as # blocks */
+    planp->variable_io_cost += MAX (0.0, guessed_result_cardinality - 1.0) * subq_io_cost;	/* assume IO as # blocks */
   }
 
 #if TEST_DUMP_PLAN_JOIN_COST
