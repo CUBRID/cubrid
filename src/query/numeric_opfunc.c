@@ -129,6 +129,13 @@ const int _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
   15, 15, 16, 16, 17, 17, 18, 18, 18
 };
 
+/* precomputed lookup table for 10^1 through 10^16 */
+static const uint64_t _gv_mul_normalize_pow10_lookup[16] = {
+  10ULL, 100ULL, 1000ULL, 10000ULL, 100000ULL, 1000000ULL, 10000000ULL, 100000000ULL, 1000000000ULL, 10000000000ULL,
+    100000000000ULL, 1000000000000ULL,
+  10000000000000ULL, 100000000000000ULL, 1000000000000000ULL, 10000000000000000ULL
+};
+
 typedef enum fp_value_type
 {
   FP_VALUE_TYPE_NUMBER,
@@ -237,7 +244,8 @@ static int get_significant_digit (DB_BIGINT i);
 
 static void float_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int dst_bytes,
 				   bool is_negative);
-static void float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, int exponent);
+static void float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent);
+static void float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t factor);
 static uint16_t float_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes);
 static void float_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
 static int float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
@@ -2035,11 +2043,11 @@ float_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, in
 
   if (scale_adjust1)
     {
-      float_numeric_mul_pow10 (arg1_buf, calc_bytes, scale_adjust1);
+      float_numeric_mul_normalize (arg1_buf, calc_bytes, scale_adjust1);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_pow10 (arg2_buf, calc_bytes, scale_adjust2);
+      float_numeric_mul_normalize (arg2_buf, calc_bytes, scale_adjust2);
     }
 
   /* since we don't convert to absolute values when comparing negative numbers, there's no need to invert the result again */
@@ -2589,11 +2597,11 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 5) scale adjustments */
   if (scale_adjust1)
     {
-      float_numeric_mul_pow10 (dbv1_buf, calc_bytes, scale_adjust1);
+      float_numeric_mul_normalize (dbv1_buf, calc_bytes, scale_adjust1);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_pow10 (dbv2_buf, calc_bytes, scale_adjust2);
+      float_numeric_mul_normalize (dbv2_buf, calc_bytes, scale_adjust2);
     }
 
   /* 6) addition */
@@ -2844,11 +2852,11 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 5) scale adjustments */
   if (scale_adjust1)
     {
-      float_numeric_mul_pow10 (dbv1_buf, calc_bytes, scale_adjust1);
+      float_numeric_mul_normalize (dbv1_buf, calc_bytes, scale_adjust1);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_pow10 (dbv2_buf, calc_bytes, scale_adjust2);
+      float_numeric_mul_normalize (dbv2_buf, calc_bytes, scale_adjust2);
     }
 
   /* 6) subtraction */
@@ -3429,7 +3437,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 7) only dividend_work is scaled (div_pow10 if negative) */
   if (exponent10 > 0)
     {
-      float_numeric_mul_pow10 (dividend_work, calc_bytes, exponent10);
+      float_numeric_mul_normalize (dividend_work, calc_bytes, exponent10);
     }
   else if (exponent10 < 0)
     {
@@ -4434,11 +4442,11 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   /* 7) scale adjustments */
   if (dividend_exponent > 0)
     {
-      float_numeric_mul_pow10 (dividend_work, calc_bytes, dividend_exponent);
+      float_numeric_mul_normalize (dividend_work, calc_bytes, dividend_exponent);
     }
   if (divisor_exponent > 0)
     {
-      float_numeric_mul_pow10 (divisor_work, calc_bytes, divisor_exponent);
+      float_numeric_mul_normalize (divisor_work, calc_bytes, divisor_exponent);
     }
 
 #if 1				// division algorithm
@@ -5459,22 +5467,52 @@ float_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int 
  * float_numeric_mul_pow10() - Multiply a base-256 big-endian buffer by 10^exponent
  *
  * Note:
- *   - Mainly used for scale adjustment (ex. multiply by 10^exponent to align fractional digits)
+ *   - mainly used for scale adjustment (ex. multiply by 10^n factor to align fractional digits)
+ *   - the factor parameter should be a power of 10 (e.g., 10^1 ~ 10^16)
  */
 static void
-float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, int exponent)
+float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t factor)
 {
   int i = 0;
-  uint16_t carry = 0;
-  uint32_t temp = 0;
-  while (exponent-- > 0)
+  uint64_t temp = 0;
+  uint64_t carry = 0;
+
+  carry = 0;
+  for (i = calc_bytes - 1; i >= 0; i--)
     {
-      carry = 0;
-      for (i = calc_bytes - 1; i >= 0; i--)
+      temp = (uint64_t) dbv_buf[i] * factor + carry;
+      dbv_buf[i] = (uint8_t) (temp & 0xFF);
+      carry = temp >> 8;
+    }
+}
+
+/*
+ * float_numeric_mul_normalize() - multiply a base-256 big-endian buffer by 10^exponent
+ *
+ * Note:
+ *   - mainly used for scale adjustment (ex. multiply by 10^exponent to align fractional digits)
+ *   - when exponent >= 16, repeatedly multiplies by 10^16 and subtracts 16 from exponent
+ *   - for remainder (1-15), multiplies by 10^exponent directly
+ *   - reduces iteration count compared to multiplying by 10 repeatedly
+ */
+static void
+float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent)
+{
+  assert (exponent > 0);
+
+  while (exponent > 0)
+    {
+      if (exponent >= 16)
 	{
-	  temp = (uint32_t) dbv_buf[i] * 10 + carry;
-	  dbv_buf[i] = (uint8_t) (temp & 0xFF);
-	  carry = temp >> 8;
+	  // 10^16
+	  float_numeric_mul_pow10 (dbv_buf, calc_bytes, _gv_mul_normalize_pow10_lookup[15]);
+	  exponent -= 16;
+	}
+      else
+	{
+	  // 10^1 ~ 10^15
+	  float_numeric_mul_pow10 (dbv_buf, calc_bytes, _gv_mul_normalize_pow10_lookup[exponent - 1]);
+	  exponent = 0;
 	}
     }
 }
