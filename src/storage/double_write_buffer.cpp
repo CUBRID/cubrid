@@ -204,6 +204,7 @@ struct flush_volume_info
   int vdes;			/* The volume descriptor. */
   volatile int num_pages;	/* The number of pages to flush in volume. */
   volatile bool all_pages_written;	/* True, if all pages written. */
+  volatile bool metadata;	/* Include metadata when syncing */
   volatile FLUSH_VOLUME_STATUS flushed_status;	/* Flush status. */
 };
 
@@ -348,7 +349,7 @@ STATIC_INLINE int dwb_block_create_ordered_slots (DWB_BLOCK *block, DWB_SLOT **p
     unsigned int *p_ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
 static int dwb_compare_vol_fd (const void *v1, const void *v2);
 STATIC_INLINE FLUSH_VOLUME_INFO *dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block,
-    int vol_fd) __attribute__ ((ALWAYS_INLINE));
+    int vol_fd, bool metadata) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_slots,
 				   unsigned int ordered_slots_length, bool file_sync_helper_can_flush,
 				   bool remove_from_hash) __attribute__ ((ALWAYS_INLINE));
@@ -358,7 +359,7 @@ STATIC_INLINE void dwb_init_slot (DWB_SLOT *slot) __attribute__ ((ALWAYS_INLINE)
 STATIC_INLINE int dwb_acquire_next_slot (THREAD_ENTRY *thread_p, bool can_wait, DWB_SLOT **p_dwb_slot)
 __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot,
-				      FILEIO_PAGE *io_page_p) __attribute__ ((ALWAYS_INLINE));
+				      FILEIO_PAGE *io_page_p, bool metadata) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_wait_for_strucure_modification (THREAD_ENTRY *thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_signal_structure_modificated (THREAD_ENTRY *thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_starts_structure_modification (THREAD_ENTRY *thread_p, UINT64 *current_position_with_flags)
@@ -1439,6 +1440,9 @@ dwb_slots_hash_insert (THREAD_ENTRY *thread_p, VPID *vpid, DWB_SLOT *slot, bool 
 	    }
 	}
 
+      /* If a metadata sync was requested, the metadata must be synced even if the slot is replaced */
+      slot->metadata = slot->metadata || slots_hash_entry->slot->metadata;
+
       dwb_log ("Replace hash key (%d, %d), the new LSA=(%lld,%d), the old LSA = (%lld,%d)",
 	       vpid->volid, vpid->pageid, slot->lsa.pageid, slot->lsa.offset,
 	       slots_hash_entry->slot->lsa.pageid, slots_hash_entry->slot->lsa.offset);
@@ -1824,6 +1828,16 @@ dwb_compare_slots (const void *arg1, const void *arg2)
       return -1;
     }
 
+  diff2 = slot1->metadata - slot2->metadata;
+  if (diff2 > 0)
+    {
+      return 1;
+    }
+  else if (diff2 < 0)
+    {
+      return -1;
+    }
+
   return 0;
 }
 
@@ -1950,7 +1964,7 @@ dwb_compare_vol_fd (const void *v1, const void *v2)
  * Note: The volume is added if is not already in block flush area.
  */
 STATIC_INLINE FLUSH_VOLUME_INFO *
-dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block, int vol_fd)
+dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block, int vol_fd, bool metadata)
 {
   FLUSH_VOLUME_INFO *flush_new_volume_info;
 #if !defined (NDEBUG)
@@ -1969,6 +1983,7 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block, in
   flush_new_volume_info->vdes = vol_fd;
   flush_new_volume_info->num_pages = 0;
   flush_new_volume_info->all_pages_written = false;
+  flush_new_volume_info->metadata = metadata;
   flush_new_volume_info->flushed_status = VOLUME_NOT_FLUSHED;
 
   /* There is only a writer and several (currently 2) readers on flush_new_volume_info array.
@@ -2007,6 +2022,7 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
   int count_writes = 0, num_pages_to_sync;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   bool can_flush_volume = false;
+  bool metadata;
 
   assert (block != NULL && p_dwb_ordered_slots != NULL);
 
@@ -2034,6 +2050,7 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
 
       assert (VPID_ISNULL (&p_dwb_ordered_slots[i + 1].vpid) || VPID_LT (vpid, &p_dwb_ordered_slots[i + 1].vpid));
 
+      metadata = p_dwb_ordered_slots[i].metadata;
       if (last_written_volid != vpid->volid)
 	{
 	  /* Get the volume descriptor. */
@@ -2056,8 +2073,12 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
 	  last_written_volid = vpid->volid;
 	  last_written_vol_fd = vol_fd;
 
-	  current_flush_volume_info = dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd);
+	  current_flush_volume_info = dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd, metadata);
 	}
+
+      assert (current_flush_volume_info != NULL);
+
+      current_flush_volume_info->metadata = current_flush_volume_info->metadata || metadata;
 
       assert (last_written_vol_fd != NULL_VOLDES);
 
@@ -2083,8 +2104,6 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
 	       (int) p_dwb_ordered_slots[i].io_page->prv.lsa.offset);
 
 #if defined (SERVER_MODE)
-      assert (current_flush_volume_info != NULL);
-
       ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 1);
       count_writes++;
 
@@ -2234,6 +2253,8 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
 	  VPID_SET_NULL (& (block->slots[s1->position_in_block].vpid));
 
 	  fileio_initialize_res (thread_p, s1->io_page, IO_PAGESIZE);
+
+	  s2->metadata = s1->metadata || s2->metadata;
 	}
 
       /* Check for WAL protocol. */
@@ -2276,7 +2297,9 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
 	      if (ATOMIC_INC_32 (& (dwb_Global.file_sync_helper_block->flush_volumes_info[i].num_pages), 0) >= 0)
 		{
 		  (void) fileio_synchronize (thread_p,
-					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes, NULL);
+					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes,
+					     NULL,
+					     dwb_Global.file_sync_helper_block->flush_volumes_info[i].metadata);
 
 		  dwb_log ("dwb_flush_block: Synchronized volume %d\n",
 			   dwb_Global.file_sync_helper_block->flush_volumes_info[i].vdes);
@@ -2319,7 +2342,7 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
   /* Increment statistics after writing in double write volume. */
   perfmon_add_stat (thread_p, PSTAT_PB_NUM_IOWRITES, block->count_wb_pages);
 
-  if (fileio_synchronize (thread_p, dwb_Global.vdes, dwb_Volume_name) != dwb_Global.vdes)
+  if (fileio_synchronize (thread_p, dwb_Global.vdes, dwb_Volume_name, false) != dwb_Global.vdes)
     {
       assert (false);
       /* Something wrong happened. */
@@ -2377,7 +2400,7 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
       num_pages = ATOMIC_TAS_32 (&block->flush_volumes_info[i].num_pages, 0);
       assert (num_pages != 0);
 
-      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL);
+      (void) fileio_synchronize (thread_p, block->flush_volumes_info[i].vdes, NULL, block->flush_volumes_info[i].metadata);
 
       dwb_log ("dwb_flush_block: Synchronized volume %d\n", block->flush_volumes_info[i].vdes);
     }
@@ -2590,7 +2613,7 @@ start:
  * io_page_p(in): The data.
  */
 STATIC_INLINE void
-dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_page_p)
+dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_page_p, bool metadata)
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
 
@@ -2609,6 +2632,8 @@ dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_p
   assert (fileio_is_page_sane (io_page_p, IO_PAGESIZE));
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
   VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
+
+  dwb_slot->metadata = metadata;
 }
 
 /*
@@ -2661,7 +2686,8 @@ dwb_get_next_block_for_flush (THREAD_ENTRY *thread_p, unsigned int *block_no)
  * p_dwb_slot(out): Pointer to the next free DWB slot.
  */
 int
-dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool can_wait, DWB_SLOT **p_dwb_slot)
+dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool can_wait, bool metadata,
+			   DWB_SLOT **p_dwb_slot)
 {
   int error_code;
 
@@ -2682,7 +2708,7 @@ dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool 
     }
 
   /* Set data on slot. */
-  dwb_set_slot_data (thread_p, *p_dwb_slot, io_page_p);
+  dwb_set_slot_data (thread_p, *p_dwb_slot, io_page_p, metadata);
 
   return NO_ERROR;
 }
@@ -2699,7 +2725,7 @@ dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool 
  *  Note: thread may flush the block, if flush thread is not available or we are in stand alone.
  */
 int
-dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, DWB_SLOT **p_dwb_slot)
+dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, bool metadata, DWB_SLOT **p_dwb_slot)
 {
   unsigned int count_wb_pages;
   int error_code = NO_ERROR;
@@ -2717,7 +2743,7 @@ dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, DWB_SL
 
   if (*p_dwb_slot == NULL)
     {
-      error_code = dwb_set_data_on_next_slot (thread_p, io_page_p, true, p_dwb_slot);
+      error_code = dwb_set_data_on_next_slot (thread_p, io_page_p, true, metadata, p_dwb_slot);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -3321,7 +3347,8 @@ dwb_load_and_recover_pages (THREAD_ENTRY *thread_p, const char *dwb_path_p, cons
 	      /* Now, flush the volumes having pages in current block. */
 	      for (i = 0; i < rcv_block->count_flush_volumes_info; i++)
 		{
-		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL) == NULL_VOLDES)
+		  if (fileio_synchronize (thread_p, rcv_block->flush_volumes_info[i].vdes, NULL,
+					  rcv_block->flush_volumes_info[i].metadata) == NULL_VOLDES)
 		    {
 		      error_code = ER_FAILED;
 		      goto end;
@@ -3677,7 +3704,7 @@ check_flushed_blocks:
       /* The system didn't advanced, add null pages to force flush block. */
       dwb_slot = NULL;
 
-      error_code = dwb_add_page (thread_p, iopage, &null_vpid, &dwb_slot);
+      error_code = dwb_add_page (thread_p, iopage, &null_vpid, false, &dwb_slot);
       if (error_code != NO_ERROR)
 	{
 	  dwb_log_error ("dwb_flush_force : Error %d while adding page = %lld\n",
@@ -3835,7 +3862,7 @@ dwb_file_sync_helper (THREAD_ENTRY *thread_p)
 	   * Flush the volume. If not all volume pages are available now, continue with next volume, if any,
 	   * and then resume the current one.
 	   */
-	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL);
+	  (void) fileio_synchronize (thread_p, current_flush_volume_info->vdes, NULL, current_flush_volume_info->metadata);
 
 	  dwb_log ("dwb_file_sync_helper: Synchronized volume %d\n", current_flush_volume_info->vdes);
 	}
