@@ -62,65 +62,65 @@ namespace fs = std::filesystem;
 
 class hnsw_index_manager
 {
-public:
+  public:
 
-  static hnsw_index_manager &instance()
-  {
-    static hnsw_index_manager inst;
-    return inst;
-  }
+    static hnsw_index_manager &instance()
+    {
+      static hnsw_index_manager inst;
+      return inst;
+    }
 
-  fs::path get_index_file_path (const std::string &prefix, const BTID *btid) const;
-  fs::path get_index_meta_file_path (const std::string &prefix, const BTID *btid) const;
-  fs::path get_index_directory_path() const;
+    fs::path get_index_file_path (const std::string &prefix, const BTID *btid) const;
+    fs::path get_index_meta_file_path (const std::string &prefix, const BTID *btid) const;
+    fs::path get_index_directory_path() const;
 
-  void create_index_directory();
-  bool is_index_file_exists (const std::string &prefix, const BTID *btid) const;
-  bool is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const;
+    void create_index_directory();
+    bool is_index_file_exists (const std::string &prefix, const BTID *btid) const;
+    bool is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const;
 
-  BTID create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attrid,
-		    const hnsw_build_params &params);
+    BTID create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attrid,
+		      const hnsw_build_params &params);
 
-  // index management on memory
-  bool is_index_loaded (const BTID *btid) const;
-  int add_index (const BTID *btid, hnsw_index *index);
-  hnsw_index *get_index (const BTID *btid) const;
-  int delete_index (const BTID *btid);
+    // index management on memory
+    bool is_index_loaded (const BTID *btid) const;
+    int add_index (const BTID *btid, hnsw_index *index);
+    hnsw_index *get_index (const BTID *btid) const;
+    int delete_index (const BTID *btid);
 
-  void print_index_info (const BTID *btid);
+    void print_index_info (const BTID *btid);
 
-  // index management on disk
-  int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
-  int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
-  int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
-  int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
-  int save_all_indices (THREAD_ENTRY *thread_p);
-  int delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid);
+    // index management on disk
+    int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
+    int load_index (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index *&index);
+    int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
+    int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
+    int save_all_indices (THREAD_ENTRY *thread_p);
+    int delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid);
 
-  // backend management
-  void register_backend (std::unique_ptr<hnsw_index_backend> backend);
-  const hnsw_index_backend *get_backend () const;
-  hnsw_index_backend *get_backend ();
+    // backend management
+    void register_backend (std::unique_ptr<hnsw_index_backend> backend);
+    const hnsw_index_backend *get_backend () const;
+    hnsw_index_backend *get_backend ();
 
-  ~hnsw_index_manager() = default;
+    ~hnsw_index_manager() = default;
 
-private:
-  fs::path get_vindex_root_path() const;
+  private:
+    fs::path get_vindex_root_path() const;
 
-  /* singleton */
-  hnsw_index_manager();
+    /* singleton */
+    hnsw_index_manager();
 
-  hnsw_index_manager (const hnsw_index_manager &) = delete;
-  hnsw_index_manager &operator= (const hnsw_index_manager &) = delete;
-  hnsw_index_manager (hnsw_index_manager &&) = delete;
-  hnsw_index_manager &operator= (hnsw_index_manager &&) = delete;
+    hnsw_index_manager (const hnsw_index_manager &) = delete;
+    hnsw_index_manager &operator= (const hnsw_index_manager &) = delete;
+    hnsw_index_manager (hnsw_index_manager &&) = delete;
+    hnsw_index_manager &operator= (hnsw_index_manager &&) = delete;
 
-  /* index directory root path */
-  fs::path m_root_path;
-  int m_last_index_id;
+    /* index directory root path */
+    fs::path m_root_path;
+    int m_last_index_id;
 
-  std::unordered_map<BTID, std::unique_ptr<hnsw_index>> m_index_map;
-  std::unique_ptr<hnsw_index_backend> m_backend;
+    std::unordered_map<BTID, std::unique_ptr<hnsw_index>> m_index_map;
+    std::unique_ptr<hnsw_index_backend> m_backend;
 };
 
 // singleton instances
