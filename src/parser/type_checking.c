@@ -4514,33 +4514,8 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       break;
 
     case PT_TYPE_NUMERIC:
-      switch (node->type_enum)
-	{
-	case PT_TYPE_SMALLINT:
-	  precision = DB_SMALLINT_PRECISION;
-	  scale = 0;
-	  break;
-
-	case PT_TYPE_INTEGER:
-	  precision = DB_INTEGER_PRECISION;
-	  scale = 0;
-	  break;
-
-	case PT_TYPE_BIGINT:
-	  precision = DB_BIGINT_PRECISION;
-	  scale = 0;
-	  break;
-
-	default:
-#if 0				// used in phase-3
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
-	  scale = DB_DEFAULT_NUMERIC_SCALE;
-#else
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
-	  scale = DB_DEFAULT_NUMERIC_DIVISION_SCALE;
-#endif
-	  break;
-	}
+      precision = DB_DEFAULT_NUMERIC_PRECISION;
+      scale = DB_DEFAULT_NUMERIC_SCALE;
       break;
 
     case PT_TYPE_VARCHAR:
@@ -10429,7 +10404,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && PT_IS_STRING_TYPE (arg2_type))
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && PT_IS_STRING_TYPE (arg1_type)))
     {
-      common_type = PT_TYPE_DOUBLE;
+      common_type = PT_TYPE_NUMERIC;
     }
   else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
 	   || (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
@@ -10439,7 +10414,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_MAYBE)
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && arg1_type == PT_TYPE_MAYBE))
     {
-      common_type = PT_TYPE_DOUBLE;
+      common_type = PT_TYPE_NUMERIC;
     }
   else
     {
@@ -10453,10 +10428,12 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_FLOAT:
 	    case PT_TYPE_DOUBLE:
-	    case PT_TYPE_NUMERIC:
 	    case PT_TYPE_LOGICAL:
 	    case PT_TYPE_ENUMERATION:
 	      common_type = PT_TYPE_DOUBLE;
+	      break;
+	    case PT_TYPE_NUMERIC:
+	      common_type = PT_TYPE_NUMERIC;
 	      break;
 	    case PT_TYPE_MONETARY:
 	      common_type = PT_TYPE_MONETARY;
@@ -10477,11 +10454,9 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_LOGICAL:
 	    case PT_TYPE_ENUMERATION:
-	      common_type = PT_TYPE_NUMERIC;
-	      break;
 	    case PT_TYPE_FLOAT:
 	    case PT_TYPE_DOUBLE:
-	      common_type = PT_TYPE_DOUBLE;
+	      common_type = PT_TYPE_NUMERIC;
 	      break;
 	    case PT_TYPE_MONETARY:
 	      common_type = PT_TYPE_MONETARY;
@@ -10504,8 +10479,10 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      common_type = PT_TYPE_FLOAT;
 	      break;
 	    case PT_TYPE_DOUBLE:
-	    case PT_TYPE_NUMERIC:
 	      common_type = PT_TYPE_DOUBLE;
+	      break;
+	    case PT_TYPE_NUMERIC:
+	      common_type = PT_TYPE_NUMERIC;
 	      break;
 	    case PT_TYPE_MONETARY:
 	      common_type = PT_TYPE_MONETARY;
@@ -11365,25 +11342,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	}
       else if (common_type == PT_TYPE_NUMERIC)
 	{
-#if 0				// used in phase-3
-	  /*
-	   * In phase-3, with the introduction of the FP_NUMERIC concept, 
-	   * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
-	   */
 	  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	  dt->info.data_type.units = 0;
-#else
-	  int integral_digits1, integral_digits2;
-
-	  integral_digits1 = arg1_prec - arg1_dec_prec;
-	  integral_digits2 = arg2_prec - arg2_dec_prec;
-	  dt->info.data_type.dec_precision = MAX (arg1_dec_prec, arg2_dec_prec);
-	  dt->info.data_type.precision =
-	    (dt->info.data_type.dec_precision + MAX (integral_digits1, integral_digits2) + 1);
-	  dt->info.data_type.units = 0;
 	}
-#endif
       else
 	{
 	  dt->info.data_type.precision = arg1_prec + arg2_prec;
@@ -11488,19 +11450,9 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    }
 	  else
 	    {
-#if 0				// used in phase-3
-	      /*
-	       * In phase-3, with the introduction of the FP_NUMERIC concept, 
-	       * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
-	       */
 	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	      dt->info.data_type.units = 0;
-#else
-	      dt->info.data_type.precision = arg1_prec + arg2_prec + 1;
-	      dt->info.data_type.dec_precision = (arg1_dec_prec + arg2_dec_prec);
-	      dt->info.data_type.units = 0;
-#endif
 	    }
 	}
       break;
@@ -11517,48 +11469,10 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	    }
 	  else
 	    {
-#if 0				// used in phase-3
-	      /*
-	       * In phase-3, with the introduction of the FP_NUMERIC concept, 
-	       * the precision and scale of TP_DOMAIN and db_value->domain are set to 0 during all NUMERIC operations.
-	       */
 	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	      dt->info.data_type.units = 0;
-#else
-	      int scaleup = 0;
-
-	      if (arg2_dec_prec > 0)
-		{
-		  scaleup = (MAX (arg1_dec_prec, arg2_dec_prec) + arg2_dec_prec - arg1_dec_prec);
-		}
-	      dt->info.data_type.precision = arg1_prec + scaleup;
-	      dt->info.data_type.dec_precision = ((arg1_dec_prec > arg2_dec_prec) ? arg1_dec_prec : arg2_dec_prec);
-	      dt->info.data_type.units = 0;
-	      if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && op == PT_DIVIDE)
-		{
-		  if (dt->info.data_type.dec_precision < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
-		    {
-		      int org_prec, org_scale, new_prec, new_scale;
-		      int scale_delta;
-
-		      org_prec = MIN (38, dt->info.data_type.precision);
-		      org_scale = dt->info.data_type.dec_precision;
-		      scale_delta = (DB_DEFAULT_NUMERIC_DIVISION_SCALE - org_scale);
-		      new_scale = org_scale + scale_delta;
-		      new_prec = org_prec + scale_delta;
-		      if (new_prec > DB_MAX_NUMERIC_PRECISION)
-			{
-			  new_scale -= (new_prec - DB_MAX_NUMERIC_PRECISION);
-			  new_prec = DB_MAX_NUMERIC_PRECISION;
-			}
-
-		      dt->info.data_type.precision = new_prec;
-		      dt->info.data_type.dec_precision = new_scale;
-		    }
-		}
 	    }
-#endif
 	}
       break;
     case PT_TIMEF:
@@ -11608,12 +11522,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	}
       else if (common_type == PT_TYPE_NUMERIC)
 	{
-	  int integral_digits1, integral_digits2;
-
-	  integral_digits1 = arg1_prec - arg1_dec_prec;
-	  integral_digits2 = arg2_prec - arg2_dec_prec;
-	  dt->info.data_type.dec_precision = MAX (arg1_dec_prec, arg2_dec_prec);
-	  dt->info.data_type.precision = (MAX (integral_digits1, integral_digits2) + dt->info.data_type.dec_precision);
+	  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	  dt->info.data_type.units = 0;
 	}
       else if ((arg1->type_enum != arg2->type_enum) && pt_is_op_with_forced_common_type (op))
@@ -11962,21 +11872,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (dt->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
-	    {
-	      dt->info.data_type.dec_precision =
-		dt->info.data_type.dec_precision - (dt->info.data_type.precision - DB_MAX_NUMERIC_PRECISION);
-	      dt->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-	    }
-
-	  if (dt->info.data_type.dec_precision > DB_MAX_NUMERIC_SCALE)
-	    {
-	      dt->info.data_type.dec_precision = DB_MAX_NUMERIC_SCALE;
-	    }
-	  else if (dt->info.data_type.dec_precision < DB_MIN_NUMERIC_SCALE)
-	    {
-	      dt->info.data_type.dec_precision = DB_MIN_NUMERIC_SCALE;
-	    }
+	  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	  break;
 
 	case PT_TYPE_ENUMERATION:
@@ -13016,14 +12913,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	      PT_ERRORc (parser, o1, er_msg ());
 	      return 0;
 	    }
-#if 0				// used in phase-3/* set default scale and precision for parametrized types *
+
 	  if (DB_VALUE_PRECISION (arg1) == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
 	      db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_NUMERIC_HEADER_PRECISION (arg1),
 			       DB_VALUE_NUMERIC_HEADER_SCALE (arg1), DB_NUMERIC_BUF_SIZE, true);
 	    }
 	  else
-#endif
 	    {
 	      db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_PRECISION (arg1), DB_VALUE_SCALE (arg1),
 			       DB_NUMERIC_BUF_SIZE, false);

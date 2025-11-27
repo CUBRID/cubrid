@@ -8291,14 +8291,12 @@ mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
   assert (!IS_FLOATING_PRECISION (domain->precision));
   int mem_length;
 
-#if 0				// used in phase-3
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
       mem_length = OR_SHORT_SIZE;
       mem_length += OR_NUMERIC_SIZE (domain->precision);
     }
   else
-#endif
     {
       mem_length = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       mem_length = DB_ALIGN (mem_length, INT_ALIGNMENT);
@@ -8328,10 +8326,6 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
     {
       src_num = db_get_numeric (value);
 
-#if 1				// used in phase-2
-      src_precision = db_value_precision (value);
-      src_scale = db_value_scale (value);
-#else // used in phase-3
       orig_src_precision = db_value_precision (value);
       if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
@@ -8343,18 +8337,11 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 	  src_precision = orig_src_precision;
 	  src_scale = db_value_scale (value);
 	}
-#endif
 
       /* this should have been handled by now */
-#if 1				// used in phase-2
-      if (src_num == NULL
-	  || (src_precision != DB_DEFAULT_NUMERIC_PRECISION
-	      && (src_precision != domain->precision || src_scale != domain->scale)))
-#else // used in phase-3
       if (src_num == NULL
 	  || (orig_src_precision != DB_DEFAULT_NUMERIC_PRECISION
 	      && (orig_src_precision != domain->precision || src_scale != domain->scale)))
-#endif
 	{
 	  error = ER_OBJ_DOMAIN_CONFLICT;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
@@ -8362,7 +8349,6 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
       else
 	{
 	  num = (DB_C_NUMERIC) mem;
-#if 0				// used in phase-3
 	  if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION && domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
 	      int header_size = 2;
@@ -8384,7 +8370,6 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 	      memcpy (num + header_size, src_num, byte_size);
 	    }
 	  else
-#endif
 	    {
 	      byte_size = _gv_float_numeric_precision_bytes_lookup[src_precision - 1];
 	      byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
@@ -8408,7 +8393,6 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
 
   num = (DB_C_NUMERIC) mem;
-#if 0				// used in phase-3
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
       int header_size = 2;
@@ -8419,7 +8403,6 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       error = db_make_numeric (value, num + header_size, precision, scale, DB_NUMERIC_BUF_SIZE, true);
     }
   else
-#endif
     {
       int byte_size;
       byte_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
@@ -8446,14 +8429,12 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
   int disk_size;
 
-#if 0				// used in phase-3
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
       disk_size = OR_SHORT_SIZE;
       disk_size += OR_NUMERIC_SIZE (domain->precision);
     }
   else
-#endif
     {
       disk_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
@@ -8479,14 +8460,12 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
     }
   else if (size)
     {
-#if 0				// used in phase-3
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
 	  size = OR_SHORT_SIZE;
 	  size += OR_NUMERIC_SIZE (domain->precision);
 	}
       else
-#endif
 	{
 	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
 	  size = DB_ALIGN (size, INT_ALIGNMENT);
@@ -8507,14 +8486,12 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
 {
   int len;
 
-#if 0				// used in phase-3
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
       len = OR_SHORT_SIZE;
       len += MR_NUMERIC_SIZE (domain->precision);
     }
   else
-#endif
     {
       len = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
       len = DB_ALIGN (len, INT_ALIGNMENT);
@@ -8543,10 +8520,6 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-#if 1				// used in phase-2
-      src_precision = db_value_precision (src);
-      src_scale = db_value_scale (src);
-#else // used in phase-3
       orig_src_precision = db_value_precision (src);
       if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
@@ -8558,7 +8531,6 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  src_precision = orig_src_precision;
 	  src_scale = db_value_scale (src);
 	}
-#endif
       src_numeric = (DB_C_NUMERIC) db_get_numeric (src);
 
       if (DB_IS_NULL (src) || src_numeric == NULL)
@@ -8572,13 +8544,11 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	   * difference between the copy and non-copy operations, this may
 	   * need to change.
 	   */
-#if 0				// used in phase-3
 	  if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
 	      error = db_make_numeric (dest, src_numeric, src_precision, src_scale, DB_NUMERIC_BUF_SIZE, true);
 	    }
 	  else
-#endif
 	    {
 	      error = db_make_numeric (dest, src_numeric, src_precision, src_scale, DB_NUMERIC_BUF_SIZE, false);
 	    }
@@ -8603,14 +8573,12 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
     {
       /* better have a non-NULL value by the time writeval is called ! */
       precision = db_value_precision (value);
-#if 0				// used in phase-3
       if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
 	  len = OR_SHORT_SIZE;
 	  len += OR_NUMERIC_SIZE (precision);
 	}
       else
-#endif
 	{
 	  len = _gv_float_numeric_precision_bytes_lookup[precision - 1];
 	  len = DB_ALIGN (len, INT_ALIGNMENT);
@@ -8638,7 +8606,6 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
       if (numeric != NULL)
 	{
 	  precision = db_value_precision (value);
-#if 0				// used in phase-3
 	  if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
 	      int header_size = 2;
@@ -8661,7 +8628,6 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	      rc = or_put_data (buf, (char *) numeric, disk_size);
 	    }
 	  else
-#endif
 	    {
 	      disk_size = _gv_float_numeric_precision_bytes_lookup[precision - 1];
 	      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
@@ -8718,7 +8684,6 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
        * the copy and no copy cases are identical because db_make_numeric
        * will copy the bits into its internal buffer.
        */
-#if 0				// used in phase-3
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
 	  int header_size = 2;
@@ -8734,7 +8699,6 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	  (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, precision, scale, DB_NUMERIC_BUF_SIZE, true);
 	}
       else
-#endif
 	{
 	  DB_C_NUMERIC num = (DB_C_NUMERIC) buf->ptr;
 

@@ -136,7 +136,18 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	int p = DB_VALUE_PRECISION (value), s = DB_VALUE_SCALE (value);
+	int orig_prec = DB_VALUE_PRECISION (value);
+	int p, s;
+	if (orig_prec == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    p = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+	    s = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+	  }
+	else
+	  {
+	    p = orig_prec;
+	    s = DB_VALUE_SCALE (value);
+	  }
 
 	if (s)
 	  {
@@ -211,31 +222,19 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		  }
 
 		numeric_coerce_dec_str_to_num (num_str_p, num);
-#if 1				// used in phase-2
-		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	      }
 	    else
 	      {
 		/* given numeric is positive or already rounded */
 		numeric_coerce_dec_str_to_num (num_str + 1, num);
-#if 1				// used in phase-2
-		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	      }
 	  }
 	else
 	  {
 	    /* given numeric number is already of integral type */
-#if 1				// used in phase-2
-	    db_make_numeric (result, db_get_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	    db_make_numeric (result, db_get_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	  }
 
 	break;
@@ -314,7 +313,18 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	int s = DB_VALUE_SCALE (value), p = DB_VALUE_PRECISION (value);
+	int orig_prec = DB_VALUE_PRECISION (value);
+	int p, s;
+	if (orig_prec == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    p = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+	    s = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+	  }
+	else
+	  {
+	    p = orig_prec;
+	    s = DB_VALUE_SCALE (value);
+	  }
 
 	if (s)
 	  {
@@ -356,11 +366,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		  {
 		    /* CEIL(-3.1) is -3.0, as opposed to CEIL(+3.1) which is 4 */
 		    numeric_coerce_dec_str_to_num (num_str + 1, num);
-#if 1				// used in phase-2
-		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 		  }
 		else
 		  {
@@ -402,31 +408,19 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		      }
 
 		    numeric_coerce_dec_str_to_num (num_str_p, num);
-#if 1				// used in phase-2
-		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 		  }
 	      }
 	    else
 	      {
 		/* the given numeric value is already an integer */
-#if 1				// used in phase-2
-		db_make_numeric (result, db_locate_numeric (value), p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 		db_make_numeric (result, db_locate_numeric (value), p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	      }
 	  }
 	else
 	  {
 	    /* the given numeric value has a scale of 0 */
-#if 1				// used in phase-2
-	    db_make_numeric (result, db_locate_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	    db_make_numeric (result, db_locate_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	  }
 
 	break;
@@ -656,14 +650,13 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 
 	numeric_db_value_abs (db_locate_numeric (value), num);
-#if 0				// used in phase-3
+
 	if (DB_VALUE_PRECISION (value) == DB_DEFAULT_NUMERIC_PRECISION)
 	  {
 	    db_make_numeric (result, num, DB_VALUE_NUMERIC_HEADER_PRECISION (value),
 			     DB_VALUE_NUMERIC_HEADER_SCALE (value), DB_NUMERIC_BUF_SIZE, true);
 	  }
 	else
-#endif
 	  {
 	    db_make_numeric (result, num, DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value), DB_NUMERIC_BUF_SIZE,
 			     false);
@@ -1054,11 +1047,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod ((double) s1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-#if 1				// used in phase-2
-	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -1205,11 +1194,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod ((double) i1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-#if 1				// used in phase-2
-	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -1356,11 +1341,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod ((double) bi1, d2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value2), num, &p, &s);
-#if 1				// used in phase-2
-	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	}
       break;
     case DB_TYPE_MONETARY:
@@ -1757,11 +1738,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, (double) s2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-#if 1				// used in phase-2
-	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	}
       break;
     case DB_TYPE_INTEGER:
@@ -1774,11 +1751,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, (double) i2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-#if 1				// used in phase-2
-	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	}
       break;
     case DB_TYPE_BIGINT:
@@ -1791,11 +1764,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	{
 	  dtmp = fmod (d1, (double) bi2);
 	  (void) numeric_internal_double_to_num (dtmp, DB_VALUE_SCALE (value1), num, &p, &s);
-#if 1				// used in phase-2
-	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	  db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
 	}
       break;
     case DB_TYPE_FLOAT:
@@ -2372,6 +2341,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   char num_string[NUMERIC_MAX_STRING_SIZE];
   char *ptr, *end;
   int need_round = 0;
+  int orig_p;
   int p, s;
   DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
@@ -2527,8 +2497,17 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NUMERIC:
       memset (num_string, 0, sizeof (num_string));
       numeric_coerce_num_to_dec_str (db_locate_numeric (value1), num_string);
-      p = DB_VALUE_PRECISION (value1);
-      s = DB_VALUE_SCALE (value1);
+      orig_p = DB_VALUE_PRECISION (value1);
+      if (orig_p == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  p = DB_VALUE_NUMERIC_HEADER_PRECISION (value1);
+	  s = DB_VALUE_NUMERIC_HEADER_SCALE (value1);
+	}
+      else
+	{
+	  p = orig_p;
+	  s = DB_VALUE_SCALE (value1);
+	}
       end = num_string + strlen (num_string);
 
       if (type2 == DB_TYPE_BIGINT)
@@ -2613,11 +2592,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       numeric_coerce_dec_str_to_num (num_string, num);
-#if 1				// used in phase-2
-      db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
       db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
       break;
     case DB_TYPE_MONETARY:
       d1 = (db_get_monetary (value1))->amount;
@@ -3548,12 +3523,22 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 	char num_string[NUMERIC_MAX_STRING_SIZE];
 	char *ptr, *end;
+	int orig_p;
 	int p, s;
 
 	memset (num_string, 0, sizeof (num_string));
 	numeric_coerce_num_to_dec_str (db_locate_numeric (value1), num_string);
-	p = DB_VALUE_PRECISION (value1);
-	s = DB_VALUE_SCALE (value1);
+	orig_p = DB_VALUE_PRECISION (value1);
+	if (orig_p == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    p = DB_VALUE_NUMERIC_HEADER_PRECISION (value1);
+	    s = DB_VALUE_NUMERIC_HEADER_SCALE (value1);
+	  }
+	else
+	  {
+	    p = orig_p;
+	    s = DB_VALUE_SCALE (value1);
+	  }
 	end = num_string + strlen (num_string);
 	ptr = end - s + bi2;
 
@@ -3576,11 +3561,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      }
 	  }
 	numeric_coerce_dec_str_to_num (num_string, num);
-#if 1				// used in phase-2
-	db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
 	db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, true);
-#endif
       }
       break;
     case DB_TYPE_MONETARY:
@@ -4382,13 +4363,11 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
 
       if (type == DB_TYPE_NUMERIC)
 	{
-#if 0				// used in phase-3
 	  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
 	      snprintf (buf, 128, "%s", type_name);
 	    }
 	  else
-#endif
 	    {
 	      snprintf (buf, 128, "%s (%u, %d)", type_name, value->domain.numeric_info.precision,
 			value->domain.numeric_info.scale);
@@ -4563,19 +4542,8 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-#if 1				// used in phase-2
-	      numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_SCALE (&n4), &res);
-#else // used in phase-3
-	      if (DB_VALUE_PRECISION (&n4) == DB_DEFAULT_NUMERIC_PRECISION
-		  && DB_VALUE_SCALE (&n4) == DB_DEFAULT_NUMERIC_SCALE)
-		{
-		  numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_NUMERIC_HEADER_SCALE (&n4), &res);
-		}
-	      else
-		{
-		  numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_SCALE (&n4), &res);
-		}
-#endif
+	      numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_NUMERIC_HEADER_SCALE (&n4), &res);
+
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
 		  return ER_IT_DATA_OVERFLOW;
@@ -4640,19 +4608,8 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-#if 1				// used in phase-2
-	      numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_SCALE (&n4), &res);
-#else // used in phase-3
-	      if (DB_VALUE_PRECISION (&n4) == DB_DEFAULT_NUMERIC_PRECISION
-		  && DB_VALUE_SCALE (&n4) == DB_DEFAULT_NUMERIC_SCALE)
-		{
-		  numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_NUMERIC_HEADER_SCALE (&n4), &res);
-		}
-	      else
-		{
-		  numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_SCALE (&n4), &res);
-		}
-#endif
+	      numeric_coerce_num_to_double (db_get_numeric (&n4), DB_VALUE_NUMERIC_HEADER_SCALE (&n4), &res);
+
 	      if (OR_CHECK_DOUBLE_OVERFLOW (res))
 		{
 		  return ER_IT_DATA_OVERFLOW;

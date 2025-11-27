@@ -15787,7 +15787,7 @@ adjust_precision (char *data, int precision, int scale)
   else
     {
       if (before_dec_point + after_dec_point > DB_MAX_FIXED_NUMERIC_PRECISION ||
-	  after_dec_point > DB_DEFAULT_NUMERIC_PRECISION || before_dec_point > precision - scale)
+	  after_dec_point > DB_LEGACY_DEFAULT_NUMERIC_PRECISION || before_dec_point > precision - scale)
 	{
 	  return DOMAIN_OVERFLOW;
 	}
@@ -15998,7 +15998,7 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 	{
 	  /* scientific notation */
 	  precision = DB_MAX_FIXED_NUMERIC_PRECISION;
-	  scale = DB_DEFAULT_NUMERIC_PRECISION;
+	  scale = DB_LEGACY_DEFAULT_NUMERIC_PRECISION;
 	  break;
 	}
     }

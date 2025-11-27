@@ -2654,7 +2654,7 @@ pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type)
     case PT_TYPE_NUMERIC:
       if (node->data_type == NULL)
 	{
-	  precision = DB_DEFAULT_NUMERIC_PRECISION + 1;	/* sign */
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;	/* sign */
 	  break;
 	}
 
@@ -2663,13 +2663,13 @@ pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type)
 	{
 	  precision = DB_DEFAULT_NUMERIC_PRECISION;
 	}
-      precision++;		/* for sign */
+      precision = (precision == DB_MAX_NUMERIC_PRECISION ? precision : precision + 1);		/* for sign */
 
       if (node->data_type->info.data_type.dec_precision
 	  && (node->data_type->info.data_type.dec_precision != DB_DEFAULT_SCALE
 	      || node->data_type->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE))
 	{
-	  precision++;		/* for decimal point */
+	  precision = (precision == DB_MAX_NUMERIC_PRECISION ? precision : precision + 1);		/* for decimal point */
 	}
       break;
     case PT_TYPE_CHAR:
@@ -2779,7 +2779,7 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 	{
 	  return PT_TYPE_SMALLINT;
 	}
-      return PT_TYPE_DOUBLE;
+      return PT_TYPE_NUMERIC;
 
     case PT_GENERIC_TYPE_CHAR:
     case PT_GENERIC_TYPE_STRING:

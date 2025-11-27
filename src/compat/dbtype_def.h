@@ -584,11 +584,10 @@ extern "C"
 #define DB_NUMERIC_SCALE_SP 15
 
 /* This constant defines the default precision of DB_TYPE_NUMERIC. */
-#if 1				// used in phase-2
-#define DB_DEFAULT_NUMERIC_PRECISION 15
-#else				// used in phase-3
 #define DB_DEFAULT_NUMERIC_PRECISION DB_MAX_NUMERIC_PRECISION
-#endif
+
+/* This constant defines the legacy default precision of DB_TYPE_NUMERIC (CUBRID 11.4 and earlier). */
+#define DB_LEGACY_DEFAULT_NUMERIC_PRECISION 15
 
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_SCALE 0
@@ -597,9 +596,6 @@ extern "C"
 #define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
-#if 1				// used in phase-2
-#define DB_NUMERIC_BUF_SIZE	20
-#else				// used in phase-3
 /*
  * DB_NUMERIC_BUF_SIZE
  * 
@@ -608,7 +604,6 @@ extern "C"
  * Formula: ceil(DB_MAX_NUMERIC_PRECISION / log10(256)) = 18
  */
 #define DB_NUMERIC_BUF_SIZE	18
-#endif
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
 /* This constant defines the default precision of DB_TYPE_BIGINT. */

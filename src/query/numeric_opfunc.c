@@ -2500,6 +2500,7 @@ int
 float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
+  int orig_prec1, orig_prec2;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec, calc_prec1, calc_prec2;
   int calc_bytes;
@@ -2528,10 +2529,29 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  prec1 = DB_VALUE_PRECISION (dbv1);
-  prec2 = DB_VALUE_PRECISION (dbv2);
+  orig_prec1 = DB_VALUE_PRECISION (dbv1);
+  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
+      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
+    }
+  else
+    {
+      prec1 = orig_prec1;
+      scale1 = DB_VALUE_SCALE (dbv1);
+    }
+
+  orig_prec2 = DB_VALUE_PRECISION (dbv2);
+  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
+      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
+    }
+  else
+    {
+      prec2 = orig_prec2;
+      scale2 = DB_VALUE_SCALE (dbv2);
+    }
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -2615,11 +2635,7 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       numeric_negate ((unsigned char *) result_buf);
     }
 
-#if 1				// used in phase-2
-  db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
 
   return ret;
 }
@@ -2739,6 +2755,7 @@ int
 float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
+  int orig_prec1, orig_prec2;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec, calc_prec1, calc_prec2;
   int calc_bytes;
@@ -2767,10 +2784,29 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  prec1 = DB_VALUE_PRECISION (dbv1);
-  prec2 = DB_VALUE_PRECISION (dbv2);
+  orig_prec1 = DB_VALUE_PRECISION (dbv1);
+  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
+      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
+    }
+  else
+    {
+      prec1 = orig_prec1;
+      scale1 = DB_VALUE_SCALE (dbv1);
+    }
+
+  orig_prec2 = DB_VALUE_PRECISION (dbv2);
+  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
+      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
+    }
+  else
+    {
+      prec2 = orig_prec2;
+      scale2 = DB_VALUE_SCALE (dbv2);
+    }
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -2853,11 +2889,7 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       numeric_negate ((unsigned char *) result_buf);
     }
 
-#if 1				// used in phase-2
-  db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
 
   return ret;
 }
@@ -2956,6 +2988,7 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 {
   int ret = NO_ERROR;
   int calc_bytes;
+  int orig_prec1, orig_prec2;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
@@ -2997,19 +3030,33 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
       result_prec = 1;
       result_scale = 0;
-#if 1				// used in phase-2
-      db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
       db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
       return NO_ERROR;
     }
 
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  prec1 = DB_VALUE_PRECISION (dbv1);
-  prec2 = DB_VALUE_PRECISION (dbv2);
+  orig_prec1 = DB_VALUE_PRECISION (dbv1);
+  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
+      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
+    }
+  else
+    {
+      prec1 = orig_prec1;
+      scale1 = DB_VALUE_SCALE (dbv1);
+    }
 
+  orig_prec2 = DB_VALUE_PRECISION (dbv2);
+  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
+      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
+    }
+  else
+    {
+      prec2 = orig_prec2;
+      scale2 = DB_VALUE_SCALE (dbv2);
+    }
   result_scale = scale1 + scale2;
   result_prec = prec1 + prec2;
 
@@ -3058,11 +3105,7 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       numeric_negate ((unsigned char *) result_buf);
     }
 
-#if 1				// used in phase-2
-  db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
 
   return ret;
 }
@@ -3266,6 +3309,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int ret = NO_ERROR;
   int result_prec;
   int result_scale;
+  int orig_prec1, orig_prec2;
   int prec1, prec2;
   int scale1, scale2;
   int calc_bytes;
@@ -3309,17 +3353,31 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
       result_prec = 1;
       result_scale = 0;
-#if 1				// used in phase-2
-      db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
       db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
       return NO_ERROR;
     }
 
   /* 1) compute exact precision values for mantissa calculations */
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
+  orig_prec1 = DB_VALUE_PRECISION (dbv1);
+  orig_prec2 = DB_VALUE_PRECISION (dbv2);
+
+  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      scale1 = dbv1->data.num.header.scale;
+    }
+  else
+    {
+      scale1 = DB_VALUE_SCALE (dbv1);
+    }
+
+  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      scale2 = dbv2->data.num.header.scale;
+    }
+  else
+    {
+      scale2 = DB_VALUE_SCALE (dbv2);
+    }
   prec1 = float_numeric_get_precision_digits (dbv1_copy, DB_NUMERIC_BUF_SIZE);
   prec2 = float_numeric_get_precision_digits (dbv2_copy, DB_NUMERIC_BUF_SIZE);
 
@@ -3401,11 +3459,36 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 
   /* 9) check and recalculate precision/scale of the addition result */
   result_prec = float_numeric_get_decimal_digit (quotient_work, calc_bytes);
+
+  /* 
+   * In steps 4) and 5), the DIV operation determines the precision/scale of the result in advance as follows
+   * 
+   * 1) The integer digit count (result_digits) of the division result is computed 
+   *    using dividend_exponent, divisor_exponent, and the mantissa comparison.
+   *    - Depending on the mantissa_compare result, result_digits becomes either "exponent_diff" or "exponent_diff + 1".
+   *    - This effectively predicts how many integer digits the final result will have before the actual division takes place.
+   *
+   * 2) Based on result_digits, the result_scale is calculated as "result_scale = DB_MAX_NUMERIC_PRECISION - result_digits;"
+   *    - This constrains the overall result precision (integer + fractional digits)
+   *      so that it cannot exceed the maximum precision (43). As result_digits grows, result_scale naturally decreases.
+   *      (This is not a hard enforcement that integer+fractional must equal 43,
+   *      but the design ensures that precision overflow does not occur.)
+   *
+   * Due to this design, the actual integer digit count (result_prec) obtained after
+   * the division mantissa is finalized must never exceed DB_MAX_NUMERIC_PRECISION(43) in any valid DIV execution path.
+   *
+   * If result_prec > 43 ever occurs, it indicates that exponent10 adjustment or
+   * normalization (mul/div pow10) failed to properly enforce the expected precision
+   * constraints, meaning the DIV logic’s design assumptions have been violated.
+   * In such cases, the assert will detect the issue.
+   */
+  assert (result_prec <= DB_MAX_NUMERIC_PRECISION);
+
   if (result_scale > DB_MAX_NUMERIC_SCALE)
     {
       result_scale = DB_MAX_NUMERIC_SCALE;
     }
-  if (result_scale < DB_MIN_NUMERIC_SCALE)
+  else if (result_scale < DB_MIN_NUMERIC_SCALE)
     {
       result_scale = DB_MIN_NUMERIC_SCALE;
     }
@@ -3419,11 +3502,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       numeric_negate ((unsigned char *) result_buf);
     }
 
-#if 1				// used in phase-2
-  db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
   db_make_numeric (answer, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
 
   return ret;
 }
@@ -3517,6 +3596,7 @@ int
 numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
+  int orig_prec1, orig_prec2;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
   int prec_common = 0, scale_common = 0;
   int cmp_rez = 0;
@@ -3544,10 +3624,29 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       return NO_ERROR;
     }
 
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  prec1 = DB_VALUE_PRECISION (dbv1);
-  prec2 = DB_VALUE_PRECISION (dbv2);
+  orig_prec1 = DB_VALUE_PRECISION (dbv1);
+  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
+      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
+    }
+  else
+    {
+      prec1 = orig_prec1;
+      scale1 = DB_VALUE_SCALE (dbv1);
+    }
+
+  orig_prec2 = DB_VALUE_PRECISION (dbv2);
+  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
+      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
+    }
+  else
+    {
+      prec2 = orig_prec2;
+      scale2 = DB_VALUE_SCALE (dbv2);
+    }
 
   if (prec1 == prec2 && scale1 == scale2)
     {
@@ -3556,12 +3655,7 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       db_make_int (answer, cmp_rez);
       return NO_ERROR;
     }
-#if 1				// used in phase-2
-  else if (scale1 > DB_MAX_FIXED_NUMERIC_PRECISION || scale2 > DB_MAX_FIXED_NUMERIC_PRECISION || scale1 < 0
-	   || scale2 < 0)
-#else // used in phase-3
   else if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION || orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-#endif
     {
       /*
        * handling for extended scale range (-84 ~ 127)
@@ -4242,6 +4336,7 @@ int
 float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result)
 {
   int ret = NO_ERROR;
+  int orig_prec1, orig_prec2;
   int scale1 = 0, scale2 = 0, prec1 = 0, prec2 = 0;
   int calc_bytes;
   int result_prec, result_scale;
@@ -4260,17 +4355,31 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
       memset (result_buf, 0, DB_NUMERIC_BUF_SIZE);
       result_prec = 1;
       result_scale = DB_VALUE_SCALE (value1);
-#if 1				// used in phase-2
-      db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
       db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
       return NO_ERROR;
     }
 
   /* 1) compute exact precision values for mantissa calculations */
-  scale1 = DB_VALUE_SCALE (value1);
-  scale2 = DB_VALUE_SCALE (value2);
+  orig_prec1 = DB_VALUE_PRECISION (value1);
+  orig_prec2 = DB_VALUE_PRECISION (value2);
+
+  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      scale1 = value1->data.num.header.scale;
+    }
+  else
+    {
+      scale1 = DB_VALUE_SCALE (value1);
+    }
+
+  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      scale2 = value2->data.num.header.scale;
+    }
+  else
+    {
+      scale2 = DB_VALUE_SCALE (value2);
+    }
   prec1 = float_numeric_get_precision_digits (dbv1_copy, DB_NUMERIC_BUF_SIZE);
   prec2 = float_numeric_get_precision_digits (dbv2_copy, DB_NUMERIC_BUF_SIZE);
 
@@ -4297,7 +4406,7 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
     {
       result_scale = DB_MAX_NUMERIC_SCALE;
     }
-  if (result_scale < DB_MIN_NUMERIC_SCALE)
+  else if (result_scale < DB_MIN_NUMERIC_SCALE)
     {
       result_scale = DB_MIN_NUMERIC_SCALE;
     }
@@ -4360,11 +4469,7 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
       numeric_negate ((unsigned char *) result_buf);
     }
 
-#if 1				// used in phase-2
-  db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
   db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
 
   return ret;
 }
@@ -5163,11 +5268,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
       numeric_negate (num);
     }
 
-#if 1				// used in phase-2
-  db_make_numeric (result, num, prec, scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
   db_make_numeric (result, num, prec, scale, DB_NUMERIC_BUF_SIZE, true);
-#endif
 
   return ret;
 
@@ -5208,12 +5309,8 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
     }
 
   /* Check for trivial case */
-#if 1				// used in phase-2
-  if (src_prec <= dest_prec && src_scale == dest_scale)
-#else // used in phase-3
   if ((dest_prec == DB_DEFAULT_NUMERIC_PRECISION && dest_scale == DB_DEFAULT_NUMERIC_SCALE)
       || (src_prec <= dest_prec && src_scale == dest_scale))
-#endif
     {
       numeric_copy (dest_num, src_num);
       return NO_ERROR;
@@ -5626,14 +5723,12 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
     case DB_TYPE_NUMERIC:
       {
 	precision = DB_VALUE_PRECISION (src);
-#if 0				// used in phase-3
 	if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	  {
 	    precision = DB_VALUE_NUMERIC_HEADER_PRECISION (src);
 	    scale = DB_VALUE_NUMERIC_HEADER_SCALE (src);
 	  }
 	else
-#endif
 	  {
 	    scale = DB_VALUE_SCALE (src);
 	  }
@@ -5668,9 +5763,6 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	  goto exit_on_error;
 	}
 
-#if 1				// used in phase-2
-      db_make_numeric (dest, num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
-#else // used in phase-3
       if (desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
 	  db_make_numeric (dest, num, precision, scale, DB_NUMERIC_BUF_SIZE, true);
@@ -5679,7 +5771,6 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	{
 	  db_make_numeric (dest, num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
 	}
-#endif
     }
 
   if (ret == ER_IT_DATA_OVERFLOW)
@@ -6034,7 +6125,18 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   int temp_size;
   int i;
   bool found_first_non_zero = false;
-  int scale = db_value_scale (val);
+  int orig_prec;
+  int scale;
+
+  orig_prec = DB_VALUE_PRECISION (val);
+  if (orig_prec == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      scale = DB_VALUE_NUMERIC_HEADER_SCALE (val);
+    }
+  else
+    {
+      scale = DB_VALUE_SCALE (val);
+    }
 
   /* it should not be static because the parameter could be changed without broker restart */
   bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);

@@ -11116,13 +11116,11 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  break;
 
 	case DB_TYPE_NUMERIC:
-#if 0				// used in phase-3
 	  if (d->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
 	      fprintf (fp, "%s", d->type->name);
 	    }
 	  else
-#endif
 	    {
 	      fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
 	    }
@@ -11499,13 +11497,8 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 	}
       else if (common_type == DB_TYPE_NUMERIC)
 	{
-	  int integral_digits1, integral_digits2;
-
-	  integral_digits1 = arg1_prec - arg1_scale;
-	  integral_digits2 = arg2_prec - arg2_scale;
-	  target_domain->scale = MAX (arg1_scale, arg2_scale);
-	  target_domain->precision = (target_domain->scale + MAX (integral_digits1, integral_digits2));
-	  target_domain->precision = MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
+	  target_domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  target_domain->scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
       else
 	{

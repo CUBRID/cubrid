@@ -7475,7 +7475,7 @@ pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
       else
 	{
 	  *p_precision = DB_MAX_NUMERIC_PRECISION;
-	  *p_scale = DB_DEFAULT_NUMERIC_PRECISION;
+	  *p_scale = DB_LEGACY_DEFAULT_NUMERIC_PRECISION;
 	}
     }
 }
