@@ -11810,7 +11810,7 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
       parser->custom_print = PT_SUPPRESS_RESOLVED | PT_SUPPRESS_QUOTES;
       char *err = parser_print_tree (parser, name_node);
       parser->custom_print = saved_custom;
-      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_INVALID_HOST_EXPR, err);
+      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_HOST_EXPR, err);
       return NULL;
     }
   hostvar->info.host_var.label = host_expr_str;
