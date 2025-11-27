@@ -7339,6 +7339,17 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
     {
       if (attribute->info.attr_def.auto_increment)
 	{
+	  /* 
+	   * Although the default NUMERIC type is Float Numeric,
+	   * when used as an AUTO_INCREMENT column with the NUMERIC default,
+	   * it is generated as NUMERIC(38,0) to maintain consistency with _db_serial.
+	   */
+	  if (TP_DOMAIN_TYPE (ctemplate->attributes->domain) == DB_TYPE_NUMERIC
+	      && ctemplate->attributes->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	      ctemplate->attributes->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	    }
 	  error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
 
 	  if (error == NO_ERROR)
@@ -10884,6 +10895,18 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       assert (attribute->info.attr_def.auto_increment != NULL);
 
+      /* 
+       * Although the default NUMERIC type is Float Numeric,
+       * when used as an AUTO_INCREMENT column with the NUMERIC default,
+       * it is generated as NUMERIC(38,0) to maintain consistency with _db_serial.
+       */
+      if (TP_DOMAIN_TYPE (ctemplate->attributes->domain) == DB_TYPE_NUMERIC
+	  && ctemplate->attributes->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	  ctemplate->attributes->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	}
+
       error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
       if (error == NO_ERROR)
 	{
@@ -10940,6 +10963,18 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       MOP auto_increment_obj = NULL;
 
       assert_release (found_att->auto_increment != NULL);
+
+      /* 
+       * Although the default NUMERIC type is Float Numeric,
+       * when used as an AUTO_INCREMENT column with the NUMERIC default,
+       * it is generated as NUMERIC(38,0) to maintain consistency with _db_serial.
+       */
+      if (TP_DOMAIN_TYPE (ctemplate->attributes->domain) == DB_TYPE_NUMERIC
+	  && ctemplate->attributes->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	  ctemplate->attributes->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	}
 
       error = do_update_maxvalue_of_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
 

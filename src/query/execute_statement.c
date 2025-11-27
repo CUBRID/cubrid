@@ -1445,17 +1445,11 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* get all values as string */
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&zero);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&negative_e38);
-#endif
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1732,9 +1726,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
-#if 0				// used in phase-3
       FLOAT_TO_FIXED_NUMERIC (&range_val);
-#endif
       er_clear ();
     }
 
@@ -1874,13 +1866,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&min_val);
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&zero);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_FIXED_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
@@ -2036,9 +2024,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
-#if 0				// used in phase-3
       FLOAT_TO_FIXED_NUMERIC (&value);
-#endif
       break;
     default:
       /* max numeric */
@@ -2135,9 +2121,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   OID_SET_NULL (&serial_obj_id);
 
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
 
   assert (serial_object != NULL);
 
@@ -2225,9 +2209,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
-#if 0				// used in phase-3
       FLOAT_TO_FIXED_NUMERIC (&value);
-#endif
       break;
     default:
       /* max numeric */
@@ -2480,17 +2462,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Now, get new values from node */
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&zero);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&e38);
-#endif
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
-#if 0				// used in phase-3
   FLOAT_TO_FIXED_NUMERIC (&negative_e38);
-#endif
   db_make_int (&cmp_result, 0);
 
   db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
@@ -2719,9 +2695,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
-#if 0				// used in phase-3
       FLOAT_TO_FIXED_NUMERIC (&range_val);
-#endif
       er_clear ();
     }
 

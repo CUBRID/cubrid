@@ -2192,7 +2192,7 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale2 - scale1;
       prec1 = scale_diff + prec1;
-      if (prec1 > DB_MAX_NUMERIC_PRECISION)
+      if (prec1 > DB_MAX_FIXED_NUMERIC_PRECISION)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -2207,7 +2207,7 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
     {
       scale_diff = scale1 - scale2;
       prec2 = scale_diff + prec2;
-      if (prec2 > DB_MAX_NUMERIC_PRECISION)
+      if (prec2 > DB_MAX_FIXED_NUMERIC_PRECISION)
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -2246,7 +2246,7 @@ numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, 
   scale2 = DB_VALUE_SCALE (dbv2);
 
   scale = MAX (scale1, scale2);
-  prec = DB_MAX_NUMERIC_PRECISION;
+  prec = DB_MAX_FIXED_NUMERIC_PRECISION;
 
   numeric_copy (num1, db_locate_numeric (dbv1));
   numeric_copy (num2, db_locate_numeric (dbv2));
@@ -2340,7 +2340,7 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
   char dec_digits[TWICE_NUM_MAX_PREC + 2];
 
   /* If src precision fits without truncation, merely set dest to the lower half of the source buffer and return */
-  if (src_prec <= DB_MAX_NUMERIC_PRECISION)
+  if (src_prec <= DB_MAX_FIXED_NUMERIC_PRECISION)
     {
       numeric_copy (dest, &(src[DB_NUMERIC_BUF_SIZE]));
       *dest_prec = src_prec;
@@ -2350,13 +2350,13 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
   /* The remaining cases are for when the precision of the source overflows. */
 
   /* Case 1: The scale of the source does *not* overflow */
-  else if (src_scale <= DB_MAX_NUMERIC_PRECISION)
+  else if (src_scale <= DB_MAX_FIXED_NUMERIC_PRECISION)
     {
       /* If upper half of *src is zero, merely copy, reset precision, and return */
       if (numeric_is_zero (src) && src[DB_NUMERIC_BUF_SIZE] <= 0x7F)
 	{
 	  numeric_copy (dest, &(src[DB_NUMERIC_BUF_SIZE]));
-	  *dest_prec = DB_MAX_NUMERIC_PRECISION;
+	  *dest_prec = DB_MAX_FIXED_NUMERIC_PRECISION;
 	  *dest_scale = src_scale;
 	}
       else
@@ -2370,10 +2370,10 @@ numeric_get_msb_for_dec (int src_prec, int src_scale, unsigned char *src, int *d
    * Reduce the scale and precision by the same amount. */
   else
     {
-      int truncation_diff = src_prec - DB_MAX_NUMERIC_PRECISION;
+      int truncation_diff = src_prec - DB_MAX_FIXED_NUMERIC_PRECISION;
 
       *dest_scale = src_scale - truncation_diff;
-      *dest_prec = DB_MAX_NUMERIC_PRECISION;
+      *dest_prec = DB_MAX_FIXED_NUMERIC_PRECISION;
 
       /* Truncate the obsolete trailing digits. (Note: numeric_coerce_big_num_to_dec_str is guaranteed ro return a
        * NULL-terminated buffer that is TWICE_NUM_MAX_PREC characters long.) */
@@ -2717,7 +2717,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   prec = DB_VALUE_PRECISION (&dbv1_common);
   if (numeric_overflow (temp, prec))
     {
-      if (prec < DB_MAX_NUMERIC_PRECISION)
+      if (prec < DB_MAX_FIXED_NUMERIC_PRECISION)
 	{
 	  prec++;
 	}

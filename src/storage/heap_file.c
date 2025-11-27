@@ -12103,6 +12103,18 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
       else
 	{
 	  OR_ENABLE_BOUND_BIT (bitmap_bound, value->last_attrepr->position);
+	  /* 
+	   * User AUTO_INCREMENT NUMERIC(1~28) uses 4–12 bytes, while
+	   * _db_serial.current_val (NUMERIC(38)) always uses 16 bytes.
+	   * This byte-size mismatch corrupts values.
+	   * Fix: if user column precision < 38, override current_val precision to match it.
+	   */
+	  if (pr_type->id == DB_TYPE_NUMERIC && value->last_attrepr->is_autoincrement
+	      && value->last_attrepr->domain->precision != DB_MAX_FIXED_NUMERIC_PRECISION
+	      && dbvalue->domain.general_info.type == DB_TYPE_NUMERIC)
+	    {
+	      dbvalue->domain.numeric_info.precision = value->last_attrepr->domain->precision;
+	    }
 	  pr_type->data_writeval (buf, dbvalue);
 	}
     }

@@ -951,9 +951,6 @@ namespace cubschema
       {
 	"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
-#if 1 // used in phase-2
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-#else // used in phase-3
 	  int error_code = NO_ERROR;
 	  error_code = numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
 	  if (error_code != NO_ERROR)
@@ -963,15 +960,11 @@ namespace cubschema
 
 	  FLOAT_TO_FIXED_NUMERIC (val);
 	  return error_code;
-#endif
 	}
       },
       {
 	"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
 	{
-#if 1 // used in phase-2
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-#else // used in phase-3
 	  int error_code = NO_ERROR;
 	  error_code = numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
 	  if (error_code != NO_ERROR)
@@ -981,7 +974,6 @@ namespace cubschema
 
 	  FLOAT_TO_FIXED_NUMERIC (val);
 	  return error_code;
-#endif
 	}
       },
       {"max_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
