@@ -77,6 +77,7 @@ extern char *css_get_client_version_string (void);
 extern void css_cleanup_server_queues (unsigned int eid);
 extern void css_end_server_request (CSS_CONN_ENTRY * conn);
 extern bool css_is_shutdown_timeout_expired (void);
+extern struct timeval *css_get_shutdown_timeout (void);
 
 #if defined (SERVER_MODE)
 extern bool css_is_shutdowning_server ();

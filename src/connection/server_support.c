@@ -815,7 +815,7 @@ css_close_connection_to_master (void)
 }
 
 /*
- * css_shutdown_timeout() -
+ * css_is_shutdown_timeout_expired () -
  *   return:
  */
 bool
@@ -833,6 +833,16 @@ css_is_shutdown_timeout_expired (void)
     }
 
   return false;
+}
+
+/*
+ * css_get_shutdown_timeout () -
+ *   return:
+ */
+struct timeval *
+css_get_shutdown_timeout (void)
+{
+  return &css_Shutdown_timeout;
 }
 
 /*
@@ -1195,6 +1205,8 @@ void
 css_start_shutdown_server ()
 {
   css_Server_shutdown_inited = true;
+
+  css_set_shutdown_timeout (prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS));
 }
 
 /*

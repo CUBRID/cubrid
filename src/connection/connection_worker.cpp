@@ -25,6 +25,7 @@
 #include "network.h"
 #include "network_interface_sr.h"
 #include "server_support.h"
+#include "connection_pool.hpp"
 #include "connection_sr.h"
 #include "connection_defs.h"
 #include "connection_worker.hpp"
@@ -101,8 +102,10 @@ namespace cubconn
   {
   }
 
-  connection_worker::connection_worker (connection_pool *pool, std::size_t core, std::size_t index) :
+  connection_worker::connection_worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
+					std::size_t index) :
     m_parent (pool),
+    m_watcher (watcher),
     m_core (core),
     m_stop (false),
     m_entry (nullptr),
@@ -1460,6 +1463,11 @@ retry:
 
   void connection_worker::initialize ()
   {
+    /* watch me */
+    m_watcher->mtx.lock ();
+    m_watcher->active++;
+    m_watcher->mtx.unlock ();
+
     /* set name */
     pthread_setname_np (pthread_self (), "cub_server:conn");
 
@@ -1509,6 +1517,13 @@ retry:
 
     m_entry->unregister_id ();
     cubthread::get_manager ()->retire_entry (*m_entry);
+
+    /* remove the watcher */
+    m_watcher->mtx.lock ();
+    m_watcher->active--;
+    m_watcher->mtx.unlock ();
+
+    m_watcher->cv.notify_one ();
   }
 
   bool connection_worker::run ()
