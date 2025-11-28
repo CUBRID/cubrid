@@ -80,6 +80,8 @@ namespace parallel_query
 	return 0;	/* disable */
       }
 
+    page_threshold = MAX (page_threshold, 1);
+
     /* threshold check */
     if (num_pages < page_threshold)
       {
