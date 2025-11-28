@@ -159,12 +159,7 @@ enum
 };
 
 /* default charset for JDBC : ISO8859-1 */
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset ())
-#else
-#define CAS_SCHEMA_DEFAULT_CHARSET 0
-#endif
-
+#define CAS_SCHEMA_DEFAULT_CHARSET (lang_charset())
 
 extern int uts_key_check_local_host (void);
 

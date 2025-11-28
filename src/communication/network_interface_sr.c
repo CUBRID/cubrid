@@ -138,7 +138,7 @@ static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, in
 			      UINT64 * diff_stats, char *queryinfo_string);
 static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
-static void event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
+static void event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
 
 /*
@@ -164,13 +164,10 @@ stran_server_commit_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool re
 
   state = xtran_server_commit (thread_p, retain_lock);
 
-  if (session_has_pl_session (thread_p))
+  PL_SESSION *session = cubpl::get_session ();
+  if (!session || session->is_sp_running () == false)
     {
-      PL_SESSION *session = cubpl::get_session ();
-      if (!session || session->is_sp_running () == false)
-	{
-	  net_cleanup_server_queues (rid);
-	}
+      net_cleanup_server_queues (rid);
     }
 
   if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS)
@@ -205,13 +202,10 @@ stran_server_abort_internal (THREAD_ENTRY * thread_p, unsigned int rid, bool * s
 
   state = xtran_server_abort (thread_p);
 
-  if (session_has_pl_session (thread_p))
+  PL_SESSION *session = cubpl::get_session ();
+  if (!session || session->is_sp_running () == false)
     {
-      PL_SESSION *session = cubpl::get_session ();
-      if (!session || session->is_sp_running () == false)
-	{
-	  net_cleanup_server_queues (rid);
-	}
+      net_cleanup_server_queues (rid);
     }
 
   if (state != TRAN_UNACTIVE_ABORTED && state != TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
@@ -2707,51 +2701,6 @@ sfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, unsigned int rid, char 
 }
 
 void
-sdblink_get_crypt_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int area_size = -1;
-  char *reply, *area, *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
-  int err = NO_ERROR;
-  unsigned char crypt_key[DBLINK_CRYPT_KEY_LENGTH];
-  int length = dblink_get_encrypt_key (crypt_key, sizeof (crypt_key));
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  if (length < 0)
-    {
-      (void) return_error_to_client (thread_p, rid);
-      area = NULL;
-      area_size = 0;
-      err = length;
-    }
-  else
-    {
-      area_size = OR_INT_SIZE + or_packed_stream_length (length);
-      area = (char *) db_private_alloc (thread_p, area_size);
-      if (area == NULL)
-	{
-	  (void) return_error_to_client (thread_p, rid);
-	  area_size = 0;
-	}
-      else
-	{
-	  ptr = or_pack_int (area, length);
-	  ptr = or_pack_stream (ptr, (char *) crypt_key, length);
-	}
-    }
-
-  ptr = or_pack_int (reply, area_size);
-  ptr = or_pack_int (ptr, err);
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), area, area_size);
-
-  if (area != NULL)
-    {
-      db_private_free_and_init (thread_p, area);
-    }
-}
-
-void
 stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   int area_size = -1;
@@ -5080,7 +5029,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
       pr_type = domains[i]->type;
       assert (pr_type != NULL);
 
-      if (pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR)
+      if (pr_type->id == DB_TYPE_VARCHAR)
 	{
 	  found_compressible_string_domain = true;
 	  break;
@@ -5120,7 +5069,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY * thread_p, int query_flag, QF
 	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
 
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR || pr_type->id == DB_TYPE_VARNCHAR))
+	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR))
 	    {
 	      buf.ptr = tuple_p;
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
@@ -5502,9 +5451,9 @@ null_list:
 	  perfmon_stop_watch (thread_p);
 	}
 
-      if (thread_p->event_stats.temp_expand_pages > 0)
+      if (thread_p->event_stats.extend_pages > 0)
 	{
-	  event_log_temp_expand_pages (thread_p, &info);
+	  event_log_extend_pages (thread_p, &info);
 	}
     }
 
@@ -5753,7 +5702,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
 }
 
 /*
- * event_log_temp_expand_pages - log temp volume expand pages to event log file
+ * event_log_extend_pages - log volume extend pages to event log file
  * return:
  *   thread_p(in):
  *   info(in):
@@ -5761,7 +5710,7 @@ event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time
  *   bind_vals(in):
  */
 static void
-event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
+event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5770,7 +5719,7 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  log_fp = event_log_start (thread_p, "TEMP_VOLUME_EXPAND");
+  log_fp = event_log_start (thread_p, "EXTEND_VOLUME_INFO");
 
   if (tdes == NULL || log_fp == NULL)
     {
@@ -5781,13 +5730,10 @@ event_log_temp_expand_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info)
   event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
 				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
-  if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
-    {
-      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
-    }
+  fprintf (log_fp, "%*ctime: %dms\n", indent, ' ', TO_MSEC (thread_p->event_stats.extend_time));
+  fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.extend_pages);
 
-  fprintf (log_fp, "%*ctime: %d\n", indent, ' ', TO_MSEC (thread_p->event_stats.temp_expand_time));
-  fprintf (log_fp, "%*cpages: %d\n\n", indent, ' ', thread_p->event_stats.temp_expand_pages);
+  /* printing bind values for placeholders (?) is skipped due to performance issues when logging long column values (e.g. LOB) in event_log_bind_values(). */
 
   event_log_end (thread_p);
 }
@@ -10513,9 +10459,9 @@ end:
 }
 
 void
-ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_destory)
+ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session)
 {
-  session_stop_attached_threads (thread_p, session, is_destory);
+  session_stop_attached_threads (thread_p, session);
 }
 
 static bool

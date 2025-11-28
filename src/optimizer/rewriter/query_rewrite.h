@@ -123,7 +123,7 @@ PT_NODE *qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * no
 void qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* optimize terms */
-void qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE ** terms);
+void qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms);
 void qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep);
 PT_NODE *qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 int qo_is_reduceable_const (PT_NODE * expr);
@@ -143,6 +143,7 @@ bool qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE *
 bool qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE ** wherep, int *seqno);
 void qo_move_on_of_explicit_join_to_where (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep);
 void qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement);
+void qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * select);
 
 /* qo_auto_parameterize is defined in parser.h */
 void qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);

@@ -37,9 +37,7 @@
 #include "cas_network.h"
 #include "cas.h"
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbtype_def.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX) || defined(PPC_LINUX)
 #define BYTE_ORDER_BIG_ENDIAN
@@ -102,9 +100,6 @@ struct t_net_buf
   T_BROKER_VERSION client_version;
 };
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#define DB_BIGINT 	int64_t
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 extern void net_buf_init (T_NET_BUF * net_buf, T_BROKER_VERSION client_version);
 extern void net_buf_clear (T_NET_BUF * net_buf);
 extern void net_buf_destroy (T_NET_BUF * net_buf);
@@ -136,11 +131,7 @@ extern void net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, 
 				     const char *name);
 
 extern void net_arg_get_size (int *size, void *arg);
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-extern void net_arg_get_bigint (int64_t * value, void *arg);
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 extern void net_arg_get_bigint (DB_BIGINT * value, void *arg);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 extern void net_arg_get_int (int *value, void *arg);
 extern void net_arg_get_short (short *value, void *arg);
 extern void net_arg_get_float (float *value, void *arg);
@@ -159,12 +150,10 @@ extern void net_arg_get_datetimetz (short *yr, short *mon, short *day, short *hh
 				    char **tz, int *tz_size, void *arg);
 extern void net_arg_get_object (T_OBJECT * obj, void *arg);
 extern void net_arg_get_cache_time (void *ct, void *arg);
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern void net_arg_get_dbobject (DB_OBJECT ** obj, void *arg);
 extern void net_arg_get_cci_object (int *pageid, short *slotid, short *volid, void *arg);
 extern void net_arg_get_lob_handle (T_LOB_HANDLE * lob, void *arg);
 extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size);

@@ -15673,13 +15673,10 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	    /* compatible if two types are same (except for sequence type) */
 	    (stype == dtype)
 	    /* CHAR type and VARCHAR type are compatible with each other */
-	    || ((stype == DB_TYPE_CHAR || stype == DB_TYPE_VARCHAR)
-		&& (dtype == DB_TYPE_CHAR || dtype == DB_TYPE_VARCHAR))
-	    /* NCHAR type and VARNCHAR type are compatible with each other */
-	    || ((stype == DB_TYPE_NCHAR || stype == DB_TYPE_VARNCHAR)
-		&& (dtype == DB_TYPE_NCHAR || dtype == DB_TYPE_VARNCHAR))
+	    || (stype == DB_TYPE_CHAR && dtype == DB_TYPE_VARCHAR)
+	    || (stype == DB_TYPE_VARCHAR && dtype == DB_TYPE_CHAR)
 	    /* BIT type and VARBIT type are compatible with each other */
-	    || ((stype == DB_TYPE_BIT || stype == DB_TYPE_VARBIT) && (dtype == DB_TYPE_BIT || dtype == DB_TYPE_VARBIT))
+	    || (stype == DB_TYPE_BIT && dtype == DB_TYPE_VARBIT) || (stype == DB_TYPE_VARBIT && dtype == DB_TYPE_BIT)
 	    /* OID type and OBJECT type are compatible with each other */
 	    /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain itself will always be a
 	     * DB_TYPE_OBJECT. The comparison routines can handle OID and OBJECT as compatible type with each other . */
@@ -21011,9 +21008,7 @@ key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type)
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       snprintf (buf, buf_size, "%s(%d)", pr_type_name (TP_DOMAIN_TYPE (key_type)), key_type->precision);
       break;
 
@@ -22465,6 +22460,7 @@ btree_compare_btids (void *mem_btid1, void *mem_btid2)
   return 0;
 }
 
+#if !defined (NDEBUG)
 /*
  * btree_check_valid_record () - Check that record data is valid.
  *
@@ -22490,6 +22486,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
   bool has_fixed_size = false;
   bool has_overflow_pages = false;
   VPID first_overflow_vpid = VPID_INITIALIZER;
+  char copy_buf[DBVAL_BUFSIZE];
 
   assert (btid != NULL);
   assert (recp != NULL && recp->data != NULL && recp->length > 0);
@@ -22609,7 +22606,8 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
 	      db_make_null (&rec_key_value);
 	      key_domain = btid->key_type;
 	      pr_type = key_domain->type;
-	      if (pr_type->index_readval (&buffer, &rec_key_value, key_domain, -1, true, NULL, 0) != NO_ERROR)
+	      if (pr_type->index_readval (&buffer, &rec_key_value, key_domain, -1, false, copy_buf, DBVAL_BUFSIZE) !=
+		  NO_ERROR)
 		{
 		  assert (false);
 		  return ER_FAILED;
@@ -22639,6 +22637,7 @@ btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec
     }
   return NO_ERROR;
 }
+#endif
 
 /*
  * btree_check_foreign_key () -
@@ -25200,14 +25199,12 @@ btree_range_scan_read_record (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
       {
 	int ret = btree_read_record_in_leafpage (thread_p, bts->C_page, PEEK_KEY_VALUE, bts);
 	/* Even if PEEK_KEY_VALUE is specified, in the case of compressed data,
 	 * a new buffer is created separately and stored, so it is stable even after pgbuf_unfix(). 
 	 * If need_clear is true, it means that a separate buffer has been allocated.  
-	 * And compression is only used for char, varchar, nchar, and nvarchar. 
+	 * And compression is only used for char and varchar. 
 	 * Bit, varbit, and midxkey will return with need_clear set to false.
 	 */
 	bts->is_cur_key_copied = bts->cur_key.need_clear;

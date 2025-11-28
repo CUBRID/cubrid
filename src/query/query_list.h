@@ -370,7 +370,6 @@ struct qfile_tuple_descriptor
   int tpl_size;			/* tuple size */
   int f_cnt;			/* number of field */
   DB_VALUE **f_valp;		/* pointer of field value pointer array */
-  bool *clear_f_val_at_clone_decache;	/* true, if need to clear value at clone decache */
 
   /* T_SORTKEY */
   void *sortkey_info;		/* casted pointer of (SORTKEY_INFO *) */
@@ -468,7 +467,6 @@ struct qfile_list_id
       (list_id)->tpl_descr.tpl_size = 0; \
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
-      (list_id)->tpl_descr.clear_f_val_at_clone_decache = NULL; \
       (list_id)->tpl_descr.sortkey_info = NULL; \
       (list_id)->tpl_descr.sort_rec = NULL; \
       (list_id)->tpl_descr.tplrec1 = NULL; \
@@ -556,23 +554,24 @@ typedef enum
 
 enum
 {
-  NOT_FROM_RESULT_CACHE = 0x0001,
-  RESULT_CACHE_REQUIRED = 0x0002,
-  RESULT_CACHE_INHIBITED = 0x0004,
-  RESULT_HOLDABLE = 0x0008,
-  DONT_COLLECT_EXEC_STATS = 0x0010,
-  MRO_CANDIDATE = 0x0020,
-  MRO_IS_USED = 0x0040,
-  SORT_LIMIT_CANDIDATE = 0x0080,
-  SORT_LIMIT_USED = 0x0100,
-  XASL_TRACE_TEXT = 0x0200,
-  XASL_TRACE_JSON = 0x0400,
-  TRIGGER_IS_INVOLVED = 0x0800,
-  RETURN_GENERATED_KEYS = 0x1000,
-  XASL_CACHE_PINNED_REFERENCE = 0x2000,
-  EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x4000,
-  EXECUTE_QUERY_WITH_COMMIT = 0x8000,
-  TRAN_AUTO_COMMIT = 0x000010000
+  NOT_FROM_RESULT_CACHE = 0x1 << 0,
+  RESULT_CACHE_REQUIRED = 0x1 << 1,
+  RESULT_CACHE_INHIBITED = 0x1 << 2,
+  RESULT_HOLDABLE = 0x1 << 3,
+  DONT_COLLECT_EXEC_STATS = 0x1 << 4,
+  MRO_CANDIDATE = 0x1 << 5,
+  MRO_IS_USED = 0x1 << 6,
+  SORT_LIMIT_CANDIDATE = 0x1 << 7,
+  SORT_LIMIT_USED = 0x1 << 8,
+  XASL_TRACE_TEXT = 0x1 << 9,
+  XASL_TRACE_JSON = 0x1 << 10,
+  TRIGGER_IS_INVOLVED = 0x1 << 11,
+  RETURN_GENERATED_KEYS = 0x1 << 12,
+  XASL_CACHE_PINNED_REFERENCE = 0x1 << 13,
+  EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x1 << 14,
+  EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
+  TRAN_AUTO_COMMIT = 0x1 << 16,
+  LIKE_RECOMPILE_CANDIDATE = 0x1 << 17
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)

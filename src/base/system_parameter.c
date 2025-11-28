@@ -246,6 +246,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HOSTVAR_LATE_BINDING "hostvar_late_binding"
 
+#define PRM_NAME_HOSTVAR_PEEKING "hostvar_peeking"
+
 #define PRM_NAME_ENABLE_HISTO "communication_histogram"
 
 #define PRM_NAME_MUTEX_BUSY_WAITING_CNT "mutex_busy_waiting_cnt"
@@ -741,6 +743,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
+#define PRM_NAME_PAGE_LATCH_TIMEOUT "page_latch_timeout"
+
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
 #define PRM_VALUE_MIN "MIN"
@@ -770,6 +774,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PARALLELISM "parallelism"
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
+
+#define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
 // #endregion 
 
@@ -960,7 +966,6 @@ typedef enum
 #define VACUUM_LOG_BLOCK_PAGES_DEFAULT 0
 #define VACUUM_MAX_WORKER_COUNT 0
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
-
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -5099,6 +5104,42 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PAGE_LATCH_TIMEOUT,
+   PRM_NAME_PAGE_LATCH_TIMEOUT,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 300}},
+   {false, {.i = 300}},
+   {false, {.i = 3000}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MEMOIZE_MEMORY_LIMIT,
+   PRM_NAME_MEMOIZE_MEMORY_LIMIT,
+   (PRM_USER_CHANGE | PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_FOR_QRY_STRING | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.bi = 2 * 1024 * 1024 /* 2 MB */ }},
+   {false, {.bi = 2 * 1024 * 1024 /* 2 MB */ }},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.bi = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HOSTVAR_PEEKING,
+   PRM_NAME_HOSTVAR_PEEKING,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];

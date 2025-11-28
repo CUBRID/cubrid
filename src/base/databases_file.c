@@ -221,7 +221,6 @@ cfg_pop_linetoken (char *str_p, char **token_p)
 static void
 cfg_get_directory_filename (char *buffer, int *local)
 {
-#if !defined (DO_NOT_USE_CUBRIDENV)
   const char *env_name;
 
   *local = 0;
@@ -242,10 +241,6 @@ cfg_get_directory_filename (char *buffer, int *local)
 	  sprintf (buffer, "%s/%s", env_name, DATABASES_FILENAME);
 	}
     }
-#else
-  *local = 0;
-  envvar_vardir_file (buffer, PATH_MAX, DATABASES_FILENAME);
-#endif
 }
 
 /*
