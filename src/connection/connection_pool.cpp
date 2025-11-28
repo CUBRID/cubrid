@@ -68,7 +68,7 @@ namespace cubconn
     cubbase::topology.map_nic_to_core ();
     cores = &cubbase::topology.get_cores ();
 
-    /* TODO: need to consider dynamic increses */
+    /* TODO: need to consider dynamic increase */
     m_workers.reserve (cores->size () + 1);
 
     i = 0;
