@@ -3178,8 +3178,9 @@ qo_nljoin_cost (QO_PLAN * planp)
 	subq_io_cost += temp_io_cost;
       }
 
-    planp->variable_cpu_cost += MAX (0.0, guessed_result_cardinality - 1.0) * subq_cpu_cost;
-    planp->variable_io_cost += MAX (0.0, guessed_result_cardinality - 1.0) * subq_io_cost;	/* assume IO as # blocks */
+    /* subq cost is already included in the inner. so add it for the cardinality excluded due to ISCAN_IO_HIT_RATIO. */
+    planp->variable_cpu_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_cpu_cost;
+    planp->variable_io_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_io_cost;	/* assume IO as # blocks */
   }
 
 #if TEST_DUMP_PLAN_JOIN_COST
