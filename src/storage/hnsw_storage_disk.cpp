@@ -10,6 +10,16 @@
 namespace cubhnsw
 {
   static int
+  hnsw_initalize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
+  {
+    pgbuf_set_page_ptype (thread_p, page, PAGE_HNSW);
+    spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+    pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+    return NO_ERROR;
+  }
+
+  static int
   create_continous_file (THREAD_ENTRY *thread_p, VFID &vfid, VPID &vpid)
   {
     int error_code = NO_ERROR;
@@ -25,7 +35,7 @@ namespace cubhnsw
 
 
     log_sysop_start (thread_p);
-    error_code = file_alloc_sticky_first_page (thread_p, &vfid, btree_initialize_new_page, NULL, &vpid, NULL);
+    error_code = file_alloc_sticky_first_page (thread_p, &vfid, hnsw_initalize_new_page, NULL, &vpid, NULL);
     if (error_code != NO_ERROR)
       {
 	ASSERT_ERROR ();

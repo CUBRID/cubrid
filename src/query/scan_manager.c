@@ -3696,11 +3696,7 @@ scan_open_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   visid->rest_regu_list = regu_list_rest;
   /* index scan info */
 
-<<<<<<< HEAD
-  visid->btid = indx_info->btid;
-=======
   visid->hnsw_btid = indx_info->btid;
->>>>>>> yj/CUBVEC-135
 
   return NO_ERROR;
 }

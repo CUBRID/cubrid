@@ -317,7 +317,7 @@ namespace cubhnsw
     level_t curr_max_level;
     level_t new_target_level;
 
-    pinned_t root_block = m_storage->get_root (lock_mode::shared);
+    pinned_t root_block = m_storage->get_root (lock_mode::exclusive);
     slot_id_t entry_slot, new_slot;
     {
       root_type root_node = root_type (root_block.data());
@@ -337,8 +337,8 @@ namespace cubhnsw
 
       if (m_storage->is_empty())
 	{
-	  pinned_t promoted_root = m_storage->promote_root (root_block);
-	  root_node = root_type (promoted_root.data());
+	  // pinned_t promoted_root = m_storage->promote_root (root_block);
+	  //root_node = root_type (promoted_root.data());
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
 	  return result;
@@ -348,7 +348,7 @@ namespace cubhnsw
     if (new_target_level <= curr_max_level)
       {
 	// unlock root
-	pinned_t cleanup {std::move (root_block)};
+	//pinned_t cleanup {std::move (root_block)};
       }
 
     {
@@ -391,11 +391,11 @@ namespace cubhnsw
       {
 	// promotion required
 	{
-	  pinned_t cleanup {std::move (root_block)};
+	  //pinned_t cleanup {std::move (root_block)};
 	}
 	// pinned_block promoted_root = m_storage->promote_root (root_block);
-	pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
-	root_type root_node = root_type (promoted_root.data());
+	// pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
+	root_type root_node = root_type (root_block.data());
 	root_node.set_entry (new_slot);
 	root_node.set_level (new_target_level);
       }

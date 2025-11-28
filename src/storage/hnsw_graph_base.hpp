@@ -50,6 +50,7 @@ namespace cubhnsw
 
     public:
       using slot_id_t = typename ID_TRAITS::slot_id_t;
+      using header_type_t = hnsw_build_params;
 
       explicit root_t (byte_t *tape) noexcept : tape_ (tape) {}
       byte_t *tape() const noexcept
@@ -73,16 +74,16 @@ namespace cubhnsw
       root_t &operator= (root_t &&) noexcept = default;
 
       static constexpr std::size_t offset_params = 0;
-      static constexpr std::size_t offset_level = sizeof (hnsw_build_params);
+      static constexpr std::size_t offset_level = sizeof (header_type_t);
       static constexpr std::size_t offset_entry = offset_level + sizeof (level_t);
 
-      hnsw_build_params get_params () const noexcept
+      header_type_t get_params () const noexcept
       {
-	return misaligned_load<hnsw_build_params> (tape_);
+	return misaligned_load<header_type_t> (tape_);
       }
-      void set_params (hnsw_build_params v) noexcept
+      void set_params (header_type_t v) noexcept
       {
-	return misaligned_store<hnsw_build_params> (tape_, v);
+	return misaligned_store<header_type_t> (tape_, v);
       }
 
       level_t get_level() const noexcept
@@ -105,7 +106,7 @@ namespace cubhnsw
 
       static constexpr std::size_t get_size() noexcept
       {
-	return sizeof (hnsw_build_params) + sizeof (level_t) + sizeof (slot_id_t);
+	return sizeof (header_type_t) + sizeof (level_t) + sizeof (slot_id_t);
       }
 
       std::string dump() const noexcept

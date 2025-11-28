@@ -132,6 +132,10 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid,
   char rec_buf [IO_MAX_PAGE_SIZE + INT_ALIGNMENT];
   RECDES rec { DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
 
+#if 0
+  char rec_buf [IO_MAX_PAGE_SIZE + INT_ALIGNMENT];
+  RECDES rec { DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
+
   BTREE_ROOT_HEADER dummy_header;
 
   dummy_header.num_oids = build_params.dimension;
@@ -157,8 +161,14 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid,
     {
       return NULL;
     }
+#endif
 
   hnsw_index *index = new hnsw_usearch_ng (*this, *btid, name, build_params, page_ptr, rec);
+
+  if (spage_insert_at (thread_p, page_ptr, HEADER + 1, &rec) != SP_SUCCESS)
+    {
+      return NULL;
+    }
 
   pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
 
@@ -185,11 +195,6 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
   std::size_t root_size;
   m_storage->init_root (reinterpret_cast<std::byte *> (rec.data), root_size);
   rec.length = root_size;
-
-  if (spage_insert_at (this->m_thread_p, page_ptr, 1, &rec) != SP_SUCCESS)
-    {
-      assert (false);
-    }
 
   m_algo = std::make_unique<algo_type> (build_params);
   m_algo->set_storage (m_storage.get());
