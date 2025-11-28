@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,6 +43,7 @@
 namespace cubconn
 {
   class connection_pool;
+  struct thread_watcher;
 
   class connection_worker
   {
@@ -176,10 +177,16 @@ namespace cubconn
 	context (std::size_t capacity, connection_stats *stats);
 	context ();
 	~context ();
+
+	context (const context &) = delete;
+	context &operator= (const context &) = delete;
+
+	context (context &&) noexcept = delete;
+	context &operator= (context &&) noexcept = delete;
       };
 
     public:
-      connection_worker (connection_pool *pool, std::size_t core, std::size_t index);
+      connection_worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core, std::size_t index);
       ~connection_worker ();
 
       void initialize ();
@@ -200,6 +207,7 @@ namespace cubconn
     private:
       /* connection pool */
       connection_pool *m_parent;
+      std::shared_ptr<thread_watcher> m_watcher;
 
       /* thread handle */
       std::thread m_thread;

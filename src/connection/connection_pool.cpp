@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,9 +23,13 @@
 #include "hardware_topology.hpp"
 #include "connection_pool.hpp"
 #include "connection_worker.hpp"
+#include "server_support.h"
+#include "system_parameter.h"
+#include "error_manager.h"
 
 #include <csignal>
 #include <cstdint>
+#include <chrono>
 #include <unistd.h>
 #include <stdint.h>
 #include <fcntl.h>
@@ -42,6 +46,8 @@ namespace cubconn
     m_max_connections (-1),
     m_counter (0)
   {
+    m_watcher = std::make_shared<thread_watcher> ();
+    m_watcher->active = 0;
   }
 
   connection_pool::~connection_pool ()
@@ -62,13 +68,13 @@ namespace cubconn
     cubbase::topology.map_nic_to_core ();
     cores = &cubbase::topology.get_cores ();
 
-    /* TODO: need to consider dynamic increses */
+    /* TODO: need to consider dynamic increase */
     m_workers.reserve (cores->size () + 1);
 
     i = 0;
     for (int core : *cores)
       {
-	m_workers.emplace_back (std::make_unique<connection_worker> (this, core, i++));
+	m_workers.emplace_back (std::make_unique<connection_worker> (this, m_watcher, core, i++));
       }
 
     /* pre-warm the connection thread and its queue to avoid a race condition. */
@@ -92,6 +98,11 @@ namespace cubconn
 
   void connection_pool::finalize ()
   {
+    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::microseconds wait_for (0);
+    struct timeval *timeout;
+    bool compelete;
+
     for (auto &worker : m_workers)
       {
 	connection_worker::message request;
@@ -102,6 +113,27 @@ namespace cubconn
 	    assert_release (false);
 	  }
       }
+
+    /* shutdown timeout */
+    timeout = css_get_shutdown_timeout ();
+    deadline = std::chrono::system_clock::time_point (
+		       std::chrono::seconds (timeout->tv_sec) +
+		       std::chrono::microseconds (timeout->tv_usec));
+    now = std::chrono::system_clock::now ();
+    if (deadline > now)
+      {
+	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);
+      }
+
+    std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
+    lock.unlock();
+    if (!compelete)
+      {
+	er_log_debug (ARG_FILE_LINE, "could not stop all active connection workers");
+	_exit (0);
+      }
+
     m_max_connections = -1;
     m_workers.clear ();
   }

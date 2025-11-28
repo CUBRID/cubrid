@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,6 +83,12 @@ namespace cubconn
 
 	context ();
 	~context ();
+
+	context (const context &) = delete;
+	context &operator= (const context &) = delete;
+
+	context (context &&) noexcept = delete;
+	context &operator= (context &&) noexcept = delete;
 
 	void reset ();
 	bool has_data_to_send ();
@@ -208,7 +214,7 @@ namespace cubconn
       /* re-establish								     */
       /* --------------------------------------------------------------------------- */
       inline bool dispose_master_connection () noexcept;
-      inline bool reestablish_with_master () noexcept;
+      inline bool try_to_reestablish_with_master () noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* main handler								     */

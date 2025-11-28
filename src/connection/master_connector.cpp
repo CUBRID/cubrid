@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1232,27 +1232,28 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::reestablish_with_master () noexcept
+  inline bool master_connector::try_to_reestablish_with_master () noexcept
   {
     fprintf (stderr, "try to re-establish the connection with master...\n");
 
     if (!this->dispose_master_connection ())
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->reestablish_with_master: dispose_master_connection failed");
+	er_log_conn (__FILE__, __LINE__, "master_connector->try_to_reestablish_with_master: dispose_master_connection failed");
 	return false;
       }
 
-    er_log_conn (__FILE__, __LINE__, "master_connector->reestablish_with_master: reestablish the connection with master");
+    er_log_conn (__FILE__, __LINE__,
+		 "master_connector->try_to_reestablish_with_master: reestablish the connection with master");
 
     if (!this->connect (m_master_port))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->reestablish_with_master: connect failed");
+	er_log_conn (__FILE__, __LINE__, "master_connector->try_to_reestablish_with_master: connect failed");
 	return false;
       }
 
     if (!this->prepare_handshake (m_server_name))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->reestablish_with_master: prepare_handshake failed");
+	er_log_conn (__FILE__, __LINE__, "master_connector->try_to_reestablish_with_master: prepare_handshake failed");
 	/* ensure state goes back to CLOSED and new conn is freed */
 	(void) this->dispose_master_connection ();
 	return false;
@@ -1272,7 +1273,7 @@ namespace cubconn
 	    return true;
 	  }
 	/* WAIT RESPONSE or ESTABLISHED */
-	this->reestablish_with_master ();
+	this->try_to_reestablish_with_master ();
 
 	return true;
       }
@@ -1302,7 +1303,7 @@ namespace cubconn
 	if (__builtin_expect (m_master_state == master_state::CLOSED, 0))
 	  {
 	    /* re-establish the connection with master if it died */
-	    this->reestablish_with_master ();
+	    this->try_to_reestablish_with_master ();
 	  }
 
 	for (i = 0; i < nfds; i++)
