@@ -4221,7 +4221,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 }
 
 /*
- * pt_find_method_call () - search for a stored procedure
+ * pt_find_method_call () - search for a method call
  *
  * result	  : parser tree node
  * parser(in)	  : parser
