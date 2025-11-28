@@ -3472,7 +3472,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
-		    break;	// FIXME: something wrong
+		    *continue_walk = PT_STOP_WALK;
+		    return NULL;
 		  }
 		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
 
@@ -3558,7 +3559,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 	      if (node1 == NULL)
 		{
-		  break;	// FIXME: something wrong
+		  *continue_walk = PT_STOP_WALK;
+		  return NULL;
 		}
 
 	      if (node1->node_type == PT_METHOD_CALL)
@@ -10454,8 +10456,14 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   new_node->info.method_call.method_id = (UINTPTR) new_node;
 
-  int sp_type_misc = jsp_get_sp_type (sp_name);
-  new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+  PT_MISC_TYPE sp_type_misc = (PT_MISC_TYPE) jsp_get_sp_type (sp_name);
+  // stored procedures can only be invoked through a CALL statement
+  if (sp_type_misc == PT_SP_PROCEDURE && bind_arg->sc_info->top_node->node_type != PT_METHOD_CALL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_STORED_PROC_CALL_IN_SQL);
+      return NULL;
+    }
+  new_node->info.method_call.method_type = sp_type_misc;
 
   PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
   if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)

@@ -276,7 +276,6 @@ static int pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, 
 						       PT_NODE * part_next, PT_NODE * column_dt);
 static int pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * data_type);
 static int pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param);
-static PT_NODE *pt_find_stored_proc_call (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -12459,17 +12458,6 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       break;
     }
 
-  // stored Procedures can be invoked only through a CALL statement.
-  if (node && node->node_type != PT_METHOD_CALL)
-    {
-      PT_NODE *sp_call_node = NULL;
-      parser_walk_tree (parser, node, pt_find_stored_proc_call, &sp_call_node, NULL, NULL);
-      if (sp_call_node)
-	{
-	  PT_ERRORm (parser, sp_call_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_STORED_PROC_CALL_IN_SQL);
-	}
-    }
-
   /* restore list link, if any */
   if (node)
     {
@@ -17927,18 +17915,4 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   new_node->next = next;
 
   return new_node;
-}
-
-static PT_NODE *
-pt_find_stored_proc_call (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  PT_NODE **sp_call_node = (PT_NODE **) arg;
-
-  if (tree && tree->node_type == PT_METHOD_CALL && tree->info.method_call.method_type == PT_SP_PROCEDURE)
-    {
-      *sp_call_node = tree;
-      *continue_walk = PT_STOP_WALK;
-    }
-
-  return tree;
 }
