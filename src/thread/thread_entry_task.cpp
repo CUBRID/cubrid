@@ -28,6 +28,7 @@
 #include "porting.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "page_buffer.h"
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -95,6 +96,7 @@ namespace cubthread
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
     context.private_lru_index = -1;
+    pgbuf_cache_finalize (&context);
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
     context.m_px_orig_thread_entry = NULL;

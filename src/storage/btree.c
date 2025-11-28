@@ -1866,7 +1866,7 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
   root_vpid_p->volid = btid->vfid.volid;
 
   /* Fix root page. */
-  root_page = pgbuf_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  root_page = pgbuf_cached_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -23507,7 +23507,8 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
-      *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      *advance_to_page =
+	pgbuf_cached_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (*advance_to_page == NULL)
 	{
 	  /* Error fixing child. */

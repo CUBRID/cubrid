@@ -495,4 +495,10 @@ extern void pgbuf_daemons_destroy ();
 
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
 
+extern int pgbuf_cache_initialize (THREAD_ENTRY * thread_p);
+extern int pgbuf_cache_finalize (THREAD_ENTRY * thread_p);
+extern PAGE_PTR pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+				  PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition);
+extern bool pgbuf_cached_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+
 #endif /* _PAGE_BUFFER_H_ */
