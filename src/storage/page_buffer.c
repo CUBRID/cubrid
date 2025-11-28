@@ -2228,6 +2228,49 @@ try_again:
   (entry)->iopage_buffer = NULL; \
   (entry)->page_p = NULL;
 
+#if defined(SERVER_MODE)
+#define PGBUF_COPY_BCB(dest, src) \
+  do { \
+    (dest)->vpid = (src)->vpid; \
+    (dest)->fcnt = (src)->fcnt; \
+    (dest)->latch_mode = (src)->latch_mode; \
+    (dest)->flags = (src)->flags; \
+    (dest)->owner_mutex = (src)->owner_mutex; \
+    (dest)->mutex = (src)->mutex; \
+    (dest)->next_wait_thrd = (src)->next_wait_thrd; \
+    (dest)->hash_next = (src)->hash_next; \
+    (dest)->prev_BCB = (src)->prev_BCB; \
+    (dest)->next_BCB = (src)->next_BCB; \
+    (dest)->tick_lru_list = (src)->tick_lru_list; \
+    (dest)->tick_lru3 = (src)->tick_lru3; \
+    (dest)->count_fix_and_avoid_dealloc = (src)->count_fix_and_avoid_dealloc; \
+    (dest)->hit_age = (src)->hit_age; \
+    (dest)->write_seq = (src)->write_seq.load (); \
+    (dest)->is_cached_fake_bcb = (src)->is_cached_fake_bcb; \
+    (dest)->oldest_unflush_lsa = (src)->oldest_unflush_lsa; \
+    (dest)->iopage_buffer = (src)->iopage_buffer; \
+  } while (0)
+#else /* SERVER_MODE */
+#define PGBUF_COPY_BCB(dest, src) \
+  do { \
+    (dest)->vpid = (src)->vpid; \
+    (dest)->fcnt = (src)->fcnt; \
+    (dest)->latch_mode = (src)->latch_mode; \
+    (dest)->flags = (src)->flags; \
+    (dest)->hash_next = (src)->hash_next; \
+    (dest)->prev_BCB = (src)->prev_BCB; \
+    (dest)->next_BCB = (src)->next_BCB; \
+    (dest)->tick_lru_list = (src)->tick_lru_list; \
+    (dest)->tick_lru3 = (src)->tick_lru3; \
+    (dest)->count_fix_and_avoid_dealloc = (src)->count_fix_and_avoid_dealloc; \
+    (dest)->hit_age = (src)->hit_age; \
+    (dest)->write_seq = (src)->write_seq.load (); \
+    (dest)->is_cached_fake_bcb = (src)->is_cached_fake_bcb; \
+    (dest)->oldest_unflush_lsa = (src)->oldest_unflush_lsa; \
+    (dest)->iopage_buffer = (src)->iopage_buffer; \
+  } while (0)
+#endif /* SERVER_MODE */
+
 int
 pgbuf_cache_global_initialize (void)
 {
@@ -2346,7 +2389,7 @@ pgbuf_cache_entry (PGBUF_CACHE_ENTRY * entry, PAGE_PTR pgptr)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PGBUF_BCB_SIZEOF);
       return ER_FAILED;
     }
-  memcpy (entry->fake_bcb, bufptr, PGBUF_BCB_SIZEOF);
+  PGBUF_COPY_BCB (entry->fake_bcb, bufptr);
   entry->iopage_buffer->bcb = entry->fake_bcb;
   entry->fake_bcb->iopage_buffer = entry->iopage_buffer;
   CAST_BFPTR_TO_PGPTR (entry->page_p, entry->fake_bcb);
