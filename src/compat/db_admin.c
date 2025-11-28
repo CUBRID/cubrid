@@ -117,6 +117,7 @@ static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
 static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
+static bool db_Statement_is_create = false;
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
@@ -510,6 +511,31 @@ db_set_client_type (int client_type)
     {
       db_Client_type = client_type;
     }
+}
+
+bool
+db_client_type_is_loaddb (void)
+{
+  return (db_Client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || db_client_type_is_loaddb_compat ());
+}
+
+bool
+db_client_type_is_loaddb_compat (void)
+{
+  return (db_Client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+	  || db_Client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+}
+
+void
+db_set_statement_is_create (bool is_create)
+{
+  db_Statement_is_create = is_create;
+}
+
+bool
+db_get_statement_is_create (void)
+{
+  return db_Statement_is_create;
 }
 
 char *

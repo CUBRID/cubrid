@@ -3178,13 +3178,20 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
       do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
       if (other_class_name[0] != '\0')
 	{
+	  if (db_get_statement_is_create ())
+	    {
+	      /* maybe unloaded from version 11.2 or later */
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	      return NULL;
+	    }
+
 	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
 	  if (found == LC_CLASSNAME_EXIST)
 	    {

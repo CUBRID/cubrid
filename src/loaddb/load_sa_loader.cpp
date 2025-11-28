@@ -1446,13 +1446,15 @@ ldr_find_class (const char *class_name)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
       ldr_find_class_by_query (realname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
       if (other_class_name[0] != '\0')
 	{
+	  assert (db_get_statement_is_create () == false);
+
 	  ldr_Hint_class_names[0] = other_class_name;
 
 	  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,

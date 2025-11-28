@@ -583,7 +583,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
     {
       if (strcasecmp (args.user_name.c_str (), "DBA") == 0 && args.no_user_specified_name)
 	{
-	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT);
+	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2);
 	}
       else
 	{
@@ -1031,6 +1031,31 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       stmt_cnt = db_parse_one_statement (session);
       if (stmt_cnt > 0)
 	{
+	  if (db_client_type_is_loaddb_compat ())
+	    {
+	      int client_type = db_get_statement_type (session, stmt_cnt);
+	      assert (stmt_cnt == 1);
+
+	      switch (client_type)
+		{
+		  /* DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 */
+		case CUBRID_STMT_CREATE_CLASS:
+		case CUBRID_STMT_CREATE_SERIAL:
+		case CUBRID_STMT_CREATE_SERVER:
+		case CUBRID_STMT_CREATE_SYNONYM:
+		case CUBRID_STMT_CREATE_TRIGGER:
+
+		  /* DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4 */
+		case CUBRID_STMT_CREATE_STORED_PROCEDURE:
+		db_set_statement_is_create (true);
+		  break;
+
+		default:
+		db_set_statement_is_create (false);
+		  break;
+		}
+	    }
+
 	  stmt_id = db_compile_statement (session);
 	  last_statement_line_no = db_get_line_of_statement (session, stmt_id);
 	}
