@@ -177,6 +177,12 @@ namespace cubconn
 	context (std::size_t capacity, connection_stats *stats);
 	context ();
 	~context ();
+
+	context (const context &) = delete;
+	context &operator= (const context &) = delete;
+
+	context (context &&) noexcept = delete;
+	context &operator= (context &&) noexcept = delete;
       };
 
     public:
