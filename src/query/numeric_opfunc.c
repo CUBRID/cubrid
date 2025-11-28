@@ -3202,11 +3202,11 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
       prec = DB_MAX_NUMERIC_PRECISION;
     }
 
-  if (!prm_get_bool_value (PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE) && scale < DB_DEFAULT_NUMERIC_DIVISION_SCALE)
+  if (scale < DB_LEGACY_DEFAULT_NUMERIC_DIVISION_SCALE)
     {
       int new_scale, new_prec;
       int scale_delta;
-      scale_delta = DB_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
+      scale_delta = DB_LEGACY_DEFAULT_NUMERIC_DIVISION_SCALE - scale;
       new_scale = scale + scale_delta;
       new_prec = prec + scale_delta;
       if (new_prec > DB_MAX_NUMERIC_PRECISION)

@@ -591,8 +591,8 @@ extern "C"
 /* This constant defines the default scale of DB_TYPE_NUMERIC. */
 #define DB_DEFAULT_NUMERIC_SCALE 0
 
-/* This constant defines the default scale of result of numeric division operation */
-#define DB_DEFAULT_NUMERIC_DIVISION_SCALE 9
+/* This constant defines the default scale of result of numeric division operation (CUBRID 11.4 and earlier) */
+#define DB_LEGACY_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
 /* These constants define the size of buffers within a DB_VALUE. */
 /*
