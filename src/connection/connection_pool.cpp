@@ -29,6 +29,7 @@
 
 #include <csignal>
 #include <cstdint>
+#include <chrono>
 #include <unistd.h>
 #include <stdint.h>
 #include <fcntl.h>
@@ -97,7 +98,9 @@ namespace cubconn
 
   void connection_pool::finalize ()
   {
-    std::chrono::microseconds target;
+    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::microseconds wait_for (0);
+    struct timeval *timeout;
     bool compelete;
 
     for (auto &worker : m_workers)
@@ -112,11 +115,18 @@ namespace cubconn
       }
 
     /* shutdown timeout */
-    target = std::chrono::seconds (css_get_shutdown_timeout ()->tv_sec) +
-	     std::chrono::microseconds (css_get_shutdown_timeout ()->tv_usec);
+    timeout = css_get_shutdown_timeout ();
+    deadline = std::chrono::system_clock::time_point (
+		       std::chrono::seconds (timeout->tv_sec) +
+		       std::chrono::microseconds (timeout->tv_usec));
+    now = std::chrono::system_clock::now ();
+    if (deadline > now)
+      {
+	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);
+      }
 
     std::unique_lock<std::mutex> lock (m_watcher->mtx);
-    compelete = m_watcher->cv.wait_until (lock, std::chrono::system_clock::time_point (target), [this] { return m_watcher->active == 0; });
+    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
     lock.unlock();
     if (!compelete)
       {
