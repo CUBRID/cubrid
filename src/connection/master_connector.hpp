@@ -84,6 +84,12 @@ namespace cubconn
 	context ();
 	~context ();
 
+	context (const context &) = delete;
+	context &operator= (const context &) = delete;
+
+	context (context &&) noexcept = delete;
+	context &operator= (context &&) noexcept = delete;
+
 	void reset ();
 	bool has_data_to_send ();
 
