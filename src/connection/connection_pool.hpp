@@ -33,6 +33,13 @@
 
 namespace cubconn
 {
+  struct thread_watcher
+  {
+    std::mutex mtx;
+    std::condition_variable cv;
+    int active;
+  };
+
   class connection_pool
   {
     public:
@@ -49,10 +56,9 @@ namespace cubconn
     private:
       std::uint32_t m_max_connections;
       std::vector<std::unique_ptr<connection_worker>> m_workers;
+      std::shared_ptr<thread_watcher> m_watcher;
 
       std::size_t m_counter;
-
-      void initialize_worker ();
   };
 }
 

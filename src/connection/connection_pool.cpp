@@ -23,6 +23,9 @@
 #include "hardware_topology.hpp"
 #include "connection_pool.hpp"
 #include "connection_worker.hpp"
+#include "server_support.h"
+#include "system_parameter.h"
+#include "error_manager.h"
 
 #include <csignal>
 #include <cstdint>
@@ -42,6 +45,8 @@ namespace cubconn
     m_max_connections (-1),
     m_counter (0)
   {
+    m_watcher = std::make_shared<thread_watcher> ();
+    m_watcher->active = 0;
   }
 
   connection_pool::~connection_pool ()
@@ -68,7 +73,7 @@ namespace cubconn
     i = 0;
     for (int core : *cores)
       {
-	m_workers.emplace_back (std::make_unique<connection_worker> (this, core, i++));
+	m_workers.emplace_back (std::make_unique<connection_worker> (this, m_watcher, core, i++));
       }
 
     /* pre-warm the connection thread and its queue to avoid a race condition. */
@@ -92,6 +97,9 @@ namespace cubconn
 
   void connection_pool::finalize ()
   {
+    std::chrono::microseconds target;
+    bool compelete;
+
     for (auto &worker : m_workers)
       {
 	connection_worker::message request;
@@ -102,6 +110,20 @@ namespace cubconn
 	    assert_release (false);
 	  }
       }
+
+    /* shutdown timeout */
+    target = std::chrono::seconds (css_get_shutdown_timeout ()->tv_sec) +
+	     std::chrono::microseconds (css_get_shutdown_timeout ()->tv_usec);
+
+    std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    compelete = m_watcher->cv.wait_until (lock, std::chrono::system_clock::time_point (target), [this] { return m_watcher->active == 0; });
+    lock.unlock();
+    if (!compelete)
+      {
+	er_log_debug (ARG_FILE_LINE, "could not stop all active connection workers");
+	_exit (0);
+      }
+
     m_max_connections = -1;
     m_workers.clear ();
   }
