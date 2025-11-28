@@ -6771,15 +6771,9 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
-      /*
-       * To avoid being set to default Numeric, set numeric(any,any) to precision = 0, scale = 0.
-       * TO DO: We need to define a separate type for numeric(any,any) in the future.
-       */
-      int *numeric = prm_get_integer_list_value (PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE);
-
       regu->domain = pt_node_to_db_domain (parser, node, NULL);
-      regu->domain->precision = numeric[PRM_PRECISION];
-      regu->domain->scale = numeric[PRM_SCALE];
+      regu->domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+      regu->domain->scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
   return regu;

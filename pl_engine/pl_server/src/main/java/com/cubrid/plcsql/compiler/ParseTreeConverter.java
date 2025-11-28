@@ -36,6 +36,7 @@ import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.value.DateTimeParser;
+import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser.Create_routineContext;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParserBaseVisitor;
 import com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsLexer;
@@ -47,6 +48,7 @@ import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -455,24 +457,32 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return new TypeSpec(ctx, Type.NUMERIC_ANY);
         }
 
-        int precision = 15; // default
-        short scale = 0; // default
+        int precision = NumericValue.DB_DEFAULT_NUMERIC_PRECISION; // default
+        short scale = NumericValue.DB_DEFAULT_NUMERIC_SCALE; // default
 
         try {
             if (ctx.precision != null) {
                 precision = Integer.parseInt(ctx.precision.getText());
-                if (precision < 1 || precision > 38) {
+                if (precision < NumericValue.DB_MIN_NUMERIC_PRECISION
+                        || precision > NumericValue.DB_MAX_FIXED_NUMERIC_PRECISION) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s067
-                            "precision must be one of the integers 1 to 38");
+                            "precision must be one of the integers "
+                                    + NumericValue.DB_MIN_NUMERIC_PRECISION
+                                    + " to "
+                                    + NumericValue.DB_MAX_FIXED_NUMERIC_PRECISION);
                 }
 
                 if (ctx.scale != null) {
                     scale = Short.parseShort(ctx.scale.getText());
-                    if (scale < 0 || scale > precision) {
+                    if (scale < NumericValue.DB_MIN_FIXED_NUMERIC_SCALE
+                            || scale > NumericValue.DB_MAX_FIXED_NUMERIC_SCALE) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx), // s054
-                                "scale must be one of the integers zero to the precision");
+                                "scale must be one of the integers "
+                                        + NumericValue.DB_MIN_FIXED_NUMERIC_SCALE
+                                        + " to "
+                                        + NumericValue.DB_MAX_FIXED_NUMERIC_SCALE);
                     }
                 }
             }
@@ -842,16 +852,38 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         try {
             Type ty;
+            BigDecimal normalizedBd = null;
 
             BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
             if (bi.compareTo(BIGINT_MAX) > 0 || bi.compareTo(BIGINT_MIN) < 0) {
                 BigDecimal bd = new BigDecimal(ctx.UNSIGNED_INTEGER().getText());
+                normalizedBd = bd;
                 assert bd.scale() == 0;
                 int precision = bd.precision();
-                if (precision > 38) {
+                int scale = bd.scale();
+
+                if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
+                    scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
+                    normalizedBd = bd.setScale(scale, RoundingMode.HALF_UP);
+
+                    precision = normalizedBd.precision();
+                    scale = normalizedBd.scale();
+                    if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
+                        precision = NumericValue.DB_MAX_NUMERIC_PRECISION;
+                        scale--;
+                    }
+                }
+
+                if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION
+                        || scale < NumericValue.DB_MIN_NUMERIC_SCALE) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s006
-                            "number of digits of an integer literal may not exceed 38");
+                            "number of digits of an integer literal exceeds the maximum allowed "
+                                    + "(precision "
+                                    + NumericValue.DB_MAX_NUMERIC_PRECISION
+                                    + ", minimum scale "
+                                    + NumericValue.DB_MIN_NUMERIC_SCALE
+                                    + ")");
                 }
                 ty = Type.NUMERIC_ANY;
             } else if (bi.compareTo(INT_MAX) > 0 || bi.compareTo(INT_MIN) < 0) {
@@ -860,7 +892,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 ty = Type.INT;
             }
 
-            return new ExprUint(ctx, bi.toString(), ty);
+            if (ty == Type.NUMERIC_ANY) {
+                return new ExprUint(ctx, normalizedBd.toPlainString(), ty);
+            } else {
+                return new ExprUint(ctx, bi.toString(), ty);
+            }
         } catch (NumberFormatException e) {
             assert false : "unreachable"; // by syntax
             throw new RuntimeException("unreachable");
@@ -887,13 +923,39 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     text = text + "0";
                 }
                 BigDecimal bd = new BigDecimal(text);
+                BigDecimal normalizedBd = bd;
                 int precision = bd.precision();
-                if (precision > 38) {
+                int scale = bd.scale();
+
+                assert scale != 0 : "scale should not be 0";
+
+                /* adjust scale when precision exceeds maximum limit.
+                 * example: 0.999..5 (precision 44) -> 1.0000..0 (precision 45) after rounding
+                 *          -> 1.000..0 (precision 43) after setScale adjustment */
+                while (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
+                    scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
+
+                    if (scale < NumericValue.DB_MIN_NUMERIC_SCALE) {
+                        scale = NumericValue.DB_MIN_NUMERIC_SCALE;
+                    }
+
+                    normalizedBd = normalizedBd.setScale(scale, RoundingMode.HALF_UP);
+                    precision = normalizedBd.precision();
+                    scale = normalizedBd.scale();
+                }
+
+                if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION
+                        || scale > NumericValue.DB_MAX_NUMERIC_SCALE) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s057
-                            "number of digits of a floating point number literal may not exceed 38");
+                            "number of digits of a floating point number literal exceeds the maximum allowed "
+                                    + "(precision "
+                                    + NumericValue.DB_MAX_NUMERIC_PRECISION
+                                    + ", maximum scale "
+                                    + NumericValue.DB_MAX_NUMERIC_SCALE
+                                    + ")");
                 }
-                return new ExprFloat(ctx, text, Type.NUMERIC_ANY);
+                return new ExprFloat(ctx, normalizedBd.toPlainString(), Type.NUMERIC_ANY);
             }
 
         } catch (NumberFormatException e) {

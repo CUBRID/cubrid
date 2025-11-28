@@ -44,6 +44,17 @@ public class NumericValue extends Value {
     }
 
     private BigDecimal value;
+    public static final int DB_MAX_FIXED_NUMERIC_PRECISION = 38;
+    public static final int DB_MIN_FIXED_NUMERIC_SCALE = -84;
+    public static final int DB_MAX_FIXED_NUMERIC_SCALE = 127;
+
+    public static final int DB_MAX_NUMERIC_PRECISION = 43;
+    public static final int DB_MIN_NUMERIC_PRECISION = 1;
+    public static final int DB_MAX_NUMERIC_SCALE = 252;
+    public static final int DB_MIN_NUMERIC_SCALE = -211;
+
+    public static final int DB_DEFAULT_NUMERIC_PRECISION = DB_MAX_NUMERIC_PRECISION;
+    public static final int DB_DEFAULT_NUMERIC_SCALE = 0;
 
     public NumericValue(String value) {
         super();
@@ -53,8 +64,26 @@ public class NumericValue extends Value {
 
     public NumericValue(BigDecimal value) throws TypeMismatchException {
         super();
-        if (value != null && value.precision() > 38) {
-            throw new TypeMismatchException("precision exceeds 38: " + value);
+        if (value != null) {
+            int precision = value.precision();
+            int scale = value.scale();
+            if (precision > DB_MAX_NUMERIC_PRECISION) {
+                scale -= (precision - DB_MAX_NUMERIC_PRECISION);
+                precision = DB_MAX_NUMERIC_PRECISION;
+            }
+
+            if (precision > DB_MAX_NUMERIC_PRECISION) {
+                throw new TypeMismatchException(
+                        "precision exceeds " + DB_MAX_NUMERIC_PRECISION + ": " + value);
+            }
+
+            if (scale < DB_MIN_NUMERIC_SCALE) {
+                throw new TypeMismatchException(
+                        "scale lower than " + DB_MIN_NUMERIC_SCALE + ": " + value);
+            } else if (scale > DB_MAX_NUMERIC_SCALE) {
+                throw new TypeMismatchException(
+                        "scale exceeds " + DB_MAX_NUMERIC_SCALE + ": " + value);
+            }
         }
         this.value = value;
         this.dbType = DBType.DB_NUMERIC;

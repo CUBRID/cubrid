@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.type;
 
+import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.compiler.InstanceStore;
 
 public class TypeNumeric extends Type {
@@ -39,8 +40,10 @@ public class TypeNumeric extends Type {
 
     public static TypeNumeric getInstance(InstanceStore iStore, int precision, short scale) {
 
-        assert precision <= 38 && precision >= 1;
-        assert scale <= precision && scale >= 0;
+        assert precision <= NumericValue.DB_MAX_NUMERIC_PRECISION
+                && precision >= NumericValue.DB_MIN_NUMERIC_PRECISION;
+        assert scale <= NumericValue.DB_MAX_NUMERIC_SCALE
+                && scale >= NumericValue.DB_MIN_NUMERIC_SCALE;
 
         int key = precision * 100 + scale;
         TypeNumeric ret = iStore.typeNumeric.get(key);
