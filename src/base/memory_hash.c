@@ -614,7 +614,13 @@ mht_valhash (const void *key, const unsigned int ht_size)
 		scale = DB_VALUE_SCALE (val);
 	      }
 
-	    if (scale == 0)
+	    /*
+	     * calculate hash without normalization if:
+	     *   - scale is 0, or
+	     *   - precision is DB_MAX_NUMERIC_PRECISION(43) and scale is negative
+	     * for positive scale, trailing zero check is required even when precision is DB_MAX_NUMERIC_PRECISION(43)
+	     */
+	    if (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
 		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
 	      }
@@ -2458,7 +2464,13 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		scale = DB_VALUE_SCALE (val);
 	      }
 
-	    if (scale == 0)
+	    /*
+	     * calculate hash without normalization if:
+	     *   - scale is 0, or
+	     *   - precision is DB_MAX_NUMERIC_PRECISION(43) and scale is negative
+	     * for positive scale, trailing zero check is required even when precision is DB_MAX_NUMERIC_PRECISION(43)
+	     */
+	    if (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
 		unsigned int *buf = (unsigned int *) db_locate_numeric (val);
 		((char *) buf)[DB_NUMERIC_BUF_SIZE] = 0;
