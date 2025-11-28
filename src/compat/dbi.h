@@ -257,7 +257,7 @@ extern "C"
   extern char *db_get_database_name (void);
   extern const char *db_get_database_comments (void);
   extern void db_set_client_type (int client_type);
-  extern void db_set_statement_is_create  (bool is_create);
+  extern void db_set_statement_is_create (bool is_create);
   extern void db_set_preferred_hosts (const char *hosts);
   extern void db_set_connect_order (int connect_order);
   extern int db_get_client_type (void);

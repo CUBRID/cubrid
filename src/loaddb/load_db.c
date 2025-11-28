@@ -1047,11 +1047,11 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
 		  /* DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4 */
 		case CUBRID_STMT_CREATE_STORED_PROCEDURE:
-		db_set_statement_is_create (true);
+		  db_set_statement_is_create (true);
 		  break;
 
 		default:
-		db_set_statement_is_create (false);
+		  db_set_statement_is_create (false);
 		  break;
 		}
 	    }
