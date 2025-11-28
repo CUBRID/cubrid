@@ -2653,6 +2653,11 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
   /* fetch BCB from page pointer */
   CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
+  if (bufptr->is_cached_fake_bcb)
+    {
+      *pgptr_p = pgbuf_fix (thread_p, &bufptr->vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
+    }
   assert (!VPID_ISNULL (&bufptr->vpid));
 
   /* check latch mode - no need for BCB mutex, page is already latched */
@@ -2784,6 +2789,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 	      thread_p->wait_for_latch_promote = false;
 	      return ER_FAILED;
 	    }
+	  bufptr->write_seq.fetch_add (1);
 
 	  /* NOTE: BCB mutex is no longer held at this point */
 
