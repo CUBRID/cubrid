@@ -214,7 +214,7 @@ namespace cubconn
       /* re-establish								     */
       /* --------------------------------------------------------------------------- */
       inline bool dispose_master_connection () noexcept;
-      inline bool reestablish_with_master () noexcept;
+      inline bool try_to_reestablish_with_master () noexcept;
 
       /* --------------------------------------------------------------------------- */
       /* main handler								     */
