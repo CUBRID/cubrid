@@ -31,6 +31,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <cstdint>
 
 #include "mprec.h"
 #include "numeric_opfunc.h"
@@ -244,9 +245,10 @@ static int get_significant_digit (DB_BIGINT i);
 
 static void float_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int dst_bytes,
 				   bool is_negative);
+static void float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier);
 static void float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent);
-static void float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t factor);
-static uint16_t float_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes);
+static uint64_t float_numeric_div_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t divisor);
+static int float_numeric_div_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent);
 static void float_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
 static int float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
 static void float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
@@ -3441,10 +3443,8 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
   else if (exponent10 < 0)
     {
-      for (int scale_adjust = 0; scale_adjust < -exponent10; scale_adjust++)
-	{
-	  (void) float_numeric_div_pow10 (dividend_work, calc_bytes);
-	}
+      /* reduces digits for normalization; does not perform rounding */
+      (void) float_numeric_div_normalize (dividend_work, calc_bytes, -exponent10);
     }
 
   /* 8) division */
@@ -3459,7 +3459,8 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   float_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
 #endif
 
-  last_digit = float_numeric_div_pow10 (quotient_work, calc_bytes);
+  /* reduces digits and returns the most significant digit of the truncated portion for rounding */
+  last_digit = float_numeric_div_normalize (quotient_work, calc_bytes, 1);
   if (last_digit >= 5)
     {
       (void) float_numeric_increment (quotient_work, calc_bytes, 1);
@@ -5537,14 +5538,14 @@ float_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int 
 }
 
 /*
- * float_numeric_mul_pow10() - Multiply a base-256 big-endian buffer by 10^exponent
+ * float_numeric_mul_pow10() - Multiply a base-256 big-endian buffer by multiplier
  *
  * Note:
- *   - mainly used for scale adjustment (ex. multiply by 10^n factor to align fractional digits)
- *   - the factor parameter should be a power of 10 (e.g., 10^1 ~ 10^16)
+ *  - mainly used for scale adjustment (ex. multiply by 10^n to align fractional digits)
+ *  - the multiplier parameter should be a power of 10 (e.g., 10^1 ~ 10^16)
  */
 static void
-float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t factor)
+float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier)
 {
   int i = 0;
   uint64_t temp = 0;
@@ -5553,7 +5554,7 @@ float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t factor)
   carry = 0;
   for (i = calc_bytes - 1; i >= 0; i--)
     {
-      temp = (uint64_t) dbv_buf[i] * factor + carry;
+      temp = (uint64_t) dbv_buf[i] * multiplier + carry;
       dbv_buf[i] = (uint8_t) (temp & 0xFF);
       carry = temp >> 8;
     }
@@ -5562,55 +5563,126 @@ float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t factor)
 /*
  * float_numeric_mul_normalize() - multiply a base-256 big-endian buffer by 10^exponent
  *
+ * Purpose:
+ *  - adjust the internal decimal scale by multiplying the stored coefficient by 10^exponent.
+ *    this is mainly used to align decimal positions between two values before arithmetic or
+ *    formatting (e.g., shifting digits into the integer part for negative scales, or
+ *    rescaling the counterpart operand so both share a common decimal position).
+ *
  * Note:
- *   - mainly used for scale adjustment (ex. multiply by 10^exponent to align fractional digits)
- *   - when exponent >= 16, repeatedly multiplies by 10^16 and subtracts 16 from exponent
- *   - for remainder (1-15), multiplies by 10^exponent directly
- *   - reduces iteration count compared to multiplying by 10 repeatedly
+ *  - the exponent is processed in chunks of up to 16 digits.
+ *
+ *  Reason:
+ *    - each byte of the numeric buffer is base-256 (~2.56*10^2), which already carries
+ *      roughly 10^3 magnitude.
+ *    - during per-byte multiplication:
+ *        temp = byte * (10^k) + carry
+ *      temp must fit in uint64_t (~1.84*10^19).
+ *      - for k = 16:
+ *          max temp ~ 256 * 10^16 ~ 2.56*10^18 -> safe
+ *      - for k = 17:
+ *          max temp ~ 256 * 10^17 ~ 2.56*10^19 -> can overflow uint64_t
+ *
+ *    - therefore, 10^16 is the maximum safe chunk for multiply normalization.
  */
 static void
 float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent)
 {
+  int step = 0;
+  uint64_t multiplier = 0;
+
   assert (exponent > 0);
 
   while (exponent > 0)
     {
-      if (exponent >= 16)
-	{
-	  // 10^16
-	  float_numeric_mul_pow10 (dbv_buf, calc_bytes, _gv_mul_normalize_pow10_lookup[15]);
-	  exponent -= 16;
-	}
-      else
-	{
-	  // 10^1 ~ 10^15
-	  float_numeric_mul_pow10 (dbv_buf, calc_bytes, _gv_mul_normalize_pow10_lookup[exponent - 1]);
-	  exponent = 0;
-	}
+      step = (exponent > 16) ? 16 : exponent;	// 1 ~ 16
+      multiplier = _gv_mul_normalize_pow10_lookup[step - 1];	// 10^step
+
+      float_numeric_mul_pow10 (dbv_buf, calc_bytes, multiplier);
+      exponent -= step;
     }
 }
 
 /*
- * float_numeric_div_pow10() - Divide a base-256 big-endian buffer by 10
+ * float_numeric_div_pow10() - Divide a base-256 big-endian buffer by divisor
  *
  * Note:
- *   - Used for restoring scale after adjustment
- *     or for rounding operations.
+ *  - used for restoring scale after adjustment or for rounding operations
+ *  - the factor parameter should be a power of 10 (e.g., 10^1 ~ 10^16)
+ *  - returns the remainder after division
  */
-static uint16_t
-float_numeric_div_pow10 (uint8_t * calc_buf, int calc_bytes)
+static uint64_t
+float_numeric_div_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t divisor)
 {
-  uint32_t temp = 0;
-  uint16_t rem10 = 0;
+  uint64_t temp = 0;
+  uint64_t rem10 = 0;
   int i = 0;
 
   for (i = 0; i < calc_bytes; i++)
     {
-      temp = (rem10 << 8) | calc_buf[i];
-      calc_buf[i] = (uint8_t) (temp / 10);
-      rem10 = (uint16_t) (temp % 10);
+      temp = (rem10 << 8) | dbv_buf[i];
+      dbv_buf[i] = (uint8_t) (temp / divisor);
+      rem10 = (uint64_t) (temp % divisor);
     }
   return rem10;
+}
+
+/*
+ * float_numeric_div_normalize() - divide a base-256 big-endian buffer by 10^exponent
+ *
+ * Important:
+ *   - this function MUST NOT be used to detect or remove trailing zeros.
+ *     it adjusts decimal position by dividing the internal coefficient by 10^exponent
+ *     for normalization and rounding, but it does not preserve information needed
+ *     for trailing-zero analysis.
+ *
+ * Purpose:
+ *  this function serves two purposes:
+ *    1. normalize the internal coefficient by dividing it by 10^exponent
+ *       (i.e., adjust the decimal position by 'exponent', regardless of whether
+ *       the original value is stored as an integer, fractional value, or has
+ *       a negative scale).
+ *    2. return the most significant decimal digit (MSB) of the truncated portion
+ *       to determine whether rounding is required.
+ *
+ *  example:
+ *    a 50-digit value with exponent = 7 becomes a 43-digit value.
+ *    the function returns the most significant digit of the discarded 7-digit block
+ *    (i.e., the 44th digit) for rounding decision.
+ *
+ * Note:
+ *   this function also processes the exponent in chunks of up to 16 digits
+ *   (using 10^k per step), consistent with float_numeric_mul_normalize().
+ *   see the comments in float_numeric_mul_normalize() for details on why
+ *   the 16-digit chunk size is required for overflow-safe processing.
+ */
+static int
+float_numeric_div_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent)
+{
+  uint64_t last_rem = 0;
+  uint64_t divisor = 0;
+  int step = 0;
+  int last_step = 0;
+
+  assert (exponent > 0);
+
+  while (exponent > 0)
+    {
+      step = exponent > 16 ? 16 : exponent;
+      divisor = _gv_mul_normalize_pow10_lookup[step - 1];
+
+      last_rem = float_numeric_div_pow10 (dbv_buf, calc_bytes, divisor);
+      last_step = step;
+      exponent -= step;
+    }
+
+  if (last_step <= 1)
+    {
+      return (int) last_rem;	// 0..9
+    }
+
+  divisor = _gv_mul_normalize_pow10_lookup[last_step - 2];	// 10^(last_step-1)
+  return (int) (last_rem / divisor);	// 0..9
 }
 
 /*
@@ -5670,9 +5742,8 @@ static void
 float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
 			      int *result_scale)
 {
-  uint16_t last_digit = 0;
+  int last_digit = 0;
   int drop = 0;
-  int i = 0;
   int round_prec = 0;
 
   drop = *result_prec - DB_MAX_NUMERIC_PRECISION;
@@ -5682,14 +5753,14 @@ float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * resu
       return;
     }
 
-  /* if more than 39 digits, truncate to 38 digits and round at the 39th digit */
+  /* if more than 44 digits, truncate to 43 digits and round at the 44th digit */
   *result_prec = DB_MAX_NUMERIC_PRECISION;
 
-  /* divide the value up to 38 digits and store the 39th digit in last_digit for rounding check */
-  for (i = 0; i < drop; i++)
-    {
-      last_digit = float_numeric_div_pow10 (calc_buf, calc_bytes);
-    }
+  /* 
+   * divide the value up to 43 digits and store the 44th digit in last_digit for rounding check.
+   * reduces digits and returns the most significant digit of the truncated portion for rounding.
+   */
+  last_digit = float_numeric_div_normalize (calc_buf, calc_bytes, drop);
 
   /* half-up rounding: if last_digit >= 5, increment the buffer by 1 */
   if (last_digit >= 5)
@@ -5698,7 +5769,8 @@ float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * resu
       round_prec = float_numeric_get_decimal_digit (calc_buf, calc_bytes);
       if (round_prec > DB_MAX_NUMERIC_PRECISION)
 	{
-	  (void) float_numeric_div_pow10 (calc_buf, calc_bytes);
+	  /* reduces digits for normalization; does not perform rounding */
+	  (void) float_numeric_div_normalize (calc_buf, calc_bytes, 1);
 	  (*result_scale)--;
 	}
     }
@@ -5719,7 +5791,6 @@ static int
 compare_mantissa_same_exponent (const uint8_t * dividend_buf, const uint8_t * divisor_buf, int buf_bytes,
 				int prec1, int prec2)
 {
-  int i = 0;
   int prec_diff = prec1 - prec2;
   uint8_t buf_copy[DB_NUMERIC_BUF_SIZE * 2] = { 0 };
   uint8_t *p1, *p2;
@@ -5732,19 +5803,15 @@ compare_mantissa_same_exponent (const uint8_t * dividend_buf, const uint8_t * di
     {
       memcpy (buf_copy, dividend_buf, work_bytes);
       p1 = buf_copy;
-      for (i = 0; i < prec_diff; i++)
-	{
-	  (void) float_numeric_div_pow10 (buf_copy, work_bytes);
-	}
+      /* reduces digits for normalization; does not perform rounding */
+      (void) float_numeric_div_normalize (buf_copy, work_bytes, prec_diff);
     }
   else if (prec_diff < 0)
     {
       memcpy (buf_copy, divisor_buf, work_bytes);
       p2 = buf_copy;
-      for (i = 0; i < -prec_diff; i++)
-	{
-	  (void) float_numeric_div_pow10 (buf_copy, work_bytes);
-	}
+      /* reduces digits for normalization; does not perform rounding */
+      (void) float_numeric_div_normalize (buf_copy, work_bytes, -prec_diff);
     }
 
   return float_numeric_operation_compare (p1, p2, work_bytes);
