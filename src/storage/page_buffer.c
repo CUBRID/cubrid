@@ -2274,6 +2274,9 @@ try_again:
 int
 pgbuf_cache_global_initialize (void)
 {
+#if defined(SA_MODE)
+  return NO_ERROR;
+#endif
   size_t max_thread_entry_count = thread_get_manager ()->get_max_thread_count ();
   pgbuf_Cache.cache_max_pages = 64 * 1024;	/* 16KB pages * 64 * 1024 = 1GB */
   placement_new (&pgbuf_Cache.cache_used_pages);
@@ -2290,6 +2293,9 @@ pgbuf_cache_global_initialize (void)
 int
 pgbuf_cache_global_finalize (void)
 {
+#if defined(SA_MODE)
+  return NO_ERROR;
+#endif
 #if !defined (NDEBUG)
   size_t max_thread_entry_count = thread_get_manager ()->get_max_thread_count ();
   for (size_t i = 0; i < max_thread_entry_count; i++)
@@ -2306,6 +2312,9 @@ pgbuf_cache_global_finalize (void)
 int
 pgbuf_cache_initialize (THREAD_ENTRY * thread_p)
 {
+#if defined(SA_MODE)
+  return NO_ERROR;
+#endif
   size_t thread_entry_index = thread_get_entry_index (thread_p);
   const uint32_t default_page_request_count = 128;
 
@@ -2339,6 +2348,9 @@ pgbuf_cache_initialize (THREAD_ENTRY * thread_p)
 int
 pgbuf_cache_finalize (THREAD_ENTRY * thread_p)
 {
+#if defined(SA_MODE)
+  return NO_ERROR;
+#endif
   size_t thread_entry_index = thread_get_entry_index (thread_p);
   PGBUF_CACHE_ARRAY *cache_array = &pgbuf_Cache.cache_arrays[thread_entry_index];
   if (cache_array->entries != NULL)
@@ -2401,6 +2413,9 @@ PAGE_PTR
 pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 		  PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition)
 {
+#if defined(SA_MODE)
+  return pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
+#endif
   if ((fetch_mode != OLD_PAGE_PREVENT_DEALLOC && fetch_mode != OLD_PAGE)
       || requestmode != PGBUF_LATCH_READ || condition != PGBUF_UNCONDITIONAL_LATCH)
     {
@@ -2487,6 +2502,9 @@ recache_page:
 bool
 pgbuf_cached_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 {
+#if defined(SA_MODE)
+  return false;
+#endif
   PGBUF_BCB *bufptr;
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   return bufptr->is_cached_fake_bcb;
