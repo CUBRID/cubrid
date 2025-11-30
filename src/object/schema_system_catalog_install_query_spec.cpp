@@ -805,6 +805,7 @@ sm_define_view_index_spec (void)
                   " AS SMALLINT" 
              ") AS [deduplicate_key_level], "
 #endif
+         "NVL2 ([i].[with_options], ([i].[with_options] & 31), 0) AS [deduplicate_level], " /* 31: 5 bits */
 	  "[i].[filter_expression] AS [filter_expression], "
 	  "CASE [i].[have_function] WHEN 0 THEN 'NO' ELSE 'YES' END AS [have_function], "
 	  "[i].[comment] AS [comment], "
