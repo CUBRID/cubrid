@@ -117,15 +117,23 @@ namespace cubconn
 
 	  css_conn_entry *conn;
 
-	  /* send packet/release packet */
+	  /* the members below are used to deliver a target data */
+	  /* each comment is a message_type using that member */
+
+	  /* SEND_PACKET    */
+	  /* RELEASE_PACKET */
 	  std::vector<cubbase::span<std::byte>> packet;
-	  /* send packet */
+
+	  /* SEND_PACKET    */
 	  std::function<void ()> deleter;
-	  /* shutdown client */
+
+	  /* SHUTDOWN_CLIENT */
 	  ignore_level ignore;
 	  bool retry;
 
-	  /* waiter handle */
+	  /* waiter handle (implemented only for START, SHUTDOWN_CLIENT) */
+	  /* START	     */
+	  /* SHUTDOWN_CLIENT */
 	  std::shared_ptr<message_blocker> waiter_handle;
 
 	  /* debug purpose */

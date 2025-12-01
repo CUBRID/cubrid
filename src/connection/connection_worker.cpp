@@ -217,6 +217,11 @@ namespace cubconn
   bool connection_worker::enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func,
       int wait_time)
   {
+    /* wait_time is implemented only for  */
+    /*	START				  */
+    /*	SHUTDOWN_CLIENT			  */
+    /* you must implement a logic to use a waiter whose message type is not in above */
+
     std::shared_ptr<message_blocker> handle;
     std::unique_lock<std::mutex> lock;
 
