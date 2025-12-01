@@ -127,12 +127,6 @@ extern SYNC_RWLOCK css_Rwlock_free_conn_anchor;
 
 extern int css_Num_access_user;
 
-typedef void *CSS_THREAD_ARG;
-typedef int (*CSS_THREAD_FN) (THREAD_ENTRY * thrd, CSS_THREAD_ARG);
-
-extern css_error_code (*css_Connect_handler) (CSS_CONN_ENTRY *);
-extern CSS_THREAD_FN css_Request_handler;
-
 #define CSS_LOG(msg_arg, ...) \
   if (prm_get_bool_value (PRM_ID_CONNECTION_LOGGING)) _er_log_debug (ARG_FILE_LINE, msg_arg "\n", __VA_ARGS__)
 #define CSS_LOG_STACK(msg_arg, ...) \
@@ -158,8 +152,6 @@ extern void css_print_conn_entry_info (CSS_CONN_ENTRY * p);
 extern void css_print_conn_list (void);
 extern void css_print_free_conn_list (void);
 extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
-extern void css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn),
-					   CSS_THREAD_FN request_handler);
 
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);

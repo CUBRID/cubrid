@@ -61,6 +61,7 @@ extern unsigned int css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, 
 							 int reply_size, char *buffer1, int buffer1_size, char *buffer2,
 							 int buffer2_size, char *buffer3, int buffer3_size,
 							 std::function < void () > &&deleter);
+
 extern unsigned int css_receive_data_from_client (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer, int *size);
 extern unsigned int css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int eid, char **buffer,
 							       int *size, int timeout);
@@ -99,8 +100,6 @@ extern void css_push_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task
 extern void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
 extern void css_get_thread_stats (UINT64 * stats_out);
 extern size_t css_get_num_request_workers (void);
-extern size_t css_get_num_connection_workers (void);
-extern size_t css_get_num_total_workers (void);
 extern bool css_are_all_request_handlers_suspended (void);
 extern size_t css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id);
 
@@ -110,11 +109,6 @@ extern int css_get_client_id (THREAD_ENTRY * thread_p);
 extern unsigned int css_get_comm_request_id (THREAD_ENTRY * thread_p);
 extern struct css_conn_entry *css_get_current_conn_entry (void);
 extern int css_check_conn (CSS_CONN_ENTRY * p);
-
-extern void css_process_get_server_ha_mode_request (CSS_CONN_ENTRY * conn);
-extern void css_process_change_server_ha_mode_request (CSS_CONN_ENTRY * conn);
-
-extern void css_process_get_eof_request (CSS_CONN_ENTRY * conn);
 
 extern int css_check_accessibility (SOCKET new_fd);
 

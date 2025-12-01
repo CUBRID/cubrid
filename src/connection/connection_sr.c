@@ -136,12 +136,6 @@ SYNC_RWLOCK css_Rwlock_free_conn_anchor;
 static LAST_ACCESS_STATUS *css_Access_status_anchor = NULL;
 int css_Num_access_user = 0;
 
-/* This will handle new connections */
-css_error_code (*css_Connect_handler) (CSS_CONN_ENTRY *) = NULL;
-
-/* This will handle new requests per connection */
-CSS_THREAD_FN css_Request_handler = NULL;
-
 static char css_Server_exec_path[PATH_MAX];
 static char **css_Server_argv;
 
@@ -1008,41 +1002,6 @@ css_print_free_conn_list (void)
 
       END_SHARED_ACCESS_FREE_CONN_ANCHOR (r);
     }
-}
-
-/*
- * css_register_handler_routines() - enroll handler routines
- *   return: void
- *   connect_handler(in): connection handler function pointer
- *   conn(in): connection entry
- *   request_handler(in): request handler function pointer
- *
- * Note: This is the routine that will enroll various handler routines
- *       that the client/server interface software may use. Any of these
- *       routines may be given a NULL value in which case a default routine
- *       will be used, or nothing will be done.
- *
- *       The connect handler is called when a new connection is made.
- *
- *       The request handler is called to handle a new request. This must
- *       return non zero, otherwise, the server will halt.
- *
- *       The abort handler is called by the server when an abort command
- *       is sent from the client.
- *
- *       The alloc function is called instead of malloc when new buffers
- *       are to be created.
- *
- *       The free function is called when a buffer is to be released.
- *
- *       The error handler function is called when the client/server system
- *       detects an error it considers to be fatal.
- */
-void
-css_register_handler_routines (css_error_code (*connect_handler) (CSS_CONN_ENTRY * conn), CSS_THREAD_FN request_handler)
-{
-  css_Connect_handler = connect_handler;
-  css_Request_handler = request_handler;
 }
 
 /*

@@ -136,7 +136,6 @@ static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
 static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
-static cubthread::entry_workpool *css_Connection_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -186,41 +185,12 @@ private:
   cubthread::entry_task *m_task;
 };
 
-class css_connection_task : public cubthread::entry_task
-{
-public:
-
-  css_connection_task (void) = delete;
-
-  css_connection_task (CSS_CONN_ENTRY & conn)
-  : m_conn (conn)
-  {
-    //
-  }
-
-  void execute (context_type & thread_ref) override final;
-
-  // retire not overwritten; task is automatically deleted
-
-private:
-  CSS_CONN_ENTRY &m_conn;
-};
-
 static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
 
-static void css_setup_server_loop (void);
 static void css_set_shutdown_timeout (int timeout);
 static int css_get_master_request (SOCKET master_fd);
-static int css_process_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
-static void css_send_reply_to_new_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason);
-static void css_refuse_connection_request (SOCKET new_fd, unsigned short rid, int reason, int error);
-static void css_process_new_client (SOCKET master_fd);
 
-static void css_close_connection_to_master (void);
-static int css_reestablish_connection_to_master (void);
-static int css_connection_handler_thread (THREAD_ENTRY * thrd, CSS_CONN_ENTRY * conn);
-static css_error_code css_internal_connection_handler (CSS_CONN_ENTRY * conn);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
@@ -308,34 +278,6 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
 #endif // SERVER_MODE
 
 /*
- * css_setup_server_loop() -
- *   return:
- */
-static void
-css_setup_server_loop (void)
-{
-#if !defined(WINDOWS)
-  (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
-#endif /* not WINDOWS */
-
-#if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS) || defined(HPUX))
-  (void) os_set_signal_handler (SIGFPE, SIG_IGN);
-#else /* LINUX || x86_SOLARIS || HPUX */
-  (void) os_set_signal_handler (SIGFPE, SIG_IGN);
-#endif /* LINUX || x86_SOLARIS || HPUX */
-
-  if (!IS_INVALID_SOCKET (css_Pipe_to_master))
-    {
-      /* execute master thread. */
-      css_master_thread ();
-    }
-  else
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_MASTER_PIPE_ERROR, 0);
-    }
-}
-
-/*
  * css_check_conn() -
  *   return:
  *   p(in):
@@ -380,125 +322,6 @@ css_set_shutdown_timeout (int timeout)
 }
 
 /*
- * css_master_thread() - Master thread, accept/process master process's request
- *   return:
- *   arg(in):
- */
-THREAD_RET_T THREAD_CALLING_CONVENTION
-css_master_thread (void)
-{
-  int r, run_code = 1, status = 0, nfds;
-  struct pollfd po[] = { {0, 0, 0}, {0, 0, 0} };
-
-  while (run_code)
-    {
-      /* check if socket has error or client is down */
-      if (!IS_INVALID_SOCKET (css_Pipe_to_master) && css_check_conn (css_Master_conn) < 0)
-	{
-	  css_shutdown_conn (css_Master_conn);
-	  css_Pipe_to_master = INVALID_SOCKET;
-	}
-
-      /* clear the pollfd each time before poll */
-      nfds = 0;
-      po[0].fd = -1;
-      po[0].events = 0;
-
-      if (!IS_INVALID_SOCKET (css_Pipe_to_master))
-	{
-	  po[0].fd = css_Pipe_to_master;
-	  po[0].events = POLLIN;
-	  nfds = 1;
-	}
-#if defined(WINDOWS)
-      if (!IS_INVALID_SOCKET (css_Server_connection_socket))
-	{
-	  po[1].fd = css_Server_connection_socket;
-	  po[1].events = POLLIN;
-	  nfds = 2;
-	}
-#endif /* WINDOWS */
-
-      /* select() sets timeout value to 0 or waited time */
-      r = poll (po, nfds, (prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000));
-      if (r > 0 && (IS_INVALID_SOCKET (css_Pipe_to_master) || !(po[0].revents & POLLIN))
-#if defined(WINDOWS)
-	  && (IS_INVALID_SOCKET (css_Server_connection_socket) || !(po[1].revents & POLLIN))
-#endif /* WINDOWS */
-	)
-	{
-	  continue;
-	}
-
-      if (r < 0)
-	{
-	  if (!IS_INVALID_SOCKET (css_Pipe_to_master)
-#if defined(WINDOWS)
-	      && ioctlsocket (css_Pipe_to_master, FIONREAD, (u_long *) (&status)) == SockError
-#else /* WINDOWS */
-	      && fcntl (css_Pipe_to_master, F_GETFL, status) == SockError
-#endif /* WINDOWS */
-	    )
-	    {
-	      css_close_connection_to_master ();
-	      break;
-	    }
-	}
-      else if (r > 0)
-	{
-	  if (!IS_INVALID_SOCKET (css_Pipe_to_master) && (po[0].revents & POLLIN))
-	    {
-	      run_code = css_process_master_request (css_Pipe_to_master);
-	      if (run_code == -1)
-		{
-		  css_close_connection_to_master ();
-		  /* shutdown message received */
-		  run_code = (!HA_DISABLED ())? 0 : 1;
-		}
-
-	      if (run_code == 0 && !HA_DISABLED ())
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-			  "Disconnected with the cub_master and will shut itself down", "");
-		}
-	    }
-#if !defined(WINDOWS)
-	  else
-	    {
-	      break;
-	    }
-
-#else /* !WINDOWS */
-	  if (!IS_INVALID_SOCKET (css_Server_connection_socket) && (po[1].revents & POLLIN))
-	    {
-	      css_process_new_connection_request ();
-	    }
-#endif /* !WINDOWS */
-	}
-
-      if (run_code)
-	{
-	  if (IS_INVALID_SOCKET (css_Pipe_to_master))
-	    {
-	      css_reestablish_connection_to_master ();
-	    }
-	}
-      else
-	{
-	  break;
-	}
-    }
-
-  css_set_shutdown_timeout (prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS));
-
-#if defined(WINDOWS)
-  return 0;
-#else /* WINDOWS */
-  return NULL;
-#endif /* WINDOWS */
-}
-
-/*
  * css_get_master_request () -
  *   return:
  *   master_fd(in):
@@ -520,60 +343,6 @@ css_get_master_request (SOCKET master_fd)
 }
 
 /*
- * css_process_master_request () -
- *   return:
- *   master_fd(in):
- *   read_fd_var(in):
- *   exception_fd_var(in):
- */
-static int
-css_process_master_request (SOCKET master_fd)
-{
-  int request, r;
-
-  r = 1;
-  request = (int) css_get_master_request (master_fd);
-
-  switch (request)
-    {
-    case SERVER_START_NEW_CLIENT:
-      css_process_new_client (master_fd);
-      break;
-
-    case SERVER_START_SHUTDOWN:
-      css_process_shutdown_request (master_fd);
-      r = 0;
-      break;
-
-    case SERVER_STOP_SHUTDOWN:
-    case SERVER_SHUTDOWN_IMMEDIATE:
-    case SERVER_START_TRACING:
-    case SERVER_STOP_TRACING:
-    case SERVER_HALT_EXECUTION:
-    case SERVER_RESUME_EXECUTION:
-    case SERVER_REGISTER_HA_PROCESS:
-      break;
-    case SERVER_GET_HA_MODE:
-      //css_process_get_server_ha_mode_request (master_fd);
-      break;
-#if !defined(WINDOWS)
-    case SERVER_CHANGE_HA_MODE:
-      //css_process_change_server_ha_mode_request (master_fd);
-      break;
-    case SERVER_GET_EOF:
-      //css_process_get_eof_request (master_fd);
-      break;
-#endif
-    default:
-      /* master do not respond */
-      r = -1;
-      break;
-    }
-
-  return r;
-}
-
-/*
  * css_process_shutdown_request () -
  *   return:
  *   master_fd(in):
@@ -592,226 +361,6 @@ css_process_shutdown_request (SOCKET master_fd)
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_SHUTDOWN_ERROR, 0);
       return;
     }
-}
-
-static void
-css_send_reply_to_new_client_request (CSS_CONN_ENTRY * conn, unsigned short rid, int reason)
-{
-  char reply_buf[sizeof (int)];
-  int t;
-
-  // the first is reason.
-  t = htonl (reason);
-  memcpy (reply_buf, (char *) &t, sizeof (int));
-
-  css_send_data (conn, rid, reply_buf, (int) sizeof (reply_buf));
-}
-
-static void
-css_refuse_connection_request (SOCKET new_fd, unsigned short rid, int reason, int error)
-{
-  CSS_CONN_ENTRY temp_conn;
-  OR_ALIGNED_BUF (1024) a_buffer;
-  char *buffer;
-  char *area;
-  int length = 1024;
-  int r;
-
-  /* open a temporary connection to send a reply to client.
-   * Note that no name is given for its csect. also see css_is_temporary_conn_csect.
-   */
-
-  css_initialize_conn (&temp_conn, new_fd);
-  r = rmutex_initialize (&temp_conn.rmutex, RMUTEX_NAME_TEMP_CONN_ENTRY);
-  assert (r == NO_ERROR);
-
-#if defined (WINDOWS)
-  // WINDOWS style connection. see css_process_new_connection_request
-
-  NET_HEADER header = DEFAULT_HEADER_DATA;
-
-  r = css_read_header (&temp_conn, &header);
-  if (r != NO_ERRORS)
-    {
-      assert (r == NO_ERRORS);
-      return;
-    }
-#endif /* WINDOWS */
-
-  css_send_reply_to_new_client_request (&temp_conn, rid, reason);
-
-  buffer = OR_ALIGNED_BUF_START (a_buffer);
-
-  area = er_get_area_error (buffer, &length);
-
-  temp_conn.db_error = error;
-  css_send_error (&temp_conn, rid, area, length);
-  css_shutdown_conn (&temp_conn);
-  css_dealloc_conn_rmutex (&temp_conn);
-  er_clear ();
-}
-
-/*
- * css_process_new_client () -
- *   return:
- *   master_fd(in):
- */
-static void
-css_process_new_client (SOCKET master_fd)
-{
-  SOCKET new_fd;
-  int error;
-  CSS_CONN_ENTRY *conn;
-  unsigned short rid;
-
-  /* receive new socket descriptor from the master */
-  new_fd = css_open_new_socket_from_master (master_fd, &rid);
-  if (IS_INVALID_SOCKET (new_fd))
-    {
-      return;
-    }
-
-  if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && css_check_accessibility (new_fd) != NO_ERROR)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      css_refuse_connection_request (new_fd, rid, SERVER_INACCESSIBLE_IP, error);
-      return;
-    }
-
-  conn = css_make_conn (new_fd);
-  if (conn == NULL)
-    {
-      error = ER_CSS_CLIENTS_EXCEEDED;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, NUM_NORMAL_TRANS);
-      css_refuse_connection_request (new_fd, rid, SERVER_CLIENTS_EXCEEDED, error);
-      return;
-    }
-
-  css_send_reply_to_new_client_request (conn, rid, SERVER_CONNECTED);
-
-  if (css_Connect_handler)
-    {
-      (void) (*css_Connect_handler) (conn);
-    }
-  else
-    {
-      assert_release (false);
-    }
-}
-
-/*
- * css_process_get_server_ha_mode_request () -
- *   conn (in)	: master connection entry
- */
-void
-css_process_get_server_ha_mode_request (CSS_CONN_ENTRY * conn)
-{
-  int r;
-  int response;
-
-  if (HA_DISABLED ())
-    {
-      response = htonl (HA_SERVER_STATE_NA);
-    }
-  else
-    {
-      response = htonl (ha_Server_state);
-    }
-
-  r = send (conn->fd, (char *) &response, sizeof (int), 0);
-  if (r < 0)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 0);
-      return;
-    }
-
-}
-
-/*
- * css_process_change_server_ha_mode_request () -
- *   conn (in)	: master connection entry
- */
-void
-css_process_change_server_ha_mode_request (CSS_CONN_ENTRY * conn)
-{
-  HA_SERVER_STATE state;
-  THREAD_ENTRY *thread_p;
-
-  state = (HA_SERVER_STATE) css_get_master_request (conn->fd);
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_STANDBY)
-    {
-      if (css_change_ha_server_state (thread_p, state, false, HA_CHANGE_MODE_IMMEDIATELY, true) != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_ERROR_FROM_SERVER, 1, "Cannot change server HA mode");
-	}
-    }
-  else
-    {
-      er_log_debug (ARG_FILE_LINE, "ERROR : unexpected state. (state :%d). \n", state);
-    }
-
-  state = (HA_SERVER_STATE) htonl ((int) css_ha_server_state ());
-
-  css_send_heartbeat_request (conn, SERVER_CHANGE_HA_MODE);
-  css_send_heartbeat_data (conn, (char *) &state, sizeof (state));
-}
-
-/*
- * css_process_get_eof_request () -
- *   conn (in)	: master connection entry
- */
-void
-css_process_get_eof_request (CSS_CONN_ENTRY * conn)
-{
-  LOG_LSA *eof_lsa;
-  static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
-  OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
-  char *reply;
-  THREAD_ENTRY *thread_p;
-
-  reply = OR_ALIGNED_BUF_START (a_reply);
-
-  thread_p = thread_get_thread_entry_info ();
-  assert (thread_p != NULL);
-
-  LOG_CS_ENTER_READ_MODE (thread_p);
-
-  eof_lsa = log_get_eof_lsa ();
-  (void) or_pack_log_lsa (reply, eof_lsa);
-
-  LOG_CS_EXIT (thread_p);
-
-  if (LSA_EQ (&prev_eof_lsa, eof_lsa))
-    {
-      er_log_debug (ARG_FILE_LINE, "Disk failure has been occurred: prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
-		    LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
-    }
-  else
-    {
-      LSA_COPY (&prev_eof_lsa, eof_lsa);
-    }
-
-  css_send_heartbeat_request (conn, SERVER_GET_EOF);
-  css_send_heartbeat_data (conn, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
- * css_close_connection_to_master() -
- *   return:
- */
-static void
-css_close_connection_to_master (void)
-{
-  if (!IS_INVALID_SOCKET (css_Pipe_to_master))
-    {
-      css_shutdown_conn (css_Master_conn);
-    }
-  css_Pipe_to_master = INVALID_SOCKET;
-  css_Master_conn = NULL;
 }
 
 /*
@@ -843,212 +392,6 @@ struct timeval *
 css_get_shutdown_timeout (void)
 {
   return &css_Shutdown_timeout;
-}
-
-/*
- * css_reestablish_connection_to_master() -
- *   return:
- */
-static int
-css_reestablish_connection_to_master (void)
-{
-  CSS_CONN_ENTRY *conn;
-  static int i = CSS_WAIT_COUNT;
-  char *packed_server_name;
-  int name_length;
-
-  if (i-- > 0)
-    {
-      return 0;
-    }
-  i = CSS_WAIT_COUNT;
-
-  packed_server_name = css_pack_server_name (css_Master_server_name, &name_length);
-  if (packed_server_name != NULL)
-    {
-      conn = css_connect_to_master_server (css_Master_port_id, packed_server_name, name_length);
-      if (conn != NULL)
-	{
-	  css_Pipe_to_master = conn->fd;
-	  if (css_Master_conn)
-	    {
-	      css_free_conn (css_Master_conn);
-	    }
-	  css_Master_conn = conn;
-	  free_and_init (packed_server_name);
-	  return 1;
-	}
-      else
-	{
-	  free_and_init (packed_server_name);
-	}
-    }
-
-  css_Pipe_to_master = INVALID_SOCKET;
-  return 0;
-}
-
-/*
- * css_connection_handler_thread () - Accept/process request from one client
- *   return:
- *   arg(in):
- *
- * Note: One server thread per one client
- */
-static int
-css_connection_handler_thread (THREAD_ENTRY * thread_p, CSS_CONN_ENTRY * conn)
-{
-  int n, type, rv, status;
-  volatile int conn_status;
-  int css_peer_alive_timeout, poll_timeout;
-  int max_num_loop, num_loop;
-  SOCKET fd;
-  struct pollfd po[1] = { {0, 0, 0} };
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-
-  fd = conn->fd;
-
-  pthread_mutex_unlock (&thread_p->tran_index_lock);
-
-  thread_p->type = TT_SERVER;	/* server thread */
-
-  css_peer_alive_timeout = 5000;
-  poll_timeout = 100;
-  max_num_loop = css_peer_alive_timeout / poll_timeout;
-  num_loop = 0;
-
-  status = NO_ERRORS;
-  _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: thread_p->shutdown = %s, conn->stop_talk = %d\n",
-		 thread_p->shutdown == true ? "true" : "false", conn->stop_talk);
-
-  /* check if socket has error or client is down */
-  while (thread_p->shutdown == false && conn->stop_talk == false)
-    {
-      /* check the connection */
-      conn_status = conn->status;
-      if (conn_status == CONN_CLOSING)
-	{
-	  /* There's an interesting race condition among client, worker thread and connection handler.
-	   * Please find CBRD-21375 for detail and also see sboot_notify_unregister_client.
-	   *
-	   * We have to synchronize here with worker thread which may be in sboot_notify_unregister_client
-	   * to let it have a chance to send reply to client.
-	   */
-	  rmutex_lock (thread_p, &conn->rmutex);
-
-	  conn_status = conn->status;
-
-	  rmutex_unlock (thread_p, &conn->rmutex);
-	}
-
-      if (conn_status != CONN_OPEN)
-	{
-	  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: conn->status (%d) is not CONN_OPEN.",
-			conn_status);
-	  status = CONNECTION_CLOSED;
-	  break;
-	}
-
-      po[0].fd = fd;
-      po[0].events = POLLIN;
-      po[0].revents = 0;
-      n = poll (po, 1, poll_timeout);
-      if (n == 0)
-	{
-	  if (num_loop < max_num_loop)
-	    {
-	      num_loop++;
-	      continue;
-	    }
-	  num_loop = 0;
-
-#if !defined (WINDOWS)
-	  /* 0 means it timed out and no fd is changed. */
-	  if (CHECK_CLIENT_IS_ALIVE ())
-	    {
-	      if (css_peer_alive (fd, css_peer_alive_timeout) == false)
-		{
-		  er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: css_peer_alive() error\n");
-		  status = CONNECTION_CLOSED;
-		  break;
-		}
-	    }
-
-	  /* check server's HA state */
-	  if (ha_Server_state == HA_SERVER_STATE_TO_BE_STANDBY && conn->in_transaction == false
-	      && css_count_transaction_worker_threads (thread_p, conn->get_tran_index (), conn->client_id) == 0)
-	    {
-	      status = REQUEST_REFUSED;
-	      break;
-	    }
-#endif /* !WINDOWS */
-	  continue;
-	}
-      else if (n < 0)
-	{
-	  num_loop = 0;
-
-	  if (errno == EINTR)
-	    {
-	      continue;
-	    }
-	  else
-	    {
-	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: select() error\n");
-	      status = ERROR_ON_READ;
-	      break;
-	    }
-	}
-      else
-	{
-	  num_loop = 0;
-
-	  if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
-	    {
-	      _er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: peer down\n");
-	      status = ERROR_ON_READ;
-	      break;
-	    }
-
-	  /* read command/data/etc request from socket, and enqueue it to appr. queue */
-	  status = css_read_and_queue (conn, &type);
-	  if (status != NO_ERRORS)
-	    {
-	      er_log_debug (ARG_FILE_LINE, "css_connection_handler_thread: css_read_and_queue() error\n");
-	      break;
-	    }
-	  else
-	    {
-	      /* if new command request has arrived, make new job and add it to job queue */
-	      if (type == COMMAND_TYPE)
-		{
-		  // push new task
-		  css_push_server_task (*conn);
-		}
-	    }
-	}
-    }
-
-  /* check the connection and call connection error handler */
-  if (status != NO_ERRORS || css_check_conn (conn) != NO_ERROR)
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "css_connection_handler_thread: status %d conn { status %d transaction_id %d "
-		    "db_error %d stop_talk %d stop_phase %d }\n", status, conn->status, conn->get_tran_index (),
-		    conn->db_error, conn->stop_talk, conn->stop_phase);
-      //rv = pthread_mutex_lock (&thread_p->tran_index_lock);
-      //(*css_Connection_error_handler) (thread_p, conn);
-    }
-  else
-    {
-      assert (thread_p->shutdown == true || conn->stop_talk == true);
-    }
-
-  return 0;
 }
 
 /*
@@ -1088,24 +431,6 @@ css_block_all_active_conn (unsigned short stop_phase)
     }
 
   END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-}
-
-/*
- * css_internal_connection_handler() -
- *   return:
- *   conn(in):
- *
- * Note: This routine is "registered" to be called when a new connection is requested by the client
- */
-static css_error_code
-css_internal_connection_handler (CSS_CONN_ENTRY * conn)
-{
-  css_insert_into_active_conn_list (conn);
-
-  // push connection handler task
-  cubthread::get_manager ()->push_task (css_Connection_worker_pool, new css_connection_task (*conn));
-
-  return NO_ERRORS;
 }
 
 /*
@@ -1192,7 +517,6 @@ css_initialize_server_interfaces (int (*request_handler) (THREAD_ENTRY * thrd, u
 							  int size, char *buffer))
 {
   css_Server_request_handler = request_handler;
-  css_register_handler_routines (css_internal_connection_handler, NULL /* disabled */ );
 }
 
 bool
@@ -3119,19 +2443,6 @@ css_server_external_task::execute (context_type &thread_ref)
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
-void
-css_connection_task::execute (context_type & thread_ref)
-{
-  thread_ref.conn_entry = &m_conn;
-
-  // todo: we lock tran_index_lock because css_connection_handler_thread expects it to be locked. however, I am not
-  //       convinced we really need this
-  pthread_mutex_lock (&thread_ref.tran_index_lock);
-  (void) css_connection_handler_thread (&thread_ref, &m_conn);
-
-  thread_ref.conn_entry = NULL;
-}
-
 //
 // css_stop_non_log_writer () - function mapped over worker pools to search and stop non-log writer workers
 //
@@ -3287,12 +2598,10 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
       if (stop_phase == THREAD_STOP_LOGWR)
         {
           css_Server_request_worker_pool->map_running_contexts (css_stop_log_writer);
-          //css_Connection_worker_pool->map_running_contexts (css_stop_log_writer);
         }
       else
         {
           css_Server_request_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
-          //css_Connection_worker_pool->map_running_contexts (css_stop_non_log_writer, thread_ref);
         }
 
       // sleep for 50 milliseconds
@@ -3302,14 +2611,6 @@ css_stop_all_workers (THREAD_ENTRY &thread_ref, css_thread_stop_type stop_phase)
       is_not_stopped = false;
       css_Server_request_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
                                                             is_not_stopped);
-      if (!is_not_stopped)
-        {
-          // check connection threads too
-	  /*
-          css_Connection_worker_pool->map_running_contexts (css_find_not_stopped, stop_phase == THREAD_STOP_LOGWR,
-                                                            is_not_stopped);
-	  */
-        }
       if (!is_not_stopped)
         {
           // all threads are stopped, break loop
@@ -3348,24 +2649,6 @@ size_t
 css_get_num_request_workers (void)
 {
   return css_Server_request_worker_pool->get_max_count ();
-}
-
-//
-// css_get_num_connection_workers () - get number of workers handling connections
-//
-size_t
-css_get_num_connection_workers (void)
-{
-  return css_Connection_worker_pool->get_max_count ();
-}
-
-//
-// css_get_num_total_workers () - get total number of workers (request and connection handlers)
-//
-size_t
-css_get_num_total_workers (void)
-{
-  return css_get_num_request_workers () + css_get_num_connection_workers ();
 }
 
 //
