@@ -24,7 +24,6 @@
 #include "porting_inline.hpp"
 #include "scope_exit.hpp"
 #include "slotted_page.h"
-#include "storage_common.h"
 #include "page_buffer_util.hpp"
 
 #include "oos_file.hpp"
