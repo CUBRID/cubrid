@@ -90,8 +90,8 @@ static std::unordered_map<VFID, VPID, VFIDHash, VFIDEq> oos_recently_inserted_oo
 
 using namespace oos_log;
 
-// review point: should it be 8?
-static constexpr int OOS_ALIGNMENT = 8;
+// review point: should it be MAX_ALIGNMENT?
+static constexpr int OOS_ALIGNMENT = MAX_ALIGNMENT;
 
 int
 oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
