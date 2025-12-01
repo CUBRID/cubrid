@@ -275,7 +275,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
     // oos_prepend_record_header allocates data area for oos_rec
     // therefore, we need to free it after use
-    scope_exit oos_rec_freer ([&]()
+    scope_exit defer_oos_rec_free ([&]()
     {
       recdes_free_data_area (&oos_rec);
     });
