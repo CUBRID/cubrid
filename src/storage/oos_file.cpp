@@ -174,6 +174,10 @@ int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OI
   assert (recdes.type == REC_HOME);
   assert (recdes.length > 0);
 
+  // TODO: Once the OOS_RECORD_HEADER spec is finalized (first segment header and rest segment header),
+  // review whether it is possible to generate the segment headers inside the oos_insert_within_page() and
+  // oos_insert_across_pages() functions.
+
   if (recdes.length <= oos_get_max_chunk_size_within_page ())
     {
       const OOS_RECORD_HEADER header{recdes.length, 0, OID_INITIALIZER};
