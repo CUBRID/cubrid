@@ -555,7 +555,7 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
  *   src(in): source attribute
  *   dest(in/out): destination attribute
  */
-int
+static int
 classobj_copy_pk_and_notnull_unique_constraints (const SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest)
 {
   SM_CONSTRAINT *src_cons, *dest_new;

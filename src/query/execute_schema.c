@@ -3985,7 +3985,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
   tde_algo = (TDE_ALGORITHM) smclass->tde_algorithm;
-  replication_opt = sm_is_replication_class (pinfo->root_op);
+  replication_opt = (smclass->flags & SM_CLASSFLAG_DATA_REPLICATION_OFF) ? false : true;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name = parser_new_node (parser, PT_NAME);
@@ -6992,10 +6992,14 @@ has_notnull_unique_constraints (const SM_ATTRIBUTE * smattr)
   SM_CONSTRAINT *c;
 
   has_not_null = (smattr->flags & SM_ATTFLAG_NON_NULL) != 0;
+  if (!has_not_null)
+    {
+      return FALSE;
+    }
 
   for (c = smattr->constraints; c != NULL; c = c->next)
     {
-      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type))
+      if (c->type == SM_CONSTRAINT_UNIQUE || c->type == SM_CONSTRAINT_REVERSE_UNIQUE)
 	{
 	  has_unique = true;
 	  break;
@@ -7079,7 +7083,7 @@ do_promote_partition (SM_CLASS * class_)
       /* reset flags that belong to the root partitioned table */
       smattr->auto_increment = NULL;
       smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
-      if (has_notnull_unique_constraints (smattr))
+      if (!has_notnull_unique && has_notnull_unique_constraints (smattr))
 	{
 	  has_notnull_unique = true;
 	}
@@ -7111,8 +7115,8 @@ do_promote_partition (SM_CLASS * class_)
     {
       if (!has_notnull_unique)
 	{
-	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
 	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
 	}
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
     }
