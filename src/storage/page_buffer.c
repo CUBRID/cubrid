@@ -734,8 +734,6 @@ typedef struct pgbuf_cache_array PGBUF_CACHE_ARRAY;
 struct pgbuf_cache_array
 {
   PGBUF_CACHE_ENTRY *entries;
-  uint32_t count;
-  uint32_t max_count;
 };
 
 typedef struct pgbuf_cache PGBUF_CACHE;
@@ -2284,8 +2282,6 @@ pgbuf_cache_global_initialize (void)
   for (size_t i = 0; i < max_thread_entry_count; i++)
     {
       pgbuf_Cache.cache_arrays[i].entries = NULL;
-      pgbuf_Cache.cache_arrays[i].count = 0;
-      pgbuf_Cache.cache_arrays[i].max_count = 0;
     }
   return NO_ERROR;
 }
@@ -2336,8 +2332,9 @@ pgbuf_cache_initialize (THREAD_ENTRY * thread_p)
     }
   PGBUF_CACHE_ARRAY *cache_array = &pgbuf_Cache.cache_arrays[thread_entry_index];
   cache_array->entries = (PGBUF_CACHE_ENTRY *) malloc (default_page_request_count * sizeof (PGBUF_CACHE_ENTRY));
-  cache_array->count = 0;
-  cache_array->max_count = default_page_request_count;
+  thread_p->m_pgbuf_cache_count = 0;
+  thread_p->m_pgbuf_cache_max = default_page_request_count;
+  thread_p->m_pgbuf_cache_entries = (void *) cache_array->entries;
   for (uint32_t i = 0; i < default_page_request_count; i++)
     {
       PGBUF_INIT_CACHE_ENTRY (&(cache_array->entries[i]));
@@ -2353,9 +2350,9 @@ pgbuf_cache_finalize (THREAD_ENTRY * thread_p)
 #endif
   size_t thread_entry_index = thread_get_entry_index (thread_p);
   PGBUF_CACHE_ARRAY *cache_array = &pgbuf_Cache.cache_arrays[thread_entry_index];
-  if (cache_array->entries != NULL)
+  if (thread_p->m_pgbuf_cache_max != 0)
     {
-      for (uint32_t i = 0; i < cache_array->max_count; i++)
+      for (uint32_t i = 0; i < thread_p->m_pgbuf_cache_max; i++)
 	{
 	  PGBUF_CACHE_ENTRY *entry = &cache_array->entries[i];
 	  if (entry->iopage_buffer != NULL)
@@ -2371,8 +2368,9 @@ pgbuf_cache_finalize (THREAD_ENTRY * thread_p)
 	}
       free (cache_array->entries);
       cache_array->entries = NULL;
-      cache_array->count = 0;
-      cache_array->max_count = 0;
+      thread_p->m_pgbuf_cache_count = 0;
+      thread_p->m_pgbuf_cache_max = 0;
+      thread_p->m_pgbuf_cache_entries = NULL;
     }
   return NO_ERROR;
 }
@@ -2422,24 +2420,24 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fe
       return pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
     }
 
-  size_t thread_entry_index = thread_get_entry_index (thread_p);
-  PGBUF_CACHE_ARRAY *cache_array = &pgbuf_Cache.cache_arrays[thread_entry_index];
+  PGBUF_CACHE_ENTRY *entries = (PGBUF_CACHE_ENTRY *) thread_p->m_pgbuf_cache_entries;
   PGBUF_CACHE_ENTRY *entry = NULL;
   PAGE_PTR pgptr = NULL;
   bool found = false;
+  uint32_t max_count = thread_p->m_pgbuf_cache_max, count = thread_p->m_pgbuf_cache_count;
 
-  if (cache_array->max_count == 0)
+  if (max_count == 0)
     {
       /* not target */
       return pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
     }
 
-  for (uint32_t i = 0; i < cache_array->max_count; i++)
+  for (uint32_t i = 0; i < count; i++)
     {
-      if (VPID_EQ (vpid, &cache_array->entries[i].vpid))
+      if (vpid->pageid == entries[i].vpid.pageid && vpid->volid == entries[i].vpid.volid)
 	{
 	  found = true;
-	  entry = &cache_array->entries[i];
+	  entry = &entries[i];
 	  break;
 	}
     }
@@ -2461,11 +2459,11 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fe
   else
     {
       found = false;
-      for (uint32_t i = 0; i < cache_array->max_count; i++)
+      for (uint32_t i = count; i < max_count; i++)
 	{
-	  if (cache_array->entries[i].vpid.pageid == NULL_PAGEID)
+	  if (likely(entries[i].vpid.pageid == NULL_PAGEID))
 	    {
-	      entry = &cache_array->entries[i];
+	      entry = &entries[i];
 	      found = true;
 	      break;
 	    }
@@ -2480,7 +2478,7 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fe
 	{
 	  pgbuf_cache_entry (entry, pgptr);
 	  pgbuf_unfix_without_cache (thread_p, pgptr);
-	  cache_array->count++;
+	  thread_p->m_pgbuf_cache_count++;
 	  return entry->page_p;
 	}
       return pgptr;

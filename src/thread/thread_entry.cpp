@@ -141,6 +141,9 @@ namespace cubthread
     , m_uses_px_stats (false)
     , m_skip_end_resource_tracks_in_recycle (false)
     , m_enable_cached_fix (false)
+    , m_pgbuf_cache_count (0)
+    , m_pgbuf_cache_max (0)
+    , m_pgbuf_cache_entries (NULL)
       // private:
     , m_id ()
     , m_error ()

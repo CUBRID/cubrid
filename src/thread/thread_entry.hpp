@@ -308,6 +308,9 @@ namespace cubthread
 
       bool m_skip_end_resource_tracks_in_recycle;
       bool m_enable_cached_fix;
+      uint32_t m_pgbuf_cache_count;
+      uint32_t m_pgbuf_cache_max;
+      void *m_pgbuf_cache_entries;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
