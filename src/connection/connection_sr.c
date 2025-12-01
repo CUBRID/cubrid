@@ -78,6 +78,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#include "connection_context.hpp"
 #include "connection_worker.hpp"
 #include "connection_sr.h"
 #include "server_support.h"
@@ -1365,7 +1366,7 @@ css_shutdown_conn_by_tran_index (int tran_index, int wait_time)
 
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
-					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, wait_time);
+					     (cubconn::connection_worker_ignore::DONT_IGNORE), false, wait_time);
 
 		  error = NO_ERROR;
 		}
@@ -3108,7 +3109,7 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, in
 
   request.type = cubconn::connection_worker::message_type::SHUTDOWN_CLIENT;
   request.conn = conn;
-  request.ignore = static_cast < cubconn::connection_worker::ignore_level > (ignore);
+  request.ignore = static_cast < cubconn::connection_worker_ignore > (ignore);
   request.retry = retry;
 
   /* lock to access worker and context */

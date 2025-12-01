@@ -62,46 +62,6 @@ std::atomic<uint64_t> message_counter (0);
 
 namespace cubconn
 {
-  connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
-    m_conn (nullptr),
-    m_ignore (ignore_level::DONT_IGNORE),
-    m_removed (false),
-    m_recv
-  {
-    .m_state = state::HEADER,
-    .m_receiver = receiver (capacity, stats),
-    .m_header = { nullptr, 0 },
-    .m_request_id = -1,
-    .m_command = false
-  },
-  m_send
-  {
-    .m_transmitter = transmitter (stats)
-  }
-  {
-  }
-
-  connection_worker::context::context () :
-    m_conn (nullptr),
-    m_recv
-  {
-    .m_state = state::HEADER,
-    .m_receiver = receiver (),
-    .m_header = { nullptr, 0 },
-    .m_request_id = -1,
-    .m_command = false
-  },
-  m_send
-  {
-    .m_transmitter = transmitter ()
-  }
-  {
-  }
-
-  connection_worker::context::~context ()
-  {
-  }
-
   connection_worker::connection_worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
 					std::size_t index) :
     m_parent (pool),

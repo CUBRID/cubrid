@@ -65,38 +65,6 @@
 
 namespace cubconn
 {
-  master_connector::context::context () :
-    m_conn (nullptr),
-    m_sendbuf (32),
-    m_has_error (false)
-  {
-  }
-
-  master_connector::context::~context ()
-  {
-    m_recvbuf.reset ();
-    m_sendbuf.clear ();
-  }
-
-  void master_connector::context::reset ()
-  {
-    m_recvbuf.reset ();
-    m_sendbuf.clear ();
-
-    m_state = state::SendInHandshake;
-    m_has_error = false;
-  }
-
-  bool master_connector::context::has_data_to_send ()
-  {
-    if (m_sendbuf.get_msghdr ().msg_iovlen)
-      {
-	return true;
-      }
-
-    return false;
-  }
-
   master_connector::master_connector () :
     m_stop (false),
     m_entry (nullptr),

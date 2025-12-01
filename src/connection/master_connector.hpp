@@ -24,6 +24,7 @@
 #define _CONNECTION_MASTER_CONNECTOR_HPP_
 
 #include "connection_globals.h"
+#include "connection_context.hpp"
 #include "connection_pool.hpp"
 #include "packet_buffer.hpp"
 #include "buffer.hpp"
@@ -40,76 +41,16 @@ namespace cubconn
 {
   class master_connector
   {
+      using context = master_connector_context;
+      using state = master_connector_state;
+
     private:
-      enum class state
-      {
-	/* handshake with master */
-	SendInHandshake,
-	RecvInHandshake,
-
-	SwitchToUnixSocket,
-
-	/* request from master */
-	RecvRequestType,
-
-	RecvNewClient,
-
-	RecvHAMode,
-
-	/* send to clients */
-	SendReplyToClient,
-
-	/* send for HA */
-	SendHBToMaster
-      };
-
       enum class master_state
       {
 	CONNECTED,
 	WAIT_RESPONSE,
 	ESTABLISHED,
 	CLOSED
-      };
-
-      struct context
-      {
-	css_conn_entry *m_conn;
-
-	buffer m_recvbuf;
-	cubbase::packet_buffer m_sendbuf;
-
-	state m_state { state::SendInHandshake };
-	bool m_has_error;
-
-	context ();
-	~context ();
-
-	context (const context &) = delete;
-	context &operator= (const context &) = delete;
-
-	context (context &&) noexcept = delete;
-	context &operator= (context &&) noexcept = delete;
-
-	void reset ();
-	bool has_data_to_send ();
-
-	template <typename... Spans>
-	void push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)
-	{
-	  m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
-	}
-
-	template <typename... Spans>
-	void push (const cubbase::span<std::byte> &first, const Spans &... rest)
-	{
-	  m_sendbuf.push (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
-	}
-
-	template <typename T>
-	T *allocate ()
-	{
-	  return m_sendbuf.allocate<T> ();
-	}
       };
 
     public:

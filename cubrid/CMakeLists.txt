@@ -204,6 +204,7 @@ set(CONNECTION_SOURCES
   ${CONNECTION_DIR}/server_support.c
   ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  ${CONNECTION_DIR}/connection_context.cpp
   ${CONNECTION_DIR}/master_connector.cpp
   ${CONNECTION_DIR}/connection_pool.cpp
   ${CONNECTION_DIR}/connection_worker.cpp
@@ -215,6 +216,7 @@ set(CONNECTION_SOURCES
 
 set(CONNECTION_HEADERS
   ${CONNECTION_DIR}/connection_support.hpp
+  ${CONNECTION_DIR}/connection_context.hpp
   ${CONNECTION_DIR}/master_connector.hpp
   ${CONNECTION_DIR}/connection_pool.hpp
   ${CONNECTION_DIR}/connection_worker.hpp

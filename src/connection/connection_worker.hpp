@@ -24,6 +24,7 @@
 #define _CONNECTION_WORKER_HPP_
 
 #include "connection_defs.h"
+#include "connection_context.hpp"
 #include "connection_stats.hpp"
 #include "receiver.hpp"
 #include "transmitter.hpp"
@@ -47,6 +48,31 @@ namespace cubconn
 
   class connection_worker
   {
+      using context = connection_worker_context;
+      using state = connection_worker_state;
+      using ignore_level = connection_worker_ignore;
+
+    private:
+      enum class notification_type : uint8_t
+      {
+	QUEUE = 0x1,
+	HA = 0x2
+      };
+
+      enum class timer_latency : uint32_t
+      {
+	NA = 0, /* off */
+	LOW_LATENCY = static_cast<uint32_t> (1 * 1e6), /* 1 msec */
+	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9) /* 2 sec, default */
+      };
+
+      struct message_blocker
+      {
+	std::mutex m;
+	std::condition_variable cv;
+	bool done;
+      };
+
     public:
       enum class queue_type : uint8_t
       {
@@ -67,32 +93,6 @@ namespace cubconn
 	RELEASE_PACKET,
 
 	SHUTDOWN
-      };
-
-      enum class notification_type : uint8_t
-      {
-	QUEUE = 0x1,
-	HA = 0x2
-      };
-
-      enum class timer_latency : uint32_t
-      {
-	NA = 0, /* off */
-	LOW_LATENCY = static_cast<uint32_t> (1 * 1e6), /* 1 msec */
-	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9) /* 2 sec, default */
-      };
-
-      enum class ignore_level : uint8_t
-      {
-	DONT_IGNORE = 0,
-	IGNORE_ALL
-      };
-
-      struct message_blocker
-      {
-	std::mutex m;
-	std::condition_variable cv;
-	bool done;
       };
 
       struct message
@@ -140,57 +140,6 @@ namespace cubconn
 #if !defined (NDEBUG)
 	  uint64_t message_id;
 #endif
-      };
-
-    private:
-      enum class state
-      {
-	HEADER,
-	DATA,
-	ERROR
-      };
-
-      struct context
-      {
-	css_conn_entry *m_conn;
-
-	/* ignore guards (ERR/HUP) */
-	ignore_level m_ignore;
-	bool m_removed;
-
-	/* --------------------------------------------------------------------------- */
-	/* reception								       */
-	/* --------------------------------------------------------------------------- */
-	struct
-	{
-	  state m_state;
-	  receiver m_receiver;
-
-	  cubbase::span<std::byte> m_header;
-	  int m_request_id;
-
-	  /* if received command packet, task will be pushed into worker pool */
-	  /* when data packet is completely received. */
-	  bool m_command;
-	} m_recv;
-
-	/* --------------------------------------------------------------------------- */
-	/* transmission								       */
-	/* --------------------------------------------------------------------------- */
-	struct
-	{
-	  transmitter m_transmitter;
-	} m_send;
-
-	context (std::size_t capacity, connection_stats *stats);
-	context ();
-	~context ();
-
-	context (const context &) = delete;
-	context &operator= (const context &) = delete;
-
-	context (context &&) noexcept = delete;
-	context &operator= (context &&) noexcept = delete;
       };
 
     public:
