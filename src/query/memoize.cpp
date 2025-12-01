@@ -19,14 +19,17 @@
 #include "memoize.hpp"
 
 #include "error_code.h"
+#include "memory_alloc.h"
 #include "memory_hash.h"
 #include "object_primitive.h"
 #include "query_evaluator.h"
 #include "regu_var.hpp"
+#include "system.h"
 #include "system_parameter.h"
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "xasl.h"
+#include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -161,10 +164,9 @@ namespace memoize
   struct key_maker
   {
     int operator() (THREAD_ENTRY *thread_p, xasl_node *xasl,
-		    pvector<DB_VALUE *> &key_ptr_src) const noexcept
+		    std::vector<DB_VALUE *> &key_ptr_src) const noexcept
     {
-      allocator<REGU_VARIABLE *> vector_allocator (thread_p);
-      pvector<REGU_VARIABLE *> const_regu_var_vector (vector_allocator);
+      std::vector<REGU_VARIABLE *> const_regu_var_vector;
       ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
       PRED_EXPR *if_pred = xasl->if_pred;
       PRED_EXPR *after_join_pred = xasl->after_join_pred;
@@ -272,15 +274,14 @@ namespace memoize
     }
 
     void operator() (THREAD_ENTRY *thread_p, xasl_node *subquery,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       if (subquery == NULL)
 	{
 	  return;
 	}
 
-      allocator<REGU_VARIABLE *> vector_allocator (thread_p);
-      pvector<REGU_VARIABLE *> subquery_const_regu_var_vector (vector_allocator);
+      std::vector<REGU_VARIABLE *> subquery_const_regu_var_vector;
       ACCESS_SPEC_TYPE *spec = subquery->curr_spec ? subquery->curr_spec : subquery->spec_list;
       PRED_EXPR *if_pred = subquery->if_pred;
       PRED_EXPR *after_join_pred = subquery->after_join_pred;
@@ -402,7 +403,7 @@ namespace memoize
     }
 
     void operator() (cubxasl::pred_expr *pred_expr,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       if (pred_expr == NULL)
 	{
@@ -427,14 +428,14 @@ namespace memoize
     }
 
     void operator() (cubxasl::pred *pred,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (pred->lhs, const_regu_var_vector);
       (*this) (pred->rhs, const_regu_var_vector);
     }
 
     void operator() (cubxasl::eval_term *eval_term,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       switch (eval_term->et_type)
 	{
@@ -459,21 +460,21 @@ namespace memoize
     }
 
     void operator() (cubxasl::comp_eval_term *comp_eval_term,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (comp_eval_term->lhs, const_regu_var_vector);
       (*this) (comp_eval_term->rhs, const_regu_var_vector);
     }
 
     void operator() (cubxasl::alsm_eval_term *alsm_eval_term,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (alsm_eval_term->elem, const_regu_var_vector);
       (*this) (alsm_eval_term->elemset, const_regu_var_vector);
     }
 
     void operator() (cubxasl::like_eval_term *like_eval_term,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (like_eval_term->src, const_regu_var_vector);
       (*this) (like_eval_term->pattern, const_regu_var_vector);
@@ -481,7 +482,7 @@ namespace memoize
     }
 
     void operator() (cubxasl::rlike_eval_term *rlike_eval_term,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (rlike_eval_term->src, const_regu_var_vector);
       (*this) (rlike_eval_term->pattern, const_regu_var_vector);
@@ -489,7 +490,7 @@ namespace memoize
     }
 
     void operator() (regu_variable_node *regu_var,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       if (regu_var == NULL)
 	{
@@ -551,7 +552,7 @@ namespace memoize
     }
 
     void operator() (ARITH_TYPE *arith,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (arith->leftptr, const_regu_var_vector);
       (*this) (arith->rightptr, const_regu_var_vector);
@@ -561,7 +562,7 @@ namespace memoize
     }
 
     void operator() (REGU_VARIABLE_LIST regu_var_list,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       while (regu_var_list != NULL)
 	{
@@ -572,7 +573,7 @@ namespace memoize
     }
 
     void operator() (REGU_VALUE_LIST *regu_value_list,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       REGU_VALUE_ITEM *regu_value_item = regu_value_list->regu_list;
       while (regu_value_item != NULL)
@@ -584,14 +585,14 @@ namespace memoize
     }
 
     void operator() (struct function_node *function_node,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (function_node->operand, const_regu_var_vector);
       return;
     }
 
     void operator() (cubxasl::sp_node *sp_node,
-		     pvector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
     {
       (*this) (sp_node->args, const_regu_var_vector);
       return;
@@ -600,9 +601,8 @@ namespace memoize
   key_maker<TARGET_CLASS> const cls_key_maker;
   key_maker<TARGET_LIST> const list_key_maker;
 
-  key::key (allocator<DB_VALUE> *allocator_p)
-    : m_values (*allocator_p)
-    , m_size (0)
+  key::key ()
+    : m_size (0)
   {
   }
 
@@ -632,9 +632,8 @@ namespace memoize
     return m_size;
   }
 
-  value::value (allocator<DB_VALUE> *allocator_p)
-    : m_values (*allocator_p),
-      m_size (0)
+  value::value ()
+    : m_size (0)
   {
   }
 
@@ -696,8 +695,7 @@ namespace memoize
     ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
     VAL_LIST *val_list = xasl->val_list;
     int key_cnt, value_cnt;
-    allocator<DB_VALUE *> vector_allocator (thread_p);
-    pvector<DB_VALUE *> key_ptr_src (vector_allocator);
+    std::vector<DB_VALUE *> key_ptr_src;
 
     if (!checker (xasl))
       {
@@ -725,7 +723,7 @@ namespace memoize
 	return nullptr;
       }
 
-    storage *storage_p = (storage *) db_private_alloc (thread_p, sizeof (storage));
+    storage *storage_p = (storage *) malloc (sizeof (storage));
 
     if (storage_p == NULL)
       {
@@ -745,18 +743,14 @@ namespace memoize
     , m_value_cnt (value_cnt)
     , m_thread_p (thread_p)
     , m_val_list (val_list)
-    , m_dbval_p_allocator (thread_p)
-    , m_dbval_allocator (thread_p)
-    , m_value_allocator (thread_p)
-    , m_key_value_allocator (thread_p)
-    , m_key_fixed_allocator (thread_p)
+    , m_key_fixed_allocator ()
     , m_key_sz (0)
     , m_value_sz (0)
     , m_hash_sz (0)
     , m_last_key (nullptr)
-    , m_keyptr_src (m_dbval_p_allocator)
-    , m_key_value_map (m_key_value_allocator)
-    , m_current_value_list (m_value_allocator)
+    , m_keyptr_src ()
+    , m_key_value_map ()
+    , m_current_value_list ()
     , disabled (false)
     , has_range (false)
     , key_changed (false)
@@ -770,6 +764,7 @@ namespace memoize
 
   storage::~storage()
   {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
     if (m_last_key != nullptr)
       {
 	m_last_key->~key();
@@ -783,13 +778,14 @@ namespace memoize
 	if (it->second != nullptr)
 	  {
 	    it->second->~value();
-	    db_private_free (m_thread_p, it->second);
+	    free (it->second);
 	  }
 	m_key_fixed_allocator.deallocate (it->first);
       }
 
     m_keyptr_src.clear();
     m_key_value_map.clear();
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
   }
 
   void storage::start_timer()
@@ -806,7 +802,7 @@ namespace memoize
     TSC_ADD_TIMEVAL (m_elapsed_time, tv_diff);
   }
 
-  void storage::init (pvector<DB_VALUE *> &arg_key_ptr_src)
+  void storage::init (std::vector<DB_VALUE *> &arg_key_ptr_src)
   {
     for (auto &dbval : arg_key_ptr_src)
       {
@@ -816,6 +812,11 @@ namespace memoize
 
   result_code storage::get ()
   {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    scope_exit restore_heap_id ([heap_id, this]()
+    {
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+    });
     value *v;
     if (disabled || get_current_size() >= m_max_storage_size)
       {
@@ -860,6 +861,8 @@ namespace memoize
 
 	hit++;
 	has_range = true;
+	db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+	restore_heap_id.release();
 	return set_value (v);
       }
 
@@ -877,6 +880,8 @@ namespace memoize
 	  }
 	v = m_current_value_list.back();
 	m_current_value_list.pop_back();
+	db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+	restore_heap_id.release();
 	return set_value (v);
       }
     else
@@ -887,12 +892,26 @@ namespace memoize
 
   result_code storage::put()
   {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    scope_exit restore_heap_id ([heap_id, this]()
+    {
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+    });
+
     try
       {
 	if (disabled || get_current_size() >= m_max_storage_size)
 	  {
 	    disabled = true;
 	    return result_code::FULL;
+	  }
+	if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
+	  {
+	    if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
+	      {
+		disabled = true;
+		return result_code::FULL;
+	      }
 	  }
 
 	current_key_joined = true;
@@ -917,6 +936,12 @@ namespace memoize
 
   result_code storage::put_nullptr()
   {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    scope_exit restore_heap_id ([heap_id, this]()
+    {
+      db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+    });
+
     try
       {
 	if (!current_key_joined)
@@ -925,6 +950,15 @@ namespace memoize
 	      {
 		disabled = true;
 		return result_code::FULL;
+	      }
+
+	    if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
+	      {
+		if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
+		  {
+		    disabled = true;
+		    return result_code::FULL;
+		  }
 	      }
 
 	    assert (m_last_key != nullptr);
@@ -953,7 +987,7 @@ namespace memoize
 	return nullptr;
       }
 
-    k = placement_new (k,&m_dbval_allocator);
+    k = placement_new (k);
     k->m_values.reserve (m_key_cnt);
 
     for (auto dbvalp : m_keyptr_src)
@@ -968,14 +1002,14 @@ namespace memoize
 
   value *storage::get_value()
   {
-    value *v = (value *)db_private_alloc (m_thread_p, sizeof (value));
+    value *v = (value *)malloc (sizeof (value));
 
     if (v==nullptr)
       {
 	return nullptr;
       }
 
-    v = placement_new (v,&m_dbval_allocator);
+    v = placement_new (v);
     v->m_values.reserve (m_value_cnt);
 
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next)
@@ -1010,12 +1044,7 @@ extern "C"
   using namespace memoize;
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
   {
-    UINT64 storage_size; /* system parameter need*/
-    if (!XASL_IS_FLAGED (xasl, XASL_MEMOIZE_STORAGE))
-      {
-	return NO_ERROR;
-      }
-    storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
+    UINT64 storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
 
     if (storage_size == 0)
       {
@@ -1037,7 +1066,7 @@ extern "C"
     if (xasl->memoize_storage)
       {
 	xasl->memoize_storage->storage::~storage();
-	db_private_free (thread_p, xasl->memoize_storage);
+	free (xasl->memoize_storage);
 	xasl->memoize_storage = nullptr;
       }
   }
@@ -1074,7 +1103,6 @@ extern "C"
 	  {
 	    xasl->memoize_storage->stop_timer();
 	  }
-	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
 	break;
 
@@ -1126,7 +1154,6 @@ extern "C"
 	  {
 	    xasl->memoize_storage->stop_timer();
 	  }
-	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
 	break;
 
@@ -1174,7 +1201,6 @@ extern "C"
 	  {
 	    xasl->memoize_storage->stop_timer();
 	  }
-	clear_memoize_storage (thread_get_thread_entry_info(), xasl);
 	return NO_ERROR;
 	break;
 
