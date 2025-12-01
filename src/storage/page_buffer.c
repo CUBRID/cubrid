@@ -2461,7 +2461,7 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fe
       found = false;
       for (uint32_t i = count; i < max_count; i++)
 	{
-	  if (likely(entries[i].vpid.pageid == NULL_PAGEID))
+	  if (likely (entries[i].vpid.pageid == NULL_PAGEID))
 	    {
 	      entry = &entries[i];
 	      found = true;
