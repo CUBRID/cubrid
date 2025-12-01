@@ -38,6 +38,12 @@ namespace cubbase
       hardware_topology ();
       ~hardware_topology ();
 
+      hardware_topology (const hardware_topology &) = delete;
+      hardware_topology &operator= (const hardware_topology &) = delete;
+
+      hardware_topology (hardware_topology &&) = delete;
+      hardware_topology &operator= (hardware_topology &&) = delete;
+
       void pin_core (int core);
       std::vector<int> &get_cores ();
 
