@@ -35,8 +35,8 @@ struct page_auto_unfix
   }
 };
 
-using Page = std::remove_pointer<PAGE_PTR>::type;
-using auto_unfix_page_ptr = std::unique_ptr<Page, page_auto_unfix>;
+using page = std::remove_pointer<PAGE_PTR>::type;
+using auto_unfix_page_ptr = std::unique_ptr<page, page_auto_unfix>;
 
 // Factory that wraps pgbuf_fix with RAII
 inline auto_unfix_page_ptr pgbuf_fix_auto_unfix (
