@@ -4909,10 +4909,17 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			}
 		      else
 			{
-			  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
+		          if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
+			    {
+			      ;
+			    }
+		          else
+			    {
+			      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
 					       LOG_NEED_TO_WRITE_EOT_LOG);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
+			      logtb_free_tran_index (thread_p, tran_index);
+			      tdes = NULL;
+			    }
 			}
 		    }
 		  else
