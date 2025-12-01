@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include "dbtype_def.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
