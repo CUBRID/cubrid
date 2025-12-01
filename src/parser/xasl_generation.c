@@ -16454,6 +16454,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
 	  int idx, final_idx, final_count, *sort_adjust = NULL;
 	  bool no_optimization_done = false;
+	  bool is_sorted = false;
 
 	  /* prepare sort adjustment array */
 	  final_idx = 0;
@@ -16652,8 +16653,66 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		      break;
 		    }
 		}
-	      eval->is_sorted = (eval->sort_list == NULL && eval->is_sorted
-				 && xasl->selected_upd_list == NULL) ? true : false;
+	      is_sorted = eval->is_sorted = (eval->sort_list == NULL && eval->is_sorted) ? true : false;
+	    }
+
+	  if (is_sorted && xasl->selected_upd_list != NULL)
+	    {
+	      REGU_VARIABLE_LIST *regulist;
+	      PT_NODE *upd_obj;
+	      PT_NODE *upd_dom;
+	      PT_NODE *upd_dom_nm;
+	      DB_OBJECT *upd_dom_cls;
+	      OID nulloid;
+
+	      for (node = select_list_ex, regulist = &buildlist->a_scan_regu_list; node && *regulist;
+		   node = node->next, regulist = &(*regulist)->next)
+		{
+
+		  if (node->node_type == PT_EXPR
+		      && (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR)
+		      && (*regulist)->value.type == TYPE_INARITH)
+		    {
+
+		      upd_obj = node->info.expr.arg2;
+		      if (upd_obj == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+
+		      upd_dom =
+			(upd_obj->node_type == PT_DOT_) ? upd_obj->info.dot.arg2->data_type : upd_obj->data_type;
+		      if (upd_dom == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+
+		      if (upd_obj->type_enum != PT_TYPE_OBJECT
+			  || upd_dom->info.data_type.virt_type_enum != PT_TYPE_OBJECT)
+			{
+			  goto analytic_exit_on_error;
+			}
+
+		      upd_dom_nm = upd_dom->info.data_type.entity;
+		      if (upd_dom_nm == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+
+		      upd_dom_cls = upd_dom_nm->info.name.db_object;
+
+		      /* initialize result of regu expr */
+		      OID_SET_NULL (&nulloid);
+		      db_make_oid ((*regulist)->value.value.arithptr->value, &nulloid);
+
+		      xasl->selected_upd_list =
+			pt_link_regu_to_selupd_list (parser, *regulist, xasl->selected_upd_list, upd_dom_cls);
+		      if (xasl->selected_upd_list == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+		    }
+		}
 	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
@@ -16755,7 +16814,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  select_list_ex = NULL;
 
 	  /* register initial outlist */
-	  if (xasl->proc.buildlist.a_eval_list && xasl->proc.buildlist.a_eval_list->is_sorted)
+	  if (is_sorted)
 	    {
 	      xasl->outptr_list = buildlist->a_outptr_list_interm;
 	    }
