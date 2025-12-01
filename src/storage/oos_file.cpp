@@ -110,7 +110,7 @@ oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
   return NO_ERROR;
 }
 
-int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
+int oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
   // TODO: actually destroy the OOS file
   return 0;

@@ -23,7 +23,7 @@
 #include "thread_compat.hpp"
 
 extern int oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid);
-extern int oos_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
+extern int oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid);
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes);
 
