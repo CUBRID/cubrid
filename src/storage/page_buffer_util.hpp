@@ -20,6 +20,7 @@
 
 #include "page_buffer.h"
 #include "thread_compat.hpp"
+#include <memory>
 
 
 struct page_auto_unfix
@@ -35,8 +36,7 @@ struct page_auto_unfix
   }
 };
 
-using page = std::remove_pointer<PAGE_PTR>::type;
-using auto_unfix_page_ptr = std::unique_ptr<page, page_auto_unfix>;
+using auto_unfix_page_ptr = std::unique_ptr<char, page_auto_unfix>; // PAGE_PTR is typedef char*
 
 // Factory that wraps pgbuf_fix with RAII
 inline auto_unfix_page_ptr pgbuf_fix_auto_unfix (
