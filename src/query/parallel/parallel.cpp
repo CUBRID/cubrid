@@ -70,9 +70,19 @@ namespace parallel_query
 	break;
 
       case PARALLEL_SUBQUERY:
-	/* degree fixed to 1 (main + gather = 2) */
 	assert (num_pages == 0);
-	return 1;
+
+	/* hint handling */
+	if (hint_degree == -1 /* auto-compute */ ||  hint_degree > 1)
+	  {
+	    /* degree fixed to 1 (main + gather = 2) */
+	    return 1;
+	  }
+	else
+	  {
+	    /* hint 0 or 1 disables parallel execution */
+	    return 0;
+	  }
 
       default:
 	/* impossible case */
