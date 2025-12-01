@@ -1033,10 +1033,11 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  if (db_client_type_is_loaddb_compat ())
 	    {
-	      int client_type = db_get_statement_type (session, stmt_cnt);
 	      assert (stmt_cnt == 1);
 
-	      switch (client_type)
+	      int statement_type = db_get_statement_type (session, stmt_cnt);
+
+	      switch (statement_type)
 		{
 		  /* DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 */
 		case CUBRID_STMT_CREATE_CLASS:

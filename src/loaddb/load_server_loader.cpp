@@ -121,7 +121,16 @@ namespace cubload
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     LC_FIND_CLASSNAME found_again = LC_CLASSNAME_EXIST;
 
-    if (strchr (class_name, '.') || sm_check_system_class_by_name (class_name))
+    if (strchr (class_name, '.'))
+      {
+	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
+
+	if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	  {
+	    thread_ref.conn_entry->client_type = DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4;
+	  }
+      }
+    else if (sm_check_system_class_by_name (class_name))
       {
 	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
       }
@@ -145,24 +154,26 @@ namespace cubload
 	intl_identifier_lower (user_specified_name, realname);
 
 	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
+	if (found == LC_CLASSNAME_EXIST)
+	  {
+	    return found;
+	  }
+
+	/* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
+	if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	  {
+	    found_again = locate_class_for_all_users (class_name, class_oid);
+	    if (found_again == LC_CLASSNAME_EXIST)
+	      {
+		return found_again;
+	      }
+	  }
       }
 
     if (found == LC_CLASSNAME_EXIST)
       {
 	return found;
       }
-
-#if defined(SERVER_MODE)
-    /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-    if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
-      {
-	found_again = locate_class_for_all_users (class_name, class_oid);
-	if (found_again == LC_CLASSNAME_EXIST)
-	  {
-	    return found_again;
-	  }
-      }
-#endif
 
     return found;
   }
@@ -181,9 +192,10 @@ namespace cubload
     OID inst_oid = OID_INITIALIZER;
     HEAP_ATTRVALUE *heap_value = NULL;
     const char *dot = NULL;
-    const char *class_name_p = NULL;
+    const char *class_name_only = NULL;
     int error = NO_ERROR;
     int i = 0;
+    bool already_found = false;
 
     error = heap_attrinfo_start (&thread_ref, oid_User_class_oid, -1, NULL, &attr_info);
     assert (attr_info.num_values != -1);
@@ -211,7 +223,7 @@ namespace cubload
 
     /* If it is user_specified_name, remove user_name. */
     dot = strchr (class_name, '.');
-    class_name_p = dot ? dot + 1 : class_name;
+    class_name_only = dot ? dot + 1 : class_name;
 
     while (true)
       {
@@ -231,23 +243,34 @@ namespace cubload
 	      {
 		if (heap_value->attrid == CATCLS_USER_ATTR_IDX_NAME)
 		  {
-		    const char *user_name = NULL;
-		    char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
-		    char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
+		    break;
+		  }
+	      }
 
-		    user_name = db_get_string (&heap_value->dbvalue);
-		    intl_identifier_lower (user_name, downcase_user_name);
-		    snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_p);
+	    if (i != attr_info.num_values)
+	      {
+		const char *user_name = NULL;
+		char downcase_user_name[DB_MAX_USER_LENGTH] = { '\0' };
+		char user_specified_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-		    found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
-		    if (found == LC_CLASSNAME_EXIST)
+		user_name = db_get_string (&heap_value->dbvalue);
+		intl_identifier_lower (user_name, downcase_user_name);
+		snprintf (user_specified_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_user_name, class_name_only);
+
+		found = xlocator_find_class_oid (&thread_ref, user_specified_name, &class_oid, BU_LOCK);
+		if (found == LC_CLASSNAME_EXIST)
+		  {
+		    if (already_found)
 		      {
 			heap_scancache_end (&thread_ref, &scan_cache);
 			heap_attrinfo_end (&thread_ref, &attr_info);
-			return found;
+			return LC_CLASSNAME_DELETED;
 		      }
-
-		    break;
+		    else
+		      {
+			already_found = true;
+			continue;
+		      }
 		  }
 	      }
 	  }
@@ -266,7 +289,15 @@ namespace cubload
 
     heap_scancache_end (&thread_ref, &scan_cache);
     heap_attrinfo_end (&thread_ref, &attr_info);
-    return LC_CLASSNAME_DELETED;
+
+    if (already_found)
+      {
+	return LC_CLASSNAME_EXIST;
+      }
+    else
+      {
+	return LC_CLASSNAME_DELETED;
+      }
 #undef CATCLS_USER_ATTR_IDX_NAME
   }
 
