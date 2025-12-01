@@ -7257,7 +7257,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		}
 #endif /* SERVER_MODE && !WINDOWS */
 	      break;
-	    }			/* case  ACCESS_METHOD_SEQUENTIAL */
+	    }			/* case ACCESS_METHOD_SEQUENTIAL */
 
 	  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:	/* fall through */
 	  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:

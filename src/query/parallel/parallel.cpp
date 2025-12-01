@@ -93,7 +93,7 @@ namespace parallel_query
 	    /* hint 0 or 1 disables parallel execution */
 	    return 0;
 	  }
-      }
+	}	/* case parallel_type::SUBQUERY */
 
       default:
 	/* impossible case */
