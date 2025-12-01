@@ -9971,6 +9971,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  thread_p->m_enable_cached_fix = false;
   thread_p->no_logging = (bool) update->no_logging;
 
   thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
@@ -10834,6 +10835,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  thread_p->m_enable_cached_fix = false;
   thread_p->no_logging = (bool) delete_->no_logging;
 
   thread_p->no_supplemental_log = (bool) delete_->no_supplemental_log;
@@ -12114,6 +12116,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   TP_DOMAIN *result_domain;
   bool has_user_format;
 
+  thread_p->m_enable_cached_fix = false;
   thread_p->no_logging = (bool) insert->no_logging;
 
   aptr = xasl->aptr_list;
@@ -16061,6 +16064,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   int client_id = -1;
   const char *db_user = NULL;
   LOG_TDES *tdes = NULL;
+  thread_p->m_enable_cached_fix = true;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -16194,6 +16198,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl->query_in_progress = true;
   stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
   xasl->query_in_progress = false;
+  thread_p->m_enable_cached_fix = false;
 
 #if defined(SERVER_MODE)
   if (thread_is_on_trace (thread_p))
@@ -24893,6 +24898,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   int savepoint_used = 0;
   LOG_LSA lsa;
 
+  thread_p->m_enable_cached_fix = false;
   /* start a topop */
   error = xtran_server_start_topop (thread_p, &lsa);
   if (error != NO_ERROR)

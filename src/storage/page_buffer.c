@@ -2416,7 +2416,7 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fe
 #if defined(SA_MODE)
   return pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
 #endif
-  if ((fetch_mode != OLD_PAGE_PREVENT_DEALLOC && fetch_mode != OLD_PAGE)
+  if (!thread_p->m_enable_cached_fix || (fetch_mode != OLD_PAGE_PREVENT_DEALLOC && fetch_mode != OLD_PAGE)
       || requestmode != PGBUF_LATCH_READ || condition != PGBUF_UNCONDITIONAL_LATCH)
     {
       return pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
