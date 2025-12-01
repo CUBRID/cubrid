@@ -16652,7 +16652,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		      break;
 		    }
 		}
-	      eval->is_sorted = (eval->sort_list == NULL && eval->is_sorted) ? true : false;
+	      eval->is_sorted = (eval->sort_list == NULL && eval->is_sorted
+				 && xasl->selected_upd_list == NULL) ? true : false;
 	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
