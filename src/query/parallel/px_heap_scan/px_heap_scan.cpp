@@ -322,8 +322,8 @@ extern "C"
     assert (spec->num_parallel_threads == -1 /* auto-compute */
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
-    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::PARALLEL_HEAP_SCAN, num_user_pages,
-			   spec->num_parallel_threads /* hint */);
+    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
+			   num_user_pages, spec->num_parallel_threads /* hint */);
     if (num_parallel_threads < 2)
       {
 	/* try single-thread heap scan */

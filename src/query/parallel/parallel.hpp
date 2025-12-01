@@ -26,14 +26,14 @@
 
 namespace parallel_query
 {
-  typedef enum parallel_type
+  enum class parallel_type : int
   {
-    PARALLEL_HEAP_SCAN = 0,
-    PARALLEL_HASH_JOIN = 1,
-    PARALLEL_SORT = 2,
-    PARALLEL_SUBQUERY = 3,
-  } PARALLEL_TYPE;
+    HEAP_SCAN = 0,
+    HASH_JOIN = 1,
+    SORT      = 2,
+    SUBQUERY  = 3,
+  };
 
-  UINT32 compute_parallel_degree (PARALLEL_TYPE type, UINT64 num_pages,
+  UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
 				  int hint_degree = -1 /* auto-compute */ ) noexcept;
 }				/* namespace parallel_query */

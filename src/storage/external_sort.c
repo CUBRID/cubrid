@@ -4674,7 +4674,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
       parallel_num =
-	parallel_query::compute_parallel_degree (parallel_query::PARALLEL_SORT, sort_info_p->input_file->page_cnt,
+	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, sort_info_p->input_file->page_cnt,
 						 sort_info_p->parallelism /* hint */ );
       if (parallel_num < 2)
 	{

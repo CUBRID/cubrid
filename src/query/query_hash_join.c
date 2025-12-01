@@ -1969,7 +1969,7 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   assert (min_page_cnt >= 0);
 
   manager->num_parallel_threads =
-    parallel_query::compute_parallel_degree (parallel_query::PARALLEL_HASH_JOIN, min_page_cnt,
+    parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN, min_page_cnt,
 					     manager->num_parallel_threads);
   if (manager->num_parallel_threads < 2)
     {

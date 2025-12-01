@@ -33,7 +33,7 @@
 
 namespace parallel_query
 {
-  UINT32 compute_parallel_degree (PARALLEL_TYPE type, UINT64 num_pages, int hint_degree) noexcept
+  UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
     static int parallelism;
@@ -54,35 +54,46 @@ namespace parallel_query
     // *INDENT-ON*
 
     UINT32 page_threshold;
+    UINT32 auto_degree;
+    const UINT32 start_degree = 2;
 
     switch (type)
       {
-      case PARALLEL_HEAP_SCAN:
+      case parallel_type::HEAP_SCAN:
 	page_threshold = (UINT32) heap_scan_page_threshold;
 	break;
 
-      case PARALLEL_HASH_JOIN:
+      case parallel_type::HASH_JOIN:
 	page_threshold = (UINT32) hash_join_page_threshold;
 	break;
 
-      case PARALLEL_SORT:
+      case parallel_type::SORT:
 	page_threshold = (UINT32) sort_page_threshold;
 	break;
 
-      case PARALLEL_SUBQUERY:
+      case parallel_type::SUBQUERY:
+      {
 	assert (num_pages == 0);
 
+	/* degree fixed to 1 (main + gather = 2) */
+	auto_degree = 1;
+
 	/* hint handling */
-	if (hint_degree == -1 /* auto-compute */ ||  hint_degree > 1)
+	if (hint_degree == -1 /* auto-compute */)
 	  {
-	    /* degree fixed to 1 (main + gather = 2) */
-	    return 1;
+	    return MIN (auto_degree, (UINT32) parallelism);
+	  }
+	else if (hint_degree > 1)
+	  {
+	    /* hint first, ignore the parallelism parameter */
+	    return auto_degree;
 	  }
 	else
 	  {
 	    /* hint 0 or 1 disables parallel execution */
 	    return 0;
 	  }
+      }
 
       default:
 	/* impossible case */
@@ -105,6 +116,7 @@ namespace parallel_query
       }
     else if (hint_degree > 1)
       {
+	/* hint first, ignore the parallelism parameter */
 	assert ((std::size_t) hint_degree <= cubthread::system_core_count ());
 	return hint_degree;
       }
@@ -115,11 +127,10 @@ namespace parallel_query
       }
 
     UINT64 x = num_pages / page_threshold;
-    UINT32 degree;
 
     // *INDENT-OFF*
 #if defined(__GNUC__) || defined(__clang__)
-    degree = (63 - __builtin_clzll (x)) + 2;
+    auto_degree = (63 - __builtin_clzll (x)) + start_degree;
 #else
     {
       int msb = 0;
@@ -131,11 +142,11 @@ namespace parallel_query
       if (x >= (1ull <<  2)) { x >>=  2; msb +=  2; }
       if (x >= (1ull <<  1)) {           msb +=  1; }
 
-      degree = msb + start_parallel_degree;
+      auto_degree = msb + start_degree;
     }
 #endif
     // *INDENT-ON*
 
-    return MIN (degree, (UINT32) parallelism);
+    return MIN (auto_degree, (UINT32) parallelism);
   }
 }				/* namespace parallel_query */
