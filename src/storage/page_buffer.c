@@ -2718,6 +2718,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
     {
       *pgptr_p = pgbuf_fix (thread_p, &bufptr->vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
+      bufptr->write_seq.fetch_add (1);
     }
   assert (!VPID_ISNULL (&bufptr->vpid));
 
