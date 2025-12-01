@@ -100,6 +100,18 @@
 #define IS_ALTER_STMT_SET_REPL_OPTION(_node) \
   ((_node)->info.value.data_value.i )
 
+/* 
+ * IS_REPL_CONSTRAINT_RELATED_ALTER() 
+ *    return: true if ALTER clause affects replication constraints
+ *    code(in): PT_ALTER_CODE value
+ */
+#define IS_REPL_CONSTRAINT_RELATED_ALTER(code)              \
+  ( ((code) == PT_ADD_ATTR_MTHD)         ||                 \
+    ((code) == PT_DROP_ATTR_MTHD)        ||                 \
+    ((code) == PT_DROP_CONSTRAINT)       ||                 \
+    ((code) == PT_DROP_PRIMARY_CLAUSE)                     \
+  )
+
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -417,7 +429,7 @@ int ib_thread_count = 0;
  *       dedicated processing functions. See do_alter() for details.
  */
 static int
-do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter, bool * need_check_repl_constraint)
+do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 {
   const char *entity_name, *new_query;
   const char *attr_name, *mthd_name, *mthd_file, *attr_mthd_name;
@@ -640,9 +652,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter, boo
 
 	  assert (alter->info.alter.create_index == NULL);
 	}
-
-      *need_check_repl_constraint = true;
-
       break;
 
     case PT_RESET_QUERY:
@@ -764,8 +773,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter, boo
 	      return error;
 	    }
 	}
-
-      *need_check_repl_constraint = true;
 
       break;
 
@@ -1242,12 +1249,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter, boo
 	    error = er_errid ();
 	  }
       }
-
-      if (alter_code == PT_DROP_CONSTRAINT || alter_code == PT_DROP_PRIMARY_CLAUSE)
-	{
-	  *need_check_repl_constraint = true;
-	}
-
       break;
 
     case PT_APPLY_PARTITION:
@@ -1404,7 +1405,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter, boo
 	{
 	  goto alter_partition_fail;
 	}
-
       break;
 
     default:
@@ -1702,7 +1702,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   */
 	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
-	  need_check_repl_constraint = true;
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
 	  error_code = do_alter_clause_add_index (parser, crt_clause);
@@ -1736,7 +1735,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	   * its execution just to be on the safe side. */
 	  crt_clause->next = NULL;
 
-	  error_code = do_alter_one_clause_with_template (parser, crt_clause, &need_check_repl_constraint);
+	  error_code = do_alter_one_clause_with_template (parser, crt_clause);
 
 	  crt_clause->next = save_next;
 	}
@@ -1745,10 +1744,16 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto error_exit;
 	}
+
+      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter->info.alter.code))
+	{
+	  need_check_repl_constraint = true;
+	}
+
       do_semantic_checks = true;
     }
 
-  if (error_code == NO_ERROR && need_check_repl_constraint)
+  if (need_check_repl_constraint)
     {
       vclass = db_find_class (entity_name);
       error_code = check_ha_repl_constraint (vclass);
