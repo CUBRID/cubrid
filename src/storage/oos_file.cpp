@@ -119,7 +119,7 @@ int oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 
 
 static int
-oos_prepend_record_header (RECDES &rec_in, const OOS_RECORD_HEADER &oos_header, RECDES &rec_out)
+oos_make_oos_recdes (RECDES &rec_in, const OOS_RECORD_HEADER &oos_header, RECDES &rec_out)
 {
   // Review point:
   // This function just prepends the OOS header to the input record.
@@ -266,7 +266,7 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
 
   RECDES oos_rec{};
   {
-    err = oos_prepend_record_header (recdes, header, oos_rec);
+    err = oos_make_oos_recdes (recdes, header, oos_rec);
     if (err != NO_ERROR)
       {
 	oos_error ("oos_prepend_record_header failed");
