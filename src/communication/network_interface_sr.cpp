@@ -10678,8 +10678,11 @@ sloaddb_install_class (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
 
   char *mem_cls_name = NULL;
 
-  mem_cls_name = (char *) malloc (cls_name.length () + 1);
-  std::memcpy (mem_cls_name, (char *) cls_name.c_str (), cls_name.length () + 1);
+  if (buf_sz > 0)
+    {
+      mem_cls_name = (char *) malloc (cls_name.length () + 1);
+      std::memcpy (mem_cls_name, (char *) cls_name.c_str (), cls_name.length () + 1);
+    }
 
   auto deleter = [buffer = mem_cls_name]() noexcept
   {
