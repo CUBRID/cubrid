@@ -39,8 +39,17 @@ namespace cubconn::connection
     private:
       struct freelist
       {
+	/* this must be the first */
 	context m_context;
 	freelist *m_next;
+
+	freelist (std::size_t capacity) :
+	  m_context (capacity),
+	  m_next (nullptr)
+	{
+	}
+
+	~freelist () = default;
       };
 
     public:
@@ -59,11 +68,19 @@ namespace cubconn::connection
       std::vector<std::unique_ptr<worker>> m_workers;
       std::shared_ptr<thread_watcher> m_watcher;
 
-      freelist *m_freelist;
+      struct
+      {
+	freelist *m_head;
+	std::size_t m_max;
+	std::size_t m_claim;
+      } m_freelist;
 
       std::size_t m_counter;
 
       void initialize_freelist (std::uint32_t max_connections);
+      void finalize_freelist ();
+      context *claim_context ();
+      void retire_context (context *ctx);
   };
 }
 

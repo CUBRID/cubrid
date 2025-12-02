@@ -824,12 +824,7 @@ retry:
   {
     context *ctx;
 
-    ctx = new context (32 * 1024);
-    if (!ctx)
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: failed to allocate memory\n");
-	return false;
-      }
+    ctx = item.ctx;
     ctx->m_conn = item.conn;
 
     rmutex_lock (NULL, &ctx->m_conn->cmutex);

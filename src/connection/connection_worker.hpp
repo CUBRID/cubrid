@@ -94,6 +94,7 @@ namespace cubconn::connection
       {
 	public:
 	  message () :
+	    ctx (nullptr),
 	    conn (nullptr),
 	    ignore (ignore_level::DONT_IGNORE),
 	    retry (false),
@@ -110,6 +111,7 @@ namespace cubconn::connection
 
 	  message_type type;
 
+	  context *ctx;
 	  css_conn_entry *conn;
 
 	  /* the members below are used to deliver a target data */

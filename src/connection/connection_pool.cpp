@@ -27,9 +27,10 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 
-#include <csignal>
-#include <cstdint>
 #include <chrono>
+#include <csignal>
+#include <cstddef>
+#include <cstdint>
 #include <unistd.h>
 #include <stdint.h>
 #include <fcntl.h>
@@ -63,6 +64,8 @@ namespace cubconn::connection
     (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
     (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 
+    this->initialize_freelist (max_connections);
+
     /* topology setting */
     cubbase::topology.load_cpu (connection_threads);
     cubbase::topology.map_nic_to_core ();
@@ -94,7 +97,6 @@ namespace cubconn::connection
       }
 
     m_max_connections = max_connections;
-    printf ("max_connections: %d\n", max_connections);
   }
 
   void pool::finalize ()
@@ -137,6 +139,8 @@ namespace cubconn::connection
 
     m_max_connections = -1;
     m_workers.clear ();
+
+    this->finalize_freelist ();
   }
 
   void pool::dispatch (css_conn_entry *conn)
@@ -147,6 +151,8 @@ namespace cubconn::connection
     worker::message request;
 
     request.type = worker::message_type::NEW_CLIENT;
+    request.ctx = this->claim_context ();
+    /* TODO: null guard */
     request.conn = conn;
     m_workers[m_counter]->enqueue (worker::queue_type::IMMEDIATE, std::move (request));
     if (!m_workers[m_counter]->notify ())
@@ -172,10 +178,68 @@ namespace cubconn::connection
 
   void pool::initialize_freelist (std::uint32_t max_connections)
   {
-    std::uint32_t i;
+    freelist *head;
+    std::size_t i;
 
-    for (i = 0; i < max_connections; i++)
+    m_freelist.m_max = static_cast<std::size_t> (static_cast<float> (max_connections) * /* margin */ 1.1);
+    for (i = 0; i < m_freelist.m_max; i++)
       {
+	head = m_freelist.m_head;
+	m_freelist.m_head = new freelist (32 * 1024);
+	m_freelist.m_head->m_next = head;
       }
+    m_freelist.m_claim = 0;
+  }
+
+  void pool::finalize_freelist ()
+  {
+    freelist *head;
+
+    assert (m_freelist.m_claim == 0);
+
+    while (m_freelist.m_head)
+      {
+	head = m_freelist.m_head;
+	m_freelist.m_head = m_freelist.m_head->m_next;
+	delete head;
+      }
+
+    m_freelist.m_max = 0;
+    m_freelist.m_claim = 0;
+  }
+
+  context *pool::claim_context ()
+  {
+    freelist *head;
+
+    head = m_freelist.m_head;
+    if (head)
+      {
+	m_freelist.m_head = m_freelist.m_head->m_next;
+      }
+    else
+      {
+	head = new freelist (32 * 1024);
+      }
+    m_freelist.m_claim++;
+
+    return &head->m_context;
+  }
+
+  void pool::retire_context (context *ctx)
+  {
+    freelist *head;
+
+    head = reinterpret_cast<freelist *> (ctx);
+    if (m_freelist.m_claim > m_freelist.m_max)
+      {
+	delete head;
+      }
+    else
+      {
+	head->m_next = m_freelist.m_head;
+	m_freelist.m_head = head;
+      }
+    m_freelist.m_claim--;
   }
 }
