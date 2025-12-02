@@ -16113,6 +16113,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   BUILDLIST_PROC_NODE *buildlist;
   int i;
   REGU_VARIABLE_LIST regu_var_p;
+  bool is_sorted = false;
 
   assert (parser != NULL);
 
@@ -16454,7 +16455,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
 	  int idx, final_idx, final_count, *sort_adjust = NULL;
 	  bool no_optimization_done = false;
-	  bool is_sorted = false;
 
 	  /* prepare sort adjustment array */
 	  final_idx = 0;
@@ -16637,19 +16637,26 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
 	    {
-	      eval->is_sorted = (eval->sort_list == NULL) ? true : false;
+	      eval->is_sorted = (xasl->limit_row_count != NULL && eval->sort_list == NULL) ? true : false;
 
 	      for (a_func_list = eval->head; a_func_list && eval->is_sorted; a_func_list = a_func_list->next)
 		{
 		  switch (a_func_list->function)
 		    {
-		    case PT_LEAD:
-		    case PT_LAG:
-		    case PT_NTH_VALUE:
-		      eval->is_sorted = false;
+		    case PT_FIRST_VALUE:
+		      if (a_func_list->ignore_nulls)
+			{
+			  eval->is_sorted = false;
+			  break;
+			}
+
+		    case PT_ROW_NUMBER:
+		    case PT_RANK:
+		    case PT_DENSE_RANK:
 		      break;
 
 		    default:
+		      eval->is_sorted = false;
 		      break;
 		    }
 		}
@@ -16961,38 +16968,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       if ((xasl->instnum_pred != NULL || xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
-	  && pt_has_analytic (parser, select_node))
+	  && pt_has_analytic (parser, select_node) && !is_sorted)
 	{
-	  ANALYTIC_EVAL_TYPE *eval;
-	  ANALYTIC_TYPE *a_func_list;
-
-	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
-	    {
-	      if (!eval->is_sorted)
-		{
-		  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
-		   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
-		  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
-		  break;
-		}
-
-	      for (a_func_list = eval->head;
-		   a_func_list && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC);
-		   a_func_list = a_func_list->next)
-		{
-		  switch (a_func_list->function)
-		    {
-		      // case PT_LAG:
-		    case PT_ROW_NUMBER:
-		    case PT_RANK:
-		      break;
-
-		    default:
-		      xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
-		      break;
-		    }
-		}
-	    }
+	  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
+	   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
+	  xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
 	}
 
       /* union fields for BUILDLIST_PROC_NODE - BUILDLIST_PROC */
