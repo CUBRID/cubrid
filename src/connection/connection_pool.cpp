@@ -181,6 +181,8 @@ namespace cubconn::connection
     freelist *head;
     std::size_t i;
 
+    m_freelist.m_head = nullptr;
+    m_freelist.m_claim = 0;
     m_freelist.m_max = static_cast<std::size_t> (static_cast<float> (max_connections) * /* margin */ 1.1);
     for (i = 0; i < m_freelist.m_max; i++)
       {
@@ -188,7 +190,6 @@ namespace cubconn::connection
 	m_freelist.m_head = new freelist (32 * 1024);
 	m_freelist.m_head->m_next = head;
       }
-    m_freelist.m_claim = 0;
   }
 
   void pool::finalize_freelist ()
