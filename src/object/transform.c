@@ -320,6 +320,7 @@ static CT_ATTR ct_attribute_atts[] = {
   {"is_nullable", NULL_ATTRID, DB_TYPE_INTEGER},
   {"default_value", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"domains", NULL_ATTRID, DB_TYPE_SEQUENCE},
+  {"flags", NULL_ATTRID, DB_TYPE_INTEGER},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
 };
 

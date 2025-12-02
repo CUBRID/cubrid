@@ -1315,12 +1315,19 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
       goto error;
     }
 
-  /* flag */
+  /* Not Null */
   attr_val_p = &attrs[7].value;
   tp_Integer.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
+  int flags;
+  flags = db_get_int(attr_val_p);
   /* for 'is_nullable', reverse NON_NULL flag */
-  db_make_int (attr_val_p, (db_get_int (attr_val_p) & SM_ATTFLAG_NON_NULL) ? false : true);
+  db_make_int (attr_val_p, (flags & SM_ATTFLAG_NON_NULL) ? false : true);
+
+  /* flags */
+  attr_val_p = &attrs[10].value;
+  /* trailing zero needed, but dont have beautiful way without using bit shift and log2 */
+  db_make_int (attr_val_p, flags & ~(SM_ATTFLAG_INVISIBLE_COLUMN-1));
 
   /* index_file_id */
   or_advance (buf_p, OR_INT_SIZE);
@@ -1578,7 +1585,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
 
   /* comment */
-  attr_val_p = &attrs[10].value;
+  attr_val_p = &attrs[11].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_ATT_COMMENT_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_COMMENT_LENGTH);
 
