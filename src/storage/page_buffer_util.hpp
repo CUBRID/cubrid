@@ -39,7 +39,8 @@ struct page_auto_unfix
 using auto_unfix_page_ptr = std::unique_ptr<char, page_auto_unfix>; // PAGE_PTR is typedef char*
 
 // Factory that wraps pgbuf_fix with RAII
-inline auto_unfix_page_ptr pgbuf_fix_auto_unfix (
+inline auto_unfix_page_ptr
+pgbuf_fix_auto_unfix (
 	THREAD_ENTRY *thread_p,
 	const VPID *vpid,
 	PAGE_FETCH_MODE fetch_mode,
