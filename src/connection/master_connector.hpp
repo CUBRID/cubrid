@@ -37,13 +37,10 @@
 #include <fcntl.h>
 #include <string>
 
-namespace cubconn
+namespace cubconn::master
 {
-  class master_connector
+  class connector
   {
-      using context = master_connector_context;
-      using state = master_connector_state;
-
     private:
       enum class master_state
       {
@@ -54,8 +51,8 @@ namespace cubconn
       };
 
     public:
-      master_connector ();
-      ~master_connector ();
+      connector ();
+      ~connector ();
 
       void stop () noexcept;
 

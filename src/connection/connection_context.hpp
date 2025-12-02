@@ -30,12 +30,12 @@
 #include "buffer.hpp"
 #include "span.hpp"
 
-namespace cubconn
+/* --------------------------------------------------------------------------- */
+/* master connector								 */
+/* --------------------------------------------------------------------------- */
+namespace cubconn::master
 {
-  /* --------------------------------------------------------------------------- */
-  /* master connector								 */
-  /* --------------------------------------------------------------------------- */
-  enum class master_connector_state
+  enum class state
   {
     /* handshake with master */
     SendInHandshake,
@@ -57,24 +57,24 @@ namespace cubconn
     SendHBToMaster
   };
 
-  struct master_connector_context
+  struct context
   {
     css_conn_entry *m_conn;
 
     buffer m_recvbuf;
     cubbase::packet_buffer m_sendbuf;
 
-    master_connector_state m_state { master_connector_state::SendInHandshake };
+    state m_state { state::SendInHandshake };
     bool m_has_error;
 
-    master_connector_context ();
-    ~master_connector_context ();
+    context ();
+    ~context ();
 
-    master_connector_context (const master_connector_context &) = delete;
-    master_connector_context &operator= (const master_connector_context &) = delete;
+    context (const context &) = delete;
+    context &operator= (const context &) = delete;
 
-    master_connector_context (master_connector_context &&) noexcept = delete;
-    master_connector_context &operator= (master_connector_context &&) noexcept = delete;
+    context (context &&) noexcept = delete;
+    context &operator= (context &&) noexcept = delete;
 
     void reset ();
     bool has_data_to_send ();
@@ -97,24 +97,27 @@ namespace cubconn
       return m_sendbuf.allocate<T> ();
     }
   };
+}
 
-  /* --------------------------------------------------------------------------- */
-  /* connection worker								 */
-  /* --------------------------------------------------------------------------- */
-  enum class connection_worker_state
+/* --------------------------------------------------------------------------- */
+/* connection worker								 */
+/* --------------------------------------------------------------------------- */
+namespace cubconn::connection
+{
+  enum class state
   {
     HEADER,
     DATA,
     ERROR
   };
 
-  enum class connection_worker_ignore : uint8_t
+  enum class ignore_level : uint8_t
   {
     DONT_IGNORE = 0,
     IGNORE_ALL
   };
 
-  struct connection_worker_context
+  struct context
   {
     css_conn_entry *m_conn;
 
@@ -122,7 +125,7 @@ namespace cubconn
     int m_worker;
 
     /* ignore guards (ERR/HUP) */
-    connection_worker_ignore m_ignore;
+    ignore_level m_ignore;
     bool m_removed;
 
     /* --------------------------------------------------------------------------- */
@@ -130,7 +133,7 @@ namespace cubconn
     /* --------------------------------------------------------------------------- */
     struct
     {
-      connection_worker_state m_state;
+      state m_state;
       receiver m_receiver;
 
       cubbase::span<std::byte> m_header;
@@ -149,15 +152,15 @@ namespace cubconn
       transmitter m_transmitter;
     } m_send;
 
-    connection_worker_context (std::size_t capacity, connection_stats *stats);
-    connection_worker_context ();
-    ~connection_worker_context ();
+    context (std::size_t capacity, connection_stats *stats);
+    context ();
+    ~context ();
 
-    connection_worker_context (const connection_worker_context &) = delete;
-    connection_worker_context &operator= (const connection_worker_context &) = delete;
+    context (const context &) = delete;
+    context &operator= (const context &) = delete;
 
-    connection_worker_context (connection_worker_context &&) noexcept = delete;
-    connection_worker_context &operator= (connection_worker_context &&) noexcept = delete;
+    context (context &&) noexcept = delete;
+    context &operator= (context &&) noexcept = delete;
 
     void reset ();
   };

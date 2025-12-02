@@ -31,7 +31,7 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
-namespace cubconn
+namespace cubconn::connection
 {
   struct thread_watcher
   {
@@ -40,13 +40,13 @@ namespace cubconn
     int active;
   };
 
-  class connection_pool
+  class pool
   {
-      using context = connection_worker_context;
+//     using context = connection_worker_context;
 
     public:
-      connection_pool ();
-      ~connection_pool ();
+      pool ();
+      ~pool ();
 
       void initialize (std::uint32_t max_connections, int connection_threads);
       void finalize ();
@@ -57,11 +57,11 @@ namespace cubconn
 
     private:
       std::uint32_t m_max_connections;
-      std::vector<std::unique_ptr<connection_worker>> m_workers;
+      std::vector<std::unique_ptr<worker>> m_workers;
       std::shared_ptr<thread_watcher> m_watcher;
 
       /* freelist */
-      context *contexts;
+//      context *contexts;
 
       std::size_t m_counter;
 

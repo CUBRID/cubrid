@@ -41,17 +41,13 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 
-namespace cubconn
+namespace cubconn::connection
 {
   class connection_pool;
   struct thread_watcher;
 
-  class connection_worker
+  class worker
   {
-      using context = connection_worker_context;
-      using state = connection_worker_state;
-      using ignore_level = connection_worker_ignore;
-
     private:
       enum class notification_type : uint8_t
       {
@@ -143,8 +139,8 @@ namespace cubconn
       };
 
     public:
-      connection_worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core, std::size_t index);
-      ~connection_worker ();
+      worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core, std::size_t index);
+      ~worker ();
 
       void initialize ();
       void finalize ();

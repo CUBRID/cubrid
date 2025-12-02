@@ -1366,7 +1366,7 @@ css_shutdown_conn_by_tran_index (int tran_index, int wait_time)
 
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
-					     (cubconn::connection_worker_ignore::DONT_IGNORE), false, wait_time);
+					     (cubconn::connection::ignore_level::DONT_IGNORE), false, wait_time);
 
 		  error = NO_ERROR;
 		}

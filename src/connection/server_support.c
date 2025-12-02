@@ -194,7 +194,7 @@ static void css_process_shutdown_request (SOCKET master_fd);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
-static unsigned int css_enqueue_and_notify (cubconn::connection_worker::queue_type type, cubconn::connection_worker::message &&item);
+static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
@@ -649,7 +649,7 @@ shutdown:
  *   item (in): request
  */
 static unsigned int
-css_enqueue_and_notify (cubconn::connection_worker::queue_type type, cubconn::connection_worker::message &&item)
+css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item)
 {
   CSS_CONN_ENTRY * conn;
   int r;

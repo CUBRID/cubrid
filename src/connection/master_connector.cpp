@@ -63,9 +63,9 @@
     (c->m_state = state::x); \
 } while (0)
 
-namespace cubconn
+namespace cubconn::master
 {
-  master_connector::master_connector () :
+  connector::connector () :
     m_stop (false),
     m_entry (nullptr),
     m_master_state (master_state::CLOSED),
@@ -76,35 +76,35 @@ namespace cubconn
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (m_eventfd == -1)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector: failed to create eventfd\n");
+	er_log_conn (__FILE__, __LINE__, "master::connector: failed to create eventfd\n");
 	assert_release (false);
       }
     ctx = new context ();
     if (!ctx)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector: failed to allocate memory\n");
+	er_log_conn (__FILE__, __LINE__, "master::connector: failed to allocate memory\n");
 	assert_release (false);
       }
     ctx->m_conn = reinterpret_cast<css_conn_entry *> (new int { m_eventfd });
     if (!ctx->m_conn)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector: failed to allocate memory\n");
+	er_log_conn (__FILE__, __LINE__, "master::connector: failed to allocate memory\n");
 	assert_release (false);
       }
     if (!m_events.add_descriptor (m_eventfd, EPOLLIN, ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector: add_descriptor failed\n");
+	er_log_conn (__FILE__, __LINE__, "master::connector: add_descriptor failed\n");
 	delete ctx->m_conn;
 	assert_release (false);
       }
     m_context.reset ();
   }
 
-  master_connector::~master_connector ()
+  connector::~connector ()
   {
   }
 
-  void master_connector::stop () noexcept
+  void connector::stop () noexcept
   {
     std::uint64_t u;
     ssize_t bytes;
@@ -141,44 +141,44 @@ namespace cubconn
       }
   }
 
-  bool master_connector::attach (cubthread::entry &entry) noexcept
+  bool connector::attach (cubthread::entry &entry) noexcept
   {
     m_entry = &entry;
     return true;
   }
 
-  bool master_connector::attach (connection_pool &pool) noexcept
+  bool connector::attach (connection_pool &pool) noexcept
   {
     m_connection_pool = &pool;
     return true;
   }
 
-  bool master_connector::run (int port, std::string &server_name) noexcept
+  bool connector::run (int port, std::string &server_name) noexcept
   {
     m_master_port = port;
     m_server_name = server_name;
     if (!this->connect (port))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->run: connect failed");
+	er_log_conn (__FILE__, __LINE__, "master::connector->run: connect failed");
 	return false;
       }
 
     if (!this->prepare_handshake (server_name))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->run: prepare_handshake failed");
+	er_log_conn (__FILE__, __LINE__, "master::connector->run: prepare_handshake failed");
 	return false;
       }
 
     if (!this->execute ())
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->run: execute failed");
+	er_log_conn (__FILE__, __LINE__, "master::connector->run: execute failed");
 	return false;
       }
 
     return true;
   }
 
-  inline bool master_connector::make_nonblocking (int fd) noexcept
+  inline bool connector::make_nonblocking (int fd) noexcept
   {
     int flags;
 
@@ -192,7 +192,7 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::opt_socket (int fd) noexcept
+  inline bool connector::opt_socket (int fd) noexcept
   {
     int value;
 
@@ -213,12 +213,12 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::dispose_connection (context *ctx)
+  inline bool connector::dispose_connection (context *ctx)
   {
     /* remove the fd which is reset by peer */
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->dispose_connection: m_events->remove_descriptor failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->dispose_connection: m_events->remove_descriptor failed: %s",
 		     strerror (errno));
 	return false;
       }
@@ -243,7 +243,7 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::update_epoll_events (context *ctx)
+  inline bool connector::update_epoll_events (context *ctx)
   {
     std::uint32_t flags;
 
@@ -255,7 +255,7 @@ namespace cubconn
 
     if (!m_events.modify_descriptor (ctx->m_conn->fd, flags, ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->update_epoll_events: m_events->modify_descriptor failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->update_epoll_events: m_events->modify_descriptor failed: %s",
 		     strerror (errno));
 	return false;
       }
@@ -263,7 +263,7 @@ namespace cubconn
     return true;
   }
 
-  inline master_connector::context *master_connector::make_context ()
+  inline context *connector::make_context ()
   {
     context *ctx;
 
@@ -278,7 +278,7 @@ namespace cubconn
     return ctx;
   }
 
-  inline int master_connector::connect_to_master (int port) noexcept
+  inline int connector::connect_to_master (int port) noexcept
   {
     char hostname[CUB_MAXHOSTNAMELEN];
     int fd;
@@ -294,7 +294,7 @@ namespace cubconn
     if (IS_INVALID_SOCKET (fd))
       {
 	/* error has already been set. */
-	er_log_conn (__FILE__, __LINE__, "master_connector->connect_to_master: failed to connect - error: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->connect_to_master: failed to connect - error: %s",
 		     strerror (errno));
 	return -1;
       }
@@ -302,7 +302,7 @@ namespace cubconn
     return fd;
   }
 
-  bool master_connector::connect (int port) noexcept
+  bool connector::connect (int port) noexcept
   {
     css_conn_entry *conn;
     SOCKET fd;
@@ -310,7 +310,7 @@ namespace cubconn
     fd = this->connect_to_master (port);
     if (IS_INVALID_SOCKET (fd))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->connect: failed to connect - error: %s", strerror (errno));
+	er_log_conn (__FILE__, __LINE__, "master::connector->connect: failed to connect - error: %s", strerror (errno));
 	return false;
       }
 
@@ -318,7 +318,7 @@ namespace cubconn
 
     if (!this->make_nonblocking (fd))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->connect: make_nonblocking failed - error: %s", strerror (errno));
+	er_log_conn (__FILE__, __LINE__, "master::connector->connect: make_nonblocking failed - error: %s", strerror (errno));
 	::close (fd);
 	return false;
       }
@@ -327,7 +327,7 @@ namespace cubconn
     conn = css_make_conn (fd);
     if (!conn)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->connect: css_make_conn failed: can't recover this");
+	er_log_conn (__FILE__, __LINE__, "master::connector->connect: css_make_conn failed: can't recover this");
 	::close (fd);
 	return false;
       }
@@ -337,8 +337,8 @@ namespace cubconn
     return true;
   }
 
-  inline void master_connector::set_registrant (css_server_proc_register *proc_register,
-      std::string &server_name) noexcept
+  inline void connector::set_registrant (css_server_proc_register *proc_register,
+					 std::string &server_name) noexcept
   {
     char *p, *last;
     char **argv;
@@ -356,7 +356,7 @@ namespace cubconn
       }
   }
 
-  inline bool master_connector::prepare_handshake (std::string &server_name) noexcept
+  inline bool connector::prepare_handshake (std::string &server_name) noexcept
   {
     NET_HEADER *header[3];
     /* header[0]: magic number packet */
@@ -393,7 +393,7 @@ namespace cubconn
 
     if (!m_events.add_descriptor (conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, &m_context))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->prepare_handshake: m_events->add_descriptor failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->prepare_handshake: m_events->add_descriptor failed: %s",
 		     strerror (errno));
 	return false;
       }
@@ -402,7 +402,7 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::prepare_switch_to_unix_socket (context *ctx) noexcept
+  inline bool connector::prepare_switch_to_unix_socket (context *ctx) noexcept
   {
     NET_HEADER *header;
     css_conn_entry *conn;
@@ -435,13 +435,13 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->execute: update_epoll_events failed: %s", strerror (errno));
+	er_log_conn (__FILE__, __LINE__, "master::connector->execute: update_epoll_events failed: %s", strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::prepare_reply (context *ctx, int reason) noexcept
+  inline bool connector::prepare_reply (context *ctx, int reason) noexcept
   {
     css_conn_entry *conn;
     NET_HEADER *header;
@@ -467,7 +467,7 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::prepare_reply_refuse_connection (context *ctx, int reason) noexcept
+  inline bool connector::prepare_reply_refuse_connection (context *ctx, int reason) noexcept
   {
     NET_HEADER *header[2];
     css_conn_entry *conn;
@@ -508,7 +508,7 @@ namespace cubconn
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "master_connector->prepare_reply_refuse_connection: m_events->add_descriptor failed: %s", strerror (errno));
+		     "master::connector->prepare_reply_refuse_connection: m_events->add_descriptor failed: %s", strerror (errno));
 	return false;
       }
 
@@ -516,7 +516,7 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::prepare_heartbeat_send_request (context *ctx, CSS_SERVER_REQUEST command) noexcept
+  inline bool connector::prepare_heartbeat_send_request (context *ctx, CSS_SERVER_REQUEST command) noexcept
   {
     int *response;
 
@@ -533,14 +533,14 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->prepare_heartbeat_send_request: update_epoll_events failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->prepare_heartbeat_send_request: update_epoll_events failed: %s",
 		     strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command,
+  inline bool connector::prepare_heartbeat_send_request_with_data (context *ctx, CSS_SERVER_REQUEST command,
       std::byte *data, std::size_t size) noexcept
   {
 #define BODY_SIZE 2048
@@ -571,20 +571,20 @@ namespace cubconn
     if (!this->update_epoll_events (ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "master_connector->prepare_heartbeat_send_request_with_data: update_epoll_events failed: %s", strerror (errno));
+		     "master::connector->prepare_heartbeat_send_request_with_data: update_epoll_events failed: %s", strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::prepare_heartbeat_register (context *ctx) noexcept
+  inline bool connector::prepare_heartbeat_register (context *ctx) noexcept
   {
     hbp_proc_register *hbp_register;
 
     hbp_register = hb_make_set_hbp_register (HB_PTYPE_SERVER);
     if (hbp_register == NULL)
       {
-	er_log_conn (ARG_FILE_LINE, "master_connector->hb_make_set_hbp_register: hbp_register failed. \n");
+	er_log_conn (ARG_FILE_LINE, "master::connector->hb_make_set_hbp_register: hbp_register failed. \n");
 	return false;
       }
 
@@ -598,7 +598,7 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::prepare_heartbeat_ha_mode (context *ctx) noexcept
+  inline bool connector::prepare_heartbeat_ha_mode (context *ctx) noexcept
   {
     int *response;
 
@@ -623,14 +623,14 @@ namespace cubconn
     /* update the events */
     if (!this->update_epoll_events (ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->prepare_heartbeat_ha_mode: update_epoll_events failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->prepare_heartbeat_ha_mode: update_epoll_events failed: %s",
 		     strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::prepare_heartbeat_log_eof (context *ctx) noexcept
+  inline bool connector::prepare_heartbeat_log_eof (context *ctx) noexcept
   {
     LOG_LSA *eof_lsa;
     static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
@@ -662,14 +662,14 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::switch_to_unix_socket (context *ctx) noexcept
+  inline bool connector::switch_to_unix_socket (context *ctx) noexcept
   {
     int datagram_fd;
 
     /* wait to be reqeusted to connect from master */
     if (!css_tcp_listen_server_datagram (m_unixsocket, &datagram_fd))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->switch_to_unix_socket: css_tcp_listen_server_datagram failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: css_tcp_listen_server_datagram failed: %s",
 		     strerror (errno));
 
 	(void) ::unlink (m_unixpath.c_str ());
@@ -681,7 +681,7 @@ namespace cubconn
     /* remove original */
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->switch_to_unix_socket: m_events->remove_descriptor failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: m_events->remove_descriptor failed: %s",
 		     strerror (errno));
 	return false;
       }
@@ -699,14 +699,14 @@ namespace cubconn
     assert (!this->m_events.is_nonblocking (datagram_fd));
     if (!this->make_nonblocking (datagram_fd))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->switch_to_unix_socket: m_events->make_nonblocking failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: m_events->make_nonblocking failed: %s",
 		     strerror (errno));
 	return false;
       }
 
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLIN | EPOLLRDHUP, ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->switch_to_unix_socket: m_events->add_descriptor failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->switch_to_unix_socket: m_events->add_descriptor failed: %s",
 		     strerror (errno));
 	return false;
       }
@@ -717,7 +717,7 @@ namespace cubconn
     return true;
   }
 
-  inline result master_connector::handshake_from_master (context *ctx) noexcept
+  inline result connector::handshake_from_master (context *ctx) noexcept
   {
     const int *buf;
     result status;
@@ -726,7 +726,7 @@ namespace cubconn
     std::tie (status, buf) = buffered_socket::read_fixed_size<int> (ctx->m_conn->fd, ctx->m_recvbuf);
     if (status != result::Ok)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->execute: read_fixed_size returned %d", status);
+	er_log_conn (__FILE__, __LINE__, "master::connector->execute: read_fixed_size returned %d", status);
 	return status;
       }
 
@@ -757,7 +757,7 @@ namespace cubconn
     return result::Ok;
   }
 
-  inline result master_connector::request_new_client (context *ctx) noexcept
+  inline result connector::request_new_client (context *ctx) noexcept
   {
     context *new_ctx;
     CSS_CONN_ENTRY *conn;
@@ -770,11 +770,11 @@ namespace cubconn
 
     /* receive new socket descriptor from the master */
     new_fd = css_open_new_socket_from_master (ctx->m_conn->fd, &request_id);
-    er_log_conn (__FILE__, __LINE__, "master_connector->request_new_client: unpack new socket: %d\n", new_fd);
+    er_log_conn (__FILE__, __LINE__, "master::connector->request_new_client: unpack new socket: %d\n", new_fd);
     if (IS_INVALID_SOCKET (new_fd))
       {
 	er_log_debug (__FILE__, __LINE__,
-		      "master_connector->request_new_client: failed to receive client socket from master. \
+		      "master::connector->request_new_client: failed to receive client socket from master. \
 		      this usually indicates the master process cannot accept new connections. \
 		      check master process logs and system fd limits (ulimit -n, /proc/sys/fs/file-max)");
 	return result::Reset;
@@ -782,7 +782,7 @@ namespace cubconn
 
     if (!this->opt_socket (new_fd) || !this->make_nonblocking (new_fd))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->request_new_client: %s", strerror (errno));
+	er_log_conn (__FILE__, __LINE__, "master::connector->request_new_client: %s", strerror (errno));
 	::close (new_fd);
 
 	/* this return value indicates the status of the master connection, so */
@@ -867,7 +867,7 @@ namespace cubconn
     if (!m_events.add_descriptor (new_ctx->m_conn->fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP, new_ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "master_connector->request_new_client: m_events->add_descriptor failed: %s", strerror (errno));
+		     "master::connector->request_new_client: m_events->add_descriptor failed: %s", strerror (errno));
 	css_prepare_shutdown_conn (new_ctx->m_conn);
 	css_free_conn (new_ctx->m_conn);
 	delete new_ctx;
@@ -879,7 +879,7 @@ namespace cubconn
     return result::Ok;
   }
 
-  inline result master_connector::handle_request (context *ctx) noexcept
+  inline result connector::handle_request (context *ctx) noexcept
   {
     const int *buf;
     result status;
@@ -888,7 +888,7 @@ namespace cubconn
     std::tie (status, buf) = buffered_socket::read_fixed_size<int> (ctx->m_conn->fd, ctx->m_recvbuf);
     if (status != result::Ok)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->handle_request: read_fixed_size returned %d", status);
+	er_log_conn (__FILE__, __LINE__, "master::connector->handle_request: read_fixed_size returned %d", status);
 	return status;
       }
 
@@ -946,7 +946,7 @@ namespace cubconn
     return result::Ok;
   }
 
-  inline result master_connector::change_ha_mode (context *ctx) noexcept
+  inline result connector::change_ha_mode (context *ctx) noexcept
   {
     HA_SERVER_STATE state;
     const int *buf;
@@ -955,7 +955,7 @@ namespace cubconn
     std::tie (status, buf) = buffered_socket::read_fixed_size<int> (ctx->m_conn->fd, ctx->m_recvbuf);
     if (status != result::Ok)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->change_ha_mode: read_fixed_size returned %d", status);
+	er_log_conn (__FILE__, __LINE__, "master::connector->change_ha_mode: read_fixed_size returned %d", status);
 	return status;
       }
 
@@ -990,7 +990,7 @@ namespace cubconn
     return result::Ok;
   }
 
-  inline bool master_connector::handle_master_reception (context *ctx) noexcept
+  inline bool connector::handle_master_reception (context *ctx) noexcept
   {
     result status = result::Ok;
 
@@ -1024,7 +1024,7 @@ namespace cubconn
 	break;
 
       default:
-	er_log_conn (__FILE__, __LINE__, "master_connector->handle_master_connection failed: m_context->state: %d",
+	er_log_conn (__FILE__, __LINE__, "master::connector->handle_master_connection failed: m_context->state: %d",
 		     ctx->m_state);
 	assert_release (false);
 	break;
@@ -1033,26 +1033,26 @@ namespace cubconn
     /* Is there an error */
     if (status == result::Reset)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->handle_master_transmission: protocol is messed up somewhere");
+	er_log_conn (__FILE__, __LINE__, "master::connector->handle_master_transmission: protocol is messed up somewhere");
 	ctx->m_recvbuf.reset ();
 	ctx->m_sendbuf.clear ();
 	NEXT_STATE (ctx, RecvRequestType);
       }
     else if (status == result::PeerReset)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->handle_master_connection: reset by peer");
+	er_log_conn (__FILE__, __LINE__, "master::connector->handle_master_connection: reset by peer");
 	return false;
       }
     else if (status == result::Error)
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->handle_master_connection: failed");
+	er_log_conn (__FILE__, __LINE__, "master::connector->handle_master_connection: failed");
 	return false;
       }
 
     return true;
   }
 
-  inline void master_connector::sent_reply_to_client (context *ctx) noexcept
+  inline void connector::sent_reply_to_client (context *ctx) noexcept
   {
     if (!ctx->m_has_error)
       {
@@ -1076,7 +1076,7 @@ namespace cubconn
     delete ctx;
   }
 
-  inline bool master_connector::handle_master_transmission (context *ctx) noexcept
+  inline bool connector::handle_master_transmission (context *ctx) noexcept
   {
     result status;
 
@@ -1106,7 +1106,7 @@ namespace cubconn
     assert (status == result::Ok);
 
     /* fully send */
-    er_log_conn (__FILE__, __LINE__, "master_connector->handle_master_transmission: fully sent the data to fd = %d\n",
+    er_log_conn (__FILE__, __LINE__, "master::connector->handle_master_transmission: fully sent the data to fd = %d\n",
 		 ctx->m_conn->fd);
 
     /* move to next state */
@@ -1121,7 +1121,7 @@ namespace cubconn
 	if (!this->switch_to_unix_socket (ctx))
 	  {
 	    er_log_conn (__FILE__, __LINE__,
-			 "master_connector->handle_master_transmission: master->switch_to_unix_socket failed");
+			 "master::connector->handle_master_transmission: master->switch_to_unix_socket failed");
 	    return false;
 	  }
 	/* register myself to master */
@@ -1130,7 +1130,7 @@ namespace cubconn
 	    if (!this->prepare_heartbeat_register (ctx))
 	      {
 		er_log_conn (__FILE__, __LINE__,
-			     "master_connector->handle_master_transmission: prepare_heartbeat_register failed");
+			     "master::connector->handle_master_transmission: prepare_heartbeat_register failed");
 		return false;
 	      }
 	    NEXT_STATE (ctx, SendHBToMaster);
@@ -1142,10 +1142,10 @@ namespace cubconn
 	break;
 
       case state::SendReplyToClient:
-	er_log_conn (__FILE__, __LINE__, "master_connector->sent_reply_to_client: remove fd = %d\n", ctx->m_conn->fd);
+	er_log_conn (__FILE__, __LINE__, "master::connector->sent_reply_to_client: remove fd = %d\n", ctx->m_conn->fd);
 	if (!m_events.remove_descriptor (ctx->m_conn->fd))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "master_connector->sent_reply_to_client: m_events->remove_descriptor failed: %s",
+	    er_log_conn (__FILE__, __LINE__, "master::connector->sent_reply_to_client: m_events->remove_descriptor failed: %s",
 			 strerror (errno));
 	    return false;
 	  }
@@ -1166,14 +1166,14 @@ namespace cubconn
     /* update */
     if (!ctx->has_data_to_send () && !this->update_epoll_events (ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->handle_master_transmission: update_epoll_events failed: %s",
+	er_log_conn (__FILE__, __LINE__, "master::connector->handle_master_transmission: update_epoll_events failed: %s",
 		     strerror (errno));
 	return false;
       }
     return true;
   }
 
-  inline bool master_connector::dispose_master_connection () noexcept
+  inline bool connector::dispose_master_connection () noexcept
   {
     if (m_master_state == master_state::WAIT_RESPONSE || m_master_state == master_state::ESTABLISHED)
       {
@@ -1181,7 +1181,7 @@ namespace cubconn
 	if (!m_events.remove_descriptor (m_context.m_conn->fd))
 	  {
 	    er_log_conn (__FILE__, __LINE__,
-			 "master_connector->dispose_master_connection: m_events->remove_descriptor failed: %s",
+			 "master::connector->dispose_master_connection: m_events->remove_descriptor failed: %s",
 			 strerror (errno));
 	    return false;
 	  }
@@ -1200,28 +1200,28 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::try_to_reestablish_with_master () noexcept
+  inline bool connector::try_to_reestablish_with_master () noexcept
   {
     fprintf (stderr, "try to re-establish the connection with master...\n");
 
     if (!this->dispose_master_connection ())
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->try_to_reestablish_with_master: dispose_master_connection failed");
+	er_log_conn (__FILE__, __LINE__, "master::connector->try_to_reestablish_with_master: dispose_master_connection failed");
 	return false;
       }
 
     er_log_conn (__FILE__, __LINE__,
-		 "master_connector->try_to_reestablish_with_master: reestablish the connection with master");
+		 "master::connector->try_to_reestablish_with_master: reestablish the connection with master");
 
     if (!this->connect (m_master_port))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->try_to_reestablish_with_master: connect failed");
+	er_log_conn (__FILE__, __LINE__, "master::connector->try_to_reestablish_with_master: connect failed");
 	return false;
       }
 
     if (!this->prepare_handshake (m_server_name))
       {
-	er_log_conn (__FILE__, __LINE__, "master_connector->try_to_reestablish_with_master: prepare_handshake failed");
+	er_log_conn (__FILE__, __LINE__, "master::connector->try_to_reestablish_with_master: prepare_handshake failed");
 	/* ensure state goes back to CLOSED and new conn is freed */
 	(void) this->dispose_master_connection ();
 	return false;
@@ -1230,7 +1230,7 @@ namespace cubconn
     return true;
   }
 
-  inline bool master_connector::disconnect (context *ctx) noexcept
+  inline bool connector::disconnect (context *ctx) noexcept
   {
     if (ctx->m_conn->fd == m_context.m_conn->fd)
       {
@@ -1249,7 +1249,7 @@ namespace cubconn
     return this->dispose_connection (ctx);
   }
 
-  inline bool master_connector::execute () noexcept
+  inline bool connector::execute () noexcept
   {
     std::array<epoll_event, 512> events;
     context *ctx;
@@ -1264,7 +1264,7 @@ namespace cubconn
 	      {
 		continue;
 	      }
-	    er_log_conn (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
+	    er_log_conn (__FILE__, __LINE__, "master::connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
 	  }
 
@@ -1282,7 +1282,7 @@ namespace cubconn
 	    /* handle hangup/error first to avoid writes on dead sockets */
 	    if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR) && ctx->m_conn->fd != m_eventfd)
 	      {
-		er_log_conn (__FILE__, __LINE__, "master_connector->execute: master connection closed: %s", strerror (errno));
+		er_log_conn (__FILE__, __LINE__, "master::connector->execute: master connection closed: %s", strerror (errno));
 		if (!this->disconnect (ctx))
 		  {
 		    return false;
@@ -1298,7 +1298,7 @@ namespace cubconn
 		  }
 		if (!this->handle_master_reception (ctx))
 		  {
-		    er_log_conn (__FILE__, __LINE__, "master_connector->execute: handle_master_reception failed: %d\n", 0);
+		    er_log_conn (__FILE__, __LINE__, "master::connector->execute: handle_master_reception failed: %d\n", 0);
 		    if (!this->disconnect (ctx))
 		      {
 			return false;
@@ -1310,7 +1310,7 @@ namespace cubconn
 	      {
 		if (!this->handle_master_transmission (ctx))
 		  {
-		    er_log_conn (__FILE__, __LINE__, "master_connector->execute: handle_master_transmission failed");
+		    er_log_conn (__FILE__, __LINE__, "master::connector->execute: handle_master_transmission failed");
 		    if (!this->disconnect (ctx))
 		      {
 			return false;

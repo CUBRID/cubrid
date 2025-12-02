@@ -40,9 +40,9 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace cubconn
+namespace cubconn::connection
 {
-  connection_pool::connection_pool () :
+  pool::pool () :
     m_max_connections (-1),
     m_counter (0)
   {
@@ -50,11 +50,11 @@ namespace cubconn
     m_watcher->active = 0;
   }
 
-  connection_pool::~connection_pool ()
+  pool::~pool ()
   {
   }
 
-  void connection_pool::initialize (std::uint32_t max_connections, int connection_threads)
+  void pool::initialize (std::uint32_t max_connections, int connection_threads)
   {
     std::vector<int> *cores;
     std::uint32_t i;
@@ -74,18 +74,18 @@ namespace cubconn
     i = 0;
     for (int core : *cores)
       {
-	m_workers.emplace_back (std::make_unique<connection_worker> (this, m_watcher, core, i++));
+	m_workers.emplace_back (std::make_unique<worker> (this, m_watcher, core, i++));
       }
 
     /* pre-warm the connection thread and its queue to avoid a race condition. */
-    for (std::unique_ptr<connection_worker> &worker : m_workers)
+    for (std::unique_ptr<worker> &worker : m_workers)
       {
-	for (i = 0; i < static_cast<std::size_t> (connection_worker::queue_type::TYPE_COUNT); i++)
+	for (i = 0; i < static_cast<std::size_t> (worker::queue_type::TYPE_COUNT); i++)
 	  {
-	    connection_worker::message request;
+	    worker::message request;
 
-	    request.type = connection_worker::message_type::START;
-	    if (!worker->enqueue_and_notify (static_cast<connection_worker::queue_type> (i), std::move (request), nullptr,
+	    request.type = worker::message_type::START;
+	    if (!worker->enqueue_and_notify (static_cast<worker::queue_type> (i), std::move (request), nullptr,
 					     -1 /* infinite */))
 	      {
 		assert_release (false);
@@ -96,7 +96,7 @@ namespace cubconn
     m_max_connections = max_connections;
   }
 
-  void connection_pool::finalize ()
+  void pool::finalize ()
   {
     std::chrono::system_clock::time_point deadline, now;
     std::chrono::microseconds wait_for (0);
@@ -105,9 +105,9 @@ namespace cubconn
 
     for (auto &worker : m_workers)
       {
-	connection_worker::message request;
-	request.type = connection_worker::message_type::SHUTDOWN;
-	worker->enqueue (connection_worker::queue_type::IMMEDIATE, std::move (request));
+	worker::message request;
+	request.type = worker::message_type::SHUTDOWN;
+	worker->enqueue (worker::queue_type::IMMEDIATE, std::move (request));
 	if (!worker->notify ())
 	  {
 	    assert_release (false);
@@ -138,16 +138,16 @@ namespace cubconn
     m_workers.clear ();
   }
 
-  void connection_pool::dispatch (css_conn_entry *conn)
+  void pool::dispatch (css_conn_entry *conn)
   {
     /* TODO: in this function, we can take some kind of strategies how	      */
     /* the connection pool distributes the connections to connection workers. */
     /* but now, just uses round robin					      */
-    connection_worker::message request;
+    worker::message request;
 
-    request.type = connection_worker::message_type::NEW_CLIENT;
+    request.type = worker::message_type::NEW_CLIENT;
     request.conn = conn;
-    m_workers[m_counter]->enqueue (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
+    m_workers[m_counter]->enqueue (worker::queue_type::IMMEDIATE, std::move (request));
     if (!m_workers[m_counter]->notify ())
       {
 	assert_release (false);
@@ -160,7 +160,7 @@ namespace cubconn
       }
   }
 
-  void connection_pool::stats ()
+  void pool::stats ()
   {
     for (auto &conn : m_workers)
       {
