@@ -23,6 +23,7 @@
 #ifndef _CONNECTION_POOL_HPP_
 #define _CONNECTION_POOL_HPP_
 
+#include "connection_context.hpp"
 #include "connection_worker.hpp"
 
 #include <cstring>
@@ -36,6 +37,11 @@ namespace cubconn::connection
   class pool
   {
     private:
+      struct freelist
+      {
+	context m_context;
+	freelist *m_next;
+      };
 
     public:
       pool ();
@@ -53,7 +59,11 @@ namespace cubconn::connection
       std::vector<std::unique_ptr<worker>> m_workers;
       std::shared_ptr<thread_watcher> m_watcher;
 
+      freelist *m_freelist;
+
       std::size_t m_counter;
+
+      void initialize_freelist (std::uint32_t max_connections);
   };
 }
 

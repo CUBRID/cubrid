@@ -94,6 +94,7 @@ namespace cubconn::connection
       }
 
     m_max_connections = max_connections;
+    printf ("max_connections: %d\n", max_connections);
   }
 
   void pool::finalize ()
@@ -166,6 +167,15 @@ namespace cubconn::connection
     for (auto &conn : m_workers)
       {
 	conn->stats ();
+      }
+  }
+
+  void pool::initialize_freelist (std::uint32_t max_connections)
+  {
+    std::uint32_t i;
+
+    for (i = 0; i < max_connections; i++)
+      {
       }
   }
 }
