@@ -1473,7 +1473,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_type = parallel_type;
 
-#if defined(SERVER_MODE)
+#if defined(SERVER_MODE) && !defined (WINDOWS)
   /* check the number of parallel process */
   sort_param->px_parallel_num = sort_check_parallelism (thread_p, sort_param);
 

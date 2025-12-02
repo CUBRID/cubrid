@@ -1190,14 +1190,14 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
       goto error_exit;
     }
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) && !defined (WINDOWS)
   status = hjoin_try_parallel (thread_p, manager, single_context);
   single_context->status = status;
   if (status == HASHJOIN_STATUS_ERROR)
     {
       goto error_exit;
     }
-#endif /* defined (SERVER_MODE) */
+#endif /* defined (SERVER_MODE) && !defined (WINDOWS) */
 
   switch (status)
     {

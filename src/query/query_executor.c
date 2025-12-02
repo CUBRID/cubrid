@@ -15274,7 +15274,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    }
 		  else
 		    {
-#if SERVER_MODE
+#if SERVER_MODE && !WINDOWS
 		      if (!XASL_IS_FLAGED (xasl, XASL_NO_PARALLEL_SUBQUERY) && XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL)
 			  && xasl->px_executor == nullptr)
 			{
@@ -15336,7 +15336,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      GOTO_EXIT_ON_ERROR;
 			    }
 			}
-
 #else
 		      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 			{
@@ -15382,6 +15381,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 #endif
+
       /* start main block iterations */
       if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
 	{
