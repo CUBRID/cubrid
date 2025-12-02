@@ -125,6 +125,7 @@ namespace cubload
       {
 	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
 
+	/* maybe unloaded from version 11.2+ or later */
 	if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 	  {
 	    thread_ref.conn_entry->client_type = DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4;

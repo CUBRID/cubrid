@@ -117,7 +117,7 @@ static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
 static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
-static bool db_Statement_is_create = false;
+static CUBRID_STMT_TYPE db_Client_statement_type = CUBRID_STMT_NONE;
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
@@ -527,15 +527,15 @@ db_client_type_is_loaddb_compat (void)
 }
 
 void
-db_set_statement_is_create (bool is_create)
+db_set_client_statement_type (CUBRID_STMT_TYPE statement_type)
 {
-  db_Statement_is_create = is_create;
+  db_Client_statement_type = statement_type;
 }
 
-bool
-db_get_statement_is_create (void)
+CUBRID_STMT_TYPE
+db_get_client_statement_type (void)
 {
-  return db_Statement_is_create;
+  return db_Client_statement_type;
 }
 
 char *

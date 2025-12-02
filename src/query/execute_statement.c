@@ -1321,9 +1321,9 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
       do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
       if (other_serial_name[0] != '\0')
 	{
-	  if (db_get_statement_is_create ())
+	  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_SERIAL)
 	    {
-	      /* maybe unloaded from version 11.2 or later */
+	      /* maybe unloaded from version 11.2+ or later */
 	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
 	      return NULL;
 	    }
@@ -19917,6 +19917,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *class_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -19932,6 +19933,17 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   assert (buf != NULL);
 
   current_schema_name = sc_current_schema_name ();
+
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
 
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
@@ -20009,6 +20021,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *serial_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20024,6 +20037,17 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   assert (buf != NULL);
 
   current_schema_name = sc_current_schema_name ();
+
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
 
   serial_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
@@ -20108,6 +20132,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *trigger_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20123,6 +20148,17 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   assert (buf != NULL);
 
   current_schema_name = sc_current_schema_name ();
+
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
 
   trigger_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
@@ -20285,6 +20321,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *sp_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20300,6 +20337,17 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
   assert (buf != NULL);
 
   current_schema_name = sc_current_schema_name ();
+
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
 
   sp_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";

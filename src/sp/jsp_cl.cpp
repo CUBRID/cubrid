@@ -278,9 +278,9 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
   error = do_find_stored_procedure_by_query (name, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
   if (other_class_name[0] != '\0')
     {
-      if (db_get_statement_is_create ())
+      if (db_get_client_statement_type () == CUBRID_STMT_CREATE_STORED_PROCEDURE)
 	{
-	  /* maybe unloaded from version 11.4 or later */
+	  /* maybe unloaded from version 11.4+ or later */
 	  db_set_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY);
 
 	  error = ER_SP_NOT_EXIST;

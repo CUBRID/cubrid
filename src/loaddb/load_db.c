@@ -1035,24 +1035,23 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	    {
 	      assert (stmt_cnt == 1);
 
-	      int statement_type = db_get_statement_type (session, stmt_cnt);
-
+	      CUBRID_STMT_TYPE statement_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_cnt);
 	      switch (statement_type)
 		{
-		  /* DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 */
-		case CUBRID_STMT_CREATE_CLASS:
-		case CUBRID_STMT_CREATE_SERIAL:
 		case CUBRID_STMT_CREATE_SERVER:
 		case CUBRID_STMT_CREATE_SYNONYM:
+		  /* maybe unloaded from version 11.2+ or later */
+		  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+		  /* fall through */
+		case CUBRID_STMT_CREATE_CLASS:
+		case CUBRID_STMT_CREATE_SERIAL:
 		case CUBRID_STMT_CREATE_TRIGGER:
-
-		  /* DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4 */
 		case CUBRID_STMT_CREATE_STORED_PROCEDURE:
-		  db_set_statement_is_create (true);
+		  db_set_client_statement_type (statement_type);
 		  break;
 
 		default:
-		  db_set_statement_is_create (false);
+		  db_set_client_statement_type (CUBRID_STMT_NONE);
 		  break;
 		}
 	    }

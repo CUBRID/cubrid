@@ -1448,13 +1448,14 @@ ldr_find_class (const char *class_name)
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
+      /* Called by ldr_sa_load or ldr_server_load to load an object file; DDL must not be executed. */
+      assert (db_get_client_statement_type () == CUBRID_STMT_NONE);
+
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
       ldr_find_class_by_query (realname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
       if (other_class_name[0] != '\0')
 	{
-	  assert (db_get_statement_is_create () == false);
-
 	  ldr_Hint_class_names[0] = other_class_name;
 
 	  found = locator_lockhint_classes (1, ldr_Hint_class_names, ldr_Hint_locks, ldr_Hint_subclasses, ldr_Hint_flags, 1,
@@ -1486,6 +1487,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *class_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -1501,6 +1503,17 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   assert (buf != NULL);
 
   current_schema_name = sc_current_schema_name ();
+
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
 
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";

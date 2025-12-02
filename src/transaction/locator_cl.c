@@ -3185,9 +3185,13 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
       do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
       if (other_class_name[0] != '\0')
 	{
-	  if (db_get_statement_is_create ())
+	  CUBRID_STMT_TYPE statement_type = db_get_client_statement_type ();
+	  assert (statement_type != CUBRID_STMT_CREATE_SYNONYM);
+
+	  if (statement_type == CUBRID_STMT_CREATE_CLASS
+	      || statement_type == CUBRID_STMT_CREATE_SYNONYM /* safe-guard */ )
 	    {
-	      /* maybe unloaded from version 11.2 or later */
+	      /* maybe unloaded from version 11.2+ or later */
 	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
 	      return NULL;
 	    }

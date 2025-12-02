@@ -46,7 +46,8 @@ enum db_client_type
   DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL = 16,
   DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS = 17, /* admin compactdb that can run on standby */
 
-  /* loaddb with --no-user-specified-name:
+  /*
+   * loaddb with --no-user-specified-name:
    *   - default: DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
    *   - if source version >= 11.2: switch to DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4
    *   - if source version >= 11.4: switch to DB_CLIENT_TYPE_LOADDB_UTILITY (compat off)

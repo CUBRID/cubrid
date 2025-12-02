@@ -4262,9 +4262,9 @@ tr_find_trigger (const char *name)
 	      do_find_trigger_by_query (realname, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH);
 	      if (other_trigger_name[0] != '\0')
 		{
-		  if (db_get_statement_is_create ())
+		  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_TRIGGER)
 		    {
-		      /* maybe unloaded from version 11.2 or later */
+		      /* maybe unloaded from version 11.2+ or later */
 		      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
 
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_NOT_FOUND, 1, realname);
