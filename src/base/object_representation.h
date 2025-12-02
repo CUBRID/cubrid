@@ -430,6 +430,22 @@ OR_PUT_DOUBLE (char *ptr, double val)
  * The variable offset table is present in the headers of objects and sets.
  */
 
+
+/* flag for variable length */
+
+#define OR_VAR_BIT_OOS 0x1
+#define OR_VAR_BIT_RESERVED 0x2
+#define OR_VAR_FALG_MASK 0x3
+
+#define OR_SET_VAR_OOS(length) ((int) (length) | OR_VAR_BIT_OOS)
+
+#define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FALG_MASK)
+#define OR_GET_VAR_LENGTH(length) ((int) (length) & (~OR_VAR_FALG_MASK))
+
+#define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
+
+/* variable offset */
+
 #define OR_VAR_TABLE_SIZE(vars) \
   (OR_VAR_TABLE_SIZE_INTERNAL (vars, BIG_VAR_OFFSET_SIZE))
 
@@ -445,10 +461,10 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
   ((offset_size == OR_BYTE_SIZE) \
-   ? (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+   ? (OR_GET_VAR_LENGTH (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
    : ((offset_size == OR_SHORT_SIZE) \
-      ? (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
-      : (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
+      ? (OR_GET_VAR_LENGTH (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
+      : (OR_GET_VAR_LENGTH (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))))))
 
 #define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
   (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index) + 1, offset_size) \
