@@ -1210,6 +1210,11 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
+
+		  if (a_func_list->function == PT_ROW_NUMBER)
+		    {
+		      pr_clone_value (a_func_list->out_value, a_func_list->value);
+		    }
 		}
 	    }
 	}
@@ -15191,16 +15196,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
 
-	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list && a_eval_list->is_sorted;
+	       a_eval_list = a_eval_list->next)
 	    {
-	      if (a_eval_list->is_sorted)
+	      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 		{
-		  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+		  if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
 		    {
-		      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
+		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
 	    }
