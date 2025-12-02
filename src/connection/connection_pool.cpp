@@ -230,7 +230,7 @@ namespace cubconn::connection
   {
     freelist *head;
 
-    head = reinterpret_cast<freelist *> (ctx);
+    head = reinterpret_cast<freelist *> (reinterpret_cast<char *> (ctx) - offsetof (freelist, m_context));
     if (m_freelist.m_claim > m_freelist.m_max)
       {
 	delete head;
