@@ -1143,6 +1143,9 @@ end:
       fflush (stdout);
       db_commit_transaction ();
     }
+
+  db_set_client_statement_type (CUBRID_STMT_NONE);
+
   return error;
 }
 

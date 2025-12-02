@@ -19941,7 +19941,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
 	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
 	   * are beyond the scope of the compatibility option */
 	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
-	  return NO_ERROR;
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	  return error;
 	}
     }
 
@@ -20345,7 +20346,8 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
 	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
 	   * are beyond the scope of the compatibility option */
 	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
-	  return NO_ERROR;
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	  return error;
 	}
     }
 
