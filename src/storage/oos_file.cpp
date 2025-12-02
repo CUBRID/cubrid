@@ -62,9 +62,11 @@ static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 		       OOS_RECORD_HEADER &out_header);
 
-STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int oos_get_max_chunk_size_within_page ();
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
+int oos_get_max_chunk_size_within_page ();
 
-static int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
+static int
+oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid);
 
 // ****************************************************************************
 // memory map used to store recently inserted OOS VPID for each OOS VFID
@@ -111,7 +113,8 @@ oos_file_create (THREAD_ENTRY *thread_p, VFID &oos_vfid)
   return NO_ERROR;
 }
 
-int oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
+int
+oos_file_destroy (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
   // TODO: actually destroy the OOS file
   return 0;
@@ -168,7 +171,8 @@ oos_pop_record_header (RECDES &rec_in, OOS_RECORD_HEADER &header_out, RECDES &re
 }
 
 
-int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
+int
+oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &oid)
 {
   oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, recdes.length=%d",
 	     oos_vfid.fileid, oos_vfid.volid, recdes.length);
@@ -467,7 +471,7 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
   else
     {
       // CASE 2: we use first_chunk_recdes as the final output
-      recdes = std::move(first_chunk_recdes);
+      recdes = std::move (first_chunk_recdes);
     }
   oos_trace ("read completed, total_size=%d", first_chunk_header.total_size);
 
@@ -475,7 +479,8 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 }
 
 
-static int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
+static int
+oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
 {
   auto it = oos_recently_inserted_oos_vpid_map.find (oos_vfid);
   if (it != oos_recently_inserted_oos_vpid_map.end ())
@@ -492,8 +497,9 @@ static int get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
 }
 
 
-static auto_unfix_page_ptr oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
-    VPID &vpid_out)
+static auto_unfix_page_ptr
+oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
+		    VPID &vpid_out)
 {
   int err = NO_ERROR;
   PAGE_TYPE page_type = PAGE_OOS;
@@ -582,7 +588,8 @@ oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
 
 // TODO: since this value never changes, we can make it a constant or static variable,
 // and make it initialized only once in something like oos_boot().
-STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int oos_get_max_chunk_size_within_page ()
+STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int
+oos_get_max_chunk_size_within_page ()
 {
   // TODO: fix bug for spage_max_record_size returning incorrect size, which is out of scope for OOS project.
   const int actual_upper_limit = DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT);
@@ -592,19 +599,22 @@ STATIC_INLINE __attribute__ ((ALWAYS_INLINE)) int oos_get_max_chunk_size_within_
 
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
-int bridge_oos_get_max_chunk_size_within_page ()
+int
+bridge_oos_get_max_chunk_size_within_page ()
 {
   return oos_get_max_chunk_size_within_page ();
 }
 
-int bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
+int
+bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
 {
   return oos_vpid_init_new (thread_p, page, args);
 }
 
-int bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
+int
+bridge_oos_get_recently_inserted_oos_vpid (const VFID &oos_vfid, VPID &vpid)
 {
-  return get_recently_inserted_oos_vpid (oos_vfid, vpid);
+  return oos_get_recently_inserted_oos_vpid (oos_vfid, vpid);
 }
 
 const auto_unfix_page_ptr
