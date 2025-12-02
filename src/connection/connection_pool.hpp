@@ -33,15 +33,10 @@
 
 namespace cubconn::connection
 {
-  struct thread_watcher
-  {
-    std::mutex mtx;
-    std::condition_variable cv;
-    int active;
-  };
-
   class pool
   {
+    private:
+
     public:
       pool ();
       ~pool ();

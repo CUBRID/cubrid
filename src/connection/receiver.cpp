@@ -51,7 +51,7 @@ constexpr std::size_t SIZE_HEADER_PADDING = sizeof (int);
 
 namespace cubconn
 {
-  receiver::receiver (std::size_t capacity, connection_stats *stats) :
+  receiver::receiver (std::size_t capacity, statistics::metrics<statistics::context> *stats) :
     m_stats (stats),
     m_buf (capacity)
   {
@@ -151,8 +151,6 @@ namespace cubconn
 	m_received -= SIZE_HEADER + m_size;
 	if (is_buffer)
 	  {
-	    m_stats->add (stats::MEM_POOL_COMMIT, 1);
-
 	    m_buf.commit (SIZE_HEADER + m_size);
 	  }
 
@@ -189,7 +187,6 @@ namespace cubconn
       {
 	return result::Error;
       }
-    m_stats->add (stats::MEM_ALLOCATE, 1);
     er_log_conn (ARG_FILE_LINE,
 		 "receiver->parse_size_in_tmpsize: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
 		 m_bufsize, m_size);
@@ -257,7 +254,6 @@ namespace cubconn
 	  {
 	    return result::Error;
 	  }
-	m_stats->add (stats::MEM_ALLOCATE, 1);
 	er_log_conn (ARG_FILE_LINE, "receiver->parse_size: allocate new memory for packet. m_bufsize = %d, m_size = %d\n",
 		     m_bufsize, m_size);
 	std::memcpy (ptr, m_bufptr, m_received);
@@ -291,7 +287,7 @@ namespace cubconn
       {
 	m_received += bytes;
 
-	m_stats->add (stats::NET_RECV, bytes);
+	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n",
 		     (int) m_state,
 		     (int) bytes, (int) m_received);
@@ -333,7 +329,7 @@ namespace cubconn
       {
 	m_received += bytes;
 
-	m_stats->add (stats::NET_RECV, bytes);
+	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n",
 		     (int) m_state,
 		     (int) bytes, (int) m_received);
@@ -362,7 +358,7 @@ namespace cubconn
       {
 	m_received += bytes;
 
-	m_stats->add (stats::NET_RECV, bytes);
+	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive: state = %d, received = %d, accumulated = %d\n", (int) m_state,
 		     (int) bytes, (int) m_received);
 	if (m_received < SIZE_HEADER)
@@ -446,8 +442,6 @@ namespace cubconn
 	size = ntohl (*reinterpret_cast<int *> (ptr - (SIZE_HEADER + SIZE_HEADER_PADDING)));
 	source = cubbase::span<std::byte> (ptr - (SIZE_HEADER + SIZE_HEADER_PADDING), size + SIZE_HEADER);
 
-	m_stats->add (stats::MEM_POOL_RELEASE, 1);
-
 	m_buf.restore (source);
       }
     else
@@ -461,8 +455,6 @@ namespace cubconn
 	    return;
 	  }
 	m_allocated.erase (it);
-
-	m_stats->add (stats::MEM_DELETE, 1);
 
 	delete[] (ptr - (SIZE_HEADER + SIZE_HEADER_PADDING));
       }

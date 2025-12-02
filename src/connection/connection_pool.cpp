@@ -162,6 +162,7 @@ namespace cubconn::connection
 
   void pool::stats ()
   {
+    printf ("\033[2J\033[H");
     for (auto &conn : m_workers)
       {
 	conn->stats ();

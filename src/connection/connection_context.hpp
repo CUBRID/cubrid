@@ -24,11 +24,24 @@
 #define _CONNECTION_CONTEXT_HPP_
 
 #include "connection_globals.h"
+#include "connection_statistics.hpp"
 #include "receiver.hpp"
 #include "transmitter.hpp"
 #include "packet_buffer.hpp"
 #include "buffer.hpp"
 #include "span.hpp"
+
+#include <condition_variable>
+
+namespace cubconn
+{
+  struct thread_watcher
+  {
+    std::mutex mtx;
+    std::condition_variable cv;
+    int active;
+  };
+}
 
 /* --------------------------------------------------------------------------- */
 /* master connector								 */
@@ -121,6 +134,9 @@ namespace cubconn::connection
   {
     css_conn_entry *m_conn;
 
+    /* --------------------------------------------------------------------------- */
+    /* context									   */
+    /* --------------------------------------------------------------------------- */
     /* worker index */
     int m_worker;
 
@@ -152,7 +168,12 @@ namespace cubconn::connection
       transmitter m_transmitter;
     } m_send;
 
-    context (std::size_t capacity, connection_stats *stats);
+    /* --------------------------------------------------------------------------- */
+    /* statistics								   */
+    /* --------------------------------------------------------------------------- */
+    statistics::metrics<statistics::context> m_stats;
+
+    context (std::size_t capacity);
     context ();
     ~context ();
 

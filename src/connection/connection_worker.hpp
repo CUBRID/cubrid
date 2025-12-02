@@ -25,7 +25,7 @@
 
 #include "connection_defs.h"
 #include "connection_context.hpp"
-#include "connection_stats.hpp"
+#include "connection_statistics.hpp"
 #include "receiver.hpp"
 #include "transmitter.hpp"
 #include "epoll.hpp"
@@ -44,7 +44,6 @@
 namespace cubconn::connection
 {
   class pool;
-  struct thread_watcher;
 
   class worker
   {
@@ -195,8 +194,8 @@ namespace cubconn::connection
 
       std::vector<context *> m_removed_context;
 
-      /* stats */
-      connection_stats m_stats;
+      /* statistics */
+      statistics::metrics<statistics::worker> m_stats;
 
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();

@@ -227,21 +227,30 @@ namespace cubconn::connection
 
   void worker::stats ()
   {
+    uint64_t bytes_in_total, bytes_out_total;
     int i;
 
     std::cout << "connection worker: " << m_index << std::endl;
-    for (i = 0; i < stats::STATS_COUNT; i++)
+    for (i = 0; i < static_cast<int> (statistics::worker::STATS_COUNT); i++)
       {
-	std::cout << "  " << stats_name[i] << ": " << m_stats.get (static_cast<enum stats> (i)) << std::endl;
+	std::cout << "  " << statistics::worker_to_string[i].first << ": " <<
+		  m_stats.get (static_cast<statistics::worker> (i)) << " " << statistics::worker_to_string[i].second << std::endl;
       }
-    std::cout << "-------------- clients --------------" << std::endl;
-    for (auto &ctx : m_context)
+
+    bytes_in_total = 0;
+    bytes_out_total = 0;
+    for (auto ctx : m_context)
       {
-	std::cout << "  fd: " << ctx->m_conn->fd << std::endl;
-	/* whenever whenever whenever ... */
-	std::cout << std::endl;
+	/* duplicated values. not ACC */
+	bytes_in_total += ctx->m_stats.get (statistics::context::BYTES_IN_TOTAL);
+	bytes_out_total += ctx->m_stats.get (statistics::context::BYTES_OUT_TOTAL);
       }
+
     std::cout << std::endl;
+
+    std::cout << "BYTES_IN_TOTAL: " << bytes_in_total << " bytes" << std::endl;
+    std::cout << "BYTES_OUT_TOTAL: " << bytes_out_total << " bytes" << std::endl;
+
     std::cout << std::endl;
   }
 
@@ -465,7 +474,8 @@ namespace cubconn::connection
     rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
 
     end = std::chrono::steady_clock::now ();
-    m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
+    m_stats.add (statistics::worker::BLOCKED_RMUTEX,
+		 std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);
@@ -481,7 +491,7 @@ namespace cubconn::connection
     ctx->m_removed = true;
     m_removed_context.push_back (ctx);
 
-    m_stats.sub (stats::NET_CLIENTS, 1);
+    m_stats.sub (statistics::worker::CLIENT_NUM, 1);
 
     return true;
 
@@ -814,7 +824,7 @@ retry:
   {
     context *ctx;
 
-    ctx = new context (32 * 1024, &m_stats);
+    ctx = new context (32 * 1024);
     if (!ctx)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: failed to allocate memory\n");
@@ -909,16 +919,16 @@ retry:
 	    break;
 
 	  case message_type::NEW_CLIENT:
-	    m_stats.add (stats::MQ_NEW_CLIENT, 1);
+	    m_stats.add (statistics::worker::MQ_NEW_CLIENT, 1);
 	    if (!this->handle_message_queue_new_client (request))
 	      {
 		return false;
 	      }
-	    m_stats.add (stats::NET_CLIENTS, 1);
+	    m_stats.add (statistics::worker::CLIENT_NUM, 1);
 	    break;
 
 	  case message_type::SHUTDOWN_CLIENT:
-	    m_stats.add (stats::MQ_SHUTDOWN_CLIENT, 1);
+	    m_stats.add (statistics::worker::MQ_SHUTDOWN_CLIENT, 1);
 	    if (!this->handle_message_queue_shutdown_client (request))
 	      {
 		return false;
@@ -926,7 +936,7 @@ retry:
 	    break;
 
 	  case message_type::SEND_PACKET:
-	    m_stats.add (stats::MQ_SEND_PACKET, 1);
+	    m_stats.add (statistics::worker::MQ_SEND_PACKET, 1);
 	    if (!this->handle_message_queue_send_packet (request))
 	      {
 		return false;
@@ -934,7 +944,7 @@ retry:
 	    break;
 
 	  case message_type::RELEASE_PACKET:
-	    m_stats.add (stats::MQ_RELEASE_PACKET, 1);
+	    m_stats.add (statistics::worker::MQ_RELEASE_PACKET, 1);
 	    if (!this->handle_message_queue_release_packet (request))
 	      {
 		return false;
@@ -960,7 +970,7 @@ retry:
   {
     std::size_t i;
 
-    m_stats.add (stats::MQ_REQUESTED, 1);
+    m_stats.add (statistics::worker::MQ_REQUESTED, 1);
 
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
       {
@@ -1328,7 +1338,7 @@ retry:
 	return result::Ok;
       }
 
-    m_stats.add (stats::NET_PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
+    m_stats.add (statistics::worker::PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
 
     start = std::chrono::steady_clock::now ();
 
@@ -1340,7 +1350,8 @@ retry:
       }
 
     end = std::chrono::steady_clock::now ();
-    m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
+    m_stats.add (statistics::worker::BLOCKED_RMUTEX,
+		 std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     /* received at least one packet */
     packets = ctx->m_recv.m_receiver.get_result ();

@@ -68,7 +68,7 @@ namespace cubconn::master
 /* --------------------------------------------------------------------------- */
 namespace cubconn::connection
 {
-  context::context (std::size_t capacity, connection_stats *stats) :
+  context::context (std::size_t capacity) :
     m_conn (nullptr),
     m_worker (-1),
     m_ignore (ignore_level::DONT_IGNORE),
@@ -76,14 +76,14 @@ namespace cubconn::connection
     m_recv
   {
     .m_state = state::HEADER,
-    .m_receiver = receiver (capacity, stats),
+    .m_receiver = receiver (capacity, &m_stats),
     .m_header = { nullptr, 0 },
     .m_request_id = -1,
     .m_command = false
   },
   m_send
   {
-    .m_transmitter = transmitter (stats)
+    .m_transmitter = transmitter (&m_stats)
   }
   {
   }
@@ -114,7 +114,6 @@ namespace cubconn::connection
 
   void context::reset ()
   {
-
     m_conn = nullptr;
     m_worker = -1;
     m_ignore = ignore_level::DONT_IGNORE;
@@ -127,5 +126,7 @@ namespace cubconn::connection
     m_recv.m_command = false;
 
     m_send.m_transmitter.clear ();
+
+    m_stats.reset ();
   }
 }
