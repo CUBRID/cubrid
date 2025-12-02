@@ -4141,6 +4141,8 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
       int max_multiply = DB_MAX_NUMERIC_PRECISION - precision;
       tmp_scale = (-(scale) > max_multiply) ? max_multiply : -(scale);
 
+      assert (tmp_scale > 0);
+
       if (tmp_scale > 0)
 	{
 	  float_numeric_mul_normalize (calc_buf, DB_NUMERIC_BUF_SIZE, tmp_scale);
