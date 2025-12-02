@@ -515,7 +515,6 @@ struct cte_proc_node
 #define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
-#define XASL_MEMOIZE_STORAGE	       (0x1 << 20)	/* enable memoize storage */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

@@ -2817,10 +2817,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   assert (xasl->composite_lock.lockcomp.class_list == NULL);
   lock_abort_composite_lock (&xasl->composite_lock);
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-  if (xasl->memoize_storage)
-    {
-      clear_memoize_storage (thread_p, xasl);
-    }
   /* clear subquery's result-cache */
   if (xasl->sub_xasl_id)
     {
