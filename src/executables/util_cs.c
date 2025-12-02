@@ -82,6 +82,16 @@
 #define STDIN_FILENO  _fileno (stdin)
 #endif
 
+#define PRINT_SECTION_TITLE(stream, title)                                    \
+  do                                                                          \
+    {                                                                         \
+      fprintf ((stream), "\n< %s >\n", (title));                              \
+    }                                                                         \
+  while (0)
+
+#define RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "RK(PRIMARY KEY or NOT NULL UNIQUE KEY) Constraint Violations"
+#define FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "RK Constraint Violations"
+
 typedef enum
 {
   SPACEDB_SIZE_UNIT_PAGE = 0,
@@ -2738,7 +2748,10 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   int violation_count = 0;
   char **dbs;
   char er_msg_file[PATH_MAX];
-
+  char violation_list_file[PATH_MAX];
+  FILE *fp;
+  int ret;
+  
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
   user = utility_get_option_string_value (arg_map, UNLOAD_USER_S, 0);
   password = utility_get_option_string_value (arg_map, UNLOAD_PASSWORD_S, 0);
@@ -2748,6 +2761,9 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
   er_set_print_property (ER_PRINT_TO_CONSOLE);
 
+  snprintf( violation_list_file, sizeof(violation_list_file) -1, "%s_%s.list", database_name, arg->command_name);
+  fp = fopen(violation_list_file, "w");
+
   if (user == NULL || user[0] == '\0')
     {
       user = (char *) "DBA";
@@ -2756,6 +2772,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   error = db_restart_ex (arg->command_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error != NO_ERROR)
     {
+      fclose(fp);
       // TODO: Check if password-error handling (like unloaddb) is needed, even though this logic doesn’t use authentication.
       PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
       return ER_FAILED;
@@ -2764,33 +2781,44 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   classes = db_get_all_classes ();
   if (classes == NULL)
     {
+      fclose(fp);
       PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
       return ER_FAILED;
     }
-
+  
+  PRINT_SECTION_TITLE(fp, RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
   for (c = classes; c != NULL; c = c->next)
     {
-      if (db_is_system_class (c->op))
+      if (db_is_system_class (c->op) || !sm_is_replication_class(c->op))
 	{
 	  continue;
 	}
-
-      if (sm_is_replication_class (c->op))
-	{
-	  error = check_ha_repl_constraint (c->op);
-	  if (error != NO_ERROR)
-	    {
-	      // TODO: After fixing the error log, include the table name using sm_get_ch_name(c->op).
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      violation_count++;
-	    }
-	}
+        
+        if (!classobj_has_class_repl_key_constraint (db_get_constraints (c->op)))
+          {
+            fprintf(fp, "%s\n", sm_get_ch_name(c->op));
+            violation_count++;
+          }
     }
-
+    PRINT_SECTION_TITLE(fp, FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
+    for (c = classes; c != NULL; c = c->next)
+    {
+      if (db_is_system_class (c->op) || !sm_is_replication_class(c->op))
+	{
+	  continue;
+	}
+        ret = log_ha_repl_fk_ref_all_replicated (c->op, fp);
+        if (ret > 0){
+          violation_count += ret;
+        }
+    }
+  
   if (classes)
     {
       db_objlist_free (classes);
     }
+
+  fclose(fp);
 
   if (violation_count > 0)
     {

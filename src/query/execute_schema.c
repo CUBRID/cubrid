@@ -8898,6 +8898,31 @@ check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
   return true;
 }
 
+int
+log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE *fp)
+{
+  DB_CONSTRAINT *tmp_c;
+  int ret = 0;
+
+  assert (class_obj != NULL);
+
+  for (tmp_c = db_get_constraints (class_obj); tmp_c; tmp_c = db_constraint_next (tmp_c))
+    {
+      if (tmp_c->type != SM_CONSTRAINT_FOREIGN_KEY)
+	{
+	  continue;
+	}
+
+      if (!sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
+	{
+          fprintf(fp, "%s -> %s\n", sm_get_ch_name(class_obj), sm_get_ch_name(ws_mop(&tmp_c->fk_info->ref_class_oid, NULL)));
+          ret++;
+	}
+    }
+
+  return ret;
+}
+
 /*
  * check_ha_repl_constraint() - Validate replication-related constraints in HA mode.
  *   return  : Error code (NO_ERROR if valid)
