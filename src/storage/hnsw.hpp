@@ -36,20 +36,6 @@
 #include "thread_compat.hpp"
 #include "hnsw_api.hpp"
 
-/* Maximum Alignment */
-#define HNSW_MAX_ALIGN INT_ALIGNMENT
-#define HEADER 0
-
-typedef struct hnsw_header HNSW_HEADER;
-
-struct hnsw_header
-{
-  int dimension;
-  int hnsw_M;
-  int hnsw_efConstruction;
-  int metric;
-};
-
 int xhnsw_initialize (THREAD_ENTRY *thread_p);
 int xhnsw_finalize (THREAD_ENTRY *thread_p);
 int xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_build_params &params,

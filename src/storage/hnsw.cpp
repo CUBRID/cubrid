@@ -20,9 +20,10 @@
 // hnsw.cpp - common implementation of HNSW index
 //
 
-#include "hnsw.hpp"
-
 #include <fstream>
+
+#include "hnsw.hpp"
+#include "hnsw_api.hpp"
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -35,14 +36,25 @@
 #include "porting.h"
 #include "vector_distance_enum.h"
 #include "heap_file.h"
-#include "hnsw_api.hpp"
-
 #include "slotted_page.h"
-#include "page_buffer.h"
 #include "object_representation.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+/* Maximum Alignment */
+#define HNSW_MAX_ALIGN INT_ALIGNMENT
+#define HEADER 0
+
+typedef struct hnsw_header HNSW_HEADER;
+
+struct hnsw_header
+{
+  int dimension;
+  int hnsw_M;
+  int hnsw_efConstruction;
+  int metric;
+};
 
 // =====================================================================
 // statics
@@ -78,7 +90,7 @@ class hnsw_index_manager
     bool is_index_file_exists (const std::string &prefix, const BTID *btid) const;
     bool is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const;
 
-    BTID create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attrid,
+    BTID create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attr_id,
 		      const hnsw_build_params &params);
 
     // index management on memory
@@ -155,7 +167,7 @@ xhnsw_finalize (THREAD_ENTRY *thread_p)
 }
 
 int
-xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_build_params &params, BTID &btid_out)
+xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attr_id, const hnsw_build_params &params, BTID &btid_out)
 {
   hnsw_index_backend *backend_instance = index_manager->get_backend ();
   if (!backend_instance)
@@ -171,7 +183,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_
       return ER_FAILED;
     }
 
-  btid_out = index_manager->create_btid (thread_p, backend_instance, class_oid, attrid, params);
+  btid_out = index_manager->create_btid (thread_p, backend_instance, class_oid, attr_id, params);
   if (BTID_IS_NULL (&btid_out))
     {
       // TODO: error handling
@@ -696,13 +708,13 @@ int hnsw_index_manager::delete_index_on_disk (THREAD_ENTRY *thread_p, const std:
 }
 
 BTID
-hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attrid,
+hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attr_id,
 				 const hnsw_build_params &params)
 {
   BTID btid_out = {.vfid = VFID_INITIALIZER, .root_pageid = -1};
   BTID *btid = &btid_out;
 
-  if (hnsw_create_file (thread_p, class_oid, attrid, btid) != NO_ERROR)
+  if (hnsw_create_file (thread_p, class_oid, attr_id, btid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       // TODO: null BTID
@@ -741,7 +753,6 @@ hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backen
     }
 
   pgbuf_set_dirty (thread_p, page_ptr, FREE);
-  page_ptr = NULL;
 
   hnsw_print_index_info (btid, &hnsw_header);
 
@@ -841,13 +852,11 @@ hnsw_pack_header (RECDES *rec, HNSW_HEADER *hnsw_header)
 {
   OR_BUF buf;
   int rc = NO_ERROR;
-  int fixed_size = (int) offsetof (HNSW_HEADER, metric);
+  int fixed_size = (int) offsetof (HNSW_HEADER, metric) + sizeof (int);
 
   memcpy (rec->data, hnsw_header, fixed_size);
 
-  or_init (&buf, rec->data + fixed_size, (rec->area_size == -1) ? -1 : (rec->area_size - fixed_size));
-
-  rec->length = fixed_size + CAST_BUFLEN (buf.ptr - buf.buffer);
+  rec->length = fixed_size;
   rec->type = REC_HOME;
 
   if (rc != NO_ERROR && er_errid () == NO_ERROR)

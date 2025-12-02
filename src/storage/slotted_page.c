@@ -1155,8 +1155,8 @@ spage_is_slotted_page_type (PAGE_TYPE ptype)
     case PAGE_BTREE:
     case PAGE_EHASH:
     case PAGE_CATALOG:
+    case PAGE_HNSW:
       return true;
-
     default:
       return false;
     }
