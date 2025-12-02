@@ -62,7 +62,7 @@ std::atomic<uint64_t> message_counter (0);
 
 namespace cubconn::connection
 {
-  worker::worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
+  worker::worker (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
 		  std::size_t index) :
     m_parent (pool),
     m_watcher (watcher),
@@ -947,7 +947,7 @@ retry:
 
 	  default:
 	    er_log_conn (__FILE__, __LINE__,
-			 "master_connector->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
+			 "master::connector->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
 	    assert_release (false);
 	    break;
 	  }
@@ -1508,7 +1508,7 @@ retry:
 	      {
 		continue;
 	      }
-	    er_log_conn (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
+	    er_log_conn (__FILE__, __LINE__, "master::connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
 	  }
 

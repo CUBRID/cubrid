@@ -147,7 +147,7 @@ namespace cubconn::master
     return true;
   }
 
-  bool connector::attach (connection_pool &pool) noexcept
+  bool connector::attach (connection::pool &pool) noexcept
   {
     m_connection_pool = &pool;
     return true;

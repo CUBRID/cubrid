@@ -43,7 +43,7 @@
 
 namespace cubconn::connection
 {
-  class connection_pool;
+  class pool;
   struct thread_watcher;
 
   class worker
@@ -139,7 +139,7 @@ namespace cubconn::connection
       };
 
     public:
-      worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core, std::size_t index);
+      worker (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core, std::size_t index);
       ~worker ();
 
       void initialize ();
@@ -159,7 +159,7 @@ namespace cubconn::connection
 
     private:
       /* connection pool */
-      connection_pool *m_parent;
+      pool *m_parent;
       std::shared_ptr<thread_watcher> m_watcher;
 
       /* thread handle */

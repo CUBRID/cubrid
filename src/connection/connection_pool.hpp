@@ -42,8 +42,6 @@ namespace cubconn::connection
 
   class pool
   {
-//     using context = connection_worker_context;
-
     public:
       pool ();
       ~pool ();
@@ -60,12 +58,7 @@ namespace cubconn::connection
       std::vector<std::unique_ptr<worker>> m_workers;
       std::shared_ptr<thread_watcher> m_watcher;
 
-      /* freelist */
-//      context *contexts;
-
       std::size_t m_counter;
-
-      void initialize_contexts ();
   };
 }
 

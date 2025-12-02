@@ -57,7 +57,7 @@ namespace cubconn::master
       void stop () noexcept;
 
       bool attach (cubthread::entry &entry) noexcept;
-      bool attach (connection_pool &pool) noexcept;
+      bool attach (connection::pool &pool) noexcept;
       bool run (int port, std::string &server_name) noexcept;
 
     private:
@@ -79,7 +79,7 @@ namespace cubconn::master
       int m_master_port;
 
       /* dispatch */
-      connection_pool *m_connection_pool;
+      connection::pool *m_connection_pool;
 
       /* socket */
       inline bool make_nonblocking (int fd) noexcept;
