@@ -100,6 +100,18 @@
 #define IS_ALTER_STMT_SET_REPL_OPTION(_node) \
   ((_node)->info.value.data_value.i )
 
+/* 
+ * IS_REPL_CONSTRAINT_RELATED_ALTER() 
+ *    return: true if ALTER clause affects replication constraints
+ *    code(in): PT_ALTER_CODE value
+ */
+#define IS_REPL_CONSTRAINT_RELATED_ALTER(code)              \
+  ( ((code) == PT_ADD_ATTR_MTHD)         ||                 \
+    ((code) == PT_DROP_ATTR_MTHD)        ||                 \
+    ((code) == PT_DROP_CONSTRAINT)       ||                 \
+    ((code) == PT_DROP_PRIMARY_CLAUSE)                     \
+  )
+
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -1331,13 +1343,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  error = check_ha_repl_constraint (vclass);
-  if (error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
-    }
-
   /* If we have an ADD COLUMN x NOT NULL without a default value, the existing rows will be filled with NULL for the
    * new column by default. For compatibility with MySQL, we can auto-fill some column types with "hard defaults", like
    * 0 for integer types. THIS CAN TAKE A LONG TIME (it runs an UPDATE), and can be turned off by setting
@@ -1637,7 +1642,6 @@ change_ai_error:
   return error;
 }
 
-
 /*
  * do_alter() -
  *   return: Error code
@@ -1651,6 +1655,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *crt_clause = NULL;
   bool do_semantic_checks = false;
   bool do_rollback = false;
+  DB_OBJECT *vclass;
+  bool need_check_repl_constraint = false;
+  const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1687,6 +1694,13 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
+	  /* 
+	   * entity_name is required for performing the HA replication constraint check 
+	   * after all ALTER clauses have been processed. 
+	   * Since the check must be based on the final table name, 
+	   * entity_name is continuously updated as each RENAME clause is applied.
+	   */
+	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
@@ -1730,7 +1744,24 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto error_exit;
 	}
+
+      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter->info.alter.code))
+	{
+	  need_check_repl_constraint = true;
+	}
+
       do_semantic_checks = true;
+    }
+
+  if (need_check_repl_constraint)
+    {
+      vclass = db_find_class (entity_name);
+      error_code = check_ha_repl_constraint (vclass);
+      if (error_code != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  goto error_exit;
+	}
     }
 
   return error_code;
