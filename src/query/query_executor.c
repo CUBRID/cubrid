@@ -15565,7 +15565,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      if (spec_level == 0 && level >= 1)
+		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed)
 			{
 			  if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
 			    {
