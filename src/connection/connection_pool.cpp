@@ -238,6 +238,7 @@ namespace cubconn::connection
       }
     else
       {
+	head->m_context.reset ();
 	head->m_next = m_freelist.m_head;
 	m_freelist.m_head = head;
       }
