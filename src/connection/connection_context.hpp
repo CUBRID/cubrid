@@ -118,6 +118,9 @@ namespace cubconn
   {
     css_conn_entry *m_conn;
 
+    /* worker index */
+    int m_worker;
+
     /* ignore guards (ERR/HUP) */
     connection_worker_ignore m_ignore;
     bool m_removed;
@@ -155,6 +158,8 @@ namespace cubconn
 
     connection_worker_context (connection_worker_context &&) noexcept = delete;
     connection_worker_context &operator= (connection_worker_context &&) noexcept = delete;
+
+    void reset ();
   };
 }
 

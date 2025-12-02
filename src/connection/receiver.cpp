@@ -85,6 +85,7 @@ namespace cubconn
     m_size = 0;
 
     m_result.clear ();
+    m_allocated.clear ();
 
     /* if m_buf is already in use, it may be corrupted by subsequent reception. */
     m_buf.reset ();

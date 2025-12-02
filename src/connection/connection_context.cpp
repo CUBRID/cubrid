@@ -67,6 +67,7 @@ namespace cubconn
   /* --------------------------------------------------------------------------- */
   connection_worker_context::connection_worker_context (std::size_t capacity, connection_stats *stats) :
     m_conn (nullptr),
+    m_worker (-1),
     m_ignore (connection_worker_ignore::DONT_IGNORE),
     m_removed (false),
     m_recv
@@ -86,6 +87,7 @@ namespace cubconn
 
   connection_worker_context::connection_worker_context () :
     m_conn (nullptr),
+    m_worker (-1),
     m_recv
   {
     .m_state = connection_worker_state::HEADER,
@@ -103,5 +105,22 @@ namespace cubconn
 
   connection_worker_context::~connection_worker_context ()
   {
+  }
+
+  void connection_worker_context::reset ()
+  {
+
+    m_conn = nullptr;
+    m_worker = -1;
+    m_ignore = connection_worker_ignore::DONT_IGNORE;
+    m_removed = false;
+
+    m_recv.m_state = connection_worker_state::HEADER;
+    m_recv.m_receiver.reset ();
+    m_recv.m_header = { nullptr, 0 };
+    m_recv.m_request_id = -1;
+    m_recv.m_command = false;
+
+    m_send.m_transmitter.clear ();
   }
 }
