@@ -1627,6 +1627,8 @@ qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 {
   SPEC_CNT_INFO *info = (SPEC_CNT_INFO *) arg;
 
+  *continue_walk = PT_CONTINUE_WALK;
+  
   if (node->node_type == PT_NAME)
     {
       if (node->info.name.spec_id == info->spec->info.spec.id)
@@ -1638,6 +1640,23 @@ qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  info->other_spec_cnt++;
 	}
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      if (pt_expr_keep_uniqueness (node))
+        {
+          /* keep going */
+        }
+      else
+        {
+          /* impossible case. set end */
+          info->my_spec_cnt = 2;
+        }
+    }
+  else
+    {
+      /* don't walk into node */
+      *continue_walk = PT_LIST_WALK;
     }
 
   if (info->my_spec_cnt >= 2 || (info->my_spec_cnt == 1 && info->other_spec_cnt >= 1))
