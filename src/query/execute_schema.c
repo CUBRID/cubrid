@@ -157,6 +157,7 @@ enum
   P_DEFFERABLE,			/* DEFFERABLE */
   P_ORDER,			/* ORDERING definition */
   P_AUTO_INCR,			/* has AUTO INCREMENT */
+  P_INVISIBLE,                  /* is INVISIBLE COLUMN */
   P_CONSTR_FK,			/* constraint FOREIGN KEY */
   P_S_CONSTR_PK,		/* constraint PRIMARY KEY only on one single column : the checked attribute */
   P_M_CONSTR_PK,		/* constraint PRIMARY KEY on more columns, including checked attribute */
@@ -779,6 +780,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		    }
 		}
 	    }
+
+          if(p->info.attr_def.attr_invisible)
+            {
+              SM_ATTRIBUTE *att;
+              error = smt_find_attribute (ctemplate, attr_name, class_attr, &att);
+
+              if (error == NO_ERROR)
+                {
+                  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	        }
+            }
 
 	  data_default = p->info.attr_def.data_default;
 	  if (data_default != NULL && data_default->node_type == PT_DATA_DEFAULT)
@@ -7352,6 +7364,20 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	}
     }
 
+  if (error == NO_ERROR && attribute->info.attr_def.attr_invisible)
+    {
+      /* skip finding attribute if att is already available */
+      if (att == NULL)
+	{
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	}
+
+      if (error == NO_ERROR)
+	{
+          att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	}
+    }
+
   comment = attribute->info.attr_def.comment;
   if (error == NO_ERROR && comment != NULL)
     {
@@ -7463,6 +7489,15 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
       if (sm_att_constrained (class_obj, column->attr_name, SM_ATTFLAG_NON_NULL))
 	{
 	  error = dbt_constrain_non_null (ctemplate, attr_name, 0, 1);
+	}
+      if (error == NO_ERROR && sm_att_constrained (class_obj, column->attr_name, SM_ATTFLAG_INVISIBLE_COLUMN))
+        {
+          SM_ATTRIBUTE *att;
+          error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+          if(error == NO_ERROR)
+            {
+              att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+            }
 	}
     }
 
@@ -10815,6 +10850,15 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	dbt_constrain_non_null (ctemplate, attr_name, (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0, 0);
     }
 
+  /* add or drop INVISIBLE COLUMN option */
+  if (is_att_prop_set (attr_chg_prop->p[P_INVISIBLE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_INVISIBLE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_INVISIBLE_COLUMN);
+    }
 
   /* delete or (re-)create auto_increment attribute's serial object */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
@@ -11180,6 +11224,22 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 
   /* constraint CHECK : not supported, just mark as checked */
   attr_chg_properties->p[P_CONSTR_CHECK] = 0;
+
+  /* INVISIBLE COLUMN */
+  attr_chg_properties->p[P_INVISIBLE] = 0;
+  if (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (attr_def->info.attr_def.attr_invisible)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if(attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)

@@ -4902,6 +4902,10 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 		{
 		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
 		}
+        if (attr->info.attr_def.attr_invisible)
+    {
+      PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_INVISIBLE);
+    }
 	    }
 	}
 

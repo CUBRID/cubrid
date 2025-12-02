@@ -24326,6 +24326,38 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      db_make_string (out_values[idx_val], "auto_increment");
 	    }
 
+    /* attribute is invisible or not */
+    if (attrepr->is_invisible)
+	    {
+	      const char *saved = db_get_string (out_values[idx_val]);
+	      size_t len = strlen (saved);
+
+	      /* add whitespace character if saved is not an empty string */
+	      const char *is_invisible_string = "INVISIBLE";
+	      size_t str_len = len + strlen (is_invisible_string) + 1;
+	      if (len != 0)
+		{
+		  str_len += 1;	// append space before
+		}
+	      char *str_val = (char *) db_private_alloc (thread_p, str_len);
+
+	      if (str_val == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      strcpy (str_val, saved);
+	      if (len != 0)
+		{
+		  strcat (str_val, " ");
+		}
+	      strcat (str_val, is_invisible_string);
+
+		  pr_clear_value (out_values[idx_val]);
+		  db_make_string (out_values[idx_val], str_val);
+		  out_values[idx_val]->need_clear = true;
+	    }
+
 	  if (attrepr->on_update_expr != DB_DEFAULT_NONE)
 	    {
 	      const char *saved = db_get_string (out_values[idx_val]);
@@ -24338,7 +24370,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 		}
 
 	      /* add whitespace character if saved is not an empty string */
-	      const char *on_update_string = "ON UPDATE ";
+	      const char *on_update_string = "ON UPDATE";
 	      size_t str_len = len + strlen (on_update_string) + strlen (default_expr_op_string) + 1;
 	      if (len != 0)
 		{

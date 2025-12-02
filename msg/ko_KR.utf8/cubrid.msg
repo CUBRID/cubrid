@@ -1968,6 +1968,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 331 Static SQL에 사용된 호스트 표현식은 변수나 레코드 필드이어야 합니다: '%1$s'.
 
 
+334 가상 클래스 속성은 invisible로 정의할 수 없습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

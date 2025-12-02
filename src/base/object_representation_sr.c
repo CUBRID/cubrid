@@ -2513,6 +2513,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	{
 	  att->is_notnull = 0;
 	}
+      if (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN)
+  {
+    att->is_invisible = 1;
+  }
+      else
+  {
+    att->is_invisible = 0;
+  }
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
@@ -2706,6 +2714,14 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	{
 	  att->is_notnull = 0;
 	}
+      if (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN)
+  {
+    att->is_invisible = 1;
+  }
+      else
+  {
+    att->is_invisible = 0;
+  }
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
@@ -2787,6 +2803,15 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->is_autoincrement = 0;
       att->is_notnull = 0;
 
+      if (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN)
+  {
+    att->is_invisible = 1;
+  }
+      else
+  {
+    att->is_invisible = 0;
+  }
+
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
       assert (!IS_DEDUPLICATE_KEY_ATTR_ID (att->id));
@@ -2805,7 +2830,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
-      /* there won't be any indexes or uniques for shared attrs */
+      /* there won't be any indexes or uniques for class attrs */
       att->n_btids = 0;
       att->btids = NULL;
 
