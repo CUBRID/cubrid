@@ -381,12 +381,12 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_CFILE,		/* 34 */
   CCI_U_TYPE_BLOB,		/* 35 */
   CCI_U_TYPE_CLOB,		/* 36 */
-  CCI_U_TYPE_ENUM,		/* 35 */
-  CCI_U_TYPE_TIMESTAMPTZ,	/* 37 */
-  CCI_U_TYPE_TIMESTAMPLTZ,	/* 38 */
-  CCI_U_TYPE_DATETIMETZ,	/* 39 */
-  CCI_U_TYPE_DATETIMELTZ,	/* 40 */
-  CCI_U_TYPE_JSON,		/* 41 */
+  CCI_U_TYPE_ENUM,		/* 37 */
+  CCI_U_TYPE_TIMESTAMPTZ,	/* 38 */
+  CCI_U_TYPE_TIMESTAMPLTZ,	/* 39 */
+  CCI_U_TYPE_DATETIMETZ,	/* 40 */
+  CCI_U_TYPE_DATETIMELTZ,	/* 41 */
+  CCI_U_TYPE_JSON,		/* 42 */
 };
 
 #if defined (CAS_FOR_CGW)
