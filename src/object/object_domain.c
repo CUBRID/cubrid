@@ -7545,12 +7545,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     {
       target = dest;
     }
-  if (DB_VALUE_TYPE (dest) == desired_type && DB_VALUE_TYPE (src) == desired_type)
-    {
-      status = DOMAIN_COMPATIBLE;
-      pr_clear_value (&src_replacement);
-      return status;
-    }
 
   /*
    * Initialize the destination domain, important for the
