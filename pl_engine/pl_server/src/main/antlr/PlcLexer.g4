@@ -296,7 +296,9 @@ SS_RPAREN :     ')' {
             setType(PlcParser.SS_NON_STR);
         }
     };
-SS_BIND_PARAM:  '?';
+SS_BIND_PARAM:  '?' {
+        checkFirstLParen = false;
+    };
 SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
         checkFirstLParen = false;
     };
