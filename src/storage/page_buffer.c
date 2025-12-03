@@ -488,7 +488,7 @@ union pgbuf_atomic_latch_impl
   struct
   {
     PGBUF_LATCH_MODE latch_mode;
-    bool waiter_exists;
+    uint16_t waiter_exists;
     int fcnt;
   } impl;
 };
@@ -1022,10 +1022,14 @@ static int pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_L
 STATIC_INLINE int pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode,
 					    int buf_lock_acquired, PGBUF_LATCH_CONDITION condition,
 					    bool * is_latch_wait) __attribute__ ((ALWAYS_INLINE));
-static int pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode);
+static bool pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode);
 
 STATIC_INLINE PGBUF_BCB *pgbuf_search_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 						  const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PAGE_PTR pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE PGBUF_BCB *pgbuf_search_hash_chain_no_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
+							      const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 						PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -1267,47 +1271,72 @@ STATIC_INLINE void
 set_latch (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode)
 {
   PGBUF_ATOMIC_LATCH_IMPL impl;
-  impl.raw = latch->load (std::memory_order_acquire);
-  impl.impl.latch_mode = latch_mode;
-  latch->store (impl.raw, std::memory_order_release);
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.latch_mode = latch_mode;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
 }
 
 STATIC_INLINE void
 add_fcnt (PGBUF_ATOMIC_LATCH * latch, int cnt)
 {
   PGBUF_ATOMIC_LATCH_IMPL impl;
-  impl.raw = latch->load (std::memory_order_acquire);
-  impl.impl.fcnt += cnt;
-  latch->store (impl.raw, std::memory_order_release);
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.fcnt += cnt;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
 }
 
 STATIC_INLINE void
 set_latch_and_fcnt (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode, int cnt)
 {
   PGBUF_ATOMIC_LATCH_IMPL impl;
-  impl.raw = latch->load (std::memory_order_acquire);
-  impl.impl.latch_mode = latch_mode;
-  impl.impl.fcnt = cnt;
-  latch->store (impl.raw, std::memory_order_release);
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.latch_mode = latch_mode;
+      new_impl.impl.fcnt = cnt;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
 }
 
 STATIC_INLINE void
 set_latch_and_add_fcnt (PGBUF_ATOMIC_LATCH * latch, PGBUF_LATCH_MODE latch_mode, int cnt)
 {
   PGBUF_ATOMIC_LATCH_IMPL impl;
-  impl.raw = latch->load (std::memory_order_acquire);
-  impl.impl.latch_mode = latch_mode;
-  impl.impl.fcnt += cnt;
-  latch->store (impl.raw, std::memory_order_release);
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.latch_mode = latch_mode;
+      new_impl.impl.fcnt += cnt;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
 }
 
 STATIC_INLINE void
 set_waiter_exists (PGBUF_ATOMIC_LATCH * latch, bool waiter_exists)
 {
   PGBUF_ATOMIC_LATCH_IMPL impl;
-  impl.raw = latch->load (std::memory_order_acquire);
-  impl.impl.waiter_exists = waiter_exists;
-  latch->store (impl.raw, std::memory_order_release);
+  PGBUF_ATOMIC_LATCH_IMPL new_impl;
+  do
+    {
+      impl.raw = latch->load (std::memory_order_acquire);
+      new_impl = impl;
+      new_impl.impl.waiter_exists = waiter_exists;
+    }
+  while (!latch->compare_exchange_weak (impl.raw, new_impl.raw, std::memory_order_acq_rel, std::memory_order_acquire));
 }
 
 STATIC_INLINE int
@@ -1979,6 +2008,21 @@ try_again:
 
   /* Normal process */
   /* latch_mode = PGBUF_LATCH_READ/PGBUF_LATCH_WRITE */
+
+  if (request_mode == PGBUF_LATCH_READ && (fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC)
+      && condition == PGBUF_UNCONDITIONAL_LATCH)
+    {
+      pgptr = pgbuf_lockfree_fix_ro (thread_p, vpid, fetch_mode);
+      if (pgptr != NULL)
+	{
+	  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+#if !defined (NDEBUG)
+	  pgbuf_add_fixed_at (pgbuf_find_thrd_holder (thread_p, bufptr), caller_file, caller_line, !had_holder);
+#endif
+	  goto fast_path;
+	}
+    }
+
   hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)];
 
   buf_lock_acquired = false;
@@ -2145,7 +2189,7 @@ try_again:
     }
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-
+fast_path:
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
@@ -5870,15 +5914,28 @@ exit_on_error:
   return err;
 }
 
-static int
+static bool
 pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE request_mode)
 {
   PGBUF_HOLDER *holder = NULL;
+  PGBUF_ATOMIC_LATCH_IMPL impl_orig, impl_new;
   bool buf_is_dirty;
 
   buf_is_dirty = pgbuf_bcb_is_dirty (bufptr);
 
-  set_latch_and_fcnt (&bufptr->atomic_latch, request_mode, 1);
+  impl_orig.impl.waiter_exists = false;
+  impl_orig.impl.latch_mode = PGBUF_NO_LATCH;
+  impl_orig.impl.fcnt = 0;
+  impl_new = impl_orig;
+  impl_new.impl.latch_mode = request_mode;
+  impl_new.impl.fcnt = 1;
+  if (!bufptr->atomic_latch.
+      compare_exchange_strong (impl_orig.raw, impl_new.raw, std::memory_order::memory_order_acq_rel,
+			       std::memory_order::memory_order_acquire))
+    {
+      PGBUF_BCB_UNLOCK (bufptr);
+      return false;
+    }
 
   PGBUF_BCB_UNLOCK (bufptr);
 
@@ -5909,7 +5966,7 @@ pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_
     }
   holder->perf_stat.dirty_before_hold = buf_is_dirty;
 
-  return NO_ERROR;
+  return true;
 }
 
 /*
@@ -5972,7 +6029,10 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
   if (is_page_idle == true)
     {
-      return pgbuf_latch_idle_page (thread_p, bufptr, request_mode);
+      if (pgbuf_latch_idle_page (thread_p, bufptr, request_mode))
+	{
+	  return NO_ERROR;
+	}
     }
 
   if (request_mode == PGBUF_LATCH_READ && get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_READ)
@@ -6288,6 +6348,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   int th_lru_idx;
   PGBUF_ZONE zone;
   int error_code = NO_ERROR;
+  PGBUF_ATOMIC_LATCH_IMPL impl_orig, impl_new;
+  bool is_zero_fcnt = false, blocked_reader_writer = false;
+  int last_fcnt;
 
   assert (holder_status == NO_ERROR);
 
@@ -6299,15 +6362,32 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
   /* decrement the fix count */
-  add_fcnt (&bufptr->atomic_latch, -1);
-  if (get_fcnt (&bufptr->atomic_latch) < 0)
+  do
     {
-      /* This situation must not be occurred. */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bufptr->vpid.pageid,
-	      fileio_get_volume_label (bufptr->vpid.volid, PEEK));
-      set_latch_and_fcnt (&bufptr->atomic_latch, get_latch (&bufptr->atomic_latch), 0);
+      impl_orig = get_impl (&bufptr->atomic_latch);
+      impl_new = impl_orig;
+      impl_new.impl.fcnt -= 1;
+      last_fcnt = impl_new.impl.fcnt;
+      blocked_reader_writer = impl_orig.impl.waiter_exists;
+      if (last_fcnt == 0)
+	{
+	  is_zero_fcnt = true;
+	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
+	}
+      if (last_fcnt < 0)
+	{
+	  /* This situation must not be occurred. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bufptr->vpid.pageid,
+		  fileio_get_volume_label (bufptr->vpid.volid, PEEK));
+	  set_latch_and_fcnt (&bufptr->atomic_latch, get_latch (&bufptr->atomic_latch), 0);
+	  is_zero_fcnt = true;
+	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
+	  break;
+	}
     }
+  while (!bufptr->atomic_latch.compare_exchange_weak (impl_orig.raw, impl_new.raw, std::memory_order_acq_rel,
+						      std::memory_order_acquire));
 
   if (holder_status != NO_ERROR)
     {
@@ -6317,7 +6397,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
       return ER_FAILED;
     }
 
-  if (get_fcnt (&bufptr->atomic_latch) == 0)
+  if (is_zero_fcnt)
     {
       /* When oldest_unflush_lsa of a page is set, its dirty mark should also be set */
       assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa) || pgbuf_bcb_is_dirty (bufptr));
@@ -6329,7 +6409,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	{
 	  pgbuf_move_bcb_to_bottom_lru (thread_p, bufptr);
 	}
-      else if (pgbuf_is_exist_blocked_reader_writer (bufptr) == false)
+      else if (blocked_reader_writer == false)
 	{
 	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_unfix_cnt, 1);
 
@@ -6453,7 +6533,6 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	    }
 	}
 
-      set_latch (&bufptr->atomic_latch, PGBUF_NO_LATCH);
 #if defined(SERVER_MODE)
       pgbuf_wakeup_reader_writer (thread_p, bufptr);
 #endif /* SERVER_MODE */
@@ -6653,6 +6732,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *cur_thrd_entry, *thrd_entry;
+  set_waiter_exists (&bufptr->atomic_latch, true);
 
   /* caller is holding bufptr->mutex */
   /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH */
@@ -7124,6 +7204,10 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	  break;
 	}
     }
+  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
+    {
+      set_waiter_exists (&bufptr->atomic_latch, false);
+    }
 }
 #endif /* SERVER_MODE */
 
@@ -7256,6 +7340,91 @@ try_again:
   /* at this point, if (bufptr != NULL) caller holds bufptr->mutex but not hash_anchor->hash_mutex if (bufptr ==
    * NULL) caller holds hash_anchor->hash_mutex. */
   return bufptr;
+}
+
+STATIC_INLINE PAGE_PTR
+pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode)
+{
+  assert (fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC);
+  PGBUF_HOLDER *holder = NULL;
+  PGBUF_ATOMIC_LATCH_IMPL impl, new_impl;
+  PGBUF_BCB *bufptr =
+    pgbuf_search_hash_chain_no_bcb_lock (thread_p, &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)], vpid);
+  PAGE_PTR pgptr = NULL;
+  if (bufptr == NULL)
+    {
+      return NULL;
+    }
+
+  do
+    {
+      impl = get_impl (&bufptr->atomic_latch);
+      new_impl = impl;
+      if (impl.impl.latch_mode != PGBUF_LATCH_READ)	// can cover NO_LATCH ? 
+	{
+	  return NULL;
+	}
+      if (impl.impl.waiter_exists)
+	{
+	  return NULL;
+	}
+      new_impl.impl.fcnt++;
+    }
+  while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, new_impl.raw,
+						      std::memory_order_acq_rel, std::memory_order_acquire));
+
+
+  holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+  if (holder != NULL)
+    {
+      /* the caller is the holder of the buffer page */
+      holder->fix_count++;
+
+      /* holder->dirty_before_holder not changed */
+      holder->perf_stat.hold_has_read_latch = 1;
+    }
+#if defined(SERVER_MODE)
+  else
+    {
+      /* the caller is not the holder of the buffer page */
+      /* allocate a BCB holder entry */
+      holder = pgbuf_allocate_thrd_holder_entry (thread_p);
+      if (holder == NULL)
+	{
+	  /* This situation must not be occurred. */
+	  assert (false);
+	  return NULL;
+	}
+
+      holder->fix_count = 1;
+      holder->bufptr = bufptr;
+
+      holder->perf_stat.hold_has_read_latch = 1;
+      holder->perf_stat.hold_has_write_latch = 0;
+      holder->perf_stat.dirtied_by_holder = 0;
+      holder->perf_stat.dirty_before_hold = pgbuf_bcb_is_dirty (bufptr);
+    }
+#endif /* SERVER_MODE */
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+  assert (pgptr != NULL);
+  return pgptr;
+}
+
+STATIC_INLINE PGBUF_BCB *
+pgbuf_search_hash_chain_no_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor, const VPID * vpid)
+{
+  PGBUF_BCB *bufptr;
+
+  bufptr = hash_anchor->hash_next;
+  while (bufptr != NULL)
+    {
+      if (VPID_EQ (&(bufptr->vpid), vpid))
+	{
+	  return bufptr;
+	}
+      bufptr = bufptr->hash_next;
+    }
+  return NULL;
 }
 
 /*

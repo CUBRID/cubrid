@@ -187,7 +187,7 @@ typedef enum
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
-typedef enum:uint8_t
+typedef enum:uint16_t
 {
   PGBUF_NO_LATCH = 0,
   PGBUF_LATCH_READ = 1,
