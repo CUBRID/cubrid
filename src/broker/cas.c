@@ -376,7 +376,7 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd
 
 static int
 cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url,
-		T_REQ_INFO *req_info, char *cas_info)
+		T_REQ_INFO * req_info, char *cas_info)
 {
   int err_code;
   char *db_err_msg = NULL;
@@ -846,7 +846,7 @@ return_error:
 }
 
 static FN_RETURN
-process_request (SOCKET sock_fd, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   MSG_HEADER client_msg_header;
   MSG_HEADER cas_msg_header;
@@ -1348,7 +1348,7 @@ exit_on_end:
 }
 
 static int
-net_read_process (SOCKET proxy_sock_fd, MSG_HEADER *client_msg_header, T_REQ_INFO *req_info)
+net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
   int timeout = 0, remained_timeout = 0;

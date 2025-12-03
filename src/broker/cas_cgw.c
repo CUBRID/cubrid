@@ -405,7 +405,7 @@ cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_pas
 
 static int
 cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url,
-		T_REQ_INFO *req_info, char *cas_info)
+		T_REQ_INFO * req_info, char *cas_info)
 {
   int err_code;
   char *db_err_msg = NULL;
@@ -471,7 +471,7 @@ cgw_cleanup_session (void)
 }
 
 static FN_RETURN
-process_request (SOCKET sock_fd, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   MSG_HEADER client_msg_header;
   MSG_HEADER cas_msg_header;
