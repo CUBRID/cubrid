@@ -5032,7 +5032,7 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   /* TODO:
    * PT_TYPE_NCHAR and PT_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
    * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.
    */
   PT_TYPE_NULL,			// PT_TYPE_NCHAR  for CCI_U_TYPE_NCHAR
   PT_TYPE_NULL,			// PT_TYPE_VARNCHAR for CCI_U_TYPE_VARNCHAR
@@ -10458,7 +10458,8 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   PT_MISC_TYPE sp_type_misc = (PT_MISC_TYPE) jsp_get_sp_type (sp_name);
   // stored procedures can only be invoked through a CALL statement
-  if (sp_type_misc == PT_SP_PROCEDURE && bind_arg->sc_info->top_node->node_type != PT_METHOD_CALL)
+  if (sp_type_misc == PT_SP_PROCEDURE &&
+      (bind_arg->sc_info->top_node == NULL || bind_arg->sc_info->top_node->node_type != PT_METHOD_CALL))
     {
       PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_STORED_PROC_CALL_IN_SQL);
       return NULL;
