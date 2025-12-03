@@ -17,7 +17,7 @@
  */
 
  /*
-  * cas_cgw.c -
+  * cas_cgw_odbc.c
   */
 
 #ident "$Id$"
@@ -27,20 +27,23 @@
 #include <inttypes.h>
 #endif
 
-#include "cas_cgw.h"
-#include "cas.h"
+#include "cas_cgw_odbc.h"
 #include "cas_util.h"
 #include "cas_log.h"
+#include "cas_common.h"
+#include "broker_config.h"
+#include "broker_cas_cci.h"
+#include "cas_cgw_execute.h"
 
 #ifndef WINDOWS
 #include <iconv.h>
 #endif
 
 #define STRING_MAX_SIZE         (16*1024*1024)
-#define LOGIN_TIME_OUT          5
-#define NUM_OF_DIGITS(NUMBER)   (int)log10(NUMBER) + 1
-#define DISCONNECTED_STATE      -1
-#define CONNECTED_STATE         0
+#define LOGIN_TIME_OUT          (5)
+#define NUM_OF_DIGITS(NUMBER)   ((int)log10(NUMBER) + 1)
+#define DISCONNECTED_STATE      (-1)	
+#define CONNECTED_STATE         (0)
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
 #define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = (x);\
@@ -122,10 +125,11 @@ static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
 static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
 static const char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
 
-int
-cgw_init ()
+int cgw_init (void)
 {
   SQLRETURN err_code;
+  
+  /* Step 1: Initialize ODBC handles */
   err_code = cgw_init_odbc_handle ();
   if (err_code < 0)
     {
@@ -143,13 +147,19 @@ cgw_init ()
 	       SQL_HANDLE_ENV,
 	       err_code = SQLSetEnvAttr (local_odbc_handle->henv, SQL_ATTR_ODBC_VERSION, (SQLPOINTER) SQL_OV_ODBC3, 0));
 
+  /* Step 2: Enable CGW mode in cas_common_lib */
+  hm_set_cgw_mode (true);
+
+  /* Step 3: Register CGW function pointers for cas_common_lib */
+  hm_set_cgw_free_stmt_func (ux_cgw_free_stmt);
+
   return NO_ERROR;
 ODBC_ERROR:
   return ER_FAILED;
 }
 
 void
-cgw_cleanup ()
+cgw_cleanup (void)
 {
   cgw_cleanup_handle (local_odbc_handle);
 }
@@ -1452,16 +1462,17 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 			 err_code =
 			 SQLSetDescField (hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
 
-	    SQL_CHK_ERR (hdesc,
-			 SQL_HANDLE_DESC,
-			 err_code =
-			 SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
-					  (SQLPOINTER) & value_list->ns_val.precision, 0));
-
-	    SQL_CHK_ERR (hdesc,
-			 SQL_HANDLE_DESC,
-			 err_code =
-			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE, (SQLPOINTER) & value_list->ns_val.scale, 0));
+			 SQL_CHK_ERR (hdesc,
+				SQL_HANDLE_DESC,
+				err_code =
+				SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
+						 (SQLPOINTER) (uintptr_t) value_list->ns_val.precision, 0));
+       
+		   SQL_CHK_ERR (hdesc,
+				SQL_HANDLE_DESC,
+				err_code =
+				SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE,
+						 (SQLPOINTER) (uintptr_t) value_list->ns_val.scale, 0));
 
 	    SQL_CHK_ERR (hdesc,
 			 SQL_HANDLE_DESC,

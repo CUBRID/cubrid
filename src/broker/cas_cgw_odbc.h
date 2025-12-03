@@ -17,11 +17,11 @@
  */
 
  /*
-  * cas_cgw.h -
+  * cas_cgw_odbc.h
   */
 
-#ifndef	_CAS_CGW_H_
-#define	_CAS_CGW_H_
+#ifndef	_CAS_CGW_ODBC_H_
+#define	_CAS_CGW_ODBC_H_
 
 #ident "$Id$"
 
@@ -56,9 +56,7 @@
 
 #include "cas_handle.h"
 #include "cas_net_buf.h"
-#include "cas_execute.h"
 #include "dbtype.h"
-#include "tz_support.h"
 
 #define COL_NAME_LEN               (255)
 #define DEFAULT_VALUE_LEN          (255)
@@ -68,17 +66,6 @@
 #define DECIMAL_DIGIT_MAX_LEN      (20)	/* 9223372036854775807 (7FFF FFFF FFFF FFFF) */
 #define MYSQL_CONNECT_URL_FORMAT    "DRIVER={%s};SERVER=%s;Port=%s;DATABASE=%s;USER=%s;PASSWORD=%s;%s"
 #define ORACLE_CONNECT_URL_FORMAT    "DRIVER={%s};DBQ=%s;Server=%s/%s;Uid=%s;Pwd=%s;%s"
-
-#define REWRITE_DELIMITER_CUBLINK        ") cublink("
-#define REWRITE_DELIMITER_FROM           "FROM"
-#define REWRITE_DELIMITER_WHERE          "WHERE"
-#define REWRITE_DELIMITER_CUBLINK_LEN    7	// "cublink"
-#define REWRITE_DELIMITER_FROM_LEN       4
-#define REWRITE_SELECT_FROM_LEN          14	// "SELECT * FROM "
-#define REWRITE_SELECT_LEN               8	// "(SELECT "
-#define REWRITE_FROM_LEN                 7	// " FROM )"
-
-#define ERR_REWRITE_FAILED               -2
 
 typedef struct t_col_binder T_COL_BINDER;
 struct t_col_binder
@@ -183,4 +170,4 @@ extern T_DBMS_TYPE cgw_is_supported_dbms (char *dbms);
 extern void cgw_set_dbms_type (T_DBMS_TYPE dbms_type);
 extern T_DBMS_TYPE cgw_get_dbms_type ();
 
-#endif /* _CAS_CGW_H_ */
+#endif /* _CAS_CGW_ODBC_H_ */

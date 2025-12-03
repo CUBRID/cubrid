@@ -109,12 +109,18 @@ extern "C"
     CAS_CHANGE_MODE_DEFAULT = CAS_CHANGE_MODE_AUTO
   } CAS_CHANGE_MODE;
 
+typedef int T_BROKER_VERSION;
+
+
+
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
 #define CAS_INFO_FLAG_MASK_NEW_SESSION_ID       0x04
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
+
+#define MAX_HA_DBINFO_LENGTH    (SRV_CON_DBNAME_SIZE + MAX_CONN_INFO_LENGTH)
 
 #define MSG_HEADER_INFO_SIZE        CAS_INFO_SIZE
 #define MSG_HEADER_MSG_SIZE         ((int) sizeof(int))
@@ -353,26 +359,24 @@ extern "C"
                 *((char **) (MSG_P)) = (char *) "";		\
                 break;						\
               }							\
-	} while (0)
+              } while (0)
 
-  typedef int T_BROKER_VERSION;
-
-  extern const char *cas_bi_get_broker_info (void);
-  extern char cas_bi_get_dbms_type (void);
-  extern void cas_bi_set_dbms_type (const char dbms_type);
-  extern void cas_bi_set_keep_connection (const char keep_connection);
-  extern char cas_bi_get_keep_connection (void);
-  extern void cas_bi_set_statement_pooling (const char statement_pooling);
-  extern char cas_bi_get_statement_pooling (void);
-  extern void cas_bi_set_cci_pconnect (const char cci_pconnect);
-  extern char cas_bi_get_cci_pconnect (void);
-  extern void cas_bi_set_oracle_compat_number_behavior (char oracle_compat_number_behavior);
-  extern void cas_bi_set_protocol_version (const char protocol_version);
-  extern char cas_bi_get_protocol_version (void);
-  extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
-  extern bool cas_bi_get_renewed_error_code (void);
-  extern bool cas_di_understand_renewed_error_code (const char *driver_info);
-  extern void cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect,
+extern const char *cas_bi_get_broker_info (void);
+extern char cas_bi_get_dbms_type (void);
+extern void cas_bi_set_dbms_type (const char dbms_type);
+extern void cas_bi_set_keep_connection (const char keep_connection);
+extern char cas_bi_get_keep_connection (void);
+extern void cas_bi_set_statement_pooling (const char statement_pooling);
+extern char cas_bi_get_statement_pooling (void);
+extern void cas_bi_set_cci_pconnect (const char cci_pconnect);
+extern char cas_bi_get_cci_pconnect (void);
+extern void cas_bi_set_oracle_compat_number_behavior (char oracle_compat_number_behavior);
+extern void cas_bi_set_protocol_version (const char protocol_version);
+extern char cas_bi_get_protocol_version (void);
+extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
+extern bool cas_bi_get_renewed_error_code (void);
+extern bool cas_di_understand_renewed_error_code (const char *driver_info);
+extern void cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect,
 				       char oracle_compat_number_behavior);
 #ifdef __cplusplus
 }

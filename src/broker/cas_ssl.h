@@ -18,25 +18,18 @@
 
 
 /*
- * cas_util.h -
+ * cas_ssl.h -
  */
 
-#ifndef	_CAS_UTIL_H_
-#define	_CAS_UTIL_H_
+#ifndef _CAS_SSL_H_
+#define _CAS_SSL_H_
 
-#ident "$Id$"
+extern bool ssl_client;
 
-#if defined(WINDOWS)
-#include <winsock2.h>
-#include <windows.h>
-#endif
+extern int cas_init_ssl (int sd);
+extern int cas_ssl_read (int sd, char *buf, int size);
+extern int cas_ssl_write (int sd, const char *buf, int size);
+extern void cas_ssl_close (int client_sock_fd);
+extern bool is_ssl_data_ready (int sock_fd);
 
-#define ut_trim  trim
-
-extern char *ut_uchar2ipstr (unsigned char *ip_addr);
-extern void ut_tolower (char *str);
-extern void ut_timeval_diff (struct timeval *start, struct timeval *end, int *res_sec, int *res_msec);
-extern int ut_check_timeout (struct timeval *start_time, struct timeval *end_time, int timeout_msec, int *res_sec,
-			     int *res_msec);
-
-#endif /* _CAS_UTIL_H_ */
+#endif /* _CAS_SSL_H_ */
