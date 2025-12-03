@@ -187,13 +187,13 @@ typedef enum
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
-typedef enum
+typedef enum:uint8_t
 {
   PGBUF_NO_LATCH = 0,
-  PGBUF_LATCH_READ,
-  PGBUF_LATCH_WRITE,
-  PGBUF_LATCH_FLUSH,		/* this is only used as block mode. page can never be fixed with flush latch mode. */
-  PGBUF_LATCH_INVALID
+  PGBUF_LATCH_READ = 1,
+  PGBUF_LATCH_WRITE = 2,
+  PGBUF_LATCH_FLUSH = 3,	/* this is only used as block mode. page can never be fixed with flush latch mode. */
+  PGBUF_LATCH_INVALID = 4
 } PGBUF_LATCH_MODE;
 
 typedef enum
