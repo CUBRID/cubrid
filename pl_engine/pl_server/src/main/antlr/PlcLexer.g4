@@ -24,8 +24,6 @@ lexer grammar PlcLexer;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
-
-import com.cubrid.plcsql.compiler.error.SemanticError;
 }
 
 @members {
