@@ -372,7 +372,7 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
 }
 
 FN_RETURN
-fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
   NET_BUF_ERR_SET (net_buf);
@@ -380,7 +380,7 @@ fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_R
 }
 
 FN_RETURN
-fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 #if defined(CAS_FOR_DBMS)
   ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);

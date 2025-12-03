@@ -615,7 +615,7 @@ ux_database_shutdown (bool request_server)
 }
 
 int
-ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF *net_buf, T_REQ_INFO *req_info,
+ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    unsigned int query_seq_num)
 {
   int stmt_id;
@@ -939,7 +939,7 @@ ux_end_session (void)
 }
 
 int
-ux_get_row_count (T_NET_BUF *net_buf)
+ux_get_row_count (T_NET_BUF * net_buf)
 {
   int row_count, err;
 
@@ -964,7 +964,7 @@ ux_get_row_count (T_NET_BUF *net_buf)
 }
 
 int
-ux_get_last_insert_id (T_NET_BUF *net_buf)
+ux_get_last_insert_id (T_NET_BUF * net_buf)
 {
   int err = NO_ERROR;
   DB_VALUE lid;
@@ -989,8 +989,8 @@ ux_get_last_insert_id (T_NET_BUF *net_buf)
 }
 
 int
-ux_execute (T_SRV_HANDLE *srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
-	    T_NET_BUF *net_buf, T_REQ_INFO *req_info, CACHE_TIME *clt_cache_time, int *clt_cache_reusable)
+ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+	    T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
 {
   int err_code;
   DB_VALUE *value_list = NULL;
@@ -1304,8 +1304,8 @@ execute_error:
 }
 
 int
-ux_execute_all (T_SRV_HANDLE *srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
-		T_NET_BUF *net_buf, T_REQ_INFO *req_info, CACHE_TIME *clt_cache_time, int *clt_cache_reusable)
+ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+		T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
 {
   int err_code;
   DB_VALUE *value_list = NULL;
@@ -1646,8 +1646,8 @@ extern void jsp_set_prepare_call ();
 extern void jsp_unset_prepare_call ();
 
 int
-ux_execute_call (T_SRV_HANDLE *srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
-		 T_NET_BUF *net_buf, T_REQ_INFO *req_info, CACHE_TIME *clt_cache_time, int *clt_cache_reusable)
+ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+		 T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
 {
   int err_code;
   DB_VALUE *value_list = NULL, *out_vals;
@@ -1820,7 +1820,7 @@ execute_error:
 }
 
 int
-ux_next_result (T_SRV_HANDLE *srv_handle, char flag, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
   T_QUERY_RESULT *cur_result;
@@ -1887,7 +1887,7 @@ next_result_error:
 }
 
 int
-ux_execute_batch (int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info, char auto_commit_mode)
+ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info, char auto_commit_mode)
 {
   int query_index;
   int err_code, sql_size, res_count, stmt_id;
@@ -2083,7 +2083,7 @@ execute_batch_error:
 }
 
 int
-ux_execute_array (T_SRV_HANDLE *srv_handle, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   DB_VALUE *value_list = NULL;
   int err_code;
@@ -2404,7 +2404,7 @@ ux_get_tran_setting (int *lock_wait, int *isol_level)
 }
 
 int
-ux_set_isolation_level (int new_isol_level, T_NET_BUF *net_buf)
+ux_set_isolation_level (int new_isol_level, T_NET_BUF * net_buf)
 {
   int err_code;
 
@@ -2427,7 +2427,7 @@ ux_set_lock_timeout (int lock_timeout)
 }
 
 void
-ux_set_cas_change_mode (int mode, T_NET_BUF *net_buf)
+ux_set_cas_change_mode (int mode, T_NET_BUF * net_buf)
 {
   int prev_mode;
 
@@ -2439,8 +2439,8 @@ ux_set_cas_change_mode (int mode, T_NET_BUF *net_buf)
 }
 
 int
-ux_fetch (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_index,
-	  T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_index,
+	  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
   int fetch_func_index;
@@ -2506,7 +2506,7 @@ fetch_error:
 }
 
 int
-ux_oid_get (int argc, void **argv, T_NET_BUF *net_buf)
+ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf)
 {
   DB_OBJECT *obj;
   int err_code = 0;
@@ -2580,7 +2580,7 @@ oid_get_error:
 }
 
 int
-ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF *net_buf)
+ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -2625,7 +2625,7 @@ cursor_error:
 }
 
 int
-ux_cursor_update (T_SRV_HANDLE *srv_handle, int cursor_pos, int argc, void **argv, T_NET_BUF *net_buf)
+ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **argv, T_NET_BUF * net_buf)
 {
   int col_idx;
   int err_code;
@@ -2729,7 +2729,7 @@ cursor_update_error:
 }
 
 void
-ux_cursor_close (T_SRV_HANDLE *srv_handle)
+ux_cursor_close (T_SRV_HANDLE * srv_handle)
 {
   int idx = 0;
 
@@ -2755,7 +2755,7 @@ ux_cursor_close (T_SRV_HANDLE *srv_handle)
 }
 
 int
-ux_get_class_num_objs (char *class_name, int flag, T_NET_BUF *net_buf)
+ux_get_class_num_objs (char *class_name, int flag, T_NET_BUF * net_buf)
 {
   DB_OBJECT *class_obj;
   int err_code;
@@ -2791,7 +2791,7 @@ class_num_objs_error:
 }
 
 void
-ux_col_get (DB_COLLECTION *col, char col_type, char ele_type, DB_DOMAIN *ele_domain, T_NET_BUF *net_buf)
+ux_col_get (DB_COLLECTION * col, char col_type, char ele_type, DB_DOMAIN * ele_domain, T_NET_BUF * net_buf)
 {
   int col_size, i;
   DB_VALUE ele_val;
@@ -2829,7 +2829,7 @@ ux_col_get (DB_COLLECTION *col, char col_type, char ele_type, DB_DOMAIN *ele_dom
 }
 
 void
-ux_col_size (DB_COLLECTION *col, T_NET_BUF *net_buf)
+ux_col_size (DB_COLLECTION * col, T_NET_BUF * net_buf)
 {
   int col_size;
 
@@ -2848,7 +2848,7 @@ ux_col_size (DB_COLLECTION *col, T_NET_BUF *net_buf)
 }
 
 int
-ux_col_set_drop (DB_COLLECTION *col, DB_VALUE *ele_val, T_NET_BUF *net_buf)
+ux_col_set_drop (DB_COLLECTION * col, DB_VALUE * ele_val, T_NET_BUF * net_buf)
 {
   int err_code = 0;
 
@@ -2868,7 +2868,7 @@ ux_col_set_drop (DB_COLLECTION *col, DB_VALUE *ele_val, T_NET_BUF *net_buf)
 }
 
 int
-ux_col_set_add (DB_COLLECTION *col, DB_VALUE *ele_val, T_NET_BUF *net_buf)
+ux_col_set_add (DB_COLLECTION * col, DB_VALUE * ele_val, T_NET_BUF * net_buf)
 {
   int err_code = 0;
 
@@ -2888,7 +2888,7 @@ ux_col_set_add (DB_COLLECTION *col, DB_VALUE *ele_val, T_NET_BUF *net_buf)
 }
 
 int
-ux_col_seq_drop (DB_COLLECTION *col, int index, T_NET_BUF *net_buf)
+ux_col_seq_drop (DB_COLLECTION * col, int index, T_NET_BUF * net_buf)
 {
   int err_code = 0;
 
@@ -2908,7 +2908,7 @@ ux_col_seq_drop (DB_COLLECTION *col, int index, T_NET_BUF *net_buf)
 }
 
 int
-ux_col_seq_insert (DB_COLLECTION *col, int index, DB_VALUE *ele_val, T_NET_BUF *net_buf)
+ux_col_seq_insert (DB_COLLECTION * col, int index, DB_VALUE * ele_val, T_NET_BUF * net_buf)
 {
   int err_code = 0;
 
@@ -2928,7 +2928,7 @@ ux_col_seq_insert (DB_COLLECTION *col, int index, DB_VALUE *ele_val, T_NET_BUF *
 }
 
 int
-ux_col_seq_put (DB_COLLECTION *col, int index, DB_VALUE *ele_val, T_NET_BUF *net_buf)
+ux_col_seq_put (DB_COLLECTION * col, int index, DB_VALUE * ele_val, T_NET_BUF * net_buf)
 {
   int err_code = 0;
 
@@ -2948,7 +2948,7 @@ ux_col_seq_put (DB_COLLECTION *col, int index, DB_VALUE *ele_val, T_NET_BUF *net
 }
 
 int
-ux_oid_put (int argc, void **argv, T_NET_BUF *net_buf)
+ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf)
 {
   DB_OBJECT *obj;
   int err_code;
@@ -3029,7 +3029,7 @@ oid_put_error:
 }
 
 char
-get_set_domain (DB_DOMAIN *set_domain, int *precision, short *scale, char *db_type, char *charset)
+get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale, char *db_type, char *charset)
 {
   DB_DOMAIN *ele_domain;
   int set_domain_count = 0;
@@ -3082,7 +3082,7 @@ get_set_domain (DB_DOMAIN *set_domain, int *precision, short *scale, char *db_ty
 }
 
 int
-make_bind_value (int num_bind, int argc, void **argv, DB_VALUE **ret_val, T_NET_BUF *net_buf, char desired_type)
+make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf, char desired_type)
 {
   DB_VALUE *value_list = NULL;
   int i, type_idx, val_idx;
@@ -3125,7 +3125,7 @@ make_bind_value (int num_bind, int argc, void **argv, DB_VALUE **ret_val, T_NET_
 }
 
 int
-ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
   DB_OBJECT *class_obj;
@@ -3178,7 +3178,7 @@ ux_get_attr_type_str_error:
 }
 
 int
-ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF *net_buf)
+ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -3235,7 +3235,7 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF *net_buf)
 }
 
 int
-ux_get_parameter_info (int srv_h_id, T_NET_BUF *net_buf)
+ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -3335,7 +3335,7 @@ parameter_info_error:
 }
 
 int
-ux_check_object (DB_OBJECT *obj, T_NET_BUF *net_buf)
+ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf)
 {
   int err_code;
 
@@ -3366,7 +3366,7 @@ ux_check_object (DB_OBJECT *obj, T_NET_BUF *net_buf)
 }
 
 int
-ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF *net_buf, T_REQ_INFO *req_info,
+ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 		unsigned int query_seq_num)
 {
   int srv_h_id;
@@ -3490,7 +3490,7 @@ schema_info_error:
 }
 
 void
-ux_call_info_cp_param_mode (T_SRV_HANDLE *srv_handle, char *param_mode, int num_param)
+ux_call_info_cp_param_mode (T_SRV_HANDLE * srv_handle, char *param_mode, int num_param)
 {
   T_PREPARE_CALL_INFO *call_info = srv_handle->prepare_call_info;
 
@@ -3503,7 +3503,7 @@ ux_call_info_cp_param_mode (T_SRV_HANDLE *srv_handle, char *param_mode, int num_
 }
 
 static const char *
-get_column_default_as_string (DB_ATTRIBUTE *attr, bool *alloc)
+get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 {
   DB_VALUE *def = NULL;
   int err;
@@ -3633,7 +3633,7 @@ get_column_default_as_string (DB_ATTRIBUTE *attr, bool *alloc)
 }
 
 static void
-set_column_info (T_NET_BUF *net_buf, char ut, short scale, int prec, char charset, const char *col_name,
+set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset, const char *col_name,
 		 const char *attr_name, const char *class_name, char is_non_null, T_BROKER_VERSION client_version)
 {
   DB_OBJECT *class_obj;
@@ -3674,7 +3674,7 @@ set_column_info (T_NET_BUF *net_buf, char ut, short scale, int prec, char charse
 }
 
 static int
-netval_to_dbval (void *net_type, void *net_value, DB_VALUE *out_val, T_NET_BUF *net_buf, char desired_type)
+netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF * net_buf, char desired_type)
 {
   char type;
   int err_code = 0;
@@ -4161,7 +4161,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE *out_val, T_NET_BUF *
 }
 
 static int
-cur_tuple (T_QUERY_RESULT *q_result, int max_col_size, char sensitive_flag, DB_OBJECT *tuple_obj, T_NET_BUF *net_buf)
+cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * tuple_obj, T_NET_BUF * net_buf)
 {
   int ncols;
   DB_VALUE val;
@@ -4208,7 +4208,7 @@ cur_tuple (T_QUERY_RESULT *q_result, int max_col_size, char sensitive_flag, DB_O
 }
 
 static int
-dbval_to_net_buf (DB_VALUE *val, T_NET_BUF *net_buf, char fetch_flag, int max_col_size, char column_type_flag)
+dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size, char column_type_flag)
 {
   int data_size = 0;
   unsigned char ext_col_type;
@@ -4761,7 +4761,7 @@ dbval_to_net_buf (DB_VALUE *val, T_NET_BUF *net_buf, char fetch_flag, int max_co
 }
 
 static void
-dbobj_to_casobj (DB_OBJECT *obj, T_OBJECT *cas_obj)
+dbobj_to_casobj (DB_OBJECT * obj, T_OBJECT * cas_obj)
 {
   DB_IDENTIFIER *oid;
 
@@ -4782,7 +4782,7 @@ dbobj_to_casobj (DB_OBJECT *obj, T_OBJECT *cas_obj)
 }
 
 static void
-casobj_to_dbobj (T_OBJECT *cas_obj, DB_OBJECT **obj)
+casobj_to_dbobj (T_OBJECT * cas_obj, DB_OBJECT ** obj)
 {
   DB_IDENTIFIER oid;
 
@@ -4794,7 +4794,7 @@ casobj_to_dbobj (T_OBJECT *cas_obj, DB_OBJECT **obj)
 }
 
 static void
-dblob_to_caslob (DB_VALUE *lob, T_LOB_HANDLE *cas_lob)
+dblob_to_caslob (DB_VALUE * lob, T_LOB_HANDLE * cas_lob)
 {
   DB_ELO *elo;
 
@@ -4817,7 +4817,7 @@ dblob_to_caslob (DB_VALUE *lob, T_LOB_HANDLE *cas_lob)
 }
 
 static void
-caslob_to_dblob (T_LOB_HANDLE *cas_lob, DB_VALUE *db_lob)
+caslob_to_dblob (T_LOB_HANDLE * cas_lob, DB_VALUE * db_lob)
 {
   DB_ELO elo;
 
@@ -4831,7 +4831,7 @@ caslob_to_dblob (T_LOB_HANDLE *cas_lob, DB_VALUE *db_lob)
 }
 
 static int
-get_attr_name (DB_OBJECT *obj, char ***ret_attr_name)
+get_attr_name (DB_OBJECT * obj, char ***ret_attr_name)
 {
   DB_ATTRIBUTE *attributes, *att;
   char **attr_name = NULL;
@@ -4898,7 +4898,7 @@ get_attr_name_from_argv (int argc, void **argv, char ***ret_attr_name)
 }
 
 static int
-oid_attr_info_set (T_NET_BUF *net_buf, DB_OBJECT *obj, int attr_num, char **attr_name)
+oid_attr_info_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num, char **attr_name)
 {
   DB_ATTRIBUTE *attr = NULL;
   DB_DOMAIN *domain;
@@ -4982,7 +4982,7 @@ oid_attr_info_set (T_NET_BUF *net_buf, DB_OBJECT *obj, int attr_num, char **attr
 }
 
 static int
-oid_data_set (T_NET_BUF *net_buf, DB_OBJECT *obj, int attr_num, char **attr_name)
+oid_data_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num, char **attr_name)
 {
   int err_code;
   int i;
@@ -5003,8 +5003,8 @@ oid_data_set (T_NET_BUF *net_buf, DB_OBJECT *obj, int attr_num, char **attr_name
 }
 
 static int
-fetch_result (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-	      T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+	      T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
   int err_code;
@@ -5200,8 +5200,8 @@ fetch_result (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fe
 }
 
 static int
-fetch_class (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-	     T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+	     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   int tuple_num, tuple_num_msg_offset;
@@ -5261,8 +5261,8 @@ fetch_class (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fet
 }
 
 static int
-fetch_attribute (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		 T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		 T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
   int err_code;
@@ -5467,8 +5467,8 @@ fetch_attribute (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char
 }
 
 static int
-fetch_method (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-	      T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_method (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+	      T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_METHOD *tmp_p;
@@ -5577,8 +5577,8 @@ fetch_method (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fe
 }
 
 static int
-fetch_methfile (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_methfile (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_METHFILE *tmp_p;
@@ -5645,8 +5645,8 @@ fetch_methfile (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char 
 }
 
 static int
-fetch_constraint (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		  T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_constraint (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_CONSTRAINT *tmp_p;
@@ -5743,8 +5743,8 @@ fetch_constraint (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, cha
 }
 
 static int
-fetch_trigger (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-	       T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_trigger (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+	       T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   DB_OBJLIST *tmp_p;
@@ -5937,8 +5937,8 @@ fetch_trigger (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char f
 }
 
 static int
-fetch_privilege (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		 T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_privilege (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		 T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj;
   int num_result;
@@ -6041,8 +6041,8 @@ fetch_privilege (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char
 }
 
 static int
-fetch_foreign_keys (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		    T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_foreign_keys (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		    T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT dummy_obj = { 0, 0, 0 };
   T_FK_INFO_RESULT *fk_res;
@@ -6104,14 +6104,14 @@ fetch_foreign_keys (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, c
 }
 
 static int
-fetch_not_supported (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		     T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_not_supported (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   return ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
 }
 
 static void
-add_res_data_bytes (T_NET_BUF *net_buf, const char *str, int size, unsigned char ext_type, int *net_size)
+add_res_data_bytes (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6133,7 +6133,7 @@ add_res_data_bytes (T_NET_BUF *net_buf, const char *str, int size, unsigned char
 }
 
 static void
-add_res_data_string (T_NET_BUF *net_buf, const char *str, int size, unsigned char ext_type, unsigned char charset,
+add_res_data_string (T_NET_BUF * net_buf, const char *str, int size, unsigned char ext_type, unsigned char charset,
 		     int *net_size)
 {
   if (ext_type)
@@ -6156,7 +6156,7 @@ add_res_data_string (T_NET_BUF *net_buf, const char *str, int size, unsigned cha
 }
 
 static void
-add_res_data_string_safe (T_NET_BUF *net_buf, const char *str, unsigned char ext_type, unsigned char charset,
+add_res_data_string_safe (T_NET_BUF * net_buf, const char *str, unsigned char ext_type, unsigned char charset,
 			  int *net_size)
 {
   if (str != NULL)
@@ -6170,7 +6170,7 @@ add_res_data_string_safe (T_NET_BUF *net_buf, const char *str, unsigned char ext
 }
 
 static void
-add_res_data_int (T_NET_BUF *net_buf, int value, unsigned char ext_type, int *net_size)
+add_res_data_int (T_NET_BUF * net_buf, int value, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6191,7 +6191,7 @@ add_res_data_int (T_NET_BUF *net_buf, int value, unsigned char ext_type, int *ne
 }
 
 static void
-add_res_data_bigint (T_NET_BUF *net_buf, DB_BIGINT value, unsigned char ext_type, int *net_size)
+add_res_data_bigint (T_NET_BUF * net_buf, DB_BIGINT value, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6212,7 +6212,7 @@ add_res_data_bigint (T_NET_BUF *net_buf, DB_BIGINT value, unsigned char ext_type
 }
 
 static void
-add_res_data_short (T_NET_BUF *net_buf, short value, unsigned char ext_type, int *net_size)
+add_res_data_short (T_NET_BUF * net_buf, short value, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6233,7 +6233,7 @@ add_res_data_short (T_NET_BUF *net_buf, short value, unsigned char ext_type, int
 }
 
 static void
-add_res_data_float (T_NET_BUF *net_buf, float value, unsigned char ext_type, int *net_size)
+add_res_data_float (T_NET_BUF * net_buf, float value, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6254,7 +6254,7 @@ add_res_data_float (T_NET_BUF *net_buf, float value, unsigned char ext_type, int
 }
 
 static void
-add_res_data_double (T_NET_BUF *net_buf, double value, unsigned char ext_type, int *net_size)
+add_res_data_double (T_NET_BUF * net_buf, double value, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6275,7 +6275,7 @@ add_res_data_double (T_NET_BUF *net_buf, double value, unsigned char ext_type, i
 }
 
 static void
-add_res_data_timestamp (T_NET_BUF *net_buf, short yr, short mon, short day, short hh, short mm, short ss,
+add_res_data_timestamp (T_NET_BUF * net_buf, short yr, short mon, short day, short hh, short mm, short ss,
 			unsigned char ext_type, int *net_size)
 {
   if (ext_type)
@@ -6302,7 +6302,7 @@ add_res_data_timestamp (T_NET_BUF *net_buf, short yr, short mon, short day, shor
 }
 
 static void
-add_res_data_timestamptz (T_NET_BUF *net_buf, short yr, short mon, short day, short hh, short mm, short ss,
+add_res_data_timestamptz (T_NET_BUF * net_buf, short yr, short mon, short day, short hh, short mm, short ss,
 			  char *tz_str, unsigned char ext_type, int *net_size)
 {
   int tz_size;
@@ -6336,7 +6336,7 @@ add_res_data_timestamptz (T_NET_BUF *net_buf, short yr, short mon, short day, sh
 }
 
 static void
-add_res_data_datetime (T_NET_BUF *net_buf, short yr, short mon, short day, short hh, short mm, short ss, short ms,
+add_res_data_datetime (T_NET_BUF * net_buf, short yr, short mon, short day, short hh, short mm, short ss, short ms,
 		       unsigned char ext_type, int *net_size)
 {
   if (ext_type)
@@ -6364,7 +6364,7 @@ add_res_data_datetime (T_NET_BUF *net_buf, short yr, short mon, short day, short
 }
 
 static void
-add_res_data_datetimetz (T_NET_BUF *net_buf, short yr, short mon, short day, short hh, short mm, short ss, short ms,
+add_res_data_datetimetz (T_NET_BUF * net_buf, short yr, short mon, short day, short hh, short mm, short ss, short ms,
 			 char *tz_str, unsigned char ext_type, int *net_size)
 {
   int tz_size;
@@ -6401,7 +6401,7 @@ add_res_data_datetimetz (T_NET_BUF *net_buf, short yr, short mon, short day, sho
 }
 
 static void
-add_res_data_time (T_NET_BUF *net_buf, short hh, short mm, short ss, unsigned char ext_type, int *net_size)
+add_res_data_time (T_NET_BUF * net_buf, short hh, short mm, short ss, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6424,7 +6424,7 @@ add_res_data_time (T_NET_BUF *net_buf, short hh, short mm, short ss, unsigned ch
 }
 
 static void
-add_res_data_date (T_NET_BUF *net_buf, short yr, short mon, short day, unsigned char ext_type, int *net_size)
+add_res_data_date (T_NET_BUF * net_buf, short yr, short mon, short day, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6447,7 +6447,7 @@ add_res_data_date (T_NET_BUF *net_buf, short yr, short mon, short day, unsigned 
 }
 
 static void
-add_res_data_object (T_NET_BUF *net_buf, T_OBJECT *obj, unsigned char ext_type, int *net_size)
+add_res_data_object (T_NET_BUF * net_buf, T_OBJECT * obj, unsigned char ext_type, int *net_size)
 {
   if (ext_type)
     {
@@ -6468,7 +6468,7 @@ add_res_data_object (T_NET_BUF *net_buf, T_OBJECT *obj, unsigned char ext_type, 
 }
 
 static void
-add_res_data_lob_handle (T_NET_BUF *net_buf, T_LOB_HANDLE *lob, unsigned char ext_type, int *net_size)
+add_res_data_lob_handle (T_NET_BUF * net_buf, T_LOB_HANDLE * lob, unsigned char ext_type, int *net_size)
 {
   int lob_handle_size = (NET_SIZE_INT + NET_SIZE_INT64 + NET_SIZE_INT + lob->locator_size);
 
@@ -6593,7 +6593,7 @@ trigger_time_str (DB_TRIGGER_TIME trig_time, char *buf)
 }
 
 static int
-prepare_column_list_info_set (DB_SESSION *session, char prepare_flag, T_QUERY_RESULT *q_result, T_NET_BUF *net_buf,
+prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_RESULT * q_result, T_NET_BUF * net_buf,
 			      T_BROKER_VERSION client_version)
 {
   DB_QUERY_TYPE *column_info = NULL, *col;
@@ -6790,7 +6790,7 @@ prepare_column_list_info_set (DB_SESSION *session, char prepare_flag, T_QUERY_RE
 }
 
 static int
-execute_info_set (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf, T_BROKER_VERSION client_version, char exec_flag)
+execute_info_set (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_BROKER_VERSION client_version, char exec_flag)
 {
   int i, tuple_count, error;
   char stmt_type;
@@ -6876,7 +6876,7 @@ execute_info_set (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf, T_BROKER_VERSION
 }
 
 static char
-get_attr_type (DB_OBJECT *obj_p, char *attr_name)
+get_attr_type (DB_OBJECT * obj_p, char *attr_name)
 {
   DB_ATTRIBUTE *attribute;
   DB_DOMAIN *attr_domain;
@@ -6908,7 +6908,7 @@ get_attr_type (DB_OBJECT *obj_p, char *attr_name)
 }
 
 static char *
-get_domain_str (DB_DOMAIN *domain)
+get_domain_str (DB_DOMAIN * domain)
 {
   DB_TYPE dtype;
   DB_DOMAIN *set_domain;
@@ -7108,7 +7108,7 @@ ux_str_to_obj (char *str)
 }
 
 static int
-sch_class_info (T_NET_BUF *net_buf, char *class_name, char pattern_flag, char v_class_flag, T_SRV_HANDLE *srv_handle,
+sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v_class_flag, T_SRV_HANDLE * srv_handle,
 		T_BROKER_VERSION client_version)
 {
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
@@ -7200,8 +7200,8 @@ sch_class_info (T_NET_BUF *net_buf, char *class_name, char pattern_flag, char v_
 }
 
 static int
-sch_attr_info (T_NET_BUF *net_buf, char *class_name, char *attr_name, char pattern_flag, char class_attr_flag,
-	       T_SRV_HANDLE *srv_handle)
+sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag, char class_attr_flag,
+	       T_SRV_HANDLE * srv_handle)
 {
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
@@ -7312,8 +7312,8 @@ sch_attr_info (T_NET_BUF *net_buf, char *class_name, char *attr_name, char patte
 }
 
 static int
-sch_attr_with_synonym_info (T_NET_BUF *net_buf, char *class_name, char *attr_name, char pattern_flag,
-			    char class_attr_flag, T_SRV_HANDLE *srv_handle)
+sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char pattern_flag,
+			    char class_attr_flag, T_SRV_HANDLE * srv_handle)
 {
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
@@ -7569,7 +7569,7 @@ sql_error:
 }
 
 static int
-sch_queryspec (T_NET_BUF *net_buf, char *class_name, T_SRV_HANDLE *srv_handle)
+sch_queryspec (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
 {
   char sql_stmt[1024], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
@@ -7623,7 +7623,7 @@ sch_queryspec (T_NET_BUF *net_buf, char *class_name, T_SRV_HANDLE *srv_handle)
 }
 
 static void
-sch_method_info (T_NET_BUF *net_buf, char *class_name, char flag, void **result)
+sch_method_info (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 {
   DB_OBJECT *class_obj;
   DB_METHOD *method, *method_list;
@@ -7653,7 +7653,7 @@ sch_method_info (T_NET_BUF *net_buf, char *class_name, char flag, void **result)
 }
 
 static void
-sch_methfile_info (T_NET_BUF *net_buf, char *class_name, void **result)
+sch_methfile_info (T_NET_BUF * net_buf, char *class_name, void **result)
 {
   DB_METHFILE *method_files, *mf;
   DB_OBJECT *class_obj;
@@ -7675,7 +7675,7 @@ sch_methfile_info (T_NET_BUF *net_buf, char *class_name, void **result)
 }
 
 static int
-sch_superclass (T_NET_BUF *net_buf, char *class_name, char flag, T_SRV_HANDLE *srv_handle)
+sch_superclass (T_NET_BUF * net_buf, char *class_name, char flag, T_SRV_HANDLE * srv_handle)
 {
   DB_OBJECT *class_obj;
   DB_OBJLIST *obj_list, *obj_tmp;
@@ -7734,7 +7734,7 @@ sch_superclass (T_NET_BUF *net_buf, char *class_name, char flag, T_SRV_HANDLE *s
 }
 
 static void
-sch_constraint (T_NET_BUF *net_buf, char *class_name, void **result)
+sch_constraint (T_NET_BUF * net_buf, char *class_name, void **result)
 {
   DB_OBJECT *class_obj;
   DB_CONSTRAINT *constraint, *tmp_c;
@@ -7772,7 +7772,7 @@ sch_constraint (T_NET_BUF *net_buf, char *class_name, void **result)
 }
 
 static void
-sch_trigger (T_NET_BUF *net_buf, char *class_name, char flag, void **result)
+sch_trigger (T_NET_BUF * net_buf, char *class_name, char flag, void **result)
 {
   DB_OBJLIST *all_trigger = NULL, *tmp_trigger = NULL, *tmp_t;
   int num_trig = 0;
@@ -7924,7 +7924,7 @@ end:
 }
 
 static int
-sch_class_priv (T_NET_BUF *net_buf, char *class_name, char pat_flag, T_SRV_HANDLE *srv_handle)
+sch_class_priv (T_NET_BUF * net_buf, char *class_name, char pat_flag, T_SRV_HANDLE * srv_handle)
 {
   T_PRIV_TABLE *priv_table = NULL;
   int num_tuple = 0;
@@ -8053,7 +8053,7 @@ sch_class_priv (T_NET_BUF *net_buf, char *class_name, char pat_flag, T_SRV_HANDL
 }
 
 static int
-sch_attr_priv (T_NET_BUF *net_buf, char *class_name, char *attr_name_pat, char pat_flag, T_SRV_HANDLE *srv_handle)
+sch_attr_priv (T_NET_BUF * net_buf, char *class_name, char *attr_name_pat, char pat_flag, T_SRV_HANDLE * srv_handle)
 {
   DB_OBJECT *class_obj;
   int num_tuple = 0;
@@ -8125,7 +8125,7 @@ attr_priv_finale:
 }
 
 static int
-class_type (DB_OBJECT *class_obj)
+class_type (DB_OBJECT * class_obj)
 {
   int error = db_is_system_class (class_obj);
 
@@ -8152,8 +8152,8 @@ class_type (DB_OBJECT *class_obj)
 }
 
 static int
-class_attr_info (const char *class_name, DB_ATTRIBUTE *attr, char *attr_pattern, char pat_flag,
-		 T_ATTR_TABLE *attr_table)
+class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern, char pat_flag,
+		 T_ATTR_TABLE * attr_table)
 {
   const char *p;
   int db_type;
@@ -8255,7 +8255,7 @@ class_attr_info (const char *class_name, DB_ATTRIBUTE *attr, char *attr_pattern,
 }
 
 static int
-set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE *priv_table, int index)
+set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * priv_table, int index)
 {
   int grant_opt, priv_type;
   int num_tuple;
@@ -8291,7 +8291,7 @@ set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE *priv_table, i
 }
 
 static int
-sch_query_execute (T_SRV_HANDLE *srv_handle, char *sql_stmt, T_NET_BUF *net_buf)
+sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf)
 {
   DB_SESSION *session = NULL;
   int stmt_id, num_result, stmt_type;
@@ -8364,7 +8364,7 @@ sch_query_execute (T_SRV_HANDLE *srv_handle, char *sql_stmt, T_NET_BUF *net_buf)
 }
 
 static int
-sch_direct_super_class (T_NET_BUF *net_buf, char *class_name, int pattern_flag, T_SRV_HANDLE *srv_handle)
+sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag, T_SRV_HANDLE * srv_handle)
 {
   int num_result = 0;
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
@@ -8453,7 +8453,7 @@ sch_direct_super_class (T_NET_BUF *net_buf, char *class_name, int pattern_flag, 
 }
 
 static int
-sch_primary_key (T_NET_BUF *net_buf, char *class_name, T_SRV_HANDLE *srv_handle)
+sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle)
 {
   char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
   int avail_size = sizeof (sql_stmt) - 1;
@@ -8538,7 +8538,7 @@ sch_primary_key (T_NET_BUF *net_buf, char *class_name, T_SRV_HANDLE *srv_handle)
 }
 
 static void
-add_fk_info_before (T_FK_INFO_RESULT *pivot, T_FK_INFO_RESULT *pnew)
+add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew)
 {
   assert (pivot != NULL && pnew != NULL);
   pnew->prev = pivot->prev;
@@ -8551,7 +8551,7 @@ add_fk_info_before (T_FK_INFO_RESULT *pivot, T_FK_INFO_RESULT *pnew)
 }
 
 static void
-add_fk_info_after (T_FK_INFO_RESULT *pivot, T_FK_INFO_RESULT *pnew)
+add_fk_info_after (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew)
 {
   assert (pivot != NULL && pnew != NULL);
   pnew->next = pivot->next;
@@ -8564,7 +8564,7 @@ add_fk_info_after (T_FK_INFO_RESULT *pivot, T_FK_INFO_RESULT *pnew)
 }
 
 static T_FK_INFO_RESULT *
-add_fk_info_result (T_FK_INFO_RESULT *fk_res, const char *pktable_name, const char *pkcolumn_name,
+add_fk_info_result (T_FK_INFO_RESULT * fk_res, const char *pktable_name, const char *pkcolumn_name,
 		    const char *fktable_name, const char *fkcolumn_name, short key_seq,
 		    SM_FOREIGN_KEY_ACTION update_action, SM_FOREIGN_KEY_ACTION delete_action, const char *fk_name,
 		    const char *pk_name, int sort_by)
@@ -8632,7 +8632,7 @@ add_fk_info_result (T_FK_INFO_RESULT *fk_res, const char *pktable_name, const ch
 }
 
 static int
-sch_imported_keys (T_NET_BUF *net_buf, char *fktable_name, void **result)
+sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 {
   DB_OBJECT *pktable_obj, *fktable_obj;
   DB_ATTRIBUTE **fk_attr = NULL, **pk_attr = NULL;
@@ -8769,7 +8769,7 @@ exit_on_error:
 }
 
 static int
-sch_exported_keys_or_cross_reference (T_NET_BUF *net_buf, bool find_cross_ref, char *pktable_name, char *fktable_name,
+sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, char *pktable_name, char *fktable_name,
 				      void **result)
 {
   DB_OBJECT *pktable_obj, *fktable_obj = NULL;
@@ -9015,7 +9015,7 @@ exit_on_error:
 }
 
 static int
-fetch_call (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_OBJECT tuple_obj;
   DB_VALUE **out_vals, null_val, *val_ptr;
@@ -9066,7 +9066,7 @@ fetch_call (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 }
 
 static int
-create_srv_handle_with_query_result (T_QUERY_RESULT *src_q_result, DB_QUERY_TYPE *column_info,
+create_srv_handle_with_query_result (T_QUERY_RESULT * src_q_result, DB_QUERY_TYPE * column_info,
 				     unsigned int query_seq_num)
 {
   int srv_h_id;
@@ -9117,8 +9117,8 @@ error:
 }
 
 int
-ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-					       DB_QUERY_TYPE *column_info, bool is_holdable)
+ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stmt_type, int num_column,
+					       DB_QUERY_TYPE * column_info, bool is_holdable)
 {
   int srv_h_id = -1;
   int err_code = NO_ERROR;
@@ -9168,7 +9168,7 @@ error:
 }
 
 int
-ux_get_generated_keys (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf)
+ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
   int err_code = CAS_NO_ERROR;
   DB_QUERY_RESULT *qres = NULL;
@@ -9196,7 +9196,7 @@ ux_get_generated_keys_error:
 }
 
 static int
-ux_get_generated_keys_server_insert (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf)
+ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
   T_NET_BUF *tuple_buf, temp_buf;
   DB_OBJECT *obj;
@@ -9341,7 +9341,7 @@ ux_get_generated_keys_error:
 }
 
 static int
-ux_get_generated_keys_client_insert (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf)
+ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf)
 {
   T_NET_BUF *tuple_buf, temp_buf;
   DB_OBJECT *obj;
@@ -9482,7 +9482,7 @@ ux_get_generated_keys_error:
 }
 
 int
-ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -9626,7 +9626,7 @@ ux_make_out_rs_error:
 }
 
 static int
-get_client_result_cache_lifetime (DB_SESSION *session, int stmt_id)
+get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 {
   bool jdbc_cache_is_hint;
   int jdbc_cache_life_time = shm_appl->jdbc_cache_life_time;
@@ -9648,7 +9648,7 @@ get_client_result_cache_lifetime (DB_SESSION *session, int stmt_id)
 }
 
 int
-ux_auto_commit (T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
 
 
@@ -9720,13 +9720,13 @@ ux_auto_commit (T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 }
 
 int
-get_tuple_count (T_SRV_HANDLE *srv_handle)
+get_tuple_count (T_SRV_HANDLE * srv_handle)
 {
   return srv_handle->q_result->tuple_count;
 }
 
 int
-ux_lob_new (int lob_type, T_NET_BUF *net_buf)
+ux_lob_new (int lob_type, T_NET_BUF * net_buf)
 {
   DB_VALUE lob_dbval;
   int err_code;
@@ -9760,7 +9760,7 @@ ux_lob_new (int lob_type, T_NET_BUF *net_buf)
 }
 
 int
-ux_lob_write (DB_VALUE *lob_dbval, INT64 offset, int size, char *data, T_NET_BUF *net_buf)
+ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BUF * net_buf)
 {
   DB_BIGINT size_written;
   int err_code;
@@ -9787,7 +9787,7 @@ ux_lob_write (DB_VALUE *lob_dbval, INT64 offset, int size, char *data, T_NET_BUF
 }
 
 int
-ux_lob_read (DB_VALUE *lob_dbval, INT64 offset, int size, T_NET_BUF *net_buf)
+ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
 {
   DB_BIGINT size_read;
   int err_code;
@@ -9823,7 +9823,7 @@ ux_lob_read (DB_VALUE *lob_dbval, INT64 offset, int size, T_NET_BUF *net_buf)
 
 /* converting a DB_VALUE to a char taking care of nchar strings */
 static const char *
-convert_db_value_to_string (DB_VALUE *value, DB_VALUE *value_string)
+convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 {
   const char *val_str = NULL;
   DB_TYPE val_type;
@@ -9847,7 +9847,7 @@ convert_db_value_to_string (DB_VALUE *value, DB_VALUE *value_string)
  * out(out): out string
  */
 static void
-serialize_collection_as_string (DB_VALUE *col, char **out)
+serialize_collection_as_string (DB_VALUE * col, char **out)
 {
   DB_COLLECTION *db_set;
   DB_VALUE value, value_string;
@@ -10077,7 +10077,7 @@ report_abnormal_host_status (int err_code)
  *   in_values(in):
  */
 static int
-set_host_variables (DB_SESSION *session, int num_bind, DB_VALUE *in_values)
+set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values)
 {
   int err_code;
   DB_CLASS_MODIFICATION_STATUS cls_status;
@@ -10225,7 +10225,7 @@ do_commit_after_execute (const t_srv_handle & server_handle)
 }
 
 static int
-recompile_statement (T_SRV_HANDLE *srv_handle)
+recompile_statement (T_SRV_HANDLE * srv_handle)
 {
   int err_code = 0;
   int stmt_id = 0;

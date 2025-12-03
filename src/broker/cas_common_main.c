@@ -83,7 +83,7 @@ static cas_cleanup_callback_t cleanup_callback = NULL;
 static cas_database_shutdown_callback_t database_shutdown_callback = NULL;
 
 int
-cas_main_loop (CAS_MAIN_OPS *ops)
+cas_main_loop (CAS_MAIN_OPS * ops)
 {
   T_NET_BUF net_buf;
   SOCKET srv_sock_fd, br_sock_fd, client_sock_fd;
@@ -417,7 +417,7 @@ cas_main_loop (CAS_MAIN_OPS *ops)
 
 /* cas_main() common initialization */
 int
-cas_main_init (T_NET_BUF *net_buf, SOCKET *srv_sock_fd)
+cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd)
 {
 #if defined(WINDOWS)
   int new_port;
@@ -930,7 +930,7 @@ cas_get_client_version (void)
 // }
 
 int
-net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER *client_msg_header)
+net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 {
   int ret_value = 0;
   int timeout = 0, remained_timeout = 0;
@@ -990,7 +990,7 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER *client_msg_header)
 #if defined(WINDOWS)
 
 LONG WINAPI
-CreateMiniDump (struct _EXCEPTION_POINTERS *pException)
+CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 {
   TCHAR DumpFile[MAX_PATH] = { 0, };
   TCHAR DumpPath[MAX_PATH] = { 0, };
@@ -1029,7 +1029,7 @@ CreateMiniDump (struct _EXCEPTION_POINTERS *pException)
 
 /* Accept client connection and perform handshake */
 int
-cas_accept_client (SOCKET br_sock_fd, SOCKET *client_sock_fd, int *client_ip_addr)
+cas_accept_client (SOCKET br_sock_fd, SOCKET * client_sock_fd, int *client_ip_addr)
 {
 #if defined(WINDOWS)
   static int one = 1;
@@ -1081,7 +1081,7 @@ cas_accept_client (SOCKET br_sock_fd, SOCKET *client_sock_fd, int *client_ip_add
 
 /* Parse DB connection information from read buffer */
 int
-cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO *req_info, DB_CONN_INFO *conn_info)
+cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_CONN_INFO * conn_info)
 {
   int len;
   char *db_name, *db_user, *db_passwd, *url, *db_sessionid;
@@ -1167,8 +1167,8 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO *req_info, DB_CO
 }
 
 int
-cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO *req_info,
-			  DB_CONN_INFO *conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS *ops)
+cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
+			  DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops)
 {
   int err_code;
   char *db_err_msg = NULL;
@@ -1275,7 +1275,8 @@ cas_get_db_connect_status (void)
 }
 
 int
-net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER *client_msg_header, T_REQ_INFO *req_info, SOCKET srv_sock_fd)
+net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info,
+			    SOCKET srv_sock_fd)
 {
   int ret_value = 0;
 

@@ -169,7 +169,7 @@ get_stmt_type (char *stmt)
  * ======================================================================== */
 
 int
-ux_get_db_version (T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char *p;
 
@@ -326,7 +326,7 @@ ux_end_tran_cleanup (int tran_type)
 }
 
 void
-update_query_execution_count (T_APPL_SERVER_INFO *as_info_p, char stmt_type)
+update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type)
 {
   assert (as_info_p != NULL);
 
@@ -357,7 +357,7 @@ update_query_execution_count (T_APPL_SERVER_INFO *as_info_p, char stmt_type)
 }
 
 void
-update_error_query_count (T_APPL_SERVER_INFO *as_info_p, const T_ERROR_INFO *err_info_p)
+update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * err_info_p)
 {
   assert (as_info_p != NULL);
   assert (err_info_p != NULL);
@@ -379,7 +379,7 @@ update_error_query_count (T_APPL_SERVER_INFO *as_info_p, const T_ERROR_INFO *err
 }
 
 bool
-check_auto_commit_after_getting_result (T_SRV_HANDLE *srv_handle)
+check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
 {
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 
@@ -393,7 +393,7 @@ check_auto_commit_after_getting_result (T_SRV_HANDLE *srv_handle)
 }
 
 void
-prepare_column_info_set (T_NET_BUF *net_buf, char ut, short scale, int prec, char charset, const char *col_name,
+prepare_column_info_set (T_NET_BUF * net_buf, char ut, short scale, int prec, char charset, const char *col_name,
 			 const char *default_value, char auto_increment, char unique_key, char primary_key,
 			 char reverse_index, char reverse_unique, char foreign_key, char shared, const char *attr_name,
 			 const char *class_name, char is_non_null, T_BROKER_VERSION client_version)
