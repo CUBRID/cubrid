@@ -24,6 +24,8 @@ lexer grammar PlcLexer;
 
 @header {
 package com.cubrid.plcsql.compiler.antlrgen;
+
+import com.cubrid.plcsql.compiler.error.SemanticError;
 }
 
 @members {
@@ -296,6 +298,7 @@ SS_RPAREN :     ')' {
             setType(PlcParser.SS_NON_STR);
         }
     };
+SS_BIND_PARAM:  '?';
 SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
         checkFirstLParen = false;
     };
