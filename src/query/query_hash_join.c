@@ -1103,7 +1103,7 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 		  inner_integral = inner_precision - inner_scale;
 
 		  common_precision = MAX (outer_integral, inner_integral) + common_scale;
-		  common_precision = MIN (common_precision, DB_MAX_NUMERIC_PRECISION);
+		  common_precision = MIN (common_precision, DB_MAX_FIXED_NUMERIC_PRECISION);
 		}
 	    }
 	  else

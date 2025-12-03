@@ -3607,8 +3607,9 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
   int ret = NO_ERROR;
   int orig_prec1, orig_prec2;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
-  int prec_common = 0, scale_common = 0;
+  bool arg1_sign = false, arg2_sign = false;
   int cmp_rez = 0;
+  unsigned char *dbv1_copy = NULL, *dbv2_copy = NULL;
 
   /* Check for bad inputs */
   if (answer == NULL)
@@ -3657,121 +3658,38 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       scale2 = DB_VALUE_SCALE (dbv2);
     }
 
-  if (prec1 == prec2 && scale1 == scale2)
+  dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
+  dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
+
+  /* 1) check signs */
+  arg1_sign = numeric_is_negative (dbv1_copy);
+  arg2_sign = numeric_is_negative (dbv2_copy);
+
+  if (arg1_sign != arg2_sign)
+    {
+      ret = db_make_int (answer, (arg1_sign ? -1 : 1));
+    }
+  else if (prec1 == prec2 && scale1 == scale2)
     {
       /* Simple case. Just compare two numbers. */
-      cmp_rez = numeric_compare (db_locate_numeric (dbv1), db_locate_numeric (dbv2));
-      db_make_int (answer, cmp_rez);
-      return NO_ERROR;
-    }
-  else if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION || orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      /*
-       * handling for extended scale range (-84 ~ 127)
-       * why check signs outside the comparison function?
-       *   - if float_numeric_compare performs scale adjustment internally,
-       *     the working buffer grows, making sign inversion more costly.
-       *   - therefore, compare signs first, then perform scale-adjusted comparison.
-       */
-
-      /* 1) check signs */
-      unsigned char *dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
-      unsigned char *dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
-      bool arg1_sign = false, arg2_sign = false;
-
-      arg1_sign = numeric_is_negative (dbv1_copy);
-      arg2_sign = numeric_is_negative (dbv2_copy);
-
-      if (arg1_sign != arg2_sign)
-	{
-	  db_make_int (answer, (arg1_sign ? -1 : 1));
-	  return NO_ERROR;
-	}
-      else
-	{
-	  /* positive vs positive, negative vs negative
-	   * 
-	   * compare after scale correction inside the function
-	   * ex) result :
-	   *      if(arg1 < arg2) = -1
-	   *      if(arg1 = arg2) = 0
-	   *      if(arg1 > arg2) = 1
-	   */
-	  cmp_rez = float_numeric_compare (dbv1_copy, dbv2_copy, prec1, scale1, prec2, scale2, arg1_sign, arg2_sign);
-	}
-
-      db_make_int (answer, cmp_rez);
-      return NO_ERROR;
+      cmp_rez = float_numeric_operation_compare (dbv1_copy, dbv2_copy, DB_NUMERIC_BUF_SIZE);
+      ret = db_make_int (answer, cmp_rez);
     }
   else
     {
-      DB_VALUE dbv1_common, dbv2_common;
-
-      /* First try to coerce to common prec/scale numbers and compare. */
-      ret = numeric_common_prec_scale (dbv1, dbv2, &dbv1_common, &dbv2_common);
-      if (ret == NO_ERROR)
-	{
-	  cmp_rez = numeric_compare (db_locate_numeric (&dbv1_common), db_locate_numeric (&dbv2_common));
-	  db_make_int (answer, cmp_rez);
-	  return NO_ERROR;
-	}
-      else if (ret == ER_IT_DATA_OVERFLOW)
-	{
-	  /* For example, if we want to compare a NUMERIC(31,2) with a NUMERIC(21, 14) the common precision and scale
-	   * is (43, 14) which is an overflow. To avoid this issue we compare the integral parts and the fractional
-	   * parts of dbv1 and dbv2 separately. */
-	  unsigned char num1_integ[DB_NUMERIC_BUF_SIZE];
-	  unsigned char num2_integ[DB_NUMERIC_BUF_SIZE];
-	  unsigned char num1_frac[DB_NUMERIC_BUF_SIZE];
-	  unsigned char num2_frac[DB_NUMERIC_BUF_SIZE];
-
-	  er_clear ();		/* reset ER_IT_DATA_OVERFLOW */
-
-	  if (prec1 - scale1 < prec2 - scale2)
-	    {
-	      prec_common = prec2 - scale2;
-	    }
-	  else
-	    {
-	      prec_common = prec1 - scale1;
-	    }
-
-	  if (scale1 > scale2)
-	    {
-	      scale_common = scale1;
-	    }
-	  else
-	    {
-	      scale_common = scale2;
-	    }
-
-	  /* first compare integral parts */
-	  numeric_get_integral_part (db_locate_numeric (dbv1), prec1, scale1, prec_common, num1_integ);
-	  numeric_get_integral_part (db_locate_numeric (dbv2), prec2, scale2, prec_common, num2_integ);
-	  cmp_rez = numeric_compare (num1_integ, num2_integ);
-	  if (cmp_rez != 0)
-	    {
-	      /* if the integral parts differ, we don't need to compare fractional parts */
-	      db_make_int (answer, cmp_rez);
-	      return NO_ERROR;
-	    }
-
-	  /* the integral parts are equal, now compare fractional parts */
-	  numeric_get_fractional_part (db_locate_numeric (dbv1), scale1, scale_common, num1_frac);
-	  numeric_get_fractional_part (db_locate_numeric (dbv2), scale2, scale_common, num2_frac);
-
-	  /* compare fractional parts and return the result */
-	  cmp_rez = numeric_compare (num1_frac, num2_frac);
-	  db_make_int (answer, cmp_rez);
-	}
-      else
-	{
-	  db_make_null (answer);
-	  return ER_FAILED;
-	}
+      /* positive vs positive, negative vs negative
+       * 
+       * compare after scale correction inside the function
+       * ex) result :
+       *      if(arg1 < arg2) = -1
+       *      if(arg1 = arg2) = 0
+       *      if(arg1 > arg2) = 1
+       */
+      cmp_rez = float_numeric_compare (dbv1_copy, dbv2_copy, prec1, scale1, prec2, scale2, arg1_sign, arg2_sign);
+      ret = db_make_int (answer, cmp_rez);
     }
 
-  return NO_ERROR;
+  return ret;
 }
 
 /*
@@ -5716,15 +5634,13 @@ float_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val)
 static int
 float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes)
 {
-  int i = 0;
-  for (i = 0; i < calc_bytes; i++)
+  int cmp_result = memcmp (dbv1_buf, dbv2_buf, calc_bytes);
+  if (cmp_result == 0)
     {
-      if (dbv1_buf[i] != dbv2_buf[i])
-	{
-	  return dbv1_buf[i] < dbv2_buf[i] ? -1 : 1;
-	}
+      return 0;
     }
-  return 0;
+  /* memcmp returns <0 if first differing byte in dbv1_buf is less than in dbv2_buf */
+  return (cmp_result < 0) ? -1 : 1;
 }
 
 /*
