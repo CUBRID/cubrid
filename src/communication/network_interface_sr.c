@@ -5176,7 +5176,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	}
       if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
 	{
-	  xperfmon_server_copy_stats (thread_p, base_stats);
+	  xperfmon_server_copy_stats (thread_p, base_stats, false);
 	}
       else
 	{
@@ -5426,8 +5426,8 @@ null_list:
 
 	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
 	    {
-	      xperfmon_server_copy_stats (thread_p, current_stats);
-	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats);
+	      xperfmon_server_copy_stats (thread_p, current_stats, response_time >= trace_slow_msec);
+	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats, response_time >= trace_slow_msec);
 	    }
 	  else
 	    {
@@ -6520,7 +6520,7 @@ smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       return;
     }
 
-  xperfmon_server_copy_stats (thread_p, stats);
+  xperfmon_server_copy_stats (thread_p, stats, true);
   perfmon_pack_stats (reply, stats);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, nr_statistic_values * sizeof (UINT64));
   free_and_init (stats);
