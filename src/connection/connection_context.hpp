@@ -72,6 +72,7 @@ namespace cubconn::master
 
   struct context
   {
+    /* THIS MUST BE THE FIRST */
     css_conn_entry *m_conn;
 
     buffer m_recvbuf;
@@ -132,6 +133,7 @@ namespace cubconn::connection
 
   struct context
   {
+    /* THIS MUST BE THE FIRST */
     css_conn_entry *m_conn;
 
     /* --------------------------------------------------------------------------- */

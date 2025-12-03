@@ -25,6 +25,7 @@
 
 #include "connection_context.hpp"
 #include "connection_worker.hpp"
+#include "coordinator.hpp"
 
 #include <cstring>
 #include <cstdint>
@@ -39,8 +40,9 @@ namespace cubconn::connection
     private:
       struct freelist
       {
-	/* this must be the first */
+	/* THIS MUST BE THE FIRST */
 	context m_context;
+
 	freelist *m_next;
 
 	freelist (std::size_t capacity) :
@@ -56,7 +58,7 @@ namespace cubconn::connection
       pool ();
       ~pool ();
 
-      void initialize (std::uint32_t max_connections, int connection_threads);
+      void initialize (std::uint32_t max_connections, int max_connection_threads, int min_connection_threads);
       void finalize ();
 
       void dispatch (css_conn_entry *conn);
@@ -64,10 +66,19 @@ namespace cubconn::connection
       void stats ();
 
     private:
-      std::uint32_t m_max_connections;
+      /* components */
       std::vector<std::unique_ptr<worker>> m_workers;
+      std::unique_ptr<coordinator> m_coordinator;
+
       std::shared_ptr<thread_watcher> m_watcher;
 
+      /* base */
+      std::uint32_t m_max_connections;
+
+      std::uint32_t m_max_connection_threads;
+      std::uint32_t m_min_connection_threads;
+
+      /* freelist */
       struct
       {
 	freelist *m_head;
@@ -75,10 +86,18 @@ namespace cubconn::connection
 	std::size_t m_claim;
       } m_freelist;
 
-      std::size_t m_counter;
-
       void initialize_freelist (std::uint32_t max_connections);
       void finalize_freelist ();
+
+      void initialize_topology (std::uint32_t max_connection_threads);
+      void finalize_topology ();
+
+      void initialize_workers (std::uint32_t max_connection_threads, std::uint32_t min_connection_threads);
+      void finalize_workers ();
+
+      void initialize_coordinator ();
+      void finalize_coordinator ();
+
       context *claim_context ();
       void retire_context (context *ctx);
   };

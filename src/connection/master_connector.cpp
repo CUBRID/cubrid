@@ -1266,6 +1266,7 @@ namespace cubconn::master
 	      }
 	    er_log_conn (__FILE__, __LINE__, "master::connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
+	    continue;
 	  }
 
 	if (__builtin_expect (m_master_state == master_state::CLOSED, 0))

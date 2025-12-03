@@ -23,12 +23,102 @@
 #ifndef _COORDINATOR_HPP_
 #define _COORDINATOR_HPP_
 
-#include "connection::worker.hpp"
+#include "connection_context.hpp"
+#include "epoll.hpp"
+#include "tbb/concurrent_queue.h"
 
-namespace cubconn
+#include <thread>
+
+namespace cubconn::connection
 {
+  class pool;
+
   class coordinator
   {
+    public:
+      enum class message_type
+      {
+	START,
+
+	NEW_CLIENT,
+
+	STATS,
+
+	SHUTDOWN
+      };
+
+      struct message
+      {
+	public:
+	  message () = default;
+	  ~message () = default;
+
+	  message (const message &) = delete;
+	  message &operator= (const message &) = delete;
+
+	  message (message &&) noexcept = default;
+	  message &operator= (message &&) noexcept = default;
+
+	  message_type type;
+
+	  std::vector<std::pair<int, context>> stats;
+      };
+
+    public:
+      coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core);
+      ~coordinator ();
+
+      void initialize ();
+      void finalize ();
+      bool run ();
+
+      void attach ();
+
+      /* used for control from other threads */
+      void enqueue (message &&item);
+      bool notify ();
+
+    private:
+      /* connection pool */
+      pool *m_parent;
+      std::shared_ptr<thread_watcher> m_watcher;
+
+      /* thread handle */
+      std::thread m_thread;
+      std::size_t m_core;
+      bool m_stop;
+
+      /* eventfds */
+      cubsocket::epoll m_events;
+      /* event based */
+      int m_eventfd;
+      /* timer based */
+      int m_timerfd;
+
+      /* this is a multi-producer single-consumer queue, so */
+      /* data can be put into the queue from anywhere, but  */
+      /* consumption must happen from only one thread.	    */
+      tbb::concurrent_queue<message> m_queue;
+      /* use a counter to ensure that the handler only processes	*/
+      /* requests currently in the queue. this is essential to prevent	*/
+      /* starvation.							*/
+      std::atomic<uint64_t> m_queue_size;
+
+      /* --------------------------------------------------------------------------- */
+      /* event fd								     */
+      /* --------------------------------------------------------------------------- */
+      bool eventfd_register (int fd);
+      bool eventfd_clear (int fd);
+
+      bool eventfd_settimer (int fd, uint32_t sec, uint64_t nsec);
+
+      /* --------------------------------------------------------------------------- */
+      /* message queue based interface						     */
+      /* --------------------------------------------------------------------------- */
+      bool handle_message_queue_new_client (message &item);
+      bool handle_message_queue_shutdown_client (message &item);
+
+      bool handle_message_queue ();
   };
 }
 

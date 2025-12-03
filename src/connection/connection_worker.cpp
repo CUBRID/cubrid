@@ -952,7 +952,7 @@ retry:
 
 	  default:
 	    er_log_conn (__FILE__, __LINE__,
-			 "master::connector->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
+			 "connection::worker->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
 	    assert_release (false);
 	    break;
 	  }
@@ -1516,6 +1516,7 @@ retry:
 	      }
 	    er_log_conn (__FILE__, __LINE__, "master::connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
+	    continue;
 	  }
 
 	for (i = 0; i < nfds; i++)
