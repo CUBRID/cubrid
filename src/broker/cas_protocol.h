@@ -361,22 +361,22 @@ typedef int T_BROKER_VERSION;
               }							\
               } while (0)
 
-extern const char *cas_bi_get_broker_info (void);
-extern char cas_bi_get_dbms_type (void);
-extern void cas_bi_set_dbms_type (const char dbms_type);
-extern void cas_bi_set_keep_connection (const char keep_connection);
-extern char cas_bi_get_keep_connection (void);
-extern void cas_bi_set_statement_pooling (const char statement_pooling);
-extern char cas_bi_get_statement_pooling (void);
-extern void cas_bi_set_cci_pconnect (const char cci_pconnect);
-extern char cas_bi_get_cci_pconnect (void);
-extern void cas_bi_set_oracle_compat_number_behavior (char oracle_compat_number_behavior);
-extern void cas_bi_set_protocol_version (const char protocol_version);
-extern char cas_bi_get_protocol_version (void);
-extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
-extern bool cas_bi_get_renewed_error_code (void);
-extern bool cas_di_understand_renewed_error_code (const char *driver_info);
-extern void cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect,
+  extern const char *cas_bi_get_broker_info (void);
+  extern char cas_bi_get_dbms_type (void);
+  extern void cas_bi_set_dbms_type (const char dbms_type);
+  extern void cas_bi_set_keep_connection (const char keep_connection);
+  extern char cas_bi_get_keep_connection (void);
+  extern void cas_bi_set_statement_pooling (const char statement_pooling);
+  extern char cas_bi_get_statement_pooling (void);
+  extern void cas_bi_set_cci_pconnect (const char cci_pconnect);
+  extern char cas_bi_get_cci_pconnect (void);
+  extern void cas_bi_set_oracle_compat_number_behavior (char oracle_compat_number_behavior);
+  extern void cas_bi_set_protocol_version (const char protocol_version);
+  extern char cas_bi_get_protocol_version (void);
+  extern void cas_bi_set_renewed_error_code (const bool renewed_error_code);
+  extern bool cas_bi_get_renewed_error_code (void);
+  extern bool cas_di_understand_renewed_error_code (const char *driver_info);
+  extern void cas_bi_make_broker_info (char *broker_info, char dbms_type, char statement_pooling, char cci_pconnect,
 				       char oracle_compat_number_behavior);
 #ifdef __cplusplus
 }
