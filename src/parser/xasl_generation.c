@@ -16114,6 +16114,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   int i;
   REGU_VARIABLE_LIST regu_var_p;
   bool is_sorted = false;
+  bool has_click_counter = false;
 
   assert (parser != NULL);
 
@@ -16664,7 +16665,12 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      is_sorted = eval->is_sorted;
 	    }
 
-	  if (is_sorted)
+	  has_click_counter = false;
+
+	  parser_walk_tree (parser, select_node->info.query.q.select.list, mq_has_click_counter, &has_click_counter,
+			    NULL, NULL);
+
+	  if (is_sorted && has_click_counter)
 	    {
 	      for (i = 0, regu_var_p = buildlist->a_outptr_list_ex->valptrp;
 		   i < buildlist->a_outptr_list_ex->valptr_cnt && regu_var_p; i++, regu_var_p = regu_var_p->next)
