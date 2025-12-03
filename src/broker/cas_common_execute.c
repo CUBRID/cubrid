@@ -59,8 +59,8 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_BIT,		/* 23 */
   CCI_U_TYPE_VARBIT,		/* 24 */
   CCI_U_TYPE_CHAR,		/* 25 */
-  CCI_U_TYPE_NCHAR,		/* 26 */
-  CCI_U_TYPE_VARNCHAR,		/* 27 */
+  CCI_U_TYPE_NCHAR_DEPRECATED,		/* 26 */
+  CCI_U_TYPE_VARNCHAR_DEPRECATED,		/* 27 */
   CCI_U_TYPE_RESULTSET,		/* 28 */
   0, 0,				/* 29 - 30 */
   CCI_U_TYPE_BIGINT,		/* 31 */
