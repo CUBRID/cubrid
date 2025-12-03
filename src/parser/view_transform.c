@@ -5171,7 +5171,7 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *cte;
   PT_HINT_ENUM hint;
-  bool is_inlinable = true;
+  bool has_click_counter = false;
 
   assert (node->node_type == PT_WITH_CLAUSE);
 
@@ -5190,14 +5190,14 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 	  continue;
 	}
 
-      is_inlinable = true;
+      has_click_counter = false;
       /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
        * since it may change the query results. Handle it same as CTE with materialize hint. */
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
-			       mq_has_click_counter, &is_inlinable, NULL, NULL);
+			       mq_has_click_counter, &has_click_counter, NULL, NULL);
 
       /* false subquery cannot be rewritten as inline view */
-      if (is_inlinable && pt_is_query (cte->info.cte.non_recursive_part))
+      if (!has_click_counter && pt_is_query (cte->info.cte.non_recursive_part))
 	{
 	  hint = pt_get_hint_from_query (parser, cte->info.cte.non_recursive_part);
 
