@@ -71,7 +71,7 @@ extern void tran_set_query_timeout (int);
 extern bool tran_is_in_libcas (void);
 
 FN_RETURN
-fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int tran_type;
   int err_code;
@@ -188,7 +188,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_IN
 }
 
 FN_RETURN
-fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   /* ignore all request to close session from drivers */
   net_buf_cp_int (net_buf, NO_ERROR, NULL);
@@ -197,14 +197,14 @@ fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ
 }
 
 FN_RETURN
-fn_get_row_count (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_row_count (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   ux_get_row_count (net_buf);
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   ux_get_last_insert_id (net_buf);
   return FN_KEEP_CONN;
@@ -212,14 +212,15 @@ fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf
 
 
 FN_RETURN
-fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   return (fn_prepare_internal (sock_fd, argc, argv, net_buf, req_info, NULL));
 }
 
 
 static FN_RETURN
-fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info, int *ret_srv_h_id)
+fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+		     int *ret_srv_h_id)
 {
   char *sql_stmt;
   char flag;
@@ -325,7 +326,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, 
 }
 
 FN_RETURN
-fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   FN_RETURN ret = fn_execute_internal (sock_fd, argc, argv, net_buf, req_info, NULL);
 
@@ -333,7 +334,7 @@ fn_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INF
 }
 
 static FN_RETURN
-fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info,
+fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 		     int *prepared_srv_h_id)
 {
   int srv_h_id;
@@ -641,7 +642,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, 
 }
 
 FN_RETURN
-fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int prepare_argc_count;
   int srv_h_id;
@@ -669,7 +670,7 @@ prepare_and_execute_end:
 }
 
 FN_RETURN
-fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int param_name;
 
@@ -759,7 +760,7 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, 
 }
 
 FN_RETURN
-fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int param_name;
 
@@ -851,7 +852,7 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, 
 }
 
 FN_RETURN
-fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int mode;
 
@@ -879,7 +880,7 @@ fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_bu
 }
 
 FN_RETURN
-fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -916,7 +917,7 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, 
 }
 
 FN_RETURN
-fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   int offset;
@@ -939,7 +940,7 @@ fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO
 }
 
 FN_RETURN
-fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   int cursor_pos;
@@ -986,7 +987,7 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO 
 }
 
 FN_RETURN
-fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int schema_type;
   char *arg1, *arg2;
@@ -1026,7 +1027,7 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ
 }
 
 FN_RETURN
-fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int pageid;
   short slotid, volid;
@@ -1048,7 +1049,7 @@ fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INF
 }
 
 FN_RETURN
-fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   if (argc < 3 || argc % 3 != 1)
     {
@@ -1065,7 +1066,7 @@ fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INF
 }
 
 FN_RETURN
-fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char auto_commit_mode;
   cas_log_write (0, true, "get_version");
@@ -1090,7 +1091,7 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_
 }
 
 FN_RETURN
-fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char *class_name;
   char flag;
@@ -1114,7 +1115,7 @@ fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf
 }
 
 FN_RETURN
-fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   DB_OBJECT *obj;
   char cmd;
@@ -1236,7 +1237,7 @@ fn_oid_error:
 }
 
 FN_RETURN
-fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char cmd;
   DB_OBJECT *obj;
@@ -1437,7 +1438,7 @@ fn_col_finale:
 }
 
 FN_RETURN
-fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   char flag;
@@ -1477,7 +1478,7 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ
 }
 
 FN_RETURN
-fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int arg_index = 0;
   char auto_commit_mode;
@@ -1510,7 +1511,7 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_R
 }
 
 FN_RETURN
-fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -1667,7 +1668,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_R
 }
 
 FN_RETURN
-fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -1689,7 +1690,7 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 }
 
 FN_RETURN
-fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   int cursor_pos;
@@ -1716,7 +1717,7 @@ fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_R
 }
 
 FN_RETURN
-fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int size;
   char *class_name;
@@ -1738,7 +1739,7 @@ fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf,
 }
 
 FN_RETURN
-fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char info_type;
   T_SRV_HANDLE *srv_handle = NULL;
@@ -1825,7 +1826,7 @@ end:
 }
 
 FN_RETURN
-fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
   char cmd;
@@ -1875,7 +1876,7 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_I
 }
 
 FN_RETURN
-fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
 
@@ -1894,7 +1895,7 @@ fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_
 }
 
 FN_RETURN
-fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   cas_log_write (0, true, "con_close");
   net_buf_cp_int (net_buf, 0, NULL);
@@ -1903,7 +1904,7 @@ fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_I
 }
 
 FN_RETURN
-fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code = 0;
 
@@ -1934,7 +1935,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_I
 }
 
 FN_RETURN
-fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   if (argc < 1)
     {
@@ -1958,7 +1959,7 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ
 }
 
 FN_RETURN
-fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
@@ -1992,7 +1993,7 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf
 }
 
 FN_RETURN
-fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int lob_type, err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
@@ -2036,7 +2037,7 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INF
 }
 
 FN_RETURN
-fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   DB_VALUE lob_dbval;
   INT64 offset;
@@ -2078,7 +2079,7 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_I
 }
 
 FN_RETURN
-fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
+fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   DB_VALUE lob_dbval;
   INT64 offset;
@@ -2120,7 +2121,7 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_REQ_IN
 
 
 void
-set_query_timeout (T_SRV_HANDLE *srv_handle, int query_timeout)
+set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 {
   int broker_timeout_in_millis = shm_appl->query_timeout * 1000;
 
