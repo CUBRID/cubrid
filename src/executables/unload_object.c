@@ -219,6 +219,8 @@ struct _unloaddb_class_info
 
   pthread_mutex_t mtx;
   pthread_cond_t cond;
+  volatile bool signaled;
+  volatile bool broadcasted;
 
   class copyarea_list *cparea_lst_ref;
 };
@@ -1438,7 +1440,11 @@ unload_extractor_thread (void *param)
 	      TIMER_BEGIN ((g_sampling_records >= 0), &(parg->wi_get_list));
 
 	      pthread_mutex_lock (&g_uci->mtx);
-	      pthread_cond_wait (&g_uci->cond, &g_uci->mtx);
+	      while (g_uci->signaled == false && g_uci->broadcasted == false)	/* check spurious wakeup */
+		{
+		  pthread_cond_wait (&g_uci->cond, &g_uci->mtx);
+		}
+	      g_uci->signaled = false;
 	      pthread_mutex_unlock (&g_uci->mtx);
 
 	      TIMER_END ((g_sampling_records >= 0), &(parg->wi_get_list));
@@ -1523,6 +1529,7 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
 		  g_uci->cparea_lst_ref->add (fetch_area, true);
 		  fetch_area = NULL;
 		  pthread_mutex_lock (&g_uci->mtx);
+		  g_uci->signaled = true;
 		  pthread_cond_signal (&g_uci->cond);
 		  pthread_mutex_unlock (&g_uci->mtx);
 		}
@@ -1933,6 +1940,8 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
   unld_cls_info.class_ = class_;
   unld_cls_info.pctxt = &ctxt;
   unld_cls_info.referenced_class = referenced_class;
+  unld_cls_info.signaled = false;
+  unld_cls_info.broadcasted = false;
 #if !defined(WINDOWS)
   memset (&(unld_cls_info.wi_fetch), 0x00, sizeof (S_WAITING_INFO));
 #endif
@@ -1995,10 +2004,9 @@ process_class (extract_context & ctxt, int cl_no, int nthreads)
       extractor_thread_proc_terminate = true;
 
       pthread_mutex_lock (&unld_cls_info.mtx);
+      unld_cls_info.broadcasted = true;
       pthread_cond_broadcast (&unld_cls_info.cond);
       pthread_mutex_unlock (&unld_cls_info.mtx);
-
-      pthread_cond_broadcast (&unld_cls_info.cond);
       YIELD_THREAD ();
 
       for (i = 0; i < nthreads; i++)

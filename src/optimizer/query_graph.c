@@ -125,13 +125,7 @@
 #define FLAG_EXCHANGE(e0,e1)       EXCHANGE_BUILDER(int,e0,e1)
 #define INT_PTR_EXCHANGE(e0,e1)    EXCHANGE_BUILDER(int *,e0,e1)
 
-#define BISET_EXCHANGE(s0,s1) \
-    do { \
-	BITSET tmp; \
-	BITSET_MOVE(tmp, s0); \
-	BITSET_MOVE(s0, s1); \
-	BITSET_MOVE(s1, tmp); \
-    } while (0)
+#define BITSET_EXCHANGE(s0,s1)     bitset_exchange(&(s0), &(s1))
 
 #define PUT_FLAG(cond, flag) \
     do { \
@@ -4096,9 +4090,7 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
   /*
    * Be careful here: the previously allocated QO_SUBQUERY terms
    * contain bitsets that may have self-relative internal pointers, and
-   * those pointers have to be maintained in the new array.  The proper
-   * way to make sure that they are consistent is to use the bitset_assign()
-   * macro, not just to do the bitcopy that memcpy() will do.
+   * those pointers have to be maintained in the new array.
    */
   tmp = NULL;
   if ((n + 1) > 0)
@@ -4107,25 +4099,38 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
       if (tmp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_SUBQUERY) * (n + 1));
+	  env->nsubqueries--;
 	  return;
 	}
     }
   else
     {
+      env->nsubqueries--;
       return;
     }
 
-  memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
-  for (i = 0; i < n; i++)
-    {
-      QO_SUBQUERY *subq;
-      subq = &env->subqueries[i];
-      BITSET_MOVE (tmp[i].segs, subq->segs);
-      BITSET_MOVE (tmp[i].nodes, subq->nodes);
-      BITSET_MOVE (tmp[i].terms, subq->terms);
-    }
   if (env->subqueries)
     {
+      memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
+      for (i = 0; i < n; i++)
+	{
+	  QO_SUBQUERY *src, *dst;
+	  src = &env->subqueries[i];
+	  dst = &tmp[i];
+
+	  if (src->segs.setp == src->segs.set.word)
+	    {
+	      dst->segs.setp = dst->segs.set.word;
+	    }
+	  if (src->nodes.setp == src->nodes.set.word)
+	    {
+	      dst->nodes.setp = dst->nodes.set.word;
+	    }
+	  if (src->terms.setp == src->terms.set.word)
+	    {
+	      dst->terms.setp = dst->terms.set.word;
+	    }
+	}
       free_and_init (env->subqueries);
     }
   env->subqueries = tmp;
@@ -4139,7 +4144,6 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
   qo_seg_nodes (env, &tmp->segs, &tmp->nodes);
   tmp->idx = n;
 }
-
 
 /*
  * get_local_subqueries_pre () - Builds vector of locally correlated
@@ -6032,13 +6036,13 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
    * 'env' attribute is the same in both, don't bother with it.
    */
   TERMCLASS_EXCHANGE (t0->term_class, t1->term_class);
-  BISET_EXCHANGE (t0->nodes, t1->nodes);
-  BISET_EXCHANGE (t0->segments, t1->segments);
+  BITSET_EXCHANGE (t0->nodes, t1->nodes);
+  BITSET_EXCHANGE (t0->segments, t1->segments);
   DOUBLE_EXCHANGE (t0->selectivity, t1->selectivity);
   INT_EXCHANGE (t0->rank, t1->rank);
   PT_NODE_EXCHANGE (t0->pt_expr, t1->pt_expr);
   INT_EXCHANGE (t0->location, t1->location);
-  BISET_EXCHANGE (t0->subqueries, t1->subqueries);
+  BITSET_EXCHANGE (t0->subqueries, t1->subqueries);
   JOIN_TYPE_EXCHANGE (t0->join_type, t1->join_type);
   INT_EXCHANGE (t0->can_use_index, t1->can_use_index);
   SEGMENTPTR_EXCHANGE (t0->index_seg[0], t1->index_seg[0]);
@@ -8460,7 +8464,6 @@ qo_seg_width (QO_SEGMENT * seg)
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       /* do guessing for variable character type */
       size = size * (2 / 3);
       break;

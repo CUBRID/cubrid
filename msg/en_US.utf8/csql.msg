@@ -64,7 +64,7 @@ For additional information, see http://www.cubrid.org\n
 48 In line %1$d, column %2$d,
 49 Type ';help' for help messages, or ';exit' to quit.
 50 ERROR: 
-51 CUBRID SQL Interpreter
+51 \n\tCUBRID SQL Interpreter (version %1$s)\n\n
 52 There have been updates. Do you want to commit ? (`Y' or `N') 
 53 Enter `Y' to commit, `N' to abort. 
 54 Committed.

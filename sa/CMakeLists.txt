@@ -131,6 +131,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/ddl_log.c
   )
 set(BASE_HEADERS
+  ${BASE_DIR}/compressor.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
@@ -163,6 +164,7 @@ set(BASE_HEADERS
   ${BASE_DIR}/printer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
+  ${BASE_DIR}/fixed_size_allocator.hpp
 )
 
 set(HEAPLAYER_SOURCES
@@ -285,6 +287,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
   ${QUERY_DIR}/subquery_cache.c
+  ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -302,6 +305,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
+  ${QUERY_DIR}/memoize.hpp
   )
 
 set(OBJECT_SOURCES
@@ -715,38 +719,31 @@ if(WIN32)
 endif(WIN32)
 
 # include target_external_dependencies function
-include (expand_dependency)
+include(expand_dependency)
 
-if(UNIX)
-target_external_dependencies(cubridsa
-  LIBNCURSES
-  LIBEDIT
+target_include_directories(cubridsa
+  PRIVATE
+    ${FLEX_INCLUDE_DIRS}
+    ${EP_INCLUDES}
   )
-endif(UNIX)
-target_external_dependencies(cubridsa
-  LIBEXPAT
-  LIBJANSSON
-  LIBEDIT
-  LIBOPENSSL
-  LZ4
-  RAPIDJSON
-  RE2
-  )
-target_include_directories(cubridsa PRIVATE
-  ${FLEX_INCLUDE_DIRS}
-  )
-if(UNIX)
-  # find out what this means:
-  # target_link_libraries(cubridsa LINK_PRIVATE -Wl,-whole-archive cas ${EP_LIBS} -Wl,-no-whole-archive)
-  target_link_libraries(cubridsa LINK_PUBLIC ${CMAKE_DL_LIBS})
-  target_link_libraries(cubridsa PUBLIC stdc++fs)
-  target_link_libraries(cubridsa PUBLIC rt)
-endif(UNIX)
-# for dblink
-target_link_libraries(cubridsa PUBLIC cascci)
 
-add_dependencies(cubridsa gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-#add_dependencies(cubridsa ${EP_TARGETS})
+target_link_libraries(cubridsa
+  PRIVATE
+    ${EP_LIBS}
+  PUBLIC
+    ${CMAKE_DL_LIBS}
+    stdc++fs
+    rt
+    cascci
+  )
+
+add_dependencies(cubridsa
+  gen_csql_grammar
+  gen_csql_lexer
+  gen_loader_grammar
+  gen_loader_lexer
+  ${EP_TARGETS}
+  )
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridsa PRIVATE ${CMAKE_BINARY_DIR})

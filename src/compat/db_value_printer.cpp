@@ -235,12 +235,6 @@ void db_value_printer::describe_type (const db_value *value)
 	case DB_TYPE_CHAR:
 	  m_buf ("CHAR");
 	  break;
-	case DB_TYPE_NCHAR:
-	  m_buf ("NCHAR");
-	  break;
-	case DB_TYPE_VARNCHAR:
-	  m_buf ("VARNCHAR");
-	  break;
 	case DB_TYPE_DB_VALUE:
 	  m_buf ("DB_VALUE");
 	  break;
@@ -367,12 +361,6 @@ void db_value_printer::describe_value (const db_value *value)
 	  describe_data (value);
 	  m_buf += '\'';
 	  break;
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
-	  m_buf ("N'");
-	  describe_data (value);
-	  m_buf += '\'';
-	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  m_buf ("X'");
@@ -454,9 +442,7 @@ void db_value_printer::describe_data (const db_value *value)
       break;
 
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       /* Copy string into buf providing for any embedded quotes. Strings may have embedded NULL characters and
        * embedded quotes.  None of the supported multibyte character codesets have a conflict between a quote
        * character and the second byte of the multibyte character.
