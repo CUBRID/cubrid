@@ -926,10 +926,9 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NCHAR:
     case DB_TYPE_VARNCHAR:
-      return value->domain.char_info.length;
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      return DB_MAX_LOB_PRECISION;
+      return value->domain.char_info.length;
     case DB_TYPE_OBJECT:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
