@@ -1326,8 +1326,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 
   /* flags */
   attr_val_p = &attrs[10].value;
-  /* trailing zero needed, but dont have beautiful way without using bit shift and log2 */
-  db_make_int (attr_val_p, flags & ~(SM_ATTFLAG_INVISIBLE_COLUMN-1));
+  db_make_int (attr_val_p, (flags & ~(SM_ATTFLAG_INVISIBLE_COLUMN-1))/SM_ATTFLAG_INVISIBLE_COLUMN);
 
   /* index_file_id */
   or_advance (buf_p, OR_INT_SIZE);
