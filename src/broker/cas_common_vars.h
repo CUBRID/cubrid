@@ -125,4 +125,3 @@ extern int cas_get_db_connect_status (void);
 
 
 #endif /* _CAS_COMMON_VARS_H_ */
-

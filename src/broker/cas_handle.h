@@ -150,7 +150,7 @@ struct t_srv_handle
   bool is_fetch_completed;
   bool is_holdable;
   bool is_from_current_transaction;
-  
+
   /* CGW fields */
   T_CGW_HANDLE *cgw_handle;
   int total_tuple_count;

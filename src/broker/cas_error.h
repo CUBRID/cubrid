@@ -104,29 +104,29 @@ extern "C"
 #define NET_BUF_ERR_SET(NET_BUF)\
 	err_msg_set(NET_BUF, __FILE__, __LINE__)
 
-typedef struct t_error_info T_ERROR_INFO;
-struct t_error_info
-{
-int err_indicator;
-int err_number;
-char err_string[ERR_MSG_LENGTH];
-char err_file[ERR_FILE_LENGTH];
-int err_line;
-};
+  typedef struct t_error_info T_ERROR_INFO;
+  struct t_error_info
+  {
+    int err_indicator;
+    int err_number;
+    char err_string[ERR_MSG_LENGTH];
+    char err_file[ERR_FILE_LENGTH];
+    int err_line;
+  };
 
-struct t_net_buf;
-typedef struct t_net_buf T_NET_BUF;
+  struct t_net_buf;
+  typedef struct t_net_buf T_NET_BUF;
 
-extern int is_error_info_set (void);
-extern void err_msg_set (T_NET_BUF * net_buf, const char *file, int line);
-extern int error_info_set (int err_number, int err_indicator, const char *file, int line);
-extern int error_info_set_force (int err_number, int err_indicator, const char *file, int line);
-extern int error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg, bool force,
-				const char *file, int line);
-extern void error_info_clear (void);
-extern void set_server_aborted (bool is_aborted);
-	  extern bool is_server_aborted (void);
-	
+  extern int is_error_info_set (void);
+  extern void err_msg_set (T_NET_BUF * net_buf, const char *file, int line);
+  extern int error_info_set (int err_number, int err_indicator, const char *file, int line);
+  extern int error_info_set_force (int err_number, int err_indicator, const char *file, int line);
+  extern int error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg, bool force,
+				      const char *file, int line);
+  extern void error_info_clear (void);
+  extern void set_server_aborted (bool is_aborted);
+  extern bool is_server_aborted (void);
+
 #ifdef __cplusplus
 }
 #endif

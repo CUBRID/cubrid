@@ -49,13 +49,14 @@ extern int query_seq_num_next_value (void);
 extern int query_seq_num_current_value (void);
 T_BROKER_VERSION cas_get_client_version (void);
 int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header);
-int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
+int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info,
+				SOCKET srv_sock_fd);
 void set_cas_info_size (void);
 #if !defined(WINDOWS)
 void query_cancel (int signo);
 #endif
 #if defined(WINDOWS)
-LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS * pException);
+LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
 #endif
 
 #define FUNC_NEEDS_RESTORING_CON_STATUS(func_code) \
@@ -80,12 +81,11 @@ typedef struct
 
 /* DB connection callback function types */
 typedef int (*cas_db_connect_fn_t) (SOCKET client_sock_fd, const char *db_name, const char *db_user,
-				    const char *db_passwd, const char *url, T_REQ_INFO * req_info,
-				    char *cas_info);
+				    const char *db_passwd, const char *url, T_REQ_INFO * req_info, char *cas_info);
 typedef int (*cas_db_pre_connect_fn_t) (const char *db_name, const char *db_user,
-					const char *db_passwd, const char *url,
-					void *context);
-typedef void (*cas_db_post_connect_fn_t) (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name, char *db_user, const char *url);
+					const char *db_passwd, const char *url, void *context);
+typedef void (*cas_db_post_connect_fn_t) (void *context, struct timeval * cas_start_time, int shm_as_index,
+					  int client_ip_addr, char *db_name, char *db_user, const char *url);
 typedef void (*cas_cleanup_session_fn_t) (void);
 typedef FN_RETURN (*cas_process_request_fn_t) (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 typedef void (*cas_set_session_id_fn_t) (T_CAS_PROTOCOL protocol, char *session);
@@ -94,7 +94,7 @@ typedef void (*cas_send_connect_reply_fn_t) (T_CAS_PROTOCOL protocol, SOCKET cli
 /* cas_main() operations structure */
 typedef struct
 {
-  int (*init_specific) (void);		/* Mode-specific initialization (e.g., cgw_init) */
+  int (*init_specific) (void);	/* Mode-specific initialization (e.g., cgw_init) */
   cas_db_pre_connect_fn_t pre_db_connect;	/* Pre-DB connection processing */
   cas_db_connect_fn_t db_connect;	/* DB connection function */
   cas_db_post_connect_fn_t post_db_connect;	/* Post-DB connection processing */
@@ -102,7 +102,7 @@ typedef struct
   cas_process_request_fn_t process_request;	/* Request processing */
   cas_set_session_id_fn_t set_session_id;	/* Set session ID (cas.c only) */
   cas_send_connect_reply_fn_t send_connect_reply;	/* Send connect reply */
-  void *context;			/* Context */
+  void *context;		/* Context */
 } CAS_MAIN_OPS;
 
 int cas_main_loop (CAS_MAIN_OPS * ops);
@@ -110,11 +110,9 @@ int cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd);
 int cas_accept_client (SOCKET br_sock_fd, SOCKET * client_sock_fd, int *client_ip_addr);
 int cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_CONN_INFO * conn_info);
 int cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
-			      DB_CONN_INFO * conn_info, char *cas_info,
-			      int client_ip_addr, CAS_MAIN_OPS * ops);
+			      DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops);
 void cas_finish_session (SOCKET client_sock_fd, bool ssl_client);
 
 extern FN_RETURN cas_main_fn_ret;
 
 #endif /* _CAS_COMMON_MAIN_H_ */
-

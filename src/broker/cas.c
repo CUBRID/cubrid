@@ -192,8 +192,10 @@ static int net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_heade
 static void set_db_parameter (void);
 
 /* Callback functions for cas_main_loop() */
-static int cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url, T_REQ_INFO * req_info, char *cas_info);
-static void cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name, char *db_user, const char *url);
+static int cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd,
+			   const char *url, T_REQ_INFO * req_info, char *cas_info);
+static void cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr,
+				 char *db_name, char *db_user, const char *url);
 static void cas_cleanup_session (void);
 
 /* Protocol functions */
@@ -263,8 +265,8 @@ static int
 cas_main (void)
 {
   CAS_MAIN_OPS ops = {
-    .init_specific = NULL,		/* cas.c has no specific initialization */
-    .pre_db_connect = NULL,		/* No pre-connect processing for cas.c */
+    .init_specific = NULL,	/* cas.c has no specific initialization */
+    .pre_db_connect = NULL,	/* No pre-connect processing for cas.c */
     .db_connect = cas_db_connect,
     .post_db_connect = cas_post_db_connect,
     .cleanup_session = cas_cleanup_session,
@@ -373,41 +375,43 @@ cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd
 }
 
 static int
-cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url, T_REQ_INFO * req_info, char *cas_info)
+cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url,
+		T_REQ_INFO *req_info, char *cas_info)
 {
   int err_code;
   char *db_err_msg = NULL;
   err_code = ux_database_connect ((char *) db_name, (char *) db_user, (char *) db_passwd, &db_err_msg);
   if (err_code < 0)
-  {
-    char msg_buf[LINE_MAX];
-    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+    {
+      char msg_buf[LINE_MAX];
+      cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
 
-    net_write_error (client_sock_fd, req_info->client_version, req_info->driver_info, cas_info, cas_info_size,
-		     err_info.err_indicator, err_info.err_number, db_err_msg);
-    if (db_err_msg == NULL)
-      {
-	snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d.", db_name, db_user, url,
-		      err_info.err_number);
-      }
-    else
-      {
-	snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d, %s", db_name, db_user, url,
-		      err_info.err_number, db_err_msg);
-      }
+      net_write_error (client_sock_fd, req_info->client_version, req_info->driver_info, cas_info, cas_info_size,
+		       err_info.err_indicator, err_info.err_number, db_err_msg);
+      if (db_err_msg == NULL)
+	{
+	  snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d.", db_name, db_user, url,
+		    err_info.err_number);
+	}
+      else
+	{
+	  snprintf (msg_buf, LINE_MAX, "connect db %s user %s url %s, error:%d, %s", db_name, db_user, url,
+		    err_info.err_number, db_err_msg);
+	}
 
-    cas_log_write_and_end (0, false, msg_buf);
-    cas_slow_log_write_and_end (NULL, 0, msg_buf);
-    cas_finish_session (client_sock_fd, ssl_client);
-    FREE_MEM (db_err_msg);
-    return -1;
-  }
+      cas_log_write_and_end (0, false, msg_buf);
+      cas_slow_log_write_and_end (NULL, 0, msg_buf);
+      cas_finish_session (client_sock_fd, ssl_client);
+      FREE_MEM (db_err_msg);
+      return -1;
+    }
 
   return err_code;
 }
 
 static void
-cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name, char *db_user, const char *url)
+cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name,
+		     char *db_user, const char *url)
 {
   SESSION_ID session_id;
   bool is_new_connection;
@@ -428,7 +432,7 @@ cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_i
     {
       ACCESS_LOG_TYPE type = (is_new_connection) ? NEW_CONNECTION : CLIENT_CHANGED;
 
-      cas_access_log (cas_start_time, shm_as_index, client_ip_addr, db_name, db_user, type);	
+      cas_access_log (cas_start_time, shm_as_index, client_ip_addr, db_name, db_user, type);
     }
 
   cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s" " session id %u", as_info->database_name,
@@ -842,7 +846,7 @@ return_error:
 }
 
 static FN_RETURN
-process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+process_request (SOCKET sock_fd, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 {
   MSG_HEADER client_msg_header;
   MSG_HEADER cas_msg_header;
@@ -1344,7 +1348,7 @@ exit_on_end:
 }
 
 static int
-net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
+net_read_process (SOCKET proxy_sock_fd, MSG_HEADER *client_msg_header, T_REQ_INFO *req_info)
 {
   int ret_value = 0;
   int timeout = 0, remained_timeout = 0;

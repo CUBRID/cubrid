@@ -85,5 +85,3 @@ extern char *cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear)
 extern char *get_error_log_eids (int err);
 
 #endif /* _CAS_COMMON_EXECUTE_H_ */
-
-

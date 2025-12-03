@@ -55,7 +55,7 @@ static bool is_cgw_mode = false;
 static cgw_free_stmt_func_t cgw_free_stmt_func = NULL;
 
 int
-hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
+hm_new_srv_handle (T_SRV_HANDLE **new_handle, unsigned int seq_num)
 {
   int i;
   int new_max_srv_handle;
@@ -194,7 +194,7 @@ hm_srv_handle_free_all (bool free_holdable)
 
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
-      
+
       if (is_cgw_mode && cgw_free_stmt_func != NULL)
 	{
 	  cgw_free_stmt_func (srv_handle);
@@ -295,13 +295,13 @@ hm_srv_handle_set_pooled ()
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 void
-hm_qresult_clear (T_QUERY_RESULT * q_result)
+hm_qresult_clear (T_QUERY_RESULT *q_result)
 {
   memset (q_result, 0, sizeof (T_QUERY_RESULT));
 }
 
 void
-hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
+hm_qresult_end (T_SRV_HANDLE *srv_handle, char free_flag)
 {
   T_QUERY_RESULT *q_result;
   int i;
@@ -354,7 +354,7 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 }
 
 void
-hm_session_free (T_SRV_HANDLE * srv_handle)
+hm_session_free (T_SRV_HANDLE *srv_handle)
 {
   if (srv_handle->session)
     {
@@ -364,13 +364,13 @@ hm_session_free (T_SRV_HANDLE * srv_handle)
 }
 
 void
-hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info)
+hm_col_update_info_clear (T_COL_UPDATE_INFO *col_update_info)
 {
   memset (col_update_info, 0, sizeof (T_COL_UPDATE_INFO));
 }
 
 static void
-srv_handle_content_free (T_SRV_HANDLE * srv_handle)
+srv_handle_content_free (T_SRV_HANDLE *srv_handle)
 {
   FREE_MEM (srv_handle->sql_stmt);
   hm_prepare_call_info_free (srv_handle->prepare_call_info);
@@ -413,7 +413,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 }
 
 static void
-col_update_info_free (T_QUERY_RESULT * q_result)
+col_update_info_free (T_QUERY_RESULT *q_result)
 {
   int i;
 
@@ -431,7 +431,7 @@ col_update_info_free (T_QUERY_RESULT * q_result)
 }
 
 static void
-srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle)
+srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE *srv_handle)
 {
   if (srv_handle->query_info_flag == TRUE)
     {
@@ -465,7 +465,7 @@ hm_set_current_srv_handle (int h_id)
 }
 
 static void
-prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info)
+prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO *call_info)
 {
   DB_VALUE **args;
   int i = 0;
@@ -498,13 +498,13 @@ prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info)
 }
 
 void
-hm_free_result  (void *res)
+hm_free_result (void *res)
 {
   db_query_end ((DB_QUERY_RESULT *) res);
 }
 
 void
-hm_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
+hm_prepare_call_info_free (T_PREPARE_CALL_INFO *call_info)
 {
   if (call_info)
     {
@@ -523,7 +523,7 @@ hm_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info)
 }
 
 void
-release_all_fk_info_results (T_FK_INFO_RESULT * fk_res)
+release_all_fk_info_results (T_FK_INFO_RESULT *fk_res)
 {
   T_FK_INFO_RESULT *fk, *fk_release;
 

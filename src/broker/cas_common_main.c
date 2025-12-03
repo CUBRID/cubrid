@@ -83,7 +83,7 @@ static cas_cleanup_callback_t cleanup_callback = NULL;
 static cas_database_shutdown_callback_t database_shutdown_callback = NULL;
 
 int
-cas_main_loop (CAS_MAIN_OPS * ops)
+cas_main_loop (CAS_MAIN_OPS *ops)
 {
   T_NET_BUF net_buf;
   SOCKET srv_sock_fd, br_sock_fd, client_sock_fd;
@@ -264,8 +264,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 		ops->set_session_id ((T_CAS_PROTOCOL) req_info.client_version, conn_info.db_sessionid);
 	      }
 
-	    err_code = cas_handle_db_connection (client_sock_fd, &req_info, &conn_info, cas_info, client_ip_addr,
-							ops);
+	    err_code = cas_handle_db_connection (client_sock_fd, &req_info, &conn_info, cas_info, client_ip_addr, ops);
 	    if (err_code < 0)
 	      {
 		cas_finish_session (client_sock_fd, ssl_client);
@@ -418,7 +417,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 /* cas_main() common initialization */
 int
-cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd)
+cas_main_init (T_NET_BUF *net_buf, SOCKET *srv_sock_fd)
 {
 #if defined(WINDOWS)
   int new_port;
@@ -883,7 +882,7 @@ cas_get_client_version (void)
 //       as_info->database_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
 
 //       strncpy (as_info->database_passwd, shm_appl->shard_conn_info[shm_shard_id].db_password,
-// 	       SRV_CON_DBPASSWD_SIZE - 1);
+//             SRV_CON_DBPASSWD_SIZE - 1);
 //       as_info->database_passwd[SRV_CON_DBUSER_SIZE - 1] = '\0';
 //     }
 
@@ -931,7 +930,7 @@ cas_get_client_version (void)
 // }
 
 int
-net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
+net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER *client_msg_header)
 {
   int ret_value = 0;
   int timeout = 0, remained_timeout = 0;
@@ -991,7 +990,7 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 #if defined(WINDOWS)
 
 LONG WINAPI
-CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
+CreateMiniDump (struct _EXCEPTION_POINTERS *pException)
 {
   TCHAR DumpFile[MAX_PATH] = { 0, };
   TCHAR DumpPath[MAX_PATH] = { 0, };
@@ -1030,7 +1029,7 @@ CreateMiniDump (struct _EXCEPTION_POINTERS * pException)
 
 /* Accept client connection and perform handshake */
 int
-cas_accept_client (SOCKET br_sock_fd, SOCKET * client_sock_fd, int *client_ip_addr)
+cas_accept_client (SOCKET br_sock_fd, SOCKET *client_sock_fd, int *client_ip_addr)
 {
 #if defined(WINDOWS)
   static int one = 1;
@@ -1082,7 +1081,7 @@ cas_accept_client (SOCKET br_sock_fd, SOCKET * client_sock_fd, int *client_ip_ad
 
 /* Parse DB connection information from read buffer */
 int
-cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_CONN_INFO * conn_info)
+cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO *req_info, DB_CONN_INFO *conn_info)
 {
   int len;
   char *db_name, *db_user, *db_passwd, *url, *db_sessionid;
@@ -1168,9 +1167,8 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_C
 }
 
 int
-cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
-			  DB_CONN_INFO * conn_info, char *cas_info,
-			  int client_ip_addr, CAS_MAIN_OPS * ops)
+cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO *req_info,
+			  DB_CONN_INFO *conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS *ops)
 {
   int err_code;
   char *db_err_msg = NULL;
@@ -1184,7 +1182,7 @@ cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
   if (ops->pre_db_connect)
     {
       err_code = ops->pre_db_connect (conn_info->db_name, conn_info->db_user,
-				       conn_info->db_passwd, conn_info->url, ops->context);
+				      conn_info->db_passwd, conn_info->url, ops->context);
       if (err_code < 0)
 	{
 	  char err_msg[1024];
@@ -1229,7 +1227,9 @@ cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
     }
 
   /* DB connection */
-  err_code = ops->db_connect (client_sock_fd, conn_info->db_name, conn_info->db_user, conn_info->db_passwd, conn_info->url, req_info, cas_info);
+  err_code =
+    ops->db_connect (client_sock_fd, conn_info->db_name, conn_info->db_user, conn_info->db_passwd, conn_info->url,
+		     req_info, cas_info);
   if (err_code < 0)
     {
       return -1;
@@ -1239,7 +1239,8 @@ cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
   /* Post-connect processing */
   if (ops->post_db_connect)
     {
-      ops->post_db_connect (ops->context, &cas_start_time, shm_as_index, client_ip_addr, conn_info->db_name, conn_info->db_user, conn_info->url);
+      ops->post_db_connect (ops->context, &cas_start_time, shm_as_index, client_ip_addr, conn_info->db_name,
+			    conn_info->db_user, conn_info->url);
     }
 
   ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), (unsigned char *) (&client_ip_addr));
@@ -1274,7 +1275,7 @@ cas_get_db_connect_status (void)
 }
 
 int
-net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info, SOCKET srv_sock_fd)
+net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER *client_msg_header, T_REQ_INFO *req_info, SOCKET srv_sock_fd)
 {
   int ret_value = 0;
 
@@ -1372,4 +1373,3 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 
   return ret_value;
 }
-

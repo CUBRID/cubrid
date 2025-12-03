@@ -42,7 +42,7 @@
 #define STRING_MAX_SIZE         (16*1024*1024)
 #define LOGIN_TIME_OUT          (5)
 #define NUM_OF_DIGITS(NUMBER)   ((int)log10(NUMBER) + 1)
-#define DISCONNECTED_STATE      (-1)	
+#define DISCONNECTED_STATE      (-1)
 #define CONNECTED_STATE         (0)
 
 #define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
@@ -118,17 +118,18 @@ static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
 static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
 static char *cgw_datatype_to_string (SQLLEN type);
 static char *cgw_utype_to_string (int type);
-static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length);
-static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen);
-static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
+static int cgw_unicode_to_utf8 (wchar_t *in_src, int in_size, char **out_target, int *out_length);
+static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t *out_unicode_str, size_t out_unicode_strLen);
+static int cgw_conv_mtow (wchar_t *destStr, char *sourStr);
 static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
-static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
+static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t *src, size_t len);
 static const char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
 
-int cgw_init (void)
+int
+cgw_init (void)
 {
   SQLRETURN err_code;
-  
+
   /* Step 1: Initialize ODBC handles */
   err_code = cgw_init_odbc_handle ();
   if (err_code < 0)
@@ -165,7 +166,7 @@ cgw_cleanup (void)
 }
 
 void
-cgw_free_stmt (T_SRV_HANDLE * srv_handle)
+cgw_free_stmt (T_SRV_HANDLE *srv_handle)
 {
   if (srv_handle->cgw_handle->hstmt)
     {
@@ -175,7 +176,7 @@ cgw_free_stmt (T_SRV_HANDLE * srv_handle)
 }
 
 int
-cgw_get_handle (T_CGW_HANDLE ** cgw_handle)
+cgw_get_handle (T_CGW_HANDLE **cgw_handle)
 {
   if (local_odbc_handle == NULL || local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL)
     {
@@ -285,7 +286,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_execute (T_SRV_HANDLE * srv_handle, SQLLEN * row_count)
+cgw_execute (T_SRV_HANDLE *srv_handle, SQLLEN *row_count)
 {
   SQLRETURN err_code;
 
@@ -361,7 +362,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_cursor_close (T_SRV_HANDLE * srv_handle)
+cgw_cursor_close (T_SRV_HANDLE *srv_handle)
 {
   SQLRETURN err_code = 0;
 
@@ -383,7 +384,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_col_binding)
+cgw_copy_tuple (T_COL_BINDER *src_col_binding, T_COL_BINDER *dst_col_binding)
 {
   SQLRETURN err_code = 0;
   T_COL_BINDER *src_binder;
@@ -408,7 +409,7 @@ cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_col_binding)
 }
 
 int
-cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos)
+cgw_cur_tuple (T_NET_BUF *net_buf, T_COL_BINDER *first_col_binding, int cursor_pos)
 {
   DB_BIGINT bigint = 0;
   T_OBJECT tuple_obj;
@@ -639,7 +640,7 @@ cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor
 }
 
 int
-cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
+cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO *col_info)
 {
   SQLRETURN err_code;
   SQLSMALLINT col_name_length = 0;
@@ -906,7 +907,7 @@ cgw_get_charset (void)
 }
 
 int
-cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_type)
+cgw_set_execute_info (T_SRV_HANDLE *srv_handle, T_NET_BUF *net_buf, int stmt_type)
 {
   SQLRETURN err_code;
   char cache_reusable = 0;
@@ -960,7 +961,7 @@ ODBC_ERROR:
 }
 
 static int
-cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
+cgw_get_stmt_Info (T_SRV_HANDLE *srv_handle, SQLHSTMT hstmt, T_NET_BUF *net_buf, int stmt_type)
 {
   T_OBJECT ins_oid;
   CACHE_TIME srv_cache_time;
@@ -990,7 +991,7 @@ ODBC_ERROR:
 
 
 int
-cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding, T_COL_BINDER ** col_binding_buff)
+cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER **col_binding, T_COL_BINDER **col_binding_buff)
 {
   SQLRETURN err_code;
   SQLSMALLINT col;
@@ -1136,7 +1137,7 @@ ODBC_ERROR:
 
 
 void
-cgw_cleanup_binder (T_COL_BINDER * first_col_binding)
+cgw_cleanup_binder (T_COL_BINDER *first_col_binding)
 {
   T_COL_BINDER *this_col_binding;
 
@@ -1207,7 +1208,7 @@ cgw_database_disconnect ()
 }
 
 static int
-cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *net_value, ODBC_BIND_INFO * value_list)
+cgw_set_bindparam (T_CGW_HANDLE *handle, int bind_num, void *net_type, void *net_value, ODBC_BIND_INFO *value_list)
 {
   char type;
   char src_type = -1;
@@ -1283,7 +1284,7 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
       }
       break;
 
-      case CCI_U_TYPE_NULL:
+    case CCI_U_TYPE_NULL:
       {
 	char *value;
 	int val_size;
@@ -1422,17 +1423,17 @@ cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *ne
 			 err_code =
 			 SQLSetDescField (hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
 
-			 SQL_CHK_ERR (hdesc,
-				SQL_HANDLE_DESC,
-				err_code =
-				SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
-						 (SQLPOINTER) (uintptr_t) value_list->ns_val.precision, 0));
-       
-		   SQL_CHK_ERR (hdesc,
-				SQL_HANDLE_DESC,
-				err_code =
-				SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE,
-						 (SQLPOINTER) (uintptr_t) value_list->ns_val.scale, 0));
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
+					  (SQLPOINTER) (uintptr_t) value_list->ns_val.precision, 0));
+
+	    SQL_CHK_ERR (hdesc,
+			 SQL_HANDLE_DESC,
+			 err_code =
+			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE,
+					  (SQLPOINTER) (uintptr_t) value_list->ns_val.scale, 0));
 
 	    SQL_CHK_ERR (hdesc,
 			 SQL_HANDLE_DESC,
@@ -1726,7 +1727,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_sql_prepare (SQLCHAR * sql_stmt)
+cgw_sql_prepare (SQLCHAR *sql_stmt)
 {
   SQLRETURN err_code;
   wchar_t *out_string = NULL;
@@ -1772,7 +1773,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols)
+cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT *num_cols)
 {
   SQLRETURN err_code;
 
@@ -1797,7 +1798,7 @@ ODBC_ERROR:
 }
 
 int
-cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO ** ret_val)
+cgw_make_bind_value (T_CGW_HANDLE *handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO **ret_val)
 {
   int i, type_idx, val_idx;
   int err_code;
@@ -1874,7 +1875,7 @@ cgw_is_database_connected ()
 }
 
 static int
-numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
+numeric_string_adjust (SQL_NUMERIC_STRUCT *numeric, char *string)
 {
   char *pt, *pt2;
   char hexstr[SQL_MAX_NUMERIC_LEN + 1] = { 0 };
@@ -1935,7 +1936,7 @@ numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
 }
 
 static int
-hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr)
+hex_to_numeric_val (SQL_NUMERIC_STRUCT *numeric, char *hexstr)
 {
   size_t slen = 0;
   size_t loop = 0;
@@ -2002,7 +2003,7 @@ hex_to_char (char c, unsigned char *result)
 }
 
 static void
-cgw_cleanup_handle (T_CGW_HANDLE * handle)
+cgw_cleanup_handle (T_CGW_HANDLE *handle)
 {
   if (handle == NULL)
     {
@@ -2448,7 +2449,7 @@ cgw_is_supported_dbms (char *dbms)
 }
 
 int
-cgw_get_stmt_handle (SQLHDBC hdbc, SQLHSTMT * stmt)
+cgw_get_stmt_handle (SQLHDBC hdbc, SQLHSTMT *stmt)
 {
   if (hdbc == NULL)
     {
@@ -2648,7 +2649,7 @@ cgw_utype_to_string (int type)
 }
 
 static int
-cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length)
+cgw_unicode_to_utf8 (wchar_t *in_src, int in_size, char **out_target, int *out_length)
 {
 #if defined(WINDOWS)
   int length;
@@ -2730,7 +2731,7 @@ cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_
 
 
 static int
-cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen)
+cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t *out_unicode_str, size_t out_unicode_strLen)
 {
 #if defined(WINDOWS)
   int result = MultiByteToWideChar (CP_UTF8, 0, in_utf8_str, -1, out_unicode_str, out_unicode_strLen);
@@ -2768,7 +2769,7 @@ cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t 
 }
 
 static int
-cgw_conv_mtow (wchar_t * dest_wc, char *src_mbc)
+cgw_conv_mtow (wchar_t *dest_wc, char *src_mbc)
 {
   size_t length;
 
@@ -2791,7 +2792,7 @@ cgw_conv_mtow (wchar_t * dest_wc, char *src_mbc)
 }
 
 static int
-cgw_uint32_to_uni16 (uint32_t i, uint16_t * u)
+cgw_uint32_to_uni16 (uint32_t i, uint16_t *u)
 {
   if (i < 0xffff)
     {
@@ -2803,7 +2804,7 @@ cgw_uint32_to_uni16 (uint32_t i, uint16_t * u)
 }
 
 static SQLWCHAR *
-cgw_wchar_to_sqlwchar (wchar_t * src, size_t len)
+cgw_wchar_to_sqlwchar (wchar_t *src, size_t len)
 {
   SQLWCHAR *dest;
   SQLWCHAR *sqlwchar_string;

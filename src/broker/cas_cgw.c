@@ -192,9 +192,12 @@ static int cas_init (void);
 static int cas_init_shm (void);
 
 /* Callback functions for cas_main_loop() */
-static int cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_passwd, const char *url, void *context);
-static int cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url, T_REQ_INFO * req_info, char *cas_info);
-static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name, char *db_user, const char *url);
+static int cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_passwd, const char *url,
+			       void *context);
+static int cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd,
+			   const char *url, T_REQ_INFO * req_info, char *cas_info);
+static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr,
+				 char *db_name, char *db_user, const char *url);
 static void cgw_cleanup_session (void);
 
 static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
@@ -256,13 +259,13 @@ cas_main (void)
 {
   CGW_CONTEXT cgw_ctx = { 0 };
   CAS_MAIN_OPS ops = {
-    .init_specific = cgw_init,		/* CGW specific initialization */
+    .init_specific = cgw_init,	/* CGW specific initialization */
     .pre_db_connect = cgw_pre_db_connect,
     .db_connect = cgw_db_connect,
     .post_db_connect = cgw_post_db_connect,
     .cleanup_session = cgw_cleanup_session,
     .process_request = process_request,
-    .set_session_id = NULL,		/* CGW doesn't use session ID */
+    .set_session_id = NULL,	/* CGW doesn't use session ID */
     .send_connect_reply = cas_send_connect_reply_to_driver,
     .context = &cgw_ctx
   };
@@ -342,7 +345,7 @@ cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_pas
 {
   CGW_CONTEXT *cgw_ctx = (CGW_CONTEXT *) context;
   const char *find_gateway;
-  
+
   if (url == NULL)
     {
       return -1;
@@ -401,7 +404,8 @@ cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_pas
 }
 
 static int
-cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url, T_REQ_INFO * req_info, char *cas_info)
+cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url,
+		T_REQ_INFO *req_info, char *cas_info)
 {
   int err_code;
   char *db_err_msg = NULL;
@@ -412,7 +416,7 @@ cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
     }
 
   err_code = cgw_database_connect (cgw_current_ctx->dbms_type, cgw_current_ctx->odbc_connect_url, (char *) db_name,
-				    (char *) db_user, (char *) db_passwd);
+				   (char *) db_user, (char *) db_passwd);
 
   if (err_code < 0)
     {
@@ -422,32 +426,34 @@ cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
       err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       db_err_msg = (char *) db_error_string (1);
       net_write_error (client_sock_fd, req_info->client_version, req_info->driver_info, cas_info, cas_info_size,
-			err_info.err_indicator, err_info.err_number, db_err_msg);
+		       err_info.err_indicator, err_info.err_number, db_err_msg);
 
-      if (db_err_msg == NULL) 
+      if (db_err_msg == NULL)
 	{
-	  snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d", cgw_current_ctx->odbc_connect_url, err_info.err_number);
+	  snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d", cgw_current_ctx->odbc_connect_url,
+		    err_info.err_number);
 	}
       else
 	{
 	  snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d, %s", cgw_current_ctx->odbc_connect_url,
-		err_info.err_number, db_err_msg);
+		    err_info.err_number, db_err_msg);
 	}
 
-	cas_log_write_and_end (0, false, msg_buf);
-	cas_slow_log_write_and_end (NULL, 0, msg_buf);
-	cas_finish_session (client_sock_fd, ssl_client);
-	return err_code;
+      cas_log_write_and_end (0, false, msg_buf);
+      cas_slow_log_write_and_end (NULL, 0, msg_buf);
+      cas_finish_session (client_sock_fd, ssl_client);
+      return err_code;
     }
 
   return err_code;
 }
 
 static void
-cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name, char *db_user, const char *url)
+cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name,
+		     char *db_user, const char *url)
 {
   CGW_CONTEXT *cgw_ctx = (CGW_CONTEXT *) context;
-  
+
   cas_bi_set_dbms_type (cgw_ctx->dbms_type);
   cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s", cgw_ctx->tmp_name,
 			 shm_appl->cgw_link_server_ip, cgw_ctx->tmp_user, cgw_ctx->odbc_resolved_url);
@@ -465,7 +471,7 @@ cgw_cleanup_session (void)
 }
 
 static FN_RETURN
-process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+process_request (SOCKET sock_fd, T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 {
   MSG_HEADER client_msg_header;
   MSG_HEADER cas_msg_header;
@@ -487,8 +493,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   if (cas_shard_flag == ON)
     {
-	assert (0);
-	return FN_CLOSE_CONN;
+      assert (0);
+      return FN_CLOSE_CONN;
     }
   else
     {
@@ -956,4 +962,3 @@ return_error:
 
   return -1;
 }
-

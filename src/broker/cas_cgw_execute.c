@@ -64,7 +64,7 @@ typedef int (*T_FETCH_FUNC) (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T
  * ======================================================================== */
 static int cgw_fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_type,
-	T_BROKER_VERSION client_version, T_NET_BUF * net_buf);
+					     T_BROKER_VERSION client_version, T_NET_BUF * net_buf);
 static char ux_cgw_get_stmt_type (char *stmt);
 static int fetch_not_supported (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
@@ -74,26 +74,26 @@ static bool do_commit_after_execute (const t_srv_handle & server_handle);
  * Static Variable Definitions
  * ======================================================================== */
 static T_FETCH_FUNC fetch_func[] = {
-cgw_fetch_result,		/* query */
-fetch_not_supported,		/* SCH_CLASS */
-fetch_not_supported,		/* SCH_VCLASS */
-fetch_not_supported,		/* SCH_QUERY_SPEC */
-fetch_not_supported,		/* SCH_ATTRIBUTE */
-fetch_not_supported,		/* SCH_CLASS_ATTRIBUTE */
-fetch_not_supported,		/* SCH_METHOD */
-fetch_not_supported,		/* SCH_CLASS_METHOD */
-fetch_not_supported,		/* SCH_METHOD_FILE */
-fetch_not_supported,		/* SCH_SUPERCLASS */
-fetch_not_supported,		/* SCH_SUBCLASS */
-fetch_not_supported,		/* SCH_CONSTRAINT */
-fetch_not_supported,		/* SCH_TRIGGER */
-fetch_not_supported,		/* SCH_CLASS_PRIVILEGE */
-fetch_not_supported,		/* SCH_ATTR_PRIVILEGE */
-fetch_not_supported,		/* SCH_DIRECT_SUPER_CLASS */
-fetch_not_supported,		/* SCH_PRIMARY_KEY */
-fetch_not_supported,		/* SCH_IMPORTED_KEYS */
-fetch_not_supported,		/* SCH_EXPORTED_KEYS */
-fetch_not_supported,		/* SCH_CROSS_REFERENCE */
+  cgw_fetch_result,		/* query */
+  fetch_not_supported,		/* SCH_CLASS */
+  fetch_not_supported,		/* SCH_VCLASS */
+  fetch_not_supported,		/* SCH_QUERY_SPEC */
+  fetch_not_supported,		/* SCH_ATTRIBUTE */
+  fetch_not_supported,		/* SCH_CLASS_ATTRIBUTE */
+  fetch_not_supported,		/* SCH_METHOD */
+  fetch_not_supported,		/* SCH_CLASS_METHOD */
+  fetch_not_supported,		/* SCH_METHOD_FILE */
+  fetch_not_supported,		/* SCH_SUPERCLASS */
+  fetch_not_supported,		/* SCH_SUBCLASS */
+  fetch_not_supported,		/* SCH_CONSTRAINT */
+  fetch_not_supported,		/* SCH_TRIGGER */
+  fetch_not_supported,		/* SCH_CLASS_PRIVILEGE */
+  fetch_not_supported,		/* SCH_ATTR_PRIVILEGE */
+  fetch_not_supported,		/* SCH_DIRECT_SUPER_CLASS */
+  fetch_not_supported,		/* SCH_PRIMARY_KEY */
+  fetch_not_supported,		/* SCH_IMPORTED_KEYS */
+  fetch_not_supported,		/* SCH_EXPORTED_KEYS */
+  fetch_not_supported,		/* SCH_CROSS_REFERENCE */
 };
 
 /* ========================================================================
@@ -106,7 +106,7 @@ ux_cgw_check_connection (void)
 }
 
 int
-ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF *net_buf, T_REQ_INFO *req_info,
 		unsigned int query_seq_num)
 {
   T_SRV_HANDLE *srv_handle = NULL;
@@ -245,9 +245,9 @@ ux_cgw_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   cgw_get_handle (&cgw_handle);
   if (cgw_handle)
     {
-	err_code = cgw_endtran (cgw_handle->hdbc, tran_type);
+      err_code = cgw_endtran (cgw_handle->hdbc, tran_type);
     }
-  
+
   if (ddl_audit_log && tran_type != CCI_TRAN_COMMIT)
     {
       logddl_write_tran_str (LOGDDL_TRAN_TYPE_ABORT);
@@ -257,7 +257,7 @@ ux_cgw_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 }
 
 int
-ux_cgw_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_cgw_auto_commit (T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 {
   int err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
@@ -326,8 +326,8 @@ ux_cgw_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 }
 
 int
-ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
-		T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable)
+ux_cgw_execute (T_SRV_HANDLE *srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
+		T_NET_BUF *net_buf, T_REQ_INFO *req_info, CACHE_TIME *clt_cache_time, int *clt_cache_reusable)
 {
   int err_code = 0;
   int num_bind = 0;
@@ -496,8 +496,8 @@ execute_error:
 }
 
 int
-ux_cgw_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_index,
-	  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_cgw_fetch (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_index,
+	      T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 {
   int err_code;
   int fetch_func_index;
@@ -557,8 +557,8 @@ fetch_error:
 }
 
 static int
-cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+cgw_fetch_result (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		  T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 {
   T_OBJECT tuple_obj;
   int err_code = 0;
@@ -794,7 +794,7 @@ fetch_error:
 
 static int
 cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_type,
-				  T_BROKER_VERSION client_version, T_NET_BUF * net_buf)
+				  T_BROKER_VERSION client_version, T_NET_BUF *net_buf)
 {
   int err_code;
   char updatable_flag = prepare_flag & CCI_PREPARE_UPDATABLE;
@@ -855,7 +855,7 @@ cgw_prepare_column_list_info_set (SQLHSTMT hstmt, char prepare_flag, char stmt_t
 }
 
 int
-ux_cgw_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf)
+ux_cgw_cursor (int srv_h_id, int offset, int origin, T_NET_BUF *net_buf)
 {
   T_SRV_HANDLE *srv_handle;
   int err_code;
@@ -888,7 +888,7 @@ cursor_error:
 }
 
 void
-ux_cgw_cursor_close (T_SRV_HANDLE * srv_handle)
+ux_cgw_cursor_close (T_SRV_HANDLE *srv_handle)
 {
   int idx = 0;
 
@@ -907,7 +907,7 @@ ux_cgw_cursor_close (T_SRV_HANDLE * srv_handle)
 }
 
 void
-ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle)
+ux_cgw_free_stmt (T_SRV_HANDLE *srv_handle)
 {
   cgw_free_stmt (srv_handle);
 }
@@ -980,7 +980,7 @@ ux_cgw_get_stmt_type (char *stmt)
 }
 
 int
-get_cgw_tuple_count (T_SRV_HANDLE * srv_handle)
+get_cgw_tuple_count (T_SRV_HANDLE *srv_handle)
 {
   return srv_handle->total_tuple_count;
 }
@@ -1002,8 +1002,8 @@ do_commit_after_execute (const t_srv_handle & server_handle)
 }
 
 static int
-fetch_not_supported (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
-		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fetch_not_supported (T_SRV_HANDLE *srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
+		     T_NET_BUF *net_buf, T_REQ_INFO *req_info)
 {
   return ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
 }

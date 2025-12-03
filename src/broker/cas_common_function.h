@@ -47,4 +47,3 @@ FN_RETURN fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * n
 FN_RETURN fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 
 #endif /* _CAS_COMMON_FUNCTION_H_ */
-

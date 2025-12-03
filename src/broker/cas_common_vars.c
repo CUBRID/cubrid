@@ -84,4 +84,3 @@ int con_status_before_check_cas;
 bool is_first_request;
 int cas_info_size = CAS_INFO_SIZE;
 bool autocommit_deferred = false;
-
