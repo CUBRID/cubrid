@@ -2922,7 +2922,7 @@ sfile_apply_tde_to_class_files (THREAD_ENTRY *thread_p, unsigned int rid, char *
 }
 
 void
-stde_get_data_keys (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+stde_get_data_keys (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int area_size = -1;
   char *reply, *area, *ptr;
