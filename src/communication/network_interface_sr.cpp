@@ -567,7 +567,7 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   char *ptr, *client_release, *client_host;
   const char *server_release;
   int client_capabilities, client_bit_platform, status = CSS_NO_ERRORS;
-  int client_type;
+  int client_type = DB_CLIENT_TYPE_UNKNOWN;
   int strlen1, strlen2;
   REL_COMPATIBILITY compat;
 
@@ -5035,7 +5035,7 @@ sqfile_get_list_file_page (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   int page_size;
   int error = NO_ERROR;
 
-  aligned_page_buf = (char *) malloc (IO_MAX_PAGE_SIZE);
+  aligned_page_buf = (char *) calloc (1, IO_MAX_PAGE_SIZE);
   deleter = [aligned_page_buf]() noexcept
   {
     if (aligned_page_buf != NULL)
