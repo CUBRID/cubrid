@@ -67,4 +67,3 @@ extern const char *get_schema_type_str (int schema_type);
 extern const char *get_tran_type_str (int tran_type);
 
 #endif /* _CAS_UTIL_H_ */
-

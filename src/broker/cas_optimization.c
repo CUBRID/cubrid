@@ -50,4 +50,3 @@ reset_optimization_level_as_saved (void)
     }
   saved_Optimization_level = -1;
 }
-

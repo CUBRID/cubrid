@@ -109,7 +109,7 @@ extern "C"
     CAS_CHANGE_MODE_DEFAULT = CAS_CHANGE_MODE_AUTO
   } CAS_CHANGE_MODE;
 
-typedef int T_BROKER_VERSION;
+  typedef int T_BROKER_VERSION;
 
 
 

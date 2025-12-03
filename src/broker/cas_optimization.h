@@ -45,4 +45,3 @@ extern void set_optimization_level (int level);
 extern void reset_optimization_level_as_saved (void);
 
 #endif /* _CAS_OPTIMIZATION_H_ */
-
