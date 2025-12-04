@@ -245,8 +245,8 @@ static int get_significant_digit (DB_BIGINT i);
 
 static void float_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int dst_bytes,
 				   bool is_negative);
-static void float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier);
-static void float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent);
+static void float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier, bool is_negative);
+static void float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent, bool is_negative);
 static uint64_t float_numeric_div_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t divisor);
 static int float_numeric_div_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent);
 static void float_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
@@ -2045,11 +2045,11 @@ float_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, in
 
   if (scale_adjust1)
     {
-      float_numeric_mul_normalize (arg1_buf, calc_bytes, scale_adjust1);
+      float_numeric_mul_normalize (arg1_buf, calc_bytes, scale_adjust1, arg1_sign);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_normalize (arg2_buf, calc_bytes, scale_adjust2);
+      float_numeric_mul_normalize (arg2_buf, calc_bytes, scale_adjust2, arg2_sign);
     }
 
   /* since we don't convert to absolute values when comparing negative numbers, there's no need to invert the result again */
@@ -2599,11 +2599,11 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 5) scale adjustments */
   if (scale_adjust1)
     {
-      float_numeric_mul_normalize (dbv1_buf, calc_bytes, scale_adjust1);
+      float_numeric_mul_normalize (dbv1_buf, calc_bytes, scale_adjust1, false);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_normalize (dbv2_buf, calc_bytes, scale_adjust2);
+      float_numeric_mul_normalize (dbv2_buf, calc_bytes, scale_adjust2, false);
     }
 
   /* 6) addition */
@@ -2854,11 +2854,11 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 5) scale adjustments */
   if (scale_adjust1)
     {
-      float_numeric_mul_normalize (dbv1_buf, calc_bytes, scale_adjust1);
+      float_numeric_mul_normalize (dbv1_buf, calc_bytes, scale_adjust1, false);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_normalize (dbv2_buf, calc_bytes, scale_adjust2);
+      float_numeric_mul_normalize (dbv2_buf, calc_bytes, scale_adjust2, false);
     }
 
   /* 6) subtraction */
@@ -3439,7 +3439,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 7) only dividend_work is scaled (div_pow10 if negative) */
   if (exponent10 > 0)
     {
-      float_numeric_mul_normalize (dividend_work, calc_bytes, exponent10);
+      float_numeric_mul_normalize (dividend_work, calc_bytes, exponent10, false);
     }
   else if (exponent10 < 0)
     {
@@ -4063,7 +4063,7 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
 
       if (tmp_scale > 0)
 	{
-	  float_numeric_mul_normalize (calc_buf, DB_NUMERIC_BUF_SIZE, tmp_scale);
+	  float_numeric_mul_normalize (calc_buf, DB_NUMERIC_BUF_SIZE, tmp_scale, false);
 	}
     }
 }
@@ -4436,11 +4436,11 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   /* 7) scale adjustments */
   if (dividend_exponent > 0)
     {
-      float_numeric_mul_normalize (dividend_work, calc_bytes, dividend_exponent);
+      float_numeric_mul_normalize (dividend_work, calc_bytes, dividend_exponent, false);
     }
   if (divisor_exponent > 0)
     {
-      float_numeric_mul_normalize (divisor_work, calc_bytes, divisor_exponent);
+      float_numeric_mul_normalize (divisor_work, calc_bytes, divisor_exponent, false);
     }
 
 #if 1				// division algorithm
@@ -5465,7 +5465,7 @@ float_numeric_pad_abs (uint8_t * src_buf, int src_bytes, uint8_t * dst_buf, int 
  *  - the multiplier parameter should be a power of 10 (e.g., 10^1 ~ 10^16)
  */
 static void
-float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier)
+float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier, bool is_negative)
 {
   int i = 0;
   uint64_t temp = 0;
@@ -5478,6 +5478,26 @@ float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier)
       dbv_buf[i] = (uint8_t) (temp & 0xFF);
       carry = temp >> 8;
     }
+
+#if !defined (NDEBUG)
+  /*
+   * Note:
+   *   - This routine is used in two contexts:
+   *       1) For arithmetic paths, buffers hold positive magnitudes only.
+   *          In this case, the result must fully fit in calc_bytes, so the
+   *          final carry must be zero.
+   *       2) For comparison paths, two's-complement negative buffers are also used
+   *          when both operands have the same sign. In that case, the operation
+   *          behaves as a fixed-width mod 2^(8 * calc_bytes) multiplication, and
+   *          the final carry represents bits beyond the fixed width, which are
+   *          intentionally discarded.
+   *   - Therefore, we only assert on carry == 0 for non-negative (magnitude) buffers.
+   */
+  if (!is_negative)
+    {
+      assert (carry == 0);
+    }
+#endif // debug
 }
 
 /*
@@ -5506,7 +5526,7 @@ float_numeric_mul_pow10 (uint8_t * dbv_buf, int calc_bytes, uint64_t multiplier)
  *    - therefore, 10^16 is the maximum safe chunk for multiply normalization.
  */
 static void
-float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent)
+float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent, bool is_negative)
 {
   int step = 0;
   uint64_t multiplier = 0;
@@ -5518,7 +5538,7 @@ float_numeric_mul_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent)
       step = (exponent > 16) ? 16 : exponent;	// 1 ~ 16
       multiplier = _gv_mul_normalize_pow10_lookup[step - 1];	// 10^step
 
-      float_numeric_mul_pow10 (dbv_buf, calc_bytes, multiplier);
+      float_numeric_mul_pow10 (dbv_buf, calc_bytes, multiplier, is_negative);
       exponent -= step;
     }
 }
