@@ -3473,7 +3473,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		if (node1 == NULL)
 		  {
 		    *continue_walk = PT_STOP_WALK;
-		    return NULL;
+		    return node;
 		  }
 		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
 
@@ -3560,7 +3560,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      if (node1 == NULL)
 		{
 		  *continue_walk = PT_STOP_WALK;
-		  return NULL;
+		  return node;
 		}
 
 	      if (node1->node_type == PT_METHOD_CALL)
