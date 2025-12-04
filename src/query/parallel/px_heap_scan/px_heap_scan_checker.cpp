@@ -23,6 +23,7 @@
 #include "px_heap_scan_checker.hpp"
 
 #include "regu_var.hpp"
+#include "storage_common.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -33,6 +34,75 @@
 
 namespace parallel_heap_scan
 {
+  struct count_distinct_check
+  {
+    bool operator() (xasl_node *xasl) const
+    {
+      if (xasl == nullptr)
+	{
+	  return false;
+	}
+      if (xasl->type != BUILDVALUE_PROC)
+	{
+	  return false;
+	}
+      if (xasl->scan_ptr || xasl->aptr_list || xasl->dptr_list || xasl->fptr_list || xasl->connect_by_ptr || xasl->bptr_list)
+	{
+	  return false;
+	}
+      if (!xasl->spec_list)
+	{
+	  return false;
+	}
+      for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type != TARGET_CLASS)
+	    {
+	      return false;
+	    }
+	  if (specp->access != ACCESS_METHOD_SEQUENTIAL)
+	    {
+	      return false;
+	    }
+	}
+
+      if (!xasl->proc.buildvalue.agg_list)
+	{
+	  return false;
+	}
+      int outptr_cnt = xasl->outptr_list->valptr_cnt;
+      int agg_cnt = 0;
+      for (REGU_VARIABLE_LIST it = xasl->outptr_list->valptrp; it; it = it->next)
+	{
+	  if (it->value.type != TYPE_CONSTANT)
+	    {
+	      return false;
+	    }
+	}
+      AGGREGATE_TYPE *it = xasl->proc.buildvalue.agg_list;
+
+      for (; it; it = it->next)
+	{
+	  if (it->function != PT_COUNT_STAR && it->function != PT_COUNT)
+	    {
+	      return false;
+	    }
+	  agg_cnt++;
+	}
+      if (agg_cnt != outptr_cnt)
+	{
+	  return false;
+	}
+      for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+	{
+	  specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_COUNT_DISTINCT);
+	}
+
+      return true;
+    }
+  } const count_distinct_check;
+
+
   enum class CHECK_RESULT
   {
     NONE,
@@ -836,6 +906,10 @@ namespace parallel_heap_scan
 extern int
 scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
 {
+  if (parallel_heap_scan::count_distinct_check (xasl))
+    {
+      return NO_ERROR;
+    }
   parallel_heap_scan::checker checker;
   return checker.check (xasl);
 }
