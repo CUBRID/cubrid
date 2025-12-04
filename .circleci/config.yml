@@ -187,7 +187,7 @@ jobs:
                 docker:
                   - image: cubridci/cubridci:test_shell
                 # self-hosted runner
-                resource_class: cubrid/ramdisk
+                resource_class: cubrid/xlarge
                 working_directory: /home
                 
             # --------------------------------------------------
