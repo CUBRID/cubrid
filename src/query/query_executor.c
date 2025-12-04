@@ -2009,6 +2009,18 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
 	      isidp->caches_inited = false;
 	    }
+	  if (isidp->prebuilt_midxkey_domains)
+	    {
+	      for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
+		{
+		  if (isidp->prebuilt_midxkey_domains[i])
+		    {
+		      tp_domain_free (isidp->prebuilt_midxkey_domains[i]);
+		      isidp->prebuilt_midxkey_domains[i] = NULL;
+		    }
+		}
+	      db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
+	    }
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
 	  isidp = &p->s_id.s.isid;
@@ -15572,7 +15584,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      if (spec_level == 0 && level >= 1)
+		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed)
 			{
 			  if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
 			    {
