@@ -97,8 +97,8 @@
   while (0)
 
 
-#define RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "RK(PRIMARY KEY or NOT NULL UNIQUE KEY) Constraint Violations"
-#define FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "FK Constraint Violations"
+#define RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "Replication Key(PRIMARY KEY or NOT NULL UNIQUE KEY) Constraint Violations"
+#define FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "Foreign Key Constraint Violations"
 
 typedef enum
 {
