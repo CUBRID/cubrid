@@ -20,6 +20,8 @@
  * coordinator.cpp
  */
 
+#include "hardware_topology.hpp"
+#include "thread_manager.hpp"
 #include "connection_pool.hpp"
 #include "coordinator.hpp"
 #include "connection_sr.h"
@@ -274,12 +276,36 @@ namespace cubconn::connection
     m_watcher->active++;
     m_watcher->mtx.unlock ();
 
+    /* set name */
+    pthread_setname_np (pthread_self (), "coordinator");
+
+    /* pin myself */
+    cubbase::topology.pin_core (m_core);
+
+    /* entry */
+    m_entry = cubthread::get_manager ()->claim_entry ();
+    if (m_entry == nullptr)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator->initialize: claim_entry failed\n");
+	assert_release (false);
+      }
+    m_entry->register_id ();
+    m_entry->type = TT_SERVER;
+    m_entry->tran_index = -1;
+    m_entry->m_status = cubthread::entry::status::TS_RUN;
+    m_entry->shutdown = false;
+
+    m_entry->get_error_context ().register_thread_local ();
+
     m_parent->lock_resource ();
   }
 
   void coordinator::finalize ()
   {
     m_parent->release_resource ();
+
+    m_entry->unregister_id ();
+    cubthread::get_manager ()->retire_entry (*m_entry);
 
     /* remove the watcher */
     m_watcher->mtx.lock ();

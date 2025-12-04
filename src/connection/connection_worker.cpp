@@ -1448,7 +1448,7 @@ retry:
     m_watcher->mtx.unlock ();
 
     /* set name */
-    pthread_setname_np (pthread_self (), "cub_server:conn");
+    pthread_setname_np (pthread_self (), "connections");
 
     /* pin myself */
     cubbase::topology.pin_core (m_core);
@@ -1461,7 +1461,6 @@ retry:
 	assert_release (false);
       }
     m_entry->register_id ();
-    m_entry->index = m_index;
     m_entry->type = TT_SERVER;
     m_entry->tran_index = -1;
     m_entry->m_status = cubthread::entry::status::TS_RUN;

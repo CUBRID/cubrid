@@ -97,6 +97,8 @@ namespace cubconn::connection
       std::size_t m_core;
       bool m_stop;
 
+      cubthread::entry *m_entry;
+
       /* eventfds */
       cubsocket::epoll m_events;
       /* event based */
