@@ -44,8 +44,6 @@
 #include "connection_cl.h"
 #include "util_func.h"
 #include "util_support.h"
-#include "locator_cl.h"
-#include "dbi.h"
 
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -3216,8 +3214,7 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 static int
 us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
 {
-  int pid;
-  int error;
+  int status = NO_ERROR;
   char **dbs;
   int i;
 
@@ -3233,16 +3230,14 @@ us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
 	NULL
       };
 
-      error = proc_execute (UTIL_ADMIN_NAME, lw_argv, true, false, false, &pid);
-      if (error != NO_ERROR)
+      status = proc_execute (UTIL_ADMIN_NAME, lw_argv, true, false, false, NULL);
+      if (status != NO_ERROR)
 	{
 	  break;
 	}
     }
 
-  print_result (UTIL_RKCHECK, error, START);
-
-  return error;
+  return status;
 }
 
 #if !defined(WINDOWS)
