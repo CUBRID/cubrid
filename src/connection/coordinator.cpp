@@ -342,10 +342,22 @@ namespace cubconn::connection
 	      {
 		if (events[i].data.fd == m_eventfd)
 		  {
+		    if (!this->eventfd_clear (m_eventfd))
+		      {
+			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
+			return false;
+		      }
 		    this->handle_message_queue ();
 		  }
 		else if (events[i].data.fd == m_timerfd)
 		  {
+		    /* handling first */
+
+		    if (!this->eventfd_clear (m_timerfd))
+		      {
+			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
+			return false;
+		      }
 		  }
 	      }
 	  }

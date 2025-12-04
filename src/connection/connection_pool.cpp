@@ -73,7 +73,6 @@ namespace cubconn::connection
 
     this->release_resource ();
 
-
     m_max_connections = max_connections;
     m_max_connection_threads = max_connection_threads;
     m_min_connection_threads = min_connection_threads;
@@ -81,12 +80,13 @@ namespace cubconn::connection
 
   void pool::finalize ()
   {
+    this->finalize_workers ();
     this->finalize_coordinator ();
 
     /* acquire the lock or kill itself */
     this->try_to_lock_resource ();
 
-    this->finalize_workers ();
+    m_workers.clear ();
     this->finalize_freelist ();
 
     this->release_resource ();
@@ -324,15 +324,13 @@ namespace cubconn::connection
       }
 
     std::unique_lock<std::mutex> lock (m_watcher->mtx);
-    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
+    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 1; /* coordinator */ });
     lock.unlock ();
     if (!compelete)
       {
 	er_log_debug (ARG_FILE_LINE, "could not stop all active connection workers");
 	_exit (0);
       }
-
-    m_workers.clear ();
   }
 
   void pool::initialize_coordinator (std::uint32_t max_connection_threads, std::uint32_t min_connection_threads)
@@ -359,13 +357,37 @@ namespace cubconn::connection
 
   void pool::finalize_coordinator ()
   {
+    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::microseconds wait_for (0);
     coordinator::message request;
+    struct timeval *timeout;
+    bool compelete;
 
     request.type = coordinator::message_type::SHUTDOWN;
     m_coordinator->enqueue (std::move (request));
     if (!m_coordinator->notify ())
       {
 	assert_release (false);
+      }
+
+    /* shutdown timeout */
+    timeout = css_get_shutdown_timeout ();
+    deadline = std::chrono::system_clock::time_point (
+		       std::chrono::seconds (timeout->tv_sec) +
+		       std::chrono::microseconds (timeout->tv_usec));
+    now = std::chrono::system_clock::now ();
+    if (deadline > now)
+      {
+	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);
+      }
+
+    std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
+    lock.unlock ();
+    if (!compelete)
+      {
+	er_log_debug (ARG_FILE_LINE, "could not stop coordinator");
+	_exit (0);
       }
   }
 }
