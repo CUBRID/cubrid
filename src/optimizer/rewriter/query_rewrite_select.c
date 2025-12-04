@@ -1650,7 +1650,7 @@ qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       else
 	{
 	  /* don't walk into node */
-          *continue_walk = PT_LIST_WALK;
+	  *continue_walk = PT_LIST_WALK;
 	}
     }
   else
