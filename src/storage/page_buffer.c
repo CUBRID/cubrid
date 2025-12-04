@@ -1030,6 +1030,8 @@ STATIC_INLINE PAGE_PTR pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPI
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_BCB *pgbuf_search_hash_chain_no_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 							      const VPID * vpid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool pgbuf_lockfree_unfix_ro (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_insert_into_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH * hash_anchor,
 						PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_delete_from_hash_chain (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -2855,6 +2857,12 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	}
       perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
 			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
+    }
+
+  /* if read latch exists,... */
+  if (pgbuf_lockfree_unfix_ro (thread_p, bufptr))
+    {
+      return;
     }
 
   PGBUF_BCB_LOCK (bufptr);
@@ -5929,9 +5937,9 @@ pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_
   impl_new = impl_orig;
   impl_new.impl.latch_mode = request_mode;
   impl_new.impl.fcnt = 1;
-  if (!bufptr->atomic_latch.
-      compare_exchange_strong (impl_orig.raw, impl_new.raw, std::memory_order::memory_order_acq_rel,
-			       std::memory_order::memory_order_acquire))
+  if (!bufptr->
+      atomic_latch.compare_exchange_strong (impl_orig.raw, impl_new.raw, std::memory_order::memory_order_acq_rel,
+					    std::memory_order::memory_order_acquire))
     {
       PGBUF_BCB_UNLOCK (bufptr);
       return false;
@@ -7360,7 +7368,7 @@ pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MO
     {
       impl = get_impl (&bufptr->atomic_latch);
       new_impl = impl;
-      if (impl.impl.latch_mode != PGBUF_LATCH_READ)	// can cover NO_LATCH ? 
+      if (impl.impl.latch_mode != PGBUF_LATCH_READ)
 	{
 	  return NULL;
 	}
@@ -7425,6 +7433,27 @@ pgbuf_search_hash_chain_no_bcb_lock (THREAD_ENTRY * thread_p, PGBUF_BUFFER_HASH 
       bufptr = bufptr->hash_next;
     }
   return NULL;
+}
+
+STATIC_INLINE bool
+pgbuf_lockfree_unfix_ro (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  PGBUF_ATOMIC_LATCH_IMPL impl, new_impl;
+  do
+    {
+      impl = get_impl (&bufptr->atomic_latch);
+
+      if ((impl.impl.latch_mode != PGBUF_LATCH_READ && impl.impl.latch_mode != PGBUF_LATCH_WRITE)
+	  || impl.impl.waiter_exists || impl.impl.fcnt == 1)
+	{
+	  return false;
+	}
+      new_impl = impl;
+      new_impl.impl.fcnt--;
+    }
+  while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, new_impl.raw,
+						      std::memory_order_acq_rel, std::memory_order_acquire));
+  return true;
 }
 
 /*
