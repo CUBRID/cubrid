@@ -24333,7 +24333,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      size_t len = strlen (saved);
 
 	      /* add whitespace character if saved is not an empty string */
-	      const char *is_invisible_string = "INVISIBLE";
+	      const char *is_invisible_string = "invisible";
 	      size_t str_len = len + strlen (is_invisible_string) + 1;
 	      if (len != 0)
 		{
