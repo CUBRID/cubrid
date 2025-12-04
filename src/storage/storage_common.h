@@ -1053,7 +1053,6 @@ typedef enum
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
   SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
   SM_ATTFLAG_PARTITION_KEY = 1024,	/* attribute is the partitioning key for the class 0x400 */
-  /* the flags hereafter(2048) will show on catcls-attribute 'flags' */
   SM_ATTFLAG_INVISIBLE_COLUMN = 2048 /* attribute is invisible 0x800 */
 } SM_ATTRIBUTE_FLAG;
 
