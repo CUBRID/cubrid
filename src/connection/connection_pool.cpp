@@ -21,6 +21,7 @@
  */
 
 #include "hardware_topology.hpp"
+#include "thread_manager.hpp"
 #include "connection_pool.hpp"
 #include "connection_worker.hpp"
 #include "server_support.h"
@@ -62,9 +63,15 @@ namespace cubconn::connection
     (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
     (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 
-    this->initialize_freelist (max_connections);
     this->initialize_topology (max_connection_threads);
+
+    this->lock_resource ();
+
+    this->initialize_freelist (max_connections);
     this->initialize_workers (max_connection_threads, min_connection_threads);
+
+    this->release_resource ();
+
     this->initialize_coordinator ();
 
     m_max_connections = max_connections;
@@ -75,9 +82,16 @@ namespace cubconn::connection
   void pool::finalize ()
   {
     this->finalize_coordinator ();
+
+    /* acquire the lock or kill itself */
+    this->try_to_lock_resource ();
+
     this->finalize_workers ();
-    this->finalize_topology ();
     this->finalize_freelist ();
+
+    this->release_resource ();
+
+    this->finalize_topology ();
 
     m_max_connections = -1;
     m_max_connection_threads = -1;
@@ -86,20 +100,33 @@ namespace cubconn::connection
 
   void pool::dispatch (css_conn_entry *conn)
   {
-    /* TODO: in this function, we can take some kind of strategies how	      */
-    /* the connection pool distributes the connections to connection workers. */
-    /* but now, just uses round robin					      */
-    worker::message request;
+    coordinator::message request;
 
-    request.type = worker::message_type::NEW_CLIENT;
-    request.ctx = this->claim_context ();
-    /* TODO: null guard */
+    request.type = coordinator::message_type::NEW_CLIENT;
     request.conn = conn;
-    m_workers[0]->enqueue (worker::queue_type::IMMEDIATE, std::move (request));
-    if (!m_workers[0]->notify ())
+    m_coordinator->enqueue (std::move (request));
+    if (!m_coordinator->notify ())
       {
 	assert_release (false);
       }
+  }
+
+  void pool::lock_resource ()
+  {
+    m_mutex.lock ();
+
+#if !defined (NDEBUG)
+    m_mutex_holder = std::this_thread::get_id ();
+#endif
+  }
+
+  void pool::release_resource ()
+  {
+#if !defined (NDEBUG)
+    m_mutex_holder = std::thread::id ();
+#endif
+
+    m_mutex.unlock ();
   }
 
   void pool::stats ()
@@ -111,10 +138,38 @@ namespace cubconn::connection
       }
   }
 
+  void pool::try_to_lock_resource ()
+  {
+    int i;
+
+    for (i = 0; i < 1000; i++)
+      {
+	if (m_mutex.try_lock ())
+	  {
+	    break;
+	  }
+
+	thread_sleep (10); /* 10 ms */
+      }
+
+    /* timeout */
+    if (i == 1000)
+      {
+	er_log_debug (ARG_FILE_LINE, "could not stop coordinator");
+	_exit (0);
+      }
+
+#if !defined (NDEBUG)
+    m_mutex_holder = std::this_thread::get_id ();
+#endif
+  }
+
   void pool::initialize_freelist (std::uint32_t max_connections)
   {
     freelist *head;
     std::size_t i;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
 
     m_freelist.m_head = nullptr;
     m_freelist.m_claim = 0;
@@ -131,6 +186,7 @@ namespace cubconn::connection
   {
     freelist *head;
 
+    assert (m_mutex_holder == std::this_thread::get_id ());
     assert (m_freelist.m_claim == 0);
 
     while (m_freelist.m_head)
@@ -158,6 +214,8 @@ namespace cubconn::connection
   {
     std::vector<int> *cores;
     std::uint32_t i;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
 
     m_workers.reserve (max_connection_threads + 1);
 
@@ -193,6 +251,8 @@ namespace cubconn::connection
     std::chrono::microseconds wait_for (0);
     struct timeval *timeout;
     bool compelete;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
 
     for (auto &worker : m_workers)
       {
@@ -260,6 +320,8 @@ namespace cubconn::connection
   {
     freelist *head;
 
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
     head = m_freelist.m_head;
     if (head)
       {
@@ -277,6 +339,8 @@ namespace cubconn::connection
   void pool::retire_context (context *ctx)
   {
     freelist *head;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
 
     head = reinterpret_cast<freelist *> (ctx);
     if (m_freelist.m_claim > m_freelist.m_max)

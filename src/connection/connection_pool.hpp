@@ -27,6 +27,7 @@
 #include "connection_worker.hpp"
 #include "coordinator.hpp"
 
+#include <mutex>
 #include <cstring>
 #include <cstdint>
 #include <sys/socket.h>
@@ -63,9 +64,19 @@ namespace cubconn::connection
 
       void dispatch (css_conn_entry *conn);
 
+      void lock_resource ();
+      void release_resource ();
+
       void stats ();
 
     private:
+      /* the members in connection pool can be managed entirely by other threads. */
+      /* so you must acquire the mutex to access belows.			  */
+      std::mutex m_mutex;
+#if !defined (NDEBUG)
+      std::atomic<std::thread::id> m_mutex_holder { std::thread::id () };
+#endif
+
       /* components */
       std::vector<std::unique_ptr<worker>> m_workers;
       std::unique_ptr<coordinator> m_coordinator;
@@ -85,6 +96,8 @@ namespace cubconn::connection
 	std::size_t m_max;
 	std::size_t m_claim;
       } m_freelist;
+
+      void try_to_lock_resource ();
 
       void initialize_freelist (std::uint32_t max_connections);
       void finalize_freelist ();

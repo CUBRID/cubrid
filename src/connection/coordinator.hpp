@@ -61,6 +61,8 @@ namespace cubconn::connection
 
 	  message_type type;
 
+	  css_conn_entry *conn;
+
 	  std::vector<std::pair<int, context>> stats;
       };
 
@@ -116,7 +118,6 @@ namespace cubconn::connection
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
       bool handle_message_queue_new_client (message &item);
-      bool handle_message_queue_shutdown_client (message &item);
 
       bool handle_message_queue ();
   };

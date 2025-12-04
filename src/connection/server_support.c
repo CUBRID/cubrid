@@ -604,12 +604,12 @@ shutdown:
    */
   css_start_shutdown_server ();
 
+  connector.stop ();
+  connections.finalize ();
+
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
-
-  connector.stop ();
-  connections.finalize ();
 
   /* stop vacuum threads. */
   vacuum_stop_workers (thread_p);

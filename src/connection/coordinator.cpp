@@ -20,6 +20,7 @@
  * coordinator.cpp
  */
 
+#include "connection_pool.hpp"
 #include "coordinator.hpp"
 
 #include <unistd.h>
@@ -188,6 +189,11 @@ namespace cubconn::connection
     return true;
   }
 
+  bool coordinator::handle_message_queue_new_client (message &item)
+  {
+    return true;
+  }
+
   bool coordinator::handle_message_queue ()
   {
     message request;
@@ -200,15 +206,13 @@ namespace cubconn::connection
 	switch (request.type)
 	  {
 	  case message_type::START:
-	    printf ("start\n");
 	    break;
 
 	  case message_type::NEW_CLIENT:
-	    printf ("new client\n");
+	    this->handle_message_queue_new_client (request);
 	    break;
 
 	  case message_type::SHUTDOWN:
-	    printf ("shutdown\n");
 	    m_stop = true;
 	    break;
 
@@ -229,10 +233,14 @@ namespace cubconn::connection
     m_watcher->mtx.lock ();
     m_watcher->active++;
     m_watcher->mtx.unlock ();
+
+    m_parent->lock_resource ();
   }
 
   void coordinator::finalize ()
   {
+    m_parent->release_resource ();
+
     /* remove the watcher */
     m_watcher->mtx.lock ();
     m_watcher->active--;
