@@ -1315,7 +1315,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
       goto error;
     }
 
-  /* Not Null */
+  /* flags */
   attr_val_p = &attrs[7].value;
   tp_Integer.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
