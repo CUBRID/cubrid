@@ -68,11 +68,11 @@ namespace cubconn::connection
     this->lock_resource ();
 
     this->initialize_freelist (max_connections);
+    this->initialize_coordinator (max_connection_threads, min_connection_threads);
     this->initialize_workers (max_connection_threads, min_connection_threads);
 
     this->release_resource ();
 
-    this->initialize_coordinator ();
 
     m_max_connections = max_connections;
     m_max_connection_threads = max_connection_threads;
@@ -127,6 +127,53 @@ namespace cubconn::connection
 #endif
 
     m_mutex.unlock ();
+  }
+
+  context *pool::claim_context ()
+  {
+    freelist *head;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
+    head = m_freelist.m_head;
+    if (head)
+      {
+	m_freelist.m_head = m_freelist.m_head->m_next;
+      }
+    else
+      {
+	head = new freelist (32 * 1024);
+      }
+    m_freelist.m_claim++;
+
+    return &head->m_context;
+  }
+
+  void pool::retire_context (context *ctx)
+  {
+    freelist *head;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
+    head = reinterpret_cast<freelist *> (ctx);
+    if (m_freelist.m_claim > m_freelist.m_max)
+      {
+	delete head;
+      }
+    else
+      {
+	head->m_context.reset ();
+	head->m_next = m_freelist.m_head;
+	m_freelist.m_head = head;
+      }
+    m_freelist.m_claim--;
+  }
+
+  std::vector<std::unique_ptr<worker>> &pool::get_workers ()
+  {
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
+    return m_workers;
   }
 
   void pool::stats ()
@@ -225,7 +272,7 @@ namespace cubconn::connection
 
     for (i = 0; i < max_connection_threads; i++)
       {
-	m_workers.emplace_back (std::make_unique<worker> (this, m_watcher, (*cores)[i], i));
+	m_workers.emplace_back (std::make_unique<worker> (this, m_coordinator, m_watcher, (*cores)[i], i));
       }
 
     /* pre-warm the connection thread and its queue to avoid a race condition. */
@@ -288,13 +335,19 @@ namespace cubconn::connection
     m_workers.clear ();
   }
 
-  void pool::initialize_coordinator ()
+  void pool::initialize_coordinator (std::uint32_t max_connection_threads, std::uint32_t min_connection_threads)
   {
     coordinator::message request;
     std::vector<int> *cores;
 
     cores = &cubbase::topology.get_cores ();
-    m_coordinator = std::make_unique<coordinator> (this, m_watcher, (*cores)[0]);
+    m_coordinator = std::make_shared<coordinator> (
+			    this,
+			    m_watcher,
+			    (*cores)[0],
+			    max_connection_threads,
+			    min_connection_threads
+		    );
 
     request.type = coordinator::message_type::START;
     m_coordinator->enqueue (std::move (request));
@@ -314,45 +367,5 @@ namespace cubconn::connection
       {
 	assert_release (false);
       }
-  }
-
-  context *pool::claim_context ()
-  {
-    freelist *head;
-
-    assert (m_mutex_holder == std::this_thread::get_id ());
-
-    head = m_freelist.m_head;
-    if (head)
-      {
-	m_freelist.m_head = m_freelist.m_head->m_next;
-      }
-    else
-      {
-	head = new freelist (32 * 1024);
-      }
-    m_freelist.m_claim++;
-
-    return &head->m_context;
-  }
-
-  void pool::retire_context (context *ctx)
-  {
-    freelist *head;
-
-    assert (m_mutex_holder == std::this_thread::get_id ());
-
-    head = reinterpret_cast<freelist *> (ctx);
-    if (m_freelist.m_claim > m_freelist.m_max)
-      {
-	delete head;
-      }
-    else
-      {
-	head->m_context.reset ();
-	head->m_next = m_freelist.m_head;
-	m_freelist.m_head = head;
-      }
-    m_freelist.m_claim--;
   }
 }

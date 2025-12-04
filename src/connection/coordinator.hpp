@@ -41,6 +41,7 @@ namespace cubconn::connection
 	START,
 
 	NEW_CLIENT,
+	RETURN_TO_POOL,
 
 	STATS,
 
@@ -61,13 +62,19 @@ namespace cubconn::connection
 
 	  message_type type;
 
+	  /* NEW_CLIENT */
 	  css_conn_entry *conn;
 
+	  /* RETURN_TO_POOL */
+	  std::vector<context *> resource;
+
+	  /* STATS */
 	  std::vector<std::pair<int, context>> stats;
       };
 
     public:
-      coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core);
+      coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
+		   std::uint32_t max_worker, std::uint32_t min_worker);
       ~coordinator ();
 
       void initialize ();
@@ -106,6 +113,11 @@ namespace cubconn::connection
       /* starvation.							*/
       std::atomic<uint64_t> m_queue_size;
 
+      /* workers */
+      std::uint32_t m_max_worker;
+      std::uint32_t m_min_worker;
+      std::uint32_t m_current_worker;
+
       /* --------------------------------------------------------------------------- */
       /* event fd								     */
       /* --------------------------------------------------------------------------- */
@@ -118,6 +130,7 @@ namespace cubconn::connection
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
       bool handle_message_queue_new_client (message &item);
+      bool handle_message_queue_return_to_pool (message &item);
 
       bool handle_message_queue ();
   };

@@ -62,9 +62,10 @@ std::atomic<uint64_t> message_counter (0);
 
 namespace cubconn::connection
 {
-  worker::worker (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
-		  std::size_t index) :
+  worker::worker (pool *pool, std::shared_ptr<coordinator> coord, std::shared_ptr<thread_watcher> watcher,
+		  std::size_t core, std::size_t index) :
     m_parent (pool),
+    m_coordinator (coord),
     m_watcher (watcher),
     m_core (core),
     m_stop (false),
@@ -262,20 +263,27 @@ namespace cubconn::connection
 
   void worker::purge_stale_contexts ()
   {
-    for (auto &ctx : m_removed_context)
-      {
-	/* release the conneciton */
-	css_free_conn (ctx->m_conn);
+    coordinator::message message;
 
-	/* remove from the context list and delete it */
+    message.type = coordinator::message_type::RETURN_TO_POOL;
+    message.resource = m_removed_context;
+
+    /* remove from the context list */
+    for (context *ctx : m_removed_context)
+      {
 	if (m_context.erase (ctx) == 0)
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection::worker->purge_stale_contexts: context not found\n");
 	    continue;
 	  }
-	delete ctx;
       }
     m_removed_context.clear ();
+
+    m_coordinator->enqueue (std::move (message));
+    if (!m_coordinator->notify ())
+      {
+	assert_release (false);
+      }
   }
 
   void worker::wakeup_blocked_worker (std::shared_ptr<message_blocker> handle)

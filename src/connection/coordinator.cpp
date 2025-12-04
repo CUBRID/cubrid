@@ -22,6 +22,7 @@
 
 #include "connection_pool.hpp"
 #include "coordinator.hpp"
+#include "connection_sr.h"
 
 #include <unistd.h>
 #include <sys/eventfd.h>
@@ -39,11 +40,14 @@
 
 namespace cubconn::connection
 {
-  coordinator::coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core) :
+  coordinator::coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
+			    std::uint32_t max_worker, std::uint32_t min_worker) :
     m_parent (pool),
     m_watcher (watcher),
     m_core (core),
-    m_stop (false)
+    m_stop (false),
+    m_max_worker (max_worker),
+    m_min_worker (min_worker)
   {
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -191,6 +195,38 @@ namespace cubconn::connection
 
   bool coordinator::handle_message_queue_new_client (message &item)
   {
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+
+    request.type = connection::worker::message_type::NEW_CLIENT;
+    request.ctx = m_parent->claim_context ();
+    request.conn = item.conn;
+
+    static std::size_t counter = 0;
+    workers[counter]->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+    if (!workers[counter]->notify ())
+      {
+	assert_release (false);
+      }
+
+    counter++;
+    if (counter == workers.size ())
+      {
+	counter = 0;
+      }
+
+    return true;
+  }
+
+  bool coordinator::handle_message_queue_return_to_pool (message &item)
+  {
+    for (context *ctx : item.resource)
+      {
+	/* release the conneciton */
+	css_free_conn (ctx->m_conn);
+	m_parent->retire_context (ctx);
+      }
+
     return true;
   }
 
@@ -210,6 +246,10 @@ namespace cubconn::connection
 
 	  case message_type::NEW_CLIENT:
 	    this->handle_message_queue_new_client (request);
+	    break;
+
+	  case message_type::RETURN_TO_POOL:
+	    this->handle_message_queue_return_to_pool (request);
 	    break;
 
 	  case message_type::SHUTDOWN:

@@ -67,6 +67,11 @@ namespace cubconn::connection
       void lock_resource ();
       void release_resource ();
 
+      context *claim_context ();
+      void retire_context (context *ctx);
+
+      std::vector<std::unique_ptr<worker>> &get_workers ();
+
       void stats ();
 
     private:
@@ -79,7 +84,7 @@ namespace cubconn::connection
 
       /* components */
       std::vector<std::unique_ptr<worker>> m_workers;
-      std::unique_ptr<coordinator> m_coordinator;
+      std::shared_ptr<coordinator> m_coordinator;
 
       std::shared_ptr<thread_watcher> m_watcher;
 
@@ -108,11 +113,8 @@ namespace cubconn::connection
       void initialize_workers (std::uint32_t max_connection_threads, std::uint32_t min_connection_threads);
       void finalize_workers ();
 
-      void initialize_coordinator ();
+      void initialize_coordinator (std::uint32_t max_connection_threads, std::uint32_t min_connection_threads);
       void finalize_coordinator ();
-
-      context *claim_context ();
-      void retire_context (context *ctx);
   };
 }
 
