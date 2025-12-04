@@ -185,6 +185,7 @@ static int catcls_resolution_space (int name_space);
 static void catcls_apply_resolutions (OR_VALUE * value_p, OR_VALUE * resolution_p);
 static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_oid, OID * entry_new_oid);
 static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
+static int catcls_filter_attflag (int or_flags);
 
 /*
  * catcls_allocate_entry () -
@@ -1324,9 +1325,8 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   /* for 'is_nullable', reverse NON_NULL flag */
   db_make_int (attr_val_p, (flags & SM_ATTFLAG_NON_NULL) ? false : true);
 
-  /* flags */
   attr_val_p = &attrs[10].value;
-  db_make_int (attr_val_p, (flags & ~(SM_ATTFLAG_INVISIBLE_COLUMN-1))/SM_ATTFLAG_INVISIBLE_COLUMN);
+  db_make_int (attr_val_p, catcls_filter_attflag(flags));
 
   /* index_file_id */
   or_advance (buf_p, OR_INT_SIZE);
@@ -5460,4 +5460,26 @@ error:
     }
 
   return error;
+}
+
+/*
+ * catcls_filter_attflag () -
+ *   return: 
+ *   or_flags (in): flags from attribute object representation
+ *   catcls_attr_flags (out): flags for system catalog 'db_attribute'
+ */
+static int
+catcls_filter_attflag (int or_flags)
+{
+  int catcls_attr_flags = 0;
+  /* consider defining these flags in storage_common.h */
+  static SM_ATTRIBUTE_FLAG target_flags[] = {SM_ATTFLAG_INVISIBLE_COLUMN, SM_ATTFLAG_NON_NULL, SM_ATTFLAG_AUTO_INCREMENT};
+  int num_target_flags = sizeof(target_flags) / sizeof(SM_ATTRIBUTE_FLAG);
+
+  for(int i = 0; i < num_target_flags; i++)
+    {
+      catcls_attr_flags |= (or_flags & target_flags[i]) ? 1 << i : 0;
+    }
+
+  return catcls_attr_flags;
 }
