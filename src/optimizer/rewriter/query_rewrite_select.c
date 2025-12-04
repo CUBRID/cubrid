@@ -1649,8 +1649,8 @@ qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
       else
 	{
-	  /* impossible case. set end */
-	  info->my_spec_cnt = 2;
+	  /* don't walk into node */
+          *continue_walk = PT_LIST_WALK;
 	}
     }
   else
