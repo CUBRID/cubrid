@@ -1352,13 +1352,14 @@ db_attribute_is_auto_increment (DB_ATTRIBUTE * attribute)
  * return : non-zero if invisible column is defined.
  * attribute(in): attribute descriptor
  */
-int db_attribute_is_invisible_column (DB_ATTRIBUTE* attribute)
+int
+db_attribute_is_invisible_column (DB_ATTRIBUTE * attribute)
 {
   int status = 0;
   if (attribute != NULL)
-  {
-    status = (attribute->flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
-  }
+    {
+      status = (attribute->flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
+    }
 
   return (status);
 }

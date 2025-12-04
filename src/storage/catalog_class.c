@@ -1321,12 +1321,12 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   tp_Integer.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
   int flags;
-  flags = db_get_int(attr_val_p);
+  flags = db_get_int (attr_val_p);
   /* for 'is_nullable', reverse NON_NULL flag */
   db_make_int (attr_val_p, (flags & SM_ATTFLAG_NON_NULL) ? false : true);
 
   attr_val_p = &attrs[10].value;
-  db_make_int (attr_val_p, catcls_filter_attflag(flags));
+  db_make_int (attr_val_p, catcls_filter_attflag (flags));
 
   /* index_file_id */
   or_advance (buf_p, OR_INT_SIZE);
@@ -5473,10 +5473,11 @@ catcls_filter_attflag (int or_flags)
 {
   int catcls_attr_flags = 0;
   /* consider defining these flags in storage_common.h */
-  static SM_ATTRIBUTE_FLAG target_flags[] = {SM_ATTFLAG_INVISIBLE_COLUMN, SM_ATTFLAG_NON_NULL, SM_ATTFLAG_AUTO_INCREMENT};
-  int num_target_flags = sizeof(target_flags) / sizeof(SM_ATTRIBUTE_FLAG);
+  static SM_ATTRIBUTE_FLAG target_flags[] =
+    { SM_ATTFLAG_INVISIBLE_COLUMN, SM_ATTFLAG_NON_NULL, SM_ATTFLAG_AUTO_INCREMENT };
+  int num_target_flags = sizeof (target_flags) / sizeof (SM_ATTRIBUTE_FLAG);
 
-  for(int i = 0; i < num_target_flags; i++)
+  for (int i = 0; i < num_target_flags; i++)
     {
       catcls_attr_flags |= (or_flags & target_flags[i]) ? 1 << i : 0;
     }

@@ -157,7 +157,7 @@ enum
   P_DEFFERABLE,			/* DEFFERABLE */
   P_ORDER,			/* ORDERING definition */
   P_AUTO_INCR,			/* has AUTO INCREMENT */
-  P_INVISIBLE,                  /* is INVISIBLE COLUMN */
+  P_INVISIBLE,			/* is INVISIBLE COLUMN */
   P_CONSTR_FK,			/* constraint FOREIGN KEY */
   P_S_CONSTR_PK,		/* constraint PRIMARY KEY only on one single column : the checked attribute */
   P_M_CONSTR_PK,		/* constraint PRIMARY KEY on more columns, including checked attribute */
@@ -781,16 +781,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 	    }
 
-          if(p->info.attr_def.attr_invisible)
-            {
-              SM_ATTRIBUTE *att;
-              error = smt_find_attribute (ctemplate, attr_name, class_attr, &att);
+	  if (p->info.attr_def.attr_invisible)
+	    {
+	      SM_ATTRIBUTE *att;
+	      error = smt_find_attribute (ctemplate, attr_name, class_attr, &att);
 
-              if (error == NO_ERROR)
-                {
-                  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
-	        }
-            }
+	      if (error == NO_ERROR)
+		{
+		  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+		}
+	    }
 
 	  data_default = p->info.attr_def.data_default;
 	  if (data_default != NULL && data_default->node_type == PT_DATA_DEFAULT)
@@ -7374,7 +7374,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
       if (error == NO_ERROR)
 	{
-          att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
 	}
     }
 
@@ -7491,13 +7491,13 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	  error = dbt_constrain_non_null (ctemplate, attr_name, 0, 1);
 	}
       if (error == NO_ERROR && sm_att_constrained (class_obj, column->attr_name, SM_ATTFLAG_INVISIBLE_COLUMN))
-        {
-          SM_ATTRIBUTE *att;
-          error = smt_find_attribute (ctemplate, attr_name, 0, &att);
-          if(error == NO_ERROR)
-            {
-              att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
-            }
+	{
+	  SM_ATTRIBUTE *att;
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	  if (error == NO_ERROR)
+	    {
+	      att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	    }
 	}
     }
 
@@ -11235,7 +11235,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
-  else if(attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
+  else if (attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
       attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
