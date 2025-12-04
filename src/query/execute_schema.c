@@ -6994,7 +6994,7 @@ has_notnull_unique_constraints (const SM_ATTRIBUTE * smattr)
   has_not_null = (smattr->flags & SM_ATTFLAG_NON_NULL) != 0;
   if (!has_not_null)
     {
-      return FALSE;
+      return false;
     }
 
   for (c = smattr->constraints; c != NULL; c = c->next)

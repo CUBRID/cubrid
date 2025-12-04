@@ -556,7 +556,7 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
  *   dest(in/out): destination attribute
  */
 static int
-classobj_copy_pk_and_notnull_unique_constraints (const SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest)
+classobj_copy_pk_and_uk_notnull_constraints (const SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest)
 {
   SM_CONSTRAINT *src_cons, *dest_new;
   for (src_cons = src->constraints; src_cons != NULL; src_cons = (SM_CONSTRAINT *) src_cons->next)
@@ -4746,7 +4746,7 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 
       if (src->constraints != NULL)
 	{
-	  error = classobj_copy_pk_and_notnull_unique_constraints (src, dest);
+	  error = classobj_copy_pk_and_uk_notnull_constraints (src, dest);
 	  if (error != NO_ERROR)
 	    {
 	      goto memory_error;
