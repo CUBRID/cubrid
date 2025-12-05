@@ -2501,6 +2501,7 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 #endif				/* NDEBUG */
 {
   PGBUF_BCB *bufptr;
+  PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
 #if defined(SERVER_MODE)
   PGBUF_HOLDER *holder;
   VPID vpid;
@@ -2536,14 +2537,15 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
   /* fetch BCB from page pointer */
   CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
   assert (!VPID_ISNULL (&bufptr->vpid));
+  impl = get_impl (&bufptr->atomic_latch);
 
   /* check latch mode - no need for BCB mutex, page is already latched */
-  if (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_WRITE)
+  if (impl.impl.latch_mode == PGBUF_LATCH_WRITE)
     {
       /* this is a redundant call */
       return NO_ERROR;
     }
-  else if (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_READ)
+  else if (impl.impl.latch_mode != PGBUF_LATCH_READ)
     {
       assert_release (false);
       return ER_FAILED;
@@ -2594,11 +2596,12 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
     }
 
   /* check if we're the single read latch holder */
+retry:
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
   assert_release (holder != NULL);
-  if (holder->fix_count == get_fcnt (&bufptr->atomic_latch))
+  if (holder->fix_count == impl.impl.fcnt)
     {
-      assert (get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_READ);
+      assert (impl.impl.latch_mode == PGBUF_LATCH_READ);
 
       /* check for waiters for promotion */
       if (bufptr->next_wait_thrd != NULL && bufptr->next_wait_thrd->wait_for_latch_promote)
@@ -2641,7 +2644,19 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 	  int fix_count = holder->fix_count;
 	  PGBUF_HOLDER_STAT perf_stat = holder->perf_stat;
 
-	  add_fcnt (&bufptr->atomic_latch, -fix_count);
+	  do
+	    {
+	      impl = get_impl (&bufptr->atomic_latch);
+	      if (impl.impl.fcnt == holder->fix_count)
+		{
+		  goto retry;
+		}
+	      impl_new = impl;
+	      impl_new.impl.fcnt -= fix_count;
+	    }
+	  while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
+								std::memory_order_acquire));
+
 	  holder->fix_count = 0;
 	  if (pgbuf_remove_thrd_holder (thread_p, holder) != NO_ERROR)
 	    {
@@ -2858,7 +2873,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
 			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
     }
-
   /* if read latch exists,... */
   if (pgbuf_lockfree_unfix_ro (thread_p, bufptr))
     {
@@ -5937,13 +5951,15 @@ pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_
   impl_new = impl_orig;
   impl_new.impl.latch_mode = request_mode;
   impl_new.impl.fcnt = 1;
-  if (!bufptr->atomic_latch.
-      compare_exchange_strong (impl_orig.raw, impl_new.raw, std::memory_order::memory_order_acq_rel,
-			       std::memory_order::memory_order_acquire))
+/* *INDENT-OFF* */
+  if (!bufptr->
+      atomic_latch.compare_exchange_strong (impl_orig.raw, impl_new.raw, std::memory_order::memory_order_acq_rel,
+					    std::memory_order::memory_order_acquire))
     {
       PGBUF_BCB_UNLOCK (bufptr);
       return false;
     }
+/* *INDENT-ON* */
 
   PGBUF_BCB_UNLOCK (bufptr);
 
