@@ -3001,6 +3001,13 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_db_value (xasl->instnum_val_offset);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_db_value (xasl->save_instnum_val);
   if (offset == ER_FAILED)
     {
@@ -5969,6 +5976,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* if_pred */
 	   + PTR_SIZE		/* instnum_pred */
 	   + PTR_SIZE		/* instnum_val */
+	   + PTR_SIZE		/* instnum_val_offset */
 	   + PTR_SIZE		/* save_instnum_val */
 	   + OR_INT_SIZE	/* instnum_flag */
 	   + PTR_SIZE		/* limit_offset */

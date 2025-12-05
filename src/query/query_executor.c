@@ -798,6 +798,13 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP;
 	    }
+	  else
+	    {
+	      if (xasl->instnum_val_offset)
+		{
+		  xasl->instnum_val_offset->data.bigint++;
+		}
+	    }
 	  break;
 	case V_TRUE:
 	  /* evaluation is true; if not continue scan mode, set scan check flag */
@@ -9252,6 +9259,45 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_SUCCESS;
 				    }
+
+				  if (ev_res == V_FALSE)
+				    {
+				      BUILDLIST_PROC_NODE *buildlist;
+				      ANALYTIC_EVAL_TYPE *a_eval_list;
+				      ANALYTIC_TYPE *a_func_list;
+
+				      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
+					  && xasl->proc.buildlist.a_eval_list->is_sorted)
+					{
+					  buildlist = &xasl->proc.buildlist;
+					  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list;
+					       a_eval_list = a_eval_list->next)
+					    {
+					      if (fetch_val_list
+						  (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL,
+						   tplrec->tpl, true) != NO_ERROR)
+						{
+						  return S_ERROR;
+						}
+
+					      for (a_func_list = a_eval_list->head; a_func_list;
+						   a_func_list = a_func_list->next)
+						{
+						  ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
+						  if (qdata_evaluate_analytic_func
+						      (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
+						    {
+						      return S_ERROR;
+						    }
+
+						  if (a_func_list->function == PT_ROW_NUMBER)
+						    {
+						      pr_clone_value (a_func_list->out_value, a_func_list->value);
+						    }
+						}
+					    }
+					}
+				    }
 				}
 
 			      qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
@@ -14079,6 +14125,11 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
 
   assert (xasl && xasl->instnum_val);
   db_make_bigint (xasl->instnum_val, 0);
+
+  if (xasl->instnum_val_offset)
+    {
+      db_make_bigint (xasl->instnum_val_offset, 0);
+    }
 
   if (xasl->save_instnum_val)
     {
@@ -20807,8 +20858,15 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     {
       if (xasl->instnum_val != NULL)
 	{
-	  /* initialize counter to zero */
-	  (void) db_make_bigint (xasl->instnum_val, 0);
+	  if (xasl->instnum_val_offset != NULL)
+	    {
+	      pr_clone_value (xasl->instnum_val_offset, xasl->instnum_val);
+	    }
+	  else
+	    {
+	      /* initialize counter to zero */
+	      (void) db_make_bigint (xasl->instnum_val, 0);
+	    }
 	}
     }
 
@@ -22775,31 +22833,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 	}
 
       /* evaluate inst_num() predicate */
-      if (analytic_state->is_sorted)
-	{
-	  instnum_flag = analytic_state->xasl->instnum_flag;
-	  analytic_state->xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC);
-
-	  /* evaluate inst_num() */
-	  is_output_rec = qexec_eval_instnum_pred (thread_p, analytic_state->xasl, analytic_state->xasl_state);
-	  if (instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)
-	    {
-	      analytic_state->xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC;
-	    }
-
-	  if (is_output_rec == V_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	  else
-	    {
-	      analytic_state->is_output_rec = (is_output_rec == V_TRUE);
-	    }
-	}
-      else
-	{
-	  rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC);
-	}
+      rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;

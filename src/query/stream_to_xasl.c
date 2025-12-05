@@ -2078,6 +2078,21 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      xasl->instnum_val_offset = NULL;
+    }
+  else
+    {
+      xasl->instnum_val_offset = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->instnum_val_offset == NULL)
+	{
+	  goto error;
+	}
+      assert (xasl->instnum_val_offset->need_clear == false);
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       xasl->save_instnum_val = NULL;
     }
   else
