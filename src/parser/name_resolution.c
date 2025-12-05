@@ -3472,7 +3472,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
-		    break;	// FIXME: something wrong
+		    *continue_walk = PT_STOP_WALK;
+		    return node;
 		  }
 		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
 
@@ -3558,7 +3559,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 	      if (node1 == NULL)
 		{
-		  break;	// FIXME: something wrong
+		  *continue_walk = PT_STOP_WALK;
+		  return node;
 		}
 
 	      if (node1->node_type == PT_METHOD_CALL)
@@ -5030,7 +5032,7 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   /* TODO:
    * PT_TYPE_NCHAR and PT_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
    * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.
    */
   PT_TYPE_NULL,			// PT_TYPE_NCHAR  for CCI_U_TYPE_NCHAR
   PT_TYPE_NULL,			// PT_TYPE_VARNCHAR for CCI_U_TYPE_VARNCHAR
@@ -10454,8 +10456,15 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   new_node->info.method_call.method_id = (UINTPTR) new_node;
 
-  int sp_type_misc = jsp_get_sp_type (sp_name);
-  new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+  PT_MISC_TYPE sp_type_misc = (PT_MISC_TYPE) jsp_get_sp_type (sp_name);
+  // stored procedures can only be invoked through a CALL statement
+  if (sp_type_misc == PT_SP_PROCEDURE &&
+      (bind_arg->sc_info->top_node == NULL || bind_arg->sc_info->top_node->node_type != PT_METHOD_CALL))
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_STORED_PROC_CALL_IN_SQL);
+      return NULL;
+    }
+  new_node->info.method_call.method_type = sp_type_misc;
 
   PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
   if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
@@ -11810,7 +11819,7 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
       parser->custom_print = PT_SUPPRESS_RESOLVED | PT_SUPPRESS_QUOTES;
       char *err = parser_print_tree (parser, name_node);
       parser->custom_print = saved_custom;
-      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_INVALID_HOST_EXPR, err);
+      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_HOST_EXPR, err);
       return NULL;
     }
   hostvar->info.host_var.label = host_expr_str;
