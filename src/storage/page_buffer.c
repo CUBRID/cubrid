@@ -2973,9 +2973,14 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
   const char *latch_mode_str, *zone_str, *consistent_str;
 #endif /* NDEBUG */
 
-  thrd_index = thread_get_entry_index (thread_p);
+  if (thread_p->m_pgbuf_holder_anchor_ptr == NULL)
+    {
+      thrd_index = thread_get_entry_index (thread_p);
 
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+      thread_p->m_pgbuf_holder_anchor_ptr = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+    }
+
+  thrd_holder_info = (PGBUF_HOLDER_ANCHOR *) thread_p->m_pgbuf_holder_anchor_ptr;
 
   if (thrd_holder_info->num_hold_cnt > 0)
     {
@@ -5685,9 +5690,13 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  thrd_index = thread_get_entry_index (thread_p);
+  if (thread_p->m_pgbuf_holder_anchor_ptr == NULL)
+    {
+      thrd_index = thread_get_entry_index (thread_p);
+      thread_p->m_pgbuf_holder_anchor_ptr = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+    }
 
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  thrd_holder_info = (PGBUF_HOLDER_ANCHOR *) thread_p->m_pgbuf_holder_anchor_ptr;
 
   if (thrd_holder_info->thrd_free_list != NULL)
     {
@@ -5761,10 +5770,13 @@ pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   assert (bufptr != NULL);
 
-  thrd_index = thread_get_entry_index (thread_p);
-
+  if (thread_p->m_pgbuf_holder_anchor_ptr == NULL)
+    {
+      thrd_index = thread_get_entry_index (thread_p);
+      thread_p->m_pgbuf_holder_anchor_ptr = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+    }
+  holder = ((PGBUF_HOLDER_ANCHOR *) thread_p->m_pgbuf_holder_anchor_ptr)->thrd_hold_list;
   /* For each BCB holder entry of thread's holder list */
-  holder = pgbuf_Pool.thrd_holder_info[thrd_index].thrd_hold_list;
 
   while (holder != NULL)
     {
@@ -5865,9 +5877,12 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
   /* holder->fix_count is always set to some meaningful value when the holder entry is allocated for use. So, at this
    * time, we do not need to initialize it. connect the BCB holder entry into free BCB holder list of given thread. */
 
-  thrd_index = thread_get_entry_index (thread_p);
-
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  if (thread_p->m_pgbuf_holder_anchor_ptr == NULL)
+    {
+      thrd_index = thread_get_entry_index (thread_p);
+      thread_p->m_pgbuf_holder_anchor_ptr = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+    }
+  thrd_holder_info = (PGBUF_HOLDER_ANCHOR *) thread_p->m_pgbuf_holder_anchor_ptr;
 
   holder->next_holder = thrd_holder_info->thrd_free_list;
   thrd_holder_info->thrd_free_list = holder;
@@ -13143,8 +13158,14 @@ pgbuf_is_page_fixed_by_thread (THREAD_ENTRY * thread_p, const VPID * vpid_p)
   assert (vpid_p != NULL);
 
   /* walk holders and try to find page */
-  thrd_index = thread_get_entry_index (thread_p);
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  if (thread_p->m_pgbuf_holder_anchor_ptr == NULL)
+    {
+      thrd_index = thread_get_entry_index (thread_p);
+      thread_p->m_pgbuf_holder_anchor_ptr = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+    }
+
+  thrd_holder_info = (PGBUF_HOLDER_ANCHOR *) thread_p->m_pgbuf_holder_anchor_ptr;
+
   for (thrd_holder = thrd_holder_info->thrd_hold_list; thrd_holder != NULL; thrd_holder = thrd_holder->next_holder)
     {
       if (VPID_EQ (&thrd_holder->bufptr->vpid, vpid_p))

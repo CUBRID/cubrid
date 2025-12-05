@@ -307,6 +307,7 @@ namespace cubthread
       bool m_uses_px_stats;
 
       bool m_skip_end_resource_tracks_in_recycle;
+      void *m_pgbuf_holder_anchor_ptr;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
