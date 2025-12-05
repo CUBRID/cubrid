@@ -580,12 +580,11 @@ namespace parallel_heap_scan
 	      {
 		if (eval->is_sorted)
 		  {
-		    result = CHECK_RESULT::CANNOT_PARALLEL;
-		    setter.set_cannot_parallel_recursive (xasl);
+		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
 		    break;
 		  }
 	      }
-	    if (result != CHECK_RESULT::CANNOT_PARALLEL)
+	    if (result != CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
 	      {
 		result = CHECK_RESULT::PARALLEL_LIST_MERGE;
 	      }
