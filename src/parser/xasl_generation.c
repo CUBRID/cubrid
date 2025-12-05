@@ -16669,7 +16669,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      bool has_click_counter = false;
 
-	      if (xasl->instnum_val_offset)
+	      assert (xasl->instnum_val_offset == NULL);
+	      if (xasl->instnum_val != NULL)
 		{
 		  regu_alloc (xasl->instnum_val_offset);
 		  if (xasl->instnum_val_offset == NULL)

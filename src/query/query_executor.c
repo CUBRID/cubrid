@@ -9260,12 +9260,13 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      return S_SUCCESS;
 				    }
 
-				  if (ev_res == V_FALSE)
+				  if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK))
 				    {
 				      BUILDLIST_PROC_NODE *buildlist;
 				      ANALYTIC_EVAL_TYPE *a_eval_list;
 				      ANALYTIC_TYPE *a_func_list;
 
+				      // NOTE: It's not necessary to iterate all a_eval_list to check is_sorted.
 				      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
 					  && xasl->proc.buildlist.a_eval_list->is_sorted)
 					{
@@ -14125,11 +14126,6 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
 
   assert (xasl && xasl->instnum_val);
   db_make_bigint (xasl->instnum_val, 0);
-
-  if (xasl->instnum_val_offset)
-    {
-      db_make_bigint (xasl->instnum_val_offset, 0);
-    }
 
   if (xasl->save_instnum_val)
     {
