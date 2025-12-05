@@ -14580,6 +14580,16 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
       is_index_ss = dest_query->info.query.q.select.hint & PT_HINT_INDEX_SS;
       is_index_ls = dest_query->info.query.q.select.hint & PT_HINT_INDEX_LS;
 
+      if (src_query->info.query.q.select.hint & PT_HINT_ORDERED)
+	{
+	  if (dest_query->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
+	    {
+	      /* ignore ordered hint */
+	      src_query->info.query.q.select.hint &= ~PT_HINT_ORDERED;
+	    }
+	}
+      /* TO_DO : convert ordered to leadidng */
+
       /* merge HINT of vclass spec */
       dest_query->info.query.q.select.hint =
 	(PT_HINT_ENUM) (dest_query->info.query.q.select.hint | src_query->info.query.q.select.hint);
