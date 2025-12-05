@@ -5937,9 +5937,9 @@ pgbuf_latch_idle_page (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_
   impl_new = impl_orig;
   impl_new.impl.latch_mode = request_mode;
   impl_new.impl.fcnt = 1;
-  if (!bufptr->
-      atomic_latch.compare_exchange_strong (impl_orig.raw, impl_new.raw, std::memory_order::memory_order_acq_rel,
-					    std::memory_order::memory_order_acquire))
+  if (!bufptr->atomic_latch.
+      compare_exchange_strong (impl_orig.raw, impl_new.raw, std::memory_order::memory_order_acq_rel,
+			       std::memory_order::memory_order_acquire))
     {
       PGBUF_BCB_UNLOCK (bufptr);
       return false;
@@ -6357,8 +6357,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   PGBUF_ZONE zone;
   int error_code = NO_ERROR;
   PGBUF_ATOMIC_LATCH_IMPL impl_orig, impl_new;
-  bool is_zero_fcnt = false, blocked_reader_writer = false;
-  int last_fcnt;
+  bool blocked_reader_writer = false, is_zero_fcnt = false;
 
   assert (holder_status == NO_ERROR);
 
@@ -6372,17 +6371,18 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
   /* decrement the fix count */
   do
     {
+      blocked_reader_writer = false;
+      is_zero_fcnt = false;
       impl_orig = get_impl (&bufptr->atomic_latch);
       impl_new = impl_orig;
-      impl_new.impl.fcnt -= 1;
-      last_fcnt = impl_new.impl.fcnt;
+      impl_new.impl.fcnt--;
       blocked_reader_writer = impl_orig.impl.waiter_exists;
-      if (last_fcnt == 0)
+      if (impl_new.impl.fcnt == 0)
 	{
 	  is_zero_fcnt = true;
 	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
 	}
-      if (last_fcnt < 0)
+      if (impl_new.impl.fcnt < 0)
 	{
 	  /* This situation must not be occurred. */
 	  assert (false);
@@ -7112,10 +7112,12 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   THREAD_ENTRY *prev_thrd_entry = NULL;
   THREAD_ENTRY *next_thrd_entry = NULL;
 
+
   /* the caller is holding bufptr->mutex */
-
-  assert (get_latch (&bufptr->atomic_latch) == PGBUF_NO_LATCH && get_fcnt (&bufptr->atomic_latch) == 0);
-
+#if !defined (NDEBUG)
+  PGBUF_ATOMIC_LATCH_IMPL impl = get_impl (&bufptr->atomic_latch);
+  assert (impl.impl.latch_mode == PGBUF_NO_LATCH && impl.impl.fcnt == 0);
+#endif
   /* fcnt == 0, bufptr->latch_mode == PGBUF_NO_LATCH */
 
   /* how it works:
@@ -7368,11 +7370,7 @@ pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MO
     {
       impl = get_impl (&bufptr->atomic_latch);
       new_impl = impl;
-      if (impl.impl.latch_mode != PGBUF_LATCH_READ)
-	{
-	  return NULL;
-	}
-      if (impl.impl.waiter_exists)
+      if (impl.impl.latch_mode != PGBUF_LATCH_READ || impl.impl.waiter_exists || impl.impl.fcnt == 0)
 	{
 	  return NULL;
 	}
@@ -7443,8 +7441,7 @@ pgbuf_lockfree_unfix_ro (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       impl = get_impl (&bufptr->atomic_latch);
 
-      if ((impl.impl.latch_mode != PGBUF_LATCH_READ && impl.impl.latch_mode != PGBUF_LATCH_WRITE)
-	  || impl.impl.waiter_exists || impl.impl.fcnt == 1)
+      if (impl.impl.latch_mode != PGBUF_LATCH_READ || impl.impl.waiter_exists || impl.impl.fcnt == 1)
 	{
 	  return false;
 	}
@@ -7453,6 +7450,11 @@ pgbuf_lockfree_unfix_ro (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     }
   while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, new_impl.raw,
 						      std::memory_order_acq_rel, std::memory_order_acquire));
+#if !defined (NDEBUG)
+  PAGE_PTR pgptr = NULL;
+  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+  thread_p->get_pgbuf_tracker ().decrement (pgptr);
+#endif // !NDEBUG
   return true;
 }
 
