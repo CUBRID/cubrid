@@ -317,7 +317,6 @@ struct analytic_state
   RECDES analytic_rec;
   QFILE_TUPLE_RECORD input_tplrec;
   QFILE_TUPLE_RECORD *output_tplrec;
-  bool is_sorted;
 
   struct
   {
@@ -490,10 +489,9 @@ static int qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, AN
 						     ANALYTIC_TYPE * func_p, XASL_STATE * xasl_state);
 static ANALYTIC_STATE *qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
 							ANALYTIC_TYPE * a_func_list, SORT_LIST * sort_list,
-							bool is_sorted, REGU_VARIABLE_LIST a_regu_list,
-							VAL_LIST * a_val_list, OUTPTR_LIST * a_outptr_list,
-							OUTPTR_LIST * a_outptr_list_interm, bool is_last_run,
-							XASL_NODE * xasl, XASL_STATE * xasl_state,
+							REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
+							OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm,
+							bool is_last_run, XASL_NODE * xasl, XASL_STATE * xasl_state,
 							QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 							QFILE_TUPLE_RECORD * tplrec);
 static SORT_STATUS qexec_analytic_get_next (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
@@ -20854,10 +20852,10 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   qexec_resolve_domains_on_sort_list (analytic_eval->sort_list, buildlist->a_outptr_list_ex->valptrp);
 
   /* initialized analytic functions state structure */
-  if (qexec_initialize_analytic_state
-      (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list, analytic_eval->is_sorted,
-       buildlist->a_regu_list, buildlist->a_val_list, a_outptr_list, buildlist->a_outptr_list_interm, is_last, xasl,
-       xasl_state, &list_id->type_list, tplrec) == NULL)
+  if (qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list,
+				       buildlist->a_regu_list, buildlist->a_val_list, a_outptr_list,
+				       buildlist->a_outptr_list_interm, is_last, xasl, xasl_state, &list_id->type_list,
+				       tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -21211,10 +21209,10 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  */
 static ANALYTIC_STATE *
 qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list,
-				 SORT_LIST * sort_list, bool is_sorted, REGU_VARIABLE_LIST a_regu_list,
-				 VAL_LIST * a_val_list, OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm,
-				 bool is_last_run, XASL_NODE * xasl, XASL_STATE * xasl_state,
-				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec)
+				 SORT_LIST * sort_list, REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
+				 OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm, bool is_last_run,
+				 XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+				 QFILE_TUPLE_RECORD * tplrec)
 {
   REGU_VARIABLE_LIST regu_list = NULL;
   ANALYTIC_TYPE *func_p;
@@ -21238,9 +21236,6 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->xasl_state = xasl_state;
 
   analytic_state->is_last_run = is_last_run;
-
-  analytic_state->is_sorted = (xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC)
-    && is_sorted ? true : false;
 
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
@@ -22748,8 +22743,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
   QFILE_LIST_SCAN_ID interm_scan_id;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   SCAN_CODE sc = S_SUCCESS;
-  int instnum_flag, i, rc = NO_ERROR;
-  DB_LOGICAL is_output_rec;
+  int i, rc = NO_ERROR;
 
   assert (analytic_state != NULL);
 
