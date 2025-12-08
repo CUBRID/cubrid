@@ -1472,6 +1472,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_type = parallel_type;
 
+  tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
+
 #if defined(SERVER_MODE)
   /* check the number of parallel process */
   sort_param->px_parallel_num = sort_check_parallelism (thread_p, sort_param);
