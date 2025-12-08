@@ -686,9 +686,9 @@ struct pgbuf_page_monitor
 
   /* Overall counters */
   volatile int lru_shared_pgs_cnt;	/* count of BCBs in all shared LRUs */
-  int pg_unfix_cnt;		/* Count of page unfixes; used for refreshing quota adjustment */
+    std::atomic_int pg_unfix_cnt;	/* Count of page unfixes; used for refreshing quota adjustment */
   int lru_victim_req_cnt;	/* number of victim requests from all LRUs */
-  int fix_req_cnt;		/* number of fix requests */
+    std::atomic_int fix_req_cnt;	/* number of fix requests */
 
 #if defined (SERVER_MODE)
   PGBUF_MONITOR_BCB_MUTEX *bcb_locks;	/* track bcb mutex usage. */
@@ -949,7 +949,7 @@ struct pgbuf_dealloc_undo_data
 static bool
 PGBUF_THREAD_HAS_PRIVATE_LRU (THREAD_ENTRY * thread_p)
 {
-  return PGBUF_PAGE_QUOTA_IS_ENABLED && (thread_p) != NULL && (thread_p)->private_lru_index != -1;
+  return thread_p != NULL && thread_p->m_is_private_lru_enabled;
 }
 #else
 #define PGBUF_PRIVATE_LRU_FROM_THREAD(thread_p) 0
@@ -1374,6 +1374,27 @@ get_impl (PGBUF_ATOMIC_LATCH * latch)
   PGBUF_ATOMIC_LATCH_IMPL impl;
   impl.raw = latch->load (std::memory_order_acquire);
   return impl;
+}
+
+void
+pgbuf_thread_variables_init (THREAD_ENTRY * thread_p)
+{
+  if (!thread_p)
+    {
+      return;
+    }
+  if (pgbuf_Pool.quota.num_private_LRU_list > 0 && thread_p->private_lru_index != -1)
+    {
+      thread_p->m_is_private_lru_enabled = true;
+    }
+  else
+    {
+      thread_p->m_is_private_lru_enabled = false;
+    }
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
 }
 
 /*
@@ -1958,7 +1979,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       return NULL;
     }
 
-  ATOMIC_INC_32 (&pgbuf_Pool.monitor.fix_req_cnt, 1);
+  pgbuf_Pool.monitor.fix_req_cnt.fetch_add (1, std::memory_order_relaxed);
 
   if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
@@ -3632,7 +3653,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   check_count_lru = 0;
 
   lru_victim_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 0);
-  fix_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.fix_req_cnt, 0);
+  fix_req_cnt = pgbuf_Pool.monitor.fix_req_cnt.exchange (0, std::memory_order_seq_cst);
 
   if (fix_req_cnt > lru_victim_req_cnt)
     {
@@ -5689,6 +5710,9 @@ pgbuf_initialize_thrd_holder (void)
   pgbuf_Pool.free_holder_set = NULL;
   pgbuf_Pool.free_index = -1;	/* -1 means that there is no free holder entry */
 
+  thread_get_thread_entry_info ()->m_holder_anchor = NULL;
+  thread_get_thread_entry_info ()->m_is_private_lru_enabled = false;
+
   return NO_ERROR;
 }
 
@@ -5711,9 +5735,11 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
-  thrd_index = thread_get_entry_index (thread_p);
-
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  thrd_holder_info = thread_p->m_holder_anchor;
 
   if (thrd_holder_info->thrd_free_list != NULL)
     {
@@ -5786,11 +5812,11 @@ pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   PGBUF_HOLDER *holder;
 
   assert (bufptr != NULL);
-
-  thrd_index = thread_get_entry_index (thread_p);
-
-  /* For each BCB holder entry of thread's holder list */
-  holder = pgbuf_Pool.thrd_holder_info[thrd_index].thrd_hold_list;
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  holder = thread_p->m_holder_anchor->thrd_hold_list;
 
   while (holder != NULL)
     {
@@ -5891,9 +5917,11 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
   /* holder->fix_count is always set to some meaningful value when the holder entry is allocated for use. So, at this
    * time, we do not need to initialize it. connect the BCB holder entry into free BCB holder list of given thread. */
 
-  thrd_index = thread_get_entry_index (thread_p);
-
-  thrd_holder_info = &(pgbuf_Pool.thrd_holder_info[thrd_index]);
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  thrd_holder_info = thread_p->m_holder_anchor;
 
   holder->next_holder = thrd_holder_info->thrd_free_list;
   thrd_holder_info->thrd_free_list = holder;
@@ -6385,7 +6413,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	}
       else if (blocked_reader_writer == false)
 	{
-	  ATOMIC_INC_32 (&pgbuf_Pool.monitor.pg_unfix_cnt, 1);
+	  pgbuf_Pool.monitor.pg_unfix_cnt.fetch_add (1, std::memory_order_relaxed);
 
 	  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
 	    {
@@ -12871,11 +12899,15 @@ pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_HOLDER *holder;
 
   assert (pgptr != NULL);
-  thrd_idx = thread_get_entry_index (thread_p);
+  if (!thread_p->m_holder_anchor)
+    {
+      thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
+    }
+  holder = thread_p->m_holder_anchor->thrd_hold_list;
 
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
 
-  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+  for (; holder != NULL; holder = holder->thrd_link)
     {
       if (bufptr == holder->bufptr)
 	{
@@ -13273,8 +13305,8 @@ pgbuf_initialize_page_monitor (void)
     }
 
   monitor->lru_victim_req_cnt = 0;
-  monitor->fix_req_cnt = 0;
-  monitor->pg_unfix_cnt = 0;
+  monitor->fix_req_cnt.store (0);
+  monitor->pg_unfix_cnt.store (0);
   monitor->lru_shared_pgs_cnt = 0;
 
 #if defined (SERVER_MODE)
@@ -13496,12 +13528,13 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
    * - or more than 5 min since last adjustment and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
-  if (pgbuf_Pool.monitor.pg_unfix_cnt < PGBUF_TRAN_THRESHOLD_ACTIVITY && diff_usec < 500000LL)
+  if (pgbuf_Pool.monitor.pg_unfix_cnt.load (std::memory_order_seq_cst) < PGBUF_TRAN_THRESHOLD_ACTIVITY
+      && diff_usec < 500000LL)
     {
       quota->is_adjusting = 0;
       return;
     }
-  if (ATOMIC_TAS_32 (&monitor->pg_unfix_cnt, 0) < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100)
+  if (monitor->pg_unfix_cnt.exchange (0) < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100)
     {
       low_overall_activity = true;
     }
@@ -13779,7 +13812,7 @@ retry:
 
   /* TODO: is this necessary? */
   pgbuf_adjust_quotas (thread_p);
-
+  pgbuf_thread_variables_init (thread_p);
   return private_idx;
 }
 
@@ -15817,7 +15850,8 @@ pgbuf_is_hit_ratio_low (void)
 #define PGBUF_DESIRED_HIT_VS_MISS_RATE      1000	/* 99.9% hit ratio */
 
   return (pgbuf_Pool.monitor.lru_victim_req_cnt > PGBUF_MIN_VICTIM_REQ
-	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_VS_MISS_RATE > pgbuf_Pool.monitor.fix_req_cnt);
+	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_VS_MISS_RATE >
+	  pgbuf_Pool.monitor.fix_req_cnt.load (std::memory_order_seq_cst));
 
 #undef PGBUF_DESIRED_HIT_VS_MISS_RATE
 #undef PGBUF_MIN_VICTIM_REQ
