@@ -6019,7 +6019,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
   *is_latch_wait = false;
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-// *INDENT-ONFF*
+// *INDENT-OFF*
   do
     {
       promote_needed = false;
@@ -6134,10 +6134,10 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	    }
 	}
     }
-  while (!bufptr->
-	 atomic_latch.compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
-					       std::memory_order::memory_order_acquire));
-// *INDENT-OFN*
+  while (!bufptr->atomic_latch.
+	 compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
+				  std::memory_order::memory_order_acquire));
+// *INDENT-ON*
 
   buf_is_dirty = pgbuf_bcb_is_dirty (bufptr);
 
@@ -13812,7 +13812,6 @@ retry:
 
   /* TODO: is this necessary? */
   pgbuf_adjust_quotas (thread_p);
-  pgbuf_thread_variables_init (thread_p);
   return private_idx;
 }
 

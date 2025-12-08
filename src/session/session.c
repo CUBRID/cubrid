@@ -3197,7 +3197,6 @@ session_get_number_of_holdable_cursors (void)
 int
 session_get_private_lru_idx (const void *session_p)
 {
-  pgbuf_thread_variables_init (thread_get_thread_entry_info ());
   return ((SESSION_STATE *) session_p)->private_lru_index;
 }
 
