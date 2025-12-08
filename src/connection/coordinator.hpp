@@ -69,8 +69,11 @@ namespace cubconn::connection
 	  std::vector<context *> resource;
 
 	  /* STATISTICS */
-	  statistics::metrics<statistics::worker> worker_stats;
-	  std::vector<statistics::metrics<statistics::context>> contexts_stats;
+	  struct
+	  {
+	    statistics::metrics<statistics::worker> worker;
+	    std::vector<statistics::metrics<statistics::context>> contexts;
+	  } statistics;
       };
 
     public:

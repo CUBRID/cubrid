@@ -106,6 +106,9 @@ namespace cubconn::statistics
       metrics ();
       ~metrics ();
 
+      metrics (const metrics &other);
+      metrics &operator= (const metrics &other);
+
       inline void reset ();
 
       inline void add (T key, std::uint64_t value);
@@ -128,6 +131,22 @@ namespace cubconn::statistics
   template <class T>
   metrics<T>::~metrics ()
   {
+  }
+
+  template <class T>
+  metrics<T>::metrics (const metrics &other)
+  {
+    copy_from (other);
+  }
+
+  template <class T>
+  metrics<T> &metrics<T>::operator= (const metrics &other)
+  {
+    if (this != &other)
+      {
+	copy_from (other);
+      }
+    return *this;
   }
 
   template <class T>

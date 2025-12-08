@@ -532,12 +532,22 @@ retry:
   bool worker::statistics_metrics_to_coordinator ()
   {
     coordinator::message message;
+    std::size_t i;
 
-    /*
-    message.worker_stats = m_stats;
-    message.contexts_stats[0] = (*m_context.begin ())->m_stats;
-    */
+    i = 0;
+    message.statistics.contexts.reserve (m_context.size ());
 
+    message.statistics.worker = m_stats;
+    for (context *ctx : m_context)
+      {
+	message.statistics.contexts[i++] = ctx->m_stats;
+      }
+
+    m_coordinator->enqueue (std::move (message));
+    if (!m_coordinator->notify ())
+      {
+	assert_release (false);
+      }
     return true;
   }
 
@@ -626,7 +636,7 @@ retry:
     return true;
   }
 
-  bool worker::eventfd_settimer (int fd, uint32_t sec, uint64_t nsec)
+  bool worker::eventfd_settimer (int fd, uint64_t sec, uint64_t nsec)
   {
     struct itimerspec its;
 
@@ -647,7 +657,7 @@ retry:
 
   bool worker::eventfd_settimer (int fd, timer_latency latency)
   {
-    uint32_t sec, nsec;
+    uint64_t sec, nsec;
 
     sec = static_cast<uint64_t> (latency) / static_cast<uint64_t> (1e9);
     nsec = static_cast<uint64_t> (latency) % static_cast<uint64_t> (1e9);

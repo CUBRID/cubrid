@@ -247,7 +247,7 @@ namespace cubconn::connection
       bool eventfd_register (int fd);
       bool eventfd_clear (int fd);
 
-      bool eventfd_settimer (int fd, uint32_t sec, uint64_t nsec);
+      bool eventfd_settimer (int fd, uint64_t sec, uint64_t nsec);
       bool eventfd_settimer (int fd, timer_latency latency);
 
       bool eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle);
