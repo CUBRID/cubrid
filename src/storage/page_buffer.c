@@ -1484,7 +1484,119 @@ pgbuf_initialize (void)
 {
   pgbuf_flags_mask_sanity_check ();
 
-  memset (&pgbuf_Pool, 0, sizeof (pgbuf_Pool));
+  /* Initialize all members individually */
+  pgbuf_Pool.num_buffers = 0;
+  pgbuf_Pool.BCB_table = NULL;
+  pgbuf_Pool.buf_hash_table = NULL;
+  pgbuf_Pool.buf_lock_table = NULL;
+  pgbuf_Pool.iopage_table = NULL;
+  pgbuf_Pool.num_LRU_list = 0;
+  pgbuf_Pool.ratio_lru1 = 0.0f;
+  pgbuf_Pool.ratio_lru2 = 0.0f;
+  pgbuf_Pool.buf_LRU_list = NULL;
+
+  /* Initialize buf_AOUT_list */
+#if defined(SERVER_MODE)
+  pgbuf_Pool.buf_AOUT_list.Aout_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+  pgbuf_Pool.buf_AOUT_list.Aout_top = NULL;
+  pgbuf_Pool.buf_AOUT_list.Aout_bottom = NULL;
+  pgbuf_Pool.buf_AOUT_list.Aout_free = NULL;
+  pgbuf_Pool.buf_AOUT_list.bufarray = NULL;
+  pgbuf_Pool.buf_AOUT_list.num_hashes = 0;
+  pgbuf_Pool.buf_AOUT_list.aout_buf_ht = NULL;
+  pgbuf_Pool.buf_AOUT_list.max_count = 0;
+
+  /* Initialize buf_invalid_list */
+#if defined(SERVER_MODE)
+  pgbuf_Pool.buf_invalid_list.invalid_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+  pgbuf_Pool.buf_invalid_list.invalid_top = NULL;
+  pgbuf_Pool.buf_invalid_list.invalid_cnt = 0;
+
+  pgbuf_Pool.victim_cand_list = NULL;
+
+  /* Initialize seq_chkpt_flusher */
+  pgbuf_Pool.seq_chkpt_flusher.flush_list = NULL;
+  LSA_SET_NULL (&pgbuf_Pool.seq_chkpt_flusher.flush_upto_lsa);
+  pgbuf_Pool.seq_chkpt_flusher.control_intervals_cnt = 0;
+  pgbuf_Pool.seq_chkpt_flusher.control_flushed = 0;
+  pgbuf_Pool.seq_chkpt_flusher.interval_msec = 0;
+  pgbuf_Pool.seq_chkpt_flusher.flush_max_size = 0;
+  pgbuf_Pool.seq_chkpt_flusher.flush_cnt = 0;
+  pgbuf_Pool.seq_chkpt_flusher.flush_idx = 0;
+  pgbuf_Pool.seq_chkpt_flusher.flushed_pages = 0;
+  pgbuf_Pool.seq_chkpt_flusher.flush_rate = 0.0f;
+  pgbuf_Pool.seq_chkpt_flusher.burst_mode = false;
+
+  /* Initialize monitor - C++ members need special handling */
+  pgbuf_Pool.monitor.dirties_cnt = 0;
+  pgbuf_Pool.monitor.lru_hits = NULL;
+  pgbuf_Pool.monitor.lru_activity = NULL;
+  pgbuf_Pool.monitor.lru_shared_pgs_cnt = 0;
+  pgbuf_Pool.monitor.pg_unfix_cnt.store (0);
+  pgbuf_Pool.monitor.lru_victim_req_cnt = 0;
+  pgbuf_Pool.monitor.fix_req_cnt.store (0);
+#if defined (SERVER_MODE)
+  pgbuf_Pool.monitor.bcb_locks = NULL;
+#endif
+  pgbuf_Pool.monitor.victim_rich = false;
+
+  /* Initialize quota */
+  pgbuf_Pool.quota.num_private_LRU_list = 0;
+  pgbuf_Pool.quota.lru_victim_flush_priority_per_lru = NULL;
+  pgbuf_Pool.quota.private_lru_session_cnt = NULL;
+  pgbuf_Pool.quota.private_pages_ratio = 0.0f;
+  pgbuf_Pool.quota.add_shared_lru_idx = 0;
+  pgbuf_Pool.quota.avoid_shared_lru_idx = 0;
+  pgbuf_Pool.quota.last_adjust_time.tc = 0;
+  pgbuf_Pool.quota.adjust_age = 0;
+  pgbuf_Pool.quota.is_adjusting = 0;
+
+  pgbuf_Pool.thrd_holder_info = NULL;
+  pgbuf_Pool.thrd_reserved_holder = NULL;
+
+#if defined(SERVER_MODE)
+  pgbuf_Pool.free_holder_set_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+  pgbuf_Pool.free_holder_set = NULL;
+  pgbuf_Pool.free_index = 0;
+
+  pgbuf_Pool.check_for_interrupts = false;
+
+#if defined(SERVER_MODE)
+  pgbuf_Pool.is_flushing_victims = false;
+  pgbuf_Pool.is_checkpoint = false;
+
+  /* Initialize direct_victims */
+  pgbuf_Pool.direct_victims.bcb_victims = NULL;
+  pgbuf_Pool.direct_victims.waiter_threads_high_priority = NULL;
+  pgbuf_Pool.direct_victims.waiter_threads_low_priority = NULL;
+
+  pgbuf_Pool.flushed_bcbs = NULL;
+#endif
+  pgbuf_Pool.private_lrus_with_victims = NULL;
+  pgbuf_Pool.big_private_lrus_with_victims = NULL;
+  pgbuf_Pool.shared_lrus_with_victims = NULL;
+
+  pgbuf_Pool.show_status = NULL;
+  pgbuf_Pool.show_status_old.num_hit = 0;
+  pgbuf_Pool.show_status_old.num_page_request = 0;
+  pgbuf_Pool.show_status_old.num_pages_created = 0;
+  pgbuf_Pool.show_status_old.num_pages_written = 0;
+  pgbuf_Pool.show_status_old.num_pages_read = 0;
+  pgbuf_Pool.show_status_old.print_out_time = 0;
+  pgbuf_Pool.show_status_snapshot.free_pages = 0;
+  pgbuf_Pool.show_status_snapshot.victim_candidate_pages = 0;
+  pgbuf_Pool.show_status_snapshot.clean_pages = 0;
+  pgbuf_Pool.show_status_snapshot.dirty_pages = 0;
+  pgbuf_Pool.show_status_snapshot.num_index_pages = 0;
+  pgbuf_Pool.show_status_snapshot.num_data_pages = 0;
+  pgbuf_Pool.show_status_snapshot.num_system_pages = 0;
+  pgbuf_Pool.show_status_snapshot.num_temp_pages = 0;
+#if defined (SERVER_MODE)
+  pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
   pgbuf_Pool.num_buffers = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
   if (pgbuf_Pool.num_buffers < PGBUF_MINIMUM_BUFFERS)
@@ -13276,8 +13388,17 @@ pgbuf_initialize_page_monitor (void)
 #endif /* SERVER_MODE */
 
   monitor = &(pgbuf_Pool.monitor);
-
-  memset (monitor, 0, sizeof (PGBUF_PAGE_MONITOR));
+  monitor->dirties_cnt = 0;
+  monitor->lru_hits = NULL;
+  monitor->lru_activity = NULL;
+  monitor->lru_victim_req_cnt = 0;
+  monitor->fix_req_cnt.store (0);
+  monitor->pg_unfix_cnt.store (0);
+  monitor->lru_shared_pgs_cnt = 0;
+#if defined (SERVER_MODE)
+  monitor->bcb_locks = NULL;
+#endif /* SERVER_MODE */
+  monitor->victim_rich = false;
 
   monitor->lru_hits = (int *) malloc (PGBUF_TOTAL_LRU_COUNT * sizeof (monitor->lru_hits[0]));
   if (monitor->lru_hits == NULL)
