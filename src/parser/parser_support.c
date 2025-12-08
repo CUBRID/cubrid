@@ -3582,23 +3582,31 @@ pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_has_having ()
- *          - check if tree has an HAVING
- *   return: true if tree has HAVING
+ * pt_has_having_with_predicate ()
+ *          - check if tree has an HAVING with predicate
+ *   return: true if tree has HAVING with predicate
  *   parser(in):
  *   node(in):
  */
 
 bool
-pt_has_having (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   bool has_having = false;
+  PT_NODE *having;
 
   switch (node->node_type)
     {
     case PT_SELECT:
-      if (node->info.query.q.select.having != NULL)
+      having = node->info.query.q.select.having;
+      if (having != NULL)
 	{
+	  /* there is only 'groupby_num <= ' */
+	  if (having->next == NULL && pt_is_expr_node (having) && PT_IS_GROUPBYNUM (having->info.expr.arg1)
+	      && (having->info.expr.op == PT_LE || having->info.expr.op == PT_LT))
+	    {
+	      return false;
+	    }
 	  return true;
 	}
       break;
@@ -3606,8 +3614,8 @@ pt_has_having (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      has_having |= pt_has_having (parser, node->info.query.q.union_.arg1);
-      has_having |= pt_has_having (parser, node->info.query.q.union_.arg2);
+      has_having |= pt_has_having_with_predicate (parser, node->info.query.q.union_.arg1);
+      has_having |= pt_has_having_with_predicate (parser, node->info.query.q.union_.arg2);
       break;
 
     default:
