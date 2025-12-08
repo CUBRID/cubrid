@@ -28,6 +28,7 @@
 #include "thread_entry.hpp"
 #include "scan_manager.h"
 #include "jansson.h"
+#include "px_heap_scan_result_type.hpp"
 
 
 namespace parallel_heap_scan
@@ -57,8 +58,8 @@ namespace parallel_heap_scan
   class accumulative_trace_storage
   {
     public:
-      accumulative_trace_storage (bool is_list_merge)
-	: m_is_list_merge (is_list_merge)
+      accumulative_trace_storage (RESULT_TYPE result_type)
+	: m_result_type (result_type)
 	, m_is_initialized (false)
       {}
       ~accumulative_trace_storage() = default;
@@ -70,7 +71,7 @@ namespace parallel_heap_scan
     private:
       std::vector<child_stats> m_stats;
       child_stats m_stats_last;
-      bool m_is_list_merge;
+      RESULT_TYPE m_result_type;
       bool m_is_initialized;
   };
 }

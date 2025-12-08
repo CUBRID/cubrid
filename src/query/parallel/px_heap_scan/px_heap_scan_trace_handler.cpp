@@ -106,8 +106,9 @@ namespace parallel_heap_scan
     UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_qualified_rows = 0;
     int parallel_workers = m_stats.size();
-    const char *scan_gather = m_is_list_merge ? "mergeable list" : "row by row";
-
+    const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
+				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
+				  m_result_type == RESULT_TYPE::COUNT_DISTINCT ? "count" : "unknown";
     for (size_t i = 0; i < m_stats.size(); i++)
       {
 	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
@@ -121,7 +122,7 @@ namespace parallel_heap_scan
     fprintf (fp, ", heap time: %lu..%lu", min_elapsed_scan, max_elapsed_scan);
     fprintf (fp, ", readrows: %lu..%lu", min_read_rows, max_read_rows);
     fprintf (fp, ", rows: %lu..%lu", min_qualified_rows, max_qualified_rows);
-    fprintf (fp, ", gather: %s", scan_gather);
+    fprintf (fp, ", gather: %s", result_type_str);
     fprintf (fp, ")");
   }
 
@@ -134,6 +135,9 @@ namespace parallel_heap_scan
     UINT64 min_qualified_rows = std::numeric_limits<UINT64>::max();
     UINT64 max_qualified_rows = 0;
     int parallel_workers = m_stats.size();
+    const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
+				  m_result_type == RESULT_TYPE::XASL_SNAPSHOT ? "row by row" :
+				  m_result_type == RESULT_TYPE::COUNT_DISTINCT ? "count" : "unknown";
     for (size_t i = 0; i < m_stats.size(); i++)
       {
 	min_elapsed_scan = std::min (min_elapsed_scan, (UINT64) (TO_MSEC (m_stats[i].elapsed_time)));
@@ -154,7 +158,7 @@ namespace parallel_heap_scan
 				      "time", time_buf,
 				      "readrows", readrows_buf,
 				      "rows", rows_buf,
-				      "gather", m_is_list_merge ? "mergeable list" : "row by row");
+				      "gather", result_type_str);
     json_object_set_new (scan, "parallel heap", parallel_obj);
   }
 }
