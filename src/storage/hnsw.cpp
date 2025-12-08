@@ -172,7 +172,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid,
       return ER_FAILED;
     }
 
-  // log_sysop_start (thread_p);
+  log_sysop_start (thread_p);
   btid_out = index_manager->create_btid (thread_p, backend_instance, class_oid, attrid, params);
   if (BTID_IS_NULL (&btid_out))
     {
@@ -768,7 +768,6 @@ hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backen
 	}
     }
 
-exit:
   return btid_out;
 }
 

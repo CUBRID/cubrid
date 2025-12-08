@@ -39,6 +39,21 @@
 class hnsw_index_backend;
 class hnsw_index;
 
+
+/* Maximum Alignment */
+#define HNSW_MAX_ALIGN INT_ALIGNMENT
+#define HEADER 0
+
+typedef struct hnsw_header HNSW_HEADER;
+
+struct hnsw_header
+{
+  int dimension;
+  int hnsw_M;
+  int hnsw_efConstruction;
+  int metric;
+};
+
 struct hnsw_build_params
 {
   int dimension;

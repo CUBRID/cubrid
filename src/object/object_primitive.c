@@ -7923,7 +7923,35 @@ static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 			      int total_order, int *start_colp)
 {
-  ASSERT_CUBVEC (false);
+  int dim1 = OR_GET_INT (mem1);
+  int dim2 = OR_GET_INT (mem2);
+
+  // dimension mismatch → UNKNOWN
+  if (dim1 != dim2)
+    {
+      return DB_UNK;
+    }
+
+  const float *arr1 = (const float *) ((char *) mem1 + OR_INT_SIZE);
+  const float *arr2 = (const float *) ((char *) mem2 + OR_INT_SIZE);
+
+  // 2) element-wise compare
+  for (int i = 0; i < dim1; i++)
+    {
+      float v1 = arr1[i];
+      float v2 = arr2[i];
+
+      if (v1 < v2)
+	{
+	  return DB_LT;
+	}
+      else if (v1 > v2)
+	{
+	  return DB_GT;
+	}
+    }
+
+  return DB_EQ;
 }
 
 static DB_VALUE_COMPARE_RESULT

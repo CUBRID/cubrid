@@ -36,20 +36,6 @@
 #include "thread_compat.hpp"
 #include "hnsw_api.hpp"
 
-/* Maximum Alignment */
-#define HNSW_MAX_ALIGN INT_ALIGNMENT
-#define HEADER 0
-
-typedef struct hnsw_header HNSW_HEADER;
-
-struct hnsw_header
-{
-  int dimension;
-  int hnsw_M;
-  int hnsw_efConstruction;
-  int metric;
-};
-
 int xhnsw_initialize (THREAD_ENTRY *thread_p);
 int xhnsw_finalize (THREAD_ENTRY *thread_p);
 int xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid, const hnsw_build_params &params,
@@ -70,14 +56,14 @@ BTID *xhnsw_add_index (THREAD_ENTRY *thread_p, BTID *btid, OID *class_oid, int a
 BTID *xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
 			HFID *hfids, int dimension, int m, int ef_construction, int metric);
 BTID *xhnsw_load_index_batch (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
-		
 
-int hnsw_print_index_info (THREAD_ENTRY *thread_p, BTID *btid);
 
-int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
-			 float *distances);
-int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
-	      HFID *hfids, int dimension, int m, int ef_construction, int metric);
+			      int hnsw_print_index_info (THREAD_ENTRY *thread_p, BTID *btid);
+
+			      int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
+				  float *distances);
+			      int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
+			      HFID *hfids, int dimension, int m, int ef_construction, int metric);
 #endif
 
 #endif

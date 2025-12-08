@@ -375,8 +375,8 @@ namespace cubhnsw
 
       if (m_storage->is_empty())
 	{
-	  pinned_t promoted_root = m_storage->promote_root (root_block);
-	  root_node = root_type (promoted_root.data());
+	  // pinned_t promoted_root = m_storage->promote_root (root_block);
+	  //root_node = root_type (promoted_root.data());
 	  root_node.set_entry (new_slot);
 	  root_node.set_level (new_target_level);
 	  return result;
