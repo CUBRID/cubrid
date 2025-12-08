@@ -9270,6 +9270,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      return S_SUCCESS;
 				    }
 
+				  /* Evaluate analytic functions for tuples that don't satisfy instnum_pred yet.
+				   * For instnum_pred like "inst_num() > 10 AND inst_num() < 100", when inst_num() <= 10,
+				   * XASL_INSTNUM_FLAG_SCAN_CHECK flag is not set, but analytic functions must still be evaluated
+				   * to get correct results. Since is_sorted is true, we don't read all tuples,
+				   * so analytic functions must be evaluated at this point. */
 				  if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK))
 				    {
 				      BUILDLIST_PROC_NODE *buildlist;
