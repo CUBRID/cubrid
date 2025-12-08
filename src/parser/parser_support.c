@@ -12407,3 +12407,24 @@ pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query)
       return PT_HINT_NONE;
     }
 }
+
+/*
+ * pt_count_name_nodes () - returns name node, count by reference
+ *   return:
+ *   parser(in):
+ *   node(in): the node to check
+ *   arg(in/out): count of name nodes
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *cnt = (int *) arg;
+
+  if (node->node_type == PT_NAME)
+    {
+      (*cnt)++;
+    }
+
+  return node;
+}
