@@ -5982,9 +5982,10 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
   assert (request_mode == PGBUF_LATCH_READ || request_mode == PGBUF_LATCH_WRITE);
   assert (condition == PGBUF_UNCONDITIONAL_LATCH || condition == PGBUF_CONDITIONAL_LATCH);
   assert (is_latch_wait != NULL);
-// *INDENT-OFF*
+
   *is_latch_wait = false;
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+// *INDENT-OFF*
   do
     {
       promote_needed = false;
@@ -6034,7 +6035,8 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 		  new_impl.impl.fcnt++;
 		}
 	    }
-
+	  else
+	    {
 	  /* Case 2: Caller is already a holder */
 	  if (holder != NULL)
 	    {
@@ -6081,8 +6083,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	    }
 	}
     }
-  while (!bufptr->
-	 atomic_latch.compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
+    }
+  while (!bufptr->atomic_latch.
+	 compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
 					       std::memory_order::memory_order_acquire));
   // *INDENT-ON*
 
