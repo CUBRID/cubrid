@@ -381,6 +381,19 @@ namespace parallel_heap_scan
 	m_worker_manager->release_workers (m_parallelism);
 	m_worker_manager = nullptr;
       }
+    if (m_vd != nullptr)
+      {
+	if (m_vd->dbval_cnt > 0)
+	  {
+	    for (int i = 0; i < m_vd->dbval_cnt; i++)
+	      {
+		pr_clear_value (&m_vd->dbval_ptr[i]);
+	      }
+	    db_private_free (m_thread_p, m_vd->dbval_ptr);
+	  }
+	db_private_free (m_thread_p, m_vd);
+	m_vd = nullptr;
+      }
   }
 
   template <RESULT_TYPE result_type>
@@ -389,6 +402,7 @@ namespace parallel_heap_scan
     int h;
     bool should_check_instnum = false;
     INPUT_TYPE input_type = INPUT_TYPE::SINGLE_TABLE; /* partition table specification need? */
+    VAL_DESCR *new_vd;
     /* TODO: should check instnum, parse instnum, result type */
 
     m_query_entry = qmgr_get_query_entry (m_thread_p, m_query_id, m_thread_p->tran_index);
@@ -414,6 +428,27 @@ namespace parallel_heap_scan
       {
 	m_uses_xasl_clone = true;
       }
+    new_vd = (VAL_DESCR *) db_private_alloc (m_thread_p, sizeof (VAL_DESCR));
+    if (new_vd == nullptr)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	return ER_FAILED;
+      }
+    memcpy (new_vd, m_vd, sizeof (VAL_DESCR));
+    if (m_vd->dbval_cnt > 0)
+      {
+	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_vd->dbval_cnt);
+	if (new_vd->dbval_ptr == nullptr)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	    return ER_FAILED;
+	  }
+	for (int i = 0; i < m_vd->dbval_cnt; i++)
+	  {
+	    pr_clone_value (&m_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
+	  }
+      }
+    m_vd = new_vd;
     m_input_handler = (input_handler_single_table *) db_private_alloc (m_thread_p, sizeof (input_handler_single_table));
     if (m_input_handler == nullptr)
       {
