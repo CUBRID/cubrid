@@ -193,11 +193,6 @@ namespace cubpl
 	  }
       }
 
-    if (scan_code == S_END || scan_code == S_ERROR)
-      {
-	close ();
-      }
-
     return scan_code;
   }
 

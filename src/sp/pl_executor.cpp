@@ -803,6 +803,11 @@ exit:
 					  std::string ("cursor closed"), ARG_FILE_LINE));
       }
 
+    if (s_code == S_END || s_code == S_ERROR)
+      {
+	cursor->close();
+      }
+
     error = m_stack->send_data_to_java (blk);
     blk.freemem ();
     return error;
