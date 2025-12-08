@@ -201,6 +201,7 @@ extern QFILE_LIST_ID *qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIS
 					      QFILE_LIST_ID * rhs_file, int flag);
 extern int qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
 extern int qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_LIST_ID * append_list_id);
+extern int qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tpl_descr,
 					    QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);

@@ -29,14 +29,11 @@
 
 namespace memoize
 {
-  template <typename T>
-  using allocator = cubmem::private_allocator<T>;
+  constexpr size_t MEMOIZE_FREE_ITERATION_LIMIT = 1000;
+  constexpr double MEMOIZE_HIT_RATIO_THRESHOLD = 0.5;
 
   template <typename T>
-  using pvector = std::vector<T, allocator<T>>; /* private-memory vector */
-
-  template <typename T>
-  using fixed_allocator = cubmem::fixed_size_alloc::allocator<T, true>;
+  using fixed_allocator = cubmem::fixed_size_alloc::allocator<T, false>;
 
   enum class result_code
   {
@@ -50,11 +47,10 @@ namespace memoize
   class key
   {
     public:
-      key () = delete;
-      key (allocator<DB_VALUE> *allocator_p);
+      key ();
       ~key ();
 
-      pvector<DB_VALUE> m_values;
+      std::vector<DB_VALUE> m_values;
       size_t m_size;
       size_t get_size ();
 
@@ -71,13 +67,12 @@ namespace memoize
   struct value
   {
     public:
-      value () = delete;
-      value (allocator<DB_VALUE> *allocator_p);
+      value ();
       ~value ();
 
       size_t get_size ();
 
-      pvector<DB_VALUE> m_values;
+      std::vector<DB_VALUE> m_values;
       size_t m_size;
   };
 
@@ -89,7 +84,7 @@ namespace memoize
       storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list);
       ~storage();
       static storage *new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl);
-      void init (pvector<DB_VALUE *> &key_ptr_src);
+      void init (std::vector<DB_VALUE *> &key_ptr_src);
       result_code get ();
       result_code put();
       void start_timer();
@@ -119,19 +114,14 @@ namespace memoize
       THREAD_ENTRY *m_thread_p;
       VAL_LIST *m_val_list;
 
-      allocator<DB_VALUE *> m_dbval_p_allocator;
-      allocator<DB_VALUE> m_dbval_allocator;
-      allocator<value *> m_value_allocator;
-      allocator<std::pair<key *const, value *>> m_key_value_allocator;
       fixed_allocator<key> m_key_fixed_allocator;
       size_t m_key_sz;
       size_t m_value_sz;
       size_t m_hash_sz;
       key *m_last_key;
-      pvector<DB_VALUE *> m_keyptr_src;
-      std::unordered_multimap<key *, value *, key::hash, key::equal, cubmem::private_allocator<std::pair<key *const, value *>>>
-      m_key_value_map;
-      pvector<value *> m_current_value_list;
+      std::vector<DB_VALUE *> m_keyptr_src;
+      std::unordered_multimap<key *, value *, key::hash, key::equal> m_key_value_map;
+      std::vector<value *> m_current_value_list;
       bool disabled;
       bool has_range;
       bool key_changed;
