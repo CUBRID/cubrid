@@ -199,12 +199,15 @@ namespace cubconn::connection
   {
     std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
     connection::worker::message request;
+    static std::size_t counter = 0;
+    static uint64_t id = 0;
 
     request.type = connection::worker::message_type::NEW_CLIENT;
     request.ctx = m_parent->claim_context ();
+    request.ctx->m_worker = counter;
+    request.ctx->m_id = id++;
     request.conn = item.conn;
 
-    static std::size_t counter = 0;
     workers[counter]->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
     if (!workers[counter]->notify ())
       {
@@ -252,6 +255,10 @@ namespace cubconn::connection
 
 	  case message_type::RETURN_TO_POOL:
 	    this->handle_message_queue_return_to_pool (request);
+	    break;
+
+	  case message_type::STATISTICS:
+
 	    break;
 
 	  case message_type::SHUTDOWN:

@@ -43,7 +43,7 @@ namespace cubconn::connection
 	NEW_CLIENT,
 	RETURN_TO_POOL,
 
-	STATS,
+	STATISTICS,
 
 	SHUTDOWN
       };
@@ -68,7 +68,7 @@ namespace cubconn::connection
 	  /* RETURN_TO_POOL */
 	  std::vector<context *> resource;
 
-	  /* STATS */
+	  /* STATISTICS */
 	  std::vector<std::pair<int, context>> stats;
       };
 

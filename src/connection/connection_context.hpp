@@ -141,6 +141,8 @@ namespace cubconn::connection
     /* --------------------------------------------------------------------------- */
     /* worker index */
     int m_worker;
+    /* context identifier */
+    uint64_t m_id;
 
     /* ignore guards (ERR/HUP) */
     ignore_level m_ignore;

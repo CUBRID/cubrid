@@ -71,6 +71,7 @@ namespace cubconn::connection
   context::context (std::size_t capacity) :
     m_conn (nullptr),
     m_worker (-1),
+    m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
     m_recv
@@ -91,6 +92,7 @@ namespace cubconn::connection
   context::context () :
     m_conn (nullptr),
     m_worker (-1),
+    m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
     m_recv
