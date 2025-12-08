@@ -4,6 +4,8 @@ cubrid deletedb demodb && $CUBRID/demo/make_cubrid_demo.sh
 valgrind --leak-check=full --track-origins=yes --trace-children=yes --log-file=valgrind.log cubrid server start demodb
 cubrid loaddb -s random_xs_20_angular_schema -d random_xs_20_angular_object -C -u dba demodb -v
 
+cubrid server start demodb
+
 csql -u dba demodb -c "CREATE TABLE random_xs_20_angular_train (id BIGINT, vec VECTOR (20)); CREATE VECTOR INDEX vidx_train ON random_xs_20_angular_train (vec COSINE) WITH (M = 16, ef_construction = 64);"
 csql -u dba demodb -i random_xs_20_angular_train.sql
 
