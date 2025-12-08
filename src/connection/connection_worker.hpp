@@ -61,13 +61,13 @@ namespace cubconn::connection
 	TYPE_COUNT
       };
 
-      enum class timer_latency : uint32_t
+      enum class timer_latency : uint64_t
       {
 	NA = 0, /* off */
-	LOW_LATENCY = static_cast<uint32_t> (1 * 1e6), /* 1 msec */
-	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9), /* 2 sec, default */
+	LOW_LATENCY = static_cast<uint64_t> (1 * 1e6), /* 1 msec */
+	MEDIUM_LATENCY = static_cast<uint64_t> (2 * 1e9), /* 2 sec, default */
 
-	MAXIMUM_LATENCY = static_cast<uint32_t> (UINT32_MAX - 1) /* virtually off */
+	MAXIMUM_LATENCY = static_cast<uint64_t> (UINT64_MAX - 1) /* virtually off */
       };
 
       struct timer_handle
@@ -173,9 +173,6 @@ namespace cubconn::connection
       bool enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func = nullptr,
 			       int wait_time = 0 /* no wait */);
 
-      /* statistics */
-      void stats ();
-
     private:
       /* connection pool */
       pool *m_parent;
@@ -233,6 +230,11 @@ namespace cubconn::connection
       void end_connection_close ();
 
       bool handle_connection_close (context *ctx, bool retry = false, std::shared_ptr<message_blocker> handle = nullptr);
+
+      /* --------------------------------------------------------------------------- */
+      /* STATISTICS								     */
+      /* --------------------------------------------------------------------------- */
+      bool statistics_metrics_to_coordinator ();
 
       /* --------------------------------------------------------------------------- */
       /* HA									     */

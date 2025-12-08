@@ -102,8 +102,19 @@ namespace cubconn::connection
 	m_timer_handler[i].function = nullptr;
 	m_timer_handler[i].last_time = 0;
       }
-    this->eventfd_addtimer (timer_type::HA, timer_latency::MEDIUM_LATENCY,
-			    std::bind (&worker::ha_close_all_connections, this));
+    if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::MEDIUM_LATENCY,
+				 std::bind (&worker::statistics_metrics_to_coordinator, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
+	assert_release (false);
+
+      }
+    if (!this->eventfd_addtimer (timer_type::HA, timer_latency::MEDIUM_LATENCY,
+				 std::bind (&worker::ha_close_all_connections, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
+	assert_release (false);
+      }
 
     /* request queue */
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
@@ -230,35 +241,6 @@ namespace cubconn::connection
       }
 
     return true;
-  }
-
-  void worker::stats ()
-  {
-    uint64_t bytes_in_total, bytes_out_total;
-    int i;
-
-    std::cout << "connection worker: " << m_index << std::endl;
-    for (i = 0; i < static_cast<int> (statistics::worker::STATS_COUNT); i++)
-      {
-	std::cout << "  " << statistics::worker_to_string[i].first << ": " <<
-		  m_stats.get (static_cast<statistics::worker> (i)) << " " << statistics::worker_to_string[i].second << std::endl;
-      }
-
-    bytes_in_total = 0;
-    bytes_out_total = 0;
-    for (auto ctx : m_context)
-      {
-	/* duplicated values. not ACC */
-	bytes_in_total += ctx->m_stats.get (statistics::context::BYTES_IN_TOTAL);
-	bytes_out_total += ctx->m_stats.get (statistics::context::BYTES_OUT_TOTAL);
-      }
-
-    std::cout << std::endl;
-
-    std::cout << "BYTES_IN_TOTAL: " << bytes_in_total << " bytes" << std::endl;
-    std::cout << "BYTES_OUT_TOTAL: " << bytes_out_total << " bytes" << std::endl;
-
-    std::cout << std::endl;
   }
 
   uint64_t worker::get_monotonic_ns ()
@@ -547,6 +529,18 @@ retry:
 	   );
   }
 
+  bool worker::statistics_metrics_to_coordinator ()
+  {
+    coordinator::message message;
+
+    /*
+    message.worker_stats = m_stats;
+    message.contexts_stats[0] = (*m_context.begin ())->m_stats;
+    */
+
+    return true;
+  }
+
   bool worker::ha_close_all_connections ()
   {
     /* HA msut continue to check */
@@ -655,8 +649,8 @@ retry:
   {
     uint32_t sec, nsec;
 
-    sec = static_cast<uint32_t> (latency) / static_cast<uint32_t> (1e9);
-    nsec = static_cast<uint32_t> (latency) % static_cast<uint32_t> (1e9);
+    sec = static_cast<uint64_t> (latency) / static_cast<uint64_t> (1e9);
+    nsec = static_cast<uint64_t> (latency) % static_cast<uint64_t> (1e9);
     if (eventfd_settimer (fd, sec, nsec))
       {
 	return true;
@@ -684,7 +678,7 @@ retry:
       {
 	if (m_timer_handler[i].valid)
 	  {
-	    if (min == timer_latency::NA || static_cast<uint32_t> (min) > static_cast<uint32_t> (m_timer_handler[i].latency))
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
 	      {
 		min = m_timer_handler[i].latency;
 	      }
@@ -708,7 +702,7 @@ retry:
       {
 	if (m_timer_handler[i].valid)
 	  {
-	    if (min == timer_latency::NA || static_cast<uint32_t> (min) > static_cast<uint32_t> (m_timer_handler[i].latency))
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
 	      {
 		min = m_timer_handler[i].latency;
 	      }
@@ -731,6 +725,8 @@ retry:
     uint64_t now;
 
     now = this->get_monotonic_ns ();
+
+    m_has_retry = false;
 
     /* event fd */
     if (eventfds[0])
@@ -756,7 +752,6 @@ retry:
       {
 	eventfds[1] = false;
 
-	m_has_retry = false;
 	for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
 	  {
 	    if (!m_timer_handler[i].valid)
@@ -780,11 +775,11 @@ retry:
 	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
 	    return false;
 	  }
+      }
 
-	if (!m_has_retry)
-	  {
-	    this->eventfd_removetimer (timer_type::QUEUE);
-	  }
+    if (!m_has_retry)
+      {
+	this->eventfd_removetimer (timer_type::QUEUE);
       }
 
     return true;
