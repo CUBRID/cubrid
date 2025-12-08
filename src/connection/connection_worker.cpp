@@ -37,10 +37,13 @@
 #include <chrono>
 #include <array>
 #include <thread>
+#include <cstdint>
+#include <cstdio>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <sys/epoll.h>
+#include <time.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -71,7 +74,6 @@ namespace cubconn::connection
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
-    m_timer_latency (timer_latency::NA),
     m_has_retry (false)
   {
     std::size_t i;
@@ -92,12 +94,16 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    m_notification = static_cast<uint32_t> (notification_type::HA);
-    if (!this->eventfd_settimer (m_timerfd, timer_latency::MEDIUM_LATENCY))
+    /* timer */
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
-	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to eventfd_settimer\n");
-	assert_release (false);
+	m_timer_handler[i].valid = false;
+	m_timer_handler[i].latency = timer_latency::NA;
+	m_timer_handler[i].function = nullptr;
+	m_timer_handler[i].last_time = 0;
       }
+    this->eventfd_addtimer (timer_type::HA, timer_latency::MEDIUM_LATENCY,
+			    std::bind (&worker::ha_close_all_connections, this));
 
     /* request queue */
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
@@ -253,6 +259,19 @@ namespace cubconn::connection
     std::cout << "BYTES_OUT_TOTAL: " << bytes_out_total << " bytes" << std::endl;
 
     std::cout << std::endl;
+  }
+
+  uint64_t worker::get_monotonic_ns ()
+  {
+    struct timespec ts;
+
+    if (clock_gettime (CLOCK_MONOTONIC, &ts) == -1)
+      {
+	er_log_conn (__FILE__, __LINE__, "clock_gettime (CLOCK_MONOTONIC) failed: %s\n", strerror (errno));
+	return 0;
+      }
+
+    return (uint64_t) ts.tv_sec * 1000000000ULL + ts.tv_nsec;
   }
 
   void worker::push_task_into_worker_pool (context *ctx)
@@ -520,12 +539,22 @@ retry:
 
     /* rezily notified */
     m_has_retry = true;
-    m_notification |= static_cast<uint32_t> (notification_type::QUEUE);
-    return this->eventfd_settimer (m_timerfd, timer_latency::LOW_LATENCY);
+
+    return this->eventfd_addtimer (
+		   timer_type::QUEUE,
+		   timer_latency::LOW_LATENCY,
+		   std::bind (&worker::handle_message_queue, this)
+	   );
   }
 
-  void worker::ha_close_all_connections ()
+  bool worker::ha_close_all_connections ()
   {
+    /* HA msut continue to check */
+    if (css_ha_server_state () != HA_SERVER_STATE_TO_BE_STANDBY)
+      {
+	return true;
+      }
+
     /* alive context */
     for (auto &ctx : m_context)
       {
@@ -539,6 +568,8 @@ retry:
 
     /* the actual release of the context is handled last */
     this->purge_stale_contexts ();
+
+    return true;
   }
 
   bool worker::eventfd_register (int fd)
@@ -624,31 +655,87 @@ retry:
   {
     uint32_t sec, nsec;
 
-    if (m_timer_latency == latency)
-      {
-	er_log_conn (ARG_FILE_LINE, "eventfd_settimer: index = %d, skipped m_timer_latency = %d, latency = %d\n", m_index,
-		     m_timer_latency, latency);
-	/* no need to change */
-	return true;
-      }
-
     sec = static_cast<uint32_t> (latency) / static_cast<uint32_t> (1e9);
     nsec = static_cast<uint32_t> (latency) % static_cast<uint32_t> (1e9);
     if (eventfd_settimer (fd, sec, nsec))
       {
-	m_timer_latency = latency;
 	return true;
       }
     return false;
   }
 
+  bool worker::eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle)
+  {
+    timer_latency min;
+    std::size_t i;
+
+    if (m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return true;
+      }
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = true;
+    m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
+    m_timer_handler[static_cast<std::size_t> (type)].function = handle;
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = 0;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint32_t> (min) > static_cast<uint32_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    assert (min != timer_latency::NA);
+
+    return this->eventfd_settimer (m_timerfd, min);
+  }
+
+  void worker::eventfd_removetimer (timer_type type)
+  {
+    timer_latency min;
+    std::size_t i;
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = false;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint32_t> (min) > static_cast<uint32_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    if (min != timer_latency::NA)
+      {
+	this->eventfd_settimer (m_timerfd, min);
+      }
+    else
+      {
+	this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+      }
+  }
+
   bool worker::eventfd_handler (bool *eventfds)
   {
+    std::size_t i;
+    uint64_t now;
+
+    now = this->get_monotonic_ns ();
+
     /* event fd */
     if (eventfds[0])
       {
 	eventfds[0] = false;
-	m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
 
 	if (!this->eventfd_clear (m_eventfd))
 	  {
@@ -660,6 +747,8 @@ retry:
 	  {
 	    return false;
 	  }
+
+	m_timer_handler[static_cast<std::size_t> (timer_type::QUEUE)].last_time = now;
       }
 
     /* timer fd */
@@ -668,21 +757,21 @@ retry:
 	eventfds[1] = false;
 
 	m_has_retry = false;
-	if (m_notification & static_cast<uint32_t> (notification_type::QUEUE))
+	for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
 	  {
-	    m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
-
-	    if (!this->handle_message_queue ())
+	    if (!m_timer_handler[i].valid)
 	      {
-		return false;
+		continue;
 	      }
-	  }
-	if (m_notification & static_cast<uint32_t> (notification_type::HA))
-	  {
-	    /* HA msut continue to check */
-	    if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY)
+
+	    if (now - m_timer_handler[i].last_time > static_cast<uint64_t> (m_timer_handler[i].latency))
 	      {
-		this->ha_close_all_connections ();
+		if (!m_timer_handler[i].function ())
+		  {
+		    return false;
+		  }
+
+		m_timer_handler[i].last_time = now;
 	      }
 	  }
 
@@ -694,7 +783,7 @@ retry:
 
 	if (!m_has_retry)
 	  {
-	    this->eventfd_settimer (m_timerfd, timer_latency::MEDIUM_LATENCY);
+	    this->eventfd_removetimer (timer_type::QUEUE);
 	  }
       }
 

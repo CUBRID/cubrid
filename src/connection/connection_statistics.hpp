@@ -111,6 +111,7 @@ namespace cubconn::statistics
       inline void add (T key, std::uint64_t value);
       inline void sub (T key, std::uint64_t value);
       inline std::uint64_t get (T key);
+      inline void set (T key, std::uint64_t value);
 
       inline void copy_from (const metrics &src);
 
@@ -151,6 +152,12 @@ namespace cubconn::statistics
   std::uint64_t metrics<T>::get (T key)
   {
     return m_values[static_cast<std::size_t> (key)];
+  }
+
+  template <class T>
+  void metrics<T>::set (T key, std::uint64_t value)
+  {
+    m_values[static_cast<std::size_t> (key)] = value;
   }
 
   template <class T>

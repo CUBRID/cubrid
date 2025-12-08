@@ -33,6 +33,8 @@
 
 #include <atomic>
 #include <thread>
+#include <array>
+#include <tuple>
 #include <functional>
 #include <unordered_set>
 #include <condition_variable>
@@ -49,17 +51,31 @@ namespace cubconn::connection
   class worker
   {
     private:
-      enum class notification_type : uint8_t
+      enum class timer_type : uint32_t
       {
-	QUEUE = 0x1,
-	HA = 0x2
+	NA,
+	STATISTICS,
+	QUEUE,
+	HA,
+
+	TYPE_COUNT
       };
 
       enum class timer_latency : uint32_t
       {
 	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint32_t> (1 * 1e6), /* 1 msec */
-	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9) /* 2 sec, default */
+	MEDIUM_LATENCY = static_cast<uint32_t> (2 * 1e9), /* 2 sec, default */
+
+	MAXIMUM_LATENCY = static_cast<uint32_t> (UINT32_MAX - 1) /* virtually off */
+      };
+
+      struct timer_handle
+      {
+	bool valid;
+	timer_latency latency;
+	std::function<bool ()> function;
+	uint64_t last_time;
       };
 
       struct message_blocker
@@ -182,9 +198,9 @@ namespace cubconn::connection
       int m_eventfd;
       /* timer based */
       int m_timerfd;
-      timer_latency m_timer_latency;
-      /* purpose of timer notification */
-      uint32_t m_notification;
+
+      /* index is a type of timer handle block */
+      std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
 
       bool m_has_retry;
 
@@ -202,6 +218,7 @@ namespace cubconn::connection
       /* statistics */
       statistics::metrics<statistics::worker> m_stats;
 
+      uint64_t get_monotonic_ns ();
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
@@ -220,7 +237,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* HA									     */
       /* --------------------------------------------------------------------------- */
-      void ha_close_all_connections ();
+      bool ha_close_all_connections ();
 
       /* --------------------------------------------------------------------------- */
       /* event fd								     */
@@ -230,6 +247,9 @@ namespace cubconn::connection
 
       bool eventfd_settimer (int fd, uint32_t sec, uint64_t nsec);
       bool eventfd_settimer (int fd, timer_latency latency);
+
+      bool eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle);
+      void eventfd_removetimer (timer_type type);
 
       bool eventfd_handler (bool *eventfds);
 
