@@ -46,7 +46,7 @@
 #include "slotted_page.h"
 #include "heap_file.h"
 #include "btree.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "critical_section.h"
 #include "tz_support.h"
 #include "db_date.h"

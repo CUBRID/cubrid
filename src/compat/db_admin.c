@@ -60,7 +60,7 @@
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "trigger_manager.h"
 #if !defined(CS_MODE)
 #include "session.h"

@@ -61,7 +61,16 @@
 #include "cas_function.h"
 #include "cas_net_buf.h"
 #include "cas_execute.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
+#include "perf_monitor.h"
+
+#if !defined(WINDOWS)
+#include "broker_recv_fd.h"
+#endif /* !WINDOWS */
+
+#include "broker_shm.h"
+#include "broker_util.h"
+#include "broker_env_def.h"
 #include "broker_process_size.h"
 #include "cas_ssl.h"
 
