@@ -507,6 +507,9 @@ struct pgbuf_bcb
 #if defined(SERVER_MODE)
   THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
 #endif				/* SERVER_MODE */
+#if defined(SERVER_MODE) && !defined(NDEBUG)
+  THREAD_ENTRY *latch_last_thread;	/* last thread that acquired latch */
+#endif				/* SERVER_MODE && !NDEBUG */
   PGBUF_BCB *hash_next;		/* next hash chain */
   PGBUF_BCB *prev_BCB;		/* prev LRU chain */
   PGBUF_BCB *next_BCB;		/* next LRU or Invalid(Free) chain */
@@ -5306,6 +5309,9 @@ pgbuf_initialize_bcb_table (void)
 #if defined(SERVER_MODE)
       bufptr->next_wait_thrd = NULL;
 #endif /* SERVER_MODE */
+#if defined(SERVER_MODE) && !defined(NDEBUG)
+      bufptr->latch_last_thread = NULL;
+#endif /* SERVER_MODE && !NDEBUG */
 
       bufptr->hash_next = NULL;
       bufptr->prev_BCB = NULL;
@@ -5985,7 +5991,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
   *is_latch_wait = false;
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
-// *INDENT-OFF*
+// *INDENT-ONFF*
   do
     {
       promote_needed = false;
@@ -6034,60 +6040,76 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 		  can_latch = true;
 		  new_impl.impl.fcnt++;
 		}
-	    }
-	  else
-	    {
-	  /* Case 2: Caller is already a holder */
-	  if (holder != NULL)
-	    {
-	      /* Sub-case 2-1: Page is WRITE-latched by holder - can upgrade/regrant */
-	      if (old_impl.impl.latch_mode == PGBUF_LATCH_WRITE)
+	      else
 		{
-		  can_latch = true;
-		  new_impl.impl.fcnt++;
-		}
-	      /* Sub-case 2-2: Page is READ-latched and requesting WRITE latch (promotion) */
-	      else if (old_impl.impl.latch_mode == PGBUF_LATCH_READ)
-		{
-		  /* If holder is the only one with fix count, can promote to WRITE */
-		  if (old_impl.impl.fcnt == holder->fix_count)
+		  /* some waiters exists, check i'm the owner */
+		  if (holder == NULL)
 		    {
-		      can_latch = true;
-		      new_impl.impl.latch_mode = request_mode;
-		      new_impl.impl.fcnt = 1;
+		      /* i'm not the owner, need to block */
+		      can_latch = false;
+		      /* waiter_exists is already true */
 		    }
 		  else
 		    {
-		      /* Other readers exist - need to release holder's READ latch first */
-		      if (condition == PGBUF_CONDITIONAL_LATCH)
-			{
-			  /* Conditional latch fails */
-			  can_latch = false;
-			  new_impl.impl.waiter_exists = true;
-			}
-		      else
-			{
-			  promote_needed = true;
-			  new_impl.impl.fcnt -= holder->fix_count;
-			  can_latch = false;
-			  new_impl.impl.waiter_exists = true;
-			}
+		      /* i'm the owner, grant it */
+		      can_latch = true;
+		      new_impl.impl.fcnt++;
 		    }
 		}
 	    }
 	  else
 	    {
-	      /* Case 3: Caller is not a holder - need to block and wait */
-	      can_latch = false;
-	      new_impl.impl.waiter_exists = true;
+	      /* Case 2: Caller is already a holder */
+	      if (holder != NULL)
+		{
+		  /* Sub-case 2-1: Page is WRITE-latched by holder - can upgrade/regrant */
+		  if (old_impl.impl.latch_mode == PGBUF_LATCH_WRITE)
+		    {
+		      can_latch = true;
+		      new_impl.impl.fcnt++;
+		    }
+		  /* Sub-case 2-2: Page is READ-latched and requesting WRITE latch (promotion) */
+		  else if (old_impl.impl.latch_mode == PGBUF_LATCH_READ)
+		    {
+		      /* If holder is the only one with fix count, can promote to WRITE */
+		      if (old_impl.impl.fcnt == holder->fix_count)
+			{
+			  can_latch = true;
+			  new_impl.impl.latch_mode = request_mode;
+			  new_impl.impl.fcnt = 1;
+			}
+		      else
+			{
+			  /* Other readers exist - need to release holder's READ latch first */
+			  if (condition == PGBUF_CONDITIONAL_LATCH)
+			    {
+			      /* Conditional latch fails */
+			      can_latch = false;
+			      new_impl.impl.waiter_exists = true;
+			    }
+			  else
+			    {
+			      promote_needed = true;
+			      new_impl.impl.fcnt -= holder->fix_count;
+			      can_latch = false;
+			      new_impl.impl.waiter_exists = true;
+			    }
+			}
+		    }
+		}
+	      else
+		{
+		  /* Case 3: Caller is not a holder - need to block and wait */
+		  can_latch = false;
+		  new_impl.impl.waiter_exists = true;
+		}
 	    }
 	}
     }
-    }
-  while (!bufptr->atomic_latch.
-	 compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
+  while (!bufptr->
+	 atomic_latch.compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
 					       std::memory_order::memory_order_acquire));
-  // *INDENT-ON*
+// *INDENT-OFN*
 
   buf_is_dirty = pgbuf_bcb_is_dirty (bufptr);
 
@@ -6121,6 +6143,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	  holder->perf_stat.hold_has_write_latch = 0;
 	}
       holder->perf_stat.dirty_before_hold = buf_is_dirty;
+#if defined(SERVER_MODE) && !defined(NDEBUG)
+      bufptr->latch_last_thread = thread_p;
+#endif /* SERVER_MODE && !NDEBUG */
 
       return NO_ERROR;
     }
@@ -6164,6 +6189,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 	  holder->perf_stat.dirty_before_hold = buf_is_dirty;
 	}
 #endif /* SERVER_MODE */
+#if defined(SERVER_MODE) && !defined(NDEBUG)
+      bufptr->latch_last_thread = thread_p;
+#endif /* SERVER_MODE && !NDEBUG */
 
       return NO_ERROR;
     }
@@ -6257,7 +6285,9 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       holder->perf_stat.dirtied_by_holder = 0;
       holder->perf_stat.dirty_before_hold = buf_is_dirty;
       *is_latch_wait = true;
-
+#if defined(SERVER_MODE) && !defined(NDEBUG)
+      bufptr->latch_last_thread = thread_p;
+#endif /* SERVER_MODE && !NDEBUG */
       return NO_ERROR;
     }
 }
@@ -6340,6 +6370,9 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
   if (is_zero_fcnt)
     {
+#if defined(SERVER_MODE) && !defined(NDEBUG)
+      bufptr->latch_last_thread = NULL;
+#endif /* SERVER_MODE && !NDEBUG */
       /* When oldest_unflush_lsa of a page is set, its dirty mark should also be set */
       assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa) || pgbuf_bcb_is_dirty (bufptr));
 
