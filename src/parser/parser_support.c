@@ -3010,6 +3010,42 @@ pt_has_inst_or_orderby_num (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_having ()
+ *          - check if tree has an HAVING
+ *   return: true if tree has HAVING
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_having (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_having = false;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      if (node->info.query.q.select.having != NULL)
+	{
+	  return true;
+	}
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      has_having |= pt_has_having (parser, node->info.query.q.union_.arg1);
+      has_having |= pt_has_having (parser, node->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }
+
+  return has_having;
+}
+
+/*
  * pt_insert_host_var () - insert a host_var into a list based on
  *                         its ordinal position
  *   return: a list of PT_HOST_VAR type nodes
