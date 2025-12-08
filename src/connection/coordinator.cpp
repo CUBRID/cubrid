@@ -49,8 +49,11 @@ namespace cubconn::connection
     m_core (core),
     m_stop (false),
     m_max_worker (max_worker),
-    m_min_worker (min_worker)
+    m_min_worker (min_worker),
+    m_statistics (max_worker)
   {
+    std::size_t i;
+
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -75,6 +78,15 @@ namespace cubconn::connection
 
     /* request queue */
     m_queue_size.store (0, std::memory_order_relaxed);
+
+    /* statistics */
+    for (i = 0; i < max_worker; i++)
+      {
+	m_statistics[i].client_num = 0;
+
+	/* this doesn't use much memory */
+	m_statistics[i].m_contexts.reserve (512);
+      }
 
     m_thread = std::thread (&coordinator::attach, this);
   }
@@ -176,7 +188,7 @@ namespace cubconn::connection
     return true;
   }
 
-  bool coordinator::eventfd_settimer (int fd, uint32_t sec, uint64_t nsec)
+  bool coordinator::eventfd_settimer (int fd, uint64_t sec, uint64_t nsec)
   {
     struct itimerspec its;
 
@@ -200,7 +212,15 @@ namespace cubconn::connection
     std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
     connection::worker::message request;
     static std::size_t counter = 0;
-    static uint64_t id = 0;
+    static uint64_t id = 1;
+
+    assert (m_statistics[counter].m_contexts.find (id) == m_statistics[counter].m_contexts.end ());
+
+    m_statistics[counter].m_contexts.emplace (
+	    id,
+	    std::pair<statistics::metrics<statistics::context>, statistics::metrics<statistics::context>> { }
+    );
+    m_statistics[counter].client_num++;
 
     request.type = connection::worker::message_type::NEW_CLIENT;
     request.ctx = m_parent->claim_context ();
@@ -227,9 +247,37 @@ namespace cubconn::connection
   {
     for (context *ctx : item.resource)
       {
+	assert (m_statistics[ctx->m_worker].m_contexts.find (ctx->m_id) != m_statistics[ctx->m_worker].m_contexts.end ());
+
+	m_statistics[ctx->m_worker].client_num--;
+	m_statistics[ctx->m_worker].m_contexts.erase (ctx->m_id);
+
+	ctx->m_worker = -1;
+	ctx->m_id = 0;
+
 	/* release the conneciton */
 	css_free_conn (ctx->m_conn);
 	m_parent->retire_context (ctx);
+      }
+
+    return true;
+  }
+
+  bool coordinator::handle_message_queue_statistics (message &item)
+  {
+    constexpr double alpha = 0.4;
+    std::size_t worker;
+
+    worker = item.statistics.worker.first;
+    this->statistics_EWMA (alpha, m_statistics[worker].m_worker.first, m_statistics[worker].m_worker.second,
+			   item.statistics.worker.second);
+
+    for (auto &stats : item.statistics.contexts)
+      {
+	assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
+
+	this->statistics_EWMA (alpha, m_statistics[worker].m_contexts[stats.first].first,
+			       m_statistics[worker].m_contexts[stats.first].second, stats.second);
       }
 
     return true;
@@ -258,7 +306,7 @@ namespace cubconn::connection
 	    break;
 
 	  case message_type::STATISTICS:
-
+	    this->handle_message_queue_statistics (request);
 	    break;
 
 	  case message_type::SHUTDOWN:

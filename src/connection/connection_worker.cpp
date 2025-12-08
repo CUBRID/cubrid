@@ -20,6 +20,7 @@
  * connection_worker.cpp
  */
 
+#include "porting.h"
 #include "hardware_topology.hpp"
 #include "tcp.h"
 #include "network.h"
@@ -109,7 +110,7 @@ namespace cubconn::connection
 	assert_release (false);
 
       }
-    if (!this->eventfd_addtimer (timer_type::HA, timer_latency::MEDIUM_LATENCY,
+    if (!this->eventfd_addtimer (timer_type::HA, timer_latency::HIGH_LATENCY,
 				 std::bind (&worker::ha_close_all_connections, this)))
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
@@ -532,22 +533,19 @@ retry:
   bool worker::statistics_metrics_to_coordinator ()
   {
     coordinator::message message;
-    std::size_t i;
 
-    i = 0;
+    message.type = coordinator::message_type::STATISTICS;
     message.statistics.contexts.reserve (m_context.size ());
-
-    message.statistics.worker = m_stats;
+    message.statistics.worker.first = m_index;
+    message.statistics.worker.second = m_stats;
     for (context *ctx : m_context)
       {
-	message.statistics.contexts[i++] = ctx->m_stats;
+	message.statistics.contexts.emplace_back (ctx->m_id, ctx->m_stats);
       }
 
+    /* just enqueue */
     m_coordinator->enqueue (std::move (message));
-    if (!m_coordinator->notify ())
-      {
-	assert_release (false);
-      }
+
     return true;
   }
 

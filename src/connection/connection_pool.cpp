@@ -156,13 +156,13 @@ namespace cubconn::connection
     assert (m_mutex_holder == std::this_thread::get_id ());
 
     head = reinterpret_cast<freelist *> (ctx);
+    head->m_context.reset ();
     if (m_freelist.m_claim > m_freelist.m_max)
       {
 	delete head;
       }
     else
       {
-	head->m_context.reset ();
 	head->m_next = m_freelist.m_head;
 	m_freelist.m_head = head;
       }
@@ -174,15 +174,6 @@ namespace cubconn::connection
     assert (m_mutex_holder == std::this_thread::get_id ());
 
     return m_workers;
-  }
-
-  void pool::stats ()
-  {
-    printf ("\033[2J\033[H");
-    for (auto &conn : m_workers)
-      {
-	conn->stats ();
-      }
   }
 
   void pool::try_to_lock_resource ()
@@ -264,7 +255,7 @@ namespace cubconn::connection
 
     assert (m_mutex_holder == std::this_thread::get_id ());
 
-    m_workers.reserve (max_connection_threads + 1);
+    m_workers.reserve (max_connection_threads);
 
     cores = &cubbase::topology.get_cores ();
 

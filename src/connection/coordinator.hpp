@@ -28,6 +28,9 @@
 #include "tbb/concurrent_queue.h"
 
 #include <thread>
+#include <vector>
+#include <utility>
+#include <unordered_map>
 
 namespace cubconn::connection
 {
@@ -35,6 +38,19 @@ namespace cubconn::connection
 
   class coordinator
   {
+    private:
+      struct statistics_chunk
+      {
+	/* immediate */
+	uint32_t client_num;
+
+	/* first: accumulated */
+	/* second: previous */
+	std::pair<statistics::metrics<statistics::worker>, statistics::metrics<statistics::worker>> m_worker;
+	std::unordered_map<uint64_t, std::pair<statistics::metrics<statistics::context>, statistics::metrics<statistics::context>>>
+	m_contexts;
+      };
+
     public:
       enum class message_type
       {
@@ -71,8 +87,8 @@ namespace cubconn::connection
 	  /* STATISTICS */
 	  struct
 	  {
-	    statistics::metrics<statistics::worker> worker;
-	    std::vector<statistics::metrics<statistics::context>> contexts;
+	    std::pair<std::size_t, statistics::metrics<statistics::worker>> worker;
+	    std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> contexts;
 	  } statistics;
       };
 
@@ -124,22 +140,41 @@ namespace cubconn::connection
       std::uint32_t m_min_worker;
       std::uint32_t m_current_worker;
 
+      /* statistics */
+      std::vector<statistics_chunk> m_statistics;
+
+      /* --------------------------------------------------------------------------- */
+      /* statistics								     */
+      /* --------------------------------------------------------------------------- */
+      template <typename T>
+      void statistics_EWMA (double alpha, statistics::metrics<T> &acc, statistics::metrics<T> &prev,
+			    statistics::metrics<T> &current);
+
       /* --------------------------------------------------------------------------- */
       /* event fd								     */
       /* --------------------------------------------------------------------------- */
       bool eventfd_register (int fd);
       bool eventfd_clear (int fd);
 
-      bool eventfd_settimer (int fd, uint32_t sec, uint64_t nsec);
+      bool eventfd_settimer (int fd, uint64_t sec, uint64_t nsec);
 
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue_return_to_pool (message &item);
+      bool handle_message_queue_statistics (message &item);
 
       bool handle_message_queue ();
   };
+
+  template <typename T>
+  void coordinator::statistics_EWMA (double alpha, statistics::metrics<T> &acc, statistics::metrics<T> &prev,
+				     statistics::metrics<T> &current)
+  {
+    acc = acc * (1 - alpha) + (current - prev) * alpha;
+    prev = current;
+  }
 }
 
 #endif

@@ -109,6 +109,13 @@ namespace cubconn::statistics
       metrics (const metrics &other);
       metrics &operator= (const metrics &other);
 
+      metrics (metrics &&other) noexcept = default;
+      metrics &operator= (metrics &&other) noexcept = default;
+
+      inline metrics operator+ (const metrics &other);
+      inline metrics operator- (const metrics &other);
+      inline metrics operator* (double multiplier);
+
       inline void reset ();
 
       inline void add (T key, std::uint64_t value);
@@ -147,6 +154,48 @@ namespace cubconn::statistics
 	copy_from (other);
       }
     return *this;
+  }
+
+  template <class T>
+  metrics<T> metrics<T>::operator+ (const metrics &other)
+  {
+    metrics result;
+    std::size_t i;
+
+    for (i = 0; i < static_cast<std::size_t> (T::STATS_COUNT); i++)
+      {
+	result.m_values[i] = m_values[i] + other.m_values[i];
+      }
+
+    return result;
+  }
+
+  template <class T>
+  metrics<T> metrics<T>::operator- (const metrics &other)
+  {
+    metrics result;
+    std::size_t i;
+
+    for (i = 0; i < static_cast<std::size_t> (T::STATS_COUNT); i++)
+      {
+	result.m_values[i] = m_values[i] - other.m_values[i];
+      }
+
+    return result;
+  }
+
+  template <class T>
+  metrics<T> metrics<T>::operator* (double multiplier)
+  {
+    metrics result;
+    std::size_t i;
+
+    for (i = 0; i < static_cast<std::size_t> (T::STATS_COUNT); i++)
+      {
+	result.m_values[i] = static_cast<std::uint64_t> (m_values[i] * multiplier);
+      }
+
+    return result;
   }
 
   template <class T>

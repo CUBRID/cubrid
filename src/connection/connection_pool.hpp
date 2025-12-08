@@ -72,8 +72,6 @@ namespace cubconn::connection
 
       std::vector<std::unique_ptr<worker>> &get_workers ();
 
-      void stats ();
-
     private:
       /* the members in connection pool can be managed entirely by other threads. */
       /* so you must acquire the mutex to access belows.			  */
