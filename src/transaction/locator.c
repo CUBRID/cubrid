@@ -54,7 +54,7 @@ static int rv;
 #endif /* !SERVER_MODE */
 
 #if defined(SERVER_MODE)
-#define LOCATOR_NKEEP_LIMIT (50)
+#define LOCATOR_NKEEP_LIMIT (200)
 #else /* SERVER_MODE */
 #define LOCATOR_NKEEP_LIMIT (2)
 #endif /* SERVER_MODE */
@@ -110,7 +110,6 @@ static bool locator_Is_initialized = false;
 
 static char *locator_allocate_packed (int packed_size);
 static char *locator_reallocate_packed (char *packed, int packed_size);
-static void locator_free_packed (char *packed_area, int packed_size);
 #if defined(CUBRID_DEBUG)
 static void locator_dump_string (FILE * out_fp, char *dump_string, int length);
 static void locator_dump_copy_area_one_object (FILE * out_fp, LC_COPYAREA_ONEOBJ * obj, int obj_index,
@@ -346,7 +345,7 @@ locator_reallocate_packed (char *packed, int packed_size)
  *
  * NOTE: Free the given packed area
  */
-static void
+void
 locator_free_packed (char *packed_area, int packed_size)
 {
   int tail;
