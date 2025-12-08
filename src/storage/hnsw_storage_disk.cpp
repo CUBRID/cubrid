@@ -48,6 +48,7 @@ namespace cubhnsw
 	return error_code;
       }
 #endif
+
     return error_code;
   }
 
@@ -220,14 +221,6 @@ namespace cubhnsw
     return disk_storage::pinned_t {oid, (std::byte *) root_page_ptr + slotp->offset_to_record, slotp->record_length, mode, scoped_guard};
   }
 
-  /*
-  disk_storage::pinned_t
-  disk_storage::get_node (const OID &key, lock_mode mode)
-  {
-    return disk_storage::pinned_t {disk_storage::slot_id_t {}, nullptr, lock_mode::none};
-  }
-    */
-
   disk_storage::pinned_t
   disk_storage::get_node_by_slot_id (const slot_id_t &id, const lock_mode &mode)
   {
@@ -248,33 +241,6 @@ namespace cubhnsw
     };
     return disk_storage::pinned_t {id, (std::byte *) node_page_ptr + slotp->offset_to_record, slotp->record_length, mode, scoped_guard};
   }
-
-#if 0
-  disk_storage::pinned_t
-  disk_storage::get_node_by_key (const OID &key, const lock_mode &mode)
-  {
-    return disk_storage::pinned_t {disk_storage::slot_id_t {}, nullptr, 0, lock_mode::none};
-  }
-#endif
-
-#if 0
-  disk_storage::pinned_t
-  disk_storage::get_neighbors (const slot_id_t &id, const level_t &level,
-			       const lock_mode &mode)
-  {
-    VPID vpid = { id.pageid, id.volid };
-    PAGE_PTR node_page_ptr = pgbuf_fix (m_thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-    SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
-
-    int node_offset = slotp->offset_to_record;
-
-    std::byte *neighbors_offset = reinterpret_cast<std::byte *> (node_page_ptr) + node_head_bytes_() +
-				  node_neighbors_bytes_ (level);
-    std::size_t neighbors_bytes_at_level = sizeof (float) * get_connectivity();
-
-    return disk_storage::pinned_t {id, neighbors_offset, neighbors_bytes_at_level, mode};
-  }
-#endif
 
   disk_storage::pinned_t
   disk_storage::get_vector (const OID &key, const slot_id_t &vec_slot, const lock_mode &mode)

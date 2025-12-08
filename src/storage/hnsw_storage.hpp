@@ -208,34 +208,10 @@ namespace cubhnsw
       virtual pinned_t get_root (lock_mode mode) = 0;
       virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
 
-      //virtual pinned_t get_neighbors (const slot_id_t &id, const level_t &level,
-      //			      const lock_mode &mode) = 0;
       virtual pinned_t get_vector (const OID &key, const slot_id_t &vec_slot, const lock_mode &mode) = 0;
-
-      // virtual pinned_t get_node_by_key (const OID &key, const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive
       virtual pinned_t promote_root (pinned_t &old) = 0;
-#if 0
-      // specialized helpers
-      virtual pinned_t get_root (lock_mode mode) = 0;
-      virtual pinned_t get_node (slot_id_t id, lock_mode mode) = 0;
-
-
-      virtual root_type init_root (std::byte *root_block) = 0;
-      virtual root_type get_root () = 0;
-      virtual void set_root (const root_type &root) = 0;
-
-      // vector storage
-      virtual const float *get_vector (const slot_id_t &at) const = 0;
-      virtual slot_id_t vector_at (const OID &oid) const = 0;
-
-      // graph storage
-      virtual node_type get_node (const slot_id_t &at) const = 0;
-      virtual slot_id_t node_at (const OID &oid) = 0;
-
-      virtual neighbors_ref_type get_neighbors (const slot_id_t &node_at, const level_t level) = 0;
-#endif
 
       virtual void set_thread_entry (cubthread::entry *thread_p)
       {
@@ -245,29 +221,6 @@ namespace cubhnsw
       virtual cubthread::entry *get_thread_entry() const noexcept
       {
 	return m_thread_p;
-      }
-
-
-    protected:
-
-      // specialized helpers
-#if 0
-      virtual pinned_t pin_root (lock_mode mode) = 0;
-      virtual pinned_t pin_node (slot_id_t id, lock_mode mode) = 0;
-      virtual pinned_t pin_neighbors (slot_id_t id, level_t level,
-				      lock_mode mode) = 0;
-#endif
-      virtual std::byte *get_new_block (VFID &vfid, std::size_t size, slot_id_t &out_block_id) = 0;
-
-      virtual void init_invalid_block_id () noexcept
-      {
-	//
-	m_invalid_block_id = {};
-      }
-
-      virtual slot_id_t invalid_block_id () const noexcept
-      {
-	return m_invalid_block_id;
       }
 
       short get_max_level () const
@@ -288,12 +241,24 @@ namespace cubhnsw
       inline std::size_t node_neighbors_bytes_ (level_t level) const noexcept
       {
 	std::size_t neighbors_byte = get_connectivity() * sizeof (slot_id_t) + sizeof (neighbors_count_t);
-	return neighbors_byte * (level);
+	return neighbors_byte * (level + 1);
+      }
+
+      inline std::size_t node_neighbors_offset_ (level_t level) const noexcept
+      {
+	if (level == 0)
+	  {
+	    return 0;
+	  }
+	else
+	  {
+	    return node_neighbors_bytes_ (level - 1);
+	  }
       }
 
       inline std::size_t node_bytes_ (level_t level) const noexcept
       {
-	return node_head_bytes_() + node_neighbors_bytes_ (level + 1);
+	return node_head_bytes_() + node_neighbors_bytes_ (level);
       }
 
       inline std::size_t node_head_bytes_() const noexcept
@@ -301,19 +266,21 @@ namespace cubhnsw
 	return node_t<Traits>::get_size();
       }
 
-#if 0
-      inline std::size_t node_bytes_ (level_t level) const noexcept
+
+    protected:
+
+      virtual std::byte *get_new_block (VFID &vfid, std::size_t size, slot_id_t &out_block_id) = 0;
+
+      virtual void init_invalid_block_id () noexcept
       {
-	return node_type::node_head_bytes_() + node_neighbors_bytes_ (level);
+	//
+	m_invalid_block_id = {};
       }
 
-
-      inline neighbors_ref_type neighbors_ (const slot_id_t blk, const level_t level) const noexcept
+      virtual slot_id_t invalid_block_id () const noexcept
       {
-	node_type n = get_node (blk);
-	return neighbors_ref_type (n.neighbors_tape() + node_neighbors_bytes_ (level));
+	return m_invalid_block_id;
       }
-#endif
 
       cubthread::entry *m_thread_p;
       BTID m_giid; // general index identifier

@@ -89,9 +89,6 @@ namespace cubhnsw
       virtual pinned_t get_root (lock_mode mode) override;
       // virtual pinned_t get_node (const OID &key, lock_mode mode) override;
       virtual pinned_t get_node_by_slot_id (const slot_id_t &id, const lock_mode &mode) override;
-      //virtual pinned_t get_neighbors (const slot_id_t &id, const level_t &level,
-      //			      const lock_mode &mode) override;
-
 
       virtual pinned_t get_vector (const OID &key, const slot_id_t &vec_slot, const lock_mode &mode) override;
       // virtual pinned_t get_node_by_key (const OID &key, const lock_mode &mode) override;

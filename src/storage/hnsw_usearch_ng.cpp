@@ -132,38 +132,12 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid,
   char rec_buf [IO_MAX_PAGE_SIZE + INT_ALIGNMENT];
   RECDES rec { DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
 
-  BTREE_ROOT_HEADER dummy_header;
-
-  dummy_header.num_oids = build_params.dimension;
-  dummy_header.num_keys = build_params.m;
-  dummy_header.num_nulls = build_params.ef_construction;
-  dummy_header.unique_pk = build_params.metric;
-
-  COPY_OID (& (dummy_header.topclass_oid), &oid_Null_oid);
-
-  VFID_SET_NULL (& (dummy_header.ovfid));
-  dummy_header.creator_mvccid = MVCCID_NULL;
-
-  dummy_header.node.node_level = 1; // dummy
-  dummy_header.node.max_key_len = 0; // dummy
-
-  int fixed_size = offsetof (BTREE_ROOT_HEADER, packed_key_domain);
-  memcpy (rec.data, &dummy_header, fixed_size);
-  rec.length = fixed_size;
-
-  /* insert the root header information into the root page */
-  const int DUMMY_HEADER_SLOT_ID = 0;
-  if (spage_insert_at (thread_p, page_ptr, DUMMY_HEADER_SLOT_ID, &rec) != SP_SUCCESS)
-    {
-      return NULL;
-    }
-
   hnsw_index *index = new hnsw_usearch_ng (*this, *btid, name, build_params, page_ptr, rec);
 
   pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
 
-  log_sysop_attach_to_outer (thread_p);
-  vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+  //log_sysop_attach_to_outer (thread_p);
+  //vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   return index;
 }

@@ -32,6 +32,9 @@
 
 #include "scope_exit.hpp"
 
+#define HNSW_UTIL_DEBUG 0
+#define HNSW_UTIL_PRINT(fmt, ...) do { if (HNSW_UTIL_DEBUG) { fprintf (stdout, fmt, ##__VA_ARGS__); fflush (stdout); } } while (0)
+
 template <typename T>
 struct lightweight_span
 {
@@ -418,37 +421,18 @@ class sorted_buffer_gt
       size_ = 0;
     }
 
-    /*
-        static inline std::size_t ceil2 (std::size_t v) noexcept
-        {
-          v--;
-          v |= v >> 1;
-          v |= v >> 2;
-          v |= v >> 4;
-          v |= v >> 8;
-          v |= v >> 16;
-    #ifdef USEARCH_64BIT_ENV
-          v |= v >> 32;
-    #endif
-          v++;
-          return v;
-        }
-    */
-
     static inline std::size_t ceil2 (std::size_t v) noexcept
     {
-      if (v <= 1)
-	{
-	  return 1;
-	}
-
-#if INTPTR_MAX == INT64_MAX
-      return 1ull << (64 - __builtin_clzl (v - 1));
-#else
-      return 1u << (32 - __builtin_clz (v - 1));
-#endif
+      v--;
+      v |= v >> 1;
+      v |= v >> 2;
+      v |= v >> 4;
+      v |= v >> 8;
+      v |= v >> 16;
+      v |= v >> 32;
+      v++;
+      return v;
     }
-
 
     bool reserve (std::size_t new_capacity) noexcept
     {
@@ -460,7 +444,7 @@ class sorted_buffer_gt
       new_capacity = ceil2 (new_capacity);
       new_capacity = (std::max<std::size_t>) (new_capacity, (std::max<std::size_t>) (capacity_ * 2u, 16u));
       auto allocator = allocator_t{};
-      auto new_elements = allocator.allocate (new_capacity);
+      auto new_elements = allocator.allocate (new_capacity + 1);
       if (!new_elements)
 	{
 	  return false;
@@ -472,7 +456,7 @@ class sorted_buffer_gt
 	}
       if (elements_)
 	{
-	  allocator.deallocate (elements_, capacity_);
+	  allocator.deallocate (elements_, capacity_ + 1);
 	}
 
       elements_ = new_elements;
@@ -483,6 +467,9 @@ class sorted_buffer_gt
     inline void insert_reserved (element_t &&element) noexcept
     {
       std::size_t slot = size_ ? std::lower_bound (elements_, elements_ + size_, element, &less) - elements_ : 0;
+
+      //HNSW_ALGO_PRINT("[sorted_buffer_gt] insert_reserved: slot: %d, size: %d, capacity: %d\n", (int) slot, (int) size_, (int) capacity_);
+#if 0
       std::size_t to_move = size_ - slot;
       element_t *source = elements_ + size_ - 1;
       for (; to_move; --to_move, --source)
@@ -490,7 +477,18 @@ class sorted_buffer_gt
 	  source[1] = source[0];
 	}
       elements_[slot] = element;
+#endif
+
+      for (std::size_t i = size_; i > slot; --i)
+	{
+	  elements_[i] = std::move (elements_[i - 1]);
+	}
+
+      elements_[slot] = std::move (element);
+
       size_++;
+
+      //HNSW_ALGO_PRINT("[sorted_buffer_gt] insert_reserved: size: %d, capacity: %d\n", (int) size_, (int) capacity_);
     }
 
     /**

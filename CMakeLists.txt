@@ -274,7 +274,7 @@ if(UNIX)
     list(APPEND EP_LIBS "openblas")
 
     # C flags for debug build
-    set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
+    set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS} ")
     # C++ flags for debug build
     set(CMAKE_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
 

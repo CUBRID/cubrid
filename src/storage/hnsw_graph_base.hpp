@@ -20,7 +20,6 @@ namespace cubhnsw
   template <typename T>
   static inline std::string dump_slot (const T &v)
   {
-    // 기본: 그냥 숫자로 찍기
     if constexpr (std::is_integral_v<T>)
       {
 	return std::to_string (v);
@@ -216,7 +215,7 @@ namespace cubhnsw
   class neighbors_ref_t
   {
     protected:
-      byte_t *tape_ {};
+      byte_t *tape_ {nullptr};
 
       static constexpr std::size_t shift (std::size_t i = 0) noexcept
       {
@@ -261,10 +260,12 @@ namespace cubhnsw
 	neighbors_count_t n = misaligned_load<neighbors_count_t> (tape_);
 	misaligned_store<slot_id_t> (tape_ + shift (n), slot);
 	misaligned_store<neighbors_count_t> (tape_, n + 1);
+	assert (size () <= 16);
       }
 
       slot_id_t at (std::size_t index) const noexcept
       {
+	assert (index < size());
 	return misaligned_load<slot_id_t> (tape_ + shift (index));
       }
 

@@ -4626,11 +4626,7 @@ void
 shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   BTID btid;
-<<<<<<< HEAD
-  int dimension, hnsw_M, hnsw_efConstruction, metric_type, attr_id;
-=======
   int dimension, hnsw_M, hnsw_efConstruction, metric_type, attrid;
->>>>>>> yj/CUBVEC-135
   OID class_oid;
   char *ptr;
 
@@ -4644,8 +4640,6 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &hnsw_M);
   ptr = or_unpack_int (ptr, &hnsw_efConstruction);
   ptr = or_unpack_int (ptr, &metric_type);
-  ptr = or_unpack_oid (ptr, &class_oid);
-  ptr = or_unpack_int (ptr, &attr_id);
 
   hnsw_build_params params;
 
@@ -4654,11 +4648,7 @@ shnsw_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   params.ef_construction = hnsw_efConstruction;
   params.metric = (DB_VECTOR_DISTANCE_METRIC) metric_type;
 
-<<<<<<< HEAD
-  int error = xhnsw_add_index (thread_p, &class_oid, attr_id, params, btid);
-=======
   int error = xhnsw_add_index (thread_p, &class_oid, attrid, params, btid);
->>>>>>> yj/CUBVEC-135
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
