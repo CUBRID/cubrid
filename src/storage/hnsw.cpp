@@ -850,25 +850,13 @@ hnsw_init_header (THREAD_ENTRY *thread_p, VFID *vfid, PAGE_PTR page_ptr, HNSW_HE
 static int
 hnsw_pack_header (RECDES *rec, HNSW_HEADER *hnsw_header)
 {
-  OR_BUF buf;
-  int rc = NO_ERROR;
-  int fixed_size = (int) offsetof (HNSW_HEADER, metric) + sizeof (int);
+  int fixed_size = (int) sizeof (HNSW_HEADER);
 
   memcpy (rec->data, hnsw_header, fixed_size);
 
   rec->length = fixed_size;
   rec->type = REC_HOME;
-
-  if (rc != NO_ERROR && er_errid () == NO_ERROR)
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  assert (false);
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	}
-    }
-
-  return rc;
+  return NO_ERROR;
 }
 
 static HNSW_HEADER *
