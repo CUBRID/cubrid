@@ -613,8 +613,8 @@ numeric_get_pow_of_10 (int exp)
     }
 #endif
 
-  /* Return the appropriate power of 10 */
-  return powers_of_10[exp];
+  /* Return the appropriate power of 10 - return pointer to last 18 bytes */
+  return powers_of_10[exp] + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE);
 }
 
 #if defined(SERVER_MODE)
@@ -5945,6 +5945,14 @@ int
 numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
 {
   int ret = NO_ERROR;
+  int precision = DB_VALUE_PRECISION (src);
+  int scale = DB_VALUE_SCALE (src);
+  bool is_float_numeric = false;
+
+  if (precision == DB_DEFAULT_NUMERIC_PRECISION && scale == DB_DEFAULT_NUMERIC_SCALE)
+    {
+      is_float_numeric = true;
+    }
 
   *data_status = DATA_STATUS_OK;
   /* Check for a DB_TYPE_NUMERIC src and a non NULL numerical dest */
@@ -5954,7 +5962,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_DOUBLE:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	if (OR_CHECK_DOUBLE_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -5967,7 +5982,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_FLOAT:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -5980,7 +6002,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_MONETARY:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	db_make_monetary (dest, DB_CURRENCY_DEFAULT, adouble);
 	break;
       }
@@ -5988,7 +6017,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_INTEGER:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	if (OR_CHECK_INT_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -6001,8 +6037,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_BIGINT:
       {
 	DB_BIGINT bint;
-
-	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_SCALE (src), &bint);
+	if (is_float_numeric)
+	  {
+	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &bint);
+	  }
+	else
+	  {
+	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bint);
+	  }
 	if (ret != NO_ERROR)
 	  {
 	    goto exit_on_error;
@@ -6015,7 +6057,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_SMALLINT:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	if (OR_CHECK_SHORT_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -6068,7 +6117,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	DB_TIME v_time;
 	int hour, minute, second;
 
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	v_time = (int) (adouble + 0.5) % SECONDS_IN_A_DAY;
 	db_time_decode (&v_time, &hour, &minute, &second);
 	db_make_time (dest, hour, minute, second);
@@ -6081,7 +6137,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	DB_DATE v_date;
 	int year, month, day;
 
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	v_date = (DB_DATE) (adouble);
 	db_date_decode (&v_date, &month, &day, &year);
 	db_make_date (dest, month, day, year);
@@ -6093,7 +6156,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	double adouble;
 	DB_TIMESTAMP v_timestamp;
 
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	v_timestamp = (DB_TIMESTAMP) (adouble);
 	db_make_timestamp (dest, v_timestamp);
 	break;
@@ -6104,7 +6174,14 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	DB_BIGINT bi, tmp_bi;
 	DB_DATETIME v_datetime;
 
-	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_SCALE (src), &bi);
+	if (is_float_numeric)
+	  {
+	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &bi);
+	  }
+	else
+	  {
+	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bi);
+	  }
 	if (ret == NO_ERROR)
 	  {
 	    /* make datetime value from interval value */
@@ -6146,13 +6223,28 @@ int
 numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
+  int precision = DB_VALUE_PRECISION (src);
+  int scale = DB_VALUE_SCALE (src);
+  bool is_float_numeric = false;
+
+  if (precision == DB_DEFAULT_NUMERIC_PRECISION && scale == DB_DEFAULT_NUMERIC_SCALE)
+    {
+      is_float_numeric = true;
+    }
 
   switch (DB_VALUE_DOMAIN_TYPE (dest))
     {
     case DB_TYPE_DOUBLE:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	if (OR_CHECK_DOUBLE_OVERFLOW (adouble))
 	  {
 	    return ER_FAILED;
@@ -6164,7 +6256,14 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_FLOAT:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
 	  {
 	    return ER_FAILED;
@@ -6176,7 +6275,14 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_MONETARY:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
+	if (is_float_numeric)
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	  }
+	else
+	  {
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	  }
 	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
 	  {
 	    return ER_FAILED;
@@ -6188,14 +6294,22 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_INTEGER:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
-	if (OR_CHECK_INT_OVERFLOW (adouble))
+	if (is_float_numeric)
 	  {
-	    return ER_FAILED;
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	    if (OR_CHECK_INT_OVERFLOW (adouble)
+		|| !numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src)))
+	      {
+		return ER_FAILED;
+	      }
 	  }
-	if (!numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_SCALE (src)))
+	else
 	  {
-	    return ER_FAILED;
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	    if (OR_CHECK_INT_OVERFLOW (adouble) || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
+	      {
+		return ER_FAILED;
+	      }
 	  }
 	db_make_int (dest, (int) (adouble));
 	break;
@@ -6205,15 +6319,22 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
       {
 	DB_BIGINT bint;
 
-	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_SCALE (src), &bint);
-	if (ret != NO_ERROR)
+	if (is_float_numeric)
 	  {
-	    return ER_FAILED;
+	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &bint);
+	    if (ret != NO_ERROR
+		|| !numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src)))
+	      {
+		return ER_FAILED;
+	      }
 	  }
-
-	if (!numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_SCALE (src)))
+	else
 	  {
-	    return ER_FAILED;
+	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bint);
+	    if (ret != NO_ERROR || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
+	      {
+		return ER_FAILED;
+	      }
 	  }
 	db_make_bigint (dest, bint);
 	break;
@@ -6222,14 +6343,22 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_SMALLINT:
       {
 	double adouble;
-	numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_SCALE (src), &adouble);
-	if (OR_CHECK_SHORT_OVERFLOW (adouble))
+	if (is_float_numeric)
 	  {
-	    return ER_FAILED;
+	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
+	    if (OR_CHECK_SHORT_OVERFLOW (adouble)
+		|| !numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src)))
+	      {
+		return ER_FAILED;
+	      }
 	  }
-	if (!numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_SCALE (src)))
+	else
 	  {
-	    return ER_FAILED;
+	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	    if (OR_CHECK_SHORT_OVERFLOW (adouble) || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
+	      {
+		return ER_FAILED;
+	      }
 	  }
 	db_make_short (dest, (DB_C_SHORT) ROUND (adouble));
 	break;
