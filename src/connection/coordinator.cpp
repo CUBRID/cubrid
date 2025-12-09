@@ -480,7 +480,7 @@ namespace cubconn::connection
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    this->statistics_print ();
+		    //this->statistics_print ();
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
