@@ -83,28 +83,23 @@ namespace cubhnsw
       // not yet
       virtual void init_root (std::byte *root_block, std::size_t &root_size) override;
 
-      virtual slot_id_t add_vector (const OID &key, const float *vector) override;
-      virtual slot_id_t add_node (const OID &key, const slot_id_t &vec_slot, const level_t &level) override;
+      virtual slot_id_t add_node (const OID &key, const float *vector, const level_t &level) override;
 
       virtual pinned_t get_root (lock_mode mode) override;
-      // virtual pinned_t get_node (const OID &key, lock_mode mode) override;
       virtual pinned_t get_node_by_slot_id (const slot_id_t &id, const lock_mode &mode) override;
 
-      virtual pinned_t get_vector (const OID &key, const slot_id_t &vec_slot, const lock_mode &mode) override;
-      // virtual pinned_t get_node_by_key (const OID &key, const lock_mode &mode) override;
+      virtual pinned_t get_vector_by_slot_id (const slot_id_t &vec_slot, const lock_mode &mode) override;
+
       // promote lockmode from shared to exclusive
       virtual pinned_t promote_root (pinned_t &old) override;
 
       virtual void set_empty (bool is_empty) noexcept override;
 
     protected:
-      virtual std::byte *get_new_block (VFID &vfid, std::size_t size, slot_id_t &out_block_id) override
-      {
-	return nullptr;
-      }
-      virtual void init_invalid_block_id() noexcept override {}
 
-      virtual void alloc_vector_page (VFID &vfid, VPID &vpid);
+      slot_id_t add_vector (const OID &key, const float *vector);
+
+      PAGE_PTR alloc_new_page (VFID &vfid, VPID &vpid);
 
       page_handle get_page_to_insert (VFID &vfid, VPID &last_vpid, std::size_t bytes);
 

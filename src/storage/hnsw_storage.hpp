@@ -51,7 +51,7 @@ namespace cubhnsw
   // TODO (refactor) : there are similar objects in page_buffer or lock_manager..
   enum class lock_mode
   {
-    none,       // read-only but without latch (rare)
+    none,       // for debugging
     shared,     // multiple readers (search)
     exclusive   // single writer (insert/update)
   };
@@ -198,17 +198,17 @@ namespace cubhnsw
 
       // The root is not initialized yet
       virtual bool is_empty () = 0;
+      virtual void set_empty (bool is_empty) noexcept = 0;
 
       // not yet
       virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
 
-      virtual slot_id_t add_vector (const OID &key, const float *vector) = 0;
-      virtual slot_id_t add_node (const OID &key, const slot_id_t &vec_slot, const level_t &level) = 0;
+      virtual slot_id_t add_node (const OID &key, const float *vector, const level_t &level) = 0;
 
       virtual pinned_t get_root (lock_mode mode) = 0;
-      virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
 
-      virtual pinned_t get_vector (const OID &key, const slot_id_t &vec_slot, const lock_mode &mode) = 0;
+      virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
+      virtual pinned_t get_vector_by_slot_id (const slot_id_t &vec_slot, const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive
       virtual pinned_t promote_root (pinned_t &old) = 0;
@@ -266,27 +266,10 @@ namespace cubhnsw
 	return node_t<Traits>::get_size();
       }
 
-      virtual void set_empty (bool is_empty) noexcept = 0;
-
     protected:
-
-      virtual std::byte *get_new_block (VFID &vfid, std::size_t size, slot_id_t &out_block_id) = 0;
-
-      virtual void init_invalid_block_id () noexcept
-      {
-	//
-	m_invalid_block_id = {};
-      }
-
-      virtual slot_id_t invalid_block_id () const noexcept
-      {
-	return m_invalid_block_id;
-      }
 
       cubthread::entry *m_thread_p;
       BTID m_giid; // general index identifier
       hnsw_build_params m_build_params;
-
-      slot_id_t m_invalid_block_id;
   };
 }

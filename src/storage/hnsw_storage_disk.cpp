@@ -33,7 +33,6 @@ namespace cubhnsw
 	return error_code;
       }
 
-
     log_sysop_start (thread_p);
     error_code = file_alloc_sticky_first_page (thread_p, &vfid, hnsw_initalize_new_page, NULL, &vpid, NULL);
     if (error_code != NO_ERROR)
@@ -44,7 +43,7 @@ namespace cubhnsw
       }
     log_sysop_commit (thread_p);
 
-#if 0 // TODO: TDE
+#if 0  // TODO: I think we don't need TDE for vector index files
     error_code = heap_get_class_tde_algorithm (thread_p, &btid->topclass_oid, &tde_algo);
     if (error_code != NO_ERROR)
       {
@@ -102,28 +101,25 @@ namespace cubhnsw
   disk_storage::slot_id_t
   disk_storage::add_vector (const OID &key, const float *vector)
   {
-    std::size_t dim = this->get_dimension ();
-    std::size_t bytes = dim * sizeof (float);
-
-    char *rec_buf = (char *) vector;
-    int rec_buf_size = (int) bytes;
+    std::size_t bytes = this->get_dimension () * sizeof (float);
 
     if (m_vec_pool_vfid.fileid == 0)
       {
 	assert (false);
+	return slot_id_t { -1, -1, -1 };
       }
 
     page_handle page_ptr = get_page_to_insert (m_vec_pool_vfid, m_last_vec_vpid, bytes);
     assert (page_ptr.get() != nullptr);
 
-    RECDES recdes = { IO_MAX_PAGE_SIZE, rec_buf_size, REC_HOME, rec_buf };
+    RECDES recdes = { IO_MAX_PAGE_SIZE, (int) bytes, REC_HOME, (char *) vector };
     PGSLOTID slot_id;
 
     int error_code = spage_insert (m_thread_p, page_ptr.get(), &recdes, &slot_id);
     if (error_code != SP_SUCCESS)
       {
 	assert (false);
-	return slot_id_t {};
+	return slot_id_t { -1, -1, -1 };
       }
 
     return slot_id_t { m_last_vec_vpid.pageid, slot_id, m_last_vec_vpid.volid };
@@ -133,28 +129,20 @@ namespace cubhnsw
   disk_storage::get_page_to_insert (VFID &vfid, VPID &last_vpid, std::size_t bytes)
   {
     PAGE_PTR page_ptr = nullptr;
-    if (last_vpid.pageid == -1)
+
+    if (VPID_ISNULL (&last_vpid))
       {
-	alloc_vector_page (vfid, last_vpid);
-	page_ptr = pgbuf_fix (m_thread_p, &last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	// alloc a new page in case of root page
+	page_ptr = alloc_new_page (vfid, last_vpid);
       }
     else
       {
-	// find the last page has enough space
-	if (VPID_EQ (&last_vpid, &m_root_vpid))
-	  {
-	    // alloc a new page in case of root page
-	    alloc_vector_page (vfid, last_vpid);
-	  }
 	page_ptr = pgbuf_fix (m_thread_p, &last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	int free_space = spage_get_free_space (m_thread_p, page_ptr);
-	if (free_space < static_cast<int> (bytes))
+	if (spage_get_free_space (m_thread_p, page_ptr) < static_cast<int> (bytes))
 	  {
+	    // not enough
 	    pgbuf_unfix (m_thread_p, page_ptr);
-
-	    // alloc a new page
-	    alloc_vector_page (vfid, last_vpid);
-	    page_ptr = pgbuf_fix (m_thread_p, &last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	    page_ptr = alloc_new_page (vfid, last_vpid);
 	  }
       }
 
@@ -167,29 +155,53 @@ namespace cubhnsw
 	   );
   }
 
-  void
-  disk_storage::alloc_vector_page (VFID &vfid, VPID &vpid)
+  PAGE_PTR
+  disk_storage::alloc_new_page (VFID &vfid, VPID &vpid)
   {
-    (void) file_alloc (m_thread_p, &vfid, hnsw_initalize_new_page, NULL, &vpid, NULL);
+    PAGE_PTR page_ptr = NULL;
+
+    (void) file_alloc (m_thread_p, &vfid, hnsw_initalize_new_page, NULL, &vpid, &page_ptr);
+    assert (page_ptr != NULL);
+
+    if (page_ptr == NULL)
+      {
+	assert (false);
+	return page_ptr;
+      }
+
+#if !defined (NDEBUG)
+    pgbuf_check_page_ptype (m_thread_p, page_ptr, PAGE_HNSW);
+#endif /* !NDEBUG */
+
+    return page_ptr;
   }
 
   disk_storage::slot_id_t
-  disk_storage::add_node (const OID &key, const slot_id_t &vec_slot, const level_t &level)
+  disk_storage::add_node (const OID &key, const float *vector, const level_t &level)
   {
+    // insert vector first
+    slot_id_t vec_slot = add_vector (key, vector);
+#if 0
+    if (vec_slot.pageid == -1)
+      {
+	assert (false);
+	return slot_id_t { -1, -1, -1 };
+      }
+#endif
+
+    // insert node
     std::size_t bytes = this->node_bytes_ (level);
     page_handle page_ptr = get_page_to_insert (m_vfid, m_last_node_vpid, bytes);
 
-    std::size_t rec_buf_size = bytes;
-
     RECDES recdes;
     char rec_buf[IO_MAX_PAGE_SIZE];
-    memset (rec_buf, 0, rec_buf_size);
+    memset (rec_buf, 0, bytes);
 
     /* create header record */
     recdes.area_size = DB_PAGESIZE;
     recdes.data = rec_buf;
     recdes.type = REC_HOME;
-    recdes.length = rec_buf_size;
+    recdes.length = bytes;
 
     node_t<disk_traits_t> node { reinterpret_cast<byte_t *> (rec_buf) };
     node.set_key (key);
@@ -274,31 +286,26 @@ namespace cubhnsw
   }
 
   disk_storage::pinned_t
-  disk_storage::get_vector (const OID &key, const slot_id_t &vec_slot, const lock_mode &mode)
+  disk_storage::get_vector_by_slot_id (const slot_id_t &vec_slot, const lock_mode &mode)
   {
     VPID vpid = { vec_slot.pageid, vec_slot.volid };
 
+    // updating vectors is not allowed
     assert (mode == lock_mode::shared);
 
-    PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;
-    if (mode == lock_mode::exclusive)
-      {
-	pgbuf_mode = PGBUF_LATCH_WRITE;
-      }
-    PAGE_PTR vec_page_ptr = pgbuf_fix (m_thread_p, &vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
-    SPAGE_SLOT *slotp = spage_get_slot (vec_page_ptr, vec_slot.slotid);
+    PAGE_PTR vec_page_ptr = pgbuf_fix (m_thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    assert (vec_page_ptr != nullptr);
 
-    std::size_t dim = this->get_dimension ();
-    std::size_t bytes = dim * sizeof (float);
+    SPAGE_SLOT *slotp = spage_get_slot (vec_page_ptr, vec_slot.slotid);
+    assert (slotp != nullptr);
 
     auto scoped_guard = [this, vec_page_ptr]()
     {
       pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (vec_page_ptr));
     };
     return disk_storage::pinned_t (vec_slot, (std::byte *) vec_page_ptr + slotp->offset_to_record, slotp->record_length,
-				   lock_mode::shared, scoped_guard);
+				   mode, scoped_guard);
   }
-
 
   // promote lockmode from shared to exclusive
   disk_storage::pinned_t

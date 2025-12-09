@@ -41,56 +41,58 @@
 #define HNSW_ALGO_DEBUG 0
 #define HNSW_ALGO_PRINT(fmt, ...) do { if (HNSW_ALGO_DEBUG) { fprintf (stdout, fmt, ##__VA_ARGS__); fflush (stdout); } } while (0)
 
-enum class vector_distance_metric_t
-{
-  COSINE,
-  EUCLIDEAN,
-  MAX
-};
-
-inline float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
-{
-  float ip = faiss::fvec_inner_product (vec1, vec2, dim);
-  float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
-  float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
-
-  // Handle zero vectors to avoid division by zero
-  if (norm1 == 0.0f || norm2 == 0.0f)
-    {
-      // NaN distance
-      return std::numeric_limits<float>::quiet_NaN();
-      // return 1.0f;
-    }
-
-  float similarity = ip / (sqrtf (norm1) * sqrtf (norm2));
-
-  // Clamp the similarity value to [-1, 1] to handle floating-point errors
-  if (similarity > 1.0f)
-    {
-      similarity = 1.0f;
-    }
-  if (similarity < -1.0f)
-    {
-      similarity = -1.0f;
-    }
-
-  // Cosine distance is 1 - cosine similarity
-  float distance = 1.0f - similarity;
-  assert (distance <= 2.0f && distance >= 0.0f);
-  return distance;
-}
-
-inline float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
-{
-  float l2 = faiss::fvec_L2sqr (vec1, vec2, dim);
-  return std::sqrt (l2);
-}
-
 namespace cubhnsw
 {
-  // =====================================================================
-  // distance
-  // =====================================================================
+
+// =====================================================================
+// distance
+// =====================================================================
+
+  enum class vector_distance_metric_t
+  {
+    COSINE,
+    EUCLIDEAN,
+    MAX
+  };
+
+  inline float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
+  {
+    // dot(vec1, vec2)
+    const float ip = faiss::fvec_inner_product (vec1, vec2, dim);
+
+    // squared norms
+    const float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
+    const float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
+
+    // Handle zero vectors to avoid division by zero
+    if (norm1 == 0.0f || norm2 == 0.0f)
+      {
+	// NaN distance
+	return std::numeric_limits<float>::quiet_NaN();
+	// return 1.0f;
+      }
+
+    const float denom = sqrtf (norm1 * norm2);
+
+    float similarity = ip / denom;
+    similarity = std::max (-1.0f, std::min (1.0f, similarity));
+
+    // cosine distance = 1 - cosine similarity
+    float distance = 1.0f - similarity;
+
+    // clamp again to [0,2] to avoid FP drift
+    distance = std::max (0.0f, std::min (2.0f, distance));
+
+    assert (distance >= 0.0f && distance <= 2.0f);
+
+    return distance;
+  }
+
+  inline float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
+  {
+    float l2 = faiss::fvec_L2sqr (vec1, vec2, dim);
+    return std::sqrt (l2);
+  }
 
   using distance_t = float;
   using Fn = distance_t (*) (const float *, const float *, size_t);
@@ -182,12 +184,9 @@ namespace cubhnsw
   using top_candidates_t =
 	  sorted_buffer_gt<candidate_t<Traits>, std::less<candidate_t<Traits>>, candidates_allocator_t<Traits>>;
 
-  //template <typename Traits>
-  //using top_candidates_t = std::vector<candidate_t<Traits>>;
   template <typename Traits>
   using next_candidates_t =
 	  max_heap_gt<candidate_t<Traits>, std::less<candidate_t<Traits>>, candidates_allocator_t<Traits>>;
-  //std::priority_queue<candidate_t<Traits>, std::vector<candidate_t<Traits>>, closer_candidate_t<Traits>>;
 
   template <typename Traits>
   struct add_result_t
@@ -204,15 +203,6 @@ namespace cubhnsw
     std::vector<OID> oids {};
   };
 
-  template <typename Traits>
-  static void shrink_vector (top_candidates_t<Traits> &vec, std::size_t new_size)
-  {
-    if (new_size < vec.size())
-      {
-	vec.erase (vec.begin() + new_size, vec.end());
-      }
-  }
-
   /* this class is modified version of the usearch implementation */
   // =====================================================================
   // algo class definition
@@ -222,14 +212,16 @@ namespace cubhnsw
   {
     public:
       using traits      = Traits;
+
+      using key_id_t    = OID;
       using slot_id_t  = typename traits::slot_id_t;
 
       using pinned_t   = pinned_block<Traits, std::function<void()>>;
       using storage_t   = storage<traits>;
+
       using root_type   = root_t<traits>;
       using node_type   = node_t<traits>;
       using neighbors_ref_type = neighbors_ref_t<traits>;
-      using key_id_t    = OID;
 
       struct context_t
       {
@@ -243,7 +235,6 @@ namespace cubhnsw
 	{
 	  m_top_candidates.clear ();
 	  m_top_for_refine.clear ();
-	  // m_next_candidates = {};
 	  m_next_candidates.clear();
 	  m_visits.clear();
 	}
@@ -346,8 +337,6 @@ namespace cubhnsw
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
     next_candidates_t<Traits> &next = m_context.m_next_candidates;
 
-    // fprintf (stdout, "[add] key: %s, expansion: %zu\n", dump_oid (key).c_str(), expansion);
-
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
     std::size_t top_limit = std::max (m_connectivity + 1, expansion);
@@ -379,8 +368,7 @@ namespace cubhnsw
 	}
 
       //
-      slot_id_t new_vec_slot = m_storage->add_vector (key, vector);
-      new_slot = m_storage->add_node (key, new_vec_slot, new_target_level);
+      new_slot = m_storage->add_node (key, vector, new_target_level);
       //
 
       if (m_storage->is_empty())
@@ -406,7 +394,6 @@ namespace cubhnsw
       }
 
     {
-
       slot_id_t closest_slot {};
       {
 	pinned_t entry_block = m_storage->get_node_by_slot_id (entry_slot, lock_mode::shared);
@@ -446,15 +433,6 @@ namespace cubhnsw
 	//}
 	HNSW_ALGO_PRINT ("[add] promotion required: new_target_level: %d, curr_max_level: %d\n", (int)new_target_level,
 			 (int)curr_max_level);
-	//pinned_block promoted_root = m_storage->promote_root (root_block);
-	//pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
-	{
-	  // pinned_t cleanup {std::move (root_block)};
-	}
-	// pinned_t promoted_root = m_storage->promote_root (root_block);
-	//root_node = root_type (promoted_root.data());
-	//pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
-	//root_type promoted_root_node = root_type (promoted_root.data());
 	root_node.set_entry (new_slot);
 	root_node.set_level (new_target_level);
 	m_storage->set_empty (false);
@@ -472,6 +450,8 @@ namespace cubhnsw
       {
 	return result;
       }
+
+    m_storage->set_thread_entry (thread_get_thread_entry_info());
 
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
     next_candidates_t<Traits> &next = m_context.m_next_candidates;
@@ -536,7 +516,7 @@ namespace cubhnsw
     slot_id_t closest_slot;
     {
       node_type start_node = node_type (start_slot.data());
-      pinned_t closest_vector_blk = m_storage->get_vector (start_node.get_key(), start_node.get_vec_slot(),
+      pinned_t closest_vector_blk = m_storage->get_vector_by_slot_id (start_node.get_vec_slot(),
 				    lock_mode::shared);
 
       closest_dist = compute_distance_ (query, reinterpret_cast<float *> (closest_vector_blk.data()));
@@ -561,7 +541,7 @@ namespace cubhnsw
 
 		distance_t candidate_dist;
 		{
-		  pinned_t neighbor_vector_blk = m_storage->get_vector (neighbor_node.get_key(), neighbor_node.get_vec_slot(),
+		  pinned_t neighbor_vector_blk = m_storage->get_vector_by_slot_id (neighbor_node.get_vec_slot(),
 						 lock_mode::shared);
 		  candidate_dist = compute_distance_ (query, reinterpret_cast<float *> (neighbor_vector_blk.data()));
 		}
@@ -571,10 +551,6 @@ namespace cubhnsw
 		    closest_dist = candidate_dist;
 		    closest_slot = neighbor_id;
 		    changed = true;
-
-		    // fprintf (stdout, "[search_for_one] closest_dist: %f\n", closest_dist);
-		    // fprintf (stdout, "[search_for_one] candidate_dist: %f\n", candidate_dist);
-		    // fprintf (stdout, "[search_for_one] closest_slot: %s\n", dump_oid (closest_slot).c_str());
 		  }
 	      }
 	  }
@@ -599,7 +575,7 @@ namespace cubhnsw
     {
       pinned_t start_node_blk = m_storage->get_node_by_slot_id (start_slot, lock_mode::shared);
       node_type start_node = node_type (start_node_blk.data());
-      pinned_t start_vector_blk = m_storage->get_vector (start_node.get_key(), start_node.get_vec_slot(), lock_mode::shared);
+      pinned_t start_vector_blk = m_storage->get_vector_by_slot_id (start_node.get_vec_slot(), lock_mode::shared);
       radius = compute_distance_ (query, reinterpret_cast<float *> (start_vector_blk.data()));
     }
 
@@ -640,16 +616,14 @@ namespace cubhnsw
 	    {
 	      pinned_t successor_node_blk = m_storage->get_node_by_slot_id (successor_slot, lock_mode::shared);
 	      node_type successor_node = node_type (successor_node_blk.data());
-	      pinned_t successor_vector_blk = m_storage->get_vector (successor_node.get_key(), successor_node.get_vec_slot(),
+	      pinned_t successor_vector_blk = m_storage->get_vector_by_slot_id (successor_node.get_vec_slot(),
 					      lock_mode::shared);
 	      sucessor_dist = compute_distance_ (query, reinterpret_cast<float *> (successor_vector_blk.data()));
 	    }
 
 	    if (top.size () < top_limit || sucessor_dist < radius)
 	      {
-		//next.push (candidate_t<Traits> (sucessor_dist, successor_slot));
 		next.insert (candidate_t<Traits> (-sucessor_dist, successor_slot));
-		// This will automatically evict poor matches:
 		top.insert (candidate_t<Traits> (sucessor_dist, successor_slot), top_limit);
 		radius = top.top ().distance;
 
@@ -678,11 +652,10 @@ namespace cubhnsw
     {
       pinned_t start_node_blk = m_storage->get_node_by_slot_id (start_slot, lock_mode::shared);
       node_type start_node = node_type (start_node_blk.data());
-      pinned_t start_vector_blk = m_storage->get_vector (start_node.get_key(), start_node.get_vec_slot(), lock_mode::shared);
+      pinned_t start_vector_blk = m_storage->get_vector_by_slot_id (start_node.get_vec_slot(), lock_mode::shared);
       radius = compute_distance_ (query, reinterpret_cast<float *> (start_vector_blk.data()));
     }
 
-    // next.push (candidate_t<Traits> (radius, start_slot));
     next.insert_reserved (candidate_t<Traits> (-radius, start_slot));
     top.insert_reserved (candidate_t<Traits> (radius, start_slot));
     visits.insert (start_slot);
@@ -718,24 +691,16 @@ namespace cubhnsw
 	    {
 	      pinned_t successor_node_blk = m_storage->get_node_by_slot_id (successor_slot, lock_mode::shared);
 	      node_type successor_node = node_type (successor_node_blk.data());
-	      pinned_t successor_vector_blk = m_storage->get_vector (successor_node.get_key(), successor_node.get_vec_slot(),
+	      pinned_t successor_vector_blk = m_storage->get_vector_by_slot_id (successor_node.get_vec_slot(),
 					      lock_mode::shared);
 	      sucessor_dist = compute_distance_ (query, reinterpret_cast<float *> (successor_vector_blk.data()));
 	    }
 
 	    if (top.size() < top_limit || sucessor_dist < radius)
 	      {
-		// next.push (candidate_t<Traits> (sucessor_dist, successor_slot));
 		next.insert (candidate_t<Traits> (-sucessor_dist, successor_slot));
-		// This will automatically evict poor matches:
 		top.insert (candidate_t<Traits> (sucessor_dist, successor_slot), top_limit);
-		// top.emplace_back (candidate_t<Traits> (sucessor_dist, successor_slot));
-		// radius = top.back().distance;
 		radius = top.top ().distance;
-
-		// fprintf (stdout, "[search_to_insert] radius: %f\n", radius);
-		// fprintf (stdout, "[search_to_insert] sucessor_dist: %f\n", sucessor_dist);
-		// fprintf (stdout, "[search_to_insert] top.size(): %zu\n", top.size());
 	      }
 	  }
       }
@@ -755,7 +720,6 @@ namespace cubhnsw
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
     for (std::size_t i = 0; i != top_view.size(); i++)
       {
-	// pinned_t top_view_node_blk = m_storage->get_node_by_slot_id (top_view[i].slot, lock_mode::shared);
 	new_neighbors.push_back (top_view[i].slot);
       }
   }
@@ -791,10 +755,9 @@ namespace cubhnsw
 	distance_t dist;
 	{
 	  node_type close_node = node_type (close_node_blk.data());
-	  pinned_t close_vector_blk = m_storage->get_vector (close_node.get_key(), close_node.get_vec_slot(),  lock_mode::shared);
+	  pinned_t close_vector_blk = m_storage->get_vector_by_slot_id (close_node.get_vec_slot(), lock_mode::shared);
 	  dist = compute_distance_ (value, reinterpret_cast<float *> (close_vector_blk.data()));
 	  top_for_refine.insert_reserved (candidate_t<Traits> (dist, close_slot));
-	  // top_for_refine.emplace_back (candidate_t<Traits> (dist, close_slot));
 	}
 
 	for (std::size_t i = 0; i < close_header.size (); i++)
@@ -805,8 +768,8 @@ namespace cubhnsw
 
 	    {
 	      node_type close_node = node_type (close_node_blk.data());
-	      pinned_t close_vector_blk = m_storage->get_vector (close_node.get_key(), close_node.get_vec_slot(),  lock_mode::shared);
-	      pinned_t successor_vector_blk = m_storage->get_vector (successor_node.get_key(), successor_node.get_vec_slot(),
+	      pinned_t close_vector_blk = m_storage->get_vector_by_slot_id (close_node.get_vec_slot(),  lock_mode::shared);
+	      pinned_t successor_vector_blk = m_storage->get_vector_by_slot_id (successor_node.get_vec_slot(),
 					      lock_mode::shared);
 
 	      float *close_oid_vec = reinterpret_cast<float *> (close_vector_blk.data());
@@ -822,8 +785,6 @@ namespace cubhnsw
 	(void) refine_ (m_connectivity, top_for_refine, top_view);
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
-	    //pinned_t top_view_node_blk = m_storage->get_node_by_slot_id (top_view[i].slot, lock_mode::shared);
-	    // node_type top_view_node = node_type (top_view_node_blk.data());
 	    close_header.push_back (top_view[i].slot);
 	  }
       }
@@ -865,9 +826,9 @@ namespace cubhnsw
 	      pinned_t submitted_node_blk = m_storage->get_node_by_slot_id (submitted.slot, lock_mode::shared);
 	      node_type submitted_node = node_type (submitted_node_blk.data());
 
-	      pinned_t candidate_vector_blk = m_storage->get_vector (candidate_node.get_key(), candidate_node.get_vec_slot(),
+	      pinned_t candidate_vector_blk = m_storage->get_vector_by_slot_id (candidate_node.get_vec_slot(),
 					      lock_mode::shared);
-	      pinned_t submitted_vector_blk = m_storage->get_vector (submitted_node.get_key(), submitted_node.get_vec_slot(),
+	      pinned_t submitted_vector_blk = m_storage->get_vector_by_slot_id (submitted_node.get_vec_slot(),
 					      lock_mode::shared);
 
 	      float *candidate_oid_vec = reinterpret_cast<float *> (candidate_vector_blk.data());
@@ -891,7 +852,6 @@ namespace cubhnsw
       }
 
     top.shrink (submitted_count);
-    // shrink_vector (top, submitted_count);
 
     out.assign (top_data, top_data + submitted_count);
   }

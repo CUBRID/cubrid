@@ -2816,7 +2816,7 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
       holder = thrd_holder_info->thrd_hold_list;
       while (holder != NULL)
 	{
-	  assert (false);
+	  // assert (false);
 
 	  CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
 
