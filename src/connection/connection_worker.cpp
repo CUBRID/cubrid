@@ -79,6 +79,13 @@ namespace cubconn::connection
   {
     std::size_t i;
 
+    m_context.reserve (256);
+
+    /* limiter */
+    m_recv_budget = (int) prm_get_integer_value (PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION);
+    m_send_budget = (int) prm_get_integer_value (PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION);
+    m_exhausted.reserve (128);
+
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -278,6 +285,7 @@ namespace cubconn::connection
 	    er_log_conn (__FILE__, __LINE__, "connection::worker->purge_stale_contexts: context not found\n");
 	    continue;
 	  }
+	m_exhausted.erase (ctx->m_id);
       }
     m_removed_context.clear ();
 
@@ -1428,7 +1436,7 @@ retry:
       }
     rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 
-    status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd);
+    status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
     if (status == result::PeerReset || status == result::Error)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_reception: status = %d\n", status);
@@ -1437,11 +1445,26 @@ retry:
 	return status;
       }
 
-    assert (status == result::Ok || status == result::Pending);
+    assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
 
-    if (status != result::Ok)
+    if (status == result::Pending)
       {
-	return result::Ok;
+	return result::Pending;
+      }
+
+    if (status == result::BudgetExhausted)
+      {
+	if (m_exhausted.find (ctx->m_id) == m_exhausted.end ())
+	  {
+	    m_exhausted[ctx->m_id].prepared = false;
+	    m_exhausted[ctx->m_id].events = EPOLLIN;
+	    m_exhausted[ctx->m_id].ctx = ctx;
+	  }
+	else
+	  {
+	    assert (m_exhausted[ctx->m_id].ctx == ctx);
+	    m_exhausted[ctx->m_id].events |= EPOLLIN;
+	  }
       }
 
     m_stats.add (statistics::worker::PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
@@ -1499,7 +1522,7 @@ retry:
   {
     result status;
 
-    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
+    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd, m_send_budget);
     if (status == result::PeerReset || status == result::Error)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_transmission: status = %d\n", status);
@@ -1511,7 +1534,7 @@ retry:
 	return status;
       }
 
-    assert (status == result::Ok || status == result::Pending);
+    assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
 
     if (status == result::Ok)
       {
@@ -1540,7 +1563,94 @@ retry:
 	ctx->m_send.m_transmitter.clear ();
 	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
       }
+    else if (status == result::BudgetExhausted)
+      {
+	if (m_exhausted.find (ctx->m_id) == m_exhausted.end ())
+	  {
+	    m_exhausted[ctx->m_id].prepared = false;
+	    m_exhausted[ctx->m_id].events = EPOLLOUT;
+	    m_exhausted[ctx->m_id].ctx = ctx;
+	  }
+	else
+	  {
+	    assert (m_exhausted[ctx->m_id].ctx == ctx);
+	    m_exhausted[ctx->m_id].events |= EPOLLOUT;
+	  }
+      }
     return status;
+  }
+
+  bool worker::handle_exhausted ()
+  {
+    result status;
+    context *ctx;
+
+    for (auto it = m_exhausted.begin (); it != m_exhausted.end (); )
+      {
+	if (!it->second.prepared)
+	  {
+	    it->second.prepared = true;
+	    it++;
+	    continue;
+	  }
+
+	ctx = it->second.ctx;
+	ctx->m_stats.set (statistics::context::LAST_ACTIVE_NS, m_timens);
+
+	if (it->second.events & EPOLLIN)
+	  {
+	    status = this->handle_reception (ctx);
+	    if (status == result::ClosedConnection || status == result::PeerReset)
+	      {
+		it = m_exhausted.erase (it);
+		continue;
+	      }
+	    if (status == result::Error)
+	      {
+		er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_reception failed");
+		return false;
+	      }
+	    if (status == result::Ok || status == result::Pending)
+	      {
+		assert (it->second.events & EPOLLIN);
+
+		it->second.events &= ~EPOLLIN;
+		if (!it->second.events)
+		  {
+		    it = m_exhausted.erase (it);
+		    continue;
+		  }
+	      }
+	  }
+	if (it->second.events & EPOLLOUT)
+	  {
+	    status = this->handle_transmission (ctx);
+	    if (status == result::ClosedConnection || status == result::PeerReset)
+	      {
+		it = m_exhausted.erase (it);
+		continue;
+	      }
+	    if (status == result::Error)
+	      {
+		er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_transmission failed");
+		return false;
+	      }
+	    if (status == result::Ok || status == result::Pending)
+	      {
+		assert (it->second.events & EPOLLOUT);
+
+		it->second.events &= ~EPOLLOUT;
+		if (!it->second.events)
+		  {
+		    it = m_exhausted.erase (it);
+		    continue;
+		  }
+	      }
+	  }
+	it++;
+      }
+
+    return true;
   }
 
   void worker::initialize ()
@@ -1617,7 +1727,7 @@ retry:
 
     while (!m_stop)
       {
-	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
+	nfds = m_events.wait (events.data (), events.size (), m_exhausted.empty () ? TIMEOUT_INFINITE : TIMEOUT_NOWAIT);
 	if (nfds < 0)
 	  {
 	    if (errno == EINTR)
@@ -1680,6 +1790,16 @@ retry:
 		    er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_transmission failed");
 		    return false;
 		  }
+	      }
+	  }
+
+	/* exhausted */
+	if (m_exhausted.size () > 0)
+	  {
+	    if (!this->handle_exhausted ())
+	      {
+		er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_exhausted failed");
+		return false;
 	      }
 	  }
 

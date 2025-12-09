@@ -203,7 +203,7 @@ namespace cubconn::connection
 
   void coordinator::statistics_print ()
   {
-    double bytes_in, bytes_out;
+    double bytes_in, bytes_out, budget_recv_hit, budget_send_hit;
     std::size_t i;
 
     printf ("\033[2J\033[H");
@@ -211,10 +211,14 @@ namespace cubconn::connection
       {
 	bytes_in = 0;
 	bytes_out = 0;
+	budget_recv_hit = 0;
+	budget_send_hit = 0;
 	for (auto &stats : m_statistics[i].m_contexts)
 	  {
 	    bytes_in += stats.second.first.get (statistics::context::BYTES_IN_TOTAL);
 	    bytes_out += stats.second.first.get (statistics::context::BYTES_OUT_TOTAL);
+	    budget_recv_hit += stats.second.first.get (statistics::context::RECV_BUDGET_HIT);
+	    budget_send_hit += stats.second.first.get (statistics::context::SEND_BUDGET_HIT);
 	  }
 
 	printf ("------ worker %d ------\n", static_cast<int> (i));
@@ -228,6 +232,8 @@ namespace cubconn::connection
 		m_statistics[i].m_worker.first.get (statistics::worker::PACKET_COUNT));
 	printf ("BYTES IN: %lf\n", bytes_in);
 	printf ("BYTES OUT: %lf\n", bytes_out);
+	printf ("RECV BUDGET HIT: %lf\n", budget_recv_hit);
+	printf ("SEND BUDGET HIT: %lf\n", budget_send_hit);
       }
   }
 
@@ -528,7 +534,7 @@ namespace cubconn::connection
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    //this->statistics_print ();
+		    this->statistics_print ();
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {

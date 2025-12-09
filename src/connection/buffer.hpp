@@ -47,6 +47,7 @@ namespace cubconn
     Error,
     Reset,
     Pending,
+    BudgetExhausted,
     PeerReset,
     RefuseConnection,
     ClosedConnection,
