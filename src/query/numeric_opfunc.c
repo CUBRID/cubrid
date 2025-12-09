@@ -1027,18 +1027,16 @@ static bool
 numeric_overflow (DB_C_NUMERIC arg, int exp)
 {
   unsigned char narg[DB_NUMERIC_BUF_SIZE];	/* copy of a DB_C_NUMERIC */
-  DB_C_NUMERIC full_pow10 = numeric_get_pow_of_10 (exp);
-  unsigned char *tmp_arg = full_pow10 + (POW10_BUF_SIZE - DB_NUMERIC_BUF_SIZE);
 
   if (numeric_is_negative (arg))
     {
       numeric_copy (narg, arg);
       numeric_negate (narg);
-      return (numeric_compare_pos (narg, tmp_arg) >= 0) ? true : false;
+      return (numeric_compare_pos (narg, numeric_get_pow_of_10 (exp)) >= 0) ? true : false;
     }
   else
     {
-      return (numeric_compare_pos (arg, tmp_arg) >= 0) ? true : false;
+      return (numeric_compare_pos (arg, numeric_get_pow_of_10 (exp)) >= 0) ? true : false;
     }
 }
 
