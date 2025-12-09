@@ -781,8 +781,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
 
-#define PRM_NAME_CSS_MAX_CONNECTION_THREAD "max_connection_thread"
-#define PRM_NAME_CSS_MIN_CONNECTION_THREAD "min_connection_thread"
+#define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
+#define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -5167,8 +5167,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_CSS_MAX_CONNECTION_THREAD,
-   PRM_NAME_CSS_MAX_CONNECTION_THREAD,
+  {PRM_ID_CSS_MAX_CONNECTION_WORKER,
+   PRM_NAME_CSS_MAX_CONNECTION_WORKER,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
@@ -5185,8 +5185,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_CSS_MIN_CONNECTION_THREAD,
-   PRM_NAME_CSS_MIN_CONNECTION_THREAD,
+  {PRM_ID_CSS_MIN_CONNECTION_WORKER,
+   PRM_NAME_CSS_MIN_CONNECTION_WORKER,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
@@ -9784,8 +9784,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *thread_core_count_prm;
-  SYSPRM_PARAM *max_connection_threads_prm;
-  SYSPRM_PARAM *min_connection_threads_prm;
+  SYSPRM_PARAM *max_connection_workers_prm;
+  SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
 #endif
   char newval[LINE_MAX];
@@ -9837,8 +9837,8 @@ prm_tune_parameters (void)
 
 #if defined (SERVER_MODE)
       thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
-      max_connection_threads_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_THREAD);
-      min_connection_threads_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_THREAD);
+      max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
       system_cpu_count = cubthread::system_core_count ();
 
       if (PRM_GET_INT (thread_core_count_prm->value) > system_cpu_count)
@@ -9846,15 +9846,15 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%d", system_cpu_count);
 	  (void) prm_set (thread_core_count_prm, newval, false);
 	}
-      if (PRM_GET_INT (max_connection_threads_prm->value) > system_cpu_count)
+      if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
-	  (void) prm_set (max_connection_threads_prm, newval, false);
+	  (void) prm_set (max_connection_workers_prm, newval, false);
 	}
-      if (PRM_GET_INT (min_connection_threads_prm->value) > PRM_GET_INT (max_connection_threads_prm->value))
+      if (PRM_GET_INT (min_connection_workers_prm->value) > PRM_GET_INT (max_connection_workers_prm->value))
 	{
-	  sprintf (newval, "%d", PRM_GET_INT (max_connection_threads_prm->value));
-	  (void) prm_set (min_connection_threads_prm, newval, false);
+	  sprintf (newval, "%d", PRM_GET_INT (max_connection_workers_prm->value));
+	  (void) prm_set (min_connection_workers_prm, newval, false);
 	}
 #endif
     }

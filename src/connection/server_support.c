@@ -552,7 +552,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
   std::size_t core_count, worker_count;
-  std::size_t max_connection_thread, min_connection_thread;
+  std::size_t max_connection_workers, min_connection_workers;
   std::string name;
   int status = NO_ERROR;
 
@@ -569,8 +569,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   core_count = (int) prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
   worker_count = (int) prm_get_integer_value (PRM_ID_THREAD_WORKER_COUNT);
-  max_connection_thread = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_THREAD);
-  min_connection_thread = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_THREAD);
+  max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+  min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
   // create request worker pool
   css_Server_request_worker_pool =
@@ -589,7 +589,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  connections.initialize (MAX_CONNECTIONS, max_connection_thread, min_connection_thread);
+  connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers);
 
   /* attach thread entry */
   connector.attach (*thread_p);

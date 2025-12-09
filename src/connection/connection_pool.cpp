@@ -47,8 +47,8 @@ namespace cubconn::connection
 {
   pool::pool () :
     m_max_connections (-1),
-    m_max_connection_threads (-1),
-    m_min_connection_threads (-1)
+    m_max_connection_workers (-1),
+    m_min_connection_workers (-1)
   {
     m_watcher = std::make_shared<thread_watcher> ();
     m_watcher->active = 0;
@@ -58,24 +58,24 @@ namespace cubconn::connection
   {
   }
 
-  void pool::initialize (std::uint32_t max_connections, int max_connection_threads, int min_connection_threads)
+  void pool::initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers)
   {
     (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
     (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 
-    this->initialize_topology (max_connection_threads);
+    this->initialize_topology (max_connection_workers);
 
     this->lock_resource ();
 
     this->initialize_freelist (max_connections);
-    this->initialize_coordinator (max_connection_threads, min_connection_threads);
-    this->initialize_workers (max_connection_threads, min_connection_threads);
+    this->initialize_coordinator (max_connection_workers, min_connection_workers);
+    this->initialize_workers (max_connection_workers, min_connection_workers);
 
     this->release_resource ();
 
     m_max_connections = max_connections;
-    m_max_connection_threads = max_connection_threads;
-    m_min_connection_threads = min_connection_threads;
+    m_max_connection_workers = max_connection_workers;
+    m_min_connection_workers = min_connection_workers;
   }
 
   void pool::finalize ()
@@ -94,8 +94,8 @@ namespace cubconn::connection
     this->finalize_topology ();
 
     m_max_connections = -1;
-    m_max_connection_threads = -1;
-    m_min_connection_threads = -1;
+    m_max_connection_workers = -1;
+    m_min_connection_workers = -1;
   }
 
   void pool::dispatch (css_conn_entry *conn)
@@ -238,9 +238,9 @@ namespace cubconn::connection
     m_freelist.m_claim = 0;
   }
 
-  void pool::initialize_topology (std::uint32_t max_connection_threads)
+  void pool::initialize_topology (std::uint32_t max_connection_workers)
   {
-    cubbase::topology.load_cpu (max_connection_threads);
+    cubbase::topology.load_cpu (max_connection_workers);
     cubbase::topology.map_nic_to_core ();
   }
 
@@ -248,25 +248,25 @@ namespace cubconn::connection
   {
   }
 
-  void pool::initialize_workers (std::uint32_t max_connection_threads, std::uint32_t min_connection_threads)
+  void pool::initialize_workers (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
     std::vector<int> *cores;
     std::uint32_t i;
 
     assert (m_mutex_holder == std::this_thread::get_id ());
 
-    m_workers.reserve (max_connection_threads);
+    m_workers.reserve (max_connection_workers);
 
     cores = &cubbase::topology.get_cores ();
 
-    assert (cores->size () == max_connection_threads);
+    assert (cores->size () == max_connection_workers);
 
-    for (i = 0; i < max_connection_threads; i++)
+    for (i = 0; i < max_connection_workers; i++)
       {
 	m_workers.emplace_back (std::make_unique<worker> (this, m_coordinator, m_watcher, (*cores)[i], i));
       }
 
-    /* pre-warm the connection thread and its queue to avoid a race condition. */
+    /* pre-warm the connection worker and its queue to avoid a race condition. */
     for (std::unique_ptr<worker> &worker : m_workers)
       {
 	for (i = 0; i < static_cast<std::size_t> (worker::queue_type::TYPE_COUNT); i++)
@@ -322,7 +322,7 @@ namespace cubconn::connection
       }
   }
 
-  void pool::initialize_coordinator (std::uint32_t max_connection_threads, std::uint32_t min_connection_threads)
+  void pool::initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
     coordinator::message request;
     std::vector<int> *cores;
@@ -332,8 +332,8 @@ namespace cubconn::connection
 			    this,
 			    m_watcher,
 			    (*cores)[0],
-			    max_connection_threads,
-			    min_connection_threads
+			    max_connection_workers,
+			    min_connection_workers
 		    );
 
     request.type = coordinator::message_type::START;
