@@ -261,7 +261,6 @@ namespace cubhnsw
 	neighbors_count_t n = misaligned_load<neighbors_count_t> (tape_);
 	misaligned_store<slot_id_t> (tape_ + shift (n), slot);
 	misaligned_store<neighbors_count_t> (tape_, n + 1);
-	assert (size () <= 16);
       }
 
       slot_id_t at (std::size_t index) const noexcept
@@ -293,12 +292,19 @@ namespace cubhnsw
       std::string dump() const noexcept
       {
 	std::stringstream ss;
-	ss << "size: " << size() << "\n";
+	std::size_t n = size();
+	ss << "size: " << n << "\n";
 	ss << " [";
-	for (std::size_t i = 0; i < size(); ++i)
+	for (std::size_t i = 0; i < n; ++i)
 	  {
-	    ss << dump_slot (at (i));
-	    if (i < size() - 1)
+	    std::string dump_str = dump_slot (at (i));
+	    if (dump_str == "0|0|0")
+	      {
+		fprintf (stdout, "size: %zu\n", n);
+		abort();
+	      }
+	    ss << dump_str;
+	    if (i < n - 1)
 	      {
 		ss << ", ";
 	      }

@@ -114,6 +114,7 @@ namespace cubhnsw
       }
 
     page_handle page_ptr = get_page_to_insert (m_vec_pool_vfid, m_last_vec_vpid, bytes);
+    assert (page_ptr.get() != nullptr);
 
     RECDES recdes = { IO_MAX_PAGE_SIZE, rec_buf_size, REC_HOME, rec_buf };
     PGSLOTID slot_id;
@@ -169,8 +170,7 @@ namespace cubhnsw
   void
   disk_storage::alloc_vector_page (VFID &vfid, VPID &vpid)
   {
-    PAGE_TYPE ptype = PAGE_BTREE;
-    (void) file_alloc (m_thread_p, &vfid, btree_initialize_new_page, NULL, &vpid, NULL);
+    (void) file_alloc (m_thread_p, &vfid, hnsw_initalize_new_page, NULL, &vpid, NULL);
   }
 
   disk_storage::slot_id_t
@@ -183,6 +183,7 @@ namespace cubhnsw
 
     RECDES recdes;
     char rec_buf[IO_MAX_PAGE_SIZE];
+    memset (rec_buf, 0, rec_buf_size);
 
     /* create header record */
     recdes.area_size = DB_PAGESIZE;

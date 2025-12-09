@@ -157,7 +157,7 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
 
   std::size_t root_size;
   m_storage->init_root (reinterpret_cast<std::byte *> (rec.data), root_size);
-  rec.length = root_size;
+  rec.length = (int) root_size;
 
   if (spage_insert_at (this->m_thread_p, page_ptr, 1, &rec) != SP_SUCCESS)
     {

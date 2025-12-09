@@ -58,8 +58,8 @@ inline float cubvec_cosine_distance (const float *vec1, const float *vec2, size_
   if (norm1 == 0.0f || norm2 == 0.0f)
     {
       // NaN distance
-      // return std::numeric_limits<float>::quiet_NaN();
-      return 1.0f;
+      return std::numeric_limits<float>::quiet_NaN();
+      // return 1.0f;
     }
 
   float similarity = ip / (sqrtf (norm1) * sqrtf (norm2));
@@ -366,9 +366,9 @@ namespace cubhnsw
     level_t new_target_level;
 
     slot_id_t entry_slot, new_slot;
-    pinned_t root_block = m_storage->get_root (lock_mode::shared);
+    pinned_t root_block = m_storage->get_root (lock_mode::exclusive);
+    root_type root_node = root_type (root_block.data());
     {
-      root_type root_node = root_type (root_block.data());
       curr_max_level = root_node.get_level(); // get max_level from root page
       new_target_level = choose_random_level_ (m_context.m_level_generator, m_inverse_log_connectivity);
       entry_slot = root_node.get_entry();
@@ -386,13 +386,13 @@ namespace cubhnsw
       if (m_storage->is_empty())
 	{
 	  {
-	    pinned_t cleanup {std::move (root_block)};
+	    //pinned_t cleanup {std::move (root_block)};
 	  }
 
-	  pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
-	  root_type promoted_root_node = root_type (promoted_root.data());
-	  promoted_root_node.set_entry (new_slot);
-	  promoted_root_node.set_level (new_target_level);
+	  //pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
+	  //root_type promoted_root_node = root_type (promoted_root.data());
+	  root_node.set_entry (new_slot);
+	  root_node.set_level (new_target_level);
 	  m_storage->set_empty (false);
 	  return result;
 	}
@@ -401,8 +401,8 @@ namespace cubhnsw
     if (new_target_level <= curr_max_level)
       {
 	// unlock root
-	pinned_t cleanup {std::move (root_block)};
-	HNSW_ALGO_PRINT ("[add] unlock root\n");
+	//pinned_t cleanup {std::move (root_block)};
+	//HNSW_ALGO_PRINT ("[add] unlock root\n");
       }
 
     {
@@ -449,14 +449,14 @@ namespace cubhnsw
 	//pinned_block promoted_root = m_storage->promote_root (root_block);
 	//pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
 	{
-	  pinned_t cleanup {std::move (root_block)};
+	  // pinned_t cleanup {std::move (root_block)};
 	}
 	// pinned_t promoted_root = m_storage->promote_root (root_block);
 	//root_node = root_type (promoted_root.data());
-	pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
-	root_type promoted_root_node = root_type (promoted_root.data());
-	promoted_root_node.set_entry (new_slot);
-	promoted_root_node.set_level (new_target_level);
+	//pinned_t promoted_root = m_storage->get_root (lock_mode::exclusive);
+	//root_type promoted_root_node = root_type (promoted_root.data());
+	root_node.set_entry (new_slot);
+	root_node.set_level (new_target_level);
 	m_storage->set_empty (false);
       }
 
@@ -476,6 +476,9 @@ namespace cubhnsw
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
     next_candidates_t<Traits> &next = m_context.m_next_candidates;
     std::size_t expansion_size = std::max (k, expansion);
+
+    m_context.clear_candidates();
+
     if (!top.reserve (expansion_size))
       {
 	// TODO: error handling
@@ -752,8 +755,8 @@ namespace cubhnsw
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
     for (std::size_t i = 0; i != top_view.size(); i++)
       {
-	pinned_t top_view_node_blk = m_storage->get_node_by_slot_id (top_view[i].slot, lock_mode::shared);
-	new_neighbors.push_back (top_view_node_blk.id());
+	// pinned_t top_view_node_blk = m_storage->get_node_by_slot_id (top_view[i].slot, lock_mode::shared);
+	new_neighbors.push_back (top_view[i].slot);
       }
   }
 
@@ -819,9 +822,9 @@ namespace cubhnsw
 	(void) refine_ (m_connectivity, top_for_refine, top_view);
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
-	    pinned_t top_view_node_blk = m_storage->get_node_by_slot_id (top_view[i].slot, lock_mode::shared);
-	    node_type top_view_node = node_type (top_view_node_blk.data());
-	    close_header.push_back (top_view_node_blk.id());
+	    //pinned_t top_view_node_blk = m_storage->get_node_by_slot_id (top_view[i].slot, lock_mode::shared);
+	    // node_type top_view_node = node_type (top_view_node_blk.data());
+	    close_header.push_back (top_view[i].slot);
 	  }
       }
 
