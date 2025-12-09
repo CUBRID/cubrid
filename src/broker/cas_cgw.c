@@ -234,7 +234,7 @@ main (int argc, char *argv[])
 
   if (cgw_init () < 0)
     {
-      fprintf(stderr, "CGW initialization failed. Exiting.\n");
+      fprintf (stderr, "CGW initialization failed. Exiting.\n");
       return -1;
     }
     
