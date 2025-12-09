@@ -2402,11 +2402,19 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 	  return NULL_VOLDES;
 	}
 
+#if defined(HPUX)
+      if ((is_sweep_clean == true
+	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, false,
+					kbytes_to_be_written_per_sec)) ||
+	  (is_sweep_clean == false
+	   && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, FILEIO_WRITE_DEFAULT_WRITE)))
+#else /* HPUX */
       if (!((fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, true) ==
 	     malloc_io_page_p) && (is_sweep_clean == false
 				   || fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
 							       false,
 							       kbytes_to_be_written_per_sec) == malloc_io_page_p)))
+#endif /* !HPUX */
 	{
 	  /* It is likely that we run of space. The partition where the volume was created has been used since we
 	   * checked above. */
@@ -4500,7 +4508,7 @@ fileio_synchronize_directory (THREAD_ENTRY * thread_p, const char *label)
     {
       return ER_FAILED;
     }
-  if (fileio_synchronize (thread_p, fd, path, true) != fd)
+  if (fileio_synchronize (thread_p, fd, path, true) == NULL_VOLDES)
     {
       fileio_close (fd);
       return ER_FAILED;

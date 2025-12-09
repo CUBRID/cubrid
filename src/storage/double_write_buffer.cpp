@@ -2066,10 +2066,12 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
 
 	  current_flush_volume_info = dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd, metadata);
 	}
+      else
+	{
+	  assert (current_flush_volume_info != NULL);
 
-      assert (current_flush_volume_info != NULL);
-
-      current_flush_volume_info->metadata = current_flush_volume_info->metadata || metadata;
+	  current_flush_volume_info->metadata = current_flush_volume_info->metadata || metadata;
+	}
 
       assert (last_written_vol_fd != NULL_VOLDES);
 
