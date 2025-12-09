@@ -145,7 +145,6 @@
 typedef int T_SOCKLEN;
 #elif defined(UNIXWARE7)
 typedef size_t T_SOCKLEN;
-FN_KEEP_CONN
 #else
 typedef socklen_t T_SOCKLEN;
 #endif
