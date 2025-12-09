@@ -166,8 +166,8 @@ static void numeric_init_pow_of_10 (void);
 #endif
 static DB_C_NUMERIC numeric_get_pow_of_10 (int exp);
 static void float_numeric_init_pow10_table (void);
+static int float_numeric_precision_to_bytes (int prec);
 static int float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes);
-static int float_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes);
 static void numeric_double_shift_bit (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, int numbits, DB_C_NUMERIC lsb,
 				      DB_C_NUMERIC msb, bool is_long_num);
 static int numeric_compare_pos (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2);
@@ -643,7 +643,42 @@ float_numeric_init_pow10_table (void)
 #endif
 }
 
-int
+/*
+ * float_numeric_precision_to_bytes() - convert decimal precision to required byte length (base-256)
+ *
+ * prec(in): decimal precision (number of digits)
+ *
+ * Return:
+ *   - prec > 0 : minimum number of bytes required
+ *                (calculated as ceil(prec / log10(256)))
+ *   - prec == 0: currently returns DB_NUMERIC_BUF_SIZE
+ *                (reserved for future floating-point mode)
+ *   - prec < 0 : invalid case, triggers assert and returns default precision
+ *
+ * Note:
+ *   - log10(256) = 2.40824 -> one byte can store about 2.4 decimal digits
+ */
+static int
+float_numeric_precision_to_bytes (int prec)
+{
+  const double log10_256 = log10 (256.0);
+
+  if (prec == 0)
+    {
+      /* for future floating-point mode */
+      return DB_NUMERIC_BUF_SIZE;
+    }
+  else if (prec < 0)
+    {
+      /* cases where the value is 0 or negative cannot occur */
+      assert (false);
+      return DB_DEFAULT_PRECISION;
+    }
+
+  return (int) ceil ((double) prec / log10_256);
+}
+
+static int
 float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes)
 {
   int i, start_idx, idx, end_idx;
@@ -699,21 +734,6 @@ float_numeric_get_decimal_digit (const uint8_t * calc_buf, int calc_bytes)
    * generally, the number of digits is end_idx + 1, but we cap the upper bound to POW10_MAX_INDEX
    */
   return (end_idx < POW10_MAX_INDEX) ? (end_idx + 1) : POW10_MAX_INDEX;
-}
-
-static int
-float_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes)
-{
-  if (numeric_is_negative (calc_buf))
-    {
-      uint8_t calc_buf_copy[calc_bytes];
-      memcpy (calc_buf_copy, calc_buf, calc_bytes);
-      numeric_negate (calc_buf_copy);
-
-      return float_numeric_get_decimal_digit (calc_buf_copy, calc_bytes);
-    }
-
-  return float_numeric_get_decimal_digit (calc_buf, calc_bytes);
 }
 
 /*
@@ -6400,37 +6420,17 @@ numeric_db_value_increase (DB_VALUE * arg)
   return NO_ERROR;
 }
 
-/*
- * float_numeric_precision_to_bytes() - convert decimal precision to required byte length (base-256)
- *
- * prec(in): decimal precision (number of digits)
- *
- * Return:
- *   - prec > 0 : minimum number of bytes required
- *                (calculated as ceil(prec / log10(256)))
- *   - prec == 0: currently returns DB_NUMERIC_BUF_SIZE
- *                (reserved for future floating-point mode)
- *   - prec < 0 : invalid case, triggers assert and returns default precision
- *
- * Note:
- *   - log10(256) = 2.40824 -> one byte can store about 2.4 decimal digits
- */
 int
-float_numeric_precision_to_bytes (int prec)
+float_numeric_get_precision_digits (uint8_t * calc_buf, int calc_bytes)
 {
-  const double log10_256 = log10 (256.0);
+  if (numeric_is_negative (calc_buf))
+    {
+      uint8_t calc_buf_copy[calc_bytes];
+      memcpy (calc_buf_copy, calc_buf, calc_bytes);
+      numeric_negate (calc_buf_copy);
 
-  if (prec == 0)
-    {
-      /* for future floating-point mode */
-      return DB_NUMERIC_BUF_SIZE;
-    }
-  else if (prec < 0)
-    {
-      /* cases where the value is 0 or negative cannot occur */
-      assert (false);
-      return DB_DEFAULT_PRECISION;
+      return float_numeric_get_decimal_digit (calc_buf_copy, calc_bytes);
     }
 
-  return (int) ceil ((double) prec / log10_256);
+  return float_numeric_get_decimal_digit (calc_buf, calc_bytes);
 }

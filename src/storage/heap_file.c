@@ -17940,6 +17940,46 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
       if (error == NO_ERROR)
 	{
+	  if (src_type == DB_TYPE_NUMERIC && dest_type == DB_TYPE_NUMERIC)
+	    {
+	      int src_prec = value->dbvalue.domain.numeric_info.precision;
+	      int src_scale = value->dbvalue.domain.numeric_info.scale;
+	      int dest_prec = dest_dom->precision;
+	      int dest_scale = dest_dom->scale;
+
+	      bool can_skip_cast = false;
+
+	      if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION && dest_scale == DB_DEFAULT_NUMERIC_SCALE)
+		{
+		  /* this handles both ATT_CHG_TYPE_NUMERIC_PREC_INCR and SM_ATTR_CHG_WITH_ROW_UPDATE cases.
+		   * For float numeric, precision must be calculated accurately from the actual value.
+		   */
+		  value->dbvalue.data.num.header.precision =
+		    float_numeric_get_precision_digits (value->dbvalue.data.num.d.buf, DB_NUMERIC_BUF_SIZE);
+		  value->dbvalue.data.num.header.scale = src_scale;
+		  can_skip_cast = true;
+		}
+	      else if (src_scale == dest_scale && src_prec < dest_prec)
+		{
+		  /* optimize ATT_CHG_TYPE_NUMERIC_PREC_INCR case: when numeric precision increases
+		   * with same scale, only update domain metadata (no value cast needed).
+		   */
+		  can_skip_cast = true;
+		}
+
+	      if (can_skip_cast)
+		{
+		  value->dbvalue.domain.numeric_info.precision = dest_prec;
+		  value->dbvalue.domain.numeric_info.scale = dest_scale;
+		  value->state = HEAP_WRITTEN_ATTRVALUE;
+		  atts_id[updated_n_attrs_id] = value->attrid;
+		  updated_n_attrs_id++;
+
+		  /* Skip tp_value_cast - just update domain metadata */
+		  continue;
+		}
+	    }
+
 	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), dest_dom, false)) != DOMAIN_COMPATIBLE)
 	    {
 	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), dest_dom);

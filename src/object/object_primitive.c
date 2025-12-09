@@ -8445,10 +8445,21 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 static void
 mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
+  int calc_size = 0;
+
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
     {
-      size = OR_NUMERIC_SIZE (domain->precision);
+      if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  size = OR_SHORT_SIZE;
+	  size += OR_NUMERIC_SIZE (domain->precision);
+	}
+      else
+	{
+	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+	  size = DB_ALIGN (size, INT_ALIGNMENT);
+	}
     }
 
   if (mem == NULL)
@@ -8460,15 +8471,23 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
     }
   else if (size)
     {
+      /* calculate expected size and verify it matches the provided size */
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  size = OR_SHORT_SIZE;
-	  size += OR_NUMERIC_SIZE (domain->precision);
+	  calc_size = OR_SHORT_SIZE;
+	  calc_size += OR_NUMERIC_SIZE (domain->precision);
 	}
       else
 	{
-	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
-	  size = DB_ALIGN (size, INT_ALIGNMENT);
+	  calc_size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+	  calc_size = DB_ALIGN (calc_size, INT_ALIGNMENT);
+	}
+
+      if (size != calc_size)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+	  assert (false);
+	  return;
 	}
 
       or_get_data (buf, (char *) mem, size);
@@ -8661,14 +8680,18 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
    * If size is -1, the caller doesn't know the size and we must determine
    * it from the domain.
    */
-  if (size == -1)
+  if (size == -1 || size == 1)
     {
-      size = OR_NUMERIC_SIZE (domain->precision);
-    }
-
-  if (size == 1)
-    {
-      size = OR_NUMERIC_SIZE (domain->precision);
+      if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  size = OR_SHORT_SIZE;
+	  size += OR_NUMERIC_SIZE (domain->precision);
+	}
+      else
+	{
+	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
+	  size = DB_ALIGN (size, INT_ALIGNMENT);
+	}
     }
 
   if (value == NULL)
@@ -8701,9 +8724,6 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
       else
 	{
 	  DB_C_NUMERIC num = (DB_C_NUMERIC) buf->ptr;
-
-	  size = _gv_float_numeric_precision_bytes_lookup[domain->precision - 1];
-	  size = DB_ALIGN (size, INT_ALIGNMENT);
 
 	  if (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK)
 	    {
