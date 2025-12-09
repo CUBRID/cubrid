@@ -1042,7 +1042,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 		case CUBRID_STMT_CREATE_SYNONYM:
 		  /* maybe unloaded from version 11.2+ or later */
 		  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
-		  /* fall through */
+		  [[fallthrough]];
 		case CUBRID_STMT_CREATE_CLASS:
 		case CUBRID_STMT_CREATE_SERIAL:
 		case CUBRID_STMT_CREATE_TRIGGER:
