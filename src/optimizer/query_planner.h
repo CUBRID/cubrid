@@ -299,7 +299,8 @@ struct qo_info
    * by plans at this node.
    */
   BITSET projected_segs;
-  double cardinality;
+  double cardinality;		/* Number of rows expected after scanning */
+  double scan_rows;		/* Number of rows required for scanning */
 
   /*
    * One plan for each equivalence class, in each case the best we have

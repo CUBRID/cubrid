@@ -1966,6 +1966,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 330 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
 331 Static SQL에 사용된 호스트 표현식은 변수나 레코드 필드이어야 합니다: '%1$s'.
+332 Stored Procedure는 CALL 문에서만 호출할 수 있습니다.
+333 Stored Procedure를 호출하는 CALL 문은 INTO 절을 가질 수 없습니다.
 
 
 
