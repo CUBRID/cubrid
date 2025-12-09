@@ -42,11 +42,14 @@ namespace cubconn::connection
       struct statistics_chunk
       {
 	/* score */
-	double score;
+	double m_score;
 
 	/* immediate */
-	uint32_t client_num;
-	uint64_t last_updated;
+	uint32_t m_client_num;
+	uint64_t m_last_updated;
+
+	/* sum of contexts */
+	statistics::metrics<statistics::context, double> m_sum;
 
 	/* first: accumulated */
 	/* second: previous */

@@ -82,13 +82,13 @@ namespace cubconn::connection
     /* statistics */
     for (i = 0; i < max_worker; i++)
       {
-	m_statistics[i].score = 0;
+	m_statistics[i].m_score = 0;
 
-	m_statistics[i].client_num = 0;
-	m_statistics[i].last_updated = 0;
+	m_statistics[i].m_client_num = 0;
+	m_statistics[i].m_last_updated = 0;
 
 	/* this doesn't use much memory */
-	m_statistics[i].m_contexts.reserve (512);
+	m_statistics[i].m_contexts.reserve (256);
       }
 
     m_thread = std::thread (&coordinator::attach, this);
@@ -160,6 +160,22 @@ namespace cubconn::connection
 
   void coordinator::statistics_update_score (std::size_t worker)
   {
+    statistics::metrics<statistics::context, double> &c = m_statistics[worker].m_sum;
+    statistics::metrics<statistics::worker, double> &w = m_statistics[worker].m_worker.first;
+
+    /*
+    c.get (statistics::context::RECV_BUDGET_HIT);
+    c.get (statistics::context::SEND_BUDGET_HIT);
+    */
+
+    /* temporary formula */
+    m_statistics[worker].m_score =
+	    static_cast<double> (m_statistics[worker].m_client_num) / 500 +
+	    /* throughput per ms */
+	    w.get (statistics::worker::MQ_REQUESTED) / 500 +
+	    w.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
+	    c.get (statistics::context::BYTES_IN_TOTAL) / 100 +
+	    c.get (statistics::context::BYTES_OUT_TOTAL) / 100;
   }
 
   void coordinator::statistics_print ()
@@ -179,8 +195,9 @@ namespace cubconn::connection
 	  }
 
 	printf ("------ worker %d ------\n", static_cast<int> (i));
-	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].last_updated) / 1e9));
-	printf ("CLIENT NUM: %d (heuristic: %lf)\n", static_cast<int> (m_statistics[i].client_num),
+	printf ("SCORE: %lf\n", m_statistics[i].m_score);
+	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
+	printf ("CLIENT NUM: %d (heuristic: %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
 		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
 	printf ("MQ REQUESTED: %lf\n",
 		m_statistics[i].m_worker.first.get (statistics::worker::MQ_REQUESTED));
@@ -269,7 +286,7 @@ namespace cubconn::connection
 	    id,
 	    std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>> { }
     );
-    m_statistics[counter].client_num++;
+    m_statistics[counter].m_client_num++;
 
     request.type = connection::worker::message_type::NEW_CLIENT;
     request.ctx = m_parent->claim_context ();
@@ -298,7 +315,7 @@ namespace cubconn::connection
       {
 	assert (m_statistics[ctx->m_worker].m_contexts.find (ctx->m_id) != m_statistics[ctx->m_worker].m_contexts.end ());
 
-	m_statistics[ctx->m_worker].client_num--;
+	m_statistics[ctx->m_worker].m_client_num--;
 	m_statistics[ctx->m_worker].m_contexts.erase (ctx->m_id);
 
 	ctx->m_worker = -1;
@@ -319,10 +336,12 @@ namespace cubconn::connection
     uint64_t delta;
 
     worker = item.statistics.worker.first;
-    delta = item.statistics.time_ns - m_statistics[worker].last_updated;
+    delta = item.statistics.time_ns - m_statistics[worker].m_last_updated;
 
-    if (m_statistics[worker].last_updated)
+    if (m_statistics[worker].m_last_updated)
       {
+	m_statistics[worker].m_sum.reset ();
+
 	/* update EWMA */
 	this->statistics_EWMA (alpha, delta, m_statistics[worker].m_worker.first, m_statistics[worker].m_worker.second,
 			       item.statistics.worker.second);
@@ -348,7 +367,13 @@ namespace cubconn::connection
 	    m_statistics[worker].m_contexts[stats.first].second  = stats.second;
 	  }
       }
-    m_statistics[worker].last_updated = item.statistics.time_ns;
+    m_statistics[worker].m_last_updated = item.statistics.time_ns;
+
+    /* calculate the summation */
+    for (auto &stats : m_statistics[worker].m_contexts)
+      {
+	m_statistics[worker].m_sum += stats.second.first;
+      }
 
     /* update score */
     this->statistics_update_score (worker);

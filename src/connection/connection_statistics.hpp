@@ -119,6 +119,7 @@ namespace cubconn::statistics
       metrics (metrics<T, OtherVT> &other);
       template <typename OtherVT>
       metrics &operator= (metrics<T, OtherVT> &other);
+      metrics &operator+= (metrics &other);
 
       inline metrics operator+ (const metrics &other);
       inline metrics<T, double> operator- (const metrics &other);
@@ -186,6 +187,19 @@ namespace cubconn::statistics
       {
 	m_values[i] = static_cast<VT> (other.m_values[i]);
       }
+    return *this;
+  }
+
+  template <class T, typename VT>
+  metrics<T, VT> &metrics<T, VT>::operator+= (metrics &other)
+  {
+    std::size_t i;
+
+    for (i = 0; i < static_cast<std::size_t> (T::STATS_COUNT); i++)
+      {
+	m_values[i] += other.m_values[i];
+      }
+
     return *this;
   }
 
