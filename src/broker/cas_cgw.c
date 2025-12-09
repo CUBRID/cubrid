@@ -187,9 +187,9 @@ static const char *server_func_name[] = {
   "set_cas_change_mode"
 };
 
-static int cas_main (void);
-static int cas_init (void);
-static int cas_init_shm (void);
+static int cgw_cas_main (void);
+static int cgw_cas_init (void);
+static int cgw_init_shm (void);
 
 /* Callback functions for cas_main_loop() */
 static int cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_passwd, const char *url,
@@ -232,7 +232,7 @@ main (int argc, char *argv[])
   signal (SIGXFSZ, SIG_IGN);
 #endif /* WINDOWS */
 
-  if (cas_init () < 0)
+  if (cgw_init () < 0)
     {
       fprintf(stderr, "CGW initialization failed. Exiting.\n");
       return -1;
@@ -254,12 +254,12 @@ main (int argc, char *argv[])
 
   set_cubrid_home ();
 
-  res = cas_main ();
+  res = cgw_cas_main ();
   return res;
 }
 
 static int
-cas_main (void)
+cgw_cas_main (void)
 {
   CGW_CONTEXT cgw_ctx = { 0 };
   CAS_MAIN_OPS ops = {
@@ -892,9 +892,9 @@ exit_on_end:
 }
 
 static int
-cas_init ()
+cgw_cas_init ()
 {
-  if (cas_init_shm () < 0)
+  if (cgw_init_shm () < 0)
     {
       return -1;
     }
@@ -916,7 +916,7 @@ cas_init ()
 }
 
 static int
-cas_init_shm (void)
+cgw_init_shm (void)
 {
   char *p;
   int as_shm_key;
