@@ -276,7 +276,7 @@ namespace cubconn
     return result::Partial;
   }
 
-  result receiver::receive_in_allocated (int fd)
+  result receiver::receive_in_allocated (int fd, int &consumption)
   {
     ssize_t bytes;
 
@@ -286,6 +286,7 @@ namespace cubconn
     if (bytes > 0)
       {
 	m_received += bytes;
+	consumption += bytes;
 
 	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_allocated: state = %d, received = %d, accumulated = %d\n",
@@ -318,7 +319,7 @@ namespace cubconn
     return this->to_result (bytes, errno);
   }
 
-  result receiver::receive_in_tmpsize (int fd)
+  result receiver::receive_in_tmpsize (int fd, int &consumption)
   {
     ssize_t bytes;
 
@@ -328,6 +329,7 @@ namespace cubconn
     if (bytes > 0)
       {
 	m_received += bytes;
+	consumption += bytes;
 
 	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive_in_tmpsize: state = %d, received = %d, accumulated = %d\n",
@@ -345,18 +347,19 @@ namespace cubconn
     return this->to_result (bytes, errno);
   }
 
-  result receiver::receive (int fd)
+  result receiver::receive (int fd, int &consumption)
   {
     ssize_t bytes;
 
     er_log_conn (__FILE__, __LINE__, "receiver (%p) drain from fd = %d\n", this, fd);
-    \
+
     /* receive data from socket */
     assert (m_bufsize - m_received > 0);
     bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
     if (bytes > 0)
       {
 	m_received += bytes;
+	consumption += bytes;
 
 	m_stats->add (statistics::context::BYTES_IN_TOTAL, bytes);
 	er_log_conn (ARG_FILE_LINE, "receiver->receive: state = %d, received = %d, accumulated = %d\n", (int) m_state,
@@ -373,25 +376,27 @@ namespace cubconn
     return this->to_result (bytes, errno);
   }
 
-  result receiver::drain (int fd)
+  result receiver::drain (int fd, int limit)
   {
     result status;
+    int consumption;
 
+    consumption = 0;
     m_result.clear ();
     while (true)
       {
 	switch (m_state)
 	  {
 	  case state::Recv:
-	    status = this->receive (fd);
+	    status = this->receive (fd, consumption);
 	    break;
 
 	  case state::RecvSizeInTmp:
-	    status = this->receive_in_tmpsize (fd);
+	    status = this->receive_in_tmpsize (fd, consumption);
 	    break;
 
 	  case state::RecvInAllocated:
-	    status = this->receive_in_allocated (fd);
+	    status = this->receive_in_allocated (fd, consumption);
 	    break;
 
 	  case state::ParseSize:
@@ -412,6 +417,13 @@ namespace cubconn
 	switch (status)
 	  {
 	  case result::Partial:
+	    if (limit > 0 && consumption >= limit)
+	      {
+		m_stats->add (statistics::context::RECV_BUDGET_HIT, 1);
+		return result::BudgetExhausted;
+	      }
+	    break;
+
 	  case result::Ok:
 	    break;
 

@@ -55,7 +55,7 @@ namespace cubconn
 
       void reset ();
 
-      result drain (int fd);
+      result drain (int fd, int limit = 0);
       void release (std::byte *ptr);
 
       std::vector<cubbase::span<std::byte>> *get_result ();
@@ -83,13 +83,13 @@ namespace cubconn
 
       void parse_packet (bool is_buffer);
 
-      result receive_in_allocated (int fd);
+      result receive_in_allocated (int fd, int &consumption);
 
       result parse_size_in_tmpsize ();
-      result receive_in_tmpsize (int fd);
+      result receive_in_tmpsize (int fd, int &consumption);
 
       result parse_size ();
-      result receive (int fd);
+      result receive (int fd, int &consumption);
   };
 }
 

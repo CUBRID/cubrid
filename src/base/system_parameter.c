@@ -784,6 +784,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
 #define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
 
+#define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
+#define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
+
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
 // #endregion 
@@ -5198,6 +5201,30 @@ SYSPRM_PARAM prm_Def[] = {
    NULL_SYSPRM_PARAM_VALUE,
 #endif
    {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION,
+   PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 16 * 1024}},	/* 16KB */
+   {false, {.i = 16 * 1024}},	/* 16KB */
+   {false, {.i = 1 * 1024 * 1024 * 1024}},	/* 1GB */
+   {false, {.i = 0}},		/* no limit */
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION,
+   PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 32 * 1024}},	/* 32KB */
+   {false, {.i = 32 * 1024}},	/* 32KB */
+   {false, {.i = 1 * 1024 * 1024 * 1024}},	/* 1GB */
+   {false, {.i = 0}},		/* no limit */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

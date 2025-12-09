@@ -42,7 +42,7 @@ namespace cubconn
       transmitter ();
       ~transmitter ();
 
-      result fill (int fd);
+      result fill (int fd, int limit = 0);
 
       template <typename... Spans>
       void push_for_send (const cubbase::span<std::byte> &&first, const Spans &&... rest);
