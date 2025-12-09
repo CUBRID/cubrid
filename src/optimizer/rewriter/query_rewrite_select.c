@@ -2405,7 +2405,7 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
       next_pred = curr_pred->next;
       curr_pred->next = NULL;
 
-      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_keep_unique, &info, NULL, NULL);
+      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
 
       curr_pred->next = next_pred;
 
@@ -3006,7 +3006,7 @@ qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * qu
       next_pred = curr_pred->next;
       curr_pred->next = NULL;
 
-      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_keep_unique, &info, NULL, NULL);
+      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
 
       curr_pred->next = next_pred;
 
