@@ -65,7 +65,7 @@
 #include "broker_process_size.h"
 #include "cas_ssl.h"
 
-Error correctionchar cas_db_name[MAX_HA_DBINFO_LENGTH];
+char cas_db_name[MAX_HA_DBINFO_LENGTH];
 char cas_db_user[SRV_CON_DBUSER_SIZE];
 char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
