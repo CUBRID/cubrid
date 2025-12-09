@@ -266,6 +266,7 @@ namespace cubhnsw
 	return node_t<Traits>::get_size();
       }
 
+      virtual void set_empty (bool is_empty) noexcept = 0;
 
     protected:
 

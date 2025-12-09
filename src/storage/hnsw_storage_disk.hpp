@@ -95,6 +95,8 @@ namespace cubhnsw
       // promote lockmode from shared to exclusive
       virtual pinned_t promote_root (pinned_t &old) override;
 
+      virtual void set_empty (bool is_empty) noexcept override;
+
     protected:
       virtual std::byte *get_new_block (VFID &vfid, std::size_t size, slot_id_t &out_block_id) override
       {
@@ -107,9 +109,8 @@ namespace cubhnsw
       page_handle get_page_to_insert (VFID &vfid, VPID &last_vpid, std::size_t bytes);
 
     private:
-      std::byte *m_root_block = nullptr;
-
       VFID m_vfid;
+
       VPID m_root_vpid;
       VPID m_last_node_vpid;
 

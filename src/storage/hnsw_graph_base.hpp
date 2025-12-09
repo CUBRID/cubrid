@@ -293,11 +293,17 @@ namespace cubhnsw
       std::string dump() const noexcept
       {
 	std::stringstream ss;
-	ss << "size: " << size();
+	ss << "size: " << size() << "\n";
+	ss << " [";
 	for (std::size_t i = 0; i < size(); ++i)
 	  {
-	    ss << " " << dump_slot (at (i));
+	    ss << dump_slot (at (i));
+	    if (i < size() - 1)
+	      {
+		ss << ", ";
+	      }
 	  }
+	ss << "]";
 	return ss.str();
       }
 

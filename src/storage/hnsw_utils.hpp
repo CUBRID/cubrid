@@ -336,12 +336,264 @@ template <typename at> class misaligned_ptr_gt
     }
 };
 
+static inline std::size_t ceil2 (std::size_t v) noexcept
+{
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v |= v >> 32;
+  v++;
+  return v;
+}
+
 template <typename at, typename other_at = at> at exchange (at &obj, other_at&& new_value)
 {
   at old_value = std::move (obj);
   obj = std::forward<other_at> (new_value);
   return old_value;
 }
+
+template <typename element_at,                                //
+	  typename comparator_at = std::less<void>,           // <void> is needed before C++14.
+	  typename allocator_at = std::allocator<element_at>> //
+class max_heap_gt
+{
+  public:
+    using element_t = element_at;
+    using comparator_t = comparator_at;
+    using allocator_t = allocator_at;
+
+    using value_type = element_t;
+
+    static_assert (std::is_trivially_destructible<element_t>(), "This heap is designed for trivial structs");
+    static_assert (std::is_trivially_copy_constructible<element_t>(), "This heap is designed for trivial structs");
+
+  private:
+    element_t *elements_;
+    std::size_t size_;
+    std::size_t capacity_;
+
+  public:
+    max_heap_gt() noexcept : elements_ (nullptr), size_ (0), capacity_ (0) {}
+
+    max_heap_gt (max_heap_gt &&other) noexcept
+      : elements_ (exchange (other.elements_, nullptr)), size_ (exchange (other.size_, 0)),
+	capacity_ (exchange (other.capacity_, 0)) {}
+
+    max_heap_gt &operator= (max_heap_gt &&other) noexcept
+    {
+      std::swap (elements_, other.elements_);
+      std::swap (size_, other.size_);
+      std::swap (capacity_, other.capacity_);
+      return *this;
+    }
+
+    max_heap_gt (max_heap_gt const &) = delete;
+    max_heap_gt &operator= (max_heap_gt const &) = delete;
+
+    ~max_heap_gt() noexcept
+    {
+      reset();
+    }
+
+    void reset() noexcept
+    {
+      if (elements_)
+	allocator_t{}.deallocate (elements_, capacity_);
+      elements_ = nullptr;
+      capacity_ = 0;
+      size_ = 0;
+    }
+
+    inline bool empty() const noexcept
+    {
+      return !size_;
+    }
+    inline std::size_t size() const noexcept
+    {
+      return size_;
+    }
+    inline std::size_t capacity() const noexcept
+    {
+      return capacity_;
+    }
+    inline element_t *data() noexcept
+    {
+      return elements_;
+    }
+    inline element_t const *data() const noexcept
+    {
+      return elements_;
+    }
+    inline void clear() noexcept
+    {
+      size_ = 0;
+    }
+    inline void shrink (std::size_t n) noexcept
+    {
+      size_ = (std::min<std::size_t>) (n, size_);
+    }
+
+    /// @brief  Selects the largest element in the heap.
+    /// @return Reference to the stored element.
+    inline element_t const &top() const noexcept
+    {
+      return elements_[0];
+    }
+
+    /// @brief Invalidates the "max-heap" property, transforming into ascending range.
+    inline void sort_ascending() noexcept
+    {
+      std::sort_heap (elements_, elements_ + size_, &less);
+    }
+
+    /**
+     *  @brief Ensures the heap has enough capacity for the specified number of elements.
+     *  @param new_capacity The desired minimum capacity.
+     *  @return True if the capacity was successfully increased, false otherwise.
+     */
+    bool reserve (std::size_t new_capacity) noexcept
+    {
+      if (new_capacity < capacity_)
+	{
+	  return true;
+	}
+
+      new_capacity = ceil2 (new_capacity);
+      new_capacity = (std::max<std::size_t>) (new_capacity, (std::max<std::size_t>) (capacity_ * 2u, 16u));
+      auto allocator = allocator_t{};
+      auto new_elements = allocator.allocate (new_capacity);
+      if (!new_elements)
+	{
+	  return false;
+	}
+
+      if (elements_)
+	{
+	  std::memcpy (new_elements, elements_, size_ * sizeof (element_t));
+	  allocator.deallocate (elements_, capacity_);
+	}
+      elements_ = new_elements;
+      capacity_ = new_capacity;
+      return new_elements;
+    }
+
+    /**
+     *  @brief Inserts an element into the heap.
+     *  @param element The element to be inserted.
+     *  @return True if the element was successfully inserted, false otherwise.
+     */
+    bool insert (element_t &&element) noexcept
+    {
+      if (!reserve (size_ + 1))
+	{
+	  return false;
+	}
+
+      insert_reserved (std::move (element));
+      return true;
+    }
+
+    /**
+     *  @brief Inserts an element into the heap without reserving additional space.
+     *  @param element The element to be inserted.
+     */
+    void insert_reserved (element_t &&element) noexcept
+    {
+      new (&elements_[size_]) element_t (element);
+      size_++;
+      shift_up (size_ - 1);
+    }
+
+    /**
+     *  @brief Inserts multiple elements into the heap.
+     *  @param elements Pointer to the elements to be inserted.
+     *  @return True if the elements were successfully inserted, false otherwise.
+     */
+    inline bool insert_many (element_t const *elements) noexcept
+    {
+      // Wikipedia describes a procedure, due to Floyd, which constructs a heap from an array in linear time.
+      // It also mentions a procedure for merging two heaps, of sizes 𝑛 and 𝑘, in time 𝑂(𝑘+log𝑘log𝑛).
+      // Altogether, we can add 𝑘 elements to a heap of length 𝑛 in time 𝑂(𝑘+log𝑘log𝑛): first build a heap containing
+      // 𝑘 elements to be inserted (takes 𝑂(𝑘) time), then merge that with the heap of size 𝑛 (takes 𝑂(𝑘+log𝑘log𝑛)
+      // time). Compare this to repeated insertion, which would run in time 𝑂(𝑘log𝑛).
+      return false;
+    }
+
+    element_t pop() noexcept
+    {
+      element_t result = top();
+      std::swap (elements_[0], elements_[size_ - 1]);
+      size_--;
+      elements_[size_].~element_t();
+      shift_down (0);
+      return result;
+    }
+
+  private:
+    static std::size_t parent_idx (std::size_t i) noexcept
+    {
+      return (i - 1u) / 2u;
+    }
+    static std::size_t left_child_idx (std::size_t i) noexcept
+    {
+      return (i * 2u) + 1u;
+    }
+    static std::size_t right_child_idx (std::size_t i) noexcept
+    {
+      return (i * 2u) + 2u;
+    }
+    static bool less (element_t const &a, element_t const &b) noexcept
+    {
+      return comparator_t{} (a, b);
+    }
+
+    /**
+     *  @brief Shifts an element up to maintain the heap property.
+     *         This operation is called when a new element is @b added at the end of the heap.
+     *         The element is moved up until the heap property is restored.
+     *  @param i Index of the element to be shifted up.
+     */
+    void shift_up (std::size_t i) noexcept
+    {
+      for (; i && less (elements_[parent_idx (i)], elements_[i]); i = parent_idx (i))
+	{
+	  std::swap (elements_[parent_idx (i)], elements_[i]);
+	}
+    }
+
+    /**
+     *  @brief Shifts an element down to maintain the heap property.
+     *         This operation is called when the root element is @b removed and the last element is moved to the root.
+     *         The element is moved down until the heap property is restored.
+     *  @param i Index of the element to be shifted down.
+     */
+    void shift_down (std::size_t i) noexcept
+    {
+      std::size_t max_idx = i;
+
+      std::size_t left = left_child_idx (i);
+      if (left < size_ && less (elements_[max_idx], elements_[left]))
+	{
+	  max_idx = left;
+	}
+
+      std::size_t right = right_child_idx (i);
+      if (right < size_ && less (elements_[max_idx], elements_[right]))
+	{
+	  max_idx = right;
+	}
+
+      if (i != max_idx)
+	{
+	  std::swap (elements_[i], elements_[max_idx]);
+	  shift_down (max_idx);
+	}
+    }
+};
 
 /**
  *  @brief  Similar to `std::priority_queue`, but allows raw access to underlying
@@ -419,19 +671,6 @@ class sorted_buffer_gt
     inline void clear() noexcept
     {
       size_ = 0;
-    }
-
-    static inline std::size_t ceil2 (std::size_t v) noexcept
-    {
-      v--;
-      v |= v >> 1;
-      v |= v >> 2;
-      v |= v >> 4;
-      v |= v >> 8;
-      v |= v >> 16;
-      v |= v >> 32;
-      v++;
-      return v;
     }
 
     bool reserve (std::size_t new_capacity) noexcept

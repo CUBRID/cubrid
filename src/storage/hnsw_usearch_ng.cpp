@@ -134,8 +134,7 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p, const BTID *btid,
 
   hnsw_index *index = new hnsw_usearch_ng (*this, *btid, name, build_params, page_ptr, rec);
 
-  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
-
+  // pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   //log_sysop_attach_to_outer (thread_p);
   //vacuum_log_add_dropped_file (thread_p, &btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
@@ -164,6 +163,9 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
     {
       assert (false);
     }
+
+  pgbuf_set_dirty (this->m_thread_p, page_ptr, FREE);
+  page_ptr = NULL;
 
   m_algo = std::make_unique<algo_type> (build_params);
   m_algo->set_storage (m_storage.get());

@@ -1,20 +1,20 @@
-DROP TABLE t9;
-CREATE TABLE t9 (id INT, vec VECTOR(3));
+DROP TABLE t1;
+CREATE TABLE t1 (id INT, vec VECTOR(3));
 
-CREATE VECTOR INDEX vidx_test ON t9 (vec COSINE) WITH (M = 16, ef_construction = 64);
+CREATE VECTOR INDEX vidx_test ON t1 (vec COSINE) WITH (M = 16, ef_construction = 64);
 
-INSERT INTO t9 VALUES (1, '[1,2,3]');
-INSERT INTO t9 VALUES (2, '[1,0,2]');
-INSERT INTO t9 VALUES (3, '[1,1,1]');
-INSERT INTO t9 VALUES (4, '[0,0,1]');
-INSERT INTO t9 VALUES (5, '[1,1,0]');
-INSERT INTO t9 VALUES (6, '[0,1,1]');
-INSERT INTO t9 VALUES (7, '[0,1,0]');
-INSERT INTO t9 VALUES (8, '[1,0,1]');
-INSERT INTO t9 VALUES (9, '[0,0,1]');
-INSERT INTO t9 VALUES (10, '[0,1,1]');
+INSERT INTO t1 VALUES (1, '[1,2,3]');
+INSERT INTO t1 VALUES (2, '[1,0,2]');
+INSERT INTO t1 VALUES (3, '[1,1,1]');
+INSERT INTO t1 VALUES (4, '[0,0,1]');
+INSERT INTO t1 VALUES (5, '[1,1,0]');
+INSERT INTO t1 VALUES (6, '[0,1,1]');
+INSERT INTO t1 VALUES (7, '[0,1,0]');
+INSERT INTO t1 VALUES (8, '[1,0,1]');
+INSERT INTO t1 VALUES (9, '[0,0,1]');
+INSERT INTO t1 VALUES (10, '[0,1,1]');
 
-select /*+ recompile no_parallel_heap_scan */ id from t9 order by vec <c> '[0,1,0]' limit 5;
+select /*+ recompile no_parallel_heap_scan */ id from t1 order by vec <c> '[0,1,0]' limit 5;
 
 
 DROP TABLE u21;

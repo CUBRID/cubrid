@@ -161,7 +161,7 @@ namespace cubhnsw
 		   page_ptr,
 		   [this, page_ptr]()
     {
-      pgbuf_unfix (m_thread_p, page_ptr);
+      pgbuf_set_dirty (m_thread_p, page_ptr, FREE);
     }
 	   );
   }
@@ -219,14 +219,24 @@ namespace cubhnsw
       }
 
     PAGE_PTR root_page_ptr = pgbuf_fix (m_thread_p, &root_vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
+    assert (root_page_ptr != nullptr);
 
     // TODO: hardcoded slot id 1
     SPAGE_SLOT *slotp = spage_get_slot (root_page_ptr, 1);
+    assert (slotp != nullptr);
+
     OID oid = { root_vpid.pageid, 1, root_vpid.volid };
 
-    auto scoped_guard = [this, root_page_ptr]()
+    auto scoped_guard = [this, root_page_ptr, mode]()
     {
-      pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (root_page_ptr));
+      if (mode == lock_mode::exclusive)
+	{
+	  pgbuf_set_dirty (m_thread_p, reinterpret_cast<PAGE_PTR> (root_page_ptr), FREE);
+	}
+      else
+	{
+	  pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (root_page_ptr));
+	}
     };
     return disk_storage::pinned_t {oid, (std::byte *) root_page_ptr + slotp->offset_to_record, slotp->record_length, mode, scoped_guard};
   }
@@ -243,11 +253,21 @@ namespace cubhnsw
       }
 
     PAGE_PTR node_page_ptr = pgbuf_fix (m_thread_p, &vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
-    SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
+    assert (node_page_ptr != nullptr);
 
-    auto scoped_guard = [this, node_page_ptr]()
+    SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
+    assert (slotp != nullptr);
+
+    auto scoped_guard = [this, node_page_ptr, mode]()
     {
-      pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (node_page_ptr));
+      if (mode == lock_mode::exclusive)
+	{
+	  pgbuf_set_dirty (m_thread_p, reinterpret_cast<PAGE_PTR> (node_page_ptr), FREE);
+	}
+      else
+	{
+	  pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (node_page_ptr));
+	}
     };
     return disk_storage::pinned_t {id, (std::byte *) node_page_ptr + slotp->offset_to_record, slotp->record_length, mode, scoped_guard};
   }
@@ -287,5 +307,11 @@ namespace cubhnsw
     // not implemented
     m_is_empty = false;
     return std::move (old);
+  }
+
+  void
+  disk_storage::set_empty (bool is_empty) noexcept
+  {
+    m_is_empty = is_empty;
   }
 }
