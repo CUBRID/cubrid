@@ -705,6 +705,12 @@ retry:
     timer_latency min;
     std::size_t i;
 
+    /* avoid resetting the timerfd unnecessarily */
+    if (!m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return ;
+      }
+
     m_timer_handler[static_cast<std::size_t> (type)].valid = false;
 
     min = timer_latency::NA;
@@ -782,11 +788,11 @@ retry:
 	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
 	    return false;
 	  }
-      }
 
-    if (!m_has_retry)
-      {
-	this->eventfd_removetimer (timer_type::QUEUE);
+	if (!m_has_retry)
+	  {
+	    this->eventfd_removetimer (timer_type::QUEUE);
+	  }
       }
 
     return true;
