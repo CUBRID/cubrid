@@ -2277,10 +2277,19 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
 	    }
 	}
 
+      /* CUBVEC-TODO: When updating catalog after creating an index on table,
+       * we fetch the class representation (classrep) and get index information
+       * through or_get_classrep().
+       *
+       * The logic that updates catalog index metadata (orc_diskrep_from_record)
+       * assumes all indexes are B+Tree indexes. To avoid running this path
+       * for vector indexes, we temporarily skip including vector indexes
+       * in the classrep so they are not written into the catalog.
+       */
       //if (type != VECTOR_INDEX)
-      //{
-      (void) or_install_btids_attribute (rep, att_id, &id);
-      //}
+	//{
+	  (void) or_install_btids_attribute (rep, att_id, &id);
+	//}
     }
 
   /*
