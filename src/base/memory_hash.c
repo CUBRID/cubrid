@@ -2482,10 +2482,18 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		|| (orig_precision == DB_DEFAULT_NUMERIC_PRECISION
 		    && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
 	      {
+		unsigned int hash_buf[5];
 		unsigned int *buf = (unsigned int *) db_locate_numeric (val);
-		((char *) buf)[DB_NUMERIC_BUF_SIZE] = 0;
-		((char *) buf)[DB_NUMERIC_BUF_SIZE + 1] = 0;
-		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ buf[4], ht_size);
+		hash_buf[0] = buf[0];
+		hash_buf[1] = buf[1];
+		hash_buf[2] = buf[2];
+		hash_buf[3] = buf[3];
+
+		hash_buf[4] = 0;
+		memcpy (&hash_buf[4], (char *) buf + 16, 2);
+
+		hashcode =
+		  mht_get_shiftmult32 (hash_buf[0] ^ hash_buf[1] ^ hash_buf[2] ^ hash_buf[3] ^ hash_buf[4], ht_size);
 	      }
 	    else
 	      {
@@ -2493,10 +2501,18 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
 							 scale);
 
+		unsigned int hash_buf[5];
 		unsigned int *buf = (unsigned int *) calc_buf;
-		((char *) buf)[DB_NUMERIC_BUF_SIZE] = 0;
-		((char *) buf)[DB_NUMERIC_BUF_SIZE + 1] = 0;
-		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ buf[4], ht_size);
+		hash_buf[0] = buf[0];
+		hash_buf[1] = buf[1];
+		hash_buf[2] = buf[2];
+		hash_buf[3] = buf[3];
+
+		hash_buf[4] = 0;
+		memcpy (&hash_buf[4], (char *) buf + 16, 2);
+
+		hashcode =
+		  mht_get_shiftmult32 (hash_buf[0] ^ hash_buf[1] ^ hash_buf[2] ^ hash_buf[3] ^ hash_buf[4], ht_size);
 	      }
 	  }
 	  break;
