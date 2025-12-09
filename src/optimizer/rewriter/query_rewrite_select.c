@@ -29,6 +29,7 @@
 
 static PT_NODE *qo_reset_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *qo_get_name_cnt_keep_unique (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NODE * spec);
 static PT_NODE *qo_reduce_outer_joined_tbls (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
 static void qo_reduce_joined_tbls_ref_by_fk (PARSER_CONTEXT * parser, PT_NODE * query);
@@ -1627,6 +1628,39 @@ qo_get_name_cnt_by_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 {
   SPEC_CNT_INFO *info = (SPEC_CNT_INFO *) arg;
 
+  if (node->node_type == PT_NAME)
+    {
+      if (node->info.name.spec_id == info->spec->info.spec.id)
+	{
+	  info->my_spec_cnt++;
+	  info->my_spec_node = node;
+	}
+      else
+	{
+	  info->other_spec_cnt++;
+	}
+    }
+
+  if (info->my_spec_cnt >= 2 || (info->my_spec_cnt == 1 && info->other_spec_cnt >= 1))
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_get_name_cnt_keep_unique () - looks for a name with a matching id
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   spec(in):
+ *   arg(in): info of spec and result
+ *   continue_walk(in):
+ */
+static PT_NODE *
+qo_get_name_cnt_keep_unique (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  SPEC_CNT_INFO *info = (SPEC_CNT_INFO *) arg;
+
   *continue_walk = PT_CONTINUE_WALK;
 
   if (node->node_type == PT_NAME)
@@ -1761,8 +1795,8 @@ qo_collect_name_with_eq_const (PARSER_CONTEXT * parser, PT_NODE * on_cond, PT_NO
       info1.other_spec_cnt = 0;
       info2.my_spec_cnt = 0;
       info2.other_spec_cnt = 0;
-      parser_walk_tree (parser, arg1, qo_get_name_cnt_by_spec, &info1, NULL, NULL);
-      parser_walk_tree (parser, arg2, qo_get_name_cnt_by_spec, &info2, NULL, NULL);
+      parser_walk_tree (parser, arg1, qo_get_name_cnt_keep_unique, &info1, NULL, NULL);
+      parser_walk_tree (parser, arg2, qo_get_name_cnt_keep_unique, &info2, NULL, NULL);
 
       /* col1(my spec) = const */
       if (info1.my_spec_cnt == 1 && info1.other_spec_cnt == 0)
@@ -2379,7 +2413,7 @@ qo_check_pk_ref_by_fk_in_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
       next_pred = curr_pred->next;
       curr_pred->next = NULL;
 
-      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
+      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_keep_unique, &info, NULL, NULL);
 
       curr_pred->next = next_pred;
 
@@ -2980,7 +3014,7 @@ qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * qu
       next_pred = curr_pred->next;
       curr_pred->next = NULL;
 
-      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_by_spec, &info, NULL, NULL);
+      parser_walk_tree (parser, curr_pred, qo_get_name_cnt_keep_unique, &info, NULL, NULL);
 
       curr_pred->next = next_pred;
 

@@ -18608,6 +18608,7 @@ pt_expr_keep_uniqueness (const PT_NODE * expr)
     case PT_CONCAT:
     case PT_PLUS:
     case PT_MINUS:
+    case PT_EQ:		/* for predicate */
       return true;
     default:
       return false;
