@@ -70,7 +70,7 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    if (!this->eventfd_settimer (m_timerfd, 1 /* 1 sec */, 0))
+    if (!this->eventfd_settimer (m_timerfd, 0, 400 * 1e6 /* 400 ms */))
       {
 	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to eventfd_settimer\n");
 	assert_release (false);
@@ -82,7 +82,10 @@ namespace cubconn::connection
     /* statistics */
     for (i = 0; i < max_worker; i++)
       {
+	m_statistics[i].score = 0;
+
 	m_statistics[i].client_num = 0;
+	m_statistics[i].last_updated = 0;
 
 	/* this doesn't use much memory */
 	m_statistics[i].m_contexts.reserve (512);
@@ -140,6 +143,52 @@ namespace cubconn::connection
       }
 
     return true;
+  }
+
+  uint64_t coordinator::get_monotonic_ns ()
+  {
+    struct timespec ts;
+
+    if (clock_gettime (CLOCK_MONOTONIC, &ts) == -1)
+      {
+	er_log_conn (__FILE__, __LINE__, "clock_gettime (CLOCK_MONOTONIC) failed: %s\n", strerror (errno));
+	return 0;
+      }
+
+    return (uint64_t) ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+  }
+
+  void coordinator::statistics_update_score (std::size_t worker)
+  {
+  }
+
+  void coordinator::statistics_print ()
+  {
+    double bytes_in, bytes_out;
+    std::size_t i;
+
+    printf ("\033[2J\033[H");
+    for (i = 0; i < m_max_worker; i++)
+      {
+	bytes_in = 0;
+	bytes_out = 0;
+	for (auto &stats : m_statistics[i].m_contexts)
+	  {
+	    bytes_in += stats.second.first.get (statistics::context::BYTES_IN_TOTAL);
+	    bytes_out += stats.second.first.get (statistics::context::BYTES_OUT_TOTAL);
+	  }
+
+	printf ("------ worker %d ------\n", static_cast<int> (i));
+	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].last_updated) / 1e9));
+	printf ("CLIENT NUM: %d (heuristic: %lf)\n", static_cast<int> (m_statistics[i].client_num),
+		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
+	printf ("MQ REQUESTED: %lf\n",
+		m_statistics[i].m_worker.first.get (statistics::worker::MQ_REQUESTED));
+	printf ("PACKET COUNT: %lf\n",
+		m_statistics[i].m_worker.first.get (statistics::worker::PACKET_COUNT));
+	printf ("BYTES IN: %lf\n", bytes_in);
+	printf ("BYTES OUT: %lf\n", bytes_out);
+      }
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -218,7 +267,7 @@ namespace cubconn::connection
 
     m_statistics[counter].m_contexts.emplace (
 	    id,
-	    std::pair<statistics::metrics<statistics::context>, statistics::metrics<statistics::context>> { }
+	    std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>> { }
     );
     m_statistics[counter].client_num++;
 
@@ -267,18 +316,42 @@ namespace cubconn::connection
   {
     constexpr double alpha = 0.4;
     std::size_t worker;
+    uint64_t delta;
 
     worker = item.statistics.worker.first;
-    this->statistics_EWMA (alpha, m_statistics[worker].m_worker.first, m_statistics[worker].m_worker.second,
-			   item.statistics.worker.second);
+    delta = item.statistics.time_ns - m_statistics[worker].last_updated;
 
-    for (auto &stats : item.statistics.contexts)
+    if (m_statistics[worker].last_updated)
       {
-	assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
+	/* update EWMA */
+	this->statistics_EWMA (alpha, delta, m_statistics[worker].m_worker.first, m_statistics[worker].m_worker.second,
+			       item.statistics.worker.second);
+	for (auto &stats : item.statistics.contexts)
+	  {
+	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
 
-	this->statistics_EWMA (alpha, m_statistics[worker].m_contexts[stats.first].first,
-			       m_statistics[worker].m_contexts[stats.first].second, stats.second);
+	    this->statistics_EWMA (alpha, delta, m_statistics[worker].m_contexts[stats.first].first,
+				   m_statistics[worker].m_contexts[stats.first].second, stats.second);
+	  }
       }
+    else
+      {
+	/* there is no previous */
+	m_statistics[worker].m_worker.first = item.statistics.worker.second;
+	m_statistics[worker].m_worker.second = item.statistics.worker.second;
+
+	for (auto &stats : item.statistics.contexts)
+	  {
+	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
+
+	    m_statistics[worker].m_contexts[stats.first].first = stats.second;
+	    m_statistics[worker].m_contexts[stats.first].second  = stats.second;
+	  }
+      }
+    m_statistics[worker].last_updated = item.statistics.time_ns;
+
+    /* update score */
+    this->statistics_update_score (worker);
 
     return true;
   }
@@ -406,7 +479,8 @@ namespace cubconn::connection
 		  }
 		else if (events[i].data.fd == m_timerfd)
 		  {
-		    /* handling first */
+		    this->handle_message_queue ();
+		    this->statistics_print ();
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {

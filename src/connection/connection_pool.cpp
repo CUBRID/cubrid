@@ -290,8 +290,6 @@ namespace cubconn::connection
     struct timeval *timeout;
     bool compelete;
 
-    assert (m_mutex_holder == std::this_thread::get_id ());
-
     for (auto &worker : m_workers)
       {
 	worker::message request;

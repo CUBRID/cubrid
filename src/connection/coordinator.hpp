@@ -41,13 +41,17 @@ namespace cubconn::connection
     private:
       struct statistics_chunk
       {
+	/* score */
+	double score;
+
 	/* immediate */
 	uint32_t client_num;
+	uint64_t last_updated;
 
 	/* first: accumulated */
 	/* second: previous */
-	std::pair<statistics::metrics<statistics::worker>, statistics::metrics<statistics::worker>> m_worker;
-	std::unordered_map<uint64_t, std::pair<statistics::metrics<statistics::context>, statistics::metrics<statistics::context>>>
+	std::pair<statistics::metrics<statistics::worker, double>, statistics::metrics<statistics::worker>> m_worker;
+	std::unordered_map<uint64_t, std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>>>
 	m_contexts;
       };
 
@@ -87,6 +91,7 @@ namespace cubconn::connection
 	  /* STATISTICS */
 	  struct
 	  {
+	    uint64_t time_ns;
 	    std::pair<std::size_t, statistics::metrics<statistics::worker>> worker;
 	    std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> contexts;
 	  } statistics;
@@ -144,11 +149,18 @@ namespace cubconn::connection
       std::vector<statistics_chunk> m_statistics;
 
       /* --------------------------------------------------------------------------- */
+      /* utility								     */
+      /* --------------------------------------------------------------------------- */
+      uint64_t get_monotonic_ns ();
+
+      /* --------------------------------------------------------------------------- */
       /* statistics								     */
       /* --------------------------------------------------------------------------- */
       template <typename T>
-      void statistics_EWMA (double alpha, statistics::metrics<T> &acc, statistics::metrics<T> &prev,
-			    statistics::metrics<T> &current);
+      void statistics_EWMA (double alpha, uint64_t time_delta, statistics::metrics<T, double> &acc,
+			    statistics::metrics<T> &prev, statistics::metrics<T> &current);
+      void statistics_update_score (std::size_t worker);
+      void statistics_print ();
 
       /* --------------------------------------------------------------------------- */
       /* event fd								     */
@@ -169,10 +181,10 @@ namespace cubconn::connection
   };
 
   template <typename T>
-  void coordinator::statistics_EWMA (double alpha, statistics::metrics<T> &acc, statistics::metrics<T> &prev,
-				     statistics::metrics<T> &current)
+  void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, statistics::metrics<T, double> &acc,
+				     statistics::metrics<T> &prev, statistics::metrics<T> &current)
   {
-    acc = acc * (1 - alpha) + (current - prev) * alpha;
+    acc = acc * (1 - alpha) + (current - prev) * (alpha / (time_delta * 1e-6));
     prev = current;
   }
 }

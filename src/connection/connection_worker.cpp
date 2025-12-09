@@ -535,9 +535,11 @@ retry:
     coordinator::message message;
 
     message.type = coordinator::message_type::STATISTICS;
-    message.statistics.contexts.reserve (m_context.size ());
+
+    message.statistics.time_ns = m_timens;
     message.statistics.worker.first = m_index;
     message.statistics.worker.second = m_stats;
+    message.statistics.contexts.reserve (m_context.size ());
     for (context *ctx : m_context)
       {
 	message.statistics.contexts.emplace_back (ctx->m_id, ctx->m_stats);
@@ -730,9 +732,6 @@ retry:
   bool worker::eventfd_handler (bool *eventfds)
   {
     std::size_t i;
-    uint64_t now;
-
-    now = this->get_monotonic_ns ();
 
     m_has_retry = false;
 
@@ -752,7 +751,7 @@ retry:
 	    return false;
 	  }
 
-	m_timer_handler[static_cast<std::size_t> (timer_type::QUEUE)].last_time = now;
+	m_timer_handler[static_cast<std::size_t> (timer_type::QUEUE)].last_time = m_timens;
       }
 
     /* timer fd */
@@ -767,14 +766,14 @@ retry:
 		continue;
 	      }
 
-	    if (now - m_timer_handler[i].last_time > static_cast<uint64_t> (m_timer_handler[i].latency))
+	    if (m_timens - m_timer_handler[i].last_time > static_cast<uint64_t> (m_timer_handler[i].latency))
 	      {
 		if (!m_timer_handler[i].function ())
 		  {
 		    return false;
 		  }
 
-		m_timer_handler[i].last_time = now;
+		m_timer_handler[i].last_time = m_timens;
 	      }
 	  }
 
@@ -937,7 +936,7 @@ retry:
 	ctx->m_conn->context = nullptr;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
-	delete ctx;
+	m_removed_context.push_back (ctx);
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
@@ -949,13 +948,19 @@ retry:
 
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
-	delete ctx;
+	m_removed_context.push_back (ctx);
 	er_log_conn (__FILE__, __LINE__,
 		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
 	return false;
       }
 
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+    ctx->m_stats.set (statistics::context::OPEND_NS, m_timens);
+    ctx->m_stats.set (statistics::context::LAST_ACTIVE_NS, m_timens);
+    ctx->m_stats.set (statistics::context::LAST_MOVED_NS, 0);
+    ctx->m_stats.set (statistics::context::MOVE_COUNT, 0);
+
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
     return true;
   }
@@ -1618,6 +1623,9 @@ retry:
 	    continue;
 	  }
 
+	/* criterion time to use during this loop */
+	m_timens = this->get_monotonic_ns ();
+
 	for (i = 0; i < nfds; i++)
 	  {
 	    assert (events[i].data.ptr);
@@ -1630,6 +1638,7 @@ retry:
 		this->handle_hangup_or_error (ctx, events[i].events & EPOLLERR);
 		continue;
 	      }
+	    ctx->m_stats.set (statistics::context::LAST_ACTIVE_NS, m_timens);
 	    if (events[i].events & EPOLLIN)
 	      {
 		if (ctx->m_conn->fd == m_eventfd)

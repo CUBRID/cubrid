@@ -196,6 +196,7 @@ namespace cubconn::connection
       int m_eventfd;
       /* timer based */
       int m_timerfd;
+      uint64_t m_timens;
 
       /* index is a type of timer handle block */
       std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
@@ -216,6 +217,9 @@ namespace cubconn::connection
       /* statistics */
       statistics::metrics<statistics::worker> m_stats;
 
+      /* --------------------------------------------------------------------------- */
+      /* utility								     */
+      /* --------------------------------------------------------------------------- */
       uint64_t get_monotonic_ns ();
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
