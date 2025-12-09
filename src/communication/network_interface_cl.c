@@ -6880,37 +6880,31 @@ btree_class_test_unique (char *buf, int buf_size)
 }
 
 int
-hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hnsw_M, int hnsw_efConstruction,
+hnsw_add_index (BTID * btid, OID * class_oid, int attr_id, int dimension, int hnsw_M, int hnsw_efConstruction,
 		int metric)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
-  int req_error, request_size;
+  int req_error;
   char *ptr;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE + OR_OID_SIZE + OR_INT_SIZE * 5) a_request;
   char *request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
 
+  request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  request_size = OR_BTID_ALIGNED_SIZE + OR_INT_SIZE * 4 + OR_OID_SIZE + OR_INT_SIZE;
-  request = (char *) malloc (request_size);
-  if (request == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
   ptr = or_pack_btid (request, btid);
+  ptr = or_pack_oid (ptr, class_oid);
+  ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, dimension);
   ptr = or_pack_int (ptr, hnsw_M);
   ptr = or_pack_int (ptr, hnsw_efConstruction);
   ptr = or_pack_int (ptr, metric);
-  ptr = or_pack_oid (ptr, class_oid);
-  ptr = or_pack_int (ptr, attrid);
 
   req_error =
-    net_client_request (NET_SERVER_HNSW_ADDINDEX, request, request_size, reply,
+    net_client_request (NET_SERVER_HNSW_ADDINDEX, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
@@ -6921,8 +6915,6 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hns
     {
       error = req_error;
     }
-
-  free_and_init (request);
 
   return error;
 #else /* CS_MODE */
@@ -6937,7 +6929,7 @@ hnsw_add_index (BTID * btid, OID * class_oid, int attrid, int dimension, int hns
   params.ef_construction = hnsw_efConstruction;
   params.metric = (DB_VECTOR_DISTANCE_METRIC) metric;
 
-  error = xhnsw_add_index (thread_p, class_oid, attrid, params, *btid);
+  error = xhnsw_add_index (thread_p, class_oid, attr_id, params, *btid);
 
   exit_server (*thread_p);
 

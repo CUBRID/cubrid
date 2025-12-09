@@ -20,9 +20,10 @@
 // hnsw.cpp - common implementation of HNSW index
 //
 
-#include "hnsw.hpp"
-
 #include <fstream>
+
+#include "hnsw.hpp"
+#include "hnsw_api.hpp"
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -35,10 +36,35 @@
 #include "porting.h"
 #include "vector_distance_enum.h"
 #include "heap_file.h"
-#include "hnsw_api.hpp"
+#include "slotted_page.h"
+#include "object_representation.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+/* Maximum Alignment */
+#define HNSW_MAX_ALIGN INT_ALIGNMENT
+#define HEADER 0
+
+typedef struct hnsw_header HNSW_HEADER;
+
+struct hnsw_header
+{
+  int dimension;
+  int hnsw_M;
+  int hnsw_efConstruction;
+  int metric;
+};
+
+// =====================================================================
+// statics
+// =====================================================================
+static int hnsw_create_file (THREAD_ENTRY *thread_p, OID *class_oid, int attr_id, BTID *btid);
+static int hnsw_initalize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
+static int hnsw_init_header (THREAD_ENTRY *thread_p, VFID *vfid, PAGE_PTR page_ptr, HNSW_HEADER *hnsw_header);
+static int hnsw_pack_header (RECDES *rec, HNSW_HEADER *hnsw_header);
+static HNSW_HEADER *hnsw_get_header (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr);
+static int hnsw_print_index_info (BTID *btid, HNSW_HEADER *hnsw_header);
 
 // =====================================================================
 // hnsw_index_manager declaration
@@ -64,7 +90,8 @@ class hnsw_index_manager
     bool is_index_file_exists (const std::string &prefix, const BTID *btid) const;
     bool is_index_meta_file_exists (const std::string &prefix, const BTID *btid) const;
 
-    BTID create_btid (const hnsw_index_backend *backend);
+    BTID create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attr_id,
+		      const hnsw_build_params &params);
 
     // index management on memory
     bool is_index_loaded (const BTID *btid) const;
@@ -80,7 +107,7 @@ class hnsw_index_manager
     int save_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, const hnsw_index_meta &meta);
     int load_index_meta (THREAD_ENTRY *thread_p, const BTID *btid, hnsw_index_meta &meta);
     int save_all_indices (THREAD_ENTRY *thread_p);
-    int delete_index_on_disk (const std::string &prefix, const BTID *btid);
+    int delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid);
 
     // backend management
     void register_backend (std::unique_ptr<hnsw_index_backend> backend);
@@ -120,7 +147,7 @@ int
 xhnsw_initialize (THREAD_ENTRY *thread_p)
 {
   assert (index_manager == nullptr);
-  
+
   if (index_manager == nullptr)
     {
       index_manager = &hnsw_index_manager::instance();
@@ -140,7 +167,7 @@ xhnsw_finalize (THREAD_ENTRY *thread_p)
 }
 
 int
-xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_build_params &params, BTID &btid_out)
+xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attr_id, const hnsw_build_params &params, BTID &btid_out)
 {
   hnsw_index_backend *backend_instance = index_manager->get_backend ();
   if (!backend_instance)
@@ -156,7 +183,13 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_
       return ER_FAILED;
     }
 
-  btid_out = index_manager->create_btid (backend_instance);
+  btid_out = index_manager->create_btid (thread_p, backend_instance, class_oid, attr_id, params);
+  if (BTID_IS_NULL (&btid_out))
+    {
+      // TODO: error handling
+      assert (false);
+      return ER_FAILED;
+    }
 
   hnsw_index *index = backend_instance->create_index (thread_p, &btid_out, "", params);
   if (index == nullptr)
@@ -186,7 +219,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_
 int
 xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid)
 {
-  return index_manager->delete_index_on_disk (index_manager->get_backend()->get_id(), btid);
+  return index_manager->delete_index_on_disk (thread_p,index_manager->get_backend()->get_id(), btid);
 }
 
 int
@@ -656,7 +689,7 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
   return NO_ERROR;
 }
 
-int hnsw_index_manager::delete_index_on_disk (const std::string &prefix, const BTID *btid)
+int hnsw_index_manager::delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid)
 {
   if (is_index_file_exists (prefix, btid))
     {
@@ -669,19 +702,61 @@ int hnsw_index_manager::delete_index_on_disk (const std::string &prefix, const B
 
   delete_index (btid);
 
+  file_postpone_destroy (thread_p, &btid->vfid);
+
   return NO_ERROR;
 }
 
-
 BTID
-hnsw_index_manager::create_btid (const hnsw_index_backend *backend)
+hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backend *backend, OID *class_oid, int attr_id,
+				 const hnsw_build_params &params)
 {
-  BTID btid = {.vfid = VFID_INITIALIZER, .root_pageid = m_last_index_id};
-  while (is_index_loaded (&btid) || is_index_meta_file_exists (backend->get_id(), &btid))
+  BTID btid_out = {.vfid = VFID_INITIALIZER, .root_pageid = -1};
+  BTID *btid = &btid_out;
+
+  if (hnsw_create_file (thread_p, class_oid, attr_id, btid) != NO_ERROR)
     {
-      btid.root_pageid = ++m_last_index_id;
+      ASSERT_ERROR ();
+      // TODO: null BTID
+      return btid_out;
     }
-  return btid;
+
+  PAGE_PTR page_ptr = NULL;
+  VPID root_vpid;
+
+  root_vpid.volid = btid->vfid.volid;
+  root_vpid.pageid = btid->root_pageid;
+
+  page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == NULL)
+    {
+      // TODO
+      ASSERT_ERROR ();
+      return btid_out;
+    }
+
+#if !defined(NDEBUG)
+  pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_HNSW);
+#endif /* !NDEBUG */
+
+  HNSW_HEADER hnsw_header;
+  hnsw_header.dimension = params.dimension;
+  hnsw_header.hnsw_M = params.m;
+  hnsw_header.hnsw_efConstruction = params.ef_construction;
+  hnsw_header.metric = static_cast<int> (params.metric);
+
+  if (hnsw_init_header (thread_p, &btid->vfid, page_ptr, &hnsw_header) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      // TODO: null BTID
+      return btid_out;
+    }
+
+  pgbuf_set_dirty (thread_p, page_ptr, FREE);
+
+  hnsw_print_index_info (btid, &hnsw_header);
+
+  return *btid;
 }
 
 void hnsw_index_manager::register_backend (std::unique_ptr<hnsw_index_backend> backend)
@@ -698,4 +773,128 @@ hnsw_index_backend *
 hnsw_index_manager::get_backend ()
 {
   return m_backend.get();
+}
+
+static int
+hnsw_create_file (THREAD_ENTRY *thread_p, OID *class_oid, int attr_id, BTID *btid)
+{
+  FILE_DESCRIPTORS des;
+  VPID vpid_root;
+  int error_code = NO_ERROR;
+
+  memset (&des, 0, sizeof (des));
+  des.btree.class_oid = *class_oid;
+  des.btree.attr_id = attr_id;
+
+  error_code = file_create_with_npages (thread_p, FILE_HNSW, 1, &des, &btid->vfid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  log_sysop_start (thread_p);
+  error_code = file_alloc_sticky_first_page (thread_p, &btid->vfid, hnsw_initalize_new_page, NULL, &vpid_root, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      return error_code;
+    }
+  if (vpid_root.volid != btid->vfid.volid)
+    {
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      return ER_FAILED;
+    }
+  btid->root_pageid = vpid_root.pageid;
+
+  log_sysop_commit (thread_p);
+  return NO_ERROR;
+}
+
+static int
+hnsw_initalize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
+{
+  pgbuf_set_page_ptype (thread_p, page, PAGE_HNSW);
+  spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+static int
+hnsw_init_header (THREAD_ENTRY *thread_p, VFID *vfid, PAGE_PTR page_ptr, HNSW_HEADER *hnsw_header)
+{
+  RECDES rec;
+  char copy_rec_buf[IO_MAX_PAGE_SIZE + HNSW_MAX_ALIGN];
+
+  rec.area_size = DB_PAGESIZE;
+  rec.data = PTR_ALIGN (copy_rec_buf, HNSW_MAX_ALIGN);
+
+  if (hnsw_pack_header (&rec, hnsw_header) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+hnsw_pack_header (RECDES *rec, HNSW_HEADER *hnsw_header)
+{
+  int fixed_size = (int) sizeof (HNSW_HEADER);
+
+  memcpy (rec->data, hnsw_header, fixed_size);
+
+  rec->length = fixed_size;
+  rec->type = REC_HOME;
+  return NO_ERROR;
+}
+
+static HNSW_HEADER *
+hnsw_get_header (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr)
+{
+  RECDES header_record;
+  HNSW_HEADER *hnsw_header = NULL;
+
+  assert (page_ptr != NULL);
+
+#if !defined(NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_HNSW);
+#endif
+
+  if (spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return NULL;
+    }
+
+  hnsw_header = (HNSW_HEADER *) header_record.data;
+
+  return hnsw_header;
+}
+
+static int
+hnsw_print_index_info (BTID *btid, HNSW_HEADER *hnsw_header)
+{
+  std::ostringstream oss;
+
+  oss << "HNSW Index Information for ID: (" << btid->vfid.volid << ":" << btid->vfid.fileid << ":" << btid->root_pageid <<
+      ")\n";
+  oss << "  - Dimension: " << hnsw_header->dimension << "\n";
+  oss << "  - Metric Type: " << hnsw_header->metric << "\n";
+  oss << "  - HNSW efConstruction: " << hnsw_header->hnsw_efConstruction << "\n";
+
+  fprintf (stdout, "%s", oss.str().c_str());
+  fflush (stdout);
+
+  return NO_ERROR;
 }

@@ -32,20 +32,22 @@
 
 #include "storage_common.h"
 #include "dbtype_def.h"
+#include "vector_distance_enum.h"
 #include "thread_compat.hpp"
 #include "hnsw_api.hpp"
 
-int xhnsw_initialize (THREAD_ENTRY *thread_p);
-int xhnsw_finalize (THREAD_ENTRY *thread_p);
+extern int xhnsw_initialize (THREAD_ENTRY *thread_p);
+extern int xhnsw_finalize (THREAD_ENTRY *thread_p);
+extern int xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_build_params &params,
+			    BTID &btid_out);
+extern int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
+extern int xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
+			     HFID *hfids, const hnsw_build_params &params);
 
-int xhnsw_add_index (THREAD_ENTRY *thread_p, OID *class_oid, int attrid, const hnsw_build_params &params,
-		     BTID &btid_out);
-int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
-int xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
-		      HFID *hfids, const hnsw_build_params &params);
+extern int hnsw_print_index_info (THREAD_ENTRY *thread_p, BTID *btid);
 
-int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
-int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
-			 float *distances);
+extern int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
+				float *distances);
+extern int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
 
 #endif

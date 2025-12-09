@@ -1467,6 +1467,10 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
       fprintf (fp, "\n");
       break;
 
+    case FILE_HNSW:
+      assert (false);
+      break;
+
     case FILE_BTREE_OVERFLOW_KEY:
       fprintf (fp, "Overflow keys for BTID: %10d|%5d|%10d\n",
 	       BTID_AS_ARGS (&fhead->descriptor.btree_key_overflow.btid));
@@ -3055,6 +3059,8 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "BTREE";
     case FILE_BTREE_OVERFLOW_KEY:
       return "BTREE_OVERFLOW_KEY";
+    case FILE_HNSW:
+      return "HNSW";
     case FILE_EXTENDIBLE_HASH:
       return "HASH";
     case FILE_EXTENDIBLE_HASH_DIRECTORY:
@@ -10863,6 +10869,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_BTREE_OVERFLOW_KEY:
       /* we need to protect with lock. fall through */
       break;
+    case FILE_HNSW:
+      assert (false);
+      break;
     default:
       /* immutable file types. no protection required */
       *stop = true;
@@ -10896,6 +10905,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       break;
     case FILE_BTREE_OVERFLOW_KEY:
       *class_oid = fhead->descriptor.btree_key_overflow.class_oid;
+      break;
+    case FILE_HNSW:
+      assert (false);
       break;
     default:
       assert (false);
@@ -11578,6 +11590,9 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
     case FILE_MULTIPAGE_OBJECT_HEAP:
       /* heap file */
       spacedb_ftype = SPACEDB_HEAP_FILE;
+      break;
+    case FILE_HNSW:
+      assert (false);
       break;
     default:
       /* system file */
