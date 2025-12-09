@@ -286,8 +286,15 @@ namespace cubhnsw
   }
 
   disk_storage::pinned_t
-  disk_storage::get_vector_by_slot_id (const slot_id_t &vec_slot, const lock_mode &mode)
+  disk_storage::get_vector_by_slot_id (const slot_id_t &slot, const lock_mode &mode)
   {
+    // get node by slot id
+    pinned_t node_blk = get_node_by_slot_id (slot, lock_mode::shared);
+    node_t<disk_traits_t> node = node_t<disk_traits_t> (node_blk.data());
+    slot_id_t vec_slot = node.get_vec_slot();
+
+    // =====================================================================
+
     VPID vpid = { vec_slot.pageid, vec_slot.volid };
 
     // updating vectors is not allowed

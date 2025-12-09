@@ -200,15 +200,12 @@ namespace cubhnsw
       virtual bool is_empty () = 0;
       virtual void set_empty (bool is_empty) noexcept = 0;
 
-      // not yet
       virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
-
       virtual slot_id_t add_node (const OID &key, const float *vector, const level_t &level) = 0;
 
       virtual pinned_t get_root (lock_mode mode) = 0;
-
       virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
-      virtual pinned_t get_vector_by_slot_id (const slot_id_t &vec_slot, const lock_mode &mode) = 0;
+      virtual pinned_t get_vector_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive
       virtual pinned_t promote_root (pinned_t &old) = 0;

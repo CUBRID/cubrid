@@ -79,28 +79,25 @@ namespace cubhnsw
 
       // The root is not initialized yet
       virtual bool is_empty () override;
+      virtual void set_empty (bool is_empty) noexcept override;
 
-      // not yet
       virtual void init_root (std::byte *root_block, std::size_t &root_size) override;
 
       virtual slot_id_t add_node (const OID &key, const float *vector, const level_t &level) override;
 
       virtual pinned_t get_root (lock_mode mode) override;
-      virtual pinned_t get_node_by_slot_id (const slot_id_t &id, const lock_mode &mode) override;
-
-      virtual pinned_t get_vector_by_slot_id (const slot_id_t &vec_slot, const lock_mode &mode) override;
+      virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) override;
+      virtual pinned_t get_vector_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) override;
 
       // promote lockmode from shared to exclusive
       virtual pinned_t promote_root (pinned_t &old) override;
-
-      virtual void set_empty (bool is_empty) noexcept override;
 
     protected:
 
       slot_id_t add_vector (const OID &key, const float *vector);
 
+      // page alloc helpers
       PAGE_PTR alloc_new_page (VFID &vfid, VPID &vpid);
-
       page_handle get_page_to_insert (VFID &vfid, VPID &last_vpid, std::size_t bytes);
 
     private:
