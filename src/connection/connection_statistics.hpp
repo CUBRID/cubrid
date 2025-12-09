@@ -121,7 +121,7 @@ namespace cubconn::statistics
       metrics &operator= (metrics<T, OtherVT> &other);
 
       inline metrics operator+ (const metrics &other);
-      inline metrics operator- (const metrics &other);
+      inline metrics<T, double> operator- (const metrics &other);
       inline metrics<T, double> operator* (double multiplier);
 
       inline void reset ();
@@ -204,14 +204,14 @@ namespace cubconn::statistics
   }
 
   template <class T, typename VT>
-  metrics<T, VT> metrics<T, VT>::operator- (const metrics &other)
+  metrics<T, double> metrics<T, VT>::operator- (const metrics &other)
   {
-    metrics result;
+    metrics<T, double> result;
     std::size_t i;
 
     for (i = 0; i < static_cast<std::size_t> (T::STATS_COUNT); i++)
       {
-	result.m_values[i] = m_values[i] - other.m_values[i];
+	result.m_values[i] = static_cast<double> (m_values[i]) - static_cast<double> (other.m_values[i]);
       }
 
     return result;
