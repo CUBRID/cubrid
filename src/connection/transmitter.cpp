@@ -63,13 +63,14 @@ namespace cubconn
   {
   }
 
-  result transmitter::fill (int fd)
+  result transmitter::fill (int fd, int limit)
   {
     struct ::msghdr *msg;
     std::size_t advance;
-    ssize_t bytes;
+    ssize_t bytes, consumption;
 
     msg = &m_buf.get_msghdr ();
+    consumption = 0;
     while (msg->msg_iovlen)
       {
 	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL);
@@ -92,6 +93,16 @@ namespace cubconn
 		    advance -= msg->msg_iov->iov_len;
 		    ++msg->msg_iov;
 		    --msg->msg_iovlen;
+		  }
+	      }
+
+	    if (limit > 0)
+	      {
+		consumption += bytes;
+		if (consumption >= limit)
+		  {
+		    m_stats->add (statistics::context::SEND_BUDGET_HIT, 1);
+		    return result::BudgetExhausted;
 		  }
 	      }
 	    continue;
