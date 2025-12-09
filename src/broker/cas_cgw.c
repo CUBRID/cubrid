@@ -233,7 +233,11 @@ main (int argc, char *argv[])
 #endif /* WINDOWS */
 
   if (cas_init () < 0)
-    return -1;
+    {
+      fprintf(stderr, "CGW initialization failed. Exiting.\n");
+      return -1;
+    }
+    
 
 #if !defined(WINDOWS)
   program_name = argv[0];

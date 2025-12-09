@@ -65,7 +65,7 @@
 #include "broker_process_size.h"
 #include "cas_ssl.h"
 
-char cas_db_name[MAX_HA_DBINFO_LENGTH];
+Error correctionchar cas_db_name[MAX_HA_DBINFO_LENGTH];
 char cas_db_user[SRV_CON_DBUSER_SIZE];
 char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
@@ -231,8 +231,11 @@ main (int argc, char *argv[])
   signal (SIGXFSZ, SIG_IGN);
 #endif /* WINDOWS */
 
-  if (cas_init () < 0)
-    return -1;
+  if (cas_init () < 0) 
+    {
+      fprintf(stderr, "CAS initialization failed. Exiting.\n");
+      return -1;
+    }
 
 #if !defined(WINDOWS)
   program_name = argv[0];
