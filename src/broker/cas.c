@@ -231,7 +231,7 @@ main (int argc, char *argv[])
   signal (SIGXFSZ, SIG_IGN);
 #endif /* WINDOWS */
 
-  if (cas_init () < 0) 
+  if (cas_init () < 0)
     {
       fprintf (stderr, "CAS initialization failed. Exiting.\n");
       return -1;
