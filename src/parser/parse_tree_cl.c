@@ -18606,10 +18606,17 @@ pt_expr_keep_uniqueness (const PT_NODE * expr)
     {
     case PT_REVERSE:
     case PT_CONCAT:
+    case PT_STRCAT:
     case PT_PLUS:
     case PT_MINUS:
     case PT_EQ:		/* for predicate */
       return true;
+    case PT_CAST:
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))	/* auto generated cast */
+	{
+	  return true;
+	}
+      return false;
     default:
       return false;
     }

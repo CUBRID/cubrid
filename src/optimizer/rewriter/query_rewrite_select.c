@@ -1675,17 +1675,9 @@ qo_get_name_cnt_keep_unique (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 	  info->other_spec_cnt++;
 	}
     }
-  else if (node->node_type == PT_EXPR)
+  else if (node->node_type == PT_EXPR && pt_expr_keep_uniqueness (node))
     {
-      if (pt_expr_keep_uniqueness (node))
-	{
-	  /* keep going */
-	}
-      else
-	{
-	  /* don't walk into node */
-	  *continue_walk = PT_LIST_WALK;
-	}
+      /* keep going */
     }
   else
     {
