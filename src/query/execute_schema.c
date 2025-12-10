@@ -7342,15 +7342,15 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       if (attribute->info.attr_def.auto_increment)
 	{
 	  /* 
-	   * Although the default NUMERIC type is Float Numeric,
+	   * although the default NUMERIC type is Float Numeric,
 	   * when used as an AUTO_INCREMENT column with the NUMERIC default,
 	   * it is generated as NUMERIC(38,0) to maintain consistency with _db_serial.
 	   */
-	  if (TP_DOMAIN_TYPE (ctemplate->attributes->domain) == DB_TYPE_NUMERIC
-	      && ctemplate->attributes->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	  if (attribute->type_enum == PT_TYPE_NUMERIC
+	      && attribute->data_type->info.data_type.precision == DB_DEFAULT_NUMERIC_PRECISION
+	      && attribute->data_type->info.data_type.dec_precision == DB_DEFAULT_NUMERIC_SCALE)
 	    {
 	      attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
-	      ctemplate->attributes->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
 	    }
 	  error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
 
@@ -7358,6 +7358,12 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	    {
 	      if (smt_find_attribute (ctemplate, attr_name, 0, &att) == NO_ERROR)
 		{
+		  if (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_NUMERIC
+		      && att->domain->precision == DB_DEFAULT_NUMERIC_PRECISION
+		      && att->domain->scale == DB_DEFAULT_NUMERIC_SCALE)
+		    {
+		      att->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		    }
 		  att->auto_increment = auto_increment_obj;
 		  att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 		}
@@ -10765,13 +10771,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  if (attribute->data_type->info.data_type.precision == DB_DEFAULT_NUMERIC_PRECISION
 	      && attribute->data_type->info.data_type.dec_precision == DB_DEFAULT_NUMERIC_SCALE)
 	    {
-	      /* 
-	       * although the default NUMERIC type is Float Numeric,
-	       * when used as an AUTO_INCREMENT column with the NUMERIC default,
-	       * it is generated as NUMERIC(38,0) to maintain consistency with _db_serial.
-	       */
+	      /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency */
 	      attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
-	      ctemplate->attributes->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
 	      break;
 	    }
 	  else if (attribute->data_type->info.data_type.dec_precision == 0)
@@ -10916,6 +10917,13 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	{
 	  if (found_att != NULL)
 	    {
+	      if (TP_DOMAIN_TYPE (found_att->domain) == DB_TYPE_NUMERIC
+		  && found_att->domain->precision == DB_DEFAULT_NUMERIC_PRECISION
+		  && found_att->domain->scale == DB_DEFAULT_NUMERIC_SCALE)
+		{
+		  /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency */
+		  found_att->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		}
 	      found_att->auto_increment = auto_increment_obj;
 	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 	    }
@@ -10975,6 +10983,13 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  assert_release (auto_increment_obj != NULL);
 	  if (found_att != NULL)
 	    {
+	      if (TP_DOMAIN_TYPE (found_att->domain) == DB_TYPE_NUMERIC
+		  && found_att->domain->precision == DB_DEFAULT_NUMERIC_PRECISION
+		  && found_att->domain->scale == DB_DEFAULT_NUMERIC_SCALE)
+		{
+		  /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency */
+		  found_att->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		}
 	      found_att->auto_increment = auto_increment_obj;
 	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 	    }
