@@ -510,12 +510,11 @@ struct cte_proc_node
 #define XASL_DECACHE_CLONE	       (0x1 << 12)	/* decache clone */
 #define XASL_RETURN_GENERATED_KEYS     (0x1 << 13)	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
-#define XASL_FLAG_RESERVED_1	       (0x1 << 15)	/* reserved for future use */
+#define XASL_NEED_SINGLE_TUPLE_SCAN    (0x1 << 15)	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
-#define XASL_MEMOIZE_STORAGE	       (0x1 << 20)	/* enable memoize storage */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
@@ -765,7 +764,8 @@ typedef enum
   ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN = 0x1 << 1,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 4	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_COUNT_DISTINCT = 0x1 << 4,	/* used with parallel heap scan count distinct aggregate. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
 } ACCESS_SPEC_FLAG;
 
 struct cls_spec_node

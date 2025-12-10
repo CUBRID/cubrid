@@ -21,11 +21,13 @@
  */
 
 #include "px_heap_scan_result_handler.hpp"
+#include "db_function.hpp"
 #include "error_manager.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "query_opfunc.h"
 #include "list_file.h"
+#include "regu_var.hpp"
 #include "storage_common.h"
 #include "system.h"
 #include "dbtype_def.h"
@@ -34,6 +36,8 @@
 #include <atomic>
 #include <chrono>
 #include "dbtype.h"
+#include "query_aggregate.hpp"
+#include "xasl_aggregate.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -42,6 +46,13 @@ namespace parallel_heap_scan
 {
   template <RESULT_TYPE result_type>
   thread_local typename result_handler<result_type>::tls result_handler<result_type>::tl;
+
+  thread_local AGGREGATE_TYPE *result_handler<RESULT_TYPE::COUNT_DISTINCT>::tl_agg_p;
+  thread_local OUTPTR_LIST *result_handler<RESULT_TYPE::COUNT_DISTINCT>::tl_outptr_list_p;
+  thread_local VAL_DESCR *result_handler<RESULT_TYPE::COUNT_DISTINCT>::tl_vd;
+  thread_local xasl_node *result_handler<RESULT_TYPE::COUNT_DISTINCT>::tl_xasl_p;
+  thread_local QFILE_TUPLE_RECORD result_handler<RESULT_TYPE::COUNT_DISTINCT>::tl_tpl_buf;
+  thread_local OR_BUF result_handler<RESULT_TYPE::COUNT_DISTINCT>::tl_or_buf;
 
   int update_domains_on_type_list_by_val_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id_p, VAL_LIST *val_list_p)
   {
@@ -805,8 +816,249 @@ namespace parallel_heap_scan
       }
   }
 
-  // Explicit template instantiations
+  result_handler<RESULT_TYPE::COUNT_DISTINCT>::result_handler (QUERY_ID query_id, interrupt *interrupt_p,
+      err_messages_with_lock *err_messages_p, int parallelism, AGGREGATE_TYPE *orig_agg_list)
+  {
+    m_parallelism = parallelism;
+    m_result_completed = 0;
+    m_query_id = query_id;
+    m_interrupt_p = interrupt_p;
+    m_err_messages_p = err_messages_p;
+    m_orig_agg_list = orig_agg_list;
+  }
+
+  void result_handler<RESULT_TYPE::COUNT_DISTINCT>::read_initialize (THREAD_ENTRY *thread_p)
+  {
+    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+      {
+	orig_agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
+	orig_agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	if (orig_agg_p->list_id != nullptr)
+	  {
+	    qfile_close_list (thread_p, orig_agg_p->list_id);
+	  }
+      }
+  }
+
+  SCAN_CODE result_handler<RESULT_TYPE::COUNT_DISTINCT>::read (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *dest)
+  {
+    std::unique_lock<std::mutex> lock (m_result_mutex);
+    while (m_result_completed < m_parallelism)
+      {
+	m_result_cv.wait_for (lock, std::chrono::microseconds (50));
+	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	  {
+	    return S_ERROR;
+	  }
+      }
+    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+      {
+	if (orig_agg_p->function == PT_COUNT_STAR)
+	  {
+	    ;
+	  }
+	else if (orig_agg_p->function == PT_COUNT)
+	  {
+	    if (orig_agg_p->option == Q_DISTINCT)
+	      {
+		;
+	      }
+	    else
+	      {
+		db_make_bigint (orig_agg_p->accumulator.value, (INT64) orig_agg_p->accumulator.curr_cnt);
+	      }
+	  }
+      }
+    return S_END;
+  }
+
+  void result_handler<RESULT_TYPE::COUNT_DISTINCT>::read_finalize (THREAD_ENTRY *thread_p)
+  {
+
+  }
+
+  void result_handler<RESULT_TYPE::COUNT_DISTINCT>::write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list,
+      write_dest_type *agg_p, VAL_DESCR *vd, xasl_node *xasl_p)
+  {
+    tl_outptr_list_p = outptr_list;
+    tl_agg_p = agg_p;
+    tl_vd = vd;
+    tl_xasl_p = xasl_p;
+    tl_tpl_buf.tpl = (char *)db_private_alloc (thread_p, DB_PAGESIZE);
+    tl_tpl_buf.size = DB_PAGESIZE;
+    for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
+      {
+	if (agg_node->function == PT_COUNT_STAR)
+	  {
+	    agg_node->accumulator.curr_cnt = 0;
+	  }
+	else
+	  {
+	    assert (agg_node->function == PT_COUNT);
+	    if (agg_node->option == Q_DISTINCT)
+	      {
+		int ls_flag = QFILE_FLAG_DISTINCT|QFILE_NOT_USE_MEMBUF;
+		QFILE_TUPLE_VALUE_TYPE_LIST type_list;
+		type_list.type_cnt = 1;
+		type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *));
+		if (type_list.domp == NULL)
+		  {
+		    return;
+		  }
+		type_list.domp[0] = agg_node->operands->value.domain;
+		agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
+		db_private_free_and_init (thread_p, type_list.domp);
+		if (agg_node->list_id == nullptr)
+		  {
+		    return;
+		  }
+	      }
+	    else
+	      {
+		agg_node->accumulator.curr_cnt = 0;
+	      }
+	  }
+      }
+
+  }
+
+  bool result_handler<RESULT_TYPE::COUNT_DISTINCT>::write (THREAD_ENTRY *thread_p)
+  {
+    QFILE_TUPLE_RECORD tpl_buf;
+    if (!tl_xasl_p->proc.buildvalue.agg_domains_resolved)
+      {
+	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (thread_p, tl_xasl_p, tl_vd,
+	    &tl_xasl_p->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
+	  {
+	    return false;
+	  }
+      }
+    for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
+      {
+	if (agg_node->function == PT_COUNT_STAR)
+	  {
+	    agg_node->accumulator.curr_cnt ++;
+	    continue;
+	  }
+	else
+	  {
+	    assert (agg_node->function == PT_COUNT);
+	    if (agg_node->option == Q_DISTINCT)
+	      {
+		for (REGU_VARIABLE_LIST operand = agg_node->operands; operand != NULL; operand = operand->next)
+		  {
+		    assert (operand->value.type == TYPE_CONSTANT);
+		    DB_VALUE *db_value_p = operand->value.value.dbvalptr;
+		    if (DB_IS_NULL (db_value_p))
+		      {
+			continue;
+		      }
+		    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+		    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
+		    int dbval_size = pr_data_writeval_disk_size (db_value_p);
+		    if (dbval_size > tl_tpl_buf.size)
+		      {
+			tl_tpl_buf.tpl = (char *)db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
+			tl_tpl_buf.size = dbval_size;
+		      }
+		    or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
+		    pr_type_p->data_writeval (&tl_or_buf, db_value_p);
+		    if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+		      {
+			return false;
+		      }
+		  }
+	      }
+	    else
+	      {
+		if (DB_IS_NULL (agg_node->operands->value.value.dbvalptr))
+		  {
+		    continue;
+		  }
+		agg_node->accumulator.curr_cnt ++;
+	      }
+	  }
+      }
+    return true;
+  }
+  void result_handler<RESULT_TYPE::COUNT_DISTINCT>::write_finalize (THREAD_ENTRY *thread_p)
+  {
+    {
+      std::lock_guard<std::mutex> lock (writer_results_mutex);
+      AGGREGATE_TYPE *orig_agg_p, *cur_agg_p = tl_xasl_p->proc.buildvalue.agg_list;
+      for (orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+	{
+	  if (orig_agg_p->function == PT_COUNT_STAR)
+	    {
+	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+	      cur_agg_p->accumulator.curr_cnt = 0;
+	      cur_agg_p = cur_agg_p->next;
+	      continue;
+	    }
+	  else
+	    {
+	      assert (orig_agg_p->function == PT_COUNT);
+	      if (orig_agg_p->option == Q_DISTINCT)
+		{
+		  qfile_close_list (thread_p, cur_agg_p->list_id);
+		  if (cur_agg_p->list_id->tuple_cnt == 0)
+		    {
+		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
+
+		  if (orig_agg_p->list_id->tuple_cnt > 0)
+		    {
+		      QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *)malloc (sizeof (QFILE_LIST_ID));
+		      qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		      qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p);
+		      qfile_clear_list_id (cur_agg_p->list_id);
+		      cur_agg_p = cur_agg_p->next;
+		      continue;
+		    }
+		  else if (orig_agg_p->list_id->type_list.type_cnt > 0)
+		    {
+		      qfile_clear_list_id (orig_agg_p->list_id);
+		    }
+		  else
+		    {
+		      QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
+		    }
+
+		  qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT);
+		  qfile_clear_list_id (cur_agg_p->list_id);
+		}
+	      else
+		{
+		  orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+		  cur_agg_p->accumulator.curr_cnt = 0;
+		}
+	      cur_agg_p = cur_agg_p->next;
+	    }
+	}
+    }
+
+    {
+      std::lock_guard<std::mutex> lock (m_result_mutex);
+      m_result_completed++;
+      m_result_cv.notify_all ();
+    }
+    tl_outptr_list_p = nullptr;
+    tl_agg_p = nullptr;
+    tl_vd = nullptr;
+    tl_xasl_p = nullptr;
+    if (tl_tpl_buf.tpl != nullptr)
+      {
+	db_private_free (thread_p, tl_tpl_buf.tpl);
+	tl_tpl_buf.tpl = nullptr;
+      }
+    tl_tpl_buf.size = 0;
+  }
+
+
+// Explicit template instantiations
   template class result_handler<RESULT_TYPE::MERGEABLE_LIST>;
   template class result_handler<RESULT_TYPE::XASL_SNAPSHOT>;
-
+  template class result_handler<RESULT_TYPE::COUNT_DISTINCT>;
 }

@@ -1553,7 +1553,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 #endif /* !NDEBUG */
       /*
        * Reset the log active and stop the recovery process at this
-       * point. Before reseting the log, make sure that we are not
+       * point. Before resetting the log, make sure that we are not
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;

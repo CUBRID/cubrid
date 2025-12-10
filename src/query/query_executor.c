@@ -1947,6 +1947,10 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >
 			*)p->s_id.s.phsid.manager)->close ();
 		      break;
+		    case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
+		      ((parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >
+			*)p->s_id.s.phsid.manager)->close ();
+		      break;
 		    default:
 		      assert (false);
 		      break;
@@ -2003,6 +2007,18 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
 	      heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
 	      isidp->caches_inited = false;
+	    }
+	  if (isidp->prebuilt_midxkey_domains)
+	    {
+	      for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
+		{
+		  if (isidp->prebuilt_midxkey_domains[i])
+		    {
+		      tp_domain_free (isidp->prebuilt_midxkey_domains[i]);
+		      isidp->prebuilt_midxkey_domains[i] = NULL;
+		    }
+		}
+	      db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
 	    }
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
@@ -2813,10 +2829,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   assert (xasl->composite_lock.lockcomp.class_list == NULL);
   lock_abort_composite_lock (&xasl->composite_lock);
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-  if (xasl->memoize_storage)
-    {
-      clear_memoize_storage (thread_p, xasl);
-    }
   /* clear subquery's result-cache */
   if (xasl->sub_xasl_id)
     {
@@ -7327,6 +7339,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 	      result_get_method = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
 	    }
+	  else if (curr_spec->flags & ACCESS_SPEC_FLAG_COUNT_DISTINCT)
+	    {
+	      result_get_method = parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT;
+	    }
 	  error_code =
 	    scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
 					  curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
@@ -8786,6 +8802,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      result_get_method = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
 	    }
+	  else if (spec->flags & ACCESS_SPEC_FLAG_COUNT_DISTINCT)
+	    {
+	      result_get_method = parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT;
+	    }
 	  error =
 	    scan_open_parallel_heap_scan (thread_p, &spec->s_id, mvcc_select_lock_needed, scan_op_type, fixed,
 					  grouped, single_fetch, spec->s_dbval, val_list, vd, &class_oid,
@@ -9219,6 +9239,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
+				  /* only one row is need for exists OP */
+				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				    {
+				      return S_SUCCESS;
+				    }
 				  if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN)
 				    {
 				      assert (xasl->curr_spec->indexptr != NULL);
@@ -9318,6 +9343,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
 					  return S_ERROR;
+					}
+				      /* only one row is need for exists OP */
+				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+					{
+					  return S_SUCCESS;
 					}
 				      scan_ptr_qualified = true;
 				    }
@@ -15557,7 +15587,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      if (spec_level == 0 && level >= 1)
+		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed)
 			{
 			  if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
 			    {
@@ -19941,6 +19971,15 @@ qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (THREAD_ENTRY * thr
   VAL_DESCR *vd_p = (VAL_DESCR *) vd;
   return qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildlist.g_agg_list, vd_p, &tpl,
 						xasl->proc.buildlist.g_scan_regu_list, resolved);
+}
+
+int
+qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_aggregate (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
+									void *vd, int *resolved)
+{
+  QFILE_TUPLE_RECORD tpl = { NULL, 0 };
+  VAL_DESCR *vd_p = (VAL_DESCR *) vd;
+  return qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildvalue.agg_list, vd_p, &tpl, NULL, resolved);
 }
 
 /*

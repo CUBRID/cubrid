@@ -649,12 +649,12 @@ qo_plan_compute_cost (QO_PLAN * plan)
   (*(plan->vtbl)->cost_fn) (plan);
 
   /* Now add in the subquery costs; this cost is incurred for each row produced by this plan, so multiply it by the
-   * estimated cardinality and add it to the access cost.
+   * estimated scan_rows and add it to the access cost.
    */
   if (plan->info)
     {
-      plan->variable_cpu_cost += (plan->info)->cardinality * subq_cpu_cost;
-      plan->variable_io_cost += (plan->info)->cardinality * subq_io_cost;
+      plan->variable_cpu_cost += (plan->info)->scan_rows * subq_cpu_cost;
+      plan->variable_io_cost += (plan->info)->scan_rows * subq_io_cost;
     }
 }
 
@@ -1583,6 +1583,7 @@ qo_sscan_cost (QO_PLAN * planp)
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
   planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
+  planp->info->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nSequential Scan Cost: \n");
@@ -2108,6 +2109,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
+  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -3176,8 +3178,9 @@ qo_nljoin_cost (QO_PLAN * planp)
 	subq_io_cost += temp_io_cost;
       }
 
-    planp->variable_cpu_cost += MAX (0.0, guessed_result_cardinality - 1.0) * subq_cpu_cost;
-    planp->variable_io_cost += MAX (0.0, outer->variable_io_cost - 1.0) * subq_io_cost;	/* assume IO as # blocks */
+    /* subq cost is already included in the inner. so add it for the cardinality excluded due to ISCAN_IO_HIT_RATIO. */
+    planp->variable_cpu_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_cpu_cost;
+    planp->variable_io_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_io_cost;	/* assume IO as # blocks */
   }
 
 #if TEST_DUMP_PLAN_JOIN_COST
@@ -5479,6 +5482,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   qo_compute_projected_segs (planner, nodes, terms, &info->projected_segs);
   info->projected_size = qo_compute_projected_size (planner, &info->projected_segs);
   info->cardinality = cardinality;
+  info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
 
   qo_init_planvec (&info->best_no_order);
 
@@ -11274,7 +11278,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
   /* we must have the first index column appear as the first sort column, so we pretend the number of index_equi
    * columns is zero, to force it to match the sort list and the index columns one-for-one.
    */
-  if (qo_is_index_iss_scan (plan) || index_entryp->constraints->func_index_info != NULL)
+  if (qo_is_index_iss_scan (plan))
     {
       equi_nterms = 0;
     }
@@ -11299,7 +11303,7 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       goto exit_on_end;		/* nop */
     }
 
-  if (asc_or_desc == PT_DESC || index_entryp->constraints->func_index_info != NULL)
+  if (asc_or_desc == PT_DESC)
     {
       col_type = NULL;		/* nop; do not care asc_or_desc anymore */
     }
@@ -11358,11 +11362,13 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
 	  break;		/* give up */
 	}
 
-      if (index_entryp->constraints->func_index_info != NULL)
+
+      if (QO_SEG_FUNC_INDEX (seg) == true)
 	{
-	  if (QO_SEG_FUNC_INDEX (seg) == true)
+	  asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
+	  if (col_type)
 	    {
-	      asc_or_desc = index_entryp->constraints->func_index_info->fi_domain->is_desc ? PT_DESC : PT_ASC;
+	      col_type = col_type->next;
 	    }
 	}
       else
