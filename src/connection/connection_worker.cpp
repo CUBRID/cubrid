@@ -82,8 +82,10 @@ namespace cubconn::connection
     m_context.reserve (256);
 
     /* limiter */
-    m_recv_budget = (int) prm_get_integer_value (PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION);
-    m_send_budget = (int) prm_get_integer_value (PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION);
+    //m_recv_budget = (int) prm_get_integer_value (PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION);
+    //m_send_budget = (int) prm_get_integer_value (PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION);
+    m_recv_budget = 100;
+    m_send_budget = 0;
     m_exhausted.reserve (128);
 
     /* notifier */
@@ -850,7 +852,7 @@ retry:
     ctx->m_send.m_transmitter.push_for_deleter (std::move (item.deleter));
 
     /* first, try to send the packets */
-    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
+    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd, m_send_budget);
     if (status == result::PeerReset || status == result::Error)
       {
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
@@ -863,7 +865,7 @@ retry:
 	return true;
       }
 
-    assert (status == result::Ok || status == result::Pending);
+    assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
 
     if (status == result::Ok)
       {
