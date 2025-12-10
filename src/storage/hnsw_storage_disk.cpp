@@ -19,6 +19,7 @@
 #include "hnsw_storage_disk.hpp"
 
 #include "file_manager.h" // FILE_DESCRIPTORS
+#include "slotted_page.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
