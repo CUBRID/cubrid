@@ -24,7 +24,7 @@
 #include "hnsw_graph_base.hpp"
 
 #include "thread_entry.hpp"
-#include "scope_exit.hpp"
+#include "scoped_resource.hpp"
 
 namespace cubhnsw
 {
@@ -56,47 +56,8 @@ namespace cubhnsw
     exclusive   // single writer (insert/update)
   };
 
-  template <typename Res, typename Cleanup>
-  class scoped_resource
-  {
-    public:
-      scoped_resource (Res res, Cleanup cleanup)
-	: m_res (res)
-	, m_guard (std::move (cleanup))
-      {}
 
-      scoped_resource (const scoped_resource &) = delete;
-      scoped_resource &operator= (const scoped_resource &) = delete;
-
-      scoped_resource (scoped_resource &&other) noexcept
-	: m_res (other.m_res)
-	, m_guard (std::move (other.m_guard))
-      {
-	other.m_res = Res{};
-      }
-
-      ~scoped_resource() = default;
-
-      Res get() const noexcept
-      {
-	return m_res;
-      }
-      explicit operator Res() const noexcept
-      {
-	return m_res;
-      }
-
-      void release() noexcept
-      {
-	m_guard.release();
-      }
-
-    private:
-      Res m_res{};
-      scope_exit<std::decay_t<Cleanup>> m_guard;
-  };
-
-  template <typename Traits, typename F>
+  template <typename Traits, typename Cleanup>
   class pinned_block
   {
     public:
@@ -106,12 +67,12 @@ namespace cubhnsw
 		    std::byte *data,
 		    std::size_t data_size,
 		    lock_mode mode,
-		    F &&fn) noexcept
+		    Cleanup &&fn) noexcept
 	: m_id (id)
 	, m_data (data)
 	, m_data_size (data_size)
 	, m_mode (mode)
-	, m_guard (std::forward<F> (fn))
+	, m_guard (std::forward<Cleanup> (fn))
       {}
 
       pinned_block (slot_id_t id, std::byte *data, std::size_t size,
@@ -121,7 +82,7 @@ namespace cubhnsw
 	, m_data (data)
 	, m_data_size (size)
 	, m_mode (mode)
-	, m_guard ([]() {}) // no-op destructor
+	, m_guard (noop_t{}) // no-op destructor
       {}
 
       // movable but not copyable
@@ -132,17 +93,20 @@ namespace cubhnsw
 	, m_mode (other.m_mode)
 	, m_guard (std::move (other.m_guard))
       {
+        other.invalidate();
       }
 
       pinned_block &operator= (pinned_block &&other) noexcept
       {
 	if (this != &other)
 	  {
+            m_guard.release();
 	    m_id    = other.m_id;
 	    m_data  = other.m_data;
 	    m_data_size = other.m_data_size;
 	    m_mode  = other.m_mode;
 	    m_guard = std::move (other.m_guard);
+            other.invalidate();
 	  }
 	return *this;
       }
@@ -167,12 +131,23 @@ namespace cubhnsw
       }
 
     private:
+      struct noop_t {
+          void operator()() const noexcept {}
+      };
+      
+      void invalidate() noexcept {
+          m_id = slot_id_t{};
+          m_data = nullptr;
+          m_data_size = 0;
+          m_mode = lock_mode::none;
+      }
+
       slot_id_t        m_id {};
       std::byte        *m_data {};
       std::size_t       m_data_size {};
       lock_mode         m_mode = lock_mode::none;
 
-      scope_exit<F> m_guard;  // always exists (may be no-op)
+      scope_exit<std::decay_t<Cleanup>> m_guard;  // always exists (may be no-op)
   };
 
   // =====================================================================
