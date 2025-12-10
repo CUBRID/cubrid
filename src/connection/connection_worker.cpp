@@ -82,10 +82,8 @@ namespace cubconn::connection
     m_context.reserve (256);
 
     /* limiter */
-    //m_recv_budget = (int) prm_get_integer_value (PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION);
-    //m_send_budget = (int) prm_get_integer_value (PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION);
-    m_recv_budget = 100;
-    m_send_budget = 0;
+    m_recv_budget = (int) prm_get_integer_value (PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION);
+    m_send_budget = (int) prm_get_integer_value (PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION);
     m_exhausted.reserve (128);
 
     /* notifier */
