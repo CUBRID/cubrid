@@ -315,13 +315,11 @@ namespace cubhnsw
   }
 
   // promote lockmode from shared to exclusive
-  disk_storage::pinned_t
+  void
   disk_storage::promote_root (pinned_t &old)
   {
+    // not implemented yet
     // int error_code = pgbuf_promote_read_latch (m_thread_p, reinterpret_cast<PAGE_PTR*>(old.data()), PGBUF_PROMOTE_SHARED_READER);
-    // not implemented
-    m_is_empty = false;
-    return std::move (old);
   }
 
   void

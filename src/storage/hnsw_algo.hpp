@@ -31,9 +31,6 @@
 #include "hnsw_graph_base.hpp"
 #include "hnsw_storage.hpp" // storage_t
 
-#include "storage_common.h" // RECDES
-#include "record_descriptor.hpp"
-
 #include "faiss/utils/distances.h" // faiss
 
 #define HNSW_ALGO_DEBUG 0
@@ -444,12 +441,12 @@ namespace cubhnsw
 
     if (new_target_level > curr_max_level)
       {
-	// TODO: latch promotion is required
-	//{
-	// m_storage->promote_root (root_block);
-	//}
 	HNSW_ALGO_PRINT ("[add] promotion required: new_target_level: %d, curr_max_level: %d\n", (int)new_target_level,
 			 (int)curr_max_level);
+	// TODO: latch promotion is required
+	{
+	  m_storage->promote_root (root_block);
+	}
 	root_node.set_entry (new_slot);
 	root_node.set_level (new_target_level);
 	m_storage->set_empty (false);

@@ -208,7 +208,7 @@ namespace cubhnsw
       virtual pinned_t get_vector_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive
-      virtual pinned_t promote_root (pinned_t &old) = 0;
+      virtual void promote_root (pinned_t &root) = 0;
 
       virtual void set_thread_entry (cubthread::entry *thread_p)
       {
