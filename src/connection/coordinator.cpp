@@ -90,6 +90,7 @@ namespace cubconn::connection
 	/* this doesn't use much memory */
 	m_statistics[i].m_contexts.reserve (256);
       }
+    m_current_worker = m_max_worker;
 
     m_thread = std::thread (&coordinator::attach, this);
   }
@@ -176,6 +177,28 @@ namespace cubconn::connection
 	    w.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
 	    c.get (statistics::context::BYTES_IN_TOTAL) / 100 +
 	    c.get (statistics::context::BYTES_OUT_TOTAL) / 100;
+  }
+
+  std::pair<std::size_t, std::size_t> coordinator::statistics_find_score_extremes ()
+  {
+    double max, min;
+    std::size_t i;
+
+    max = 0;
+    min = 0;
+    for (i = 1; i < m_current_worker; i++)
+      {
+	if (m_statistics[i].m_score < m_statistics[min].m_score)
+	  {
+	    min = i;
+	  }
+	else if (m_statistics[i].m_score >= m_statistics[max].m_score)
+	  {
+	    max = i;
+	  }
+      }
+
+    return { min, max };
   }
 
   void coordinator::statistics_print ()
@@ -275,35 +298,32 @@ namespace cubconn::connection
 
   bool coordinator::handle_message_queue_new_client (message &item)
   {
-    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
-    connection::worker::message request;
-    static std::size_t counter = 0;
     static uint64_t id = 1;
 
-    assert (m_statistics[counter].m_contexts.find (id) == m_statistics[counter].m_contexts.end ());
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+    std::size_t worker;
 
-    m_statistics[counter].m_contexts.emplace (
+    std::tie (worker, std::ignore) = statistics_find_score_extremes ();
+
+    assert (m_statistics[worker].m_contexts.find (id) == m_statistics[worker].m_contexts.end ());
+
+    m_statistics[worker].m_contexts.emplace (
 	    id,
 	    std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>> { }
     );
-    m_statistics[counter].m_client_num++;
+    m_statistics[worker].m_client_num++;
 
     request.type = connection::worker::message_type::NEW_CLIENT;
     request.ctx = m_parent->claim_context ();
-    request.ctx->m_worker = counter;
+    request.ctx->m_worker = worker;
     request.ctx->m_id = id++;
     request.conn = item.conn;
 
-    workers[counter]->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!workers[counter]->notify ())
+    workers[worker]->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+    if (!workers[worker]->notify ())
       {
 	assert_release (false);
-      }
-
-    counter++;
-    if (counter == workers.size ())
-      {
-	counter = 0;
       }
 
     return true;

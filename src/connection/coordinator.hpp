@@ -162,7 +162,10 @@ namespace cubconn::connection
       template <typename T>
       void statistics_EWMA (double alpha, uint64_t time_delta, statistics::metrics<T, double> &acc,
 			    statistics::metrics<T> &prev, statistics::metrics<T> &current);
+
       void statistics_update_score (std::size_t worker);
+      std::pair<std::size_t, std::size_t> statistics_find_score_extremes ();
+
       void statistics_print ();
 
       /* --------------------------------------------------------------------------- */
