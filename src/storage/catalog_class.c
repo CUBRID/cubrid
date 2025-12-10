@@ -5472,15 +5472,10 @@ static int
 catcls_filter_attflag (int or_flags)
 {
   int catcls_attr_flags = 0;
-  /* consider defining these flags in storage_common.h */
-  static SM_ATTRIBUTE_FLAG target_flags[] =
-    { SM_ATTFLAG_INVISIBLE_COLUMN, SM_ATTFLAG_NON_NULL, SM_ATTFLAG_AUTO_INCREMENT };
-  int num_target_flags = sizeof (target_flags) / sizeof (SM_ATTRIBUTE_FLAG);
 
-  for (int i = 0; i < num_target_flags; i++)
-    {
-      catcls_attr_flags |= (or_flags & target_flags[i]) ? 1 << i : 0;
-    }
+  catcls_attr_flags |= (or_flags & SM_ATTFLAG_AUTO_INCREMENT) ? DB_ATTOPT_AUTO_INCREMENT : 0;
+  catcls_attr_flags |= (or_flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? DB_ATTOPT_INVISIBLE_COLUMN : 0;
+  catcls_attr_flags |= (or_flags & SM_ATTFLAG_PARTITION_KEY) ? DB_ATTOPT_PARTITION_KEY : 0;
 
   return catcls_attr_flags;
 }
