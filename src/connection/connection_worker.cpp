@@ -1607,7 +1607,7 @@ retry:
 	      }
 	    if (status == result::Error)
 	      {
-		er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_reception failed");
+		er_log_conn (__FILE__, __LINE__, "connection::worker->handle_exhausted: handle_reception failed");
 		return false;
 	      }
 	    if (status == result::Ok || status == result::Pending)
@@ -1632,7 +1632,7 @@ retry:
 	      }
 	    if (status == result::Error)
 	      {
-		er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_transmission failed");
+		er_log_conn (__FILE__, __LINE__, "connection::worker->handle_exhausted: handle_transmission failed");
 		return false;
 	      }
 	    if (status == result::Ok || status == result::Pending)
