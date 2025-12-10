@@ -27,165 +27,11 @@
 #include <cassert>
 #include <type_traits>
 #include <functional>
-#include <optional>
 #include <memory>
 
-#include "scope_exit.hpp"
-
-#define HNSW_UTIL_DEBUG 0
-#define HNSW_UTIL_PRINT(fmt, ...) do { if (HNSW_UTIL_DEBUG) { fprintf (stdout, fmt, ##__VA_ARGS__); fflush (stdout); } } while (0)
-
-template <typename T>
-struct lightweight_span
-{
-  const T *data_;
-  std::size_t size_;
-
-  lightweight_span (const T *data, std::size_t size)
-    : data_ (data), size_ (size) {}
-
-  const T *data() const
-  {
-    return data_;
-  }
-  std::size_t size() const
-  {
-    return size_;
-  }
-
-  const T &operator[] (std::size_t i) const
-  {
-    return data_[i];
-  }
-  const T *begin() const
-  {
-    return data_;
-  }
-  const T *end() const
-  {
-    return data_ + size_;
-  }
-};
-
-template <typename Cleanup = void (*)()>
-class rw_span_cursor
-{
-  public:
-    std::byte *p;
-    std::byte *end;
-
-    std::optional<scope_exit<Cleanup>> m_guard;
-
-    explicit rw_span_cursor (std::byte *span, std::size_t size)
-      : p (span), end (span + size) {}
-
-    ~rw_span_cursor() = default;
-
-    rw_span_cursor (const rw_span_cursor &) = delete;
-    rw_span_cursor &operator= (const rw_span_cursor &) = delete;
-
-    rw_span_cursor (rw_span_cursor &&other) noexcept
-      : p (other.p), end (other.end), m_guard (std::move (other.m_guard))
-    {
-      other.p = nullptr;
-      other.end = nullptr;
-    }
-
-    rw_span_cursor &operator= (rw_span_cursor &&other) noexcept
-    {
-      if (this != &other)
-	{
-	  p = other.p;
-	  end = other.end;
-	  m_guard = std::move (other.m_guard);
-
-	  other.p = nullptr;
-	  other.end = nullptr;
-	}
-      return *this;
-    }
-
-    template <typename F>
-    void set_scope_exit (F &&f)
-    {
-      m_guard.emplace (std::forward<F> (f));
-    }
-
-    void close()
-    {
-      if (m_guard.has_value())
-	{
-	  m_guard->release();
-	  m_guard.reset();
-	}
-    }
-
-    template <typename T>
-    T &write_then_ref (const T &v)
-    {
-      static_assert (std::is_trivially_copyable_v<T>, "T must be POD.");
-      assert (p + sizeof (T) <= end);
-
-      std::memcpy (p, &v, sizeof (T));
-      T &ref = *reinterpret_cast<T *> (p);
-      p += sizeof (T);
-      return ref;
-    }
-
-    template <typename T>
-    void write_array (const T *src, std::size_t count)
-    {
-      static_assert (std::is_trivially_copyable_v<T>, "T must be POD.");
-      std::size_t bytes = sizeof (T) * count;
-      assert (p + bytes <= end);
-
-      std::memcpy (p, src, bytes);
-      p += bytes;
-    }
-
-    template <typename T>
-    T read_pod()
-    {
-      static_assert (std::is_trivially_copyable_v<T>, "T must be POD.");
-      assert (p + sizeof (T) <= end);
-
-      T v = *reinterpret_cast<const T *> (p);
-      p += sizeof (T);
-      return v;
-    }
-
-    template <typename T>
-    lightweight_span<T> read_array (std::size_t count)
-    {
-      static_assert (std::is_trivially_copyable_v<T>, "T must be POD.");
-      std::size_t bytes = sizeof (T) * count;
-      assert (p + bytes <= end);
-
-      T *arr = reinterpret_cast<T *> (p);
-      p += bytes;
-      return lightweight_span<T> (arr, count);
-    }
-
-    template <typename T>
-    T *ref_pod()
-    {
-      static_assert (std::is_trivially_copyable_v<T>, "T must be POD.");
-      assert (p + sizeof (T) <= end);
-
-      return reinterpret_cast<T *> (p);
-    }
-
-    void skip (std::size_t bytes)
-    {
-      assert (p + bytes <= end);
-      p += bytes;
-    }
-
-    std::size_t remaining () const
-    {
-      return static_cast<std::size_t> (end - p);
-    }
-};
+// *********************************************************************************
+// From Usearch's implementation
+// *********************************************************************************
 
 /// @brief  Simply dereferencing misaligned pointers can be dangerous.
 template <typename at> void misaligned_store (void *ptr, at v) noexcept
@@ -706,17 +552,6 @@ class sorted_buffer_gt
     inline void insert_reserved (element_t &&element) noexcept
     {
       std::size_t slot = size_ ? std::lower_bound (elements_, elements_ + size_, element, &less) - elements_ : 0;
-
-      //HNSW_ALGO_PRINT("[sorted_buffer_gt] insert_reserved: slot: %d, size: %d, capacity: %d\n", (int) slot, (int) size_, (int) capacity_);
-#if 0
-      std::size_t to_move = size_ - slot;
-      element_t *source = elements_ + size_ - 1;
-      for (; to_move; --to_move, --source)
-	{
-	  source[1] = source[0];
-	}
-      elements_[slot] = element;
-#endif
 
       for (std::size_t i = size_; i > slot; --i)
 	{
