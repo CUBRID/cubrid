@@ -197,7 +197,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
       if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
 	{
-	  err = jsp_find_sp_of_another_owner (name, &mop);
+	  err = jsp_find_sp_of_another_owner (checked_name, &mop);
 	}
       else
 	{
@@ -949,7 +949,7 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 	      if (db_get_string_size (value) > 255)
 		{
 		  pt_reset_error (parser);
-		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
+		  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG);
 		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 		}
 
@@ -2035,8 +2035,20 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
   {
     PT_NODE *method_name_node = node->info.method_call.method_name;
-    const char *name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-		       method_name_node) : PT_NAME_ORIGINAL (method_name_node);
+
+    const char *name;
+    if (PT_NAME_RESOLVED (method_name_node))
+      {
+	int custom_print_saved = parser->custom_print;
+	parser->custom_print |= PT_SUPPRESS_QUOTES;
+	parser->custom_print &= ~PT_PRINT_QUOTES;
+	name = parser_print_tree (parser, method_name_node);
+	parser->custom_print = custom_print_saved;
+      }
+    else
+      {
+	name = PT_NAME_ORIGINAL (method_name_node);
+      }
 
     sig.name = db_private_strdup (NULL, name);
     if (PT_IS_METHOD (node))

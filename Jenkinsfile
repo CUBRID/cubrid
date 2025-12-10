@@ -8,7 +8,7 @@ pipeline {
   environment {
     OUTPUT_DIR = 'packages'
     TEST_REPORT = 'reports'
-    JUNIT_REQUIRED = 'true'
+    JUNIT_REQUIRED = "${BRANCH_NAME =~ /^feature\/.*/ ? 'false' : 'true'}"
   }
 
   stages {
@@ -39,7 +39,6 @@ pipeline {
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
-                JUNIT_REQUIRED = 'false'
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
@@ -50,7 +49,7 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
+                if (env.JUNIT_REQUIRED == 'true') {
                   junit "${TEST_REPORT}/*.xml"
                 } else {
                   echo 'Skip junit for feature branch'
@@ -81,7 +80,6 @@ pipeline {
             script {
               if (env.BRANCH_NAME ==~ /^feature\/.*/) {
                 echo 'Skip testing for feature branch'
-                JUNIT_REQUIRED = 'false'
               } else {
             	echo 'Testing...'
             	sh '/entrypoint.sh test || echo "$? failed"'
@@ -92,7 +90,7 @@ pipeline {
             always {
               script {
                 archiveArtifacts "${OUTPUT_DIR}/*"
-                if (env.JUNIT_REQUIRED == 'true' && fileExists("${TEST_REPORT}/summary.xml")) {
+                if (env.JUNIT_REQUIRED == 'true') {
                   junit "${TEST_REPORT}/*.xml"
                 } else {
                   echo 'Skip junit for feature branch'

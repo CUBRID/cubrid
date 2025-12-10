@@ -23,6 +23,7 @@
 #include "px_heap_scan_checker.hpp"
 
 #include "regu_var.hpp"
+#include "storage_common.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -33,6 +34,75 @@
 
 namespace parallel_heap_scan
 {
+  struct count_distinct_check
+  {
+    bool operator() (xasl_node *xasl) const
+    {
+      if (xasl == nullptr)
+	{
+	  return false;
+	}
+      if (xasl->type != BUILDVALUE_PROC)
+	{
+	  return false;
+	}
+      if (xasl->scan_ptr || xasl->aptr_list || xasl->dptr_list || xasl->fptr_list || xasl->connect_by_ptr || xasl->bptr_list)
+	{
+	  return false;
+	}
+      if (!xasl->spec_list)
+	{
+	  return false;
+	}
+      for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type != TARGET_CLASS)
+	    {
+	      return false;
+	    }
+	  if (specp->access != ACCESS_METHOD_SEQUENTIAL)
+	    {
+	      return false;
+	    }
+	}
+
+      if (!xasl->proc.buildvalue.agg_list)
+	{
+	  return false;
+	}
+      int outptr_cnt = xasl->outptr_list->valptr_cnt;
+      int agg_cnt = 0;
+      for (REGU_VARIABLE_LIST it = xasl->outptr_list->valptrp; it; it = it->next)
+	{
+	  if (it->value.type != TYPE_CONSTANT)
+	    {
+	      return false;
+	    }
+	}
+      AGGREGATE_TYPE *it = xasl->proc.buildvalue.agg_list;
+
+      for (; it; it = it->next)
+	{
+	  if (it->function != PT_COUNT_STAR && it->function != PT_COUNT)
+	    {
+	      return false;
+	    }
+	  agg_cnt++;
+	}
+      if (agg_cnt != outptr_cnt)
+	{
+	  return false;
+	}
+      for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+	{
+	  specp->flags = (ACCESS_SPEC_FLAG) (specp->flags | ACCESS_SPEC_FLAG_COUNT_DISTINCT);
+	}
+
+      return true;
+    }
+  } const count_distinct_check;
+
+
   enum class CHECK_RESULT
   {
     NONE,
@@ -430,14 +500,13 @@ namespace parallel_heap_scan
 	return result;
       }
     general_checker general_checker (map);
-    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
-      {
-	result = CHECK_RESULT::CANNOT_PARALLEL;
-	return result;
-      }
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_pred));
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_rest));
     result = merge_check_result (result, general_checker.check (spec->where_pred));
+    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
+      {
+	result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+      }
     return result;
   }
 
@@ -455,7 +524,7 @@ namespace parallel_heap_scan
 	    return;
 	  }
 	map->set_lm ((void *)spec);
-	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_MERGED_LIST );
+	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_MERGEABLE_LIST );
       }
     else if (result == CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
       {
@@ -465,9 +534,9 @@ namespace parallel_heap_scan
 	  }
 	map->set_pbp ((void *)spec);
 	map->set_lm ((void *)spec);
-	if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
+	if (spec->flags & ACCESS_SPEC_FLAG_MERGEABLE_LIST)
 	  {
-	    spec->flags = (ACCESS_SPEC_FLAG) (spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
+	    spec->flags = (ACCESS_SPEC_FLAG) (spec->flags & ~ACCESS_SPEC_FLAG_MERGEABLE_LIST);
 	  }
       }
     else if (result == CHECK_RESULT::CANNOT_PARALLEL)
@@ -508,16 +577,6 @@ namespace parallel_heap_scan
 	  {
 	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
 	  }
-	if (xasl->proc.buildlist.g_agg_list)
-	  {
-	    for (AGGREGATE_TYPE *aggp = xasl->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
-	      {
-		if (QPROC_IS_INTERPOLATION_FUNC (aggp) || aggp->function == PT_CUME_DIST || aggp->function == PT_PERCENT_RANK)
-		  {
-		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
-		  }
-	      }
-	  }
 	break;
       case BUILDVALUE_PROC:
 	if (xasl->proc.buildvalue.agg_list)
@@ -553,9 +612,9 @@ namespace parallel_heap_scan
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case INSERT_PROC:
+      case MERGELIST_PROC:
 	break;
       case OBJFETCH_PROC:
-      case MERGELIST_PROC:
       case UPDATE_PROC:
       case DELETE_PROC:
       case CONNECTBY_PROC:
@@ -847,6 +906,10 @@ namespace parallel_heap_scan
 extern int
 scan_check_parallel_heap_scan_possible (XASL_NODE *xasl)
 {
+  if (parallel_heap_scan::count_distinct_check (xasl))
+    {
+      return NO_ERROR;
+    }
   parallel_heap_scan::checker checker;
   return checker.check (xasl);
 }

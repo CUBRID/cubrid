@@ -124,8 +124,8 @@ struct heap_scan_id
 
 namespace parallel_heap_scan
 {
-  class manager;		// forward declaration
-  class perf_monitor;		// forward declaration
+  enum class RESULT_TYPE;
+  class accumulative_trace_storage;	// forward declaration
 }
 
 typedef struct parallel_heap_scan_id PARALLEL_HEAP_SCAN_ID;
@@ -148,8 +148,9 @@ struct parallel_heap_scan_id
   sampling_info sampling;	/* for sampling statistics */
   // *INDENT-OFF*
   #if !WINDOWS
-  parallel_heap_scan::manager * manager;
-  parallel_heap_scan::perf_monitor * perf_monitor;
+  parallel_heap_scan::RESULT_TYPE result_type;
+  void * manager;
+  parallel_heap_scan::accumulative_trace_storage * trace_storage;
   #endif
   // *INDENT-ON*
 };				/* Heap PARALLEL Scan Identifier */
@@ -274,6 +275,7 @@ struct indx_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
+  TP_DOMAIN **prebuilt_midxkey_domains;
 };
 
 typedef struct index_node_scan_id INDEX_NODE_SCAN_ID;

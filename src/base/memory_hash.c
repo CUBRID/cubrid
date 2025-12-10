@@ -601,9 +601,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  hash = mht_1str_pseudo_key (db_get_string (val), db_get_string_size (val));
 	  break;
 	case DB_TYPE_BIT:
@@ -2456,8 +2454,6 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_VARBIT:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	  ptr = db_get_string (val);
 	  if (ptr)
 	    {

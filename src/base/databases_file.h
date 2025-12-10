@@ -27,10 +27,8 @@
 
 #ident "$Id$"
 
-#if !defined (DO_NOT_USE_CUBRIDENV)
 /* Name of the environment variable pointing to database file */
 #define DATABASES_ENVNAME "DATABASES"
-#endif
 
 #if defined(WINDOWS)
 #define SECTION_START_CHAR '['
