@@ -3341,6 +3341,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private SqlSemantics getSqlSemanticsFromServer(Static_sqlContext ctx) {
+
+        List<TerminalNode> bindParamTokens = ctx.SS_BIND_PARAM();
+        if (bindParamTokens != null && bindParamTokens.size() > 0) {
+            TerminalNode token = bindParamTokens.get(0);
+            throw new SemanticError(
+                    Misc.getLineColumnOf(token),
+                    "Static SQL statements cannot have a bind parameter");
+        }
+
         String text = expandRecordIfAny(ctx);
         return getSqlSemanticsFromServer(text, ctx);
     }
