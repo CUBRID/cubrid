@@ -161,8 +161,8 @@ namespace cubconn::connection
 
   void coordinator::statistics_update_score (std::size_t worker)
   {
-    statistics::metrics<statistics::context, double> &c = m_statistics[worker].m_sum;
-    statistics::metrics<statistics::worker, double> &w = m_statistics[worker].m_worker.first;
+    statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
+    statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
 
     /*
     c.get (statistics::context::RECV_BUDGET_HIT);
@@ -171,12 +171,12 @@ namespace cubconn::connection
 
     /* temporary formula */
     m_statistics[worker].m_score =
-	    static_cast<double> (m_statistics[worker].m_client_num) / 500 +
+	    static_cast<double> (m_statistics[worker].m_client_num) / 10 +
 	    /* throughput per ms */
-	    w.get (statistics::worker::MQ_REQUESTED) / 500 +
-	    w.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
-	    c.get (statistics::context::BYTES_IN_TOTAL) / 100 +
-	    c.get (statistics::context::BYTES_OUT_TOTAL) / 100;
+	    w_ewma.get (statistics::worker::MQ_REQUESTED) / 500 +
+	    w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
+	    c_ewma.get (statistics::context::BYTES_IN_TOTAL) / 100 +
+	    c_ewma.get (statistics::context::BYTES_OUT_TOTAL) / 100;
   }
 
   std::pair<std::size_t, std::size_t> coordinator::statistics_find_score_extremes ()
@@ -325,6 +325,9 @@ namespace cubconn::connection
       {
 	assert_release (false);
       }
+
+    /* update score */
+    this->statistics_update_score (worker);
 
     return true;
   }
