@@ -14582,21 +14582,25 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 
       if (src_query->info.query.q.select.hint & PT_HINT_ORDERED)
 	{
-	  if (dest_query->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
-	    {
-	      /* ignore ordered hint */
-	      src_query->info.query.q.select.hint &= ~PT_HINT_ORDERED;
-	    }
+	  /* ignore ordered hint */
+	  src_query->info.query.q.select.hint &= ~PT_HINT_ORDERED;
 	}
-      /* TO_DO : convert ordered to leadidng */
+      if (src_query->info.query.q.select.hint & PT_HINT_LEADING
+	  && dest_query->info.query.q.select.hint & PT_HINT_LEADING)
+	{
+	  /* ignore leading hint */
+	  src_query->info.query.q.select.hint &= ~PT_HINT_LEADING;
+	}
+      else
+	{
+	  dest_query->info.query.q.select.leading =
+	    parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
+				dest_query->info.query.q.select.leading);
+	}
 
       /* merge HINT of vclass spec */
       dest_query->info.query.q.select.hint =
 	(PT_HINT_ENUM) (dest_query->info.query.q.select.hint | src_query->info.query.q.select.hint);
-
-      dest_query->info.query.q.select.leading =
-	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
-			    dest_query->info.query.q.select.leading);
 
       dest_query->info.query.q.select.use_nl =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_nl),
