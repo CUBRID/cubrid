@@ -50,7 +50,7 @@ namespace cubhnsw
   // ROOT
   // -------------------------------------------------------------------
   memory_storage::root_type
-  memory_storage::init_root (std::byte* root_block)
+  memory_storage::init_root (std::byte *root_block)
   {
     root_type r { reinterpret_cast<byte_t *> (root_block) };
     r.set_params (this->m_build_params);
@@ -65,13 +65,13 @@ namespace cubhnsw
     return root_type { reinterpret_cast<byte_t *> (m_root_block) };
   }
 
-  void 
+  void
   memory_storage::set_root (const root_type &root)
   {
     std::memcpy (m_root_block, root.tape (), IO_MAX_PAGE_SIZE);
   }
 
-  bool 
+  bool
   memory_storage::is_empty ()
   {
     root_type r { reinterpret_cast<byte_t *> (m_root_block) };
@@ -81,7 +81,7 @@ namespace cubhnsw
   // -------------------------------------------------------------------
   // VECTOR STORAGE
   // -------------------------------------------------------------------
-  memory_storage::slot_id_t 
+  memory_storage::slot_id_t
   memory_storage::add_vector (const OID &oid, const float *vector)
   {
     slot_id_t new_id;

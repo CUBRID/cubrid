@@ -2286,10 +2286,10 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
        * for vector indexes, we temporarily skip including vector indexes
        * in the classrep so they are not written into the catalog.
        */
-      //if (type != VECTOR_INDEX)
-	//{
+      if (true)			// type != VECTOR_INDEX
+	{
 	  (void) or_install_btids_attribute (rep, att_id, &id);
-	//}
+	}
     }
 
   /*

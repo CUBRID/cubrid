@@ -27,14 +27,14 @@
 
 namespace cubhnsw
 {
-    template <>
-    struct storage_traits<storage_kind::memory>
-    {
-      static constexpr storage_kind kind = storage_kind::memory;
-      using slot_id_t = std::size_t;
-    };
+  template <>
+  struct storage_traits<storage_kind::memory>
+  {
+    static constexpr storage_kind kind = storage_kind::memory;
+    using slot_id_t = std::size_t;
+  };
 
-    using memory_traits_t = storage_traits<storage_kind::memory>;
+  using memory_traits_t = storage_traits<storage_kind::memory>;
 
   class memory_storage : public storage<memory_traits_t>
   {
@@ -49,7 +49,7 @@ namespace cubhnsw
       virtual ~memory_storage();
 
       // Root
-      virtual root_type init_root(std::byte* root_block) override;
+      virtual root_type init_root (std::byte *root_block) override;
       virtual root_type get_root() override;
       virtual void set_root (const root_type &root) override;
       virtual bool is_empty() override;
