@@ -116,6 +116,7 @@ namespace cubpl
       using cursor_iter = std::unordered_map <QUERY_ID, query_cursor *>::iterator;
 
       /* cursor management */
+      void destroy_all_cursors ();
       query_cursor *create_cursor (cubthread::entry *thread_p, QUERY_ID query_id, bool oid_included = false);
       query_cursor *get_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
       void destroy_cursor (cubthread::entry *thread_p, QUERY_ID query_id);
@@ -169,7 +170,6 @@ namespace cubpl
       void set_session_param (const sys_param &param);
 
     private:
-      void destroy_all_cursors ();
       void destroy_pl_context_jvm ();
 
       std::mutex m_mutex_stack;

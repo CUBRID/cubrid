@@ -623,6 +623,7 @@ static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NO
 						  int *continue_walk);
 static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p);
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
 static int pt_mvcc_flag_specs_cond_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * cond);
 static int pt_mvcc_flag_specs_assign_reev (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE * assign_list);
@@ -1692,6 +1693,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	    case PT_EXISTS:
 	      regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1, UNBOX_AS_TABLE);
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
+
+	      /* exists op must fetch one tuple */
+	      if (!pt_has_having_with_predicate (parser, node->info.expr.arg1) && regu_var1 && regu_var1->xasl)
+		{
+		  XASL_SET_FLAG (regu_var1->xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
+		}
 	      break;
 
 	    case PT_IS_NULL:
@@ -1922,23 +1929,6 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		    PT_NODE *node = pt_make_string_value (parser, "\\");
 
 		    assert (!prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES));
-
-		    switch (arg1->type_enum)
-		      {
-		      case PT_TYPE_MAYBE:
-			if (!PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum))
-			  {
-			    break;
-			  }
-			[[fallthrough]];
-		      case PT_TYPE_NCHAR:
-		      case PT_TYPE_VARNCHAR:
-			node->type_enum = PT_TYPE_NCHAR;
-			node->info.value.string_type = 'N';
-			break;
-		      default:
-			break;
-		      }
 
 		    regu_escape = pt_to_regu_variable (parser, node, UNBOX_AS_VALUE);
 		    parser_free_node (parser, node);
@@ -3307,9 +3297,7 @@ pt_to_index_attrs (PARSER_CONTEXT * parser, TABLE_INFO * table_info, QO_XASL_IND
 	      assert (ref_node != NULL);
 
 	      /* need to check zero-length empty string */
-	      if (ref_node != NULL
-		  && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARNCHAR
-		      || ref_node->type_enum == PT_TYPE_VARBIT))
+	      if (ref_node != NULL && (ref_node->type_enum == PT_TYPE_VARCHAR || ref_node->type_enum == PT_TYPE_VARBIT))
 		{
 		  pred_nodes = parser_append_node (ref_node, pred_nodes);
 		}
@@ -7373,16 +7361,8 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
       dt->info.data_type.precision = DB_MAX_CHAR_PRECISION;
       break;
 
-    case PT_TYPE_NCHAR:
-      dt->info.data_type.precision = DB_MAX_NCHAR_PRECISION;
-      break;
-
     case PT_TYPE_VARCHAR:
       dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
-      break;
-
-    case PT_TYPE_VARNCHAR:
-      dt->info.data_type.precision = DB_MAX_VARNCHAR_PRECISION;
       break;
 
     case PT_TYPE_BIT:
@@ -17171,8 +17151,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan
-	      && ((qo_plan_skip_orderby (qo_plan) && !qo_plan_multi_range_opt (qo_plan)) || qo_is_viscan (qo_plan)))
+	  if ((qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
+	      && !qo_plan_multi_range_opt (qo_plan)) || qo_is_viscan (qo_plan))
 	    {
 	      orderby_skip = true;
 
@@ -17326,6 +17306,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
     }
 
+  if (pt_set_like_recompile_candidate (parser, qo_plan, xasl) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   if (pt_set_limit_optimization_flags (parser, qo_plan, xasl) != NO_ERROR)
     {
       goto exit_on_error;
@@ -17356,6 +17341,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   return xasl;
 
@@ -17585,6 +17572,8 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   return xasl;
 
@@ -19055,7 +19044,15 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->info.insert.spec && statement->info.insert.spec->info.spec.remote_server_name)
     {
       pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
+      if (statement->info.insert.spec->info.spec.remote_server_name->node_type == PT_NAME)
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
@@ -20869,7 +20866,15 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (from && from->info.spec.remote_server_name)
     {
       pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
+      if (from->info.spec.remote_server_name->node_type == PT_NAME)
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
@@ -21565,7 +21570,15 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   if (from && from->info.spec.remote_server_name)
     {
       pt_check_dblink_trigger (parser, statement);
-      pt_rewrite_for_dblink (parser, statement);
+      if (from->info.spec.remote_server_name->node_type == PT_NAME)
+	{
+	  /*
+	   * pt_rewrite_dblink has to be called only once
+	   * at pt_rewrite_dblink
+	   * info.spec.remote_server_name node is changed to PT_DBLINK_DML_TABLE
+	   */
+	  pt_rewrite_for_dblink (parser, statement);
+	}
 
       if (pt_has_error (parser))
 	{
@@ -27351,6 +27364,27 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
   regu->value.regu_var_list = regu_var_list;
 
   return regu;
+}
+
+static int
+pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl)
+{
+  if (qo_plan == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  bool is_candidate = false;
+
+  if (qo_has_like_recompile_candidate (qo_plan, &is_candidate) == NO_ERROR)
+    {
+      if (is_candidate)
+	{
+	  xasl->header.xasl_flag |= LIKE_RECOMPILE_CANDIDATE;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
