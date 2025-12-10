@@ -74,7 +74,7 @@
 #endif
 #include "critical_section.h"
 #include "page_buffer.h"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "file_io.h"
 #include "disk_manager.h"
 #include "error_manager.h"
@@ -1317,17 +1317,21 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   assert (loghdr != NULL);
 
   /* to also initialize padding bytes */
-  memset (loghdr, 0, sizeof (LOG_HEADER));
+  // Use placement new instead of memset to avoid -Wclass-memaccess.
+  // Do not delete loghdr  
+  loghdr = placement_new (loghdr);
 
   strncpy (loghdr->magic, CUBRID_MAGIC_LOG_ACTIVE, CUBRID_MAGIC_MAX_LENGTH);
 
   if (db_creation != NULL)
     {
       loghdr->db_creation = *db_creation;
+      loghdr->vol_creation = time (NULL);
     }
   else
     {
       loghdr->db_creation = -1;
+      loghdr->vol_creation = -1;
     }
 
   if (strlen (rel_release_string ()) >= REL_MAX_RELEASE_LENGTH)
@@ -2957,7 +2961,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   if ((bg_arv_info->current_page_id - bg_arv_info->last_sync_pageid) > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive, FILEIO_SYNC_ONLY);
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
       bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
     }
 }
@@ -3704,7 +3708,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
 	  /* System volume. No need to sync DWB. */
-	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;
@@ -3767,7 +3771,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       /* we need to also sync again */
-      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -5701,6 +5705,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   arvhdr = (LOG_ARV_HEADER *) malloc_arv_hdr_pgptr->area;
   strncpy (arvhdr->magic, CUBRID_MAGIC_LOG_ARCHIVE, CUBRID_MAGIC_MAX_LENGTH);
   arvhdr->db_creation = log_Gl.hdr.db_creation;
+  arvhdr->vol_creation = time (NULL);
   arvhdr->next_trid = log_Gl.hdr.next_trid;
   arvhdr->arv_num = log_Gl.hdr.nxarv_num;
 
@@ -5823,7 +5828,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
        * Make sure that the whole log archive is in physical storage at this
        * moment. System volume. No need to sync DWB.
        */
-      if (fileio_synchronize (thread_p, vdes, arv_name, FILEIO_SYNC_ONLY) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
 	{
 	  goto error;
 	}
@@ -5846,13 +5851,6 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
      (long long int) log_Gl.hdr.nxarv_pageid, (long long int) log_Gl.hdr.nxarv_phy_pageid);
   /* Flush the log header to reflect the archive */
   logpb_flush_header (thread_p);
-
-#if 0
-  if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) != 0)
-    {
-      fileio_synchronize (thread_p, log_Gl.append.vdes, FILEIO_SYNC_ONLY);
-    }
-#endif
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_ARCHIVE_CREATED, 3, arv_name, arvhdr->fpageid, last_pageid);
 
@@ -5990,7 +5988,7 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 {
   int first_arv_num_to_delete = -1;
   int last_arv_num_to_delete = -1;
-  int min_arv_required_for_vacuum;
+  int min_arv_required_for_vacuum = 0;
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
 #if defined(SERVER_MODE)
   LOG_PAGEID min_copied_pageid;
@@ -6250,7 +6248,7 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
   pgbuf_flush_checkpoint (thread_p, &flush_upto_lsa, NULL, &newflush_upto_lsa, NULL);
 
   if ((!LSA_ISNULL (&newflush_upto_lsa) && LSA_LT (&newflush_upto_lsa, &flush_upto_lsa))
-      || (fileio_synchronize_all (thread_p, false) != NO_ERROR))
+      || (fileio_synchronize_all (thread_p) != NO_ERROR))
     {
       /* Cannot remove the archives at this moment */
       return;
@@ -6989,7 +6987,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     }
 
   detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
-  if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
+  if (fileio_synchronize_all (thread_p) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
@@ -7077,7 +7075,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 	}
 
       /* CHECKPOINTING THE TOP ACTIONS */
-      for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
+      for (i = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
 	{
 	  /*
 	   * Don't checkpoint current system transaction. That is, the one of
@@ -7234,7 +7232,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
        * due to volume header page modification).
        */
       vdes = fileio_get_volume_descriptor (volid);
-      if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+      if (dwb_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK)) != vdes)
 	{
 	  goto error_cannot_chkpt;
 	}
@@ -7353,11 +7351,6 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   logtb_clear_tdes (thread_p, tdes);
 
   LOG_CS_EXIT (thread_p);
-
-#if 0
-  /* have to sync log vol, data vol */
-  fileio_synchronize_all (thread_p, true /* include_log */ );
-#endif
 
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_END_CHECKPOINTS);
 
@@ -7500,7 +7493,7 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
     }
 
   vdes = fileio_get_volume_descriptor (volid);
-  if (fileio_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK), FILEIO_SYNC_ALSO_FLUSH_DWB) != vdes)
+  if (dwb_synchronize (thread_p, vdes, fileio_get_volume_label (vdes, PEEK)) != vdes)
     {
       return ER_FAILED;
     }
@@ -7520,6 +7513,37 @@ logpb_backup_for_volume (THREAD_ENTRY * thread_p, VOLID volid, LOG_LSA * chkpt_l
 			  only_updated);
 
   return error_code;
+}
+
+// *INDENT-OFF*
+cubthread::entry_workpool * g_backup_read_worker_pool = NULL;
+// *INDENT-ON*
+
+void
+logpb_create_backup_read_worker_pool (size_t thread_count)
+{
+  /* The task of pushing the backup read task is performed by a single thread,
+     so it is fine to have only one core. */
+  size_t core_count = 1;
+  if (thread_count == 0)
+    {
+      thread_count = 1;
+    }
+  g_backup_read_worker_pool =
+    cubthread::get_manager ()->create_worker_pool (thread_count, thread_count, "backup read workers", NULL,
+						   core_count, false, true);
+}
+
+void
+logpb_push_backup_read_task (cubthread::entry_task * task)
+{
+  thread_get_manager ()->push_task (g_backup_read_worker_pool, task);
+}
+
+void
+logpb_destroy_backup_read_worker_pool ()
+{
+  thread_get_manager ()->destroy_worker_pool (g_backup_read_worker_pool);
 }
 
 /*
@@ -7598,6 +7622,8 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   char time_val[CTIME_MAX];
 
   LOG_PAGEID vacuum_first_pageid = NULL_PAGEID;
+  size_t read_thread_count = 0;
+  int specified_thread_count = num_threads;
 
 #if defined (SERVER_MODE)
   // check whether there is ongoing backup.
@@ -7644,6 +7670,16 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
     }
 
 #if defined (SERVER_MODE)
+  read_thread_count = session.read_thread_info.num_threads - 1;
+
+  logpb_create_backup_read_worker_pool (read_thread_count);
+  if (g_backup_read_worker_pool == NULL)
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto error;
+    }
+
   print_backupdb_waiting_reason = false;
   wait_checkpoint_begin_time = time (NULL);
 loop:
@@ -7865,7 +7901,8 @@ loop:
 	}
       fprintf (session.verbose_fp, "[ Database(%s) %s Backup start ]\n\n", boot_db_name (), str_tmp);
 
-      fprintf (session.verbose_fp, "- num-threads: %d\n\n", session.read_thread_info.num_threads);
+      fprintf (session.verbose_fp, "- num-threads: %d (user-requested: %d)\n\n", session.read_thread_info.num_threads,
+	       num_threads);
 
       if (zip_method == FILEIO_ZIP_NONE_METHOD)
 	{
@@ -8160,6 +8197,10 @@ loop:
       goto error;
     }
 
+#if defined(SERVER_MODE)
+  logpb_destroy_backup_read_worker_pool ();
+#endif
+
   if (delete_unneeded_logarchives != false)
     {
       catmsg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DATABASE_BACKUP_WAS_TAKEN);
@@ -8224,6 +8265,13 @@ error:
    * Destroy the backup that has been created.
    */
   fileio_abort_backup (thread_p, &session, bkup_in_progress);
+
+#if defined(SERVER_MODE)
+  if (g_backup_read_worker_pool != NULL)
+    {
+      logpb_destroy_backup_read_worker_pool ();
+    }
+#endif
 
 #if defined(SERVER_MODE)
   LOG_CS_ENTER (thread_p);
@@ -9256,8 +9304,7 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
       return error_code;
     }
 
-  if (fileio_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK),
-			  FILEIO_SYNC_ALSO_FLUSH_DWB) != from_vdes)
+  if (dwb_synchronize (thread_p, from_vdes, fileio_get_volume_label (from_vdes, PEEK)) != from_vdes)
     {
       return ER_FAILED;
     }
@@ -9633,7 +9680,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
 		  fileio_dismount (thread_p, to_vdes);
 		  goto error;
 		}
-	      if (fileio_synchronize (thread_p, to_vdes, to_volname, FILEIO_SYNC_ALSO_FLUSH_DWB) != to_vdes)
+	      if (dwb_synchronize (thread_p, to_vdes, to_volname) != to_vdes)
 		{
 		  fileio_dismount (thread_p, to_vdes);
 		  error_code = ER_FAILED;
@@ -10090,8 +10137,8 @@ logpb_rename_all_volumes_files (THREAD_ENTRY * thread_p, VOLID num_perm_vols, co
 	{
 	  goto error;
 	}
-      if (fileio_synchronize (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK),
-			      FILEIO_SYNC_ALSO_FLUSH_DWB) == NULL_VOLDES)
+      if (dwb_synchronize (thread_p, fileio_get_volume_descriptor (volid), fileio_get_volume_label (volid, PEEK)) ==
+	  NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -10616,7 +10663,7 @@ logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_fl
 	}
     }
 
-  fileio_synchronize_all (thread_p, false);
+  fileio_synchronize_all (thread_p);
 
   fflush (stderr);
   fflush (stdout);

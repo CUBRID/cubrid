@@ -77,7 +77,9 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_cache.h"
-#include "method_runtime_context.hpp"
+#include "session.h"
+#include "pl_session.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1568,7 +1570,10 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->suppress_replication = 0;
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
-
+  if (tdes->ddl_sql_user_text != NULL)
+    {
+      free_and_init (tdes->ddl_sql_user_text);
+    }
   logtb_tran_clear_update_stats (&tdes->log_upd_stats);
 
   assert (tdes->mvccinfo.id == MVCCID_NULL);
@@ -1653,6 +1658,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->disable_modifications = db_Disable_modifications;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
+  tdes->ddl_sql_user_text = NULL;
 
   for (i = 0; i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
@@ -2081,7 +2087,10 @@ logtb_set_current_user_active (THREAD_ENTRY * thread_p, bool is_user_active)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
 
-  tdes->is_user_active = is_user_active;
+  if (tdes)
+    {
+      tdes->is_user_active = is_user_active;
+    }
 }
 
 /*
@@ -2318,6 +2327,15 @@ xlogtb_get_pack_tran_table (THREAD_ENTRY * thread_p, char **buffer_p, int *size_
 	  else
 	    {
 	      XASL_ID_SET_NULL (&query_exec_info[i].xasl_id);
+
+	      if (tdes->query_start_time > 0 && tdes->ddl_sql_user_text)
+		{
+		  query_exec_info[i].query_stmt = strdup (tdes->ddl_sql_user_text);
+		}
+	      else
+		{
+		  query_exec_info[i].query_stmt = NULL;
+		}
 	    }
 
 	  size += (2 * OR_FLOAT_SIZE	/* query time + tran time */
@@ -2722,6 +2740,12 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
       return false;
     }
 
+  /* get thread by tran_index, if thread_p is NULL */
+  if (!thread_p)
+    {
+      thread_p = logtb_find_thread_by_tran_index (tran_index);
+    }
+
   if (log_Gl.trantable.area != NULL)
     {
       tdes = LOG_FIND_TDES (tran_index);
@@ -2760,7 +2784,22 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 	    {
 	      pgbuf_force_to_check_for_interrupts ();
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTING, 1, tran_index);
-	      perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+
+	      /* collect stat, if thread_p is not NULL */
+	      if (thread_p)
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_INTERRUPTS);
+		}
+
+	      // Only TT_WORKER threads use pl_session
+	      if (thread_p && thread_p->type == TT_WORKER)
+		{
+		  cubpl::session * session = cubpl::get_session ();
+		  if (session)
+		    {
+		      session->set_interrupt (ER_INTERRUPTED);
+		    }
+		}
 	    }
 
 	  return true;
@@ -2834,10 +2873,10 @@ logtb_is_interrupted_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool clear,
 #endif
 	}
 
-      cubmethod::runtime_context * rctx = cubmethod::get_rctx (thread_p);
-      if (rctx)
+      cubpl::session * session = cubpl::get_session ();
+      if (session)
 	{
-	  rctx->set_interrupt (ER_INTERRUPTED);
+	  session->set_interrupt (ER_INTERRUPTED);
 	}
     }
   else if (interrupt == false && tdes->query_timeout > 0)
@@ -3963,7 +4002,7 @@ MVCC_SNAPSHOT *
 logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
+  THREAD_ENTRY *parent_thread_p = NULL;
   if (!tdes->is_active_worker_transaction ())
     {
       /* System transactions do not have snapshots */
@@ -3972,9 +4011,24 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
   assert (tdes != NULL);
 
+  if (thread_p->m_px_orig_thread_entry != NULL)
+    {
+      parent_thread_p = thread_p->m_px_orig_thread_entry;
+      while (parent_thread_p->m_px_orig_thread_entry != parent_thread_p)
+	{
+	  parent_thread_p = parent_thread_p->m_px_orig_thread_entry;
+	}
+      pthread_mutex_lock (&parent_thread_p->m_px_lock_mutex);
+    }
+
   if (!tdes->mvccinfo.snapshot.valid)
     {
       log_Gl.mvcc_table.build_mvcc_info (*tdes);
+    }
+
+  if (parent_thread_p != NULL)
+    {
+      pthread_mutex_unlock (&parent_thread_p->m_px_lock_mutex);
     }
 
   return &tdes->mvccinfo.snapshot;
@@ -6073,7 +6127,21 @@ log_tdes::lock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_lock (NULL, &rmutex_topop);
+      cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
+#if 1
+      if (rmutex_topop.owner != thread_id_t ())
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+#endif
+      int r = rmutex_lock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }
@@ -6083,7 +6151,21 @@ log_tdes::unlock_topop ()
 {
   if (LOG_ISRESTARTED () && is_active_worker_transaction ())
     {
-      int r = rmutex_unlock (NULL, &rmutex_topop);
+      cubthread::entry *thread_p = NULL;
+// TODO [PL/CSQL]: It will be fixed at CBRD-25641.
+// The following code inside of #if block is a workaround for the issue.
+#if 1
+      if (rmutex_topop.owner != thread_id_t ())
+      {
+        cubpl::session *session = cubpl::get_session();
+      if (session
+        && session->is_thread_involved (rmutex_topop.owner))
+        {
+        thread_p = thread_get_manager ()->find_by_tid (rmutex_topop.owner);
+        }
+      }
+#endif
+      int r = rmutex_unlock (thread_p, &rmutex_topop);
       assert (r == NO_ERROR);
     }
 }
@@ -6148,5 +6230,75 @@ log_tdes::unlock_global_oldest_visible_mvccid ()
       log_Gl.mvcc_table.unlock_global_oldest_visible ();
       block_global_oldest_active_until_commit = false;
     }
+}
+
+void
+log_tdes::copy_to (LOG_TDES & dest) const
+{
+#define REPLACE_COPY_2_DEST(d, _name) ((d)._name = this->_name)
+
+  this->mvccinfo.copy_to (dest.mvccinfo);	// MVCC_INFO
+
+  REPLACE_COPY_2_DEST (dest, tran_index);
+  REPLACE_COPY_2_DEST (dest, trid);
+  REPLACE_COPY_2_DEST (dest, isloose_end);
+  REPLACE_COPY_2_DEST (dest, state);
+  REPLACE_COPY_2_DEST (dest, isolation);
+  REPLACE_COPY_2_DEST (dest, wait_msecs);
+
+  REPLACE_COPY_2_DEST (dest, head_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_lsa);
+  REPLACE_COPY_2_DEST (dest, undo_nxlsa);
+  REPLACE_COPY_2_DEST (dest, posp_nxlsa);
+  REPLACE_COPY_2_DEST (dest, savept_lsa);
+  REPLACE_COPY_2_DEST (dest, topop_lsa);
+  REPLACE_COPY_2_DEST (dest, tail_topresult_lsa);
+  REPLACE_COPY_2_DEST (dest, commit_abort_lsa);
+  
+  REPLACE_COPY_2_DEST (dest, client_id);
+  REPLACE_COPY_2_DEST (dest, gtrid);
+  REPLACE_COPY_2_DEST (dest, client);	// CLIENTIDS  
+  REPLACE_COPY_2_DEST (dest, rmutex_topop);	// SYNC_RMUTEX
+  REPLACE_COPY_2_DEST (dest, topops);	// LOG_TOPOPS_STACK
+  REPLACE_COPY_2_DEST (dest, gtrinfo);
+  REPLACE_COPY_2_DEST (dest, coord);
+  REPLACE_COPY_2_DEST (dest, num_unique_btrees);
+  REPLACE_COPY_2_DEST (dest, max_unique_btrees);
+
+  this->m_multiupd_stats.copy_to (dest.m_multiupd_stats);	// multi_index_unique_stats
+  REPLACE_COPY_2_DEST (dest, interrupt);	// sig_atomic_t
+  REPLACE_COPY_2_DEST (dest, m_modified_classes);	// tx_transient_class_registry
+  REPLACE_COPY_2_DEST (dest, num_transient_classnames);
+  REPLACE_COPY_2_DEST (dest, num_repl_records);
+  REPLACE_COPY_2_DEST (dest, cur_repl_record);
+  REPLACE_COPY_2_DEST (dest, append_repl_recidx);
+  REPLACE_COPY_2_DEST (dest, fl_mark_repl_recidx);
+  REPLACE_COPY_2_DEST (dest, repl_records);
+  REPLACE_COPY_2_DEST (dest, repl_insert_lsa);
+  REPLACE_COPY_2_DEST (dest, repl_update_lsa);
+  REPLACE_COPY_2_DEST (dest, first_save_entry);
+  REPLACE_COPY_2_DEST (dest, suppress_replication);
+  REPLACE_COPY_2_DEST (dest, lob_locator_root);
+  REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, query_start_time);
+  REPLACE_COPY_2_DEST (dest, tran_start_time);
+  REPLACE_COPY_2_DEST (dest, xasl_id);
+  REPLACE_COPY_2_DEST (dest, waiting_for_res);
+  REPLACE_COPY_2_DEST (dest, disable_modifications);
+  REPLACE_COPY_2_DEST (dest, tran_abort_reason);
+  REPLACE_COPY_2_DEST (dest, num_exec_queries);
+
+  memcpy (dest.bind_history, this->bind_history, sizeof (dest.bind_history));
+
+  REPLACE_COPY_2_DEST (dest, num_log_records_written);
+  REPLACE_COPY_2_DEST (dest, log_upd_stats);
+  REPLACE_COPY_2_DEST (dest, has_deadlock_priority);
+  REPLACE_COPY_2_DEST (dest, block_global_oldest_active_until_commit);
+  REPLACE_COPY_2_DEST (dest, is_user_active);
+  REPLACE_COPY_2_DEST (dest, rcv);
+
+  this->m_log_postpone_cache.copy_to (dest.m_log_postpone_cache);	// log_postpone_cache
+
+  REPLACE_COPY_2_DEST (dest, has_supplemental_log);
 }
 // *INDENT-ON*

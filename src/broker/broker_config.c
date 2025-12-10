@@ -60,8 +60,6 @@
 #endif
 #define DEFAULT_SESSION_TIMEOUT		"5min"
 #define DEFAULT_MAX_QUERY_TIMEOUT       "0"
-#define DEFAULT_MYSQL_READ_TIMEOUT      "0"
-#define DEFAULT_MYSQL_KEEPALIVE_INTERVAL	"1800"	/* 30m */
 #define DEFAULT_JOB_QUEUE_SIZE		1024
 #define DEFAULT_APPL_SERVER		"CAS"
 #define DEFAULT_EMPTY_STRING		"\0"
@@ -101,6 +99,7 @@ struct br_conf_info
 {
   int num_broker;
   int acl_flag;
+  int acl_default_policy;
   int br_shm_id;
   char *conf_file;
   char *admin_log_file;
@@ -119,17 +118,15 @@ static void conf_file_has_been_loaded (const char *conf_path);
 static int check_port_number (T_BROKER_INFO * br_info, int num_brs);
 static int get_conf_value (const char *string, T_CONF_TABLE * conf_table);
 static const char *get_conf_string (int value, T_CONF_TABLE * conf_table);
-static void read_conf_cache (int cid, bool * acl, int *num_br, int *shm_id, char *log_file, T_BROKER_INFO * br_info);
-static void write_conf_cache (char *file, bool * acl_flag, int *num_broker, int *shm_id, char *alog,
-			      T_BROKER_INFO * br_info, time_t bf_mtime);
+static void read_conf_cache (int cid, bool * acl, bool * acl_default_policy, int *num_br, int *shm_id, char *log_file,
+			     T_BROKER_INFO * br_info);
+static void write_conf_cache (char *file, bool * acl_flag, bool * acl_default_policy, int *num_broker, int *shm_id,
+			      char *alog, T_BROKER_INFO * br_info, time_t bf_mtime);
 static void clear_conf_cache_entry (int cid);
 static bool is_invalid_buf_size (int size);
 
 static T_CONF_TABLE tbl_appl_server[] = {
   {APPL_SERVER_CAS_TYPE_NAME, APPL_SERVER_CAS},
-  {APPL_SERVER_CAS_ORACLE_TYPE_NAME, APPL_SERVER_CAS_ORACLE},
-  {APPL_SERVER_CAS_MYSQL_TYPE_NAME, APPL_SERVER_CAS_MYSQL},
-  {APPL_SERVER_CAS_MYSQL51_TYPE_NAME, APPL_SERVER_CAS_MYSQL51},
   {APPL_SERVER_CAS_CGW_TYPE_NAME, APPL_SERVER_CAS_CGW},
   {NULL, 0}
 };
@@ -217,7 +214,7 @@ static char *conf_file_loaded[MAX_NUM_OF_CONF_FILE_LOADED];
 const char *broker_keywords[] = {
   "ACCESS_CONTROL",
   "ACCESS_CONTROL_FILE",
-  "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER",
+  "ACCESS_CONTROL_DEFAULT_POLICY",
   "ADMIN_LOG_FILE",
   "MASTER_SHM_ID",
   "ACCESS_LIST",
@@ -441,12 +438,15 @@ get_conf_string (int value, T_CONF_TABLE * conf_table)
  *   br_shm_id(out):
  *   admin_log_file(out):
  *   admin_flag(in):
+ *   acl_flag(in):
+ *   acl_file(in):
+ *   acl_default_policy(in):
  *   admin_err_msg(in):
  */
 static int
 broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
 			     char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file,
-			     char *admin_err_msg)
+			     bool * acl_default_policy, char *admin_err_msg)
 {
 #if defined (_UC_ADMIN_SO_)
 #define PRINTERROR(...)	sprintf(admin_err_msg, __VA_ARGS__)
@@ -563,7 +563,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (admin_log_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ADMIN_LOG_FILE", DEFAULT_ADMIN_LOG_FILE, &lineno);
-      MAKE_FILEPATH (admin_log_file, ini_string, BROKER_PATH_MAX);
+      if (make_abs_path (admin_log_file, NULL, ini_string, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
     }
 
   if (acl_flag != NULL)
@@ -581,7 +584,22 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
   if (acl_file != NULL)
     {
       INI_GETSTR_CHK (ini_string, ini, SECTION_NAME, "ACCESS_CONTROL_FILE", "", &lineno);
-      MAKE_FILEPATH (acl_file, ini_string, BROKER_PATH_MAX);
+      if (make_abs_path (acl_file, "conf", ini_string, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
+    }
+
+  if (acl_default_policy != NULL)
+    {
+      INI_GETSTR_CHK (s, ini, SECTION_NAME, "ACCESS_CONTROL_DEFAULT_POLICY", "DENY", &lineno);
+      tmp_int = conf_get_value_table_allow_deny (s);
+      if (tmp_int < 0)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+      *acl_default_policy = tmp_int;
     }
 
   for (i = 0; i < ini->nsec; i++)
@@ -745,14 +763,26 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "LOG_DIR", DEFAULT_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "SLOW_LOG_DIR", DEFAULT_SLOW_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].slow_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].slow_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ERROR_LOG_DIR", DEFAULT_ERR_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].err_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].err_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
 
       INI_GETSTR_CHK (ini_string, ini, sec_name, "ACCESS_LOG_DIR", DEFAULT_ACCESS_LOG_DIR, &lineno);
-      MAKE_FILEPATH (br_info[num_brs].access_log_dir, ini_string, CONF_LOG_FILE_LEN);
+      if (make_abs_path (br_info[num_brs].access_log_dir, NULL, ini_string, CONF_LOG_FILE_LEN) < 0)
+	{
+	  goto conf_error;
+	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string, BROKER_INFO_PATH_MAX);
 
@@ -849,14 +879,6 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       strncpy_bufsize (time_str, s);
       br_info[num_brs].time_to_kill = (int) ut_time_string_to_sec (time_str, "sec");
       if (br_info[num_brs].time_to_kill < 0)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-
-      INI_GETSTR_CHK (s, ini, sec_name, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER", "DENY", &lineno);
-      br_info[num_brs].acl_broker_allow = conf_get_value_table_allow_deny (s);
-      if (br_info[num_brs].acl_broker_allow < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1022,29 +1044,6 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
 
-      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_READ_TIMEOUT", DEFAULT_MYSQL_READ_TIMEOUT, &lineno);
-      strncpy_bufsize (time_str, s);
-      br_info[num_brs].mysql_read_timeout = (int) ut_time_string_to_sec (time_str, "sec");
-      if (br_info[num_brs].mysql_read_timeout < 0)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-      else if (br_info[num_brs].mysql_read_timeout > MAX_QUERY_TIMEOUT_LIMIT)
-	{
-	  errcode = PARAM_BAD_RANGE;
-	  goto conf_error;
-	}
-
-      INI_GETSTR_CHK (s, ini, sec_name, "MYSQL_KEEPALIVE_INTERVAL", DEFAULT_MYSQL_KEEPALIVE_INTERVAL, &lineno);
-      strncpy_bufsize (time_str, s);
-      br_info[num_brs].mysql_keepalive_interval = (int) ut_time_string_to_sec (time_str, "sec");
-      if (br_info[num_brs].mysql_keepalive_interval < MIN_MYSQL_KEEPALIVE_INTERVAL)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-
       /* parameters related to checking hanging cas */
       br_info[num_brs].reject_client_flag = false;
       INI_GETSTR_CHK (s, ini, sec_name, "ENABLE_MONITOR_HANG", "OFF", &lineno);
@@ -1110,7 +1109,10 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG_DIR", DEFAULT_SHARD_PROXY_LOG_DIR, &lineno);
-      strcpy (br_info[num_brs].proxy_log_dir, s);
+      if (make_abs_path (br_info[num_brs].proxy_log_dir, NULL, s, BROKER_PATH_MAX) < 0)
+	{
+	  goto conf_error;
+	}
 
       INI_GETSTR_CHK (s, ini, sec_name, "SHARD_PROXY_LOG", DEFAULT_SHARD_PROXY_LOG_MODE, &lineno);
       br_info[num_brs].proxy_log_mode = conf_get_value_proxy_log_mode (s);
@@ -1365,8 +1367,8 @@ conf_error:
 }
 
 static void
-write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int *br_shm_id, char *admin_logfile,
-		  T_BROKER_INFO * br_info, time_t br_conf_mtime)
+write_conf_cache (char *broker_conf_file, bool * acl_flag, bool * acl_default_policy, int *num_broker, int *br_shm_id,
+		  char *admin_logfile, T_BROKER_INFO * br_info, time_t br_conf_mtime)
 {
   if (broker_conf_file == NULL || num_broker == NULL || br_info == NULL || br_shm_id == NULL)
     {
@@ -1387,6 +1389,11 @@ write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int 
 	      br_conf_info[i].acl_flag = *acl_flag;
 	    }
 
+	  if (acl_default_policy)
+	    {
+	      br_conf_info[i].acl_default_policy = *acl_default_policy;
+	    }
+
 	  if (admin_logfile)
 	    {
 	      br_conf_info[i].admin_log_file = strdup (admin_logfile);
@@ -1399,7 +1406,8 @@ write_conf_cache (char *broker_conf_file, bool * acl_flag, int *num_broker, int 
 }
 
 static void
-read_conf_cache (int cid, bool * acl_flag, int *num_broker, int *br_shm_id, char *logfile, T_BROKER_INFO * br_info)
+read_conf_cache (int cid, bool * acl_flag, bool * acl_default_policy, int *num_broker, int *br_shm_id, char *logfile,
+		 T_BROKER_INFO * br_info)
 {
   if (cid < 0 || cid >= MAX_NUM_CACHED_BROKER_FILES || br_shm_id == NULL || br_info == NULL)
     {
@@ -1409,6 +1417,11 @@ read_conf_cache (int cid, bool * acl_flag, int *num_broker, int *br_shm_id, char
   if (acl_flag)
     {
       *acl_flag = br_conf_info[cid].acl_flag;
+    }
+
+  if (acl_default_policy)
+    {
+      *acl_default_policy = br_conf_info[cid].acl_flag;
     }
 
   if (logfile && br_conf_info[cid].admin_log_file)
@@ -1454,11 +1467,15 @@ clear_conf_cache_entry (int cid)
  *   br_shm_id(out):
  *   admin_log_file(out):
  *   admin_flag(in):
+ *   acl_flag(out):
+ *   acl_file(out):
+ *   acl_default_policy(out):
  *   admin_err_msg(in):
  */
 int
 broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_broker, int *br_shm_id,
-		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, char *admin_err_msg)
+		    char *admin_log_file, char admin_flag, bool * acl_flag, char *acl_file, bool * acl_default_policy,
+		    char *admin_err_msg)
 {
   int err = 0;
   char file_name[BROKER_PATH_MAX], file_being_dealt_with[BROKER_PATH_MAX];
@@ -1509,7 +1526,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
 	{
 	  if (br_conf_info[cid].last_modified == stat_buf.st_mtime)
 	    {
-	      read_conf_cache (cid, acl_flag, num_broker, br_shm_id, admin_log_file, br_info);
+	      read_conf_cache (cid, acl_flag, acl_default_policy, num_broker, br_shm_id, admin_log_file, br_info);
 
 	      return 0;
 	    }
@@ -1524,11 +1541,11 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
   memset (br_info, 0, sizeof (T_BROKER_INFO) * MAX_BROKER_NUM);
   err =
     broker_config_read_internal (file_being_dealt_with, br_info, num_broker, br_shm_id, admin_log_file, admin_flag,
-				 acl_flag, acl_file, admin_err_msg);
+				 acl_flag, acl_file, acl_default_policy, admin_err_msg);
   if (err == 0)
     {
-      write_conf_cache (file_being_dealt_with, acl_flag, num_broker, br_shm_id, admin_log_file, br_info,
-			stat_buf.st_mtime);
+      write_conf_cache (file_being_dealt_with, acl_flag, acl_default_policy, num_broker, br_shm_id, admin_log_file,
+			br_info, stat_buf.st_mtime);
     }
 
   return err;
@@ -1540,7 +1557,7 @@ broker_config_read (const char *conf_file, T_BROKER_INFO * br_info, int *num_bro
  *   fp(in):
  */
 void
-broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id)
+broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, int br_shm_id, char *admin_log_file)
 {
   int i;
   const char *tmp_str;
@@ -1573,7 +1590,11 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 
   fprintf (fp, "[broker]\n");
 #endif
-  fprintf (fp, "MASTER_SHM_ID\t=%x\n\n", br_shm_id);
+  fprintf (fp, "MASTER_SHM_ID\t=%x\n", br_shm_id);
+  if (admin_log_file)
+    {
+      fprintf (fp, "ADMIN_LOG_FILE\t=%s\n\n", admin_log_file);
+    }
 
   for (i = 0; i < num_broker; i++)
     {
@@ -1626,7 +1647,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
       fprintf (fp, "JOB_QUEUE_SIZE\t\t=%d\n", br_info[i].job_queue_size);
       fprintf (fp, "TIME_TO_KILL\t\t=%d\n", br_info[i].time_to_kill);
-      fprintf (fp, "ACCESS_CONTROL_BEHAVIOR_FOR_EMPTYBROKER\t=%s\n", br_info[i].acl_broker_allow ? "ALLOW" : "DENY");
       tmp_str = get_conf_string (br_info[i].access_log, tbl_on_off);
       if (tmp_str)
 	{
@@ -1680,12 +1700,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
 	}
 
       fprintf (fp, "MAX_QUERY_TIMEOUT\t=%d\n", br_info[i].query_timeout);
-
-      if (br_info[i].appl_server == APPL_SERVER_CAS_MYSQL || br_info[i].appl_server == APPL_SERVER_CAS_MYSQL51)
-	{
-	  fprintf (fp, "MYSQL_READ_TIMEOUT\t=%d\n", br_info[i].mysql_read_timeout);
-	  fprintf (fp, "MYSQL_KEEPALIVE_INTERVAL\t=%d\n", br_info[i].mysql_keepalive_interval);
-	}
 
       tmp_str = get_conf_string (br_info[i].monitor_hang_flag, tbl_on_off);
       if (tmp_str)

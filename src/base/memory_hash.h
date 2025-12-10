@@ -175,6 +175,7 @@ extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_T
 			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 					    void *args), const void *type_list, void *func_args);
 extern unsigned int mht_calculate_htsize (unsigned int ht_size);
+extern unsigned int mht_calculate_htsize_for_pow2 (unsigned int ht_size);
 /* for HASH LIST SCAN (end) */
 
 #endif /* _MEMORY_HASH_H_ */

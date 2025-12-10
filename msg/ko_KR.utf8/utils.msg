@@ -157,7 +157,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     gateway\n\
     manager\n\
     heartbeat\n\
-    javasp\n\
+    pl\n\
 \n\
 가용한 관리자 유틸리티 이름:\n\
     addvoldb\n\
@@ -262,11 +262,9 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
 42 인자가 잘못되었습니다.\n
 43 파일(%1$s)을 열지 못했습니다.\n
 44 cubrid 유틸리티, 버전 %1$s\n\
-사용법: %2$s javasp <명령어> [인자]\n\
+사용법: %2$s pl <명령어> [인자]\n\
 \n\
 가용한 명령어:\n\
-    start       [데이터베이스 이름]\n\
-    stop        [데이터베이스 이름]\n\
     restart     [데이터베이스 이름]\n\
     status      [데이터베이스 이름]\n
 45 cubrid 유틸리티, 버전 %1$s\n\
@@ -558,7 +556,7 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -t, --thread-count=COUNT    사용할 스레드 개수를 지정; 기본값: 1 최대값: 127\n\
       --enhanced-estimates    언로드할 테이블의 정확한 레코드 건수 수집; 기본값 : 미적용\n\
   -v, --verbose               많은 상태 메시지를 출력; 기본값: 출력 안 함\n\
-      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\      
+      --use-delimiter         식별자 처음과 끝에 '"' 사용; 기본값: 사용 안 함\n\
   -S, --SA-mode               독립 모드 실행\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
@@ -938,15 +936,18 @@ $set 38 MSGCAT_UTIL_SET_DUMPPARAM
 21 클라이언트 프로그램에 의해 사용되는 시스템 파라미터\n
 22 서버 '%1$s'에 의해 로딩된 시스템 파라미터\n
 23 독립 모드에서 사용되는 시스템 파라미터\n
+24 에러: --ha-only와 --exclude-ha는 함께 사용할 수 없습니다.\n
 60 \
 paramdump: 시스템 파라미터 설정을 덤프\n\
 사용법: %1$s paramdump [옵션] database-name\n\
 \n\
 valid options:\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
-  -b, --both                   dump both client and server parameters\n\
+  -b, --both                   dump both client and server parameters (deprecated)\n\
   -S, --SA-mode                독립 모드 실행\n\
-  -C, --CS-mode                클라이언트 서버 모드 실행\n
+  -C, --CS-mode                클라이언트 서버 모드 실행\n\
+      --ha-only                HA관련 시스템 파라미터만 출력; --exclude-ha와 함께 사용 불가\n\
+      --exclude-ha             HA관련 시스템 파라미터제외 출력; --ha-only와 함께 사용 불가\n
 
 $set 39 MSGCAT_UTIL_SET_CHANGEMODE
 11 서버의 HA 모드에 대해 잘못된 값 \"%1$s\"입니다.\n

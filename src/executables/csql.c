@@ -65,7 +65,7 @@
 #include "tsc_timer.h"
 #include "dbtype.h"
 #include "jsp_cl.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "cas_log.h"
 #include "ddl_log.h"
 #include "network_histogram.hpp"
@@ -102,7 +102,8 @@ enum
 {
   DO_CMD_SUCCESS = 0,
   DO_CMD_FAILURE = 1,
-  DO_CMD_EXIT = 2
+  DO_CMD_CONNECT = 2,
+  DO_CMD_EXIT = 3
 };
 
 #define CSQL_SESSION_COMMAND_PREFIX(C)	(((C) == ';') || ((C) == '!'))
@@ -162,8 +163,7 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 int csql_Error_code = NO_ERROR;
 
 static char csql_Prompt[100];
-static char csql_Prompt_offline[100];
-static char csql_Name[100];
+static char csql_Prompt_offline[101];	//  for clear "-Wformat-truncation=" warning
 
 /*
  * Handles for the various files
@@ -228,7 +228,7 @@ static void csql_exit_init (void);
 static void csql_exit_cleanup (void);
 static void csql_print_buffer (void);
 static void csql_change_working_directory (const char *dirname);
-static void csql_exit_session (int error);
+static void csql_exit_session (int error, bool exit_flag);
 
 static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no);
 
@@ -419,7 +419,7 @@ csql_pipe_handler (int sig_no)
 static void
 display_buffer (void)
 {
-  int l = 1;
+  volatile int l = 1;
   FILE *pf;
 #if !defined(WINDOWS)
   void (*csql_pipe_save) (int);
@@ -534,12 +534,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   if (csql_arg->command)
     {
       /* command input */
-      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, -1));
+      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, -1), true);
     }
 
   if (!csql_Is_interactive && !csql_arg->single_line_execution)
     {
-      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, -1));
+      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, -1), true);
     }
 
   /* Start interactive conversation or single line execution */
@@ -560,11 +560,14 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* display product title */
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n\t%s\n\n", csql_get_message (CSQL_INITIAL_CSQL_TITLE));
-  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+  if (!csql_arg->noprint_entrymsg)
+    {
+      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_INITIAL_CSQL_TITLE), rel_release_string ());
+      csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n", csql_get_message (CSQL_INITIAL_HELP_MSG));
-  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n", csql_get_message (CSQL_INITIAL_HELP_MSG));
+      csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+    }
 
 #if !defined(WINDOWS)
   if (csql_Is_interactive)
@@ -600,7 +603,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       if (csql_Is_interactive)
 	{
 #if defined(WINDOWS)
-	  fputs (csql_Prompt, csql_Output_fp);	/* display prompt */
+	  fputs (prompt, csql_Output_fp);	/* display prompt */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
 #else
 	  if ((line_read = readline (prompt)) != NULL)
@@ -643,7 +646,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      line_read_alloced = NULL;
 	    }
 	  csql_edit_contents_finalize ();
-	  csql_exit_session (0);
+	  csql_exit_session (0, true);
 	}
 
       line_length = strlen (line_read);
@@ -696,11 +699,11 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	}
 
-      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && is_in_block == false)
+      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && (csql_Is_interactive || (is_in_block == false)))
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
-	  if (ret == DO_CMD_EXIT)
+	  if (ret == DO_CMD_EXIT || ret == DO_CMD_CONNECT)
 	    {
 	      if (line_read_alloced != NULL)
 		{
@@ -708,7 +711,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 		  line_read_alloced = NULL;
 		}
 	      csql_edit_contents_finalize ();
-	      csql_exit_session (0);
+	      if (ret == DO_CMD_EXIT)
+		{
+		  csql_exit_session (0, true);
+		}
 	    }
 	  else if (ret == DO_CMD_FAILURE)
 	    {
@@ -786,7 +792,6 @@ fatal_error:
 	}
     }
 
-  db_end_session ();
   db_shutdown ();
   csql_Database_connected = false;
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
@@ -1034,7 +1039,6 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
       if (csql_Database_connected)
 	{
 	  csql_Database_connected = false;
-	  db_end_session ();
 	  db_shutdown ();
 	}
       er_init ("./csql.err", ER_NEVER_EXIT);
@@ -1490,14 +1494,21 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  error_code = csql_connect ((argument[0] == '\0') ? NULL : argument, csql_arg);
 	  if (error_code != NO_ERROR)
 	    {
-	      return error_code;
+	      if (csql_Error_code == NO_ERROR)
+		{
+		  return DO_CMD_SUCCESS;
+		}
+	      else
+		{
+		  return DO_CMD_FAILURE;
+		}
 	    }
 	}
       else
 	{
 	  fprintf (csql_Output_fp, "CONNECT session command does not support --sysadm mode\n");
 	}
-      break;
+      return DO_CMD_CONNECT;
 
     case S_CMD_MIDXKEY:
       if (!strcasecmp (argument, "on"))
@@ -1541,11 +1552,11 @@ csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output)
   csql_arg->pl_server_output = server_output;
   if (server_output)
     {
-      csql_execute_query ("CALL enable (50000);");
+      csql_execute_query ("CALL dbms_output.enable (50000);");
     }
   else
     {
-      csql_execute_query ("CALL disable ();");
+      csql_execute_query ("CALL dbms_output.disable ();");
     }
 }
 
@@ -1836,8 +1847,8 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
       return;
     }
 
-  int errors = csql_execute_query ("SELECT '' INTO :pl_output_str");
-  errors += csql_execute_query ("SELECT 0 INTO :pl_output_status");
+  int errors = csql_execute_query ("EVALUATE '' INTO :pl_output_str");
+  errors += csql_execute_query ("EVALUATE 1 INTO :pl_output_status");
   if (errors != 0)
     {
       return;
@@ -1846,7 +1857,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
   bool print_header = true;
   do
     {
-      errors = csql_execute_query ("CALL get_line (:pl_output_str, :pl_output_status);");
+      errors = csql_execute_query ("CALL dbms_output.get_line (:pl_output_str, :pl_output_status);");
       if (errors != 0)
 	{
 	  break;
@@ -1912,7 +1923,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
-  char sql_text[DDL_LOG_BUFFER_SIZE] = { 0 };
 
   csql_Num_failures = 0;
   er_clear ();
@@ -2007,7 +2017,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
       int db_error;
       char stmt_msg[LINE_BUFFER_SIZE];
-      PT_NODE *statement = NULL;
 
       /* Start the execution of stms */
       stmt_msg[0] = '\0';
@@ -2112,8 +2121,13 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  goto error;
 	}
 
-      snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
+      if (csql_Is_time_on)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
+	}
 
+      snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
       csql_Row_count = 0;
       switch (stmt_type)
 	{
@@ -2195,9 +2209,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_Is_time_on)
 	{
 	  char time[100];
-
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
 	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);
@@ -2664,6 +2675,51 @@ signal_stop (int sig_no)
 #endif /* !WINDOWS */
 }
 
+#if !defined(WINDOWS)
+/*
+ * crash_handler(): kill the server and spawn the new server process
+ *
+ *   returns: none
+ *   signo(IN): signo to handle
+ *   siginfo(IN): siginfo struct
+ *   dummyp(IN): this argument will not be used,
+ *               but remains to cope with its function prototype.
+ *
+ */
+
+static void
+crash_handler (int signo, siginfo_t * siginfo, void *dummyp)
+{
+  if (os_set_signal_handler (signo, SIG_DFL) == SIG_ERR)
+    {
+      return;
+    }
+
+  er_print_crash_callstack (signo);
+}
+
+/*
+ * register_crash_signal_handler () : register of the signal for occuring crash
+ *
+ *   returns : none
+ *   signo(IN): signo to handle
+ *
+ */
+
+static void
+register_crash_signal_handler (int signo)
+{
+  struct sigaction act;
+
+  act.sa_handler = NULL;
+  act.sa_sigaction = crash_handler;
+  sigemptyset (&act.sa_mask);
+  act.sa_flags = 0;
+  act.sa_flags |= SA_SIGINFO;
+  sigaction (signo, &act, NULL);
+}
+#endif
+
 /*
  * csql_exit_session() - handling the default action of the last outstanding
  *                     transaction (i.e., commit or abort)
@@ -2673,7 +2729,7 @@ signal_stop (int sig_no)
  * Note: this function never return.
  */
 static void
-csql_exit_session (int error)
+csql_exit_session (int error, bool exit_flag)
 {
   char line_buf[LINE_BUFFER_SIZE];
   bool commit_on_shutdown = false;
@@ -2723,6 +2779,11 @@ csql_exit_session (int error)
 	}
     }
 
+  if (!exit_flag)
+    {
+      return;
+    }
+
   if (histo_is_supported ())
     {
       if (csql_Is_histo_on != HISTO_OFF)
@@ -2731,7 +2792,6 @@ csql_exit_session (int error)
 	  histo_stop ();
 	}
     }
-  db_end_session ();
 
   if (db_shutdown () < 0)
     {
@@ -2814,7 +2874,6 @@ csql_exit_cleanup ()
 	}
 
       csql_Database_connected = false;
-      db_end_session ();
       db_shutdown ();
     }
 
@@ -2892,7 +2951,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       strncat (csql_Prompt, " ", avail_size);
     }
   snprintf (csql_Prompt_offline, sizeof (csql_Prompt_offline), "!%s", csql_Prompt);
-  strncpy_bufsize (csql_Name, csql_get_message (CSQL_NAME));
 
   /* as we must use db_open_file_name() to open the input file, it is necessary to be opening csql_Input_fp at this
    * point */
@@ -2928,6 +2986,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Is_interactive = true;
     }
 
+
   /* initialize error log file */
   if (er_init ("./csql.err", ER_NEVER_EXIT) != NO_ERROR)
     {
@@ -2935,6 +2994,16 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Error_code = CSQL_ERR_OS_ERROR;
       goto error;
     }
+
+#if !defined(WINDOWS)
+  /* set signal handler */
+  register_crash_signal_handler (SIGABRT);
+  register_crash_signal_handler (SIGILL);
+  register_crash_signal_handler (SIGFPE);
+  register_crash_signal_handler (SIGBUS);
+  register_crash_signal_handler (SIGSEGV);
+  register_crash_signal_handler (SIGSYS);
+#endif
 
   /*
    * login and restart database
@@ -3514,11 +3583,13 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   const char *err_msg;
   CSQL_ARGUMENT csql_new_arg;
 
+  csql_Error_code = NO_ERROR;
+
   if (argument == NULL)
     {
       err_msg = (*csql_get_message) (CSQL_MSG_TOO_FEW_ARGS);
       fprintf (csql_Output_fp, "%s\n", err_msg);
-      return DO_CMD_SUCCESS;
+      return ER_FAILED;
     }
 
   memset (&csql_new_arg, 0, sizeof csql_new_arg);
@@ -3528,7 +3599,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if ((user_name_ptr = strtok_r (buf, delim, &save_ptr_strtok)) == NULL)
     {
       csql_Error_code = CSQL_ERR_SQL_ERROR;
-      return DO_CMD_FAILURE;
+      return ER_FAILED;
     }
 
   /*find db name following the user name */
@@ -3542,7 +3613,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
       if (csql_arg->sa_mode == true)
 	{
 	  fprintf (csql_Output_fp, "Cannot connect to other DB in the --SA-mode.\n");
-	  return DO_CMD_SUCCESS;
+	  return ER_FAILED;
 	}
     }
 
@@ -3552,14 +3623,13 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   memset (boot_Host_connected, 0, sizeof (boot_Host_connected));
 #endif /* CS_MODE */
 
-  /*Failed to access other host or db and then access formal db_name */
+  csql_exit_session (0, false);
 
+  /*Failed to access other host or db and then access formal db_name */
   if (csql_Database_connected)
     {
       csql_Database_connected = false;
-      db_end_session ();
       db_shutdown ();
-
     }
 
   er_init ("./csql.err", ER_NEVER_EXIT);
@@ -3578,7 +3648,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 	      csql_check_server_down ();
 	      fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
-	      return DO_CMD_FAILURE;
+	      return ER_FAILED;
 	    }
 
 	  if (p[0] == '\0')
@@ -3596,7 +3666,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 	  csql_check_server_down ();
 	  fprintf (csql_Output_fp, "Warning: current CSQL session is disconnected.\n");
 
-	  return DO_CMD_FAILURE;
+	  return ER_FAILED;
 
 	}
     }
@@ -3628,5 +3698,5 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
 /*If connect is success, copy csql_new_arg to csql_arg*/
 
-  return DO_CMD_SUCCESS;
+  return NO_ERROR;
 }

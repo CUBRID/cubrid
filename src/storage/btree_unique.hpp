@@ -100,6 +100,7 @@ class multi_index_unique_stats
     multi_index_unique_stats &operator= (multi_index_unique_stats &&other);
     multi_index_unique_stats &operator= (const multi_index_unique_stats &other) = delete;
     void operator+= (const multi_index_unique_stats &other);
+    void copy_to (multi_index_unique_stats &dest) const;
 
   private:
     container_type m_stats_map;

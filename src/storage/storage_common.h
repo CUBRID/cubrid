@@ -472,6 +472,7 @@ typedef enum
 {
   S_BEFORE = 1,
   S_ON,
+  S_GO_BACKWARD,
   S_AFTER
 } SCAN_POSITION;
 
@@ -481,7 +482,7 @@ typedef enum
   S_END = 0,
   S_SUCCESS = 1,
   S_SUCCESS_CHN_UPTODATE,	/* only for slotted page */
-  S_DOESNT_FIT,			/* only for slotted page */
+  S_DOESNT_FIT,			/* used for slotted page, heap attrinfo */
   S_DOESNT_EXIST,		/* only for slotted page */
   S_SNAPSHOT_NOT_SATISFIED
 } SCAN_CODE;
@@ -1100,7 +1101,7 @@ typedef enum
 #define SERIAL_ATTR_CYCLIC          "cyclic"
 #define SERIAL_ATTR_STARTED         "started"
 #define SERIAL_ATTR_CLASS_NAME      "class_name"
-#define SERIAL_ATTR_ATT_NAME        "att_name"
+#define SERIAL_ATTR_ATTR_NAME       "attr_name"
 #define SERIAL_ATTR_CACHED_NUM      "cached_num"
 #define SERIAL_ATTR_COMMENT         "comment"
 

@@ -52,7 +52,6 @@ else(UNIX)
 endif(UNIX)
 # cub_broker use WinMain() on Windows platform
 add_executable(cub_broker WIN32 ${CUB_BROKER_SOURCES})
-set_target_properties(cub_broker PROPERTIES PUBLIC_HEADER "${COMPAT_DIR}/dbtran_def.h;${BROKER_DIR}/cas_error.h")
 target_compile_definitions(cub_broker PRIVATE ${BROKER_DEFS})
 if(WIN32)
   target_link_libraries(cub_broker LINK_PRIVATE ws2_32)
@@ -63,7 +62,6 @@ if(UNIX)
 endif(UNIX)
 
 add_executable(cub_gateway WIN32 ${CUB_BROKER_SOURCES})
-set_target_properties(cub_gateway PROPERTIES PUBLIC_HEADER "${COMPAT_DIR}/dbtran_def.h;${BROKER_DIR}/cas_error.h")
 target_compile_definitions(cub_gateway PRIVATE ${BROKER_DEFS} FOR_ODBC_GATEWAY)
 if(WIN32)
   target_link_libraries(cub_gateway LINK_PRIVATE ws2_32)
@@ -593,7 +591,6 @@ if(WITH_CCI)
     cubrid_replay
     RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application
     LIBRARY DESTINATION ${CUBRID_LIBDIR} COMPONENT Library
-    PUBLIC_HEADER DESTINATION ${CUBRID_INCLUDEDIR} COMPONENT Header
     )
 endif(WITH_CCI)
 

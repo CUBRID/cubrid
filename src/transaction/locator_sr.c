@@ -1729,8 +1729,8 @@ locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key
   int *class_no_p = (int *) args;
   LOCATOR_CLASSNAME_ACTION *action;
   const char *str_action;
-  size_t i;
-  size_t key_size;
+  int i;
+  int key_size;
 
   assert (class_no_p != NULL);
 
@@ -6075,7 +6075,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 			    "locator_update_force: qexec_clear_list_cache_by_class failed for class { %d %d %d }\n",
 			    class_oid->pageid, class_oid->slotid, class_oid->volid);
 	    }
-	  if (!OID_EQ (&superclass_oid, class_oid))
+	  if (!OID_ISNULL (&superclass_oid) && !OID_EQ (&superclass_oid, class_oid))
 	    {
 	      qmgr_add_modified_class (thread_p, &superclass_oid);
 	    }
@@ -6398,7 +6398,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	      goto error;
 	    }
 
-	  if (!OID_EQ (&superclass_oid, &class_oid))
+	  if (!OID_ISNULL (&superclass_oid) && !OID_EQ (&superclass_oid, &class_oid))
 	    {
 	      qmgr_add_modified_class (thread_p, &superclass_oid);
 	    }
@@ -7568,7 +7568,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       old_recdes = &copy_recdes;
 
-      /* Fall through */
+      [[fallthrough]];
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
@@ -8274,7 +8274,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   DB_VALUE *repl_old_key = NULL;
   DB_VALUE new_dbvalue, old_dbvalue;
   bool new_isnull, old_isnull;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;

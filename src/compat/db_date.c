@@ -2347,58 +2347,58 @@ parse_explicit_mtime_compact (char const *str, char const *strend, unsigned int 
 	    case 14:
 	      /* YYYY-MM-DD HH:MM:SS */
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 13:
 	      y *= 10;
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 12:
 	      /* YY-MM-DD HH:MM:SS */
 	      y *= 10;
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 11:
 	      y *= 10;
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 10:
 	      /* MM-DD HH:MM:SS */
 	      mo += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 9:
 	      /* M-DD HH:MM:SS */
 	      mo *= 10;
 	      mo += DECODE (*p++);
 	      d += DECODE (*p++) * 10;
 	      d += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 6:
 	      /* HH:MM:SS */
 	      h += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 5:
 	      /* H:MM:SS */
 	      h *= 10;
 	      h += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 4:
 	      /* MM:SS */
 	      m += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 3:
 	      /* M:SS */
 	      m *= 10;
 	      m += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 2:
 	      /* SS */
 	      s += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 1:
 	      /* S */
 	      s *= 10;
 	      s += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 0:
 	      if (*p == '.')
 		{
@@ -2592,21 +2592,21 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date, un
       /* YYY MM DD */
       y *= 10;
       y += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 6:
       /* YY MM DD */
       y *= 10;
       y += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 5:
       /* Y MM DD */
       y *= 10;
       y += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 4:
       /* MM DD */
       mo += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 3:
       /* M DD */
       mo *= 10;

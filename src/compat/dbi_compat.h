@@ -150,7 +150,8 @@ extern "C"
 			    const char *preferred_hosts, int client_type);
   extern SESSION_ID db_get_session_id (void);
   extern void db_set_session_id (const SESSION_ID session_id);
-  extern int db_end_session (void);
+  extern bool db_get_keep_session (void);
+  extern void db_set_keep_session (const bool keep_session);
   extern int db_find_or_create_session (const char *db_user, const char *program_name);
   extern int db_get_row_count_cache (void);
   extern void db_update_row_count_cache (const int row_count);
@@ -158,6 +159,7 @@ extern "C"
   extern int db_get_last_insert_id (DB_VALUE * value);
   extern int db_get_variable (DB_VALUE * name, DB_VALUE * value);
   extern int db_shutdown (void);
+  extern void db_shutdown_without_request_to_server (void);
   extern int db_ping_server (int client_val, int *server_val);
   extern int db_disable_modification (void);
   extern int db_enable_modification (void);
@@ -213,8 +215,11 @@ extern "C"
   extern int db_drop_member (DB_OBJECT * user, DB_OBJECT * member);
   extern int db_set_password (DB_OBJECT * user, const char *oldpass, const char *newpass);
   extern int db_set_user_comment (DB_OBJECT * user, const char *comment);
-  extern int db_grant (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth, int grant_option);
-  extern int db_revoke (DB_OBJECT * user, DB_OBJECT * classobj, DB_AUTH auth);
+  extern int db_grant (DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth, int grant_option);
+  extern int db_revoke (DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth);
+  extern int db_grant_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth,
+			      int grant_option);
+  extern int db_revoke_object (DB_OBJECT_TYPE obj_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth);
   extern int db_check_authorization (DB_OBJECT * op, DB_AUTH auth);
   extern int db_check_authorization_and_grant_option (MOP op, DB_AUTH auth);
   extern int db_get_class_privilege (DB_OBJECT * op, unsigned int *auth);
@@ -453,6 +458,9 @@ extern "C"
   extern int db_trigger_action_time (DB_OBJECT * trobj, DB_TRIGGER_TIME * tr_time);
   extern int db_trigger_action (DB_OBJECT * trobj, char **action);
   extern int db_trigger_comment (DB_OBJECT * trobj, char **comment);
+
+/* Procedure functions */
+  extern DB_OBJECT *db_find_procedure (const char *name);
 
 /* Schema template functions */
   extern DB_CTMPL *dbt_create_class (const char *name);

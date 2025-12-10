@@ -67,7 +67,7 @@ main (int argc, char *argv[])
       exit (0);
     }
 
-  if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL) < 0)
+  if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL, NULL) < 0)
     {
       printf ("config file error\n");
       exit (0);

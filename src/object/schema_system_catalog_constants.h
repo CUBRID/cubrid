@@ -40,6 +40,7 @@
 #define CT_DATATYPE_NAME           "_db_data_type"
 #define CT_STORED_PROC_NAME        "_db_stored_procedure"
 #define CT_STORED_PROC_ARGS_NAME   "_db_stored_procedure_args"
+#define CT_STORED_PROC_CODE_NAME   "_db_stored_procedure_code"
 #define CT_PARTITION_NAME          "_db_partition"
 #define CT_SERIAL_NAME             "db_serial"
 #define CT_HA_APPLY_INFO_NAME      "db_ha_apply_info"
@@ -90,5 +91,7 @@
 #define CT_DBCHARSET_CHARSET_NAME	  "charset_name"
 #define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
+
+#define SP_ATTR_TARGET_METHOD_LEN       (4096)
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */

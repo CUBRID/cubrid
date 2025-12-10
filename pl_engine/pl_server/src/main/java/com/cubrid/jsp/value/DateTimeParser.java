@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
@@ -150,12 +151,12 @@ public class DateTimeParser {
 
         // get timezone offset
         LocalDateTime localPart;
-        ZoneOffset zone;
+        ZoneId zone;
         int delim = s.lastIndexOf(" ");
         if (delim < 0) {
             // no timezone offset
             localPart = parseLocalDateAndTime(s, forDatetime);
-            zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+            zone = Server.getConfig().getTimeZone();
         } else {
             String dt = s.substring(0, delim);
             String z = s.substring(delim + 1);
@@ -165,7 +166,7 @@ public class DateTimeParser {
             } catch (DateTimeException e) {
                 // z turn out not to be a timezone offset. try timezone omitted string
                 localPart = parseLocalDateAndTime(s, forDatetime);
-                zone = Server.getSystemParameterTimezone(Server.SYS_PARAM_TIMEZONE);
+                zone = Server.getConfig().getTimeZone();
             }
         }
 
@@ -269,9 +270,22 @@ public class DateTimeParser {
         }
     }
 
+    private static int getCurrentYear() {
+        ZoneId timezone = Server.getConfig().getTimeZone();
+        return ZonedDateTime.now(timezone).getYear();
+    }
+
     private static LocalDate parseDateFragment(String s) {
 
         s = s.trim();
+
+        if (s.split("/").length == 2) {
+            // s can be of the form MM/dd (year omitted)
+            s = s + "/" + getCurrentYear();
+        } else if (s.split("-").length == 2) {
+            // s can be of the form MM-dd (year omitted)
+            s = getCurrentYear() + "-" + s;
+        }
 
         int i = 0;
         for (SimpleDateFormat f : dateFormats) {

@@ -66,7 +66,11 @@ namespace cubmem
 
       inline block &operator= (block &&b);  //move assign
 
+      inline void copy_to (block &dest) const;
+
       inline bool is_valid () const;
+
+      inline void freemem ();
 
       inline char *move_ptr ();                                    //NOT RECOMMENDED! use move semantics: std::move()
 
@@ -168,6 +172,7 @@ namespace cubmem
 
       inline extensible_block &operator= (extensible_block &&b);                   //move assignment
 
+      inline void copy_to (extensible_block &dest) const;
       inline void extend_by (size_t additional_bytes);
       inline void extend_to (size_t total_bytes);
       inline void freemem ();
@@ -263,10 +268,28 @@ namespace cubmem
     return *this;
   }
 
+  void
+  block::copy_to (block &dest) const
+  {
+    dest.dim = dim;
+    dest.ptr = ptr;
+  }
+
   bool
   block::is_valid () const
   {
     return (dim != 0 && ptr != NULL);
+  }
+
+  void
+  block::freemem ()
+  {
+    if (is_valid ())
+      {
+	delete[] ptr;
+	dim = 0;
+	ptr = NULL;
+      }
   }
 
   char *
@@ -335,6 +358,13 @@ namespace cubmem
   extensible_block::~extensible_block ()
   {
     m_allocator->m_dealloc_f (m_block);
+  }
+
+  void
+  extensible_block::copy_to (extensible_block &dest) const
+  {
+    m_block.copy_to (dest.m_block);
+    dest.m_allocator = m_allocator;
   }
 
   void

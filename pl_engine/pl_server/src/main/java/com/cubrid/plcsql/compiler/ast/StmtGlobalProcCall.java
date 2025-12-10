@@ -30,10 +30,43 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtGlobalProcCall extends Stmt {
+public class StmtGlobalProcCall extends Stmt implements SqlUse {
+
+    public boolean reachableFromLoop;
+
+    @Override
+    public boolean reachableFromLoop() {
+        return reachableFromLoop;
+    }
+
+    @Override
+    public void markAsReachableFromLoop() {
+        this.reachableFromLoop = true;
+    }
+
+    @Override
+    public int getSqlSerialNo() {
+        return sqlSerialNo;
+    }
+
+    @Override
+    public boolean ofCallableStmt() {
+        return true;
+    }
+
+    @Override
+    public boolean usingRef() {
+        return true;
+    }
+
+    @Override
+    public void setToUseRef() {
+        // do nothing: it is already true
+    }
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
@@ -42,14 +75,17 @@ public class StmtGlobalProcCall extends Stmt {
 
     public final String name;
     public final NodeList<Expr> args;
+    public int sqlSerialNo;
 
     public DeclProc decl;
 
-    public StmtGlobalProcCall(ParserRuleContext ctx, String name, NodeList<Expr> args) {
+    public StmtGlobalProcCall(
+            ParserRuleContext ctx, String name, NodeList<Expr> args, int sqlSerialNo) {
         super(ctx);
 
         assert args != null;
         this.name = name;
         this.args = args;
+        this.sqlSerialNo = sqlSerialNo;
     }
 }

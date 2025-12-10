@@ -19,6 +19,12 @@
 /*
  * cm_mem_cpu_stat.c -
  */
+
+#if !defined(WINDOWS)
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#endif
+
 #include "config.h"
 #include "cm_stat.h"
 #include "cm_dep.h"
@@ -1273,7 +1279,7 @@ extract_db_exec_stat (FILE * fp, const char *dbname, T_CM_ERROR * err_buf)
       unsigned int *member_ptr;
       uint64_t prop_val;
       memset (prop_name, 0, sizeof (prop_name));
-      sscanf (linebuf, "%99s%*s%llu", prop_name, &prop_val);
+      sscanf (linebuf, "%99s%*s%" SCNu64, prop_name, &prop_val);
       member_ptr = get_statdump_member_ptr (stat, prop_name);
       if (!member_ptr)
 	continue;

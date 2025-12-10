@@ -38,6 +38,8 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include <stack>
+
 #include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -508,4 +510,10 @@ bool
 au_is_server_authorized_user (DB_VALUE * owner_val)
 {
   return (au_check_owner (owner_val) == NO_ERROR);
+}
+
+void
+au_disable_passwords (void)
+{
+  AU_DISABLE_PASSWORDS ();
 }

@@ -26,6 +26,17 @@
 #include "json_table_def.h"
 #include "parser.h"
 
+#if 1
+/* TODO: 
+ *  PT_TYPE_NCHAR and PT_TYPE_VARNCHAR are no longer supported.
+ *  However, the input syntax is maintained temporarily, 
+ * and for this purpose it is replaced by PT_TYPE_CHAR and PT_TYPE_VARCHAR respectively.
+ *  Even the Syntax needs to be cleaned up in the future.
+*/
+#define PT_TYPE_VARNCHAR   PT_TYPE_VARCHAR
+#define PT_TYPE_NCHAR      PT_TYPE_CHAR
+#endif
+
 /*
  * The default YYLTYPE structure is extended so that locations can hold
  * context information
@@ -100,6 +111,7 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int yylex(void);
 
 #if defined(SA_MODE)
      /*
@@ -166,7 +178,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "memory_alloc.h"
 #include "db_elo.h"
 #include "storage_common.h"
-#include "jsp_cl.h"
+#include "sp_constants.hpp"
 #include "db_function.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -257,7 +269,6 @@ static PT_NODE *parser_hidden_incr_list = NULL;
 /* for opt_over_analytic_partition_by */
 static bool is_analytic_function = false;
 
-static bool is_in_create_trigger = false;
 static bool is_in_sp_func_type = false;
 
 
@@ -490,7 +501,8 @@ char *g_query_string;
 int g_query_string_len;
 int g_original_buffer_len;
 
-static char *g_plcsql_text;
+static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end);
+static int g_plcsql_text_pos;
 
 /*
  * The behavior of location propagation when a rule is matched must
@@ -552,9 +564,24 @@ static char *g_plcsql_text;
 	PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                                   \
 } while (0)
 
+/* TODO: 
+ * For now, I've set it to ignore warnings in the automatically generated code. 
+ * If possible, let's remove warnings normally instead of setting it to ignore. */
+#if defined(__GNUC__) || defined(__clang__)
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
+    _Pragma("GCC diagnostic push")                      \
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+
+  #define END_SUPPRESS_WARNING_BISON_FLEX               \
+    _Pragma("GCC diagnostic pop")
+#else
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX
+  #define END_SUPPRESS_WARNING_BISON_FLEX
+#endif
+
+BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %}
 
-%initial-action {yybuffer_pos = 0;}
 %locations
 %glr-parser
 %define parse.error verbose
@@ -661,6 +688,8 @@ static char *g_plcsql_text;
 %type <number> opt_access_modifier
 %type <number> deduplicate_key_mod_level
 %type <number> opt_index_with_clause_no_online
+%type <number> opt_authid
+%type <number> opt_deterministic
 /*}}}*/
 
 /* define rule type (node) */
@@ -710,6 +739,9 @@ static char *g_plcsql_text;
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> procedure_or_function_name_without_dot
+%type <node> procedure_or_function_name
+%type <node> procedure_or_function_name_list
 %type <node> opt_alter_synonym
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
@@ -741,7 +773,6 @@ static char *g_plcsql_text;
 %type <node> insert_value_list
 %type <node> insert_value
 %type <node> update_stmt
-%type <node> of_class_spec_meta_class_spec
 %type <node> opt_as_identifier
 %type <node> update_assignment_list
 %type <node> update_assignment
@@ -750,6 +781,7 @@ static char *g_plcsql_text;
 %type <node> delete_stmt
 %type <node> author_cmd_list
 %type <node> authorized_cmd
+%type <node> authorized_execute_procedure_cmd
 %type <node> opt_password
 %type <node> opt_groups
 %type <node> opt_members
@@ -821,13 +853,10 @@ static char *g_plcsql_text;
 %type <node> esql_query_stmt
 %type <node> csql_query
 %type <node> csql_query_select_has_no_with_clause
-%type <node> csql_query_without_values_query
 %type <node> select_expression_opt_with
 %type <node> select_expression
-%type <node> select_expression_without_values_query
 %type <node> table_op
 %type <node> select_or_subquery
-%type <node> select_or_subquery_without_values_query
 %type <node> select_stmt
 %type <node> opt_with_clause
 %type <node> opt_select_param_list
@@ -847,6 +876,7 @@ static char *g_plcsql_text;
 %type <node> opt_where_clause
 %type <node> startwith_clause
 %type <node> connectby_clause
+%type <node> connectby_clause_with_option
 %type <node> opt_groupby_clause
 %type <node> group_spec_list
 %type <node> group_spec
@@ -953,6 +983,8 @@ static char *g_plcsql_text;
 %type <node> grant_head
 %type <node> grant_cmd
 %type <node> revoke_cmd
+%type <node> grant_proc_cmd
+%type <node> revoke_proc_cmd
 %type <node> opt_from_table_spec_list
 %type <node> method_file_list
 %type <node> incr_arg_name_list__inc
@@ -1031,6 +1063,7 @@ static char *g_plcsql_text;
 %type <node> dblink_column_definition
 
 %type <node> pl_language_spec
+%type <node> opt_sp_default_value
 %type <node> table_column
 
 /*}}}*/
@@ -1093,7 +1126,7 @@ static char *g_plcsql_text;
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
-
+%type <c2> opt_authid_and_deterministic
 
 /*}}}*/
 
@@ -1107,6 +1140,7 @@ static char *g_plcsql_text;
 /* Token define */
 /*{{{*/
 %token ABSOLUTE_
+%token ACCESS
 %token ACTION
 %token ADD
 %token ADD_MONTHS
@@ -1189,7 +1223,6 @@ static char *g_plcsql_text;
 %token DAY_SECOND
 %token DAY_MINUTE
 %token DAY_HOUR
-%token DB_TIMEZONE
 %token DEALLOCATE
 %token DECLARE
 %token DEFAULT
@@ -1232,7 +1265,6 @@ static char *g_plcsql_text;
 %token FIRST
 %token FLOAT_
 %token For
-%token FORCE
 %token FOREIGN
 %token FOUND
 %token FROM
@@ -1274,7 +1306,6 @@ static char *g_plcsql_text;
 %token JOIN
 %token JSON
 %token KEY
-%token KEYLIMIT
 %token LANGUAGE
 %token LAST
 %token LEADING_
@@ -1292,7 +1323,6 @@ static char *g_plcsql_text;
 %token LOOP
 %token LOWER
 %token MATCH
-%token MATCHED
 %token Max
 %token MERGE
 %token METHOD
@@ -1332,7 +1362,6 @@ static char *g_plcsql_text;
 %token OUT_
 %token OUTER
 %token OUTPUT
-%token OVER
 %token OVERLAPS
 %token PARAMETERS
 %token PARTIAL
@@ -1345,15 +1374,12 @@ static char *g_plcsql_text;
 %token PRIOR
 %token PRIVILEGES
 %token PROCEDURE
-%token PROMOTE
 %token QUERY
 %token READ
-%token REBUILD
 %token RECURSIVE
 %token REF
 %token REFERENCES
 %token REFERENCING
-%token REGEXP
 %token RELATIVE_
 %token RENAME
 %token REPLACE
@@ -1363,7 +1389,6 @@ static char *g_plcsql_text;
 %token RETURNS
 %token REVOKE
 %token RIGHT
-%token RLIKE
 %token ROLE
 %token ROLLBACK
 %token ROLLUP
@@ -1385,7 +1410,6 @@ static char *g_plcsql_text;
 %token SEQUENCE_OF
 %token SERIALIZABLE
 %token SESSION
-%token SESSION_TIMEZONE
 %token SESSION_USER
 %token SET
 %token SET_OF
@@ -1427,7 +1451,6 @@ static char *g_plcsql_text;
 %token TIMESTAMP
 %token TIMESTAMPTZ
 %token TIMESTAMPLTZ
-%token TIMEZONES
 %token TIMEZONE_HOUR
 %token TIMEZONE_MINUTE
 %token TO
@@ -1509,19 +1532,20 @@ static char *g_plcsql_text;
 %token COMP_LE
 %token PARAM_HEADER
 
-%token <cptr> ACCESS
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
 %token <cptr> AES
 %token <cptr> ANALYZE
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
+%token <cptr> AUTHID
 %token <cptr> AUTO_INCREMENT
 %token <cptr> BENCHMARK
 %token <cptr> BIT_AND
 %token <cptr> BIT_OR
 %token <cptr> BIT_XOR
 %token <cptr> BUFFER
+%token <cptr> CALLER
 %token <cptr> CACHE
 %token <cptr> CAPACITY
 %token <cptr> CHARACTER_SET_
@@ -1533,15 +1557,19 @@ static char *g_plcsql_text;
 %token <cptr> COLUMNS
 %token <cptr> COMMENT
 %token <cptr> COMMITTED
+%token <cptr> COMPILE
 %token <cptr> COST
 %token <cptr> CRITICAL
 %token <cptr> CUME_DIST
 %token <cptr> DATE_ADD
 %token <cptr> DATE_SUB
+%token <cptr> DB_TIMEZONE
 %token <cptr> DBLINK
 %token <cptr> DBNAME
 %token <cptr> DECREMENT
+%token <cptr> DEFINER
 %token <cptr> DENSE_RANK
+%token <cptr> DETERMINISTIC
 %token <cptr> DONT_REUSE_OID
 %token <cptr> ELT
 %token <cptr> EMPTY
@@ -1549,6 +1577,7 @@ static char *g_plcsql_text;
 %token <cptr> ERROR_
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
+%token <cptr> FORCE
 %token <cptr> FULLSCAN
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
@@ -1575,6 +1604,7 @@ static char *g_plcsql_text;
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
 %token <cptr> ISNULL
+%token <cptr> KEYLIMIT
 %token <cptr> KEYS
 %token <cptr> KILL
 %token <cptr> JAVA
@@ -1612,6 +1642,7 @@ static char *g_plcsql_text;
 %token <cptr> LEAD
 %token <cptr> LOCK_
 %token <cptr> LOG
+%token <cptr> MATCHED
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
 %token <cptr> MEDIAN
@@ -1631,6 +1662,7 @@ static char *g_plcsql_text;
 %token <cptr> ONLINE
 %token <cptr> OPEN
 %token <cptr> ORDINALITY
+%token <cptr> OVER
 %token <cptr> PATH
 %token <cptr> OWNER
 %token <cptr> PAGE
@@ -1647,12 +1679,15 @@ static char *g_plcsql_text;
 %token <cptr> PRINT
 %token <cptr> PRIORITY
 %token <cptr> PRIVATE
+%token <cptr> PROMOTE
 %token <cptr> PROPERTIES
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
 %token <cptr> RANGE_
 %token <cptr> RANK
+%token <cptr> REBUILD
+%token <cptr> REGEXP
 %token <cptr> REGEXP_COUNT
 %token <cptr> REGEXP_INSTR
 %token <cptr> REGEXP_LIKE
@@ -1666,12 +1701,15 @@ static char *g_plcsql_text;
 %token <cptr> RETAIN
 %token <cptr> REUSE_OID
 %token <cptr> REVERSE
+%token <cptr> RLIKE
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
 %token <cptr> SERVER
+%token <cptr> SESSION_TIMEZONE
 %token <cptr> SHOW
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
@@ -1692,6 +1730,7 @@ static char *g_plcsql_text;
 %token <cptr> THREADS
 %token <cptr> TIMEOUT
 %token <cptr> TIMEZONE
+%token <cptr> TIMEZONES
 %token <cptr> TRACE
 %token <cptr> TRAN
 %token <cptr> TYPE
@@ -1739,9 +1778,9 @@ stmt_done
 	;
 
 stmt_list
-	: stmt_list ';' %dprec 1
+	: stmt_list SEMICOLON %dprec 1
                 {{ /* empty line*/ }}
-        | stmt_list ';' stmt %dprec 2
+        | stmt_list SEMICOLON stmt %dprec 2
 		{{
 
 			if ($3 != NULL)
@@ -1785,7 +1824,7 @@ stmt_list
 			  }
 
 		DBG_PRINT}}
-        | ';'
+        | SEMICOLON
                 {{ /* empty line*/ }}
 	;
 
@@ -1863,7 +1902,7 @@ stmt
 			allow_attribute_ordering = false;
 			parser_hidden_incr_list = NULL;
 
-                        g_plcsql_text = NULL;
+                        g_plcsql_text_pos = -1;
                         is_in_sp_func_type = false;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
@@ -2904,7 +2943,7 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-                            node->info.index.deduplicate_level = CONTAINER_AT_1($13);
+                            node->info.index.deduplicate_level =  TO_NUMBER(CONTAINER_AT_1($13));
                              if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
                               {
                                   PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
@@ -2912,7 +2951,7 @@ create_stmt
 
 			    node->info.index.comment = $15;
 
-                            int with_online_ret = CONTAINER_AT_0($13);  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = TO_NUMBER(CONTAINER_AT_0($13));  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
                             bool is_invisible = $14;
@@ -3058,22 +3097,54 @@ create_stmt
 		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
                   expecting_pl_lang_spec = 1;
 		}
-	  identifier opt_sp_param_list		        /* 5, 6 */
-	  is_or_as pl_language_spec		        /* 7, 8 */
-	  opt_comment_spec				/* 9 */
+	  procedure_or_function_name_without_dot        /* 5 */
+	  opt_sp_param_list	                        /* 6 */
+          opt_authid_and_deterministic                  /* 7 */
+	  is_or_as pl_language_spec		        /* 8, 9 */
+	  opt_comment_spec				/* 10 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PROCEDURE~);
-			PT_NODE *node = parser_pop_hint_node ();
+			if (TO_NUMBER (CONTAINER_AT_1 ($7)) != 0)
+                          {
+                            push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
+                          }
+
+                        PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            PT_NODE* body = $9;
+                            if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
+                              {
+                                // In particular, this happens for two cases:
+                                //   . cubrid loaddb -s <file> ... (loading a schema file with loaddb utility)
+                                //   . csql -i <file> --no-single-line ... (running csql with -i and --no-single-line)
+                                // in which case parser->original_buffer is NULL.
+                                // Without the original buffer, We need to get the SQL user text from the file.
+                                assert(this_parser->original_buffer == NULL);
+                                assert(this_parser->file);
+
+                                int start = @1.buffer_pos - 6;  // 6 : length of "create"
+                                int spec_start = @8.buffer_pos; // right after is_or_as
+                                int spec_end = @9.buffer_pos;
+                                int end = @$.buffer_pos;
+                                if (pt_set_plcsql_body_impl(node, body, start, spec_start, spec_end, end) < 0) {
+                                    PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+                                }
+                              }
+
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_PROCEDURE;
+			    node->info.sp.auth_id = (int) TO_NUMBER(CONTAINER_AT_0($7));
+                            if (node->info.sp.auth_id == 0)
+                              {
+                                node->info.sp.auth_id = PT_AUTHID_OWNER;
+                              }
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
-			    node->info.sp.body = $8;
-			    node->info.sp.comment = $9;
+			    node->info.sp.body = $9;
+			    node->info.sp.comment = $10;
 			  }
 
 			$$ = node;
@@ -3089,23 +3160,55 @@ create_stmt
 			push_msg(MSGCAT_SYNTAX_INVALID_CREATE_FUNCTION);
                         expecting_pl_lang_spec = 1;
 		}
-	  identifier opt_sp_param_list	                /* 5, 6 */
+	  procedure_or_function_name_without_dot        /* 5 */
+	  opt_sp_param_list	                        /* 6 */
 	  RETURN sp_return_type		                /* 7, 8 */
-	  is_or_as pl_language_spec		        /* 9, 10 */
-	  opt_comment_spec				/* 11 */
+          opt_authid_and_deterministic                  /* 9 */
+	  is_or_as pl_language_spec		        /* 10, 11 */
+	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace FUNCTION~);
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            PT_NODE* body = $11;
+                            if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
+                              {
+                                // In particular, this happens for two cases:
+                                //   . cubrid loaddb -s <file> ... (loading a schema file with loaddb utility)
+                                //   . csql -i <file> --no-single-line ... (running csql with -i and --no-single-line)
+                                // in which case parser->original_buffer is NULL.
+                                // Without the original buffer, We need to get the SQL user text from the file.
+                                assert(this_parser->original_buffer == NULL);
+                                assert(this_parser->file);
+
+                                int start = @1.buffer_pos - 6;      // 6 : length of "create"
+                                int spec_start = @10.buffer_pos;    // right after is_or_as
+                                int spec_end = @11.buffer_pos;
+                                int end = @$.buffer_pos;
+                                if (pt_set_plcsql_body_impl(node, body, start, spec_start, spec_end, end) < 0) {
+                                    PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+                                }
+                              }
+
 			    node->info.sp.or_replace = $2;
 			    node->info.sp.name = $5;
 			    node->info.sp.type = PT_SP_FUNCTION;
+                            node->info.sp.auth_id = (int) TO_NUMBER(CONTAINER_AT_0($9));
+                            if (node->info.sp.auth_id == 0)
+                              {
+                                node->info.sp.auth_id = PT_AUTHID_OWNER;
+                              }
+                            node->info.sp.dtrm_type = (int) TO_NUMBER(CONTAINER_AT_1($9));
+                            if (node->info.sp.dtrm_type == 0)
+                              {
+                                node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
+                              }
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
-			    node->info.sp.body = $10;
-			    node->info.sp.comment = $11;
+			    node->info.sp.body = $11;
+			    node->info.sp.comment = $12;
 			  }
 
 			$$ = node;
@@ -4083,10 +4186,10 @@ alter_stmt
 		DBG_PRINT}}
 	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
-	  identifier				/* 3 */
-	  opt_owner_clause			/* 4 */
-	  opt_comment_spec			/* 5 */
-		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function identifier opt_owner_clause opt_comment_spec);
+	  procedure_or_function_name    /* 3 */
+	  opt_owner_clause	        /* 4 */
+	  opt_comment_spec		/* 5 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name opt_owner_clause opt_comment_spec);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
 
@@ -4096,6 +4199,7 @@ alter_stmt
 			    node->info.sp.type = ($2 == 1) ? PT_SP_PROCEDURE : PT_SP_FUNCTION;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.owner = $4;
+			    node->info.sp.recompile = 0;
 			    node->info.sp.comment = $5;
 			    if ($4 == NULL && $5 == NULL)
 			      {
@@ -4109,12 +4213,32 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	| ALTER				/* 1 */
+	  procedure_or_function		/* 2 */
+	  procedure_or_function_name    /* 3 */
+	  COMPILE	                /* 4 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER procedure_or_function procedure_or_function_name COMPILE);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_STORED_PROCEDURE);
+
+			if (node != NULL)
+			  {
+			    node->info.sp.name = $3;
+			    node->info.sp.type = ($2 == 1) ? PT_SP_PROCEDURE : PT_SP_FUNCTION;
+			    node->info.sp.ret_type = PT_TYPE_NONE;
+			    node->info.sp.recompile = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	| ALTER  SERVER  dblink_server_name alter_server_list
                 {{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER  SERVER  dblink_server_name alter_server_list);
                         PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERVER);
 			if (node)
 			  {
-                                char *str;  
+                                const char *str;  
                                 bool is_not_allowed = false;  
                                 int  item_bits = (int)TO_NUMBER(CONTAINER_AT_9($4));
                                 PT_ALTER_SERVER_INFO *server = &node->info.alter_server;
@@ -4151,7 +4275,7 @@ alter_stmt
                                 if (item_bits & (0x01 << CONN_INFO_HOST))
                                 {
                                     server->xbits.bit_host = 1;
-                                    str = (char *) PT_VALUE_GET_BYTES (server->host);                                                                       
+                                    str = (const char *) PT_VALUE_GET_BYTES (server->host);                                                                       
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
                                 if (item_bits & (0x01 << CONN_INFO_PORT))
@@ -4662,8 +4786,8 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP PROCEDURE identifier_list
-		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PROCEDURE identifier_list);
+	| DROP PROCEDURE procedure_or_function_name_list
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PROCEDURE procedure_or_function_name_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_STORED_PROCEDURE);
 
@@ -4678,8 +4802,8 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	| DROP FUNCTION identifier_list
-		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP FUNCTION identifier_list);
+	| DROP FUNCTION procedure_or_function_name_list
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP FUNCTION procedure_or_function_name_list);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_STORED_PROCEDURE);
 
@@ -5692,11 +5816,6 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
-		if (is_in_create_trigger)
-		  {
-		    PT_ERROR(this_parser, $1, "triggers on remote tables not supported yet");
-		    PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos);
-		  }
                 DBG_PRINT}}
         ;
 
@@ -5871,6 +5990,37 @@ synonym_name
 		{ DBG_TRACE_GRAMMAR(synonym_name, : user_specified_name);
 			$$ = $1;
 		}
+	;
+
+procedure_or_function_name_without_dot
+	: user_specified_name_without_dot
+		{ DBG_TRACE_GRAMMAR(procedure_or_function_name_without_dot, : user_specified_name_without_dot);
+			$$ = $1;
+		}
+	;
+	
+procedure_or_function_name
+	: user_specified_name
+		{ DBG_TRACE_GRAMMAR(procedure_or_function_name, : user_specified_name);
+			$$ = $1;
+		}
+	;
+
+procedure_or_function_name_list
+	: procedure_or_function_name_list ',' procedure_or_function_name
+		{{ DBG_TRACE_GRAMMAR(procedure_or_function_name_list, : procedure_or_function_name_list ',' procedure_or_function_name);
+
+			$$ = parser_make_link($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| procedure_or_function_name
+		{{ DBG_TRACE_GRAMMAR(procedure_or_function_name_list, : procedure_or_function_name);
+
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 opt_partition_spec
@@ -8306,24 +8456,6 @@ opt_of_where_cursor
 		DBG_PRINT}}
 	;
 
-
-of_class_spec_meta_class_spec
-	: class_spec
-		{{ DBG_TRACE_GRAMMAR(of_class_spec_meta_class_spec, : class_spec);
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| meta_class_spec
-		{{ DBG_TRACE_GRAMMAR(of_class_spec_meta_class_spec, | meta_class_spec);
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	;
-
 opt_as_identifier
 	: /* empty */
 		{{ DBG_TRACE_GRAMMAR(opt_as_identifier, : );
@@ -8867,6 +8999,22 @@ auth_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | revoke_proc_cmd procedure_or_function_name_list from_id_list
+		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd procedure_or_function_name_list from_id_list);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_REVOKE);
+
+			if (node)
+			  {
+			    node->info.revoke.user_list = $3;
+			    node->info.revoke.spec_list = $2;
+			    node->info.revoke.auth_cmd_list = $1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
 	;
 
 revoke_cmd
@@ -8884,6 +9032,23 @@ grant_cmd
 	  author_cmd_list
 		{ pop_msg(); }
 		{ DBG_TRACE_GRAMMAR(grant_cmd, : GRANT author_cmd_list);
+                  $$ = $3; }
+
+grant_proc_cmd
+        : GRANT
+		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
+	  authorized_execute_procedure_cmd
+		{ pop_msg(); }
+		{ DBG_TRACE_GRAMMAR(grant_proc_cmd, : GRANT authorized_execute_procedure_cmd);
+                  $$ = $3; }
+	;
+
+revoke_proc_cmd
+        : REVOKE
+		{ push_msg(MSGCAT_SYNTAX_MISSING_AUTH_COMMAND_LIST); }
+	  authorized_execute_procedure_cmd
+		{ pop_msg(); }
+		{ DBG_TRACE_GRAMMAR(revoke_proc_cmd, : REVOKE authorized_execute_procedure_cmd);
                   $$ = $3; }
 	;
 
@@ -8913,6 +9078,38 @@ grant_head
 			  {
 			    node->info.grant.user_list = $2;
 			    node->info.grant.spec_list = $3;
+			    node->info.grant.auth_cmd_list = $1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+        | grant_cmd to_id_list
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
+
+			if (node)
+			  {
+			    node->info.grant.user_list = $2;
+			    node->info.grant.spec_list = NULL;
+			    node->info.grant.auth_cmd_list = $1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+        | grant_proc_cmd procedure_or_function_name_list to_id_list
+		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_proc_cmd procedure_or_function_name_list to_id_list);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_GRANT);
+
+			if (node)
+			  {
+			    node->info.grant.user_list = $3;
+			    node->info.grant.spec_list = $2;
 			    node->info.grant.auth_cmd_list = $1;
 			  }
 
@@ -8980,6 +9177,20 @@ author_cmd_list
 
 		DBG_PRINT}}
 	;
+
+authorized_execute_procedure_cmd
+        : EXECUTE ON_ PROCEDURE
+                {{
+			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
+			if (node)
+			  {
+			    node->info.auth_cmd.auth_cmd = PT_EXECUTE_PROCEDURE_PRIV;
+                            node->info.auth_cmd.attr_mthd_list = NULL;
+			  }
+                        $$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                DBG_PRINT }}
+        ;
 
 authorized_cmd
 	: SELECT
@@ -9116,6 +9327,7 @@ authorized_cmd
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+
 	| EXECUTE
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | EXECUTE);
 
@@ -11895,6 +12107,20 @@ opt_using
 		{ parser_restore_hvar (); }
 		{{ DBG_TRACE_GRAMMAR(opt_using, | USING execute_using_list);
 
+                        int arg[2];
+                        arg[0] = PT_SELECT;
+                        arg[1] = 0;
+
+			PT_NODE *node = $3;
+                        (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
+
+                        if(arg[1] == 1)
+                        {
+                                PT_ERRORf (this_parser, node,
+				"check syntax at '%s', subqueries are not allowed in using clause.",
+				pt_short_print_l (this_parser, node));
+                        }
+
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
@@ -12284,12 +12510,9 @@ trigger_action_in
 	;
 
 trigger_action
-	:
-	  { is_in_create_trigger = true; }
-	  trigger_action_in
-	    {{
-		is_in_create_trigger = false;
-		$$ = $2;
+	: trigger_action_in
+	    {{ DBG_TRACE_GRAMMAR(trigger_action, : trigger_action_in);
+		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     DBG_PRINT}}
 	;
@@ -12640,37 +12863,98 @@ sp_return_type
 		DBG_PRINT}}
         ;
 
+opt_authid
+        : AUTHID DEFINER
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID DEFINER);
+                        $$ = PT_AUTHID_OWNER; 
+                DBG_PRINT}}
+        | AUTHID OWNER
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID OWNER);
+                        $$ = PT_AUTHID_OWNER; 
+                DBG_PRINT}}
+        | AUTHID CALLER
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID CALLER);
+                        $$ = PT_AUTHID_CALLER; 
+                DBG_PRINT}}
+        | AUTHID CURRENT_USER
+                {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID CURRENT_USER);
+                        $$ = PT_AUTHID_CALLER; 
+                DBG_PRINT}}
+        ;
+
+opt_deterministic
+        : NOT DETERMINISTIC
+                {{ DBG_TRACE_GRAMMAR(opt_deterministic, : NOT DETERMINISTIC);
+                        $$ = PT_NOT_DETERMINISTIC; 
+                DBG_PRINT}}
+        | DETERMINISTIC
+                {{ DBG_TRACE_GRAMMAR(opt_deterministic, : DETERMINISTIC);
+                        $$ = PT_DETERMINISTIC; 
+                DBG_PRINT}}
+        ;
+
+opt_authid_and_deterministic
+        : /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : abcde);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, NULL);
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_authid opt_deterministic
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_authid opt_deterministic);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), FROM_NUMBER($2));
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_deterministic opt_authid
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_deterministic opt_authid);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER($2), FROM_NUMBER($1));
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_authid
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_authid);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), NULL);
+			$$ = ctn;
+		DBG_PRINT}}
+        | opt_deterministic
+		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_deterministic);
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER($1));
+			$$ = ctn;
+		DBG_PRINT}}
+        ;
+
 is_or_as
-	: IS
-	| AS
+	: IS          
+                { DBG_TRACE_GRAMMAR(is_or_as, : IS); DBG_PRINT}
+	| AS          
+                { DBG_TRACE_GRAMMAR(is_or_as, : AS); DBG_PRINT}
 	;
 
 opt_lang_plcsql
-        : /* empty */
+        : /* empty */          
+                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : ); DBG_PRINT}
         | LANGUAGE PLCSQL
+                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : LANGUAGE PLCSQL); DBG_PRINT}
         ;
 
 pl_language_spec
-	: opt_lang_plcsql plcsql_text opt_identifier
+	: opt_lang_plcsql plcsql_text
 		{{ DBG_TRACE_GRAMMAR(pl_language_spec, : opt_lang_plcsql plcsql_text);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_SP_BODY);
 
 			if (node)
 			  {
-                            int len;
-
-                            assert(g_plcsql_text != NULL);
-
-                            if ($3) {
-                                len = $2 + strlen($3->info.name.original);
-                                parser_free_tree(this_parser, $3);
-                            } else {
-                                len = $2;
-                            }
-
 			    node->info.sp_body.lang = SP_LANG_PLCSQL;
-			    node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(g_plcsql_text, len);
+                            if (g_query_string) {
+                                node->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(
+                                        g_query_string + g_plcsql_text_pos, $2);
+                            } else {
+                                node->info.sp_body.impl = NULL; // set later
+                            }
 			    node->info.sp_body.direct = 1;
 			  }
 
@@ -12707,9 +12991,9 @@ plcsql_text
         | plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
-                        assert(g_plcsql_text == NULL);
+                        assert(g_plcsql_text_pos == -1);
                         $$ = strlen($1);
-                        g_plcsql_text = g_query_string + @$.buffer_pos - $$;
+                        g_plcsql_text_pos = @$.buffer_pos - $$;
 
 		DBG_PRINT}}
         ;
@@ -12721,28 +13005,28 @@ plcsql_text_part
 		DBG_PRINT}}
         | CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | CHAR_STRING);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "'");
+                    char* val = pt_append_string(this_parser, NULL, "'");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "'");
                     $$ = val;
 		DBG_PRINT}}
         | DelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | DelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "\"");
+                    char* val = pt_append_string(this_parser, NULL, "\"");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "\"");
                     $$ = val;
 		DBG_PRINT}}
         | BracketDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BracketDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "[");
+                    char* val = pt_append_string(this_parser, NULL, "[");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "]");
                     $$ = val;
 		DBG_PRINT}}
         | BacktickDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BacktickDelimitedIdName);
-                    PARSER_VARCHAR * val = pt_append_string(this_parser, NULL, "`");
+                    char* val = pt_append_string(this_parser, NULL, "`");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "`");
                     $$ = val;
@@ -12792,6 +13076,7 @@ sp_param_def
 	: identifier
 	  opt_sp_in_out
 	  sp_param_type
+          opt_sp_default_value
 	  opt_comment_spec
 		{{ DBG_TRACE_GRAMMAR(sp_param_def, : identifier opt_sp_in_out sp_param_type opt_comment_spec);
 
@@ -12803,7 +13088,8 @@ sp_param_def
 			    node->data_type = CONTAINER_AT_1 ($3);
 			    node->info.sp_param.name = $1;
 			    node->info.sp_param.mode = $2;
-			    node->info.sp_param.comment = $4;
+                            node->info.sp_param.default_value = $4;
+			    node->info.sp_param.comment = $5;
 			  }
 
 			$$ = node;
@@ -12882,6 +13168,26 @@ opt_sp_in_out
 
 		DBG_PRINT}}
 	;
+
+opt_sp_default_value
+        : /* empty */
+		{{
+			$$ = NULL;
+		DBG_PRINT}}
+	| DEFAULT
+          expression_
+		{{
+                        PT_NODE *node = pt_make_data_default_expr_node (this_parser, $2);
+                        PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
+			$$ = node;
+		DBG_PRINT}}
+	| VAR_ASSIGN
+          expression_
+		{{
+                        PT_NODE *node = pt_make_data_default_expr_node (this_parser, $2);
+                        PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
+			$$ = node;
+		DBG_PRINT}}
 
 esql_query_stmt
 	: 	{ parser_select_level++; }
@@ -13150,94 +13456,6 @@ csql_query_without_subquery_and_with_clause
 	opt_select_limit_clause
 	opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_subquery_and_with_clause, opt_select_limit_clause opt_for_update_clause);
-
-			PT_NODE *node = parser_pop_orderby_node ();
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	;
-
-csql_query_without_values_query
-	:
-		{{
-
-			parser_save_and_set_cannot_cache (false);
-			parser_save_and_set_ic (0);
-			parser_save_and_set_gc (0);
-			parser_save_and_set_oc (0);
-			parser_save_and_set_wjc (0);
-			parser_save_and_set_sysc (0);
-			parser_save_and_set_prc (0);
-			parser_save_and_set_cbrc (0);
-			parser_save_and_set_serc (1);
-			parser_save_and_set_sqc (1);
-			parser_save_and_set_pseudoc (1);
-
-		DBG_PRINT}}
-	  select_expression_without_values_query
-		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_query, : select_expression_without_values_query);
-
-			PT_NODE *node = $2;
-			parser_push_orderby_node (node);
-
-		DBG_PRINT}}
-	  opt_orderby_clause
-		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_query, opt_orderby_clause);
-
-			PT_NODE *node = parser_pop_orderby_node ();
-
-			if (node && parser_cannot_cache)
-			  {
-			    node->info.query.flag.reexecute = 1;
-			    node->info.query.flag.do_cache = 0;
-			    node->info.query.flag.do_not_cache = 1;
-			  }
-
-			parser_restore_cannot_cache ();
-			parser_restore_ic ();
-			parser_restore_gc ();
-			parser_restore_oc ();
-			parser_restore_wjc ();
-			parser_restore_sysc ();
-			parser_restore_prc ();
-			parser_restore_cbrc ();
-			parser_restore_serc ();
-			parser_restore_sqc ();
-			parser_restore_pseudoc ();
-
-			if (parser_subquery_check == 0)
-			    PT_ERRORmf(this_parser, pt_top(this_parser),
-				MSGCAT_SET_PARSER_SEMANTIC,
-				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
-
-			if (node)
-			  {
-			    /* handle ORDER BY NULL */
-			    PT_NODE *order = node->info.query.order_by;
-			    if (order && order->info.sort_spec.expr
-				&& order->info.sort_spec.expr->node_type == PT_VALUE
-				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-			      {
-				if (!node->info.query.q.select.group_by)
-				  {
-				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-				  }
-				else
-				  {
-				    parser_free_tree (this_parser, node->info.query.order_by);
-				    node->info.query.order_by = NULL;
-				  }
-			      }
-			  }
-
-			parser_push_orderby_node (node);
-
-		DBG_PRINT}}
-	opt_select_limit_clause
-	opt_for_update_clause
-		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_query, opt_select_limit_clause	opt_for_update_clause);
 
 			PT_NODE *node = parser_pop_orderby_node ();
 			$$ = node;
@@ -13625,97 +13843,6 @@ select_expression
 		DBG_PRINT}}
 	;
 
-select_expression_without_values_query
-	: select_expression_without_values_query
-		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query, : select_expression_without_values_query);
-			PT_NODE *node = $1;
-			parser_push_orderby_node (node);
-		}}
-	  opt_orderby_clause
-		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query, opt_orderby_clause);
-
-			PT_NODE *node = parser_pop_orderby_node ();
-
-			if (node && parser_cannot_cache)
-			  {
-			    node->info.query.flag.reexecute = 1;
-			    node->info.query.flag.do_cache = 0;
-			    node->info.query.flag.do_not_cache = 1;
-			  }
-
-			if (parser_subquery_check == 0)
-			  PT_ERRORmf (this_parser, pt_top(this_parser), MSGCAT_SET_PARSER_SEMANTIC,
-				      MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Subquery");
-
-			if (node)
-			  {
-
-			    PT_NODE *order = node->info.query.order_by;
-			    if (order && order->info.sort_spec.expr
-				&& order->info.sort_spec.expr->node_type == PT_VALUE
-				&& order->info.sort_spec.expr->type_enum == PT_TYPE_NULL)
-			      {
-				if (!node->info.query.q.select.group_by)
-				  {
-				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					       MSGCAT_SEMANTIC_ORDERBYNULL_REQUIRES_GROUPBY);
-				  }
-				else
-				  {
-				    parser_free_tree (this_parser, node->info.query.order_by);
-				    node->info.query.order_by = NULL;
-				  }
-			      }
-			  }
-
-			parser_push_orderby_node (node);
-
-		DBG_PRINT}}
-	  opt_select_limit_clause
-	  opt_for_update_clause
-		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query, opt_select_limit_clause opt_for_update_clause);
-
-			PT_NODE *node = parser_pop_orderby_node ();
-			$<node>$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	  table_op select_or_subquery_without_values_query
-		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query, table_op select_or_subquery_without_values_query);
-
-			PT_NODE *stmt = $8;
-			PT_NODE *arg1 = $1;
-
-			if (stmt)
-			  {
-			    stmt->info.query.id = (UINTPTR) stmt;
-			    stmt->info.query.q.union_.arg1 = $1;
-			    stmt->info.query.q.union_.arg2 = $9;
-                            stmt->flag.recompile = $1->flag.recompile | $9->flag.recompile;
-
-			    if (arg1 != NULL
-			        && arg1->info.query.is_subquery != PT_IS_SUBQUERY
-			        && arg1->info.query.order_by != NULL)
-			      {
-			        PT_ERRORm (this_parser, stmt, MSGCAT_SET_PARSER_SYNTAX,
-			                   MSGCAT_SYNTAX_INVALID_UNION_ORDERBY);
-			      }
-			   }
-
-
-			$$ = stmt;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| select_or_subquery_without_values_query
-		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query, | select_or_subquery_without_values_query);
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	;
-
 select_expression_without_values_query_no_with_clause
 	: select_expression_without_values_query_no_with_clause
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query_no_with_clause, : select_expression_without_values_query_no_with_clause);
@@ -14011,23 +14138,6 @@ select_or_values_query
 		DBG_PRINT}}
 	| select_stmt
 		{{ DBG_TRACE_GRAMMAR(select_or_values_query, | select_stmt);
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	;
-
-select_or_subquery_without_values_query
-	: select_stmt
-		{{ DBG_TRACE_GRAMMAR(select_or_subquery_without_values_query, : select_stmt);
-
-			$$ = $1;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| subquery
-		{{ DBG_TRACE_GRAMMAR(select_or_subquery_without_values_query, | subquery);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -14469,6 +14579,9 @@ opt_from_clause
 			      (node->info.query.q.select.using_index ?
 			       parser_make_link (node->info.query.q.select.using_index, $9) : $9);
 
+                            /* Only allow PT_INCR/PT_DECR in a SELECT list when parser_select_level == 1.
+                             * WITH INCREMENT FOR/DECREMENT FOR skips this syntax check.
+                             * pt_fold_const_expr rechecks and a semantic error occurs if usage is invalid. */
 			    node->info.query.q.select.with_increment = $10;
 			    node->info.query.id = (UINTPTR) node;
 
@@ -15201,33 +15314,37 @@ connectby_clause
 			parser_save_and_set_pseudoc (1);
 			parser_save_and_set_sqc (0);
 		}
-	  CONNECT BY opt_nocycle search_condition
-		{{ DBG_TRACE_GRAMMAR(connectby_clause, CONNECT BY opt_nocycle search_condition);
+	  connectby_clause_with_option
+		{{ DBG_TRACE_GRAMMAR(connectby_clause, connectby_clause_with_option);
 
 			parser_restore_prc ();
 			parser_restore_serc ();
 			parser_restore_pseudoc ();
 			parser_restore_sqc ();
-			$$ = $5;
+			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
 	;
 
-opt_nocycle
-	: /* empty */
-	| NOCYCLE
-		{{ DBG_TRACE_GRAMMAR(opt_nocycle, |  NOCYCLE);
+connectby_clause_with_option
+       : CONNECT BY NOCYCLE search_condition %dprec 2
+        {{ DBG_TRACE_GRAMMAR(connectby_clause_with_option, : CONNECT BY NOCYCLE search_condition);
+                PT_NODE *node = parser_top_select_stmt_node ();
+		if (node)
+		  {
+		    node->info.query.q.select.check_cycles =
+		      CONNECT_BY_CYCLES_NONE;
+		  }
 
-			PT_NODE *node = parser_top_select_stmt_node ();
-			if (node)
-			  {
-			    node->info.query.q.select.check_cycles =
-			      CONNECT_BY_CYCLES_NONE;
-			  }
-
+                $$=$4;
 		DBG_PRINT}}
-	;
+
+        | CONNECT BY search_condition %dprec 1
+        {{ DBG_TRACE_GRAMMAR(connectby_clause_with_option, | CONNECT BY search_condition);
+                $$=$3;
+		DBG_PRINT}}
+        ;
 
 opt_groupby_clause
 	: /* empty */
@@ -16078,6 +16195,9 @@ limit_factor
 
 opt_select_limit_clause
 	: /* empty */
+           {{ DBG_TRACE_GRAMMAR(opt_select_limit_clause, : );
+                  $$ = NULL; 
+                  DBG_PRINT }}
 	| LIMIT limit_options
 	        {{ DBG_TRACE_GRAMMAR(opt_select_limit_clause, | LIMIT limit_options);
 
@@ -17790,6 +17910,7 @@ reserved_func
 			  {
 			    pt_set_fill_default_in_path_expression (path);
 			    node = parser_make_expression (this_parser, PT_DEFAULTF, path, NULL, NULL);
+                            node->flag.for_default_func = 1;
 			    PICE (node);
 			  }
 			$$ = node;
@@ -19286,7 +19407,7 @@ generic_function
 	;
 
 generic_function_for_call        
-	: identifier 
+	: procedure_or_function_name 
         {
             if(pwd_info.parser_call_check)
             {
@@ -19301,8 +19422,7 @@ generic_function_for_call
             }
         }
         '(' opt_expression_list_for_call ')' opt_on_target
-		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : identifier '(' opt_expression_list ')' opt_on_target );
-
+		{{ DBG_TRACE_GRAMMAR(generic_function_for_call, : procedure_or_function_name '(' opt_expression_list_for_call ')' opt_on_target );
 			PT_NODE *node = NULL;
 
 			if ($6 == NULL)
@@ -19319,6 +19439,17 @@ generic_function_for_call
 				node->info.method_call.method_name = $1;
 				node->info.method_call.arg_list = $4;
 				node->info.method_call.on_call_target = $6;
+                                if (node->info.method_call.on_call_target != NULL)
+				  {
+				    PT_NAME_INFO_CLEAR_FLAG (node->info.method_call.method_name, PT_NAME_INFO_USER_SPECIFIED);
+				  }
+				else
+				  {
+				    if (node->info.method_call.arg_list != NULL && node->info.method_call.arg_list->node_type == PT_NAME && node->info.method_call.arg_list->info.name.meta_class == PT_META_CLASS)
+				      {
+					PT_NAME_INFO_CLEAR_FLAG (node->info.method_call.method_name, PT_NAME_INFO_USER_SPECIFIED);
+				      }
+				  }
 				node->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
 			      }
 
@@ -20912,12 +21043,8 @@ of_cast_data_type
 
 			if (l != -1)
 			  {
-			    int maxlen = (typ == PT_TYPE_NCHAR)
-			      ? DB_MAX_NCHAR_PRECISION : DB_MAX_CHAR_PRECISION;
-			    PT_ERRORmf3 (this_parser, len,
-					 MSGCAT_SET_PARSER_SEMANTIC,
-					 MSGCAT_SEMANTIC_INV_PREC,
-					 l, -1, maxlen);
+                            PT_ERRORmf3 (this_parser, len, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC,
+					 l, -1, DB_MAX_CHAR_PRECISION);
 			  }
 
 			dt = parser_new_node (this_parser, PT_DATA_TYPE);
@@ -20927,26 +21054,21 @@ of_cast_data_type
 
 			    dt->type_enum = typ;
 			    dt->info.data_type.precision = l;
-			    switch (typ)
-			      {
-			      case PT_TYPE_CHAR:
-			      case PT_TYPE_NCHAR:
-				if (pt_check_grammar_charset_collation
-				    (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
-				  {
-				    dt->info.data_type.units = charset;
-				    dt->info.data_type.collation_id = coll_id;
-				  }
-				 else
-				  {
-				    dt->info.data_type.units = -1;
-				    dt->info.data_type.collation_id = -1;
-				  }
-				break;
 
-			      default:
-				break;
-			      }
+                            if (typ == PT_TYPE_CHAR)
+                            {
+			      if (pt_check_grammar_charset_collation
+			          (this_parser, charset_node, coll_node, &charset, &coll_id) == NO_ERROR)
+			       {
+			          dt->info.data_type.units = charset;
+			          dt->info.data_type.collation_id = coll_id;
+			       }
+			      else
+			       {
+			          dt->info.data_type.units = -1;
+			          dt->info.data_type.collation_id = -1;
+			       }			
+			     }
 			  }
 
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
@@ -21535,14 +21657,6 @@ primitive_type
                                         maxlen = DB_MAX_VARCHAR_PRECISION;
                                         break;
 
-                                case PT_TYPE_NCHAR:
-                                        maxlen = DB_MAX_NCHAR_PRECISION;
-                                        break;
-
-                                case PT_TYPE_VARNCHAR:
-                                        maxlen = DB_MAX_VARNCHAR_PRECISION;
-                                        break;
-
                                 case PT_TYPE_BIT:
                                         maxlen = DB_MAX_BIT_PRECISION;
                                         break;
@@ -21576,17 +21690,12 @@ primitive_type
                                 switch (typ)
                                 {
                                 case PT_TYPE_CHAR:
-                                case PT_TYPE_NCHAR:
                                 case PT_TYPE_BIT:
                                         l = 1;
                                         break;
 
                                 case PT_TYPE_VARCHAR:
                                         l = DB_MAX_VARCHAR_PRECISION;
-                                        break;
-
-                                case PT_TYPE_VARNCHAR:
-                                        l = DB_MAX_VARNCHAR_PRECISION;
                                         break;
 
                                 case PT_TYPE_VARBIT:
@@ -21609,8 +21718,6 @@ primitive_type
                                 {
                                 case PT_TYPE_CHAR:
                                 case PT_TYPE_VARCHAR:
-                                case PT_TYPE_NCHAR:
-                                case PT_TYPE_VARNCHAR:
                                         if (pt_check_grammar_charset_collation
                                         (this_parser, charset_node,
                                         coll_node, &charset, &coll_id) == NO_ERROR)
@@ -21734,7 +21841,7 @@ primitive_type
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | FLOAT_ opt_prec_1);
 
 			container_2 ctn;
-			PT_TYPE_ENUM typ;
+			PT_TYPE_ENUM typ = PT_TYPE_FLOAT;
 			PT_NODE *prec, *dt = NULL;
 			prec = $2;
 
@@ -22157,7 +22264,7 @@ opt_index_with_clause
         : /* empty */
           { DBG_TRACE_GRAMMAR(opt_index_with_clause, : );
             container_2 ctn;
-            SET_CONTAINER_2(ctn, 0, DEDUPLICATE_OPTION_AUTO);
+            SET_CONTAINER_2(ctn, FROM_NUMBER(0), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO));
             $$ = ctn; }
         | WITH index_with_item_list
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
@@ -22169,25 +22276,25 @@ index_with_item_list
         : online_parallel
           { DBG_TRACE_GRAMMAR(index_with_item_list, : online_parallel );
                 container_2 ctn;
-                SET_CONTAINER_2(ctn, $1, DEDUPLICATE_OPTION_AUTO);
+                SET_CONTAINER_2(ctn, FROM_NUMBER($1), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO));
 		$$ = ctn;
           }
         | online_parallel ',' deduplicate_key_mod_level
           { DBG_TRACE_GRAMMAR(index_with_item_list, | online_parallel ',' deduplicate_key_mod_level );
                 container_2 ctn;
-		SET_CONTAINER_2(ctn, $1, $3);
+		SET_CONTAINER_2(ctn, FROM_NUMBER($1), FROM_NUMBER($3));
 		$$ = ctn;
           }
         | deduplicate_key_mod_level
           { DBG_TRACE_GRAMMAR(index_with_item_list, | deduplicate_key_mod_level );
                 container_2 ctn;
-		SET_CONTAINER_2(ctn, 0, $1);
+		SET_CONTAINER_2(ctn, FROM_NUMBER(0), FROM_NUMBER($1));
 		$$ = ctn;
           }
         | deduplicate_key_mod_level ',' online_parallel
           { DBG_TRACE_GRAMMAR(index_with_item_list, | deduplicate_key_mod_level ',' online_parallel ); 
                 container_2 ctn;
-		SET_CONTAINER_2(ctn, $3, $1);
+		SET_CONTAINER_2(ctn, FROM_NUMBER($3), FROM_NUMBER($1));
 		$$ = ctn;
           }
         ;        
@@ -22956,12 +23063,14 @@ identifier
 	| ANALYZE                {{ DBG_TRACE_GRAMMAR(identifier, | ANALYZE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ARCHIVE                {{ DBG_TRACE_GRAMMAR(identifier, | ARCHIVE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ARIA                   {{ DBG_TRACE_GRAMMAR(identifier, | ARIA               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| AUTHID                 {{ DBG_TRACE_GRAMMAR(identifier, | AUTHID             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| AUTO_INCREMENT         {{ DBG_TRACE_GRAMMAR(identifier, | AUTO_INCREMENT     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BENCHMARK              {{ DBG_TRACE_GRAMMAR(identifier, | BENCHMARK          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | BENCHMARK              {{ DBG_TRACE_GRAMMAR(identifier, | BENCHMARK          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_AND                {{ DBG_TRACE_GRAMMAR(identifier, | BIT_AND            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_OR                 {{ DBG_TRACE_GRAMMAR(identifier, | BIT_OR             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BIT_XOR                {{ DBG_TRACE_GRAMMAR(identifier, | BIT_XOR            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| BUFFER                 {{ DBG_TRACE_GRAMMAR(identifier, | BUFFER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| CALLER                 {{ DBG_TRACE_GRAMMAR(identifier, | CALLER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CACHE                  {{ DBG_TRACE_GRAMMAR(identifier, | CACHE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CAPACITY               {{ DBG_TRACE_GRAMMAR(identifier, | CAPACITY           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CHARACTER_SET_         {{ DBG_TRACE_GRAMMAR(identifier, | CHARACTER_SET_     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -22973,16 +23082,20 @@ identifier
 	| COLUMNS                {{ DBG_TRACE_GRAMMAR(identifier, | COLUMNS            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COMMENT                {{ DBG_TRACE_GRAMMAR(identifier, | COMMENT            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COMMITTED              {{ DBG_TRACE_GRAMMAR(identifier, | COMMITTED          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| COMPILE                {{ DBG_TRACE_GRAMMAR(identifier, | COMPILE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| COST                   {{ DBG_TRACE_GRAMMAR(identifier, | COST               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CRITICAL               {{ DBG_TRACE_GRAMMAR(identifier, | CRITICAL           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| CUME_DIST              {{ DBG_TRACE_GRAMMAR(identifier, | CUME_DIST          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DATE_ADD               {{ DBG_TRACE_GRAMMAR(identifier, | DATE_ADD           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DATE_SUB               {{ DBG_TRACE_GRAMMAR(identifier, | DATE_SUB           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| DB_TIMEZONE            {{ DBG_TRACE_GRAMMAR(identifier, | DB_TIMEZONE        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBLINK                 {{ DBG_TRACE_GRAMMAR(identifier, | DBLINK             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DBNAME                 {{ DBG_TRACE_GRAMMAR(identifier, | DBNAME             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DECREMENT              {{ DBG_TRACE_GRAMMAR(identifier, | DECREMENT          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
+	| DEFINER                {{ DBG_TRACE_GRAMMAR(identifier, | DEFINER            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
        	| DEDUPLICATE_           {{ DBG_TRACE_GRAMMAR(identifier, | DEDUPLICATE_       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
         | DENSE_RANK             {{ DBG_TRACE_GRAMMAR(identifier, | DENSE_RANK         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+        | DETERMINISTIC          {{ DBG_TRACE_GRAMMAR(identifier, | DETERMINISTIC      ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DISK_SIZE              {{ DBG_TRACE_GRAMMAR(identifier, | DISK_SIZE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| DONT_REUSE_OID         {{ DBG_TRACE_GRAMMAR(identifier, | DONT_REUSE_OID     ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ELT                    {{ DBG_TRACE_GRAMMAR(identifier, | ELT                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23046,13 +23159,16 @@ identifier
 	| JSON_TYPE              {{ DBG_TRACE_GRAMMAR(identifier, | JSON_TYPE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| JSON_UNQUOTE           {{ DBG_TRACE_GRAMMAR(identifier, | JSON_UNQUOTE       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| JSON_VALID             {{ DBG_TRACE_GRAMMAR(identifier, | JSON_VALID         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| KEYLIMIT               {{ DBG_TRACE_GRAMMAR(identifier, | KEYLIMIT           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| KEYS                   {{ DBG_TRACE_GRAMMAR(identifier, | KEYS               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| KILL                   {{ DBG_TRACE_GRAMMAR(identifier, | KILL               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LAG                    {{ DBG_TRACE_GRAMMAR(identifier, | LAG                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LAST_VALUE             {{ DBG_TRACE_GRAMMAR(identifier, | LAST_VALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LCASE                  {{ DBG_TRACE_GRAMMAR(identifier, | LCASE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LEAD                   {{ DBG_TRACE_GRAMMAR(identifier, | LEAD               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LOCK_                  {{ DBG_TRACE_GRAMMAR(identifier, | LOCK_              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LOG                    {{ DBG_TRACE_GRAMMAR(identifier, | LOG                ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
+	| MATCHED                {{ DBG_TRACE_GRAMMAR(identifier, | MATCHED            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MAXIMUM                {{ DBG_TRACE_GRAMMAR(identifier, | MAXIMUM            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MAXVALUE               {{ DBG_TRACE_GRAMMAR(identifier, | MAXVALUE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MEDIAN                 {{ DBG_TRACE_GRAMMAR(identifier, | MEDIAN             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}	
@@ -23061,6 +23177,7 @@ identifier
 	| NAME                   {{ DBG_TRACE_GRAMMAR(identifier, | NAME               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NESTED                 {{ DBG_TRACE_GRAMMAR(identifier, | NESTED             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOCACHE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCACHE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| NOCYCLE                {{ DBG_TRACE_GRAMMAR(identifier, | NOCYCLE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMAXVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMAXVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NOMINVALUE             {{ DBG_TRACE_GRAMMAR(identifier, | NOMINVALUE         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| NTH_VALUE              {{ DBG_TRACE_GRAMMAR(identifier, | NTH_VALUE          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23070,6 +23187,7 @@ identifier
 	| ONLINE                 {{ DBG_TRACE_GRAMMAR(identifier, | ONLINE             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OPEN                   {{ DBG_TRACE_GRAMMAR(identifier, | OPEN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ DBG_TRACE_GRAMMAR(identifier, | ORDINALITY         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| OVER                   {{ DBG_TRACE_GRAMMAR(identifier, | OVER               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OWNER                  {{ DBG_TRACE_GRAMMAR(identifier, | OWNER              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PAGE                   {{ DBG_TRACE_GRAMMAR(identifier, | PAGE               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PARALLEL               {{ DBG_TRACE_GRAMMAR(identifier, | PARALLEL           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23080,16 +23198,20 @@ identifier
 	| PERCENTILE_CONT        {{ DBG_TRACE_GRAMMAR(identifier, | PERCENTILE_CONT    ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PERCENTILE_DISC        {{ DBG_TRACE_GRAMMAR(identifier, | PERCENTILE_DISC    ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PERCENT_RANK           {{ DBG_TRACE_GRAMMAR(identifier, | PERCENT_RANK       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PLCSQL                 {{ DBG_TRACE_GRAMMAR(identifier, | PLCSQL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PORT                   {{ DBG_TRACE_GRAMMAR(identifier, | PORT               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRINT                  {{ DBG_TRACE_GRAMMAR(identifier, | PRINT              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIORITY               {{ DBG_TRACE_GRAMMAR(identifier, | PRIORITY           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIVATE                {{ DBG_TRACE_GRAMMAR(identifier, | PRIVATE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PROMOTE                {{ DBG_TRACE_GRAMMAR(identifier, | PROMOTE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PROPERTIES             {{ DBG_TRACE_GRAMMAR(identifier, | PROPERTIES         ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PUBLIC                 {{ DBG_TRACE_GRAMMAR(identifier, | PUBLIC             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUARTER                {{ DBG_TRACE_GRAMMAR(identifier, | QUARTER            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| QUEUES                 {{ DBG_TRACE_GRAMMAR(identifier, | QUEUES             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANGE_                 {{ DBG_TRACE_GRAMMAR(identifier, | RANGE_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| RANK                   {{ DBG_TRACE_GRAMMAR(identifier, | RANK               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REBUILD                {{ DBG_TRACE_GRAMMAR(identifier, | REBUILD            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| REGEXP                 {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_COUNT           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_COUNT       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_INSTR           {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_INSTR       ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| REGEXP_LIKE            {{ DBG_TRACE_GRAMMAR(identifier, | REGEXP_LIKE        ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23108,8 +23230,9 @@ identifier
 	| SEPARATOR              {{ DBG_TRACE_GRAMMAR(identifier, | SEPARATOR          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SERIAL                 {{ DBG_TRACE_GRAMMAR(identifier, | SERIAL             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SERVER                 {{ DBG_TRACE_GRAMMAR(identifier, | SERVER             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| SESSION_TIMEZONE       {{ DBG_TRACE_GRAMMAR(identifier, | SESSION_TIMEZONE   ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SHOW                   {{ DBG_TRACE_GRAMMAR(identifier, | SHOW               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+    | SLOTS                  {{ DBG_TRACE_GRAMMAR(identifier, | SLOTS              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SLOTTED                {{ DBG_TRACE_GRAMMAR(identifier, | SLOTTED            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STABILITY              {{ DBG_TRACE_GRAMMAR(identifier, | STABILITY          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| START_                 {{ DBG_TRACE_GRAMMAR(identifier, | START_             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23128,6 +23251,7 @@ identifier
 	| THREADS                {{ DBG_TRACE_GRAMMAR(identifier, | THREADS            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TIMEOUT                {{ DBG_TRACE_GRAMMAR(identifier, | TIMEOUT            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TIMEZONE               {{ DBG_TRACE_GRAMMAR(identifier, | TIMEZONE           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| TIMEZONES              {{ DBG_TRACE_GRAMMAR(identifier, | TIMEZONES          ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRACE                  {{ DBG_TRACE_GRAMMAR(identifier, | TRACE              ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRAN                   {{ DBG_TRACE_GRAMMAR(identifier, | TRAN               ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| TRIGGERS               {{ DBG_TRACE_GRAMMAR(identifier, | TRIGGERS           ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -24378,16 +24502,6 @@ paren_minus
 	: '(' '-' ')'
 	;
 
-
-bad_tokens_for_error_message_only_dont_mind_this_rule
-	: '@'
-	| ']'
-	| '`'
-	/*| '^'
-	| '&'
-	| '~'*/
-	;
-
 vacuum_stmt
 	: VACUUM
 		{{ DBG_TRACE_GRAMMAR(vacuum_stmt, : VACUUM);
@@ -25087,6 +25201,8 @@ opt_alter_synonym
 
 %%
 
+END_SUPPRESS_WARNING_BISON_FLEX
+
 
 extern FILE *yyin;
 
@@ -25103,8 +25219,6 @@ pop_msg ()
   msg_ptr--;
 }
 
-
-extern void csql_yyset_lineno (int line_number);
 int yycolumn = 0;
 int yycolumn_end = 0;
 
@@ -26158,32 +26272,50 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
   if (arg3 && arg_cnt == 3)
     {
       char *lang_str;
-      if ((arg3->type_enum == PT_TYPE_CHAR || arg3->type_enum == PT_TYPE_NCHAR) && arg3->info.value.data_value.str != NULL)
+      if (arg3->node_type == PT_VALUE)
 	{
-	  date_lang = parser_new_node (this_parser, PT_VALUE);
-          if (!date_lang)
+	  if (arg3->type_enum == PT_TYPE_CHAR && arg3->info.value.data_value.str != NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PT_NODE));
-	      return NULL;
+	      date_lang = parser_new_node (this_parser, PT_VALUE);
+	      if (!date_lang)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PT_NODE));
+		  return NULL;
+		}
+	      int flag = 0;
+	      lang_str = (char *) arg3->info.value.data_value.str->bytes;
+	      if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
+		{
+		  //PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
+                  PT_ERRORmf (this_parser, arg3, MSGCAT_SET_ERROR, -(ER_LOCALE_LANG_NOT_AVAILABLE), lang_str);
+		}
+	      date_lang->info.value.data_value.i = (long) flag;
+	      date_lang->type_enum = PT_TYPE_INTEGER;
+	      parser_free_node (this_parser, arg3);
 	    }
-	  int flag = 0;
-	  lang_str = (char *) arg3->info.value.data_value.str->bytes;
-	  if (lang_set_flag_from_lang (lang_str, 1, 1, &flag))
-	    {
-	      PT_ERROR (this_parser, arg3, "check syntax at 'date_lang'");
-	    }
-	  date_lang->info.value.data_value.i = (long) flag;
 	}
-
-      if (date_lang)
+      else if (arg3->node_type == PT_HOST_VAR)
 	{
-	  date_lang->type_enum = PT_TYPE_INTEGER;
-          parser_free_node (this_parser, arg3);
-	}
-      else
+	  date_lang = arg3;
+	} 
+      else if(this_parser->flag.is_parsing_static_sql)
         {
-          date_lang = arg3;
+           if (arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST)
+             {
+                PT_NODE * node = arg3->info.expr.cast_type; 
+                if(node->node_type == PT_DATA_TYPE && PT_IS_SIMPLE_CHAR_STRING_TYPE(node->type_enum))
+                  {  
+                    date_lang = arg3;
+                  }
+             }
         }
+
+      if (date_lang == NULL)
+	{ 	  
+          PT_ERRORm (this_parser, arg3, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORT_TYPE_TO_DATE_LANG);
+
+	  date_lang = arg3;
+	}
     }
   else
     {
@@ -26207,7 +26339,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	}
 
     }
-    return date_lang;
+  return date_lang;
 }
 
 static PT_NODE *
@@ -26236,7 +26368,7 @@ parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv;
+  int rv, yybuffer_pos_save;
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -26252,6 +26384,7 @@ parser_main (PARSER_CONTEXT * parser)
   dbcs_start_input ();
 
   yycolumn = yycolumn_end = 1;
+  yybuffer_pos_save = yybuffer_pos;
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
@@ -26263,6 +26396,11 @@ parser_main (PARSER_CONTEXT * parser)
 
   pt_initialize_hint(parser, parser_hint_table); 
   rv = yyparse ();
+
+  // parser_main can be reentered while executing statements loaded by loaddb -s.
+  // During the loaddb -s, the yybuffer_pos must not be currupted.
+  yybuffer_pos = yybuffer_pos_save;
+
   pt_cleanup_hint (parser, parser_hint_table);
 
   if (pt_has_error (parser) || parser->stack_top <= 0 || !parser->node_stack)
@@ -26346,6 +26484,9 @@ parse_one_statement (int state)
       csql_yyset_lineno (1);
       yycolumn = yycolumn_end = 1;
 
+      // init only for the first time in order to make csql_yylloc.buffer_pos identical to the file pos
+      yybuffer_pos=0;
+
       return 0;
     }
 
@@ -26353,7 +26494,6 @@ parse_one_statement (int state)
 
   parser_yyinput_single_mode = 1;
 
-  yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -26371,8 +26511,7 @@ parse_one_statement (int state)
   else
     parser_statement_OK = 1;
 
-  if (!parser_yyinput_single_mode)	/* eof */
-    return 1;
+  parser_yyinput_single_mode = 0;
 
   return 0;
 }
@@ -26412,6 +26551,10 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
+  INIT_PT_HINT("NO_PARALLEL_HEAP_SCAN", PT_HINT_NO_PARALLEL_HEAP_SCAN),
+  INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
+  INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
+  INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
@@ -26425,6 +26568,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_SUPPLEMENTAL_LOG", PT_HINT_NO_SUPPLEMENTAL_LOG),
   INIT_PT_HINT("USE_HASH", PT_HINT_USE_HASH),
   INIT_PT_HINT("NO_USE_HASH", PT_HINT_NO_USE_HASH),
+  INIT_PT_HINT("INLINE", PT_HINT_INLINE_CTE),
+  INIT_PT_HINT("MATERIALIZE", PT_HINT_MATERIALIZE_CTE),
   {NULL, NULL, -1, 0, false}		/* mark as end */
 };
 
@@ -27729,15 +27874,7 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         length = node->info.value.data_value.str->length;
 
         node->type_enum = char_type;
-
-        if (char_type == PT_TYPE_NCHAR)
-          {
-            node->info.value.string_type = 'N';
-          }
-        else
-          {
-            node->info.value.string_type = ' ';
-          }
+        node->info.value.string_type = ' ';
 
         PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
       }
@@ -28426,4 +28563,51 @@ pt_add_password_offset (int start, int end, bool is_add_comma, EN_ADD_PWD_STRING
     }
 
   password_add_offset (&this_parser->hide_pwd_info, start, end, is_add_comma, en_add_pwd_string);
+}
+
+static int
+pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end)
+{
+    // In (at least) following two cases, the control reaches here.
+    //  . csql -i <file> --no-single-line ...
+    //  . cubrid loaddb -s <file> ...
+
+    // In these cases, parser->original_buffer is null and
+    // node->sql_user_text must be got from this_parser->file.
+    // The arguments start, spec_start, spec_end, and end are got from the tokens' buffer_pos
+    // but they are also actual positions in the file in these two cases.
+
+    int r, read_sz = end - start;   // texts from pos start to pos (end - 1)
+    char* buff = (char*) parser_alloc(this_parser, read_sz + 1);
+
+    int file_pos = ftell(this_parser->file);
+
+    r = fseek(this_parser->file, start, SEEK_SET);
+    if (r != 0) {
+        return -1;
+    }
+
+    r = (int) fread(buff, 1, read_sz, this_parser->file);
+    if (r != read_sz) {
+        return -1;
+    }
+
+    r = fseek(this_parser->file, file_pos, SEEK_SET);   // restore it to the original position
+    if (r != 0){
+        return -1;
+    }
+
+    if (strncasecmp("create", buff, 6) != 0) {
+        return -1;
+    }
+
+    buff[read_sz] = '\0';
+    char* impl = buff + (spec_start - start);
+
+    node->sql_user_text = buff;
+    node->sql_user_text_len = read_sz;
+
+    body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, (spec_end - spec_start));
+
+    return 0;
 }

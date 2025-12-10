@@ -5750,7 +5750,7 @@ sm_att_type_id (MOP classop, const char *name)
 static const char *
 sm_type_name (DB_TYPE id)
 {
-  PR_TYPE *type;
+  const PR_TYPE *type;
 
   type = pr_type_from_id (id);
   if (type != NULL)
@@ -10260,7 +10260,7 @@ fixup_self_domain (TP_DOMAIN * domain, MOP self)
 
   for (d = domain; d != NULL; d = d->next)
     {
-      /* PR_TYPE is changeable only for transient domain. */
+      /* const PR_TYPE is changeable only for transient domain. */
       if (d->type == tp_Type_null && !d->is_cached)
 	{
 	  d->type = tp_Type_object;
@@ -13568,6 +13568,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   SM_CLASS_CONSTRAINT *pk;
   char *fk_name = NULL;
   const char *table_name;
+  MOP save_user, owner;
 
   if (op == NULL)
     {
@@ -13826,8 +13827,30 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
       goto end;
     }
 
+  /* before deleting an object, all permissions are revoked. */
+  owner = au_get_class_owner (op);
+  if (owner == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      goto end;
+    }
+
+  save_user = Au_user;
+  if (AU_SET_USER (owner) == NO_ERROR)
+    {
+      error = au_object_revoke_all_privileges (DB_OBJECT_CLASS, owner, table_name);
+      if (error != NO_ERROR)
+	{
+	  AU_SET_USER (save_user);
+	  goto end;
+	}
+    }
+
+  AU_SET_USER (save_user);
+
   /* now delete _db_auth tuples refers to the table */
-  error = au_delete_auth_of_dropping_table (table_name);
+  error = au_delete_auth_of_dropping_database_object (DB_OBJECT_CLASS, table_name);
   if (error != NO_ERROR)
     {
       goto end;

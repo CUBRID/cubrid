@@ -155,6 +155,8 @@ extern char *realpath (const char *path, char *resolved_path);
 #define vfprintf        _vfprintf_p
 #define vprintf         _vprintf_p
 #define strtof		strtof_win
+#define strndup         strndup_win
+
 #if defined (_WIN32)
 #define mktime         mktime_for_win32
 #endif
@@ -318,8 +320,6 @@ extern int free_space (const char *, int);
 #if !defined (HAVE_DRAND48_R)
 #error "HAVE_DRAND48_R"
 #endif
-
-
 #endif /* WINDOWS */
 
 #define snprintf_dots_truncate(dest, max_len, ...) \
@@ -997,6 +997,7 @@ extern int str_to_float (float *ret_p, char **end_p, const char *str_p);
 
 #if defined (WINDOWS)
 extern float strtof_win (const char *nptr, char **endptr);
+extern char *strndup_win (const char *src, size_t size);
 #endif
 
 #ifndef HAVE_STRLCPY
@@ -1092,5 +1093,22 @@ extern "C"
 #else				/* !REFPTR */
 #define REFPTR(T, name) T *& name
 #endif				/* !REFPTR */
+
+#if defined (__GNUC__)
+#define likely(x)   __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#define prefetch(x, y, z) __builtin_prefetch((x), (y), (z))
+#else
+#define likely(x)   (x)
+#define unlikely(x) (x)
+#define prefetch(x, y, z) (void) 0
+#endif
+
+#define PREFETCH_READ 0
+#define PREFETCH_WRITE 1
+#define PREFETCH_CACHE_NEVER 0
+#define PREFETCH_CACHE_L3 1
+#define PREFETCH_CACHE_L2 2
+#define PREFETCH_CACHE_L1 3
 
 #endif				/* _PORTING_H_ */

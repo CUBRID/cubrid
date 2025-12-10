@@ -32,15 +32,20 @@
 package com.cubrid.jsp.context;
 
 import com.cubrid.jsp.ExecuteThread;
+import com.cubrid.jsp.Server;
+import com.cubrid.jsp.ServerConfig;
+import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.TargetMethodCache;
 import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
+import com.cubrid.jsp.classloader.SessionClassLoaderManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
-import com.cubrid.jsp.protocol.Header;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -51,11 +56,8 @@ public class Context {
     // transaction Id
     private int tranactionId = -1;
 
-    // request Id (for future)
-    private int prevRequestId = 0;
-
     // charset
-    private String charSet = "UTF-8";
+    private Charset sessionCharset = null;
 
     // single server-side connection per Context
     private CUBRIDServerSideConnection connection = null;
@@ -66,7 +68,8 @@ public class Context {
     private Properties clientInfo = null;
 
     // dynamic classLoader for a session
-    private ContextClassLoader classLoader = null;
+    private SessionClassLoaderManager sessionClassLoaderManager = null;
+    private ContextClassLoader oldClassLoader = null; // file
 
     // method cache
     private TargetMethodCache methodCache = null;
@@ -75,10 +78,14 @@ public class Context {
     private boolean transactionControl = false;
 
     // Connection Properties
+    private static Properties DEFAULT_CONNECTION_INFO = new Properties();
     private Properties connectionInfo = null;
 
     // message buffer for DBMS_OUTPUT
     private MessageBuffer messageBuffer;
+
+    // context system parameters
+    private HashMap<Integer, SysParam> systemParameters = null;
 
     public Context(long id) {
         sessionId = id;
@@ -86,6 +93,10 @@ public class Context {
 
     public long getSessionId() {
         return sessionId;
+    }
+
+    public synchronized Connection getConnection() {
+        return getConnection(DEFAULT_CONNECTION_INFO);
     }
 
     public synchronized Connection getConnection(Properties prop) {
@@ -96,7 +107,7 @@ public class Context {
         return connection;
     }
 
-    public void closeConnection(Connection conn) throws SQLException {
+    public void closeConnection() throws SQLException {
         if (connection != null) {
             connection.close();
         }
@@ -116,47 +127,73 @@ public class Context {
         return inBound;
     }
 
-    public String getCharset() {
-        return charSet;
-    }
-
-    public void checkHeader(Header header) {
-        if (prevRequestId > header.requestId) {
-            // not incremented
-            // a new session is started with the same session Id or the trasaction is ended
-            clear();
+    public HashMap<Integer, SysParam> getSystemParameters() {
+        if (systemParameters == null) {
+            systemParameters = new HashMap<Integer, SysParam>();
         }
-        prevRequestId = header.requestId;
+        return systemParameters;
     }
 
     public void checkTranId(int tid) {
         if (tranactionId == -1) {
             tranactionId = tid;
-        }
-
-        if (tranactionId != tid) {
+            oldClassLoader = new ContextClassLoader();
+        } else if (tranactionId != tid) {
             // re-cretae dynamic class loader
-            if (classLoader
-                            .getInitializedTime()
-                            .compareTo(
-                                    ClassLoaderManager.getLastModifiedTimeOfPath(
-                                            ClassLoaderManager.getDynamicPath()))
-                    != 0) {
-                classLoader = new ContextClassLoader();
-                methodCache.clear();
+            if (oldClassLoader != null
+                    && oldClassLoader
+                                    .getInitializedTime()
+                                    .compareTo(
+                                            ClassLoaderManager.getLastModifiedTimeOfPath(
+                                                    ClassLoaderManager.getDynamicPath()))
+                            != 0) {
+                oldClassLoader = new ContextClassLoader();
+
+                if (methodCache != null) {
+                    methodCache.clear();
+                }
             }
-            clear();
+
+            if (connection != null) {
+                connection.invalidateStatements();
+            }
+
             tranactionId = tid;
+
+            if (sessionClassLoaderManager != null) {
+                sessionClassLoaderManager.clear();
+            }
         }
     }
 
-    public void clear() {
+    private void clear() {
         try {
-            closeConnection(connection);
+            closeConnection();
         } catch (Exception e) {
             // ignore
         } finally {
             connection = null;
+        }
+    }
+
+    public void destroy() {
+        clear();
+        if (sessionClassLoaderManager != null) {
+            sessionClassLoaderManager.clear();
+            sessionClassLoaderManager = null;
+        }
+
+        if (oldClassLoader != null) {
+            oldClassLoader = null;
+        }
+
+        if (methodCache != null) {
+            methodCache.clear();
+            methodCache = null;
+        }
+
+        if (messageBuffer != null) {
+            messageBuffer.clear();
         }
     }
 
@@ -167,12 +204,20 @@ public class Context {
         return messageBuffer;
     }
 
-    public ClassLoader getClassLoader() {
-        if (classLoader == null) {
-            classLoader = new ContextClassLoader();
+    public SessionClassLoaderManager getSessionCLManager() {
+        if (sessionClassLoaderManager == null) {
+            sessionClassLoaderManager = new SessionClassLoaderManager(sessionId);
         }
 
-        return classLoader;
+        return sessionClassLoaderManager;
+    }
+
+    public ClassLoader getOldClassLoader() {
+        if (oldClassLoader == null) {
+            oldClassLoader = new ContextClassLoader();
+        }
+
+        return oldClassLoader;
     }
 
     public TargetMethodCache getTargetMethodCache() {
@@ -192,12 +237,68 @@ public class Context {
             return true;
         }
 
-        String tcProp = connectionInfo.getProperty("transaction_control");
-        if (tcProp != null && "true".equalsIgnoreCase(tcProp)) {
-            return true;
+        if (connectionInfo != null) {
+            String tcProp = connectionInfo.getProperty("transaction_control");
+            if (tcProp != null && "true".equalsIgnoreCase(tcProp)) {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    public static int getCodesetId() {
+        return SysParam.getCodesetId(getSessionCharset());
+    }
+
+    public static Charset getSessionCharset() {
+        Context ctx = ContextManager.getContextofCurrentThread();
+        SysParam sysParam = ctx.getSystemParameters().get(SysParam.INTL_COLLATION);
+        if (sysParam == null) {
+            return Server.getConfig().getServerCharset();
+        }
+
+        String collation = sysParam.getParamValue();
+        String codeset = ServerConfig.parseCollationString(collation);
+
+        Charset charset;
+        try {
+            charset = Charset.forName(codeset);
+        } catch (Exception e) {
+            // java.nio.charset.IllegalCharsetNameException
+            // invalid charset is specified
+            charset = Server.getConfig().getServerCharset();
+        }
+
+        return charset;
+    }
+
+    public static SysParam getSystemParam(int id) {
+        Context ctx = ContextManager.getContextofCurrentThread();
+        SysParam param = ctx.getSystemParameters().get(id);
+        if (param == null) {
+            // get server's parameter
+            param = Server.getConfig().getSystemParameters().get(id);
+        }
+        return param;
+    }
+
+    public static String getSystemParameterString(int id) {
+        SysParam param = getSystemParam(id);
+        if (param != null) {
+            return param.getParamValueString();
+        }
+
+        return null;
+    }
+
+    public static Boolean getSystemParameterBool(int id) {
+        SysParam param = getSystemParam(id);
+        if (param != null) {
+            return param.getParamValueBoolean();
+        }
+
+        return null;
     }
 
     // TODO: move this function to proper place

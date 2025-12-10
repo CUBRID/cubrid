@@ -94,7 +94,7 @@ stmt_w_record_values
     ;
 
 stmt_w_record_set
-    : UPDATE any* table_spec SET row_set any+ EOF
+    : UPDATE any* table_spec SET row_set any* EOF
     | INSERT any* table_spec SET row_set (ON DUPLICATE KEY UPDATE any+)? EOF
     | REPLACE any* table_spec SET row_set EOF
     ;

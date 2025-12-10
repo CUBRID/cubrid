@@ -32,6 +32,16 @@
 #include "memory_wrapper.hpp"
 
 void
+log_postpone_cache::copy_to (log_postpone_cache &dest) const
+{
+  m_redo_data_buf.copy_to (dest.m_redo_data_buf);
+  dest.m_redo_data_offset = m_redo_data_offset;
+  dest.m_is_redo_data_buf_full = m_is_redo_data_buf_full;
+  dest.m_cursor = m_cursor;
+  dest.m_cache_entries = m_cache_entries;
+}
+
+void
 log_postpone_cache::reset ()
 {
   m_cursor = 0;

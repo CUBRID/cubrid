@@ -29,9 +29,6 @@
 #include "porting.h"
 
 #define APPL_SERVER_CAS_NAME            "cub_cas"
-#define APPL_SERVER_CAS_ORACLE_NAME     "cub_cas_oracle"
-#define APPL_SERVER_CAS_MYSQL51_NAME    "cub_cas_mysql51"
-#define APPL_SERVER_CAS_MYSQL_NAME      "cub_cas_mysql"
 #define APPL_SERVER_CAS_CGW_NAME        "cub_cas_cgw"
 
 #define NAME_BROKER			"Tbroker"
@@ -88,8 +85,6 @@ enum t_cubrid_file_id
   FID_MONITORD_LOG,
   FID_ER_HTML,
   FID_CUBRID_ERR_DIR,
-  FID_CAS_FOR_ORACLE_DBINFO,
-  FID_CAS_FOR_MYSQL_DBINFO,
   FID_ACCESS_CONTROL_FILE,
   FID_SLOW_LOG_DIR,
   FID_SHARD_DBINFO,
@@ -112,5 +107,6 @@ extern char *get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len);
 extern char *get_cubrid_file_ptr (T_CUBRID_FILE_ID fid);
 extern char *get_cubrid_home (void);
 extern const char *getenv_cubrid_broker (void);
+extern int make_abs_path (char *dst, const char *subdir, const char *path, size_t dest_len);
 
 #endif /* _BROKER_FILENAME_H_ */

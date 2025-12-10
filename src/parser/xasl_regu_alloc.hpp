@@ -72,12 +72,15 @@ void regu_init (upddel_class_info &upddel);
 void regu_init (update_assignment &assign);
 void regu_init (arith_list_node &arith);
 void regu_init (function_node &fnode);
+void regu_init (cubxasl::sp_node &sp);
 void regu_init (cubxasl::aggregate_list_node &agg);
 void regu_init (cubxasl::analytic_list_node &ana);
 void regu_init (xasl_node &node);
 void regu_init (sort_list &sl);
 void regu_init (qfile_list_id &list_id);
 void regu_init (access_spec_node &spec);
+void regu_init (cubpl::pl_signature &sig);
+void regu_init (cubpl::pl_signature_array &sig_array);
 
 template <typename T>
 void regu_alloc (T *&ptr);

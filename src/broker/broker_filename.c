@@ -60,8 +60,6 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_MONITORD_LOG, ""},
   {FID_ER_HTML, ""},
   {FID_CUBRID_ERR_DIR, ""},
-  {FID_CAS_FOR_ORACLE_DBINFO, ""},
-  {FID_CAS_FOR_MYSQL_DBINFO, ""},
   {FID_ACCESS_CONTROL_FILE, ""},
   {FID_SLOW_LOG_DIR, ""},
   {FID_SHARD_DBINFO, ""},
@@ -155,7 +153,6 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
       break;
 
     case FID_ACCESS_CONTROL_FILE:
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
       if (repath)
 	{
 	  envvar_confdir_file (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
@@ -164,9 +161,6 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	{
 	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	}
-#else
-      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
-#endif
       break;
     default:
       if (repath)
@@ -300,12 +294,6 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
     case FID_ER_HTML:
       envvar_confdir_file (buf, len, "uw_er.html");
       break;
-    case FID_CAS_FOR_ORACLE_DBINFO:
-      envvar_confdir_file (buf, len, "databases_oracle.txt");
-      break;
-    case FID_CAS_FOR_MYSQL_DBINFO:
-      envvar_confdir_file (buf, len, "databases_mysql.txt");
-      break;
     case FID_SHARD_DBINFO:
       envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");
       if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
@@ -342,4 +330,65 @@ getenv_cubrid_broker ()
   p = envvar_root ();
 
   return p;
+}
+
+int
+make_abs_path (char *dest, const char *subdir, const char *path, size_t dest_len)
+{
+  int ret = 0;
+  char buf[BROKER_PATH_MAX * 4];
+  char new_path[BROKER_PATH_MAX * 4];
+  int path_len;
+
+  if (path == NULL || path[0] == 0)
+    {
+      dest[0] = '\0';
+      return path ? 0 : -1;
+    }
+
+#if defined (WINDOWS)
+  if (IS_ABS_PATH (path))
+    {
+      _fullpath (new_path, path, dest_len);
+    }
+  else
+    {
+      snprintf (buf, dest_len, "%s%s%s\\%s", get_cubrid_home (), subdir ? "\\" : "", subdir ? subdir : "", path);
+      _fullpath (new_path, buf, dest_len);
+    }
+#else
+  if (IS_ABS_PATH (path))
+    {
+      snprintf (new_path, dest_len, "%s", path);
+    }
+  else
+    {
+      snprintf (new_path, dest_len, "%s%s%s/%s", get_cubrid_home (), subdir ? "/" : "", subdir ? subdir : "", path);
+    }
+#endif
+
+  path_len = strlen (new_path) - 1;
+  while (path_len > 0)
+    {
+      if (new_path[path_len] == '/' || new_path[path_len] == '\\')
+	{
+	  new_path[path_len] = '\0';
+	}
+      else
+	{
+	  break;
+	}
+      path_len--;
+    }
+
+  if (strlen (new_path) < dest_len)
+    {
+      snprintf (dest, dest_len, "%s", new_path);
+    }
+  else
+    {
+      ret = -1;
+    }
+
+  return ret;
 }

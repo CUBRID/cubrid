@@ -19,7 +19,8 @@
 #include "method_query_handler.hpp"
 
 #include "parser.h"
-#include "api_compat.h" /* DB_SESSION */
+#include "db_session.h"
+#include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
 #include "dbtype.h"
@@ -36,6 +37,8 @@ namespace cubmethod
 {
   query_handler::query_handler (error_context &ctx, int id)
     : m_id (id)
+    , m_tid (NULL_TRANID)
+    , m_user ("")
     , m_error_ctx (ctx)
     , m_sql_stmt ()
     , m_stmt_type (CUBRID_STMT_NONE)
@@ -89,6 +92,12 @@ namespace cubmethod
   }
 
   std::string
+  query_handler::get_user_name () const
+  {
+    return m_user;
+  }
+
+  std::string
   query_handler::get_sql_stmt () const
   {
     return m_sql_stmt;
@@ -130,6 +139,18 @@ namespace cubmethod
   void query_handler::set_is_occupied (bool flag)
   {
     m_is_occupied = flag;
+  }
+
+  TRANID
+  query_handler::get_tran_id ()
+  {
+    return m_tid;
+  }
+
+  void
+  query_handler::set_tran_id (TRANID tid)
+  {
+    m_tid = tid;
   }
 
   prepare_info &
@@ -184,6 +205,7 @@ namespace cubmethod
 
     if (error == NO_ERROR)
       {
+	m_user = au_get_current_user_name ();
 	m_prepare_info.handle_id = get_id ();
 	m_prepare_info.stmt_type = m_query_result.stmt_type;
 	m_prepare_info.num_markers = get_num_markers ();
@@ -654,7 +676,7 @@ namespace cubmethod
       }
 
     m_has_result_set = false;
-    m_query_id = -1;
+    m_query_id = (uint64_t) (-1);
   }
 
   int
@@ -817,6 +839,7 @@ namespace cubmethod
       }
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
+    db_session_set_holdable (m_session, true);
 
     /* prepare result set */
     m_num_markers = get_num_markers ();

@@ -53,6 +53,8 @@
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
 #include "xasl_cache.h"
+#include "pl_session.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -116,6 +118,7 @@ struct session_state
   pthread_mutex_t mutex;	/* state mutex */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
 
+  bool is_keep_session;
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
   bool auto_commit;
@@ -135,7 +138,7 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
-  method_runtime_context *method_rctx_p;
+  PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
   session_state ();
@@ -300,6 +303,7 @@ session_state_init (void *st)
   /* initialize fields */
   db_make_null (&session_p->cur_insert_id);
   db_make_null (&session_p->last_insert_id);
+  session_p->is_keep_session = false;
   session_p->is_trigger_involved = false;
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
@@ -314,7 +318,7 @@ session_state_init (void *st)
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
-  session_p->method_rctx_p = NULL;
+  session_p->pl_session_p = NULL;
 
   return NO_ERROR;
 }
@@ -338,11 +342,23 @@ session_state_uninit (void *st)
     {
       return NO_ERROR;
     }
+
 #if defined (SESSION_DEBUG)
   er_log_debug (ARG_FILE_LINE, "session_free_session %u\n", session->id);
 #endif /* SESSION_DEBUG */
 
-  session_stop_attached_threads (session);
+  session_stop_attached_threads (thread_p, session);
+
+  if (session->pl_session_p)
+    {
+      delete session->pl_session_p;
+      session->pl_session_p = NULL;
+    }
+  else
+    {
+      er_log_debug (ARG_FILE_LINE, "[unexpected] session %u's pl_session_p is NULL in session_state_uninit()\n",
+		    session->id);
+    }
 
   /* free session variables */
   vcurent = session->session_variables;
@@ -695,6 +711,15 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
    */
   ATOMIC_CAS_32 (&sessions.last_session_id, next_session_id, *id);
 
+  if (session_p->pl_session_p)
+    {
+      /* should not happen */
+      assert (false);
+      er_log_debug (ARG_FILE_LINE, "(assertion fail) PL session is not NULL for a newly created session\n");
+      return ER_FAILED;
+    }
+  session_p->pl_session_p = new PL_SESSION (session_p->id);
+
   /* initialize session active time */
   session_p->active_time = time (NULL);
 
@@ -741,9 +766,10 @@ session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id)
  * session_state_destroy () - close a session state
  *   return	    : NO_ERROR or error code
  *   id(in) : the identifier for the session
+ *   is_keep_session(in) : whether to keep the session
  */
 int
-session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
+session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_keep_session)
 {
   SESSION_STATE *session_p;
   int error = NO_ERROR, success = 0;
@@ -760,16 +786,24 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id)
       return ER_SES_SESSION_EXPIRED;
     }
 
-#if defined (SERVER_MODE)
-  assert (session_p->ref_count > 0);
+  if (is_keep_session == true)
+    {
+      session_p->is_keep_session = true;
+      pthread_mutex_unlock (&session_p->mutex);
+      return NO_ERROR;
+    }
 
+#if defined (SERVER_MODE)
   if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
       && thread_p->conn_entry->session_p == session_p)
     {
       thread_p->conn_entry->session_p = NULL;
       thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
 
-      session_state_decrease_ref_count (thread_p, session_p);
+      if (session_p->ref_count > 0)
+	{
+	  session_state_decrease_ref_count (thread_p, session_p);
+	}
     }
   else
     {
@@ -929,7 +963,23 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 
 	  if (is_expired)
 	    {
-	      expired_sid_buffer[n_expired_sids++] = state->id;
+	      /* Now we can destroy this session */
+	      assert (state->ref_count == 0);
+
+	      if (state->is_keep_session == true)
+		{
+		  /* keep session */
+		  pthread_mutex_unlock (&state->mutex);
+		  continue;
+		}
+	      else
+		{
+		  expired_sid_buffer[n_expired_sids++] = state->id;
+
+		  /* Destroy the session related resources like session parameters */
+		  (void) session_state_uninit (state);
+		}
+
 	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
 		{
 		  /* No more room in buffer */
@@ -1248,14 +1298,8 @@ db_value_alloc_and_copy (const DB_VALUE * src)
     case DB_TYPE_CHAR:
       db_make_char (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
       break;
-    case DB_TYPE_NCHAR:
-      db_make_nchar (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
-      break;
     case DB_TYPE_VARCHAR:
       db_make_varchar (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
-      break;
-    case DB_TYPE_VARNCHAR:
-      db_make_varnchar (dest, precision, str, length, db_get_string_codeset (src), db_get_string_collation (src));
       break;
     case DB_TYPE_BIT:
       db_make_bit (dest, precision, str, length);
@@ -1602,6 +1646,27 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
 #endif
 
   state_p->row_count = row_count;
+
+  return NO_ERROR;
+}
+
+/*
+ * session_set_is_keep_session () - set the is_keep_session flag for a session
+ * return : NO_ERROR or error code
+ * thread_p (in) : thread that identifies the session
+ * is_keep_session (in) : whether to keep the session
+ */
+int
+session_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session)
+{
+  SESSION_STATE *state_p = NULL;
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  state_p->is_keep_session = is_keep_session;
 
   return NO_ERROR;
 }
@@ -2380,15 +2445,6 @@ session_preserve_temporary_files (THREAD_ENTRY * thread_p, SESSION_QUERY_ENTRY *
     {
       return NO_ERROR;
     }
-  if (qentry_p->list_id->page_cnt == 0)
-    {
-      /* make sure temp_file is not cyclic */
-      if (qentry_p->temp_file)
-	{
-	  qentry_p->temp_file->prev->next = NULL;
-	}
-      return NO_ERROR;
-    }
   if (qentry_p->temp_file)
     {
       tfile_vfid_p = qentry_p->temp_file;
@@ -2746,10 +2802,7 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
 SESSION_PARAM *
 session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 {
-  int i, count;
-  SESSION_STATE *session_p = NULL;
-
-  session_p = session_get_session_state (thread_p);
+  SESSION_STATE *session_p = session_get_session_state (thread_p);
   if (session_p == NULL)
     {
       return NULL;
@@ -2757,16 +2810,25 @@ session_get_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
 
   assert (id <= PRM_LAST_ID);
 
+#ifndef NDEBUG
+  int i, count;
+
   count = sysprm_get_session_parameters_count ();
   for (i = 0; i < count; i++)
     {
       if (session_p->session_parameters[i].prm_id == id)
 	{
-	  return &session_p->session_parameters[i];
+	  assert (prm_Def_session_idx[id] == i);
+	  break;
 	}
     }
+  if (i >= count)
+    {
+      assert (prm_Def_session_idx[id] == -1);
+    }
+#endif
 
-  return NULL;
+  return ((prm_Def_session_idx[id] < 0) ? NULL : &session_p->session_parameters[prm_Def_session_idx[id]]);
 }
 
 /*
@@ -3047,6 +3109,24 @@ session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * session
  *
  */
 #if defined (SERVER_MODE)
+
+int
+session_set_pl_session_parameter (THREAD_ENTRY * thread_p, PARAM_ID id)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  assert (state_p->pl_session_p);
+  state_p->pl_session_p->mark_session_param_changed (id);
+
+  return NO_ERROR;
+}
+
 int
 session_state_increase_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state_p)
 {
@@ -3174,35 +3254,57 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
   return NO_ERROR;
 }
 
-int
-session_get_method_runtime_context (THREAD_ENTRY * thread_p,
-				    REFPTR (method_runtime_context, method_runtime_context_ref_ptr))
+bool
+session_is_pl_session_running (THREAD_ENTRY * thread_p)
 {
   SESSION_STATE *state_p = NULL;
 
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
-      return ER_FAILED;
+      return false;
     }
 
-  if (state_p->method_rctx_p == NULL)
-    {
-      state_p->method_rctx_p = new method_runtime_context ();
-    }
-
-  method_runtime_context_ref_ptr = state_p->method_rctx_p;
-
-  return NO_ERROR;
+  return state_p->pl_session_p->is_sp_running ();
 }
 
-/* 
+int
+session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr))
+{
+  int error = NO_ERROR;
+  SESSION_STATE *state_p = NULL;
+
+  pl_session_ref_ptr = nullptr;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+    }
+  else
+    {
+      assert (state_p->pl_session_p);
+      if (state_p->pl_session_p->is_sp_running () && state_p->pl_session_p->is_interrupted ())
+	{
+	  // TODO: should this be an error?
+	  pl_session_ref_ptr = nullptr;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error = ER_INTERRUPTED;
+	}
+
+      pl_session_ref_ptr = state_p->pl_session_p;
+    }
+
+  return error;
+}
+
+/*
  * session_stop_attached_threads - stops extra attached threads (not connection worker thread)
  *                                 associated with the session
  *
  */
 void
-session_stop_attached_threads (void *session_arg)
+session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3219,13 +3321,14 @@ session_stop_attached_threads (void *session_arg)
       session->load_session_p = NULL;
     }
 
-  if (session->method_rctx_p != NULL)
+  if (session->pl_session_p)
     {
-      session->method_rctx_p->set_interrupt (er_errid ());
-      session->method_rctx_p->wait_for_interrupt ();
-
-      delete session->method_rctx_p;
-      session->method_rctx_p = NULL;
+      if (thread_p && thread_p->type == TT_WORKER)
+	{
+	  session->pl_session_p->set_interrupt (er_errid ());
+	  session->pl_session_p->wait_until_pl_session_done ();
+	}
     }
+
 #endif
 }

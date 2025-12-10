@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.impl;
 
+import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
@@ -54,6 +55,7 @@ import cubrid.sql.CUBRIDOID;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.sql.SQLException;
+import java.util.ArrayList;
 
 public class SUConnection {
 
@@ -80,10 +82,17 @@ public class SUConnection {
 
         int responseCode = unpacker.unpackInt();
         if (responseCode != 0) {
+            int errCode;
             ErrorInfo errorInfo = new ErrorInfo(unpacker);
-            String errorMsg = errorInfo.errorString;
+            switch (errorInfo.errorCode) {
+                case CUBRIDServerSideJDBCErrorCode.ER_SP_INVALID_CURSOR:
+                    errCode = errorInfo.errorCode;
+                    break;
+                default:
+                    errCode = CUBRIDServerSideJDBCErrorCode.ER_DBMS;
+            }
             throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
-                    CUBRIDServerSideJDBCErrorCode.ER_DBMS, errorMsg, null);
+                    errCode, errorInfo.errorString, null);
         }
 
         return unpacker;
@@ -97,6 +106,22 @@ public class SUConnection {
         CUBRIDUnpacker unpacker = request(packer.getBuffer());
         DBParameterInfo info = new DBParameterInfo(unpacker);
         return info;
+    }
+
+    // SUFunctionCode.SET_PL_SESSION_PARAMETER
+    public void setPLSessionParams(ArrayList<SysParam> params) throws IOException, SQLException {
+        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
+        packer.packInt(SUFunctionCode.SET_PL_SESSION_PARAMETER.getCode());
+
+        packer.packBigInt(params.size());
+        if (params.size() > 0) {
+            for (SysParam param : params) {
+                param.pack(packer);
+            }
+        }
+
+        // no response
+        request(packer.getBuffer());
     }
 
     // SUFunctionCode.PREPARE
@@ -264,7 +289,7 @@ public class SUConnection {
                 }
 
                 int type = DBType.getObjectDBtype(values[i]);
-                packer.packValue(values[i], type, "UTF-8");
+                packer.packObject(values[i], type, Context.getCodesetId());
             }
         } else {
             packer.packInt(0);
@@ -313,7 +338,7 @@ public class SUConnection {
         if (value != null) {
             packer.packInt(1); // has value
             int type = DBType.getObjectDBtype(value);
-            packer.packValue(value, type, "UTF-8");
+            packer.packObject(value, type, Context.getCodesetId());
         } else {
             packer.packInt(0); // has value
         }

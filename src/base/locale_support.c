@@ -53,14 +53,24 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+#if defined(_WIN32) || defined(WINDOWS) || defined(WIN64)
+#define DLL_EXPORT_PREFIX "__declspec(dllexport) "
+#define LOCLIB_FILE_EXT "dll"
+#else
+#define DLL_EXPORT_PREFIX   ""
+#define LOCLIB_FILE_EXT "so"
+#endif
+
+#if defined(SA_MODE)
+
 #define TXT_CONV_LINE_SIZE 512
 #define TXT_CONV_ITEM_GROW_COUNT 128
 
 #define LOC_CURRENT_COLL_TAIL(ld) (&(ld->collations[ld->coll_cnt].tail_coll))
-const char *ldml_ref_day_names[] = { "sun", "mon", "tue", "wed", "thu", "fri", "sat" };
+const char *const ldml_ref_day_names[] = { "sun", "mon", "tue", "wed", "thu", "fri", "sat" };
 
 /* this must map to 'Am_Pm_name' from string_opfunc.c */
-const char *ldml_ref_am_pm_names[] = { "am", "pm", "Am", "Pm", "AM", "PM",
+const char *const ldml_ref_am_pm_names[] = { "am", "pm", "Am", "Pm", "AM", "PM",
   "a.m.", "p.m.", "A.m.", "P.m.", "A.M.", "P.M."
 };
 
@@ -95,7 +105,9 @@ static LOC_SHARED_DATA *shared_data = NULL;
 static int count_shared_data = 0;
 static int alloced_shared_data = 0;
 
-
+static void locale_init_data (LOCALE_DATA * ld, const char *locale_name);
+static void locale_destroy_alphabet_data (const ALPHABET_DATA * a);
+static void locale_destroy_normalization_data (UNICODE_NORMALIZATION * norm);
 static int start_element_ok (void *data, const char **attr);
 static int end_element_ok (void *data, const char *el_name);
 static int start_calendar (void *data, const char **attr);
@@ -181,7 +193,7 @@ static void locale_destroy_collation_tailorings (const COLL_TAILORING * ct);
 static void locale_destroy_collation_data (const COLL_DATA * cd);
 static void locale_destroy_alphabet_tailoring (const ALPHABET_TAILORING * cd);
 static void locale_destroy_console_conversion (const TEXT_CONVERSION * tc);
-static int str_pop_token (char *str_p, char **token_p, char **next_p);
+
 static int dump_locale_alphabet (ALPHABET_DATA * ad, int dl_settings, int lower_bound, int upper_bound);
 
 static void dump_collation_key (COLL_DATA * coll, const unsigned int key, bool print_weight, bool print_key);
@@ -207,6 +219,11 @@ static int locale_alphabet_data_to_buf (ALPHABET_DATA * a, char *buf);
 static int locale_compute_locale_checksum (LOCALE_DATA * ld);
 static int common_collation_end_rule (void *data, LOCALE_DATA * ld, const int rule_id, TAILOR_RULE * t_rule);
 static int common_collation_start_rule (void *data, const char **attr, LOCALE_DATA * ld, TAILOR_RULE * t_rule);
+#endif //#if defined(SA_MODE)
+
+static int str_pop_token (char *str_p, char **token_p, char **next_p);
+
+#if defined(SA_MODE)
 
 #define PRINT_DEBUG_START(d, a, m, s)				      \
    do {								      \
@@ -224,14 +241,6 @@ static int common_collation_start_rule (void *data, const char **attr, LOCALE_DA
    } while (0);
 
 #define PRINT_TO_C_FILE_MAX_INT_LINE 10
-
-#if defined(_WIN32) || defined(WINDOWS) || defined(WIN64)
-#define DLL_EXPORT_PREFIX "__declspec(dllexport) "
-#define LOCLIB_FILE_EXT "dll"
-#else
-#define DLL_EXPORT_PREFIX   ""
-#define LOCLIB_FILE_EXT "so"
-#endif
 
 #define PRINT_STRING_TO_C_FILE(fp, val, len)                          \
   do {                                                                \
@@ -339,112 +348,112 @@ static char cmp_token_name_size = 0;
  * full name is the "path" - the names of all parent elements down to
  *			     the element
  */
-XML_ELEMENT_DEF ldml_elem_ldml = { "ldml", 1, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_ldml = { "ldml", 1, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dates = { "ldml dates", 2, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_dates = { "ldml dates", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_calendars = { "ldml dates calendars", 3, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_calendars = { "ldml dates calendars", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_calendar = { "ldml dates calendars calendar", 4, (ELEM_START_FUNC) (&start_calendar),
+const XML_ELEMENT_DEF ldml_elem_calendar = { "ldml dates calendars calendar", 4, (ELEM_START_FUNC) (&start_calendar),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dateFormatCUBRID = { "ldml dates calendars calendar dateFormatCUBRID", 5,
+const XML_ELEMENT_DEF ldml_elem_dateFormatCUBRID = { "ldml dates calendars calendar dateFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_dateFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_timeFormatCUBRID = { "ldml dates calendars calendar timeFormatCUBRID", 5,
+const XML_ELEMENT_DEF ldml_timeFormatCUBRID = { "ldml dates calendars calendar timeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_datetimeFormatCUBRID = { "ldml dates calendars calendar datetimeFormatCUBRID", 5,
+const XML_ELEMENT_DEF ldml_datetimeFormatCUBRID = { "ldml dates calendars calendar datetimeFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimeFormatCUBRID), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_timestampFormatCUBRID = { "ldml dates calendars calendar timestampFormatCUBRID", 5,
+const XML_ELEMENT_DEF ldml_timestampFormatCUBRID = { "ldml dates calendars calendar timestampFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestampFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_timetzFormatCUBRID = { "ldml dates calendars calendar timetzFormatCUBRID", 5,
+const XML_ELEMENT_DEF ldml_timetzFormatCUBRID = { "ldml dates calendars calendar timetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_datetimetzFormatCUBRID = { "ldml dates calendars calendar datetimetzFormatCUBRID", 5,
+const XML_ELEMENT_DEF ldml_datetimetzFormatCUBRID = { "ldml dates calendars calendar datetimetzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_datetimetzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_timestamptzFormatCUBRID = { "ldml dates calendars calendar timestamptzFormatCUBRID", 5,
+const XML_ELEMENT_DEF ldml_timestamptzFormatCUBRID = { "ldml dates calendars calendar timestamptzFormatCUBRID", 5,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_timestamptzFormatCUBRID),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_months = { "ldml dates calendars calendar months", 5,
+const XML_ELEMENT_DEF ldml_elem_months = { "ldml dates calendars calendar months", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_monthContext = { "ldml dates calendars calendar months monthContext", 6,
+const XML_ELEMENT_DEF ldml_elem_monthContext = { "ldml dates calendars calendar months monthContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_monthWidth = { "ldml dates calendars calendar months monthContext monthWidth", 7,
+const XML_ELEMENT_DEF ldml_elem_monthWidth = { "ldml dates calendars calendar months monthContext monthWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_month = { "ldml dates calendars calendar months monthContext monthWidth month", 8,
+const XML_ELEMENT_DEF ldml_elem_month = { "ldml dates calendars calendar months monthContext monthWidth month", 8,
   (ELEM_START_FUNC) (&start_month), (ELEM_END_FUNC) (&end_month),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_days = { "ldml dates calendars calendar days", 5,
+const XML_ELEMENT_DEF ldml_elem_days = { "ldml dates calendars calendar days", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dayContext = { "ldml dates calendars calendar days dayContext", 6,
+const XML_ELEMENT_DEF ldml_elem_dayContext = { "ldml dates calendars calendar days dayContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dayWidth = { "ldml dates calendars calendar days dayContext dayWidth", 7,
+const XML_ELEMENT_DEF ldml_elem_dayWidth = { "ldml dates calendars calendar days dayContext dayWidth", 7,
   (ELEM_START_FUNC) (&start_month_day_Width),
   (ELEM_END_FUNC) (&end_month_day_Width), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_day = { "ldml dates calendars calendar days dayContext dayWidth day", 8,
+const XML_ELEMENT_DEF ldml_elem_day = { "ldml dates calendars calendar days dayContext dayWidth day", 8,
   (ELEM_START_FUNC) (&start_day), (ELEM_END_FUNC) (&end_day),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_dayPeriods = { "ldml dates calendars calendar dayPeriods", 5,
+const XML_ELEMENT_DEF ldml_elem_dayPeriods = { "ldml dates calendars calendar dayPeriods", 5,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dayPeriodContext = { "ldml dates calendars calendar dayPeriods dayPeriodContext", 6,
+const XML_ELEMENT_DEF ldml_elem_dayPeriodContext = { "ldml dates calendars calendar dayPeriods dayPeriodContext", 6,
   (ELEM_START_FUNC) (&start_calendar_name_context),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
+const XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
   "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth",
   7,
   (ELEM_START_FUNC) (&start_dayPeriodWidth),
@@ -452,324 +461,330 @@ XML_ELEMENT_DEF ldml_elem_dayPeriodWidth = {
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_dayPeriod = {
+const XML_ELEMENT_DEF ldml_elem_dayPeriod = {
   "ldml dates calendars calendar dayPeriods dayPeriodContext dayPeriodWidth dayPeriod",
   8,
   (ELEM_START_FUNC) (&start_dayPeriod), (ELEM_END_FUNC) (&end_dayPeriod),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_numbers = { "ldml numbers", 2, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_numbers = { "ldml numbers", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_numbers_symbols = { "ldml numbers symbols", 3, (ELEM_START_FUNC) (&start_numbers_symbols),
+const XML_ELEMENT_DEF ldml_elem_numbers_symbols =
+  { "ldml numbers symbols", 3, (ELEM_START_FUNC) (&start_numbers_symbols),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_symbol_decimal = { "ldml numbers symbols decimal", 4, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_symbol_decimal =
+  { "ldml numbers symbols decimal", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_symbol_group = { "ldml numbers symbols group", 4, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_symbol_group = { "ldml numbers symbols group", 4, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_number_symbol), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_currencies = { "ldml numbers currencies", 3, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_currencies = { "ldml numbers currencies", 3, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_currency = { "ldml numbers currencies currency", 4,
+const XML_ELEMENT_DEF ldml_elem_currency = { "ldml numbers currencies currency", 4,
   (ELEM_START_FUNC) (&start_currency),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collations = { "ldml collations", 2, (ELEM_START_FUNC) (&start_collations),
+const XML_ELEMENT_DEF ldml_elem_collations = { "ldml collations", 2, (ELEM_START_FUNC) (&start_collations),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation = { "ldml collations collation", 3, (ELEM_START_FUNC) (&start_one_collation),
+const XML_ELEMENT_DEF ldml_elem_collation = { "ldml collations collation", 3, (ELEM_START_FUNC) (&start_one_collation),
   (ELEM_END_FUNC) (&end_one_collation), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_rules = { "ldml collations collation rules", 4,
+const XML_ELEMENT_DEF ldml_elem_collation_rules = { "ldml collations collation rules", 4,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_settings = { "ldml collations collation settings", 4,
+const XML_ELEMENT_DEF ldml_elem_collation_settings = { "ldml collations collation settings", 4,
   (ELEM_START_FUNC) (&start_collation_settings),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset = { "ldml collations collation rules reset", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_reset = { "ldml collations collation rules reset", 5,
   (ELEM_START_FUNC) (&start_collation_reset),
   (ELEM_END_FUNC) (&end_collation_reset), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_p = { "ldml collations collation rules p", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_p = { "ldml collations collation rules p", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_s = { "ldml collations collation rules s", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_s = { "ldml collations collation rules s", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_t = { "ldml collations collation rules t", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_t = { "ldml collations collation rules t", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_i = { "ldml collations collation rules i", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_i = { "ldml collations collation rules i", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_pc = { "ldml collations collation rules pc", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_pc = { "ldml collations collation rules pc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_sc = { "ldml collations collation rules sc", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_sc = { "ldml collations collation rules sc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_tc = { "ldml collations collation rules tc", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_tc = { "ldml collations collation rules tc", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_ic = { "ldml collations collation rules ic", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_ic = { "ldml collations collation rules ic", 5,
   (ELEM_START_FUNC) (&start_collation_rule),
   (ELEM_END_FUNC) (&end_collation_rule),
   (ELEM_DATA_FUNC) (&handle_data_collation_rule)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x = { "ldml collations collation rules x", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_x = { "ldml collations collation rules x", 5,
   (ELEM_START_FUNC) (&start_collation_x), (ELEM_END_FUNC) (&end_collation_x),
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x_p = { "ldml collations collation rules x p", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_x_p = { "ldml collations collation rules x p", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x_s = { "ldml collations collation rules x s", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_x_s = { "ldml collations collation rules x s", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x_t = { "ldml collations collation rules x t", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_x_t = { "ldml collations collation rules x t", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x_i = { "ldml collations collation rules x i", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_x_i = { "ldml collations collation rules x i", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_rule),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x_extend = { "ldml collations collation rules x extend", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_x_extend = { "ldml collations collation rules x extend", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_extend), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_x_context = { "ldml collations collation rules x context", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_x_context = { "ldml collations collation rules x context", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_x_context), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_variable = { "ldml collations collation rules reset first_variable", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_reset_first_variable =
+  { "ldml collations collation rules reset first_variable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_variable = { "ldml collations collation rules reset last_variable", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_reset_last_variable =
+  { "ldml collations collation rules reset last_variable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_primary_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_first_primary_ignorable =
   { "ldml collations collation rules reset first_primary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_primary_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_last_primary_ignorable =
   { "ldml collations collation rules reset last_primary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_secondary_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_first_secondary_ignorable =
   { "ldml collations collation rules reset first_secondary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_secondary_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_last_secondary_ignorable =
   { "ldml collations collation rules reset last_secondary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_tertiary_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_first_tertiary_ignorable =
   { "ldml collations collation rules reset first_tertiary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_tertiary_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_last_tertiary_ignorable =
   { "ldml collations collation rules reset last_tertiary_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_non_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_first_non_ignorable =
   { "ldml collations collation rules reset first_non_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_non_ignorable =
+const XML_ELEMENT_DEF ldml_elem_collation_reset_last_non_ignorable =
   { "ldml collations collation rules reset last_non_ignorable", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_first_trailing = { "ldml collations collation rules reset first_trailing", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_reset_first_trailing =
+  { "ldml collations collation rules reset first_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_reset_last_trailing = { "ldml collations collation rules reset last_trailing", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_reset_last_trailing =
+  { "ldml collations collation rules reset last_trailing", 6,
   (ELEM_START_FUNC) (&start_collation_logical_pos),
   (ELEM_END_FUNC) (&end_collation_logical_pos), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules = {
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules = {
   "ldml collations collation cubridrules", 4,
   (ELEM_START_FUNC) (&start_element_ok), (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set = { "ldml collations collation cubridrules set", 5,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set = { "ldml collations collation cubridrules set", 5,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ch = { "ldml collations collation cubridrules set ch", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ch = { "ldml collations collation cubridrules set ch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_sch = { "ldml collations collation cubridrules set sch", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_sch = { "ldml collations collation cubridrules set sch", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ech = { "ldml collations collation cubridrules set ech", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ech = { "ldml collations collation cubridrules set ech", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_cp = { "ldml collations collation cubridrules set cp", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_cp = { "ldml collations collation cubridrules set cp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_scp = { "ldml collations collation cubridrules set scp", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_scp = { "ldml collations collation cubridrules set scp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_cp_ch),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ecp = { "ldml collations collation cubridrules set ecp", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_ecp = { "ldml collations collation cubridrules set ecp", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_ech_ecp),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_w = { "ldml collations collation cubridrules set w", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_w = { "ldml collations collation cubridrules set w", 6,
   (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_wr = { "ldml collations collation cubridrules set wr", 6,
+const XML_ELEMENT_DEF ldml_elem_collation_cubrid_rules_set_wr = { "ldml collations collation cubridrules set wr", 6,
   (ELEM_START_FUNC) (&start_collation_cubrid_rule_set_wr),
   (ELEM_END_FUNC) (&end_collation_cubrid_rule_set_w_wr),
   (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabets = { "ldml alphabets", 2, (ELEM_START_FUNC) (&start_element_ok),
+const XML_ELEMENT_DEF ldml_elem_alphabets = { "ldml alphabets", 2, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_include_collation = { "ldml collations include", 3,
+const XML_ELEMENT_DEF ldml_elem_include_collation = { "ldml collations include", 3,
   (ELEM_START_FUNC) (&start_include_collation),
   (ELEM_END_FUNC) (&end_element_ok),
   NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabet = { "ldml alphabets alphabet", 3, (ELEM_START_FUNC) (&start_one_alphabet),
+const XML_ELEMENT_DEF ldml_elem_alphabet = { "ldml alphabets alphabet", 3, (ELEM_START_FUNC) (&start_one_alphabet),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabet_upper = { "ldml alphabets alphabet u", 4,
+const XML_ELEMENT_DEF ldml_elem_alphabet_upper = { "ldml alphabets alphabet u", 4,
   (ELEM_START_FUNC) (&start_upper_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabet_upper_src =
+const XML_ELEMENT_DEF ldml_elem_alphabet_upper_src =
   { "ldml alphabets alphabet u s", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabet_upper_dest =
+const XML_ELEMENT_DEF ldml_elem_alphabet_upper_dest =
   { "ldml alphabets alphabet u d", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabet_lower = { "ldml alphabets alphabet l", 4,
+const XML_ELEMENT_DEF ldml_elem_alphabet_lower = { "ldml alphabets alphabet l", 4,
   (ELEM_START_FUNC) (&start_lower_case_rule),
   (ELEM_END_FUNC) (&end_case_rule), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabet_lower_src =
+const XML_ELEMENT_DEF ldml_elem_alphabet_lower_src =
   { "ldml alphabets alphabet l s", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_alphabet_lower_dest =
+const XML_ELEMENT_DEF ldml_elem_alphabet_lower_dest =
   { "ldml alphabets alphabet l d", 5, (ELEM_START_FUNC) (&start_element_ok),
   (ELEM_END_FUNC) (&end_transform_buffer), (ELEM_DATA_FUNC) (&handle_data)
 };
 
-XML_ELEMENT_DEF ldml_elem_unicodefile = { "ldml unicodefile", 2, (ELEM_START_FUNC) (&start_unicode_file),
+const XML_ELEMENT_DEF ldml_elem_unicodefile = { "ldml unicodefile", 2, (ELEM_START_FUNC) (&start_unicode_file),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
 
-XML_ELEMENT_DEF ldml_elem_consoleconversion =
+const XML_ELEMENT_DEF ldml_elem_consoleconversion =
   { "ldml consoleconversion", 2, (ELEM_START_FUNC) (&start_consoleconversion),
   (ELEM_END_FUNC) (&end_element_ok), NULL
 };
@@ -778,7 +793,7 @@ XML_ELEMENT_DEF ldml_elem_consoleconversion =
  * LDML elements list - KEEP the order in this list !
  * it is mandatory to put in schema all parent elements, before adding a new
  * element */
-XML_ELEMENT_DEF *ldml_elements[] = {
+const XML_ELEMENT_DEF *ldml_elements[] = {
   &ldml_elem_ldml,
   &ldml_elem_dates,
   &ldml_elem_calendars,
@@ -5113,257 +5128,6 @@ locale_save_all_to_C_file (LOCALE_DATA ** ld, int start_index, int end_index, LO
 }
 
 /*
- * locale_get_cfg_locales() - reads the locale strings and file paths configured
- *
- * return: error code
- * locale_files(in/out):
- * p_num_locales(out): number of user defined locales
- * is_lang_init(in): true if this is called in context of lang initialization
- *
- *  Note : This funtion is called in two contexts :
- *	    - language initialization (no error is set in this case)
- *	    - locale generation admin tool (error is generated)
- */
-int
-locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool is_lang_init)
-{
-  char locale_cfg_file[PATH_MAX];
-  char line[1024];
-  FILE *fp = NULL;
-  LOCALE_FILE *locale_files = NULL;
-  int num_locales;
-  int max_locales = 10;
-  char msg[ERR_MSG_SIZE];
-  int err_status = NO_ERROR;
-
-  assert (p_locale_files != NULL);
-  assert (p_num_locales != NULL);
-
-  envvar_confdir_file (locale_cfg_file, sizeof (locale_cfg_file), "cubrid_locales.txt");
-
-  fp = fopen_ex (locale_cfg_file, "rt");
-  if (fp == NULL)
-    {
-      if (is_lang_init)
-	{
-	  /* no error is recorded, 'cubrid_locales.txt' is optional */
-	  goto exit;
-	}
-      else
-	{
-	  snprintf_dots_truncate (msg, sizeof (msg) - 1, "Cannot open file %s", locale_cfg_file);
-	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
-	  err_status = ER_LOC_GEN;
-	  goto exit;
-	}
-    }
-
-  locale_files = NULL;
-  num_locales = 0;
-
-  locale_files = (LOCALE_FILE *) malloc (max_locales * sizeof (LOCALE_FILE));
-  if (locale_files == NULL)
-    {
-      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-      err_status = ER_LOC_INIT;
-      goto exit;
-    }
-
-  while (fgets (line, sizeof (line) - 1, fp) != NULL)
-    {
-      char *str, *next;
-      LOCALE_FILE *loc;
-
-      if (*line == '\0' || *line == '#' || char_isspace ((int) *line))
-	{
-	  continue;
-	}
-
-      num_locales++;
-
-      if (num_locales >= max_locales)
-	{
-	  max_locales *= 2;
-	  LOCALE_FILE *const realloc_locale_files
-	    = (LOCALE_FILE *) realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
-	  if (realloc_locale_files == NULL)
-	    {
-	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-	      err_status = ER_LOC_INIT;
-	      goto exit;
-	    }
-	  else
-	    {
-	      locale_files = realloc_locale_files;
-	    }
-	}
-
-      loc = &(locale_files[num_locales - 1]);
-      memset (loc, 0, sizeof (LOCALE_FILE));
-
-      str = line;
-      err_status = str_pop_token (str, &(loc->locale_name), &next);
-      if (err_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      if (next == NULL)
-	{
-	  continue;
-	}
-
-      str = next;
-      err_status = str_pop_token (str, &(loc->ldml_file), &next);
-      if (err_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-
-      if (next == NULL)
-	{
-	  continue;
-	}
-
-      str = next;
-      err_status = str_pop_token (str, &(loc->lib_file), &next);
-      if (err_status != NO_ERROR)
-	{
-	  goto exit;
-	}
-    }
-
-  *p_locale_files = locale_files;
-  *p_num_locales = num_locales;
-
-exit:
-  if (fp != NULL)
-    {
-      fclose (fp);
-    }
-
-  return err_status;
-}
-
-/*
- * locale_check_and_set_default_files() - checks if the files for locale is set
- *					  if not set, the default file paths are
- *					  computed
- *
- * return:
- * lf(in/out):
- * is_lang_init(in): true if this is called in context of lang initialization
- *
- *  Note : This funtion is called in two contexts :
- *	    - language initialization (no error is set in this case)
- *	    - locale generation admin tool (error is generated)
- */
-int
-locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
-{
-  bool is_alloc_ldml_file = false;
-  bool is_alloc_lib_file = false;
-  int er_status = NO_ERROR;
-
-  assert (lf != NULL);
-
-  if (lf->locale_name == NULL || strlen (lf->locale_name) > LOC_LOCALE_STR_SIZE)
-    {
-      er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
-      LOG_LOCALE_ERROR ("invalid locale name in 'cubrid_locales.txt'", er_status, true);
-      goto error;
-    }
-
-  if (lf->ldml_file == NULL || *(lf->ldml_file) == '\0' || *(lf->ldml_file) == '*')
-    {
-      /* generate name for LDML file */
-      char ldml_short_file[LOC_LOCALE_STR_SIZE + 13];
-
-      snprintf (ldml_short_file, sizeof (ldml_short_file) - 1, "cubrid_%s.xml", lf->locale_name);
-      ldml_short_file[sizeof (ldml_short_file) - 1] = '\0';
-
-      if (lf->ldml_file != NULL)
-	{
-	  free (lf->ldml_file);
-	}
-
-      lf->ldml_file = (char *) malloc (PATH_MAX + 1);
-      if (lf->ldml_file == NULL)
-	{
-	  er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("memory allocation failed", er_status, true);
-	  goto error;
-	}
-
-      is_alloc_ldml_file = true;
-      envvar_ldmldir_file (lf->ldml_file, PATH_MAX, ldml_short_file);
-    }
-
-  if (lf->lib_file == NULL || *(lf->lib_file) == '\0' || *(lf->lib_file) == '*')
-    {
-      /* generate name for locale lib file */
-      char lib_short_file[PATH_MAX];
-
-      snprintf (lib_short_file, sizeof (lib_short_file) - 1, "libcubrid_%s.%s", lf->locale_name, LOCLIB_FILE_EXT);
-      lib_short_file[sizeof (lib_short_file) - 1] = '\0';
-
-      if (lf->lib_file != NULL)
-	{
-	  free (lf->lib_file);
-	}
-
-      lf->lib_file = (char *) malloc (PATH_MAX + 1);
-      if (lf->lib_file == NULL)
-	{
-	  er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
-	  LOG_LOCALE_ERROR ("memory allocation failed", er_status, true);
-	  goto error;
-	}
-
-      is_alloc_lib_file = true;
-      envvar_libdir_file (lf->lib_file, PATH_MAX, lib_short_file);
-
-      if (is_lang_init)
-	{
-	  FILE *fp;
-
-	  /* check that default lib file exists, otherwise switch to the common libray locale */
-	  fp = fopen_ex (lf->lib_file, "rb");
-	  if (fp == NULL)
-	    {
-	      snprintf (lib_short_file, sizeof (lib_short_file) - 1, "libcubrid_all_locales.%s", LOCLIB_FILE_EXT);
-	      lib_short_file[sizeof (lib_short_file) - 1] = '\0';
-
-	      assert (lf->lib_file != NULL);
-
-	      envvar_libdir_file (lf->lib_file, PATH_MAX, lib_short_file);
-	    }
-	  else
-	    {
-	      fclose (fp);
-	    }
-	}
-    }
-
-  return NO_ERROR;
-
-error:
-
-  if (is_alloc_ldml_file)
-    {
-      free (lf->ldml_file);
-      lf->ldml_file = NULL;
-    }
-
-  if (is_alloc_lib_file)
-    {
-      free (lf->lib_file);
-      lf->lib_file = NULL;
-    }
-  return er_status;
-}
-
-/*
  * save_contraction_to_C_file() - saves collation contraction data to C file
  *
  * return: zero if save is successful, non-zero otherwise
@@ -5882,65 +5646,6 @@ locale_save_console_conv_to_C_file (FILE * fp, LOCALE_DATA * ld)
   fprintf (fp, "};\n");
 
   return 0;
-}
-
-/*
- * str_pop_token() - Extracts a token from a string;
- *		     A token is a sub-string surrounded by whitespaces.
- *    return: string token
- *    str_p(in): buffer with tokens
- *    token_p(in/out): returned token string
- *    next_p(in/out): pointer to next token or NULL if no more tokens
- *
- *    Note : When found the token characters are copied into a new string
- *           and returned.
- *           The pointer to the first character following the new token in
- *           the buffer is returned.
- */
-static int
-str_pop_token (char *str_p, char **token_p, char **next_p)
-{
-  char *p, *end, *token = NULL;
-  int length;
-
-  assert (str_p != NULL);
-  assert (token_p != NULL);
-  assert (next_p != NULL);
-
-  p = str_p;
-  while (char_isspace ((int) *p) && *p != '\0')
-    {
-      p++;
-    }
-  end = p;
-  while (!char_isspace ((int) *end) && *end != '\0')
-    {
-      end++;
-    }
-
-  length = (int) (end - p);
-  if (length > 0)
-    {
-      token = (char *) malloc (length + 1);
-      if (token == NULL)
-	{
-	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
-	  return ER_LOC_INIT;
-	}
-      assert (token != NULL);
-
-      strncpy (token, p, length);
-      token[length] = '\0';
-    }
-  else
-    {
-      /* no more tokens */
-      end = NULL;
-    }
-
-  *token_p = token;
-  *next_p = end;
-  return NO_ERROR;
 }
 
 /*
@@ -8065,4 +7770,315 @@ start_include_collation (void *data, const char **attr)
   free (new_pd);
 
   return 0;
+}
+#endif //#if defined(SA_MODE)
+
+/*
+ * str_pop_token() - Extracts a token from a string;
+ *		     A token is a sub-string surrounded by whitespaces.
+ *    return: string token
+ *    str_p(in): buffer with tokens
+ *    token_p(in/out): returned token string
+ *    next_p(in/out): pointer to next token or NULL if no more tokens
+ *
+ *    Note : When found the token characters are copied into a new string
+ *           and returned.
+ *           The pointer to the first character following the new token in
+ *           the buffer is returned.
+ */
+static int
+str_pop_token (char *str_p, char **token_p, char **next_p)
+{
+  char *p, *end, *token = NULL;
+  int length;
+
+  assert (str_p != NULL);
+  assert (token_p != NULL);
+  assert (next_p != NULL);
+
+  p = str_p;
+  while (char_isspace ((int) *p) && *p != '\0')
+    {
+      p++;
+    }
+  end = p;
+  while (!char_isspace ((int) *end) && *end != '\0')
+    {
+      end++;
+    }
+
+  length = (int) (end - p);
+  if (length > 0)
+    {
+      token = (char *) malloc (length + 1);
+      if (token == NULL)
+	{
+	  LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
+	  return ER_LOC_INIT;
+	}
+      assert (token != NULL);
+
+      strncpy (token, p, length);
+      token[length] = '\0';
+    }
+  else
+    {
+      /* no more tokens */
+      end = NULL;
+    }
+
+  *token_p = token;
+  *next_p = end;
+  return NO_ERROR;
+}
+
+ /*
+  * locale_get_cfg_locales() - reads the locale strings and file paths configured
+  *
+  * return: error code
+  * locale_files(in/out):
+  * p_num_locales(out): number of user defined locales
+  * is_lang_init(in): true if this is called in context of lang initialization
+  *
+  *  Note : This funtion is called in two contexts :
+  *         - language initialization (no error is set in this case)
+  *         - locale generation admin tool (error is generated)
+  */
+int
+locale_get_cfg_locales (LOCALE_FILE ** p_locale_files, int *p_num_locales, bool is_lang_init)
+{
+  char locale_cfg_file[PATH_MAX];
+  char line[1024];
+  FILE *fp = NULL;
+  LOCALE_FILE *locale_files = NULL;
+  int num_locales;
+  int max_locales = 10;
+  char msg[ERR_MSG_SIZE];
+  int err_status = NO_ERROR;
+
+  assert (p_locale_files != NULL);
+  assert (p_num_locales != NULL);
+
+  envvar_confdir_file (locale_cfg_file, sizeof (locale_cfg_file), "cubrid_locales.txt");
+
+  fp = fopen_ex (locale_cfg_file, "rt");
+  if (fp == NULL)
+    {
+      if (is_lang_init)
+	{
+	  /* no error is recorded, 'cubrid_locales.txt' is optional */
+	  goto exit;
+	}
+      else
+	{
+	  snprintf_dots_truncate (msg, sizeof (msg) - 1, "Cannot open file %s", locale_cfg_file);
+	  LOG_LOCALE_ERROR (msg, ER_LOC_GEN, true);
+	  err_status = ER_LOC_GEN;
+	  goto exit;
+	}
+    }
+
+  locale_files = NULL;
+  num_locales = 0;
+
+  locale_files = (LOCALE_FILE *) malloc (max_locales * sizeof (LOCALE_FILE));
+  if (locale_files == NULL)
+    {
+      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
+      err_status = ER_LOC_INIT;
+      goto exit;
+    }
+
+  while (fgets (line, sizeof (line) - 1, fp) != NULL)
+    {
+      char *str, *next;
+      LOCALE_FILE *loc;
+
+      if (*line == '\0' || *line == '#' || char_isspace ((int) *line))
+	{
+	  continue;
+	}
+
+      num_locales++;
+
+      if (num_locales >= max_locales)
+	{
+	  max_locales *= 2;
+	  LOCALE_FILE *const realloc_locale_files
+	    = (LOCALE_FILE *) realloc (locale_files, max_locales * sizeof (LOCALE_FILE));
+	  if (realloc_locale_files == NULL)
+	    {
+	      LOG_LOCALE_ERROR ("memory allocation failed", ER_LOC_INIT, true);
+	      err_status = ER_LOC_INIT;
+	      goto exit;
+	    }
+	  else
+	    {
+	      locale_files = realloc_locale_files;
+	    }
+	}
+
+      loc = &(locale_files[num_locales - 1]);
+      memset (loc, 0, sizeof (LOCALE_FILE));
+
+      str = line;
+      err_status = str_pop_token (str, &(loc->locale_name), &next);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (next == NULL)
+	{
+	  continue;
+	}
+
+      str = next;
+      err_status = str_pop_token (str, &(loc->ldml_file), &next);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+
+      if (next == NULL)
+	{
+	  continue;
+	}
+
+      str = next;
+      err_status = str_pop_token (str, &(loc->lib_file), &next);
+      if (err_status != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  *p_locale_files = locale_files;
+  *p_num_locales = num_locales;
+
+exit:
+  if (fp != NULL)
+    {
+      fclose (fp);
+    }
+
+  return err_status;
+}
+
+ /*
+  * locale_check_and_set_default_files() - checks if the files for locale is set
+  *                                       if not set, the default file paths are
+  *                                       computed
+  *
+  * return:
+  * lf(in/out):
+  * is_lang_init(in): true if this is called in context of lang initialization
+  *
+  *  Note : This funtion is called in two contexts :
+  *         - language initialization (no error is set in this case)
+  *         - locale generation admin tool (error is generated)
+  */
+int
+locale_check_and_set_default_files (LOCALE_FILE * lf, bool is_lang_init)
+{
+  bool is_alloc_ldml_file = false;
+  bool is_alloc_lib_file = false;
+  int er_status = NO_ERROR;
+
+  assert (lf != NULL);
+
+  if (lf->locale_name == NULL || strlen (lf->locale_name) > LOC_LOCALE_STR_SIZE)
+    {
+      er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
+      LOG_LOCALE_ERROR ("invalid locale name in 'cubrid_locales.txt'", er_status, true);
+      goto error;
+    }
+
+  if (lf->ldml_file == NULL || *(lf->ldml_file) == '\0' || *(lf->ldml_file) == '*')
+    {
+      /* generate name for LDML file */
+      char ldml_short_file[LOC_LOCALE_STR_SIZE + 13];
+
+      snprintf (ldml_short_file, sizeof (ldml_short_file) - 1, "cubrid_%s.xml", lf->locale_name);
+      ldml_short_file[sizeof (ldml_short_file) - 1] = '\0';
+
+      if (lf->ldml_file != NULL)
+	{
+	  free (lf->ldml_file);
+	}
+
+      lf->ldml_file = (char *) malloc (PATH_MAX + 1);
+      if (lf->ldml_file == NULL)
+	{
+	  er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
+	  LOG_LOCALE_ERROR ("memory allocation failed", er_status, true);
+	  goto error;
+	}
+
+      is_alloc_ldml_file = true;
+      envvar_ldmldir_file (lf->ldml_file, PATH_MAX, ldml_short_file);
+    }
+
+  if (lf->lib_file == NULL || *(lf->lib_file) == '\0' || *(lf->lib_file) == '*')
+    {
+      /* generate name for locale lib file */
+      char lib_short_file[PATH_MAX];
+
+      snprintf (lib_short_file, sizeof (lib_short_file) - 1, "libcubrid_%s.%s", lf->locale_name, LOCLIB_FILE_EXT);
+      lib_short_file[sizeof (lib_short_file) - 1] = '\0';
+
+      if (lf->lib_file != NULL)
+	{
+	  free (lf->lib_file);
+	}
+
+      lf->lib_file = (char *) malloc (PATH_MAX + 1);
+      if (lf->lib_file == NULL)
+	{
+	  er_status = is_lang_init ? ER_LOC_INIT : ER_LOC_GEN;
+	  LOG_LOCALE_ERROR ("memory allocation failed", er_status, true);
+	  goto error;
+	}
+
+      is_alloc_lib_file = true;
+      envvar_libdir_file (lf->lib_file, PATH_MAX, lib_short_file);
+
+      if (is_lang_init)
+	{
+	  FILE *fp;
+
+	  /* check that default lib file exists, otherwise switch to the common libray locale */
+	  fp = fopen_ex (lf->lib_file, "rb");
+	  if (fp == NULL)
+	    {
+	      snprintf (lib_short_file, sizeof (lib_short_file) - 1, "libcubrid_all_locales.%s", LOCLIB_FILE_EXT);
+	      lib_short_file[sizeof (lib_short_file) - 1] = '\0';
+
+	      assert (lf->lib_file != NULL);
+
+	      envvar_libdir_file (lf->lib_file, PATH_MAX, lib_short_file);
+	    }
+	  else
+	    {
+	      fclose (fp);
+	    }
+	}
+    }
+
+  return NO_ERROR;
+
+error:
+
+  if (is_alloc_ldml_file)
+    {
+      free (lf->ldml_file);
+      lf->ldml_file = NULL;
+    }
+
+  if (is_alloc_lib_file)
+    {
+      free (lf->lib_file);
+      lf->lib_file = NULL;
+    }
+  return er_status;
 }

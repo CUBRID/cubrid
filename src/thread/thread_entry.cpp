@@ -22,7 +22,6 @@
 
 #include "thread_entry.hpp"
 
-#include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
 #include "error_manager.h"
@@ -90,7 +89,6 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
-    , cnv_adj_buffer ()
     , conn_entry (NULL)
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
@@ -136,6 +134,12 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
+    , m_px_lock_mutex ()
+    , m_px_stats_mutex ()
+    , m_px_stats (NULL)
+    , m_px_orig_thread_entry (NULL)
+    , m_uses_px_stats (false)
+    , m_skip_end_resource_tracks_in_recycle (false)
       // private:
     , m_id ()
     , m_error ()
@@ -163,12 +167,18 @@ namespace cubthread
 	// cannot recover from this
 	assert (false);
       }
+    if (pthread_mutex_init (&m_px_lock_mutex, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_init (&m_px_stats_mutex, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
 
     private_heap_id = db_create_private_heap ();
-
-    cnv_adj_buffer[0] = NULL;
-    cnv_adj_buffer[1] = NULL;
-    cnv_adj_buffer[2] = NULL;
 
     struct timeval t;
     gettimeofday (&t, NULL);
@@ -230,13 +240,7 @@ namespace cubthread
       {
 	return;
       }
-    for (int i = 0; i < 3; i++)
-      {
-	if (cnv_adj_buffer[i] != NULL)
-	  {
-	    adj_ar_free (cnv_adj_buffer[i]);
-	  }
-      }
+
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
 	assert (false);
@@ -247,6 +251,16 @@ namespace cubthread
       }
     if (pthread_cond_destroy (&wakeup_cond) != 0)
       {
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_lock_mutex) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_stats_mutex) != 0)
+      {
+	// cannot recover from this
 	assert (false);
       }
 
@@ -446,10 +460,6 @@ using thread_clock_type = std::chrono::system_clock;
 
 static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 				    bool had_mutex);
-static void thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
-    thread_resume_suspend_status resume_reason,
-    thread_resume_suspend_status suspend_reason,
-    bool had_mutex);
 
 // todo - remove timeval and use std::chrono
 static void
@@ -460,12 +470,12 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
   // add all usecs to tv_usec
   tv.tv_usec += (long) usec.count ();
   // move seconds from tv_usec to tv_sec
-  tv.tv_sec = tv.tv_usec / ratio;
+  tv.tv_sec += tv.tv_usec / ratio;
   tv.tv_usec = tv.tv_usec % ratio;
 }
 
 /*
- * thread_suspend_wakeup_and_unlock_entry() -
+ * thread_suspend() -
  *   return:
  *   thread_p(in):
  *   suspended_reason(in):
@@ -473,7 +483,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
  * Note: this function must be called by current thread also, the lock must have already been acquired.
  */
 void
-thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
+thread_suspend (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
 {
   cubthread::entry::status old_status;
 
@@ -509,23 +519,23 @@ thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resum
     }
 
   thread_p->m_status = old_status;
-
-  pthread_mutex_unlock (&thread_p->th_entry_lock);
 }
 
 /*
- * thread_suspend_timeout_wakeup_and_unlock_entry() -
+ * thread_timed_suspend() -
  *   return:
  *   thread_p(in):
  *   time_p(in):
  *   suspended_reason(in):
  */
 int
-thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, struct timespec *time_p,
-    thread_resume_suspend_status suspended_reason)
+thread_timed_suspend (cubthread::entry *thread_p, struct timespec *time_p,
+		      thread_resume_suspend_status suspended_reason)
 {
   int r;
   cubthread::entry::status old_status;
+  thread_clock_type::time_point start_time_pt;
+  std::chrono::microseconds usecs;
   int error = NO_ERROR;
 
   assert (thread_p->m_status == cubthread::entry::status::TS_RUN
@@ -535,22 +545,34 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
 
   thread_p->resume_status = suspended_reason;
 
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      start_time_pt = thread_clock_type::now ();
+    }
+
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
-
-  if (r != 0 && r != ETIMEDOUT)
-    {
-      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
-      return ER_CSS_PTHREAD_COND_TIMEDWAIT;
-    }
-
-  if (r == ETIMEDOUT)
-    {
-      error = ER_CSS_PTHREAD_COND_TIMEDOUT;
-    }
 
   thread_p->m_status = old_status;
 
-  pthread_mutex_unlock (&thread_p->th_entry_lock);
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      usecs = std::chrono::duration_cast < std::chrono::microseconds > (thread_clock_type::now () - start_time_pt);
+
+      thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
+    }
+
+  if (r != 0)
+    {
+      if (r != ETIMEDOUT)
+	{
+	  error = ER_CSS_PTHREAD_COND_TIMEDWAIT;
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      else
+	{
+	  error = ER_CSS_PTHREAD_COND_TIMEDOUT;
+	}
+    }
 
   return error;
 }
@@ -579,22 +601,17 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
 }
 
 /*
- * thread_check_suspend_reason_and_wakeup_internal () -
- *   return:
+ * thread_check_suspend_reason_and_wakeup () -
  *   thread_p(in):
  *   resume_reason:
  *   suspend_reason:
- *   had_mutex:
  */
-static void
-thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
-    thread_resume_suspend_status resume_reason,
-    thread_resume_suspend_status suspend_reason, bool had_mutex)
+void
+thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p,
+					thread_resume_suspend_status resume_reason,
+					thread_resume_suspend_status suspend_reason)
 {
-  if (had_mutex == false)
-    {
-      thread_lock_entry (thread_p);
-    }
+  thread_lock_entry (thread_p);
 
   if (thread_p->resume_status != suspend_reason)
     {
@@ -621,12 +638,6 @@ thread_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_r
   thread_wakeup_internal (thread_p, resume_reason, false);
 }
 
-void
-thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
-					thread_resume_suspend_status suspend_reason)
-{
-  thread_check_suspend_reason_and_wakeup_internal (thread_p, resume_reason, suspend_reason, false);
-}
 
 /*
  * thread_wakeup_already_had_mutex () -

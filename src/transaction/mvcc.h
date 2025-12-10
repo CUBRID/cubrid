@@ -92,6 +92,10 @@ struct mvcc_rec_header
   (MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID) \
    && MVCC_GET_INSID (rec_header_p) != MVCCID_ALL_VISIBLE)
 
+#define MVCC_IS_HEADER_ALL_VISIBLE(rec_header_p) \
+  (!MVCC_IS_FLAG_SET (rec_header_p, OR_MVCC_FLAG_VALID_INSID|OR_MVCC_FLAG_VALID_DELID) \
+   && MVCC_GET_INSID (rec_header_p) == MVCCID_ALL_VISIBLE)
+
 #define MVCC_SET_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag |= (flag))
 
@@ -183,7 +187,7 @@ struct mvcc_snapshot
 
   mvcc_snapshot &operator= (const mvcc_snapshot& snapshot) = delete;
 
-  void copy_to (mvcc_snapshot & other) const;
+  void copy_to (mvcc_snapshot & dest) const;
   // *INDENT-ON*
 };
 
@@ -210,7 +214,9 @@ struct mvcc_info
   mvcc_info ();
   void init ();
   void reset ();
-  // *INDENT-ON*
+
+  void copy_to (mvcc_info & dest) const;
+  // *INDENT-ON*   
 };
 
 enum mvcc_satisfies_delete_result

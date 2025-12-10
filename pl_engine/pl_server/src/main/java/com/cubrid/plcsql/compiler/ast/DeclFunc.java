@@ -43,19 +43,21 @@ public class DeclFunc extends DeclRoutine {
     public DeclFunc(
             ParserRuleContext ctx,
             String name,
+            StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList,
             TypeSpec retTypeSpec,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx, name, paramList, retTypeSpec, decls, body);
+        super(ctx, name, loopOptimizables, paramList, retTypeSpec, decls, body);
     }
 
     public DeclFunc(
             ParserRuleContext ctx,
             String name,
+            StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList,
             TypeSpec retTypeSpec) {
-        super(ctx, name, paramList, retTypeSpec, null, null);
+        super(ctx, name, loopOptimizables, paramList, retTypeSpec, null, null);
     }
 
     @Override

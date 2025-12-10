@@ -25,6 +25,11 @@
 
 #include "regu_var.hpp"
 
+#define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
+#define HASH_LIST_SCAN_DUMP_FILE_HASH 0
+
+#define DUMP_HASH_TABLE_LIMIT 100
+
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
 

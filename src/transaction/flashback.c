@@ -301,6 +301,8 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
 
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
   assert (!LSA_ISNULL (&context->end_lsa));
 
   LSA_COPY (&process_lsa, &(context->end_lsa));
@@ -315,6 +317,12 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 
   while (LSA_GE (&process_lsa, &context->start_lsa))
     {
+      if (tdes->interrupt == true)
+	{
+	  error = ER_INTERRUPTED;
+	  goto exit;
+	}
+
       LSA_COPY (&cur_log_rec_lsa, &process_lsa);
       log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
 
@@ -346,7 +354,9 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	case LOG_COMMIT:
 	  {
 	    LOG_REC_DONETIME *donetime;
-	    FLASHBACK_SUMMARY_ENTRY tmp_summary_entry = { -1, "\0", 0, 0, 0, 0, 0, LSA_INITIALIZER, LSA_INITIALIZER, };
+	    FLASHBACK_SUMMARY_ENTRY tmp_summary_entry = {
+	      -1, "\0", 0, 0, 0, 0, 0, LSA_INITIALIZER, LSA_INITIALIZER, std::unordered_set < OID > {}
+	    };
 
 	    if (context->num_summary == FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY)
 	      {
@@ -776,6 +786,8 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
   OID classoid;
 
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
   if (LSA_ISNULL (&context->start_lsa))
     {
       error = flashback_find_start_lsa (thread_p, context);
@@ -815,6 +827,12 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
   while (!LSA_ISNULL (&process_lsa) && (LSA_LE (&process_lsa, &context->end_lsa) || num_loginfo < context->num_loginfo))
     {
+      if (tdes->interrupt == true)
+	{
+	  error = ER_INTERRUPTED;
+	  goto error;
+	}
+
       if (log_page_p->hdr.logical_pageid != process_lsa.pageid)
 	{
 	  error = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p);

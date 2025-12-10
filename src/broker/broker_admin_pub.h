@@ -27,9 +27,7 @@
 #ident "$Id$"
 
 #include "broker_config.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "shard_metadata.h"
 #include "shard_shm.h"
 #include "shard_key_func.h"
@@ -38,7 +36,7 @@
 int admin_isstarted_cmd (int);
 #endif
 
-int admin_start_cmd (T_BROKER_INFO *, int, int, bool, char *, char *);
+int admin_start_cmd (T_BROKER_INFO *, int, int, bool, char *, bool, char *);
 int admin_stop_cmd (int);
 int admin_add_cmd (int, const char *);
 int admin_restart_cmd (int, const char *, int);

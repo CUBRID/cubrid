@@ -20,6 +20,11 @@
 
 #include <string.h>
 #include "query_executor.h"
+
+// dblink connection handling for distributed transaction
+#include "connection_defs.h"
+#include "thread_manager.hpp"
+#include "query_manager.h"
 #include "dblink_scan.h"
 
 #include "xasl.h"
@@ -39,6 +44,7 @@
 #include <cas_cci.h>
 
 #include <db_json.hpp>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -84,8 +90,14 @@ static int type_map[] = {
   0,
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
+
+  /* TODO:
+   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
+
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
@@ -211,18 +223,12 @@ dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int 
       error =
 	db_make_varchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
-    case CCI_U_TYPE_VARNCHAR:
-      error =
-	db_make_varnchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
-      break;
     case CCI_U_TYPE_CHAR:
       error = db_make_char (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
-    case CCI_U_TYPE_NCHAR:
-      error = db_make_nchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
-      break;
     default:
       assert (false);
+      error = ER_FAILED;
       break;
     }
 
@@ -379,12 +385,10 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 static int
 dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
-  int i, n, ret;
-  T_CCI_PARAM_INFO *param;
+  int i, n, ret, num_size = 0;
   T_CCI_A_TYPE a_type;
   T_CCI_U_TYPE u_type;
   void *value;
-  double adouble;
   int month, day, year;
   int hh, mm, ss, ms;
   DB_TIMESTAMP *timestamp;
@@ -395,8 +399,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
   DB_TIME time;
   T_CCI_DATE cci_date;
   T_CCI_BIT cci_bit;
-  int num_size;
-  char num_str[40];
+  char num_str[NUMERIC_MAX_STRING_SIZE];
 
   unsigned char type;
 
@@ -408,15 +411,9 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
       switch (type)
 	{
 	case DB_TYPE_BIT:
-	  a_type = CCI_A_TYPE_BIT;
-	  u_type = CCI_U_TYPE_BIT;
-	  value = (void *) &cci_bit;
-	  cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
-	  cci_bit.size = QSTR_NUM_BYTES (num_size);
-	  break;
 	case DB_TYPE_VARBIT:
 	  a_type = CCI_A_TYPE_BIT;
-	  u_type = CCI_U_TYPE_VARBIT;
+	  u_type = (type == DB_TYPE_BIT) ? CCI_U_TYPE_BIT : CCI_U_TYPE_VARBIT;
 	  value = (void *) &cci_bit;
 	  cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
 	  cci_bit.size = QSTR_NUM_BYTES (num_size);
@@ -449,9 +446,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  u_type = CCI_U_TYPE_DOUBLE;
 	  break;
 	case DB_TYPE_STRING:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	  a_type = CCI_A_TYPE_STR;
 	  u_type = CCI_U_TYPE_STRING;
 	  value = (void *) db_get_string (&vd->dbval_ptr[i]);
@@ -524,6 +519,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  value = &cci_date;
 	  break;
 	case DB_TYPE_NULL:
+	  a_type = CCI_A_TYPE_LAST;	// for clear -Wmaybe-uninitialized
 	  value = NULL;
 	  u_type = CCI_U_TYPE_NULL;
 	  break;
@@ -543,8 +539,43 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 }
 
 int
-dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
+dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
 {
+  int tran_error = NO_ERROR, rc = NO_ERROR;
+  T_CCI_ERROR err_buf;
+  DBLINK_CONN_ENTRY *prev;
+
+  while (dblink)
+    {
+      rc = cci_end_tran (dblink->conn_handle, is_abort ? CCI_TRAN_ROLLBACK : CCI_TRAN_COMMIT, &err_buf);
+      if (rc < 0 && tran_error == NO_ERROR)
+	{
+	  is_abort = true;
+	  tran_error = ER_DBLINK_TRAN;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
+	}
+
+      rc = cci_disconnect (dblink->conn_handle, &err_buf);
+      if (rc < 0 && tran_error == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	}
+
+      /* delete dblink_entry */
+      prev = dblink;
+      dblink = dblink->next;
+
+      free (prev);
+    }
+
+  return (tran_error == NO_ERROR) ? rc : tran_error;
+}
+
+int
+dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VAL_DESCR * vd,
+		      DBLINK_HOST_VARS * host_vars)
+{
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
   int ret = NO_ERROR, result, conn_handle, stmt_handle;
   T_CCI_ERROR err_buf;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
@@ -553,6 +584,7 @@ dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST
   char *sql_text = spec->s.dblink_node.conn_sql;
 
   char *find = strstr (spec->s.dblink_node.conn_url, ":?");
+
   if (find)
     {
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
@@ -562,48 +594,80 @@ dblink_execute_query (struct access_spec_node *spec, VAL_DESCR * vd, DBLINK_HOST
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
     }
 
-  conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
+  conn_handle = -1;
+
+  if (!auto_commit)
+    {
+      conn_handle = qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+    }
+
   if (conn_handle < 0)
+    {
+      conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
+      if (conn_handle < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  goto error_exit;
+	}
+
+      ret = cci_set_autocommit (conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
+	  goto error_exit;
+	}
+
+      if (!auto_commit)
+	{
+	  ret = qmgr_dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password);
+	  if (ret < 0)
+	    {
+	      /* malloc error */
+	      goto error_exit;
+	    }
+	}
+    }
+
+  stmt_handle = cci_prepare (conn_handle, sql_text, 0, &err_buf);
+  if (stmt_handle < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       goto error_exit;
     }
-  else
+
+  if (host_vars->count > 0)
     {
-      cci_set_autocommit (conn_handle, CCI_AUTOCOMMIT_TRUE);
-      stmt_handle = cci_prepare (conn_handle, sql_text, 0, &err_buf);
-      if (stmt_handle < 0)
+      if ((ret = dblink_bind_param (stmt_handle, vd, host_vars)) < 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 	  goto error_exit;
 	}
+    }
 
-      if (host_vars->count > 0)
-	{
-	  if ((ret = dblink_bind_param (stmt_handle, vd, host_vars)) < 0)
-	    {
-	      return ret;
-	    }
-	}
+  result = cci_execute (stmt_handle, 0, 0, &err_buf);
+  if (result < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      goto error_exit;
+    }
 
-      result = cci_execute (stmt_handle, 0, 0, &err_buf);
-      if (result < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
-	}
-
+  if (auto_commit)
+    {
       ret = cci_disconnect (conn_handle, &err_buf);
       if (ret < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
+	  return ER_DBLINK;
 	}
     }
 
   return result;
 
 error_exit:
+  if (auto_commit)
+    {
+      (void) cci_disconnect (conn_handle, &err_buf);
+    }
+
   return ER_DBLINK;
 }
 
@@ -617,9 +681,11 @@ error_exit:
  *   sql_text(in)	 : SQL text for dblink
  */
 int
-dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
+dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 		  VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
+
   int ret;
   T_CCI_ERROR err_buf;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
@@ -637,56 +703,78 @@ dblink_open_scan (DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
       snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
     }
 
-  scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
+  scan_info->conn_handle = -1;
+
+  if (!auto_commit)
+    {
+      scan_info->conn_handle =
+	qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password);
+    }
+
   if (scan_info->conn_handle < 0)
     {
-      scan_info->stmt_handle = -1;
+      scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
+      if (scan_info->conn_handle < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return ER_DBLINK;
+	}
+
+      ret = cci_set_autocommit (scan_info->conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit mode");
+	  return ER_DBLINK;
+	}
+
+      if (!auto_commit)
+	{
+	  ret =
+	    qmgr_dblink_add_conn_handle (thread_p, scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name,
+					 password);
+	  if (ret < 0)
+	    {
+	      return ER_DBLINK;
+	    }
+	}
+    }
+
+  scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
+  if (scan_info->stmt_handle < 0)
+    {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-      goto error_exit;
+      return ER_DBLINK;
+    }
+
+  if (host_vars->count > 0)
+    {
+      if ((ret = dblink_bind_param (scan_info->stmt_handle, vd, host_vars)) < 0)
+	{
+	  return ER_DBLINK;
+	}
+    }
+
+  ret = cci_execute (scan_info->stmt_handle, 0, 0, &err_buf);
+  if (ret < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return ER_DBLINK;
     }
   else
     {
-      cci_set_autocommit (scan_info->conn_handle, CCI_AUTOCOMMIT_TRUE);
-      scan_info->stmt_handle = cci_prepare (scan_info->conn_handle, sql_text, 0, &err_buf);
-      if (scan_info->stmt_handle < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
-	}
+      T_CCI_CUBRID_STMT stmt_type;
 
-      if (host_vars->count > 0)
+      scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
+      if (scan_info->col_info == NULL)
 	{
-	  if ((ret = dblink_bind_param (scan_info->stmt_handle, vd, host_vars)) < 0)
-	    {
-	      return ret;
-	    }
+	  /* this can not be reached, something wrong */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
+	  return ER_DBLINK;
 	}
-
-      ret = cci_execute (scan_info->stmt_handle, 0, 0, &err_buf);
-      if (ret < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
-	}
-      else
-	{
-	  T_CCI_CUBRID_STMT stmt_type;
-
-	  scan_info->col_info = (void *) cci_get_result_info (scan_info->stmt_handle, &stmt_type, &scan_info->col_cnt);
-	  if (scan_info->col_info == NULL)
-	    {
-	      /* this can not be reached, something wrong */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "unknown error");
-	      goto error_exit;
-	    }
-	  scan_info->cursor = CCI_CURSOR_FIRST;
-	}
+      scan_info->cursor = CCI_CURSOR_FIRST;
     }
 
   return NO_ERROR;
-
-error_exit:
-  return ER_DBLINK;
 }
 
 /*
@@ -700,6 +788,8 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
   int error;
   T_CCI_ERROR err_buf;
 
+  static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
+
   /*  note: return NO_ERROR even though the connection or stmt handle is not valid */
 
   if (scan_info->stmt_handle >= 0)
@@ -708,12 +798,15 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info)
 	{
 	  cci_get_err_msg (error, err_buf.err_msg, sizeof (err_buf.err_msg));
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	  if (auto_commit)
+	    {
+	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
+	    }
 	  return S_ERROR;
 	}
     }
 
-  if (scan_info->conn_handle >= 0)
+  if (scan_info->conn_handle >= 0 && auto_commit)
     {
       if ((error = cci_disconnect (scan_info->conn_handle, &err_buf)) < 0)
 	{
@@ -824,9 +917,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  break;
 
 	case CCI_U_TYPE_STRING:
-	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_CHAR:
-	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_JSON:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {

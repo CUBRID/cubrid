@@ -169,7 +169,7 @@ namespace cubschema
     const authorization &auth = catalog_def.auth;
     if (auth.owner != nullptr)
       {
-	error_code = au_change_owner (class_mop, auth.owner);
+	error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
@@ -179,7 +179,7 @@ namespace cubschema
 
     for (const grant &g : auth.grants)
       {
-	error_code = au_grant (g.target_user, class_mop, g.auth, g.with_grant_option);
+	error_code = au_grant (DB_OBJECT_CLASS, g.target_user, class_mop, g.auth, g.with_grant_option);
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
@@ -243,7 +243,7 @@ namespace cubschema
     assert (auth.owner != nullptr);
     if (auth.owner != nullptr)
       {
-	error_code = au_change_owner (class_mop, auth.owner);
+	error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;
@@ -253,7 +253,7 @@ namespace cubschema
     for (const grant &g : auth.grants)
       {
 	assert (g.target_user != nullptr);
-	error_code = au_grant (g.target_user, class_mop, g.auth, g.with_grant_option);
+	error_code = au_grant (DB_OBJECT_CLASS, g.target_user, class_mop, g.auth, g.with_grant_option);
 	if (error_code != NO_ERROR)
 	  {
 	    return error_code;

@@ -3007,6 +3007,11 @@ classobj_make_index_filter_pred_info (DB_SEQ * pred_seq)
     {
       goto error;
     }
+
+  filter_predicate->pred_string = NULL;
+  filter_predicate->pred_stream = NULL;
+  filter_predicate->att_ids = NULL;
+
   if (val_str_len > 0)
     {
       filter_predicate->pred_string = (char *) db_ws_alloc (val_str_len + 1);
@@ -4184,7 +4189,7 @@ classobj_find_constraint_by_attrs (SM_CLASS_CONSTRAINT * cons_list, DB_CONSTRAIN
 	}
     }
 
-  is_uk_new = SM_IS_CONSTRAINT_UNIQUE_FAMILY (new_cons);
+  is_uk_new = DB_IS_CONSTRAINT_UNIQUE_FAMILY (new_cons);
 
   for (cons = cons_list; cons; cons = cons->next)
     {
@@ -4466,7 +4471,7 @@ classobj_domain_size (TP_DOMAIN * domain)
  */
 
 SM_ATTRIBUTE *
-classobj_make_attribute (const char *name, struct pr_type * type, SM_NAME_SPACE name_space)
+classobj_make_attribute (const char *name, const PR_TYPE * type, SM_NAME_SPACE name_space)
 {
   SM_ATTRIBUTE *att;
 
@@ -8171,7 +8176,7 @@ classobj_check_index_compatibility (SM_CLASS_CONSTRAINT * constraints, const DB_
 	{
 	  return SM_CREATE_NEW_INDEX;
 	}
-      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == DB_CONSTRAINT_REVERSE_INDEX)
+      else if (existing_con->type == SM_CONSTRAINT_INDEX || existing_con->type == SM_CONSTRAINT_REVERSE_INDEX)
 	{
 	  return SM_SHARE_INDEX;
 	}

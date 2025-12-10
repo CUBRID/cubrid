@@ -74,6 +74,9 @@ public enum SUFunctionCode {
     /** The CURSOR will manage at the DB Server */
     // CURSOR_CLOSE(42),
 
+    /* PL SESSION PARAMETER */
+    SET_PL_SESSION_PARAMETER(50),
+
     LAST_FUNCTION_CODE(-1);
 
     private int code;

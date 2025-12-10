@@ -299,6 +299,8 @@ EXPORTS
     db_restart_ex
     db_set_session_id
     db_get_session_id
+    db_set_keep_session
+    db_get_keep_session
     db_find_or_create_session
     db_end_session
     db_set_connect_status
@@ -342,6 +344,7 @@ EXPORTS
     db_set_connect_order
     db_set_client_ip_addr
     db_shutdown
+    db_shutdown_without_request_to_server
     db_string_free
     db_synchronize_cache
     db_time_decode
@@ -427,6 +430,7 @@ EXPORTS
     prm_get_integer_value
     prm_get_bigint_value
     prm_get_string_value
+    prm_get_value
     prm_set_integer_value
     prm_Def
     rel_copy_version_string
@@ -979,3 +983,7 @@ EXPORTS
   gethostbyname_uhost
   getnameinfo_uhost
   trim
+  er_has_error
+  prm_get_name
+  windows_socket_startup
+  windows_socket_shutdown

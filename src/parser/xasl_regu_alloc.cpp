@@ -194,7 +194,7 @@ regu_spec_target_init (access_spec_node &spec, TARGET_TYPE type)
     case TARGET_METHOD:
       ACCESS_SPEC_METHOD_REGU_LIST (&spec) = NULL;
       ACCESS_SPEC_XASL_NODE (&spec) = NULL;
-      ACCESS_SPEC_METHOD_SIG_LIST (&spec) = NULL;
+      ACCESS_SPEC_METHOD_SIG_ARRAY (&spec) = NULL;
       break;
     case TARGET_JSON_TABLE:
       ACCESS_SPEC_JSON_TABLE_REGU_VAR (&spec) = NULL;
@@ -281,6 +281,38 @@ regu_init (arith_list_node &arith)
 }
 
 void
+regu_init (cubxasl::sp_node &sp)
+{
+  sp.args = NULL;
+  sp.sig = NULL;
+
+  regu_alloc (sp.value);
+
+  regu_alloc (sp.sig);
+  if (sp.sig)
+    {
+      new (sp.sig) cubpl::pl_signature();
+      regu_init (*sp.sig);
+    }
+}
+
+void
+regu_init (cubpl::pl_signature &sig)
+{
+  sig.name = NULL;
+  sig.auth = NULL;
+  sig.type = PL_TYPE_NONE;
+  sig.result_type = 0;
+}
+
+void
+regu_init (cubpl::pl_signature_array &sig_array)
+{
+  sig_array.sigs = NULL;
+  sig_array.num_sigs = 0;
+}
+
+void
 regu_init (function_node &fnode)
 {
   fnode.value = NULL;
@@ -303,6 +335,7 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.operands = NULL;
   agg.list_id = NULL;
   agg.sort_list = NULL;
+  agg.is_ended = false;
   std::memset (&agg.info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
 
   regu_alloc (agg.accumulator.value);

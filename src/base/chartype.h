@@ -56,81 +56,61 @@ extern "C"
   extern const unsigned char *iso8859_lower_mapper_ptr;
   extern const unsigned char *iso8859_upper_mapper_ptr;
 
-#ifndef NDEBUG
-#define CHECK_OVER_CODE_VALUE(c)   assert((unsigned char)(c) < 256)
-#else
-#define CHECK_OVER_CODE_VALUE(c)
-#endif
-
   inline int char_isspace (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_SPACE);
   }
   inline int char_isupper (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_UPPER);
   }
   inline int char_tolower (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return ((int) char_lower_mapper_ptr[(unsigned char) c]);
   }
   inline int char_islower (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_LOWER);
   }
   inline int char_isalpha (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_ALPHA);
   }
   inline int char_isdigit (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_DIGIT);
   }
   inline int char_isalnum (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_ALPHA_NUM);
   }
   inline int char_iseol (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_EOL);
   }
   inline int char_isxdigit (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & CHAR_PROP_HEXNUM);
   }
   inline int char_toupper (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return ((int) char_upper_mapper_ptr[(unsigned char) c]);
   }
 
   inline int char_tolower_iso8859 (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return ((int) iso8859_lower_mapper_ptr[(unsigned char) c]);
   }
   inline int char_toupper_iso8859 (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return ((int) iso8859_upper_mapper_ptr[(unsigned char) c]);
   }
   inline int char_islower_iso8859 (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & (CHAR_PROP_LOWER | CHAR_PROP_ISO8859_LOWER));
   }
   inline int char_isupper_iso8859 (int c)
   {
-    CHECK_OVER_CODE_VALUE (c);
     return (char_properties_ptr[(unsigned char) c] & (CHAR_PROP_UPPER | CHAR_PROP_ISO8859_UPPER));
   }
 

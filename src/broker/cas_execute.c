@@ -78,7 +78,7 @@
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "ddl_log.h"
-#include "api_compat.h"
+#include "db_session.h"
 #include "method_callback.hpp"
 
 #if defined (CAS_FOR_CGW)
@@ -195,7 +195,7 @@ T_COL_BINDER *col_binding = NULL;
 T_COL_BINDER *col_binding_buff = NULL;
 #endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 #endif
 
@@ -370,8 +370,14 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_BIT,		/* 23 */
   CCI_U_TYPE_VARBIT,		/* 24 */
   CCI_U_TYPE_CHAR,		/* 25 */
-  CCI_U_TYPE_NCHAR,		/* 26 */
-  CCI_U_TYPE_VARNCHAR,		/* 27 */
+
+  /* TODO:
+   * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
+  CCI_U_TYPE_NCHAR_DEPRECATED,	/* 26 */
+  CCI_U_TYPE_VARNCHAR_DEPRECATED,	/* 27 */
+
   CCI_U_TYPE_RESULTSET,		/* 28 */
   0, 0,				/* 29 - 30 */
   CCI_U_TYPE_BIGINT,		/* 31 */
@@ -484,7 +490,7 @@ ux_check_connection (void)
 	      cas_log_debug (ARG_FILE_LINE,
 			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
 			     dbuser);
-	      ux_database_shutdown ();
+	      ux_database_shutdown (true);
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
 	}
@@ -536,7 +542,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       if (database_name[0] != '\0')
 	{
-	  ux_database_shutdown ();
+	  ux_database_shutdown (true);
 	}
 
       if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
@@ -632,7 +638,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
       err_code = au_login (db_user, db_passwd, true);
       if (err_code < 0)
 	{
-	  ux_database_shutdown ();
+	  ux_database_shutdown (true);
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
@@ -695,46 +701,12 @@ ux_get_default_setting ()
       cas_db_sys_param[0] = '\0';
     }
 
-  cas_default_ansi_quotes = true;
-  ux_get_system_parameter ("ansi_quotes", &cas_default_ansi_quotes);
-
-  cas_default_no_backslash_escapes = true;
-  ux_get_system_parameter ("no_backslash_escapes", &cas_default_no_backslash_escapes);
+  cas_default_ansi_quotes = PRM_GET_BOOL_P (prm_get_value (PRM_ID_ANSI_QUOTES));
+  cas_default_no_backslash_escapes = PRM_GET_BOOL_P (prm_get_value (PRM_ID_NO_BACKSLASH_ESCAPES));
 
   return;
 }
 
-void
-ux_get_system_parameter (const char *param, bool * value)
-{
-  int err_code = 0;
-  char buffer[LINE_MAX], *p;
-
-  strncpy (buffer, param, LINE_MAX);
-  buffer[LINE_MAX - 1] = 0;
-  err_code = db_get_system_parameters (buffer, LINE_MAX);
-  if (err_code != NO_ERROR)
-    {
-      return;
-    }
-
-  p = strchr (buffer, '=');
-  if (p == NULL)
-    {
-      return;
-    }
-
-  if (*(p + 1) == 'n')
-    {
-      *value = false;
-    }
-  else
-    {
-      *value = true;
-    }
-
-  return;
-}
 
 void
 ux_set_default_setting ()
@@ -761,10 +733,20 @@ ux_set_default_setting ()
 }
 
 void
-ux_database_shutdown ()
+ux_database_shutdown (bool request_server)
 {
 #if !defined(CAS_FOR_CGW)
-  db_shutdown ();
+  if (db_get_connect_status () != 0)	// only if connected to db
+    {
+      if (request_server)
+	{
+	  db_shutdown ();
+	}
+      else
+	{
+	  db_shutdown_without_request_to_server ();
+	}
+    }
   cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
   as_info->database_name[0] = '\0';
@@ -1427,6 +1409,13 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
   if (bind_data_list)
     {
+      for (int i = 0; i < num_bind; i++)
+	{
+	  if (bind_data_list[i].wchar_val)
+	    {
+	      FREE_MEM (bind_data_list[i].wchar_val);
+	    }
+	}
       FREE_MEM (bind_data_list);
     }
 
@@ -1618,23 +1607,21 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
   err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
   if (err_code != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
   hm_set_current_srv_handle (srv_handle->id);
   n = db_execute_and_keep_statement (session, stmt_id, &result);
   hm_set_current_srv_handle (-1);
 
-
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
-
 
   if (n < 0)
     {
@@ -1944,23 +1931,22 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#endif /* !CAS_FOR_CGW */
+
       hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       n = db_execute_and_keep_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
       hm_set_current_srv_handle (-1);
 
-
       update_query_execution_count (as_info, stmt_type);
-
 
       if (n < 0)
 	{
@@ -2479,20 +2465,18 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
 	}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
       res_count = db_execute_statement (session, stmt_id, &result);
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
-
       update_query_execution_count (as_info, stmt_type);
-
 
       if (res_count < 0)
 	{
@@ -2614,7 +2598,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 {
   DB_VALUE *value_list = NULL;
   int err_code;
-  int i, num_bind_params, num_bind = 0;
+  int i, num_bind_params = 0, num_bind = 0;
   int num_markers;
   int stmt_id = -1;
   int first_value;
@@ -2729,14 +2713,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+#if !defined(CAS_FOR_CGW)
       err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	  goto exec_db_error;
 	}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL  && !CAS_FOR_CGW */
+#endif /* !CAS_FOR_CGW */
 
       hm_set_current_srv_handle (srv_handle->id);
 
@@ -4277,9 +4261,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       break;
 
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       {
 	int def_size = db_get_string_size (def);
 	const char *def_str_p = db_get_string (def);
@@ -4382,10 +4364,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       if (desired_type == DB_TYPE_NUMERIC)
 	{
 	  type = CCI_U_TYPE_NUMERIC;
-	}
-      else if (desired_type == DB_TYPE_NCHAR || desired_type == DB_TYPE_VARNCHAR)
-	{
-	  type = CCI_U_TYPE_NCHAR;
 	}
       else if (desired_type == DB_TYPE_JSON)
 	{
@@ -4497,61 +4475,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
 	  }
-      }
-      break;
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
-      {
-	char *value, *invalid_pos = NULL;
-	int val_size;
-	int val_length;
-	bool is_composed = false;
-	int composed_size;
-
-	net_arg_get_str (&value, &val_size, net_value);
-
-	val_size--;
-
-	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
-	  {
-	    char msg[12];
-	    off_t p = invalid_pos != NULL ? (invalid_pos - value) : 0;
-	    snprintf (msg, sizeof (msg), "%llu", (long long unsigned int) p);
-	    return ERROR_INFO_SET_WITH_MSG (ER_INVALID_CHAR, DBMS_ERROR_INDICATOR, msg);
-	  }
-
-	if (lang_get_client_charset () == INTL_CODESET_UTF8
-	    && unicode_string_need_compose (value, val_size, &composed_size, lang_get_generic_unicode_norm ()))
-	  {
-	    char *composed = NULL;
-
-	    composed = (char *) malloc (composed_size + 1);
-	    if (composed == NULL)
-	      {
-		return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-	      }
-
-	    unicode_compose_string (value, val_size, composed, &composed_size, &is_composed,
-				    lang_get_generic_unicode_norm ());
-	    assert (composed_size <= val_size);
-	    composed[composed_size] = '\0';
-
-	    if (is_composed)
-	      {
-		value = composed;
-		val_size = composed_size;
-	      }
-	    else
-	      {
-		free (composed);
-	      }
-	  }
-
-	intl_char_count ((unsigned char *) value, val_size, LANG_COERCIBLE_CODESET, &val_length);
-	err_code =
-	  db_make_nchar (&db_val, val_length, value, val_size, lang_get_client_charset (),
-			 lang_get_client_collation ());
-	db_val.need_clear = is_composed;
       }
       break;
     case CCI_U_TYPE_BIT:
@@ -5057,57 +4980,6 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	  }
 
 	add_res_data_string (net_buf, str, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
-
-	if (decomposed != NULL)
-	  {
-	    FREE (decomposed);
-	    decomposed = NULL;
-	  }
-      }
-      break;
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-      {
-	DB_CONST_C_NCHAR nchar;
-	int dummy = 0;
-	int bytes_size = 0;
-	int decomp_size;
-	char *decomposed = NULL;
-	bool need_decomp = false;
-
-	nchar = db_get_nchar (val, &dummy);
-	bytes_size = db_get_string_size (val);
-	if (max_col_size > 0)
-	  {
-	    bytes_size = MIN (bytes_size, max_col_size);
-	  }
-
-	if (db_get_string_codeset (val) == INTL_CODESET_UTF8)
-	  {
-	    need_decomp =
-	      unicode_string_need_decompose (nchar, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
-	  }
-
-	if (need_decomp)
-	  {
-	    decomposed = (char *) MALLOC (decomp_size * sizeof (char));
-	    if (decomposed != NULL)
-	      {
-		unicode_decompose_string (nchar, bytes_size, decomposed, &decomp_size,
-					  lang_get_generic_unicode_norm ());
-
-		nchar = decomposed;
-		bytes_size = decomp_size;
-	      }
-	    else
-	      {
-		/* set error indicator and send empty string */
-		ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
-		bytes_size = 0;
-	      }
-	  }
-
-	add_res_data_string (net_buf, nchar, bytes_size, ext_col_type, db_get_string_codeset (val), &data_size);
 
 	if (decomposed != NULL)
 	  {
@@ -8213,13 +8085,13 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_SET:
       collection_str = "set";
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_MULTISET:
       if (collection_str == NULL)
 	{
 	  collection_str = "multiset";
 	}
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_SEQUENCE:	/* DB_TYPE_LIST */
       if (collection_str == NULL)
 	{
@@ -8275,7 +8147,7 @@ get_domain_str (DB_DOMAIN * domain)
 
     case DB_TYPE_NUMERIC:
       sprintf (scale_str, "%d", scale);
-      /* fall through */
+      [[fallthrough]];
     default:
       p = (char *) db_get_type_name (dtype);
       if (p == NULL)
@@ -8615,6 +8487,7 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
   if (schema_name[0] == '\0')
     {
       strncpy (schema_name, database_user, DB_MAX_SCHEMA_LENGTH - 1);
+      schema_name[DB_MAX_SCHEMA_LENGTH - 1] = '\0';
     }
 
   if (schema_name[0] != '\0' && class_name_only != NULL)
@@ -11061,7 +10934,6 @@ check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
   return false;
 }
 
-#if !(defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL))
 void
 cas_set_db_connect_status (int status)
 {
@@ -11073,7 +10945,6 @@ cas_get_db_connect_status (void)
 {
   return db_get_connect_status ();
 }
-#endif
 
 void
 cas_log_error_handler (unsigned int eid)
@@ -11337,21 +11208,10 @@ convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 
   val_type = db_value_type (value);
 
-  if (val_type == DB_TYPE_NCHAR || val_type == DB_TYPE_VARNCHAR)
+  err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
+  if (err >= 0)
     {
-      err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARNCHAR));
-      if (err >= 0)
-	{
-	  val_str = db_get_nchar (value_string, &len);
-	}
-    }
-  else
-    {
-      err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
-      if (err >= 0)
-	{
-	  val_str = db_get_char (value_string, &len);
-	}
+      val_str = db_get_char (value_string, &len);
     }
 
   return val_str;

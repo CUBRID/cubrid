@@ -34,6 +34,8 @@ package com.cubrid.plcsql.builtin;
 import java.util.LinkedList;
 
 public class MessageBuffer {
+    public static final int DEFAULT_SIZE = 20000;
+
     private static final int STATUS_SUCCESS = 0;
     private static final int STATUS_FAILURE = 1;
 
@@ -49,6 +51,7 @@ public class MessageBuffer {
         builder = null;
         status = STATUS_FAILURE;
         lines = new LinkedList<String>();
+        size = DEFAULT_SIZE;
     }
 
     public void enable(Integer size) {
@@ -61,12 +64,13 @@ public class MessageBuffer {
         isEnabled = true;
     }
 
+    public void enable() {
+        enable(this.size);
+    }
+
     public void disable() {
         isEnabled = false;
-        clearBuilder();
-        lines.clear();
-        size = 0;
-        status = STATUS_FAILURE;
+        clear();
     }
 
     public void putLine(String str) {
@@ -94,15 +98,15 @@ public class MessageBuffer {
 
     public String getLine() {
         String res = null;
+        status = STATUS_FAILURE;
         if (isEnabled) {
-            if (lines.size() == 0) {
-                if (builder != null && builder.length() > 0) {
-                    res = builder.toString();
-                    status = STATUS_SUCCESS;
-                } else {
-                    status = STATUS_FAILURE;
-                }
-            } else {
+            // If there is a line remaining in the builder, put it in the lines
+            if (builder != null && builder.length() > 0) {
+                putLine(builder.toString());
+                clearBuilder();
+            }
+
+            if (lines.size() != 0) {
                 res = lines.pollFirst();
                 status = STATUS_SUCCESS;
             }
@@ -113,6 +117,12 @@ public class MessageBuffer {
     public String[] getLines(int num) {
         String[] outputs = null;
         if (isEnabled) {
+            // If there is a line remaining in the builder, put it in the lines
+            if (builder != null && builder.length() > 0) {
+                putLine(builder.toString());
+                clearBuilder();
+            }
+
             if (lines.size() < num) {
                 num = lines.size();
             }
@@ -129,6 +139,12 @@ public class MessageBuffer {
 
     public int getStatus() {
         return status;
+    }
+
+    public void clear() {
+        clearBuilder();
+        lines.clear();
+        status = STATUS_FAILURE;
     }
 
     private void clearBuilder() {

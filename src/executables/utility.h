@@ -126,7 +126,7 @@ typedef enum
   MSGCAT_UTIL_GENERIC_MANAGER_NOT_INSTALLED = 41,
   MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT = 42,
   MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR = 43,
-  /* javasp usage = 44 ? */
+  /* pl usage = 44 ? */
   /* gateway usage = 45 ? */
   MSGCAT_UTIL_GENERIC_CLASSNAME_EXCEED_MAX_LENGTH = 46,
   MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47,
@@ -549,6 +549,7 @@ typedef enum
   PARAMDUMP_MSG_CLIENT_PARAMETER = 21,
   PARAMDUMP_MSG_SERVER_PARAMETER = 22,
   PARAMDUMP_MSG_STANDALONE_PARAMETER = 23,
+  PARAMDUMP_MSG_BAD_OPTION = 24,
   PARAMDUMP_MSG_USAGE = 60
 } MSGCAT_PARAMDUMP_MSG;
 
@@ -894,8 +895,7 @@ typedef struct _ha_config
 #define UTIL_CUBRID             "cubrid" UTIL_EXE_EXT
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
-#define UTIL_JAVASP_NAME        "cub_javasp" UTIL_EXE_EXT
-#define UTIL_PLCSQL_HELPER_NAME "plcsql_helper" UTIL_EXE_EXT
+#define UTIL_PL_NAME            "cub_pl" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -908,7 +908,7 @@ typedef struct _ha_config
 #define PRINT_GATEWAY_NAME      "cubrid gateway"
 #define PRINT_MANAGER_NAME      "cubrid manager server"
 #define PRINT_HEARTBEAT_NAME    "cubrid heartbeat"
-#define PRINT_JAVASP_NAME       "cubrid javasp"
+#define PRINT_PL_NAME           "cubrid pl"
 #define PRINT_HA_PROCS_NAME     "HA processes"
 
 #define PRINT_CMD_SERVICE       "service"
@@ -916,9 +916,10 @@ typedef struct _ha_config
 #define PRINT_CMD_GATEWAY       "gateway"
 #define PRINT_CMD_MANAGER       "manager"
 #define PRINT_CMD_SERVER        "server"
-#define PRINT_CMD_JAVASP        "javasp"
+#define PRINT_CMD_PL            "pl"
 
 #define PRINT_CMD_START         "start"
+#define PRINT_CMD_RESTART       "restart"
 #define PRINT_CMD_STOP          "stop"
 #define PRINT_CMD_STATUS        "status"
 #define PRINT_CMD_DEREG         "deregister"
@@ -959,6 +960,7 @@ typedef struct _ha_config
 #define COMMDB_HA_ADMIN_INFO              "--admin-info"
 #define COMMDB_VERBOSE_OUTPUT             "--verbose"
 #define COMMDB_HA_START_UTIL_PROCESS	  "-t"
+#define COMMDB_SHUTDOWN_REVIVING_SERVER     "--shutdown-reviving-server"
 
 #define ACLDB_RELOAD            "-r"
 
@@ -970,7 +972,7 @@ typedef struct _ha_config
 #define MASK_GATEWAY            0x10
 #define MASK_ADMIN              0x20
 #define MASK_HEARTBEAT          0x40
-#define MASK_JAVASP             0x80
+#define MASK_PL                 0x80
 
 /* utility option list */
 #define UTIL_OPTION_CREATEDB                    "createdb"
@@ -1219,6 +1221,8 @@ typedef struct _ha_config
 #define DIAG_EMERGENCY_L                        "emergency"
 #define DIAG_CLASS_NAME_S                       'n'
 #define DIAG_CLASS_NAME_L                       "class-name"
+#define DIAG_INPUT_FILE_S                       'i'
+#define DIAG_INPUT_FILE_L                       "input-file"
 
 /* patch option list */
 #define PATCH_RECREATE_LOG_S                    'r'
@@ -1484,6 +1488,8 @@ typedef struct _ha_config
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
 #define CSQL_SYSADM_REBUILD_CATALOG_S           12020
 #define CSQL_SYSADM_REBUILD_CATALOG_L           "sysadm-rebuild-catalog"
+#define CSQL_NOPRINT_TITLE_S			12021
+#define CSQL_NOPRINT_TITLE_L			"skip-title"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"
@@ -1531,6 +1537,8 @@ typedef struct _ha_config
 #define COMMDB_HA_ADMIN_INFO_L                  "admin-info"
 #define COMMDB_HA_START_UTIL_PROCESS_S          't'
 #define COMMDB_HA_START_UTIL_PROCESS_L          "start-ha-util-process"
+#define COMMDB_SHUTDOWN_REVIVING_SERVER_S       12116
+#define COMMDB_SHUTDOWN_REVIVING_SERVER_L       "shutdown-reviving-server"
 
 /* paramdump option list */
 #define PARAMDUMP_OUTPUT_FILE_S                 'o'
@@ -1541,6 +1549,14 @@ typedef struct _ha_config
 #define PARAMDUMP_SA_MODE_L                     "SA-mode"
 #define PARAMDUMP_CS_MODE_S                     'C'
 #define PARAMDUMP_CS_MODE_L                     "CS-mode"
+#define PARAMDUMP_HA_ONLY_S			12200
+#define PARAMDUMP_HA_ONLY_L			"ha-only"
+#define PARAMDUMP_EXCLUDE_HA_S			12201
+#define PARAMDUMP_EXCLUDE_HA_L			"exclude-ha"
+#define PARAMDUMP_DUMP_FLAG_S			12202
+#define PARAMDUMP_DUMP_FLAG_L			"dump-flag"
+#define PARAMDUMP_FOR_CM_S			12203
+#define PARAMDUMP_FOR_CM_L			"for-cm"
 
 /* statdump option list */
 #define STATDUMP_OUTPUT_FILE_S                  'o'

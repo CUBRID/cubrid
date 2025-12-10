@@ -56,7 +56,7 @@
 #include "execute_schema.h"
 #include "network_interface_cl.h"
 #if defined(SA_MODE)
-#include "jsp_sr.h"
+#include "pl_sr.h"
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
@@ -928,17 +928,11 @@ db_restart (const char *program, int print_version, const char *volume)
 	  install_static_methods ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
-	  if (!jsp_jvm_is_loaded ())
-	    {
-	      prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
-	    }
+	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #else /* SA_MODE && (LINUX||X86_SOLARIS) */
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
-
-	  // Even if dblink_get_cipher_master_key() fails, it is executed normally.
-	  dblink_get_cipher_master_key ();
 	}
     }
 
@@ -993,6 +987,8 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
+  (void) db_end_session ();
+
   error = boot_shutdown_client (true);
   db_Database_name[0] = '\0';
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
@@ -1005,6 +1001,12 @@ db_shutdown (void)
   db_free_execution_plan ();
 
   return (error);
+}
+
+void
+db_shutdown_without_request_to_server (void)
+{
+  boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
 
 int
@@ -1053,6 +1055,7 @@ db_enable_modification (void)
  *
  * NOTE: This function ends the session identified by 'db_Session_id'
  */
+static int is_doing_end_session = -1;
 int
 db_end_session (void)
 {
@@ -1060,9 +1063,28 @@ db_end_session (void)
 
   CHECK_CONNECT_ERROR ();
 
-  retval = csession_end_session (db_get_session_id ());
+  if (db_get_session_id () == DB_EMPTY_SESSION)
+    {
+      return NO_ERROR;
+    }
+
+  /* prevent additional execution during execting csession_end_session() */
+  if (is_doing_end_session > 0 && is_doing_end_session == (int) db_get_session_id ())
+    {
+      return NO_ERROR;
+    }
+  is_doing_end_session = (int) db_get_session_id ();
+
+  retval = csession_end_session (db_get_session_id (), db_get_keep_session ());
+
+  if (retval != ER_FAILED && !db_get_keep_session ())
+    {
+      db_set_session_id (DB_EMPTY_SESSION);
+    }
 
   cubmethod::get_callback_handler ()->free_query_handle_all (true);
+
+  is_doing_end_session = -1;
 
   return (retval);
 }
@@ -1810,6 +1832,39 @@ db_set_user_comment (DB_OBJECT * user, const char *comment)
 }
 
 /*
+ * db_get_object_type() - This returns database object type of given MOP
+ * return    : DB_OBJECT_TYPE
+ * obj_(in) : an object
+ *
+ */
+// TODO: find better solution
+DB_OBJECT_TYPE
+db_get_object_type (MOP obj_)
+{
+  DB_OBJECT_TYPE ret_val = DB_OBJECT_UNKNOWN;
+
+  assert (obj_->class_mop != NULL);
+
+  OID *mop = WS_OID (obj_->class_mop);
+  if (OID_EQ (mop, WS_OID (sm_Root_class_mop)))
+    {
+      // table, view
+      ret_val = DB_OBJECT_CLASS;
+    }
+  else
+    {
+      // database object types except (v)class
+      MOP sp_class_mop = sm_find_class (CT_STORED_PROC_NAME);
+      if (sp_class_mop && OID_EQ (mop, WS_OID (sp_class_mop)))
+	{
+	  ret_val = DB_OBJECT_PROCEDURE;
+	}
+    }
+
+  return ret_val;
+}
+
+/*
  * db_grant() -This is the basic mechanism for passing permissions to other
  *    users.  The authorization type is one of the numeric values defined
  *    by the DB_AUTH enumeration.  If more than one authorization is to
@@ -1825,18 +1880,62 @@ db_set_user_comment (DB_OBJECT * user, const char *comment)
  *
  */
 int
-db_grant (MOP user, MOP class_, AU_TYPE auth, int grant_option)
+db_grant (MOP user, MOP obj_, AU_TYPE auth, int grant_option)
 {
-  int retval;
+  int retval = NO_ERROR;
+  DB_OBJECT_TYPE object_type;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_2ARGS_ERROR (user, class_);
+  CHECK_2ARGS_ERROR (user, obj_);
   CHECK_MODIFICATION_ERROR ();
 
-  retval = do_check_partitioned_class (class_, CHECK_PARTITION_SUBS, NULL);
+  object_type = db_get_object_type (obj_);
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
   if (!retval)
     {
-      retval = au_grant (user, class_, auth, (bool) grant_option);
+      retval = au_grant (object_type, user, obj_, auth, (bool) grant_option);
+    }
+
+  return (retval);
+}
+
+/*
+ * db_grant_object() -This is the basic mechanism for passing permissions to other
+ *    users.  The authorization type is one of the numeric values defined
+ *    by the DB_AUTH enumeration.  If more than one authorization is to
+ *    be granted, the values in DB_AUTH can be combined using the C bitwise
+ *    "or" operator |.  Errors are likely if the currently logged in user
+ *    was not the owner of the class and was not given the grant_option for
+ *    the desired authorization types.
+ * return  : error code
+ * object_type(in)  : an object type
+ * user(in)         : a user object
+ * obj_(in)        : an object
+ * auth(in)         : an authorization type
+ * grant_option(in) : true if the grant option is to be added
+ *
+ */
+int
+db_grant_object (DB_OBJECT_TYPE object_type, DB_OBJECT * user, DB_OBJECT * obj_, DB_AUTH auth, int grant_option)
+{
+  int retval = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_2ARGS_ERROR (user, obj_);
+  CHECK_MODIFICATION_ERROR ();
+
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
+  if (!retval)
+    {
+      retval = au_grant (object_type, user, obj_, auth, (bool) grant_option);
     }
 
   return (retval);
@@ -1852,18 +1951,56 @@ db_grant (MOP user, MOP class_, AU_TYPE auth, int grant_option)
  *
  */
 int
-db_revoke (MOP user, MOP class_mop, AU_TYPE auth)
+db_revoke (MOP user, MOP obj_, AU_TYPE auth)
 {
-  int retval;
+  int retval = NO_ERROR;
+  DB_OBJECT_TYPE object_type;
 
   CHECK_CONNECT_ERROR ();
-  CHECK_2ARGS_ERROR (user, class_mop);
+  CHECK_2ARGS_ERROR (user, obj_);
   CHECK_MODIFICATION_ERROR ();
 
-  retval = do_check_partitioned_class (class_mop, CHECK_PARTITION_SUBS, NULL);
+  object_type = db_get_object_type (obj_);
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
   if (!retval)
     {
-      retval = au_revoke (user, class_mop, auth);
+      retval = au_revoke (object_type, user, obj_, auth, NULL);
+    }
+
+  return (retval);
+}
+
+/*
+ * db_revoke_object() - This is the basic mechanism for revoking previously granted
+ *    authorizations.  A prior authorization must have been made.
+ * returns  : error code
+ * object_type(in)  : an object type
+ * user(in) : a user object
+ * class_mop(in): a class object
+ * auth(in) : the authorization type(s) to revoke
+ *
+ */
+int
+db_revoke_object (DB_OBJECT_TYPE object_type, MOP user, MOP obj_, AU_TYPE auth)
+{
+  int retval = NO_ERROR;
+
+  CHECK_CONNECT_ERROR ();
+  CHECK_2ARGS_ERROR (user, obj_);
+  CHECK_MODIFICATION_ERROR ();
+
+  if (object_type == DB_OBJECT_CLASS)
+    {
+      retval = do_check_partitioned_class (obj_, CHECK_PARTITION_SUBS, NULL);
+    }
+
+  if (!retval)
+    {
+      retval = au_revoke (object_type, user, obj_, auth, NULL);
     }
 
   return (retval);
@@ -2768,25 +2905,22 @@ db_set_system_parameters (const char *data)
     {
       if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
-	  if (tmp->value.i > 0)
-	    {
-	      tran_reset_wait_times (tmp->value.i * 1000);
-	    }
-	  else
-	    {
-	      tran_reset_wait_times (tmp->value.i);
-	    }
+	  int val = PRM_GET_INT_P (prm_get_value (PRM_ID_LK_TIMEOUT));
+	  (void) tran_reset_wait_times (((val > 0) ? (val * 1000) : val));
 	}
       else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LOG_ISOLATION_LEVEL), &tmp);
-
-	  tran_reset_isolation ((TRAN_ISOLATION) tmp->value.i, TM_TRAN_ASYNC_WS ());
+	  int val = PRM_GET_INT_P (prm_get_value (PRM_ID_LOG_ISOLATION_LEVEL));
+#if defined(CS_MODE)
+	  error = tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
+	  if (error != NO_ERROR)
+	    {
+	      if (er_errid () == NO_ERROR)
+		goto cleanup;
+	    }
+#else
+	  (void) tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
+#endif
 	}
     }
 
@@ -2954,6 +3088,26 @@ void
 db_set_session_id (const SESSION_ID session_id)
 {
   db_Session_id = session_id;
+}
+
+/*
+ * db_get_keep_session () - get keep session flag
+ */
+bool
+db_get_keep_session (void)
+{
+  return db_Keep_session;
+}
+
+/*
+ * db_set_keep_session () - set keep session flag
+ * return : void
+ * keep_session (in): keep session flag
+ */
+void
+db_set_keep_session (const bool keep_session)
+{
+  db_Keep_session = keep_session;
 }
 
 /*

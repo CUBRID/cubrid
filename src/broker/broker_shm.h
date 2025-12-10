@@ -467,7 +467,7 @@ struct t_proxy_info
   int cur_client;
   int max_context;
 
-  char appl_server;		/* APPL_SERVER_CAS | APPL_SERVER_CAS_MYSQL | APPL_SERVER_CAS_ORACLE */
+  char appl_server;
 
   /* MOVE FROM T_APPL_SERVER_INFO */
 #if defined(WINDOWS)
@@ -572,6 +572,7 @@ struct t_shm_appl_server
   char cci_default_autocommit;
   char shard_flag;
   bool access_control;
+  bool acl_default_policy;
   int jdbc_cache_life_time;
   int connect_order;
   int replica_only_flag;
@@ -612,8 +613,6 @@ struct t_shm_appl_server
   int appl_server_hard_limit;
   int session_timeout;
   int query_timeout;
-  int mysql_read_timeout;
-  int mysql_keepalive_interval;
   int num_appl_server;
   int max_string_length;
   int job_queue_size;
@@ -639,8 +638,6 @@ struct t_shm_appl_server
   char cgw_link_odbc_driver_name[CGW_LINK_ODBC_DRIVER_NAME_LEN];
   char cgw_link_connect_url_property[CGW_LINK_CONNECT_URL_PROPERTY_LEN];
 
-  char acl_broker_allow;
-
   ACCESS_INFO access_info[ACL_MAX_ITEM_COUNT];
 
   T_MAX_HEAP_NODE job_queue[JOB_QUEUE_MAX_SIZE + 1];
@@ -665,8 +662,10 @@ struct t_shm_broker
   uid_t owner_uid;
 #endif				/* !WINDOWS */
   int num_broker;		/* number of broker */
+  char admin_log_file[SHM_BROKER_PATH_MAX];
   char access_control_file[SHM_BROKER_PATH_MAX];
   bool access_control;
+  bool acl_default_policy;	/* Determines whether to allow or deny access to brokers that are not set in access_control_file. */
   T_BROKER_INFO br_info[1];
 };
 
@@ -697,7 +696,7 @@ int uw_sem_post (sem_t * sem_t);
 int uw_sem_destroy (sem_t * sem_t);
 #endif
 T_SHM_BROKER *broker_shm_initialize_shm_broker (int master_shm_id, T_BROKER_INFO * br_info, int br_num, int acl_flag,
-						char *acl_file);
+						char *acl_file, int acl_default_policy, char *admin_log_file);
 T_SHM_APPL_SERVER *broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy_p);
 
 #endif /* _BROKER_SHM_H_ */

@@ -127,7 +127,6 @@ cursor_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_l
     }
 
   dest_list_id_p->tpl_descr.f_valp = NULL;
-  dest_list_id_p->tpl_descr.clear_f_val_at_clone_decache = NULL;
   dest_list_id_p->sort_list = NULL;	/* never use sort_list in crs_ level */
 
   if (src_list_id_p->last_pgptr)
@@ -336,7 +335,7 @@ cursor_copy_vobj_to_dbvalue (struct or_buf *buffer_p, DB_VALUE * value_p)
   int rc;
   DB_VALUE vobj_dbval;
   DB_OBJECT *object_p;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
 
   pr_type = pr_type_from_id (DB_TYPE_VOBJ);
   if (pr_type == NULL)
@@ -376,7 +375,7 @@ static int
 cursor_get_tuple_value_to_dbvalue (OR_BUF * buffer_p, TP_DOMAIN * domain_p, QFILE_TUPLE_VALUE_FLAG value_flag,
 				   DB_VALUE * value_p, bool is_copy)
 {
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   DB_TYPE type;
 
   pr_type = domain_p->type;

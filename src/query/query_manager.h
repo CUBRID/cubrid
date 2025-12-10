@@ -47,6 +47,14 @@ struct xasl_cache_ent;
     } \
   while (0)
 
+#define qmgr_free_old_page_ro_and_init(thread_p, page_p, tfile_vfidp) \
+  do \
+    { \
+      qmgr_free_old_page_read_only ((thread_p), (page_p), (tfile_vfidp)); \
+      (page_p) = NULL; \
+    } \
+  while (0)
+
 #define NULL_PAGEID_IN_PROGRESS -2
 
 typedef enum
@@ -69,7 +77,8 @@ typedef enum
   QMGR_TRAN_RESUME_DUE_DEADLOCK,	/* Transaction has been resumed to deallocate all query pages. The transaction
 					 * was involved in a deadlock. Transaction will have to restart the query. Note
 					 * that the transaction is not aborted. */
-  QMGR_TRAN_TERMINATED		/* Terminated transaction */
+  QMGR_TRAN_TERMINATED,		/* Terminated transaction */
+  QMGR_TRAN_DBLINK_ABORTED	/* A dblink'ed transaction is aborted */
 } QMGR_TRAN_STATUS;
 
 typedef struct qmgr_temp_file QMGR_TEMP_FILE;
@@ -137,6 +146,7 @@ struct qmgr_query_entry
   QUERY_FLAG query_flag;
   bool is_holdable;		/* true if this query should be available */
   bool includes_tde_class;	/* true if this query include some tde class. It is from xasl node */
+  unsigned int alloc_no;	/* incremented on every retrieval from the free list (qmgr_allocate_query_entry()) */
 };
 
 extern QMGR_QUERY_ENTRY *qmgr_get_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int trans_ind);
@@ -153,6 +163,8 @@ extern int qmgr_get_query_error_with_entry (QMGR_QUERY_ENTRY * query_entryp);
 extern void qmgr_add_modified_class (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern PAGE_PTR qmgr_get_old_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
 extern void qmgr_free_old_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
+extern PAGE_PTR qmgr_get_old_page_read_only (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
+extern void qmgr_free_old_page_read_only (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
 extern void qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int free_page, LOG_DATA_ADDR * addrp,
 				 QMGR_TEMP_FILE * tfile_vfidp);
 extern PAGE_PTR qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
@@ -174,5 +186,9 @@ extern int qmgr_get_sql_id (THREAD_ENTRY * thread_p, char **sql_id_buf, char *qu
 extern struct drand48_data *qmgr_get_rand_buf (THREAD_ENTRY * thread_p);
 extern QUERY_ID qmgr_get_current_query_id (THREAD_ENTRY * thread_p);
 extern char *qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_index);
+extern QMGR_TRAN_STATUS qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort);
+extern int qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password);
+extern int qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name,
+					char *password);
 
 #endif /* _QUERY_MANAGER_H_ */

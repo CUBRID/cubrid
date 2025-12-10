@@ -23,6 +23,14 @@
 #ifndef _MEMORY_WRAPPER_HPP_
 #define _MEMORY_WRAPPER_HPP_
 
+#include <utility>
+
+template <typename T, typename... Args>
+inline T *placement_new (T *ptr, Args &&... args)
+{
+  return new (ptr) T (std::forward<Args> (args)...);
+}
+
 #if !defined(WINDOWS)
 
 #include "memory_cwrapper.h"
@@ -43,12 +51,12 @@
 // However, as CUBRID does not currently utilize such additional methods, they are not overloaded.
 // It has been decided that overloading will be undertaken should any issues arise from
 // the discovery of the utilization of these additional methods.
-inline void *operator new (size_t size, const char *file, const int line)
+inline void *operator new (size_t size, const char *file, const int line) noexcept
 {
   return cub_alloc (size, file, line);
 }
 
-inline void *operator new[] (size_t size, const char *file, const int line)
+inline void *operator new[] (size_t size, const char *file, const int line) noexcept
 {
   return cub_alloc (size, file, line);
 }

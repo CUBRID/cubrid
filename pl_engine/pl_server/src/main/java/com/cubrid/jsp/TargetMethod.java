@@ -31,8 +31,7 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.context.Context;
-import com.cubrid.jsp.context.ContextManager;
+import com.cubrid.jsp.code.Signature;
 import com.cubrid.jsp.exception.ExecuteException;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
@@ -55,47 +54,10 @@ public class TargetMethod {
         initdescriptorMap();
     }
 
-    public TargetMethod(String signature) throws Exception {
-        int argStart = signature.indexOf('(') + 1;
-        if (argStart < 0) {
-            throw new IllegalArgumentException("Parenthesis '(' not found");
-        }
-        int argEnd = signature.indexOf(')');
-        if (argEnd < 0) {
-            throw new IllegalArgumentException("Parenthesis ')' not found");
-        }
-        int nameStart = signature.substring(0, argStart).lastIndexOf('.') + 1;
-
-        if (signature.charAt(0) == '\'') {
-            className = signature.substring(1, nameStart - 1).trim();
-        } else {
-            className = signature.substring(0, nameStart - 1).trim();
-        }
-
-        methodName = signature.substring(nameStart, argStart - 1).trim();
-        String args = signature.substring(argStart, argEnd);
-        argsTypes = classesFor(args);
-    }
-
-    private Class<?> getClass(String name) throws ClassNotFoundException {
-        Context ctx = ContextManager.getContextofCurrentThread();
-        ClassLoader cl = ctx.getClassLoader();
-        Class<?> c = null;
-        try {
-            c = cl.loadClass(name);
-            assert c != null;
-            return c;
-        } catch (ClassNotFoundException e) {
-            // ignore
-        }
-
-        try {
-            c = Server.class.getClassLoader().loadClass(name);
-            assert c != null;
-            return c;
-        } catch (ClassNotFoundException e) {
-            throw e;
-        }
+    public TargetMethod(Signature signature) throws Exception {
+        className = signature.getClassName();
+        methodName = signature.getMethodName();
+        argsTypes = classesFor(signature.getArgs());
     }
 
     private Class<?>[] classesFor(String args) throws ClassNotFoundException, ExecuteException {
@@ -141,7 +103,10 @@ public class TargetMethod {
         if (argClassMap.containsKey(className)) {
             return argClassMap.get(className);
         } else {
-            return getClass(className);
+            // TODO:
+            // return ClassAccess.getClass(ContextManager.getContextofCurrentThread(), className);
+            // unknown class
+            throw new ClassNotFoundException(className);
         }
     }
 
@@ -154,27 +119,28 @@ public class TargetMethod {
     }
 
     private static void initArgClassMap() {
-        argClassMap.put("boolean", boolean.class);
         argClassMap.put("byte", byte.class);
-        argClassMap.put("char", char.class);
         argClassMap.put("short", short.class);
         argClassMap.put("int", int.class);
         argClassMap.put("long", long.class);
         argClassMap.put("float", float.class);
         argClassMap.put("double", double.class);
 
-        argClassMap.put("[Z", boolean[].class);
         argClassMap.put("[B", byte[].class);
-        argClassMap.put("[C", char[].class);
         argClassMap.put("[S", short[].class);
         argClassMap.put("[I", int[].class);
         argClassMap.put("[J", long[].class);
         argClassMap.put("[F", float[].class);
         argClassMap.put("[D", double[].class);
 
-        argClassMap.put("java.lang.Boolean", Boolean.class);
+        argClassMap.put("[[B", byte[][].class);
+        argClassMap.put("[[S", short[][].class);
+        argClassMap.put("[[I", int[][].class);
+        argClassMap.put("[[J", long[][].class);
+        argClassMap.put("[[F", float[][].class);
+        argClassMap.put("[[D", double[][].class);
+
         argClassMap.put("java.lang.Byte", Byte.class);
-        argClassMap.put("java.lang.Character", Character.class);
         argClassMap.put("java.lang.Short", Short.class);
         argClassMap.put("java.lang.Integer", Integer.class);
         argClassMap.put("java.lang.Long", Long.class);
@@ -182,15 +148,29 @@ public class TargetMethod {
         argClassMap.put("java.lang.Double", Double.class);
         argClassMap.put("java.lang.String", String.class);
         argClassMap.put("java.lang.Object", Object.class);
+
+        argClassMap.put("Byte", Byte.class);
+        argClassMap.put("Short", Short.class);
+        argClassMap.put("Integer", Integer.class);
+        argClassMap.put("Long", Long.class);
+        argClassMap.put("Float", Float.class);
+        argClassMap.put("Double", Double.class);
+        argClassMap.put("String", String.class);
+        argClassMap.put("Object", Object.class);
+
         argClassMap.put("java.math.BigDecimal", BigDecimal.class);
         argClassMap.put("java.sql.Date", Date.class);
         argClassMap.put("java.sql.Time", Time.class);
         argClassMap.put("java.sql.Timestamp", Timestamp.class);
         argClassMap.put("cubrid.sql.CUBRIDOID", CUBRIDOID.class);
 
-        argClassMap.put("[Ljava.lang.Boolean;", Boolean[].class);
+        argClassMap.put("BigDecimal", BigDecimal.class);
+        argClassMap.put("Date", Date.class);
+        argClassMap.put("Time", Time.class);
+        argClassMap.put("Timestamp", Timestamp.class);
+        argClassMap.put("CUBRIDOID", CUBRIDOID.class);
+
         argClassMap.put("[Ljava.lang.Byte;", Byte[].class);
-        argClassMap.put("[Ljava.lang.Character;", Character[].class);
         argClassMap.put("[Ljava.lang.Short;", Short[].class);
         argClassMap.put("[Ljava.lang.Integer;", Integer[].class);
         argClassMap.put("[Ljava.lang.Long;", Long[].class);
@@ -198,20 +178,61 @@ public class TargetMethod {
         argClassMap.put("[Ljava.lang.Double;", Double[].class);
         argClassMap.put("[Ljava.lang.String;", String[].class);
         argClassMap.put("[Ljava.lang.Object;", Object[].class);
+
+        argClassMap.put("[LByte;", Byte[].class);
+        argClassMap.put("[LShort;", Short[].class);
+        argClassMap.put("[LInteger;", Integer[].class);
+        argClassMap.put("[LLong;", Long[].class);
+        argClassMap.put("[LFloat;", Float[].class);
+        argClassMap.put("[LDouble;", Double[].class);
+        argClassMap.put("[LString;", String[].class);
+        argClassMap.put("[LObject;", Object[].class);
+
         argClassMap.put("[Ljava.math.BigDecimal;", BigDecimal[].class);
         argClassMap.put("[Ljava.sql.Date;", Date[].class);
         argClassMap.put("[Ljava.sql.Time;", Time[].class);
         argClassMap.put("[Ljava.sql.Timestamp;", Timestamp[].class);
         argClassMap.put("[Lcubrid.sql.CUBRIDOID;", CUBRIDOID[].class);
 
+        argClassMap.put("[LBigDecimal;", BigDecimal[].class);
+        argClassMap.put("[LDate;", Date[].class);
+        argClassMap.put("[LTime;", Time[].class);
+        argClassMap.put("[LTimestamp;", Timestamp[].class);
+        argClassMap.put("[LCUBRIDOID;", CUBRIDOID[].class);
+
+        argClassMap.put("[[Ljava.lang.Byte;", Byte[][].class);
+        argClassMap.put("[[Ljava.lang.Short;", Short[][].class);
         argClassMap.put("[[Ljava.lang.Integer;", Integer[][].class);
+        argClassMap.put("[[Ljava.lang.Long;", Long[][].class);
         argClassMap.put("[[Ljava.lang.Float;", Float[][].class);
+        argClassMap.put("[[Ljava.lang.Double;", Double[][].class);
+        argClassMap.put("[[Ljava.lang.String;", String[][].class);
+        argClassMap.put("[[Ljava.lang.Object;", Object[][].class);
+
+        argClassMap.put("[[LByte;", Byte[][].class);
+        argClassMap.put("[[LShort;", Short[][].class);
+        argClassMap.put("[[LInteger;", Integer[][].class);
+        argClassMap.put("[[LLong;", Long[][].class);
+        argClassMap.put("[[LFloat;", Float[][].class);
+        argClassMap.put("[[LDouble;", Double[][].class);
+        argClassMap.put("[[LString;", String[][].class);
+        argClassMap.put("[[LObject;", Object[][].class);
+
+        argClassMap.put("[[Ljava.math.BigDecimal;", BigDecimal[][].class);
+        argClassMap.put("[[Ljava.sql.Date;", Date[][].class);
+        argClassMap.put("[[Ljava.sql.Time;", Time[][].class);
+        argClassMap.put("[[Ljava.sql.Timestamp;", Timestamp[][].class);
+        argClassMap.put("[[Lcubrid.sql.CUBRIDOID;", CUBRIDOID[][].class);
+
+        argClassMap.put("[[LBigDecimal;", BigDecimal[][].class);
+        argClassMap.put("[[LDate;", Date[][].class);
+        argClassMap.put("[[LTime;", Time[][].class);
+        argClassMap.put("[[LTimestamp;", Timestamp[][].class);
+        argClassMap.put("[[LCUBRIDOID;", CUBRIDOID[][].class);
     }
 
     private static void initdescriptorMap() {
-        descriptorMap.put("boolean", "Z");
         descriptorMap.put("byte", "B");
-        descriptorMap.put("char", "C");
         descriptorMap.put("short", "S");
         descriptorMap.put("int", "I");
         descriptorMap.put("long", "J");
@@ -219,12 +240,7 @@ public class TargetMethod {
         descriptorMap.put("double", "D");
     }
 
-    public Method getMethod()
-            throws SecurityException, NoSuchMethodException, ClassNotFoundException {
-        Class<?> c = getClass(className);
-        if (c == null) {
-            throw new ClassNotFoundException(className);
-        }
+    public Method getMethod(Class<?> c) throws SecurityException, NoSuchMethodException {
         try {
             return c.getMethod(methodName, argsTypes);
         } catch (NoSuchMethodException e) {

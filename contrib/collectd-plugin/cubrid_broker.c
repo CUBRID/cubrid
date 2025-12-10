@@ -43,8 +43,7 @@
 
 static int cubrid_broker_init (void);
 static int cubrid_broker_read (void);
-static void submit (char *type, char *type_instance, value_t * values,
-		    int value_cnt);
+static void submit (char *type, char *type_instance, value_t * values, int value_cnt);
 
 static int master_shm_id = 0;
 static unsigned long *old_transactions_processed = NULL;
@@ -68,8 +67,7 @@ cubrid_broker_init (void)
   int i;
   char err_msg[1024], admin_log_file[BROKER_PATH_MAX];
 
-  if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id,
-			  admin_log_file, 0, NULL, NULL, err_msg) < 0)
+  if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, admin_log_file, 0, NULL, NULL, NULL, err_msg) < 0)
     {
       ERROR ("cubrid_broker: %s", err_msg);
       return -1;
@@ -77,13 +75,11 @@ cubrid_broker_init (void)
 
   if (old_transactions_processed == NULL)
     {
-      old_transactions_processed =
-	(unsigned long *) calloc (sizeof (unsigned long), num_broker);
+      old_transactions_processed = (unsigned long *) calloc (sizeof (unsigned long), num_broker);
     }
   if (old_queries_processed == NULL)
     {
-      old_queries_processed =
-	(unsigned long *) calloc (sizeof (unsigned long), num_broker);
+      old_queries_processed = (unsigned long *) calloc (sizeof (unsigned long), num_broker);
     }
   for (i = 0; i < num_broker; i++)
     {
@@ -107,9 +103,7 @@ cubrid_broker_read (void)
   value_t cas_status[5];
   time_t cur_time;
 
-  shm_br =
-    (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER,
-				  SHM_MODE_MONITOR);
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
   if (shm_br == NULL)
     {
       return 0;
@@ -125,8 +119,7 @@ cubrid_broker_read (void)
       memset (cas_status, 0, sizeof (cas_status));
 
       shm_appl = (T_SHM_APPL_SERVER *)
-	uw_shm_open (shm_br->br_info[i].appl_server_shm_id,
-		     SHM_APPL_SERVER, SHM_MODE_MONITOR);
+	uw_shm_open (shm_br->br_info[i].appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_MONITOR);
 
       if (shm_appl == NULL)
 	{
@@ -144,8 +137,7 @@ cubrid_broker_read (void)
 		{
 		  if (shm_br->br_info[i].appl_server == APPL_SERVER_CAS)
 		    {
-		      if (shm_appl->as_info[j].con_status ==
-			  CON_STATUS_OUT_TRAN)
+		      if (shm_appl->as_info[j].con_status == CON_STATUS_OUT_TRAN)
 			cas_status[CLOSE_WAIT].gauge++;
 		      else if (shm_appl->as_info[j].log_msg[0] == '\0')
 			cas_status[CLIENT_WAIT].gauge++;
@@ -172,9 +164,7 @@ cubrid_broker_read (void)
 	}
       else
 	{
-	  trs[0].gauge =
-	    ((total_trs - old_transactions_processed[i]) / difftime (cur_time,
-								     old_time));
+	  trs[0].gauge = ((total_trs - old_transactions_processed[i]) / difftime (cur_time, old_time));
 	}
       if (old_queries_processed[i] == -1)
 	{
@@ -182,9 +172,7 @@ cubrid_broker_read (void)
 	}
       else
 	{
-	  trs_for_qps[0].gauge =
-	    ((total_qps - old_queries_processed[i]) / difftime (cur_time,
-								old_time));
+	  trs_for_qps[0].gauge = ((total_qps - old_queries_processed[i]) / difftime (cur_time, old_time));
 	}
       old_transactions_processed[i] = total_trs;
       old_queries_processed[i] = total_qps;

@@ -51,10 +51,11 @@
 #include "parse_tree.h"
 #include "load_common.hpp"
 #include "timezone_lib_common.h"
-#include "method_def.hpp"
+
 #include "dynamic_array.h"
 #include "flashback_cl.h"
-#include "method_compile_def.hpp"
+#include "pl_struct_compile.hpp"
+#include "pl_signature.hpp"
 #include "memory_monitor_common.hpp"
 
 // forward declarations
@@ -137,7 +138,6 @@ extern int file_apply_tde_to_class_files (const OID * class_oid);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern int tde_get_data_keys ();
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
-extern int dblink_get_cipher_master_key ();
 extern int tde_is_loaded (int *is_loaded);
 extern int tde_get_mk_file_path (char *mk_path);
 extern int tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time);
@@ -299,7 +299,7 @@ extern int db_local_transaction_id (DB_VALUE * trid);
 extern int qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits);
 extern int locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_list);
 
-extern int jsp_get_server_port (void);
+extern int pl_get_server_port (void);
 extern int repl_log_get_append_lsa (LOG_LSA * lsa);
 extern int repl_set_info (REPL_INFO * repl_info);
 
@@ -331,9 +331,7 @@ extern int net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, i
 					int replysize, char **logpg_area_buf, bool verbose);
 extern int net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize,
 						  char *replybuf, int replysize, char *databuf1, int datasize1,
-						  char *databuf2, int datasize2, char **replydata_ptr1,
-						  int *replydatasize_ptr1, char **replydata_ptr2,
-						  int *replydatasize_ptr2);
+						  char *databuf2, int datasize2);
 extern void net_client_logwr_send_end_msg (int rc, int error);
 extern int net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -405,7 +403,7 @@ extern int boot_get_server_timezone_checksum (char *timezone_checksum);
 /* session state API */
 extern int csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
 					    const char *db_user, const char *host, const char *program_name);
-extern int csession_end_session (SESSION_ID session_id);
+extern int csession_end_session (SESSION_ID session_id, bool is_keep_session);
 extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);
 extern int csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id);
@@ -446,8 +444,6 @@ extern int loaddb_destroy ();
 extern int loaddb_interrupt ();
 extern int loaddb_update_stats (bool verbose);
 
-extern int method_invoke_fold_constants (const method_sig_list & sig_list,
-					 std::vector < std::reference_wrapper < DB_VALUE >> &args, DB_VALUE & result);
 extern int flashback_get_and_show_summary (dynamic_array * class_list, const char *user, time_t start_time,
 					   time_t end_time, FLASHBACK_SUMMARY_INFO_MAP * summary, OID ** oid_list,
 					   char **invalid_class, time_t * invalid_time);
@@ -456,11 +452,17 @@ extern int flashback_get_loginfo (int trid, char *user, OID * classlist, int num
 				  int *invalid_class_idx);
 
 /* PL/CSQL */
-EXPORT_IMPORT extern int plcsql_transfer_file (const std::string & input_file, const bool & verbose,
-					       PLCSQL_COMPILE_INFO & compile_info);
-
+EXPORT_IMPORT extern int plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request,
+					       PLCSQL_COMPILE_RESPONSE & compile_response);
+EXPORT_IMPORT extern int pl_call (const cubpl::pl_signature & sig,
+				  const std::vector < std::reference_wrapper < DB_VALUE >> &args,
+				  std::vector < DB_VALUE > &out_args, DB_VALUE & result);
 
 /* memmon */
 extern int mmon_get_server_info (MMON_SERVER_INFO & server_info);
 extern int mmon_disable_force ();
+
+/* tdes */
+extern void tdes_set_query_start_info (char *sql_user_text);
+extern void tdes_reset_query_start_info (PT_NODE * node);
 #endif /* _NETWORK_INTERFACE_CL_H_ */
