@@ -18,6 +18,9 @@
 
 #include "hnsw_storage_mem.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubhnsw
 {
   // for mockup

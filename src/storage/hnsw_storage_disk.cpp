@@ -20,6 +20,9 @@
 
 #include "file_manager.h" // FILE_DESCRIPTORS
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace cubhnsw
 {
   disk_storage::disk_storage (
