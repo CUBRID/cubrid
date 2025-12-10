@@ -388,16 +388,12 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
   return NO_ERROR;
 }
 
-static std::mutex g_hnsw_mutex;
-
 int
 hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
 {
   assert (oid);
   assert (vector);
   assert (n_vectors > 0);
-
-  std::lock_guard<std::mutex> lk (g_hnsw_mutex);
 
   if (!btid)
     {
