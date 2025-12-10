@@ -314,6 +314,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* exhausted								     */
       /* --------------------------------------------------------------------------- */
+      void handle_exhausted_add_context (context *ctx, uint32_t event);
       bool handle_exhausted ();
   };
 }

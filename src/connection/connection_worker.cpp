@@ -1454,17 +1454,7 @@ retry:
 
     if (status == result::BudgetExhausted)
       {
-	if (m_exhausted.find (ctx->m_id) == m_exhausted.end ())
-	  {
-	    m_exhausted[ctx->m_id].prepared = false;
-	    m_exhausted[ctx->m_id].events = EPOLLIN;
-	    m_exhausted[ctx->m_id].ctx = ctx;
-	  }
-	else
-	  {
-	    assert (m_exhausted[ctx->m_id].ctx == ctx);
-	    m_exhausted[ctx->m_id].events |= EPOLLIN;
-	  }
+	handle_exhausted_add_context (ctx, EPOLLIN);
       }
 
     m_stats.add (statistics::worker::PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
@@ -1565,19 +1555,24 @@ retry:
       }
     else if (status == result::BudgetExhausted)
       {
-	if (m_exhausted.find (ctx->m_id) == m_exhausted.end ())
-	  {
-	    m_exhausted[ctx->m_id].prepared = false;
-	    m_exhausted[ctx->m_id].events = EPOLLOUT;
-	    m_exhausted[ctx->m_id].ctx = ctx;
-	  }
-	else
-	  {
-	    assert (m_exhausted[ctx->m_id].ctx == ctx);
-	    m_exhausted[ctx->m_id].events |= EPOLLOUT;
-	  }
+	handle_exhausted_add_context (ctx, EPOLLOUT);
       }
     return status;
+  }
+
+  void worker::handle_exhausted_add_context (context *ctx, uint32_t event)
+  {
+    if (m_exhausted.find (ctx->m_id) == m_exhausted.end ())
+      {
+	m_exhausted[ctx->m_id].prepared = false;
+	m_exhausted[ctx->m_id].events = event;
+	m_exhausted[ctx->m_id].ctx = ctx;
+      }
+    else
+      {
+	assert (m_exhausted[ctx->m_id].ctx == ctx);
+	m_exhausted[ctx->m_id].events |= event;
+      }
   }
 
   bool worker::handle_exhausted ()
