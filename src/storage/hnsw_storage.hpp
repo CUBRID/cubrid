@@ -18,13 +18,11 @@
 
 #pragma once
 
-#include <optional> // std::optional
-
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
 
 #include "thread_entry.hpp"
-#include "scoped_resource.hpp"
+#include "scoped_holder.hpp"
 
 namespace cubhnsw
 {
@@ -56,99 +54,41 @@ namespace cubhnsw
     exclusive   // single writer (insert/update)
   };
 
+  template <typename Traits>
+  struct pinned_block_data
+  {
+    using slot_id_t = typename Traits::slot_id_t;
+    slot_id_t    id{};
+    std::byte   *data{};
+    std::size_t  size{};
+    lock_mode    mode{lock_mode::none};
+  };
 
   template <typename Traits, typename Cleanup>
-  class pinned_block
+  using pinned_block_t =
+	  scoped_holder<pinned_block_data<Traits>, Cleanup>;
+
+  template <typename Traits>
+  using pinned_block_if_t =
+	  pinned_block_t<Traits, std::function<void (pinned_block_data<Traits> &)>>;
+
+  template <typename Traits, typename Cleanup>
+  inline auto make_pinned_block (
+	  typename Traits::slot_id_t id,
+	  std::byte *data,
+	  std::size_t size,
+	  lock_mode mode,
+	  Cleanup &&cleanup)
+  -> pinned_block_if_t<Traits>
   {
-    public:
-      using slot_id_t = typename Traits::slot_id_t;
+    using data_t = pinned_block_data<Traits>;
+    using fn_t   = std::function<void (data_t &)>;
 
-      pinned_block (slot_id_t id,
-		    std::byte *data,
-		    std::size_t data_size,
-		    lock_mode mode,
-		    Cleanup &&fn) noexcept
-	: m_id (id)
-	, m_data (data)
-	, m_data_size (data_size)
-	, m_mode (mode)
-	, m_guard (std::forward<Cleanup> (fn))
-      {}
+    data_t res { id, data, size, mode };
+    fn_t fn (std::forward<Cleanup> (cleanup));
 
-      pinned_block (slot_id_t id, std::byte *data, std::size_t size,
-		    lock_mode mode)
-      noexcept
-	: m_id (id)
-	, m_data (data)
-	, m_data_size (size)
-	, m_mode (mode)
-	, m_guard (noop_t{}) // no-op destructor
-      {}
-
-      // movable but not copyable
-      pinned_block (pinned_block &&other) noexcept
-	: m_id (other.m_id)
-	, m_data (other.m_data)
-	, m_data_size (other.m_data_size)
-	, m_mode (other.m_mode)
-	, m_guard (std::move (other.m_guard))
-      {
-        other.invalidate();
-      }
-
-      pinned_block &operator= (pinned_block &&other) noexcept
-      {
-	if (this != &other)
-	  {
-            m_guard.release();
-	    m_id    = other.m_id;
-	    m_data  = other.m_data;
-	    m_data_size = other.m_data_size;
-	    m_mode  = other.m_mode;
-	    m_guard = std::move (other.m_guard);
-            other.invalidate();
-	  }
-	return *this;
-      }
-
-      pinned_block (const pinned_block &) = delete;
-      pinned_block &operator= (const pinned_block &) = delete;
-
-      ~pinned_block() = default;
-
-      std::byte *data() const noexcept
-      {
-	return m_data;
-      }
-      slot_id_t id()   const noexcept
-      {
-	return m_id;
-      }
-
-      std::size_t data_size() const noexcept
-      {
-	return m_data_size;
-      }
-
-    private:
-      struct noop_t {
-          void operator()() const noexcept {}
-      };
-      
-      void invalidate() noexcept {
-          m_id = slot_id_t{};
-          m_data = nullptr;
-          m_data_size = 0;
-          m_mode = lock_mode::none;
-      }
-
-      slot_id_t        m_id {};
-      std::byte        *m_data {};
-      std::size_t       m_data_size {};
-      lock_mode         m_mode = lock_mode::none;
-
-      scope_exit<std::decay_t<Cleanup>> m_guard;  // always exists (may be no-op)
-  };
+    return pinned_block_if_t<Traits> (std::move (res), std::move (fn));
+  }
 
   // =====================================================================
   // algo's graph structs
@@ -163,7 +103,8 @@ namespace cubhnsw
     public:
       using traits      = Traits;
       using slot_id_t  = typename traits::slot_id_t;
-      using pinned_t   = pinned_block<Traits, std::function<void()>>;
+
+      using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
 
       storage (const BTID &giid, const hnsw_build_params &build_params)
 	: m_giid (giid), m_build_params (build_params)

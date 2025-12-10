@@ -211,13 +211,13 @@ namespace cubhnsw
       using key_id_t    = OID;
       using slot_id_t  = typename traits::slot_id_t;
 
-      using pinned_t   = pinned_block<Traits, std::function<void()>>;
       using storage_t   = storage<traits>;
 
       using root_type   = root_t<traits>;
       using node_type   = node_t<traits>;
       using neighbors_ref_type = neighbors_ref_t<traits>;
 
+      using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
       struct context_t
       {
 	top_candidates_t<Traits> m_top_candidates;
@@ -274,7 +274,7 @@ namespace cubhnsw
       inline distance_t compute_distance_from_query_ (const float *query, const slot_id_t &slot) const
       {
 	pinned_t vec_blk = m_storage->get_vector_by_slot_id (slot, lock_mode::shared);
-	return compute_distance_ (query, reinterpret_cast<const float *> (vec_blk.data()));
+	return compute_distance_ (query, reinterpret_cast<const float *> (vec_blk->data));
       }
 
       inline distance_t compute_distance_between (const slot_id_t &a, const slot_id_t &b) const
@@ -282,7 +282,7 @@ namespace cubhnsw
 	auto get_vec = [&] (const slot_id_t &slot) -> const float *
 	{
 	  pinned_t vec_blk = m_storage->get_vector_by_slot_id (slot, lock_mode::shared);
-	  return reinterpret_cast<const float *> (vec_blk.data());
+	  return reinterpret_cast<const float *> (vec_blk->data);
 	};
 
 	return compute_distance_ (get_vec (a), get_vec (b));
@@ -290,7 +290,7 @@ namespace cubhnsw
 
       inline neighbors_ref_type get_neighbors (const pinned_t &node_blk, const level_t level)
       {
-	node_type node = node_type (node_blk.data());
+	node_type node = node_type (node_blk->data);
 	neighbors_ref_type neighbors = neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level));
 
 	HNSW_ALGO_PRINT ("[node] node: %s\n", node.dump().c_str());
@@ -371,7 +371,7 @@ namespace cubhnsw
     slot_id_t entry_slot, new_slot;
 
     pinned_t root_block = m_storage->get_root (lock_mode::exclusive);
-    root_type root_node = root_type (root_block.data());
+    root_type root_node = root_type (root_block->data);
     {
       curr_max_level = root_node.get_level(); // get max_level from root page
       new_target_level = choose_random_level_ (m_context.m_level_generator, m_inverse_log_connectivity);
@@ -489,7 +489,7 @@ namespace cubhnsw
     level_t root_level;
     {
       pinned_t root_block = m_storage->get_root (lock_mode::shared);
-      root_type root_node = root_type (root_block.data());
+      root_type root_node = root_type (root_block->data);
       entry_slot = root_node.get_entry();
       root_level = root_node.get_level();
     }
@@ -514,7 +514,7 @@ namespace cubhnsw
     for (std::size_t i = 0; i < top.size (); ++i)
       {
 	pinned_t node_blk = m_storage->get_node_by_slot_id (result.results[i].slot, lock_mode::shared);
-	result.oids.push_back (node_type (node_blk.data()).get_key());
+	result.oids.push_back (node_type (node_blk->data).get_key());
       }
     return result;
   }
@@ -644,7 +644,7 @@ namespace cubhnsw
     for (auto n : new_neighbors)
       {
 	slot_id_t close_slot = n.slot;
-	slot_id_t new_slot = new_node_blk.id();
+	slot_id_t new_slot = new_node_blk->id;
 	if (close_slot == new_slot)
 	  {
 	    continue;

@@ -72,7 +72,7 @@ namespace cubhnsw
       using block_id_t = disk_traits_t::block_id_t;
       using slot_id_t = disk_traits_t::slot_id_t;
 
-      using page_handle = scoped_resource<PAGE_PTR, std::function<void (void)>>;
+      using page_handle = scoped_holder<PAGE_PTR, std::function<void (PAGE_PTR)>>;
 
       disk_storage (const BTID &giid, const hnsw_build_params &params);
       virtual ~disk_storage();
@@ -98,6 +98,9 @@ namespace cubhnsw
       slot_id_t add_vector (const OID &key, const float *vector);
 
       // page alloc helpers
+      static int initialize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
+
+      int create_continous_file (THREAD_ENTRY *thread_p, VFID &vfid, VPID &vpid);
       PAGE_PTR alloc_new_page (VFID &vfid, VPID &vpid);
       page_handle get_page_to_insert (VFID &vfid, VPID &last_vpid, std::size_t bytes);
 

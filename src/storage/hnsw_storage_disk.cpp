@@ -9,58 +9,6 @@
 
 namespace cubhnsw
 {
-  static int
-  hnsw_initalize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
-  {
-    pgbuf_set_page_ptype (thread_p, page, PAGE_HNSW);
-    spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
-    pgbuf_set_dirty (thread_p, page, DONT_FREE);
-
-    return NO_ERROR;
-  }
-
-  static int
-  create_continous_file (THREAD_ENTRY *thread_p, VFID &vfid, VPID &vpid)
-  {
-    int error_code = NO_ERROR;
-    FILE_DESCRIPTORS des;
-
-    memset (&des, 0, sizeof (des));
-
-    error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, (VFID *) &vfid);
-    if (error_code != NO_ERROR)
-      {
-	return error_code;
-      }
-
-    log_sysop_start (thread_p);
-    error_code = file_alloc_sticky_first_page (thread_p, &vfid, hnsw_initalize_new_page, NULL, &vpid, NULL);
-    if (error_code != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	log_sysop_abort (thread_p);
-	return error_code;
-      }
-    log_sysop_commit (thread_p);
-
-#if 0  // TODO: I think we don't need TDE for vector index files
-    error_code = heap_get_class_tde_algorithm (thread_p, &btid->topclass_oid, &tde_algo);
-    if (error_code != NO_ERROR)
-      {
-	VFID_SET_NULL (&btid->ovfid);
-	return error_code;
-      }
-    error_code = file_apply_tde_algorithm (thread_p, &btid->ovfid, tde_algo);
-    if (error_code != NO_ERROR)
-      {
-	VFID_SET_NULL (&btid->ovfid);
-	return error_code;
-      }
-#endif
-
-    return error_code;
-  }
-
   disk_storage::disk_storage (
 	  const BTID &giid,
 	  const hnsw_build_params &build_params)
@@ -146,13 +94,10 @@ namespace cubhnsw
 	  }
       }
 
-    return page_handle (
-		   page_ptr,
-		   [this, page_ptr]()
+    return page_handle (page_ptr, [this] (PAGE_PTR page_ptr) noexcept
     {
       pgbuf_set_dirty (m_thread_p, page_ptr, FREE);
-    }
-	   );
+    });
   }
 
   PAGE_PTR
@@ -160,7 +105,7 @@ namespace cubhnsw
   {
     PAGE_PTR page_ptr = NULL;
 
-    (void) file_alloc (m_thread_p, &vfid, hnsw_initalize_new_page, NULL, &vpid, &page_ptr);
+    (void) file_alloc (m_thread_p, &vfid, initialize_new_page, NULL, &vpid, &page_ptr);
     assert (page_ptr != NULL);
 
     if (page_ptr == NULL)
@@ -240,9 +185,11 @@ namespace cubhnsw
 
     OID oid = { root_vpid.pageid, 1, root_vpid.volid };
 
-    auto scoped_guard = [this, root_page_ptr, mode]()
+    return make_pinned_block<disk_traits_t> (oid, (std::byte *) root_page_ptr + slotp->offset_to_record,
+	   slotp->record_length, mode,
+	   [this, root_page_ptr] (auto& blk) noexcept
     {
-      if (mode == lock_mode::exclusive)
+      if (blk.mode == lock_mode::exclusive)
 	{
 	  pgbuf_set_dirty (m_thread_p, reinterpret_cast<PAGE_PTR> (root_page_ptr), FREE);
 	}
@@ -250,8 +197,9 @@ namespace cubhnsw
 	{
 	  pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (root_page_ptr));
 	}
-    };
-    return disk_storage::pinned_t {oid, (std::byte *) root_page_ptr + slotp->offset_to_record, slotp->record_length, mode, scoped_guard};
+    }
+
+					    );
   }
 
   disk_storage::pinned_t
@@ -271,9 +219,11 @@ namespace cubhnsw
     SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
     assert (slotp != nullptr);
 
-    auto scoped_guard = [this, node_page_ptr, mode]()
+    return make_pinned_block<disk_traits_t> (id, (std::byte *) node_page_ptr + slotp->offset_to_record,
+	   slotp->record_length, mode,
+	   [this, node_page_ptr] (auto& blk) noexcept
     {
-      if (mode == lock_mode::exclusive)
+      if (blk.mode == lock_mode::exclusive)
 	{
 	  pgbuf_set_dirty (m_thread_p, reinterpret_cast<PAGE_PTR> (node_page_ptr), FREE);
 	}
@@ -281,8 +231,10 @@ namespace cubhnsw
 	{
 	  pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (node_page_ptr));
 	}
-    };
-    return disk_storage::pinned_t {id, (std::byte *) node_page_ptr + slotp->offset_to_record, slotp->record_length, mode, scoped_guard};
+    }
+
+					    );
+
   }
 
   disk_storage::pinned_t
@@ -290,7 +242,7 @@ namespace cubhnsw
   {
     // get node by slot id
     pinned_t node_blk = get_node_by_slot_id (slot, lock_mode::shared);
-    node_t<disk_traits_t> node = node_t<disk_traits_t> (node_blk.data());
+    node_t<disk_traits_t> node = node_t<disk_traits_t> (node_blk.get().data);
     slot_id_t vec_slot = node.get_vec_slot();
 
     // =====================================================================
@@ -306,12 +258,15 @@ namespace cubhnsw
     SPAGE_SLOT *slotp = spage_get_slot (vec_page_ptr, vec_slot.slotid);
     assert (slotp != nullptr);
 
-    auto scoped_guard = [this, vec_page_ptr]()
+    return make_pinned_block<disk_traits_t> (vec_slot, (std::byte *) vec_page_ptr + slotp->offset_to_record,
+	   slotp->record_length, mode,
+	   [this, vec_page_ptr] (auto& blk) noexcept
     {
+      assert (blk.mode == lock_mode::shared);
       pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (vec_page_ptr));
-    };
-    return disk_storage::pinned_t (vec_slot, (std::byte *) vec_page_ptr + slotp->offset_to_record, slotp->record_length,
-				   mode, scoped_guard);
+    }
+
+					    );
   }
 
   // promote lockmode from shared to exclusive
@@ -326,5 +281,57 @@ namespace cubhnsw
   disk_storage::set_empty (bool is_empty) noexcept
   {
     m_is_empty = is_empty;
+  }
+
+  int
+  disk_storage::initialize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
+  {
+    pgbuf_set_page_ptype (thread_p, page, PAGE_HNSW);
+    spage_initialize (thread_p, page, UNANCHORED_KEEP_SEQUENCE, HNSW_MAX_ALIGN, DONT_SAFEGUARD_RVSPACE);
+    pgbuf_set_dirty (thread_p, page, DONT_FREE);
+
+    return NO_ERROR;
+  }
+
+  int
+  disk_storage::create_continous_file (THREAD_ENTRY *thread_p, VFID &vfid, VPID &vpid)
+  {
+    int error_code = NO_ERROR;
+    FILE_DESCRIPTORS des;
+
+    memset (&des, 0, sizeof (des));
+
+    error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, (VFID *) &vfid);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    log_sysop_start (thread_p);
+    error_code = file_alloc_sticky_first_page (thread_p, &vfid, initialize_new_page, NULL, &vpid, NULL);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	log_sysop_abort (thread_p);
+	return error_code;
+      }
+    log_sysop_commit (thread_p);
+
+#if 0  // TODO: I think we don't need TDE for vector index files
+    error_code = heap_get_class_tde_algorithm (thread_p, &btid->topclass_oid, &tde_algo);
+    if (error_code != NO_ERROR)
+      {
+	VFID_SET_NULL (&btid->ovfid);
+	return error_code;
+      }
+    error_code = file_apply_tde_algorithm (thread_p, &btid->ovfid, tde_algo);
+    if (error_code != NO_ERROR)
+      {
+	VFID_SET_NULL (&btid->ovfid);
+	return error_code;
+      }
+#endif
+
+    return error_code;
   }
 }
