@@ -10953,8 +10953,7 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
-			    bool attr_invisible = $3;
-			    node->info.attr_def.attr_invisible = attr_invisible;
+			    node->info.attr_def.attr_invisible = $3;
 
                             CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
