@@ -551,6 +551,7 @@ extern "C"
   extern bool pt_has_inst_num (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern void pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order);
@@ -718,6 +719,7 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+  extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
 #endif
