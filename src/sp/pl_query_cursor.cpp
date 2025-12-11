@@ -184,7 +184,7 @@ namespace cubpl
 
 		or_init (&buf, ptr, length);
 
-		if (pr_type->data_readval (&buf, value, domain, -1, false /* Don't copy */, NULL, 0) != NO_ERROR)
+		if (pr_type->data_readval (&buf, value, domain, -1, true, NULL, 0) != NO_ERROR)
 		  {
 		    scan_code = S_ERROR;
 		    break;
