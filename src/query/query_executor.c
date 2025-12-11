@@ -1197,7 +1197,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	}
 
       if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
-	  && xasl->proc.buildlist.a_eval_list->is_sorted)
+	  && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 	{
 	  buildlist = &xasl->proc.buildlist;
 	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
@@ -9273,7 +9273,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				  /* Evaluate analytic functions for tuples that don't satisfy instnum_pred yet.
 				   * For instnum_pred like "inst_num() > 10 AND inst_num() < 100", when inst_num() <= 10,
 				   * XASL_INSTNUM_FLAG_SCAN_CHECK flag is not set, but analytic functions must still be evaluated
-				   * to get correct results. Since is_sorted is true, we don't read all tuples,
+				   * to get correct results. Since analytic functions are evaluable in processing, we don't read all tuples,
 				   * so analytic functions must be evaluated at this point. */
 				  if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK))
 				    {
@@ -9281,9 +9281,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      ANALYTIC_EVAL_TYPE *a_eval_list;
 				      ANALYTIC_TYPE *a_func_list;
 
-				      // NOTE: It's not necessary to iterate all a_eval_list to check is_sorted.
 				      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
-					  && xasl->proc.buildlist.a_eval_list->is_sorted)
+					  && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 					{
 					  buildlist = &xasl->proc.buildlist;
 					  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list;
@@ -15258,8 +15257,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
 
-	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list && a_eval_list->is_sorted;
-	       a_eval_list = a_eval_list->next)
+	  for (a_eval_list = xasl->proc.buildlist.a_eval_list;
+	       a_eval_list && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING); a_eval_list = a_eval_list->next)
 	    {
 	      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 		{
@@ -20887,7 +20886,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (analytic_eval->is_sorted)
+    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
       {
 	analytic_state.interm_file = list_id;
       }
@@ -20977,7 +20976,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (analytic_eval->is_sorted)
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
     {
       for (i = 0; i < analytic_state.func_count; i++)
 	{

@@ -319,7 +319,7 @@ struct buildlist_proc_node
   QFILE_LIST_ID *push_list_id;	/* file descriptor for push list */
   OUTPTR_LIST *g_outptr_list;	/* group_by output ptr list */
   REGU_VARIABLE_LIST g_regu_list;	/* group_by regu. list */
-  REGU_VARIABLE_LIST a_scan_regu_list;
+  REGU_VARIABLE_LIST a_scan_regu_list;	/* analytic regulist during scan */
   VAL_LIST *g_val_list;		/* group_by value list */
   PRED_EXPR *g_having_pred;	/* having predicate */
   PRED_EXPR *g_grbynum_pred;	/* groupby_num() predicate */
@@ -516,6 +516,7 @@ struct cte_proc_node
 #define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
+#define XASL_ANALYTIC_EVAL_IN_PROCESSING (0x1 << 20)	/* analytic evaluable in processing */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)

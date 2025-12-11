@@ -639,6 +639,8 @@ static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parse
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
 
+static int pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
+
 static void
 pt_init_xasl_supp_info ()
 {
@@ -16114,7 +16116,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   BUILDLIST_PROC_NODE *buildlist;
   int i;
   REGU_VARIABLE_LIST regu_var_p;
-  bool is_sorted = false;
 
   assert (parser != NULL);
 
@@ -16636,61 +16637,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* optimize analytic function list */
 	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
 
-	  for (eval = xasl->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
+	  if (pt_set_analytic_eval_in_processing (xasl, xasl->proc.buildlist.a_eval_list) != NO_ERROR)
 	    {
-	      eval->is_sorted = ((xasl->instnum_pred || xasl->instnum_val) && eval->sort_list == NULL) ? true : false;
-
-	      for (a_func_list = eval->head; a_func_list && eval->is_sorted; a_func_list = a_func_list->next)
-		{
-		  switch (a_func_list->function)
-		    {
-		    case PT_FIRST_VALUE:
-		      if (a_func_list->ignore_nulls)
-			{
-			  eval->is_sorted = false;
-			  break;
-			}
-
-		    case PT_ROW_NUMBER:
-		    case PT_RANK:
-		    case PT_DENSE_RANK:
-		      break;
-
-		    default:
-		      eval->is_sorted = false;
-		      break;
-		    }
-		}
-
-	      is_sorted = eval->is_sorted;
-	    }
-
-	  if (is_sorted)
-	    {
-	      bool has_click_counter = false;
-
-	      assert (xasl->instnum_val_offset == NULL);
-	      if (xasl->instnum_val != NULL)
-		{
-		  regu_alloc (xasl->instnum_val_offset);
-		  if (xasl->instnum_val_offset == NULL)
-		    {
-		      goto analytic_exit_on_error;
-		    }
-		  db_make_bigint (xasl->instnum_val_offset, 0);
-		}
-
-	      parser_walk_tree (parser, select_node->info.query.q.select.list, mq_has_click_counter, &has_click_counter,
-				NULL, NULL);
-
-	      if (has_click_counter)
-		{
-		  for (i = 0, regu_var_p = buildlist->a_outptr_list_ex->valptrp;
-		       i < buildlist->a_outptr_list_ex->valptr_cnt && regu_var_p; i++, regu_var_p = regu_var_p->next)
-		    {
-		      REGU_VARIABLE_SET_FLAG (&regu_var_p->value, REGU_VARIABLE_ANALYTIC_WINDOW);
-		    }
-		}
+	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto analytic_exit_on_error;
 	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
@@ -16988,7 +16938,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       if ((xasl->instnum_pred != NULL || xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
-	  && pt_has_analytic (parser, select_node) && !is_sorted)
+	  && pt_has_analytic (parser, select_node) && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 	{
 	  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
 	   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
@@ -28292,4 +28242,61 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
     }
 
   return new_node;
+}
+
+
+static int
+pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list)
+{
+  ANALYTIC_EVAL_TYPE *eval;
+  ANALYTIC_TYPE *a_func_list;
+  bool is_evaluatable = false;
+
+  if (!xasl->instnum_pred && !xasl->instnum_val)
+    {
+      return NO_ERROR;
+    }
+
+  for (eval = eval_list; eval != NULL; eval = eval->next)
+    {
+      is_evaluatable = !(eval->sort_list) ? true : false;
+
+      for (a_func_list = eval->head; a_func_list && is_evaluatable; a_func_list = a_func_list->next)
+	{
+	  switch (a_func_list->function)
+	    {
+	    case PT_FIRST_VALUE:
+	      if (a_func_list->ignore_nulls)
+		{
+		  is_evaluatable = false;
+		  break;
+		}
+
+	    case PT_ROW_NUMBER:
+	    case PT_RANK:
+	    case PT_DENSE_RANK:
+	      break;
+
+	    default:
+	      is_evaluatable = false;
+	      break;
+	    }
+	}
+    }
+
+  if (is_evaluatable)
+    {
+      assert (xasl->instnum_val_offset == NULL);
+
+      XASL_SET_FLAG (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING);
+
+      regu_alloc (xasl->instnum_val_offset);
+      if (xasl->instnum_val_offset == NULL)
+	{
+	  return ER_FAILED;
+	}
+      db_make_bigint (xasl->instnum_val_offset, 0);
+    }
+
+  return NO_ERROR;
 }

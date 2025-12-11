@@ -6383,8 +6383,6 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
 	}
     }
 
-  ptr = or_unpack_int (ptr, &tmp_i);
-  analytic_eval->is_sorted = (bool) tmp_i;
 
 
   return ptr;

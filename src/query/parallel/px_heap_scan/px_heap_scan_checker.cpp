@@ -578,7 +578,7 @@ namespace parallel_heap_scan
 	  {
 	    for (ANALYTIC_EVAL_TYPE *eval = xasl->proc.buildlist.a_eval_list; eval; eval = eval->next)
 	      {
-		if (eval->is_sorted)
+		if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 		  {
 		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
 		    break;
