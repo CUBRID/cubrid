@@ -359,7 +359,7 @@ STATIC_INLINE void dwb_init_slot (DWB_SLOT *slot) __attribute__ ((ALWAYS_INLINE)
 STATIC_INLINE int dwb_acquire_next_slot (THREAD_ENTRY *thread_p, bool can_wait, DWB_SLOT **p_dwb_slot)
 __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot,
-				      FILEIO_PAGE *io_page_p, bool metadata) __attribute__ ((ALWAYS_INLINE));
+				      FILEIO_PAGE *io_page_p, bool ensure_metadata) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_wait_for_strucure_modification (THREAD_ENTRY *thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void dwb_signal_structure_modificated (THREAD_ENTRY *thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_starts_structure_modification (THREAD_ENTRY *thread_p, UINT64 *current_position_with_flags)
@@ -1441,7 +1441,7 @@ dwb_slots_hash_insert (THREAD_ENTRY *thread_p, VPID *vpid, DWB_SLOT *slot, bool 
 	}
 
       /* If a metadata sync was requested, the metadata must be synced even if the slot is replaced */
-      slot->metadata = slot->metadata || slots_hash_entry->slot->metadata;
+      slot->ensure_metadata = slot->ensure_metadata || slots_hash_entry->slot->ensure_metadata;
 
       dwb_log ("Replace hash key (%d, %d), the new LSA=(%lld,%d), the old LSA = (%lld,%d)",
 	       vpid->volid, vpid->pageid, slot->lsa.pageid, slot->lsa.offset,
@@ -2013,7 +2013,7 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
   int count_writes = 0, num_pages_to_sync;
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   bool can_flush_volume = false;
-  bool metadata;
+  bool ensure_metadata;
 
   assert (block != NULL && p_dwb_ordered_slots != NULL);
 
@@ -2041,7 +2041,7 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
 
       assert (VPID_ISNULL (&p_dwb_ordered_slots[i + 1].vpid) || VPID_LT (vpid, &p_dwb_ordered_slots[i + 1].vpid));
 
-      metadata = p_dwb_ordered_slots[i].metadata;
+      ensure_metadata = p_dwb_ordered_slots[i].ensure_metadata;
       if (last_written_volid != vpid->volid)
 	{
 	  /* Get the volume descriptor. */
@@ -2064,13 +2064,13 @@ dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_order
 	  last_written_volid = vpid->volid;
 	  last_written_vol_fd = vol_fd;
 
-	  current_flush_volume_info = dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd, metadata);
+	  current_flush_volume_info = dwb_add_volume_to_block_flush_area (thread_p, block, last_written_vol_fd, ensure_metadata);
 	}
       else
 	{
 	  assert (current_flush_volume_info != NULL);
 
-	  current_flush_volume_info->metadata = current_flush_volume_info->metadata || metadata;
+	  current_flush_volume_info->metadata = current_flush_volume_info->metadata || ensure_metadata;
 	}
 
       assert (last_written_vol_fd != NULL_VOLDES);
@@ -2247,7 +2247,7 @@ dwb_flush_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, bool file_sync_helper
 
 	  fileio_initialize_res (thread_p, s1->io_page, IO_PAGESIZE);
 
-	  s2->metadata = s1->metadata || s2->metadata;
+	  s2->ensure_metadata = s1->ensure_metadata || s2->ensure_metadata;
 	}
 
       /* Check for WAL protocol. */
@@ -2604,10 +2604,10 @@ start:
  * thread_p(in): Thread entry
  * dwb_slot(in/out): DWB slot that contains the location where the data must be set.
  * io_page_p(in): The data.
- * metadata(in): Include metadata when syncing.
+ * ensure_metadata(in): Include metadata when syncing.
  */
 STATIC_INLINE void
-dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_page_p, bool metadata)
+dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_page_p, bool ensure_metadata)
 {
   assert (dwb_slot != NULL && io_page_p != NULL);
 
@@ -2627,7 +2627,7 @@ dwb_set_slot_data (THREAD_ENTRY *thread_p, DWB_SLOT *dwb_slot, FILEIO_PAGE *io_p
   LSA_COPY (&dwb_slot->lsa, &io_page_p->prv.lsa);
   VPID_SET (&dwb_slot->vpid, io_page_p->prv.volid, io_page_p->prv.pageid);
 
-  dwb_slot->metadata = metadata;
+  dwb_slot->ensure_metadata = ensure_metadata;
 }
 
 /*
@@ -2677,11 +2677,11 @@ dwb_get_next_block_for_flush (THREAD_ENTRY *thread_p, unsigned int *block_no)
  * thread_p(in): The thread entry.
  * io_page_p(in): The data that will be set on next slot.
  * can_wait(in): True, if waiting is allowed.
- * metadata(in): Include metadata when syncing.
+ * ensure_metadata(in): Include metadata when syncing.
  * p_dwb_slot(out): Pointer to the next free DWB slot.
  */
 int
-dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool can_wait, bool metadata,
+dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool can_wait, bool ensure_metadata,
 			   DWB_SLOT **p_dwb_slot)
 {
   int error_code;
@@ -2703,7 +2703,7 @@ dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool 
     }
 
   /* Set data on slot. */
-  dwb_set_slot_data (thread_p, *p_dwb_slot, io_page_p, metadata);
+  dwb_set_slot_data (thread_p, *p_dwb_slot, io_page_p, ensure_metadata);
 
   return NO_ERROR;
 }
@@ -2715,13 +2715,13 @@ dwb_set_data_on_next_slot (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, bool 
  * thread_p (in): The thread entry.
  * io_page_p(in): In-memory address where the current content of page resides.
  * vpid(in): Page identifier.
- * metadata(in): Include metadata when syncing.
+ * ensure_metadata(in): Include metadata when syncing.
  * p_dwb_slot(in/out): DWB slot where the page content must be added.
  *
  *  Note: thread may flush the block, if flush thread is not available or we are in stand alone.
  */
 int
-dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, bool metadata, DWB_SLOT **p_dwb_slot)
+dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, bool ensure_metadata, DWB_SLOT **p_dwb_slot)
 {
   unsigned int count_wb_pages;
   int error_code = NO_ERROR;
@@ -2739,7 +2739,7 @@ dwb_add_page (THREAD_ENTRY *thread_p, FILEIO_PAGE *io_page_p, VPID *vpid, bool m
 
   if (*p_dwb_slot == NULL)
     {
-      error_code = dwb_set_data_on_next_slot (thread_p, io_page_p, true, metadata, p_dwb_slot);
+      error_code = dwb_set_data_on_next_slot (thread_p, io_page_p, true, ensure_metadata, p_dwb_slot);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;

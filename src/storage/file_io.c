@@ -1829,12 +1829,12 @@ fileio_unlock (const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TYPE lockf_type
  *   vdes(in): Volume descriptor
  *   io_pgptr(in): Initialization content of all pages
  *   npages(in): Number of pages to initialize
- *   metadata(in): Include metadata when syncing.
+ *   ensure_metadata(in): Include metadata when syncing.
  *   kbytes_to_be_written_per_sec : size to add volume per sec
  */
 void *
 fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, DKNPAGES start_pageid,
-			 DKNPAGES npages, size_t page_size, bool metadata, int kbytes_to_be_written_per_sec)
+			 DKNPAGES npages, size_t page_size, bool ensure_metadata, int kbytes_to_be_written_per_sec)
 {
   PAGEID page_id;
   bool skip_flush = false;
@@ -1890,7 +1890,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_p
 	}
 #endif
 
-      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, io_page_p, page_id, page_size, metadata) == NULL)
+      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, io_page_p, page_id, page_size, ensure_metadata) == NULL)
 	{
 	  return NULL;
 	}
@@ -3989,12 +3989,12 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
  *   io_page_p(in): In-memory address where the current content of page resides
  *   page_id(in): Page identifier
  *   page_size(in): Page size
- *   metadata(in): Include metadata when syncing.
+ *   ensure_metadata(in): Include metadata when syncing.
  *
  */
 void *
 fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
-			    size_t page_size, bool metadata)
+			    size_t page_size, bool ensure_metadata)
 {
 #if !defined (CS_MODE)
   bool skip_flush = false;
@@ -4022,7 +4022,7 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
 	  io_page_p->prv.volid = vol_info_p->volid;
 	  io_page_p->prv.pageid = page_id;
 
-	  error_code = dwb_add_page (thread_p, io_page_p, &vpid, metadata, &p_dwb_slot);
+	  error_code = dwb_add_page (thread_p, io_page_p, &vpid, ensure_metadata, &p_dwb_slot);
 	  if (error_code != NO_ERROR)
 	    {
 	      return NULL;
@@ -4436,10 +4436,10 @@ fileio_fsync_pending (void)
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
- *   metadata(in): Include metadata when syncing.
+ *   ensure_metadata(in): Include metadata when syncing.
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool metadata)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool ensure_metadata)
 {
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
@@ -4460,7 +4460,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, boo
     }
 #endif
 
-  error = metadata ? fsync (vol_fd) : fdatasync (vol_fd);
+  error = ensure_metadata ? fsync (vol_fd) : fdatasync (vol_fd);
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
