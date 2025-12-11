@@ -251,7 +251,7 @@ sql_statement
     ;
 
 static_sql
-    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR)+
+    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR | SS_BIND_PARAM)+
     ;
 
 static_sql_begin

@@ -83,7 +83,6 @@ jobs:
                       at: .
                   - run:
                       name: Test
-                      shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
                         # Limit core files to 10mb
