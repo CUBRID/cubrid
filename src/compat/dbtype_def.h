@@ -594,6 +594,9 @@ extern "C"
 /* This constant defines the default scale of result of numeric division operation (CUBRID 11.4 and earlier) */
 #define DB_LEGACY_DEFAULT_NUMERIC_DIVISION_SCALE 9
 
+/* This constant defines the maximum VARCHAR precision when casting NUMERIC type to VARCHAR (254 digits) */
+#define DB_MAX_VARCHAR_PRECISION_FOR_NUMERIC_CAST 254
+
 /* These constants define the size of buffers within a DB_VALUE. */
 /*
  * DB_NUMERIC_BUF_SIZE
