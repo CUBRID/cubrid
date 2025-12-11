@@ -162,6 +162,8 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 
 int csql_Error_code = NO_ERROR;
 
+static bool csql_Prompt_user_defined = false;
+static char csql_Prompt_format[100];
 static char csql_Prompt[100];
 static char csql_Prompt_offline[101];	//  for clear "-Wformat-truncation=" warning
 
@@ -462,7 +464,100 @@ display_buffer (void)
 #endif /* !WINDOWS */
 }
 
+/*
+ * change_prompt () - to change the csql prompt displayed to the user. 
+ *                    The prompt's appearance is customized using a set of user-defined characters specified in the environment variable CUBRID_CSQL_PROMPT.
+ *      
+ *   return: none
+ *   fmt (in)     : the format string containing the user-defined characters, typically sourced from CUBRID_CSQL_PROMPT.
+ *   prompt (out) : the buffer where the newly generated, changed prompt string will be stored.
+ *   prompt_size (in) : the maximum length (size) of the prompt buffer.
+ *   
+ *   Note : user-defined characters (escape sequence)
+ *     - /u or /U : replaced with the user name
+ *     - /d or /D : replaced with the database name
+ *     - /h or /H : replaced with the host name
+ */
+static void
+change_prompt (char *fmt, char *prompt, int prompt_size)
+{
+  char *user_name = db_get_user_name ();
+  char *database_name = db_get_database_name ();
+  char *host_name = db_get_host_connected ();
+  char *pos = prompt;
+  int remain = prompt_size - 1;
+  int len;
 
+  if (prompt_size <= 0)
+    {
+      return;
+    }
+
+  for (int i = 0; fmt[i] != '\0' && remain > 0;)
+    {
+      if (fmt[i] == '\\' && fmt[i + 1] != '\0')
+	{
+	  char next = fmt[i + 1];
+	  const char *src = NULL;
+
+	  if (next == 'u' || next == 'U')
+	    {
+	      src = user_name;
+	    }
+	  else if (next == 'h' || next == 'H')
+	    {
+	      src = host_name;
+	    }
+	  else if (next == 'd' || next == 'D')
+	    {
+	      src = database_name;
+	    }
+
+	  if (src)
+	    {
+	      len = strlen (src);
+	      if (len > remain)
+		{
+		  len = remain;
+		}
+
+	      memcpy (pos, src, len);
+	      pos += len;
+	      remain -= len;
+	      i += 2;
+	    }
+	  else
+	    {
+	      if (remain >= 2)
+		{
+		  pos[0] = fmt[i];
+		  pos[1] = fmt[i + 1];
+		  pos += 2;
+		  remain -= 2;
+		}
+	      else
+		{
+		  *pos++ = fmt[i];
+		  remain--;
+		}
+	      i += 2;
+	    }
+	}
+      else
+	{
+	  *pos++ = fmt[i];
+	  remain--;
+	  i++;
+	}
+    }
+
+  if (remain >= 1)
+    {
+      *pos++ = ' ';
+    }
+
+  *pos = '\0';
+}
 
 /*
  * start_csql()
@@ -1502,6 +1597,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		{
 		  return DO_CMD_FAILURE;
 		}
+	    }
+
+	  if (csql_Prompt_user_defined)
+	    {
+	      change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
 	    }
 	}
       else
@@ -3132,6 +3232,14 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   if (env)
     {
       strncpy (csql_Formatter_cmd, env, PATH_MAX - 1);
+    }
+
+  env = getenv ("CUBRID_CSQL_PROMPT");
+  if (!csql_arg->sysadm && env && *env != '\0')
+    {
+      csql_Prompt_user_defined = true;
+      strcpy (csql_Prompt_format, env);
+      change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
   if (csql_arg->nopager)
