@@ -19,6 +19,9 @@ set @a = (select vec from random_xs_20_angular_train limit 1); \
 select /*+ recompile no_parallel_heap_scan */ id, vec <c> @a from random_xs_20_angular_train order by vec <c> @a limit 5; "
 
 # loaddb test
+cubrid loaddb -h nytimes-256-angular.hdf5 -C -u dba demodb
+cubrid loaddb -s nytimes_256_angular_schema -d nytimes_256_angular_object -C -u dba demodb -v
+
 cubrid loaddb -s random_xs_20_angular_schema -d random_xs_20_angular_object -C -u dba demodb -v
 
 # memory leak test

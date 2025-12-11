@@ -52,34 +52,25 @@ namespace cubhnsw
 
   inline float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
   {
-    // dot(vec1, vec2)
-    const float ip = faiss::fvec_inner_product (vec1, vec2, dim);
-
-    // squared norms
-    const float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
-    const float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
+    float ip = faiss::fvec_inner_product (vec1, vec2, dim);
+    float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
+    float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
 
     // Handle zero vectors to avoid division by zero
     if (norm1 == 0.0f || norm2 == 0.0f)
       {
 	// NaN distance
 	return std::numeric_limits<float>::quiet_NaN();
-	// return 1.0f;
       }
 
-    const float denom = sqrtf (norm1 * norm2);
+    float similarity = ip / (sqrtf (norm1) * sqrtf (norm2));
 
-    float similarity = ip / denom;
+    // Clamp the similarity value to [-1, 1] to handle floating-point errors
     similarity = std::max (-1.0f, std::min (1.0f, similarity));
 
     // cosine distance = 1 - cosine similarity
     float distance = 1.0f - similarity;
-
-    // clamp again to [0,2] to avoid FP drift
-    distance = std::max (0.0f, std::min (2.0f, distance));
-
     assert (distance >= 0.0f && distance <= 2.0f);
-
     return distance;
   }
 

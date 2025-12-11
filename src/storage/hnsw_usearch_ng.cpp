@@ -204,6 +204,8 @@ hnsw_usearch_ng::prepare_to_add (int n_vectors, const OID * oid,
 int
 hnsw_usearch_ng::add (int n_vectors, const OID * oid, const float *vector)
 {
+  #pragma omp parallel
+  #pragma omp for
   for (int i = 0; i < n_vectors; ++i)
     {
       if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
