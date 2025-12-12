@@ -873,62 +873,6 @@ cas_get_client_version (void)
   return req_info.client_version;
 }
 
-// void
-// set_db_connection_info (void)
-// {
-//   if (as_info->fixed_shard_user)
-//     {
-//       strncpy (as_info->database_user, shm_appl->shard_conn_info[shm_shard_id].db_user, SRV_CON_DBUSER_SIZE - 1);
-//       as_info->database_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
-
-//       strncpy (as_info->database_passwd, shm_appl->shard_conn_info[shm_shard_id].db_password,
-//             SRV_CON_DBPASSWD_SIZE - 1);
-//       as_info->database_passwd[SRV_CON_DBUSER_SIZE - 1] = '\0';
-//     }
-
-//   strncpy (cas_db_user, as_info->database_user, SRV_CON_DBUSER_SIZE - 1);
-//   cas_db_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
-
-//   strncpy (cas_db_passwd, as_info->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
-//   cas_db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
-
-//   cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s", cas_db_name, cas_db_user);
-// }
-
-// void
-// clear_db_connection_info (void)
-// {
-//   if (as_info->fixed_shard_user)
-//     {
-//       return;
-//     }
-
-//   cas_db_user[0] = '\0';
-//   cas_db_passwd[0] = '\0';
-//   as_info->database_user[0] = '\0';
-//   as_info->database_passwd[0] = '\0';
-// }
-
-// bool
-// need_database_reconnect (void)
-// {
-//   if (as_info->force_reconnect)
-//     {
-//       return true;
-//     }
-//   if (strcasecmp (cas_db_user, as_info->database_user))
-//     {
-//       return true;
-//     }
-
-//   if (strcmp (cas_db_passwd, as_info->database_passwd))
-//     {
-//       return true;
-//     }
-
-//   return false;
-// }
-
 int
 net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 {
