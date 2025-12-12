@@ -27,6 +27,7 @@
 #include "span.hpp"
 #include "object_primitive.h"
 
+#include <algorithm>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/eventfd.h>
@@ -168,7 +169,7 @@ namespace cubconn
     er_log_conn (ARG_FILE_LINE, "receiver->parse_packet: remains = %d.\n", m_received);
   }
 
-  result receiver::parse_size_in_tmpsize ()
+  result receiver::parse_size_in_tmpsize (size_t consumption, size_t limit)
   {
     cubbase::span<std::byte> mem, buffer;
     std::byte *ptr;
@@ -199,10 +200,16 @@ namespace cubconn
     m_bufptr = ptr;
     m_bufsize = SIZE_HEADER + m_size;
     NEXT_STATE (RecvInAllocated);
+
+    if (limit > 0 && consumption >= limit)
+      {
+	er_log_conn (ARG_FILE_LINE, "receiver->parse_size_in_tmpsize: budget exhausted.\n");
+	return result::BudgetExhausted;
+      }
     return result::Partial;
   }
 
-  result receiver::parse_size ()
+  result receiver::parse_size (size_t consumption, size_t limit)
   {
     cubbase::span<std::byte> mem, buffer;
     std::byte *ptr;
@@ -225,6 +232,12 @@ namespace cubconn
 	if (m_received >= SIZE_HEADER)
 	  {
 	    NEXT_STATE (ParseSize);
+
+	    if (limit > 0 && consumption >= limit)
+	      {
+		er_log_conn (ARG_FILE_LINE, "receiver->parse_size: budget exhausted.\n");
+		return result::BudgetExhausted;
+	      }
 	    return result::Partial;
 	  }
 
@@ -242,6 +255,12 @@ namespace cubconn
 	/* m_bufsize >= SIZE_HEADER + SIZE_HEADER_PADDING + sizeof (NET_HEADER) */
 
 	NEXT_STATE (Recv);
+
+	if (limit > 0 && consumption >= limit)
+	  {
+	    er_log_conn (ARG_FILE_LINE, "receiver->parse_size: budget exhausted.\n");
+	    return result::BudgetExhausted;
+	  }
 	return result::Partial;
       }
 
@@ -266,23 +285,43 @@ namespace cubconn
 	m_bufptr = ptr;
 	m_bufsize = SIZE_HEADER + m_size;
 	NEXT_STATE (RecvInAllocated);
+
+	if (limit > 0 && consumption >= limit)
+	  {
+	    er_log_conn (ARG_FILE_LINE, "receiver->parse_size: budget exhausted.\n");
+	    return result::BudgetExhausted;
+	  }
 	return result::Partial;
       }
 
     assert (m_bufsize - m_received != 0);
 
     /* m_bufsize >= SIZE_HEADER + m_size */
+
     NEXT_STATE (Recv);
+
+    if (limit > 0 && consumption >= limit)
+      {
+	er_log_conn (ARG_FILE_LINE, "receiver->parse_size: budget exhausted.\n");
+	return result::BudgetExhausted;
+      }
     return result::Partial;
   }
 
-  result receiver::receive_in_allocated (int fd, int &consumption)
+  result receiver::receive_in_allocated (int fd, size_t &consumption, size_t limit)
   {
     ssize_t bytes;
 
     /* receive data from socket */
     assert (m_bufsize - m_received > 0);
-    bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
+    if (limit > 0)
+      {
+	bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, std::min (m_bufsize - m_received, limit), 0);
+      }
+    else
+      {
+	bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
+      }
     if (bytes > 0)
       {
 	m_received += bytes;
@@ -313,13 +352,18 @@ namespace cubconn
 	    NEXT_STATE (Recv);
 	  }
 
+	if (limit > 0 && consumption >= limit)
+	  {
+	    er_log_conn (ARG_FILE_LINE, "receiver->receive_in_allocated: budget exhausted.\n");
+	    return result::BudgetExhausted;
+	  }
 	return result::Ok;
       }
 
     return this->to_result (bytes, errno);
   }
 
-  result receiver::receive_in_tmpsize (int fd, int &consumption)
+  result receiver::receive_in_tmpsize (int fd, size_t &consumption)
   {
     ssize_t bytes;
 
@@ -347,7 +391,7 @@ namespace cubconn
     return this->to_result (bytes, errno);
   }
 
-  result receiver::receive (int fd, int &consumption)
+  result receiver::receive (int fd, size_t &consumption, size_t limit)
   {
     ssize_t bytes;
 
@@ -355,7 +399,14 @@ namespace cubconn
 
     /* receive data from socket */
     assert (m_bufsize - m_received > 0);
-    bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
+    if (limit > 0)
+      {
+	bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, std::min (m_bufsize - m_received, limit), 0);
+      }
+    else
+      {
+	bytes = ::recv (fd, reinterpret_cast<char *> (m_bufptr) + m_received, m_bufsize - m_received, 0);
+      }
     if (bytes > 0)
       {
 	m_received += bytes;
@@ -376,10 +427,10 @@ namespace cubconn
     return this->to_result (bytes, errno);
   }
 
-  result receiver::drain (int fd, int limit)
+  result receiver::drain (int fd, size_t limit)
   {
     result status;
-    int consumption;
+    size_t consumption;
 
     consumption = 0;
     m_result.clear ();
@@ -388,7 +439,7 @@ namespace cubconn
 	switch (m_state)
 	  {
 	  case state::Recv:
-	    status = this->receive (fd, consumption);
+	    status = this->receive (fd, consumption, limit);
 	    break;
 
 	  case state::RecvSizeInTmp:
@@ -396,15 +447,15 @@ namespace cubconn
 	    break;
 
 	  case state::RecvInAllocated:
-	    status = this->receive_in_allocated (fd, consumption);
+	    status = this->receive_in_allocated (fd, consumption, limit);
 	    break;
 
 	  case state::ParseSize:
-	    status = this->parse_size ();
+	    status = this->parse_size (consumption, limit);
 	    break;
 
 	  case state::ParseSizeInTmp:
-	    status = this->parse_size_in_tmpsize ();
+	    status = this->parse_size_in_tmpsize (consumption, limit);
 	    break;
 
 	  default:
@@ -417,19 +468,14 @@ namespace cubconn
 	switch (status)
 	  {
 	  case result::Partial:
-	    if (limit > 0 && consumption >= limit)
-	      {
-		m_stats->add (statistics::context::RECV_BUDGET_HIT, 1);
-		return result::BudgetExhausted;
-	      }
-	    break;
-
 	  case result::Ok:
 	    break;
 
-	  case result::Pending:
-	    return m_result.size () > 0 ? result::Ok : result::Pending;
+	  case result::BudgetExhausted:
+	    m_stats->add (statistics::context::RECV_BUDGET_HIT, 1);
+	    [[fallthrough]];
 
+	  case result::Pending:
 	  case result::Error:
 	  case result::PeerReset:
 	    return status;
