@@ -115,7 +115,7 @@ class hnsw_usearch_ng final:public hnsw_index
 
 bool
 hnsw_usearch_ng_backend::
-is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const const
+is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const
 {
   switch (metric)
     {

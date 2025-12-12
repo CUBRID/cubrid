@@ -285,8 +285,7 @@ namespace cubhnsw
       inline distance_t compute_distance_from_query_ (const float *query, const slot_id_t &slot) const
       {
 	pinned_t vec_blk = m_storage->get_vector_by_slot_id (slot, lock_mode::shared);
-	node_type node = node_type (vec_blk->data);
-	return compute_distance_ (query, node.get_vector());
+	return compute_distance_ (query, reinterpret_cast<const float *> (vec_blk->data));
       }
 
       inline distance_t compute_distance_between (const slot_id_t &a, const slot_id_t &b) const
