@@ -349,7 +349,7 @@ STATIC_INLINE int dwb_block_create_ordered_slots (DWB_BLOCK *block, DWB_SLOT **p
     unsigned int *p_ordered_slots_length) __attribute__ ((ALWAYS_INLINE));
 static int dwb_compare_vol_fd (const void *v1, const void *v2);
 STATIC_INLINE FLUSH_VOLUME_INFO *dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block,
-    int vol_fd, bool metadata) __attribute__ ((ALWAYS_INLINE));
+    int vol_fd, bool ensure_metadata) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int dwb_write_block (THREAD_ENTRY *thread_p, DWB_BLOCK *block, DWB_SLOT *p_dwb_slots,
 				   unsigned int ordered_slots_length, bool file_sync_helper_can_flush,
 				   bool remove_from_hash) __attribute__ ((ALWAYS_INLINE));
@@ -1950,12 +1950,12 @@ dwb_compare_vol_fd (const void *v1, const void *v2)
  * thread_p (in): The thread entry.
  * block(in): The block where the flush area reside.
  * vol_fd(in): The volume to add.
- * metadata(in): Include metadata when syncing.
+ * ensure_metadata(in): Include metadata when syncing.
  *
  * Note: The volume is added if is not already in block flush area.
  */
 STATIC_INLINE FLUSH_VOLUME_INFO *
-dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block, int vol_fd, bool metadata)
+dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block, int vol_fd, bool ensure_metadata)
 {
   FLUSH_VOLUME_INFO *flush_new_volume_info;
 #if !defined (NDEBUG)
@@ -1974,7 +1974,7 @@ dwb_add_volume_to_block_flush_area (THREAD_ENTRY *thread_p, DWB_BLOCK *block, in
   flush_new_volume_info->vdes = vol_fd;
   flush_new_volume_info->num_pages = 0;
   flush_new_volume_info->all_pages_written = false;
-  flush_new_volume_info->metadata = metadata;
+  flush_new_volume_info->metadata = ensure_metadata;
   flush_new_volume_info->flushed_status = VOLUME_NOT_FLUSHED;
 
   /* There is only a writer and several (currently 2) readers on flush_new_volume_info array.
