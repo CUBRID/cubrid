@@ -492,7 +492,7 @@ prepare_call_info_dbval_clear (T_PREPARE_CALL_INFO * call_info)
 	{
 	  db_value_clear (args[0]);
 	  i++;
-        }
+	}
 
       for (; i < call_info->num_args; i++)
 	{
