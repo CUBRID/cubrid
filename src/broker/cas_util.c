@@ -170,7 +170,7 @@ get_schema_type_str (int schema_type)
 const char *
 get_tran_type_str (int tran_type)
 {
-  if (tran_type < 1 || tran_type > 2)
+  if (tran_type < CCI_TRAN_COMMIT || tran_type > CCI_TRAN_ROLLBACK)
     {
       return "";
     }
