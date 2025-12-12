@@ -29,6 +29,9 @@ namespace cubhnsw
 
   constexpr level_t MAX_LEVELS = 16;
 
+  // =====================================================================
+  // utility functions
+  // =====================================================================
   static std::string dump_oid (const OID &oid)
   {
     return std::string (std::to_string (oid.volid)) + "|" + std::string (std::to_string (oid.pageid)) + "|" + std::string (
@@ -151,10 +154,7 @@ namespace cubhnsw
 
       explicit node_t (byte_t *tape) noexcept : tape_ (tape)
       {
-#if !defined (NDEBUG)
-	//std::string dump_str = dump ();
-	//fprintf (stdout, "node_t: %s\n", dump_str.c_str());
-#endif
+	//
       }
       byte_t *tape() const noexcept
       {

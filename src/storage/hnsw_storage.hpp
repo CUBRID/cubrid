@@ -159,14 +159,8 @@ namespace cubhnsw
 
       inline std::size_t node_neighbors_offset_ (level_t level) const noexcept
       {
-	if (level == 0)
-	  {
-	    return 0;
-	  }
-	else
-	  {
-	    return node_neighbors_bytes_ (level - 1);
-	  }
+	assert (level >= 0);
+	return level > 0 ? node_neighbors_bytes_ (level - 1) : 0;
       }
 
       inline std::size_t node_bytes_ (level_t level) const noexcept
