@@ -32,65 +32,65 @@
 package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.protocol.PackableObject;
-import java.util.Set;
+import com.cubrid.jsp.protocol.UnPackableObject;
 
-public class CompileInfo implements PackableObject {
-    public int errCode = -1; // 0: no error, < 0: error
-    public int errLine = 0;
-    public int errColumn = 0;
-    public String errMsg = null;
+public final class Dependency implements PackableObject, UnPackableObject {
 
-    public String translated = null;
-    public String createStmt = null;
-    public String className = null;
-    public String signature = null;
+    // TODO: use server-defined enumeration
+    public static final int OBJ_TYPE_TABLE = 1;
+    public static final int OBJ_TYPE_VIEW = 2;
+    public static final int OBJ_TYPE_FUNCTION = 3;
+    public static final int OBJ_TYPE_PROCEDURE = 4;
+    public static final int OBJ_TYPE_SERIAL = 5;
+    public static final int OBJ_TYPE_TRIGGER = 6;
+    public static final int OBJ_TYPE_SYNONYM = 7;
 
-    public int compiledType = -1;
-    public byte[] compiledCode = null;
+    int objType;
+    String objUniqName;
 
-    private Set<Dependency> dependencies = null;
+    public Dependency(int objType, String objName, String spOwner) {
+        assert objName != null;
+        assert spOwner != null;
 
-    public CompileInfo(int code, int line, int column, String msg) {
-        assert code < 0;
-
-        errCode = code;
-        errLine = line;
-        errColumn = column;
-        errMsg = msg;
+        this.objType = objType;
+        if (objName.indexOf(".") < 0) {
+            this.objUniqName = spOwner + "." + objName;
+        } else {
+            this.objUniqName = objName;
+        }
     }
 
-    public CompileInfo(
-            String translated, String stmt, String name, String sig, Set<Dependency> dependencies) {
-        errCode = 0;
-        this.translated = translated;
-        this.createStmt = stmt;
-        this.className = name;
-        this.signature = sig;
-        this.dependencies = dependencies;
+    public Dependency(CUBRIDUnpacker unpacker) {
+        unpack(unpacker);
     }
 
     @Override
     public void pack(CUBRIDPacker packer) {
-        packer.packInt(errCode);
-        if (errCode < 0) {
-            packer.packInt(errLine);
-            packer.packInt(errColumn);
-            packer.packString(errMsg);
-        } else {
-            packer.packString(translated);
-            packer.packString(createStmt);
-            packer.packString(className);
-            packer.packString(signature);
+        packer.packInt(objType);
+        packer.packString(objUniqName);
+    }
 
-            packer.packInt(compiledType);
-            if (compiledType >= 0) {
-                packer.packCString(compiledCode);
-            }
+    @Override
+    public void unpack(CUBRIDUnpacker unpacker) {
+        objType = unpacker.unpackInt();
+        objUniqName = unpacker.unpackCString();
+    }
 
-            packer.packInt(dependencies.size());
-            for (Dependency d : dependencies) {
-                d.pack(packer);
-            }
+    @Override
+    public boolean equals(Object o) {
+        if (o == null) {
+            return false;
         }
+        if (o.getClass() != Dependency.class) {
+            return false;
+        }
+
+        Dependency that = (Dependency) o;
+        return (this.objType == that.objType) && this.objUniqName.equals(that.objUniqName);
+    }
+
+    @Override
+    public int hashCode() {
+        return objType + objUniqName.hashCode();
     }
 }
