@@ -775,6 +775,15 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
 
+#define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
+#define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
+#define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
+
+#define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
+
+#define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
+#define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
+
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
 // #endregion 
@@ -4721,11 +4730,12 @@ SYSPRM_PARAM prm_Def[] = {
 #if defined (SERVER_MODE)
    {false, {.i = (int) cubthread::system_core_count ()}},
    {false, {.i = (int) cubthread::system_core_count ()}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
 #else
    {false, {.i = 1}},
    {false, {.i = 1}},
+   NULL_SYSPRM_PARAM_VALUE,
 #endif
-   {false, {.i = 1024}},
    {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5101,6 +5111,93 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},
    {false, {.i = 128}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TCP_KEEPALIVE_IDLE,
+   PRM_NAME_TCP_KEEPALIVE_IDLE,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 300 /* 5 min */ }},
+   {false, {.i = 300 /* 5 min */ }},
+   {false, {.i = 60 * 60 * 24 * 365 /* 1 year */ }},
+   {false, {.i = 60 /* 1 min */ }},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TCP_KEEPALIVE_INTERVAL,	/* probe interval */
+   PRM_NAME_TCP_KEEPALIVE_INTERVAL,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 300 /* 5 min */ }},
+   {false, {.i = 300 /* 5 min */ }},
+   {false, {.i = 60 * 60 * 24 * 365 /* 1 year */ }},
+   {false, {.i = 60 /* 1 min */ }},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_TCP_KEEPALIVE_COUNT,	/* retry count */
+   PRM_NAME_TCP_KEEPALIVE_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 3}},
+   {false, {.i = 3}},
+   {false, {.i = 32}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_THREAD_WORKER_COUNT,
+   PRM_NAME_THREAD_WORKER_COUNT,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count () * 3}},
+   {false, {.i = (int) cubthread::system_core_count () * 3}},
+#else
+   {false, {.i = 3}},
+   {false, {.i = 3}},
+#endif
+   {false, {.i = 8192}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_MAX_CONNECTION_WORKER,
+   PRM_NAME_CSS_MAX_CONNECTION_WORKER,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count ()}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   {false, {.i = 2}},
+   {false, {.i = 2}},
+   NULL_SYSPRM_PARAM_VALUE,
+#endif
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_MIN_CONNECTION_WORKER,
+   PRM_NAME_CSS_MIN_CONNECTION_WORKER,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2}},
+   {false, {.i = 2}},
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   NULL_SYSPRM_PARAM_VALUE,
+#endif
+   {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -9687,6 +9784,9 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *thread_core_count_prm;
+  SYSPRM_PARAM *max_connection_workers_prm;
+  SYSPRM_PARAM *min_connection_workers_prm;
+  int system_cpu_count;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -9737,13 +9837,24 @@ prm_tune_parameters (void)
 
 #if defined (SERVER_MODE)
       thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
-      int safe_core_count = (css_get_max_workers () / 3);
-      int system_cpu_count = cubthread::system_core_count ();
-      int core_upper_limit = MIN (safe_core_count, system_cpu_count);
-      if (PRM_GET_INT (thread_core_count_prm->value) > core_upper_limit)
+      max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+      system_cpu_count = cubthread::system_core_count ();
+
+      if (PRM_GET_INT (thread_core_count_prm->value) > system_cpu_count)
 	{
-	  sprintf (newval, "%d", core_upper_limit);
+	  sprintf (newval, "%d", system_cpu_count);
 	  (void) prm_set (thread_core_count_prm, newval, false);
+	}
+      if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
+	{
+	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (max_connection_workers_prm, newval, false);
+	}
+      if (PRM_GET_INT (min_connection_workers_prm->value) > PRM_GET_INT (max_connection_workers_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_connection_workers_prm->value));
+	  (void) prm_set (min_connection_workers_prm, newval, false);
 	}
 #endif
     }
