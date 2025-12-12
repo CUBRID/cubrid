@@ -618,7 +618,7 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 
 /*
 * mvcc_is_mvcc_disabled_class () - MVCC is disabled for root class and
-*					db_serial, db_partition. this is a slow operation so cache this result.
+*					_db_serial, db_partition. this is a slow operation so cache this result.
 *
 * return	  : True if MVCC is disabled for class.
 * thread_p (in)  : Thread entry.

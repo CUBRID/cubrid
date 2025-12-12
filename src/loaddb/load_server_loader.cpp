@@ -170,7 +170,7 @@ namespace cubload
   LC_FIND_CLASSNAME
   server_class_installer::locate_class_for_all_users (const char *class_name, OID &class_oid)
   {
-#define CATCLS_USER_ATTR_IDX_NAME 7
+#define CATCLS_USER_ATTR_IDX_NAME 11
     cubthread::entry &thread_ref = cubthread::get_entry ();
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     HEAP_CACHE_ATTRINFO attr_info;
