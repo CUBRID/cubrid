@@ -190,6 +190,10 @@ namespace cubpl
 		    break;
 		  }
 	      }
+	    else
+	      {
+		db_make_null (value);
+	      }
 	  }
       }
 
