@@ -489,8 +489,8 @@ static void
 change_prompt (char *fmt, char *prompt, int prompt_size)
 {
   char *user_name = NULL;
-  char *database_name = db_get_database_name ();
-  char *host_name = db_get_host_connected ();
+  char *database_name = NULL;
+  char *host_name = NULL;
   char *pos = prompt;
   int remain = prompt_size - 2;	// for space + null character
   int len;
