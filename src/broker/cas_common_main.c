@@ -274,7 +274,9 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    unset_hang_check_time ();
 
-	    err_code = cas_handle_db_connection (client_sock_fd, &req_info, &conn_info, cas_info, client_ip_addr, ops, is_new_connection);
+	    err_code =
+	      cas_handle_db_connection (client_sock_fd, &req_info, &conn_info, cas_info, client_ip_addr, ops,
+					is_new_connection);
 	    if (err_code < 0)
 	      {
 		cas_finish_session (client_sock_fd, ssl_client);
@@ -1122,7 +1124,8 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_C
 
 int
 cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
-			  DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops, bool is_new_connection)
+			  DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops, 
+			  bool is_new_connection)
 {
   int err_code;
   unsigned char *ip_addr;

@@ -85,7 +85,8 @@ typedef int (*cas_db_connect_fn_t) (SOCKET client_sock_fd, const char *db_name, 
 typedef int (*cas_db_pre_connect_fn_t) (const char *db_name, const char *db_user,
 					const char *db_passwd, const char *url, void *context);
 typedef void (*cas_db_post_connect_fn_t) (void *context, struct timeval * cas_start_time, int shm_as_index,
-					  int client_ip_addr, char *db_name, char *db_user, const char *url, bool is_new_connection);
+					  int client_ip_addr, char *db_name, char *db_user, const char *url, 
+					  bool is_new_connection);
 typedef void (*cas_cleanup_session_fn_t) (void);
 typedef FN_RETURN (*cas_process_request_fn_t) (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 typedef void (*cas_set_session_id_fn_t) (T_CAS_PROTOCOL protocol, char *session);
@@ -110,7 +111,8 @@ int cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd);
 int cas_accept_client (SOCKET br_sock_fd, SOCKET * client_sock_fd, int *client_ip_addr);
 int cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_CONN_INFO * conn_info);
 int cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
-			      DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops, bool is_new_connection);
+			      DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops, 
+			      bool is_new_connection);
 void cas_finish_session (SOCKET client_sock_fd, bool ssl_client);
 
 extern FN_RETURN cas_main_fn_ret;
