@@ -7500,15 +7500,6 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
 	{
 	  error = dbt_constrain_non_null (ctemplate, attr_name, 0, 1);
 	}
-      if (error == NO_ERROR && sm_att_constrained (class_obj, column->attr_name, SM_ATTFLAG_INVISIBLE_COLUMN))
-	{
-	  SM_ATTRIBUTE *att;
-	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
-	  if (error == NO_ERROR)
-	    {
-	      att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
-	    }
-	}
     }
 
   return error;
