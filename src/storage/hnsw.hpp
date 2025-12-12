@@ -38,14 +38,15 @@
 
 extern int xhnsw_initialize (THREAD_ENTRY *thread_p);
 extern int xhnsw_finalize (THREAD_ENTRY *thread_p);
-extern int xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid, const hnsw_build_params &params,
-		     BTID &btid_out);
+extern int xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid,
+			    const hnsw_build_params &params,
+			    BTID &btid_out);
 extern int xhnsw_delete_index (THREAD_ENTRY *thread_p, BTID *btid);
 extern int xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, int n_attrs, int *attr_ids,
-		      HFID *hfids, const hnsw_build_params &params);
+			     HFID *hfids, const hnsw_build_params &params);
 
 extern int hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors);
 extern int hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, int k, OID *rec_oids,
-			 float *distances);
+				float *distances);
 
 #endif

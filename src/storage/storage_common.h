@@ -319,7 +319,7 @@ struct lorecdes
 
 #define BTID_IS_VECTOR_INDEX(btid)  ((btid)->vfid.volid == NULL_VOLID)
 
-// TODO (CUBVEC): this should be removed in the future.
+// TODO (CUBVEC): the following should be removed after CUBVEC-135 is resolved.
 #define BTID_IS_VECTOR_INDEX_DUMMY(name) (strncmp(name, "vidx", 4) == 0)
 
 #define DISK_VOLPURPOSE DB_VOLPURPOSE
