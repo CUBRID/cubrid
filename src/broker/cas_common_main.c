@@ -68,9 +68,9 @@
 #include <netinet/tcp.h>
 #endif
 
-static char cas_db_name[MAX_HA_DBINFO_LENGTH];
-static char cas_db_user[SRV_CON_DBUSER_SIZE];
-static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
+// static char cas_db_name[MAX_HA_DBINFO_LENGTH];
+// static char cas_db_user[SRV_CON_DBUSER_SIZE];
+// static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 static int query_sequence_num;
 
 #if defined(WINDOWS)
@@ -98,6 +98,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
   };
   FN_RETURN fn_ret = FN_KEEP_CONN;
   char client_ip_str[16];
+  bool is_new_connection = true;
   DB_CONN_INFO conn_info;
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
@@ -242,7 +243,21 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	      {
 		goto finish_cas;
 	      }
-
+	
+	    if (ops->set_session_id)
+	      {
+		ops->set_session_id ((T_CAS_PROTOCOL) req_info.client_version, conn_info.db_sessionid);
+	      
+		if (db_get_session_id () != DB_EMPTY_SESSION)
+		  {
+		    is_new_connection = false;
+		  }
+		else
+		  {
+		    is_new_connection = true;
+		  }
+	      }
+	    
 	    set_hang_check_time ();
 
 	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s " "session id %s", conn_info.db_name,
@@ -259,12 +274,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    unset_hang_check_time ();
 
-	    if (ops->set_session_id)
-	      {
-		ops->set_session_id ((T_CAS_PROTOCOL) req_info.client_version, conn_info.db_sessionid);
-	      }
-
-	    err_code = cas_handle_db_connection (client_sock_fd, &req_info, &conn_info, cas_info, client_ip_addr, ops);
+	    err_code = cas_handle_db_connection (client_sock_fd, &req_info, &conn_info, cas_info, client_ip_addr, ops, is_new_connection);
 	    if (err_code < 0)
 	      {
 		cas_finish_session (client_sock_fd, ssl_client);
@@ -1112,10 +1122,9 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_C
 
 int
 cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
-			  DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops)
+			  DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops, bool is_new_connection)
 {
   int err_code;
-  char *db_err_msg = NULL;
   unsigned char *ip_addr;
   char client_ip_str[16];
   struct timeval cas_start_time;
@@ -1178,13 +1187,12 @@ cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
     {
       return -1;
     }
-//   FREE_MEM (db_err_msg);
 
   /* Post-connect processing */
   if (ops->post_db_connect)
     {
       ops->post_db_connect (ops->context, &cas_start_time, shm_as_index, client_ip_addr, conn_info->db_name,
-			    conn_info->db_user, conn_info->url);
+			    conn_info->db_user, conn_info->url, is_new_connection);
     }
 
   ut_get_ipv4_string (client_ip_str, sizeof (client_ip_str), (unsigned char *) (&client_ip_addr));

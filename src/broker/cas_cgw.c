@@ -80,9 +80,9 @@ typedef struct
  * Global Variable Definitions
  * ======================================================================== */
 /* Database connection info */
-char cas_db_name[MAX_HA_DBINFO_LENGTH];
-char cas_db_user[SRV_CON_DBUSER_SIZE];
-char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
+static char cas_db_name[MAX_HA_DBINFO_LENGTH];
+static char cas_db_user[SRV_CON_DBUSER_SIZE];
+static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
 /* ========================================================================
  * Static Variable Definitions
@@ -197,7 +197,7 @@ static int cgw_pre_db_connect (const char *db_name, const char *db_user, const c
 static int cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd,
 			   const char *url, T_REQ_INFO * req_info, char *cas_info);
 static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr,
-				 char *db_name, char *db_user, const char *url);
+				 char *db_name, char *db_user, const char *url, bool is_new_connection);
 static void cgw_cleanup_session (void);
 
 static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
@@ -453,7 +453,7 @@ cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
 
 static void
 cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name,
-		     char *db_user, const char *url)
+		     char *db_user, const char *url, bool is_new_connection)
 {
   CGW_CONTEXT *cgw_ctx = (CGW_CONTEXT *) context;
 

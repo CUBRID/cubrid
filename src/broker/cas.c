@@ -65,9 +65,9 @@
 #include "broker_process_size.h"
 #include "cas_ssl.h"
 
-char cas_db_name[MAX_HA_DBINFO_LENGTH];
-char cas_db_user[SRV_CON_DBUSER_SIZE];
-char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
+static char cas_db_name[MAX_HA_DBINFO_LENGTH];
+static char cas_db_user[SRV_CON_DBUSER_SIZE];
+static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
 #if defined(WINDOWS)
 static int cas_req_count;	/* Request count for restart check (WINDOWS only) */
@@ -195,7 +195,7 @@ static void set_db_parameter (void);
 static int cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd,
 			   const char *url, T_REQ_INFO * req_info, char *cas_info);
 static void cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr,
-				 char *db_name, char *db_user, const char *url);
+				 char *db_name, char *db_user, const char *url, bool is_new_connection);
 static void cas_cleanup_session (void);
 
 /* Protocol functions */
@@ -414,22 +414,12 @@ cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
 
 static void
 cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name,
-		     char *db_user, const char *url)
+		     char *db_user, const char *url, bool is_new_connection)
 {
   SESSION_ID session_id;
-  bool is_new_connection;
-
+  
   session_id = db_get_session_id ();
   as_info->session_id = session_id;
-
-  if (db_get_session_id () != DB_EMPTY_SESSION)
-    {
-      is_new_connection = false;
-    }
-  else
-    {
-      is_new_connection = true;
-    }
 
   if (shm_appl->access_log == ON)
     {

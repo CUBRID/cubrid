@@ -33,9 +33,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-/* ========================================================================
- * Type conversion functions
- * ======================================================================== */
 
 /* Shared cas_u_type array for CAS and CGW */
 static char cas_u_type[] = { 0,	/* 0 */
@@ -74,6 +71,8 @@ static char cas_u_type[] = { 0,	/* 0 */
   CCI_U_TYPE_DATETIMELTZ,	/* 39 */
   CCI_U_TYPE_JSON,		/* 40 */
 };
+
+static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
 
 char
 ux_db_type_to_cas_type (int db_type)

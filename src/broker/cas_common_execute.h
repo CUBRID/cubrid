@@ -72,8 +72,6 @@ struct cas_error_log_handle_context_s
   unsigned int from;
   unsigned int to;
 };
-static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
-
 
 /* Error log handler callback (registered with db_register_error_log_handler) */
 extern void cas_log_error_handler (unsigned int eid);
