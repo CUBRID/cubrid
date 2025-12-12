@@ -114,6 +114,12 @@ jobs:
                           echo "[debug] split tests for parallel execution"
                           circleci tests glob "\$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
                             | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+
+                          # Check if tc.list exists and is not empty (tests were assigned to this node)
+                          if [ ! -s tc.list ]; then
+                            echo "[debug] No tests assigned to this node"
+                            circleci-agent step halt
+                          fi
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] total testcases: \$(wc -l tc_dirs.list)"
                           echo "[debug] Remove tests that are not in the list"
@@ -122,18 +128,19 @@ jobs:
                           echo "[debug] split tests for parallel execution"
                           circleci tests glob "\$glob_path" \
                             | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+                            
+                          # Check if tc.list exists and is not empty (tests were assigned to this node)
+                          if [ ! -s tc.list ]; then
+                            echo "[debug] No tests assigned to this node"
+                            circleci-agent step halt
+                          fi
                           echo "[debug] total testcases: \$(wc -l tc.list)"
                           echo "[debug] Remove tests that are not in the list"
                           find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
                         fi
 
                         echo "[debug] Run the tests"
-                        if [ -s tc.list ]; then
-                          /entrypoint.sh test
-                        else
-                          echo "[debug]No tests to run"
-                          circleci-agent step halt
-                        fi
+                        /entrypoint.sh test
                   - run:
                       name: Collect Logs
                       when: on_fail
