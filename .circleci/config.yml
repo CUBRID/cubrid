@@ -86,7 +86,6 @@ jobs:
                       shell: /bin/bash
                       environment:
                         BRANCH_TESTCASES: feature/system-catalog
-                        BRANCH_TESTTOOLS: feature/system-catalog
                       no_output_timeout: 45m
                       command: |
                         # Limit core files to 10mb
