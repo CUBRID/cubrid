@@ -251,11 +251,11 @@ namespace cubconn::connection
     return true;
   }
 
-  uint64_t worker::get_monotonic_ns ()
+  uint64_t worker::get_time_ns (clockid_t type)
   {
     struct timespec ts;
 
-    if (clock_gettime (CLOCK_MONOTONIC, &ts) == -1)
+    if (clock_gettime (type, &ts) == -1)
       {
 	er_log_conn (__FILE__, __LINE__, "clock_gettime (CLOCK_MONOTONIC) failed: %s\n", strerror (errno));
 	return 0;
@@ -544,7 +544,8 @@ retry:
 
     message.type = coordinator::message_type::STATISTICS;
 
-    message.statistics.time_ns = m_timens;
+    message.statistics.cpu_time_ns = get_time_ns (CLOCK_THREAD_CPUTIME_ID);
+    message.statistics.time_ns = get_time_ns (CLOCK_MONOTONIC);
     message.statistics.worker.first = m_index;
     message.statistics.worker.second = m_stats;
     message.statistics.contexts.reserve (m_context.size ());
@@ -1753,7 +1754,7 @@ retry:
 	  }
 
 	/* criterion time to use during this loop */
-	m_timens = this->get_monotonic_ns ();
+	m_timens = this->get_time_ns (CLOCK_MONOTONIC);
 
 	for (i = 0; i < nfds; i++)
 	  {

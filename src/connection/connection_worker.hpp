@@ -232,7 +232,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* utility								     */
       /* --------------------------------------------------------------------------- */
-      uint64_t get_monotonic_ns ();
+      uint64_t get_time_ns (clockid_t type);
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);

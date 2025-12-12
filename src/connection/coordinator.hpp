@@ -44,6 +44,10 @@ namespace cubconn::connection
 	/* score */
 	double m_score;
 
+	/* resource */
+	double m_core;
+	uint64_t m_last_cpu_time;
+
 	/* immediate */
 	uint32_t m_client_num;
 	uint64_t m_last_updated;
@@ -94,6 +98,7 @@ namespace cubconn::connection
 	  /* STATISTICS */
 	  struct
 	  {
+	    uint64_t cpu_time_ns;
 	    uint64_t time_ns;
 	    std::pair<std::size_t, statistics::metrics<statistics::worker>> worker;
 	    std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> contexts;
