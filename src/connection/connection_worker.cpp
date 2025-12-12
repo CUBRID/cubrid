@@ -82,8 +82,8 @@ namespace cubconn::connection
     m_context.reserve (256);
 
     /* limiter */
-    m_recv_budget = (int) prm_get_integer_value (PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION);
-    m_send_budget = (int) prm_get_integer_value (PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION);
+    m_recv_budget = static_cast<size_t> (prm_get_integer_value (PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION));
+    m_send_budget = static_cast<size_t> (prm_get_integer_value (PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION));
     m_exhausted.reserve (128);
 
     /* notifier */
@@ -850,7 +850,7 @@ retry:
     ctx->m_send.m_transmitter.push_for_deleter (std::move (item.deleter));
 
     /* first, try to send the packets */
-    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd, m_send_budget);
+    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
@@ -863,7 +863,7 @@ retry:
 	return true;
       }
 
-    assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
+    assert (status == result::Ok || status == result::Pending);
 
     if (status == result::Ok)
       {
@@ -1420,11 +1420,11 @@ retry:
     return status;
   }
 
-  result worker::handle_reception (context *ctx)
+  result worker::handle_reception (context *ctx, bool in_exhausted)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     std::vector<cubbase::span<std::byte>> *packets;
-    result status;
+    result status, io_status;
     int mtx;
 
     rmutex_lock (m_entry, &ctx->m_conn->rmutex);
@@ -1436,25 +1436,25 @@ retry:
       }
     rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 
-    status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
-    if (status == result::PeerReset || status == result::Error)
+    io_status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
+    if (io_status == result::PeerReset || io_status == result::Error)
       {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_reception: status = %d\n", status);
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_reception: status = %d\n", io_status);
 	ctx->m_send.m_transmitter.empty ();
 	this->handle_connection_close (ctx);
-	return status;
+	return io_status;
       }
 
-    assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
+    assert (io_status == result::Pending || io_status == result::BudgetExhausted);
 
-    if (status == result::Pending)
-      {
-	return result::Pending;
-      }
-
-    if (status == result::BudgetExhausted)
+    if (!in_exhausted && io_status == result::BudgetExhausted)
       {
 	handle_exhausted_add_context (ctx, EPOLLIN);
+      }
+
+    if (ctx->m_recv.m_receiver.get_result ()->empty ())
+      {
+	return io_status;
       }
 
     m_stats.add (statistics::worker::PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
@@ -1505,10 +1505,10 @@ retry:
 
     packets->clear ();
 
-    return result::Ok;
+    return io_status;
   }
 
-  result worker::handle_transmission (context *ctx)
+  result worker::handle_transmission (context *ctx, bool in_exhausted)
   {
     result status;
 
@@ -1553,7 +1553,7 @@ retry:
 	ctx->m_send.m_transmitter.clear ();
 	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
       }
-    else if (status == result::BudgetExhausted)
+    else if (!in_exhausted && status == result::BudgetExhausted)
       {
 	handle_exhausted_add_context (ctx, EPOLLOUT);
       }
@@ -1573,6 +1573,8 @@ retry:
 	assert (m_exhausted[ctx->m_id].ctx == ctx);
 	m_exhausted[ctx->m_id].events |= event;
       }
+    er_log_conn (__FILE__, __LINE__,
+		 "connection::worker->handle_exhausted_add_context: add new context into exhausted list: fd = %d\n", ctx->m_conn->fd);
   }
 
   bool worker::handle_exhausted ()
@@ -1594,7 +1596,10 @@ retry:
 
 	if (it->second.events & EPOLLIN)
 	  {
-	    status = this->handle_reception (ctx);
+	    er_log_conn (__FILE__, __LINE__,
+			 "connection::worker->handle_exhausted: try to receive from fd = %d\n", ctx->m_conn->fd);
+
+	    status = this->handle_reception (ctx, true);
 	    if (status == result::ClosedConnection || status == result::PeerReset)
 	      {
 		it = m_exhausted.erase (it);
@@ -1605,21 +1610,29 @@ retry:
 		er_log_conn (__FILE__, __LINE__, "connection::worker->handle_exhausted: handle_reception failed");
 		return false;
 	      }
-	    if (status == result::Ok || status == result::Pending)
+	    if (status == result::Pending)
 	      {
+		er_log_conn (__FILE__, __LINE__,
+			     "connection::worker->handle_exhausted: complete the reception: fd = %d\n", ctx->m_conn->fd);
+
 		assert (it->second.events & EPOLLIN);
 
 		it->second.events &= ~EPOLLIN;
 		if (!it->second.events)
 		  {
 		    it = m_exhausted.erase (it);
+		    er_log_conn (__FILE__, __LINE__,
+				 "connection::worker->handle_exhausted: remove context from exhausted list: fd = %d\n", ctx->m_conn->fd);
 		    continue;
 		  }
 	      }
 	  }
 	if (it->second.events & EPOLLOUT)
 	  {
-	    status = this->handle_transmission (ctx);
+	    er_log_conn (__FILE__, __LINE__,
+			 "connection::worker->handle_exhausted: try to send to fd = %d\n", ctx->m_conn->fd);
+
+	    status = this->handle_transmission (ctx, true);
 	    if (status == result::ClosedConnection || status == result::PeerReset)
 	      {
 		it = m_exhausted.erase (it);
@@ -1632,12 +1645,17 @@ retry:
 	      }
 	    if (status == result::Ok || status == result::Pending)
 	      {
+		er_log_conn (__FILE__, __LINE__,
+			     "connection::worker->handle_exhausted: complete the transmission: fd = %d\n", ctx->m_conn->fd);
+
 		assert (it->second.events & EPOLLOUT);
 
 		it->second.events &= ~EPOLLOUT;
 		if (!it->second.events)
 		  {
 		    it = m_exhausted.erase (it);
+		    er_log_conn (__FILE__, __LINE__,
+				 "connection::worker->handle_exhausted: remove context from exhausted list: fd = %d\n", ctx->m_conn->fd);
 		    continue;
 		  }
 	      }
@@ -1762,7 +1780,7 @@ retry:
 		    eventfds[1] = true;
 		    continue;
 		  }
-		status = this->handle_reception (ctx);
+		status = this->handle_reception (ctx, false);
 		if (status == result::ClosedConnection || status == result::PeerReset)
 		  {
 		    continue;
@@ -1775,7 +1793,7 @@ retry:
 	      }
 	    if (events[i].events & EPOLLOUT)
 	      {
-		status = this->handle_transmission (ctx);
+		status = this->handle_transmission (ctx, false);
 		if (status == result::ClosedConnection || status == result::PeerReset)
 		  {
 		    continue;

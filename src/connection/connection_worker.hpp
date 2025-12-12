@@ -222,8 +222,8 @@ namespace cubconn::connection
       std::vector<context *> m_removed_context;
 
       /* limiter */
-      int m_recv_budget;
-      int m_send_budget;
+      size_t m_recv_budget;
+      size_t m_send_budget;
       std::unordered_map<uint64_t, exhausted_context> m_exhausted;
 
       /* statistics */
@@ -304,12 +304,12 @@ namespace cubconn::connection
 
       /* reception */
       result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
-      result handle_reception (context *ctx);
+      result handle_reception (context *ctx, bool in_exhausted);
 
       /* --------------------------------------------------------------------------- */
       /* transmission								     */
       /* --------------------------------------------------------------------------- */
-      result handle_transmission (context *ctx);
+      result handle_transmission (context *ctx, bool in_exhausted);
 
       /* --------------------------------------------------------------------------- */
       /* exhausted								     */
