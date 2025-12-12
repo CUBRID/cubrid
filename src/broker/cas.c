@@ -417,7 +417,7 @@ cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_i
 		     char *db_user, const char *url, bool is_new_connection)
 {
   SESSION_ID session_id;
-  
+
   session_id = db_get_session_id ();
   as_info->session_id = session_id;
 

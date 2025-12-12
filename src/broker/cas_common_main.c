@@ -243,11 +243,11 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	      {
 		goto finish_cas;
 	      }
-	
+
 	    if (ops->set_session_id)
 	      {
 		ops->set_session_id ((T_CAS_PROTOCOL) req_info.client_version, conn_info.db_sessionid);
-	      
+
 		if (db_get_session_id () != DB_EMPTY_SESSION)
 		  {
 		    is_new_connection = false;
@@ -257,7 +257,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 		    is_new_connection = true;
 		  }
 	      }
-	    
+
 	    set_hang_check_time ();
 
 	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s " "session id %s", conn_info.db_name,
@@ -1124,7 +1124,7 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_C
 
 int
 cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
-			  DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops, 
+			  DB_CONN_INFO * conn_info, char *cas_info, int client_ip_addr, CAS_MAIN_OPS * ops,
 			  bool is_new_connection)
 {
   int err_code;
