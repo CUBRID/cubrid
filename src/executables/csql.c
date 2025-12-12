@@ -162,8 +162,15 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 
 int csql_Error_code = NO_ERROR;
 
-static bool csql_Prompt_user_defined = false;
+typedef enum 
+{
+  CSQL_PROMPT_DEFAULT,
+  CSQL_PROMPT_USER_DEFINED,
+  CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME
+} CSQL_PROMPT_TYPE;
+static CSQL_PROMPT_TYPE csql_Prompt_user_defined = CSQL_PROMPT_DEFAULT;
 static char csql_Prompt_format[100];
+static char csql_Prompt_username[100];
 static char csql_Prompt[100];
 static char csql_Prompt_offline[101];	//  for clear "-Wformat-truncation=" warning
 
@@ -474,18 +481,18 @@ display_buffer (void)
  *   prompt_size (in) : the maximum length (size) of the prompt buffer.
  *   
  *   Note : user-defined characters (escape sequence)
- *     - /u or /U : replaced with the user name
- *     - /d or /D : replaced with the database name
- *     - /h or /H : replaced with the host name
+ *     - \u or \U : replaced with the user name
+ *     - \d or \D : replaced with the database name
+ *     - \h or \H : replaced with the host name
  */
 static void
 change_prompt (char *fmt, char *prompt, int prompt_size)
 {
-  char *user_name = db_get_user_name ();
+  char *user_name = NULL;
   char *database_name = db_get_database_name ();
   char *host_name = db_get_host_connected ();
   char *pos = prompt;
-  int remain = prompt_size - 1;
+  int remain = prompt_size - 2; // for space + null character
   int len;
 
   if (prompt_size <= 0)
@@ -502,46 +509,38 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 
 	  if (next == 'u' || next == 'U')
 	    {
-	      src = user_name;
-	    }
-	  else if (next == 'h' || next == 'H')
-	    {
-	      src = host_name;
+	      src = user_name = db_get_user_name ();
+              strcpy (csql_Prompt_username, user_name);
+              csql_Prompt_user_defined = CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME;
 	    }
 	  else if (next == 'd' || next == 'D')
 	    {
-	      src = database_name;
+	      src = database_name = db_get_database_name ();
+	    }
+	  else if (next == 'h' || next == 'H')
+	    {
+	      src = host_name = db_get_host_connected ();
 	    }
 
 	  if (src)
 	    {
 	      len = strlen (src);
-	      if (len > remain)
-		{
-		  len = remain;
-		}
-
-	      memcpy (pos, src, len);
-	      pos += len;
-	      remain -= len;
-	      i += 2;
 	    }
 	  else
 	    {
-	      if (remain >= 2)
-		{
-		  pos[0] = fmt[i];
-		  pos[1] = fmt[i + 1];
-		  pos += 2;
-		  remain -= 2;
-		}
-	      else
-		{
-		  *pos++ = fmt[i];
-		  remain--;
-		}
-	      i += 2;
+              src = &(fmt[i]);
+              len = 2;
 	    }
+
+          if (len > remain)
+            {
+               len = remain;
+            }
+
+           memcpy (pos, src, len);
+           pos += len;
+           remain -= len;
+           i += 2;
 	}
       else
 	{
@@ -551,12 +550,22 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 	}
     }
 
-  if (remain >= 1)
+  if (*pos != ' ' && remain >= 1)
     {
       *pos++ = ' ';
     }
 
   *pos = '\0';
+
+  if (user_name)
+    {
+      db_string_free (user_name);
+    }
+
+  if (database_name)
+    {
+      db_string_free (database_name);
+    }
 }
 
 /*
@@ -697,6 +706,22 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
       if (csql_Is_interactive)
 	{
+          if (csql_Prompt_user_defined == CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME)
+            {
+              char *username = db_get_user_name ();
+          
+              if (strcmp (csql_Prompt_username, username))
+                {
+                  change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
+                  strcpy (csql_Prompt_username, username);
+                }
+
+              if (username)
+                {
+                  db_string_free (username);
+                }
+            }
+
 #if defined(WINDOWS)
 	  fputs (prompt, csql_Output_fp);	/* display prompt */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
@@ -1599,7 +1624,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 		}
 	    }
 
-	  if (csql_Prompt_user_defined)
+	  if (csql_Prompt_user_defined != CSQL_PROMPT_DEFAULT)
 	    {
 	      change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
 	    }
@@ -3237,7 +3262,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   env = getenv ("CUBRID_CSQL_PROMPT");
   if (!csql_arg->sysadm && env && *env != '\0')
     {
-      csql_Prompt_user_defined = true;
+      csql_Prompt_user_defined = CSQL_PROMPT_USER_DEFINED;
       strcpy (csql_Prompt_format, env);
       change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
