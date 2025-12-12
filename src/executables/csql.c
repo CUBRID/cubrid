@@ -162,7 +162,7 @@ char csql_Scratch_text[SCRATCH_TEXT_LEN];
 
 int csql_Error_code = NO_ERROR;
 
-typedef enum 
+typedef enum
 {
   CSQL_PROMPT_DEFAULT,
   CSQL_PROMPT_USER_DEFINED,
@@ -492,13 +492,15 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
   char *database_name = db_get_database_name ();
   char *host_name = db_get_host_connected ();
   char *pos = prompt;
-  int remain = prompt_size - 2; // for space + null character
+  int remain = prompt_size - 2;	// for space + null character
   int len;
 
   if (prompt_size <= 0)
     {
       return;
     }
+
+  memset (prompt, 0x00, prompt_size);
 
   for (int i = 0; fmt[i] != '\0' && remain > 0;)
     {
@@ -510,8 +512,8 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 	  if (next == 'u' || next == 'U')
 	    {
 	      src = user_name = db_get_user_name ();
-              strcpy (csql_Prompt_username, user_name);
-              csql_Prompt_user_defined = CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME;
+	      strcpy (csql_Prompt_username, user_name);
+	      csql_Prompt_user_defined = CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME;
 	    }
 	  else if (next == 'd' || next == 'D')
 	    {
@@ -528,19 +530,19 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 	    }
 	  else
 	    {
-              src = &(fmt[i]);
-              len = 2;
+	      src = &(fmt[i]);
+	      len = 2;
 	    }
 
-          if (len > remain)
-            {
-               len = remain;
-            }
+	  if (len > remain)
+	    {
+	      len = remain;
+	    }
 
-           memcpy (pos, src, len);
-           pos += len;
-           remain -= len;
-           i += 2;
+	  memcpy (pos, src, len);
+	  pos += len;
+	  remain -= len;
+	  i += 2;
 	}
       else
 	{
@@ -550,7 +552,7 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 	}
     }
 
-  if (*pos != ' ' && remain >= 1)
+  if ((csql_Prompt < pos && *(pos - 1) != ' ') && remain >= 1)
     {
       *pos++ = ' ';
     }
@@ -706,21 +708,21 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
       if (csql_Is_interactive)
 	{
-          if (csql_Prompt_user_defined == CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME)
-            {
-              char *username = db_get_user_name ();
-          
-              if (strcmp (csql_Prompt_username, username))
-                {
-                  change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
-                  strcpy (csql_Prompt_username, username);
-                }
+	  if (csql_Prompt_user_defined == CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME)
+	    {
+	      char *username = db_get_user_name ();
 
-              if (username)
-                {
-                  db_string_free (username);
-                }
-            }
+	      if (strcmp (csql_Prompt_username, username))
+		{
+		  change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
+		  strcpy (csql_Prompt_username, username);
+		}
+
+	      if (username)
+		{
+		  db_string_free (username);
+		}
+	    }
 
 #if defined(WINDOWS)
 	  fputs (prompt, csql_Output_fp);	/* display prompt */
