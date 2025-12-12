@@ -50,70 +50,54 @@ namespace cubhnsw
     MAX
   };
 
-  inline float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
+  inline float
+  cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
   {
-#if 0
-    // dot(vec1, vec2)
-    const float ip = faiss::fvec_inner_product (vec1, vec2, dim);
+    float dot = 0.0f;
+    float norm1_sq = 0.0f;
+    float norm2_sq = 0.0f;
 
-    // squared norms
-    const float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
-    const float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
-
-    // Handle zero vectors to avoid division by zero
-    if (norm1 == 0.0f || norm2 == 0.0f)
+    #pragma omp simd reduction(+ : dot, norm1_sq, norm2_sq)
+    for (size_t i = 0; i < dim; ++i)
       {
-	// NaN distance
-	return std::numeric_limits<float>::quiet_NaN();
-	// return 1.0f;
+	const float a = vec1[i];
+	const float b = vec2[i];
+
+	dot       += a * b;
+	norm1_sq  += a * a;
+	norm2_sq  += b * b;
       }
 
-    const float denom = sqrtf (norm1 * norm2);
-
-    float similarity = ip / denom;
-    similarity = std::max (-1.0f, std::min (1.0f, similarity));
-
-    // cosine distance = 1 - cosine similarity
-    float distance = 1.0f - similarity;
-
-    // clamp again to [0,2] to avoid FP drift
-    distance = std::max (0.0f, std::min (2.0f, distance));
-
-    assert (distance >= 0.0f && distance <= 2.0f);
-
-    return distance;
-#endif
-
-    float ab {}, a2 {}, b2 {};
-#pragma omp simd reduction(+ : ab, a2, b2)
-    for (std::size_t i = 0; i != dim; ++i)
+    // zero-vector handling
+    if (norm1_sq == 0.0f && norm2_sq == 0.0f)
       {
-	float ai = vec1[i];
-	float bi = vec2[i];
-	ab += ai * bi;
-	a2 += ai * ai;
-	b2 += bi * bi;
+	return 0.0f;   // identical zero vectors
+      }
+    if (norm1_sq == 0.0f || norm2_sq == 0.0f)
+      {
+	return 1.0f;   // maximally distant
       }
 
-    float result_if_zero[2][2];
-    result_if_zero[0][0] = 1.0f - ab / (std::sqrt (a2) * std::sqrt (b2));
-    result_if_zero[0][1] = result_if_zero[1][0] = 1.0f;
-    result_if_zero[1][1] = 0.0f;
-    return result_if_zero[a2 == 0.0f][b2 == 0.0f];
+    const float inv_norm =
+	    1.0f / (std::sqrt (norm1_sq) * std::sqrt (norm2_sq));
+
+    const float cosine_similarity = dot * inv_norm;
+    return 1.0f - cosine_similarity;
   }
 
-  inline float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
+  inline float
+  cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
   {
-    float ab_deltas_sq {};
+    float sum_sq = 0.0f;
 
-    #pragma omp simd reduction(+ : ab_deltas_sq)
-    for (std::size_t i = 0; i != dim; ++i)
+    #pragma omp simd reduction(+ : sum_sq)
+    for (size_t i = 0; i < dim; ++i)
       {
-	float ai = vec1[i];
-	float bi = vec2[i];
-	ab_deltas_sq += (ai - bi) * (ai - bi);
+	const float diff = vec1[i] - vec2[i];
+	sum_sq += diff * diff;
       }
-    return ab_deltas_sq;
+
+    return sum_sq;
   }
 
   using distance_t = float;
@@ -301,7 +285,8 @@ namespace cubhnsw
       inline distance_t compute_distance_from_query_ (const float *query, const slot_id_t &slot) const
       {
 	pinned_t vec_blk = m_storage->get_vector_by_slot_id (slot, lock_mode::shared);
-	return compute_distance_ (query, reinterpret_cast<const float *> (vec_blk->data));
+	node_type node = node_type (vec_blk->data);
+	return compute_distance_ (query, node.get_vector());
       }
 
       inline distance_t compute_distance_between (const slot_id_t &a, const slot_id_t &b) const
