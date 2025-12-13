@@ -72,6 +72,7 @@ namespace cubconn::connection
     m_coordinator (coord),
     m_watcher (watcher),
     m_core (core),
+    m_status (status::READY),
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
@@ -677,6 +678,35 @@ retry:
     return false;
   }
 
+  bool worker::eventfd_starttimer ()
+  {
+    timer_latency min;
+    std::size_t i;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    if (min != timer_latency::NA)
+      {
+	return this->eventfd_settimer (m_timerfd, min);
+      }
+    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+  }
+
+  bool worker::eventfd_stoptimer ()
+  {
+    return eventfd_settimer (m_timerfd, 0, 0);
+  }
+
   bool worker::eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle)
   {
     timer_latency min;
@@ -709,7 +739,7 @@ retry:
     return this->eventfd_settimer (m_timerfd, min);
   }
 
-  void worker::eventfd_removetimer (timer_type type)
+  bool worker::eventfd_removetimer (timer_type type)
   {
     timer_latency min;
     std::size_t i;
@@ -717,7 +747,7 @@ retry:
     /* avoid resetting the timerfd unnecessarily */
     if (!m_timer_handler[static_cast<std::size_t> (type)].valid)
       {
-	return ;
+	return true;
       }
 
     m_timer_handler[static_cast<std::size_t> (type)].valid = false;
@@ -736,12 +766,9 @@ retry:
 
     if (min != timer_latency::NA)
       {
-	this->eventfd_settimer (m_timerfd, min);
+	return this->eventfd_settimer (m_timerfd, min);
       }
-    else
-      {
-	this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
-      }
+    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
   }
 
   bool worker::eventfd_handler (bool *eventfds)
@@ -800,7 +827,7 @@ retry:
 
 	if (!m_has_retry)
 	  {
-	    this->eventfd_removetimer (timer_type::QUEUE);
+	    return this->eventfd_removetimer (timer_type::QUEUE);
 	  }
       }
 
@@ -977,6 +1004,9 @@ retry:
     ctx->m_stats.set (statistics::context::MOVE_COUNT, 0);
 
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
+
+    m_stats.add (statistics::worker::CLIENT_NUM, 1);
+
     return true;
   }
 
@@ -1012,6 +1042,53 @@ retry:
     return true;
   }
 
+  bool worker::handle_message_queue_start (message &item)
+  {
+    assert (m_status == status::READY);
+
+    m_status = status::RUNNING;
+    this->wakeup_blocked_worker (item.waiter_handle);
+
+    return true;
+  }
+
+  bool worker::handle_message_queue_hibernate (message &item)
+  {
+    if (!this->eventfd_stoptimer ())
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_hibernate: failed to stop the timer\n");
+	assert_release (false);
+      }
+
+    assert (m_context.empty ());
+    assert (m_exhausted.empty ());
+
+    m_status = status::HIBERNATING;
+
+    return true;
+  }
+
+  bool worker::handle_message_queue_awaken (message &item)
+  {
+    if (!this->eventfd_starttimer ())
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_awaken: failed to start the timer\n");
+	assert_release (false);
+      }
+
+    m_status = status::RUNNING;
+
+    return true;
+  }
+
+  bool worker::handle_message_queue_shutdown (message &item)
+  {
+    m_status = status::TERMINATING;
+    m_stop = true;
+
+    return true;
+  }
+
   bool worker::handle_message_queue_by_index (queue_type type)
   {
     message request;
@@ -1030,7 +1107,31 @@ retry:
 	switch (request.type)
 	  {
 	  case message_type::START:
-	    this->wakeup_blocked_worker (request.waiter_handle);
+	    if (!this->handle_message_queue_start (request))
+	      {
+		return false;
+	      }
+	    break;
+
+	  case message_type::HIBERNATE:
+	    if (!this->handle_message_queue_hibernate (request))
+	      {
+		return false;
+	      }
+	    break;
+
+	  case message_type::AWAKEN:
+	    if (!this->handle_message_queue_awaken (request))
+	      {
+		return false;
+	      }
+	    break;
+
+	  case message_type::SHUTDOWN:
+	    if (!this->handle_message_queue_shutdown (request))
+	      {
+		return false;
+	      }
 	    break;
 
 	  case message_type::NEW_CLIENT:
@@ -1039,7 +1140,6 @@ retry:
 	      {
 		return false;
 	      }
-	    m_stats.add (statistics::worker::CLIENT_NUM, 1);
 	    break;
 
 	  case message_type::SHUTDOWN_CLIENT:
@@ -1064,10 +1164,6 @@ retry:
 	      {
 		return false;
 	      }
-	    break;
-
-	  case message_type::SHUTDOWN:
-	    m_stop = true;
 	    break;
 
 	  default:

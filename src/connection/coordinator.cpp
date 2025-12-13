@@ -230,7 +230,7 @@ namespace cubconn::connection
 	printf ("------ worker %d ------\n", static_cast<int> (i));
 	printf ("SCORE: %lf\n", m_statistics[i].m_score);
 	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
-	printf ("CORE USAGE: %0.2lf\n", m_statistics[i].m_core);
+	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
 	printf ("CLIENT NUM: %d (heuristic: %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
 		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
 	printf ("MQ REQUESTED: %lf\n",
@@ -243,7 +243,8 @@ namespace cubconn::connection
 	printf ("SEND BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_send_hit));
       }
     printf ("------ workers ------\n");
-    printf ("CORE USAGE: %0.2lf / %d\n", core, m_max_worker);
+    printf ("CORE USAGE: %0.4lf / %d\n", core, m_max_worker);
+    printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -547,7 +548,7 @@ namespace cubconn::connection
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    //this->statistics_print ();
+		    this->statistics_print ();
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
