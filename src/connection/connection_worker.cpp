@@ -149,7 +149,8 @@ namespace cubconn::connection
   void worker::enqueue (queue_type type, message &&item)
   {
     assert ((item.conn ? (item.conn->fd != -1) : false) ||
-	    (item.type == message_type::START || item.type == message_type::SHUTDOWN));
+	    (item.type == message_type::START || item.type == message_type::SHUTDOWN ||
+	     item.type == message_type::HIBERNATE || item.type == message_type::AWAKEN));
 
 #if !defined (NDEBUG)
     item.message_id = message_counter++;
@@ -1044,7 +1045,7 @@ retry:
 
   bool worker::handle_message_queue_start (message &item)
   {
-    assert (m_status == status::READY);
+    assert (m_status == status::READY || m_status == status::RUNNING);
 
     m_status = status::RUNNING;
     this->wakeup_blocked_worker (item.waiter_handle);

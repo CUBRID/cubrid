@@ -184,6 +184,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
+      bool handle_message_queue_start (message &item);
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue_return_to_pool (message &item);
       bool handle_message_queue_statistics (message &item);

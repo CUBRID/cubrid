@@ -312,6 +312,27 @@ namespace cubconn::connection
     return true;
   }
 
+  bool coordinator::handle_message_queue_start (message &item)
+  {
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+    std::size_t worker, i;
+
+    worker = 0;
+
+    for (i = 1; i < m_max_worker; i++)
+      {
+	request.type = connection::worker::message_type::HIBERNATE;
+	workers[worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+	if (!workers[worker]->notify ())
+	  {
+	    assert_release (false);
+	  }
+      }
+
+    return true;
+  }
+
   bool coordinator::handle_message_queue_new_client (message &item)
   {
     static uint64_t id = 1;
@@ -321,6 +342,7 @@ namespace cubconn::connection
     std::size_t worker;
 
     std::tie (worker, std::ignore) = statistics_find_score_extremes ();
+    worker = 0;
 
     assert (m_statistics[worker].m_contexts.find (id) == m_statistics[worker].m_contexts.end ());
 
@@ -436,6 +458,7 @@ namespace cubconn::connection
 	switch (request.type)
 	  {
 	  case message_type::START:
+	    this->handle_message_queue_start (request);
 	    break;
 
 	  case message_type::NEW_CLIENT:

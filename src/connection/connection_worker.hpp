@@ -117,8 +117,8 @@ namespace cubconn::connection
 
 	START,
 
-	HIBERNATE,
-	AWAKEN,
+	HIBERNATE, /* lazy queue */
+	AWAKEN, /* lazy queue */
 
 	SHUTDOWN,
 
