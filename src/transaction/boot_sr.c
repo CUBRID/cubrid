@@ -83,6 +83,7 @@
 #include "tde.h"
 #include "porting.h"
 #include "log_manager.h"
+#include "catalog_class.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -134,14 +135,6 @@ struct boot_dbparm
 enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
-
-extern bool catcls_Enable;
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
-					  const int lang_buf_size, char *timezone_checksum);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
-extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 #if defined(SA_MODE)
 extern void boot_client_all_finalize (int final_level);

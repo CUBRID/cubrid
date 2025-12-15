@@ -674,7 +674,7 @@ get_ordered_classes (print_output & output_ctx, MOP * class_table)
 }
 
 /*
- * export_serial - export db_serial
+ * export_serial - export _db_serial
  *    return: NO_ERROR if successful, error code otherwise
  *    output_ctx(in/out): output context
  */
@@ -686,7 +686,6 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
-  DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
   char *uppercase_user = NULL;
   size_t uppercase_user_size = 0;
@@ -695,6 +694,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   char owner_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *serial_name = NULL;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
+  int save;
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -703,12 +703,12 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   const char *query_all =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [attr_name] is null";
+    "from [_db_serial] where [class_name] is null and [attr_name] is null";
 
   const char *query_user =
     "select [unique_name], [name], [owner].[name], " "[current_val], " "[increment_val], " "[max_val], " "[min_val], "
     "[cyclic], " "[started], " "[cached_num], " "[comment] "
-    "from [db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
+    "from [_db_serial] where [class_name] is null and [attr_name] is null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -741,13 +741,13 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
+  AU_DISABLE (save);
+
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
     {
       goto err;
     }
-
-
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
@@ -879,6 +879,8 @@ err:
     {
       free_and_init (uppercase_user);
     }
+
+  AU_ENABLE (save);
   return error;
 }
 
@@ -890,7 +892,6 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
   DB_VALUE values[ALTER_SERIAL_VALUE_INDEX_MAX], diff_value, answer_value;
-  DB_DOMAIN *domain;
   char str_buf[NUMERIC_MAX_STRING_SIZE] = { '\0' };
   char *uppercase_user = NULL;
   size_t uppercase_user_size = 0;
@@ -902,6 +903,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   char temp_schema[DB_MAX_CLASS_LENGTH] = { '\0' };
   const char *serial_owner_name = NULL;
   const char *serial_class_name = NULL;
+  int save;
 
   /*
    * You must check SERIAL_VALUE_INDEX enum defined on the top of this file
@@ -910,12 +912,12 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   const char *query_all =
     "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
-    "from [db_serial] where [class_name] is not null and [attr_name] is not null";
+    "from [_db_serial] where [class_name] is not null and [attr_name] is not null";
 
   const char *query_user =
     "select [unique_name], [name], [owner].[name], [current_val], [increment_val], [max_val], [min_val], "
     "[cyclic], [started], [cached_num], [class_name], [comment] "
-    "from [db_serial] where [class_name] is not null and [attr_name] is not null and owner.name='%s'";
+    "from [_db_serial] where [class_name] is not null and [attr_name] is not null and owner.name='%s'";
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -948,13 +950,13 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
+  AU_DISABLE (save);
+
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
     {
       goto err;
     }
-
-
 
   if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
@@ -1116,6 +1118,8 @@ err:
     {
       free_and_init (uppercase_user);
     }
+
+  AU_ENABLE (save);
   return error;
 }
 
@@ -1170,12 +1174,12 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 			     "DECODE((SELECT 1 from [_db_class] WHERE [class_name] = [target_name] and [is_system_class] = 1), NULL, LOWER([target_owner].[name]), '') target_owner, "
 			     "[comment] "
 			   "FROM [_db_synonym]";
-                           "WHERE [owner].[name] = '%s'";
   // *INDENT-ON*
 
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
+  // TODO: it should be moved to before db_compile_and_execute_local(). It can be returned without AU_ENABLE().
   AU_DISABLE (save);
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
@@ -1440,7 +1444,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
       err_count++;
     }
@@ -1472,7 +1476,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
       err_count++;
     }
@@ -5257,7 +5261,7 @@ extract_serial (extract_context & ctxt)
 	  fprintf (stderr, "%s", db_error_string (3));
 	  if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	    {
-	      fprintf (stderr, " Check the value of db_serial object.\n");
+	      fprintf (stderr, " Check the value of _db_serial object.\n");
 	    }
 	}
     }
@@ -5543,7 +5547,7 @@ extract_class (extract_context & ctxt)
       fprintf (stderr, "%s", db_error_string (3));
       if (db_error_code () == ER_INVALID_SERIAL_VALUE)
 	{
-	  fprintf (stderr, " Check the value of db_serial object.\n");
+	  fprintf (stderr, " Check the value of _db_serial object.\n");
 	}
       err = ER_FAILED;
       goto end_class;
