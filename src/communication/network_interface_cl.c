@@ -81,6 +81,7 @@
 #include "message_catalog.h"
 #include "utility.h"
 #include "sp_constants.hpp"
+#include "locator_cl.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -113,6 +114,7 @@ static THREAD_ENTRY *enter_server (void);
 static void exit_server_no_thread_entry (void);
 static void exit_server (const THREAD_ENTRY & thread_ref);
 #endif // SERVER_MODE
+static int is_top_level_class (MOBJ mobj);
 
 #if defined (SA_MODE)
 //
@@ -5760,7 +5762,7 @@ stats_update_statistics (MOP classop, int with_fullscan)
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  char *request;
+  char *request = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply;
   char *ptr;
@@ -5770,11 +5772,8 @@ stats_update_statistics (MOP classop, int with_fullscan)
   /* get NDV by query */
   if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
     {
-      if (class_attr_ndv.attr_ndv != NULL)
-	{
-	  free_and_init (class_attr_ndv.attr_ndv);
-	}
-      return ER_FAILED;
+      error = ER_FAILED;
+      goto end;
     }
 
   request_size = OR_INT_SIZE + (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1)) + OR_INT_SIZE + OR_OID_SIZE;
@@ -5811,39 +5810,49 @@ end:
       free_and_init (class_attr_ndv.attr_ndv);
     }
 
-  free_and_init (request);
+  if (request)
+    {
+      free_and_init (request);
+    }
 
   return error;
 #else /* CS_MODE */
-  int success;
+  int error = NO_ERROR;
   CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
+  THREAD_ENTRY *thread_p;
 
   /* get NDV by query */
   if (stats_get_ndv_by_query (classop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
     {
-      if (class_attr_ndv.attr_ndv != NULL)
-	{
-	  free_and_init (class_attr_ndv.attr_ndv);
-	}
-      return ER_FAILED;
+      error = ER_FAILED;
+      goto end;
     }
 
-
-  THREAD_ENTRY *thread_p = enter_server ();
-
-  success =
-    xstats_update_statistics (thread_p, WS_OID (classop), (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
-			      &class_attr_ndv);
-
+  thread_p = enter_server ();
+  error = xstats_update_statistics (thread_p, WS_OID (classop), with_fullscan, &class_attr_ndv);
   exit_server (*thread_p);
 
+end:
   if (class_attr_ndv.attr_ndv != NULL)
     {
       free_and_init (class_attr_ndv.attr_ndv);
     }
 
-  return success;
+  return error;
 #endif /* !CS_MODE */
+}
+
+static int
+is_top_level_class (MOBJ mobj)
+{
+  assert (mobj != NULL);
+
+  SM_CLASS *class_ = (SM_CLASS *) mobj;
+  bool is_class = class_->class_type == SM_CLASS_CT;
+  bool is_root_partition_class = (class_->partition == NULL ||
+				  class_->partition->class_partition_type == DB_PARTITIONED_CLASS);
+
+  return (is_class && is_root_partition_class);
 }
 
 /*
@@ -5857,211 +5866,32 @@ end:
 int
 stats_update_all_statistics (int with_fullscan)
 {
-#if defined(CS_MODE)
-  int error = ER_NET_CLIENT_DATA_RECEIVE;
-  int req_error;
-  char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply;
-  char *ptr;
-  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
-  const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
-    "union "
-    "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE class_name_val;
-  MOP class_mop;
-  int request_size;
-
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-  db_make_null (&class_name_val);
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
-    {
-      goto end;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      goto end;
-    }
-
-  do
-    {
-      const char *class_name = NULL;
-
-      /* class_name */
-      error = db_query_get_tuple_value (query_result, 0, &class_name_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      class_name = db_get_string (&class_name_val);
-
-      class_mop = db_find_class (class_name);
-      if (class_mop == NULL)
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      /* get NDV by query */
-      if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      request_size = OR_INT_SIZE + (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1)) + OR_INT_SIZE + OR_OID_SIZE;
-      request = (char *) malloc (request_size);
-      if (request == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      ptr = or_pack_int (request, class_attr_ndv.attr_cnt);
-      for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
-	{
-	  ptr = or_pack_int (ptr, class_attr_ndv.attr_ndv[i].id);
-	  ptr = or_pack_int64 (ptr, class_attr_ndv.attr_ndv[i].ndv);
-	}
-      ptr = or_pack_oid (ptr, WS_OID (class_mop));
-      ptr = or_pack_int (ptr, with_fullscan);
-
-      reply = OR_ALIGNED_BUF_START (a_reply);
-
-      req_error =
-	net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, request_size, reply,
-			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-      if (!req_error)
-	{
-	  or_unpack_errcode (reply, &error);
-	}
-      if (class_attr_ndv.attr_ndv != NULL)
-	{
-	  free_and_init (class_attr_ndv.attr_ndv);
-	}
-      free_and_init (request);
-      db_value_clear (&class_name_val);
-
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
-
-end:
-  if (query_result)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-  if (class_attr_ndv.attr_ndv != NULL)
-    {
-      free_and_init (class_attr_ndv.attr_ndv);
-    }
-  if (request)
-    {
-      free_and_init (request);
-    }
-
-  return (error == DB_CURSOR_END) ? NO_ERROR : error;
-
-#else /* CS_MODE */
   int error = NO_ERROR;
-  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
-  const char *query = "select c.unique_name from _db_class as c where c.class_type = 0 and [partition] is null "
-    "union "
-    "select c.unique_name from _db_class as c, TABLE(c.partition) as g(x) where c.class_type = 0 and x.pname is null;";
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_QUERY_ERROR query_error;
-  DB_VALUE class_name_val;
-  THREAD_ENTRY *thread_p;
-  MOP class_mop;
+  MOP class_mop = NULL;
+  LIST_MOPS *lmops = NULL;
 
-  memset (&query_error, 0, sizeof (DB_QUERY_ERROR));
-  db_make_null (&class_name_val);
-
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
-  if (error < 0)
+  lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
+  if (lmops == NULL)
     {
-      goto end;
+      return ER_FAILED;
     }
 
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
+  for (int i = 0; i < lmops->num; i++)
     {
-      goto end;
-    }
-
-  do
-    {
-      const char *class_name = NULL;
-
-      /* class_name */
-      error = db_query_get_tuple_value (query_result, 0, &class_name_val);
-      if (error != NO_ERROR)
+      class_mop = lmops->mops[i];
+      if (locator_fetch_class (class_mop, DB_FETCH_READ) != NULL)
 	{
-	  goto end;
-	}
-      class_name = db_get_string (&class_name_val);
-
-      class_mop = db_find_class (class_name);
-      if (class_mop == NULL)
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      /* get NDV by query */
-      if (stats_get_ndv_by_query (class_mop, &class_attr_ndv, NULL, with_fullscan) != NO_ERROR)
-	{
-	  if (class_attr_ndv.attr_ndv != NULL)
+	  error = stats_update_statistics (class_mop, with_fullscan);
+	  if (error != NO_ERROR)
 	    {
-	      free_and_init (class_attr_ndv.attr_ndv);
+	      break;
 	    }
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      thread_p = enter_server ();
-      error =
-	xstats_update_statistics (thread_p, WS_OID (class_mop),
-				  (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING), &class_attr_ndv);
-      exit_server (*thread_p);
-
-      if (class_attr_ndv.attr_ndv != NULL)
-	{
-	  free_and_init (class_attr_ndv.attr_ndv);
-	}
-
-      db_value_clear (&class_name_val);
-      if (error != NO_ERROR)
-	{
-	  goto end;
 	}
     }
-  while ((error = db_query_next_tuple (query_result)) == DB_CURSOR_SUCCESS);
 
-end:
-  if (query_result)
-    {
-      db_query_end (query_result);
-      query_result = NULL;
-    }
-  if (class_attr_ndv.attr_ndv != NULL)
-    {
-      free_and_init (class_attr_ndv.attr_ndv);
-    }
+  locator_free_list_mops (lmops);
 
-  return (error == DB_CURSOR_END) ? NO_ERROR : error;
-#endif /* !CS_MODE */
+  return error;
 }
 
 /*
@@ -10914,7 +10744,7 @@ loaddb_update_stats (bool verbose)
 		  fflush (stdout);
 		}
 	    }
-	  stats_update_statistics (classop, 0);
+	  stats_update_statistics (classop, STATS_WITH_SAMPLING);
 	}
     }
 
