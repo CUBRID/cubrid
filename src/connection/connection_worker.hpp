@@ -128,7 +128,9 @@ namespace cubconn::connection
 	SHUTDOWN_CLIENT, /* lazy queue */
 
 	SEND_PACKET,
-	RELEASE_PACKET
+	RELEASE_PACKET,
+
+	TYPE_COUNT
       };
 
       struct message

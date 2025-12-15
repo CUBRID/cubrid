@@ -80,9 +80,10 @@ namespace cubconn::statistics
     BLOCKED_RMUTEX, /* us */
 
     /* --------------------------------------------------------------------------- */
-    /* stats count		 						   */
+    /* stats count (will not be allocated)					   */
     /* --------------------------------------------------------------------------- */
-    STATS_COUNT
+    STATS_COUNT,
+    NA
   };
 
   inline std::pair<std::string, std::string> worker_to_string[static_cast <std::size_t> (worker::STATS_COUNT)] =

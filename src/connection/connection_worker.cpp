@@ -1092,6 +1092,21 @@ retry:
 
   bool worker::handle_message_queue_by_index (queue_type type)
   {
+    static constexpr std::array<
+    std::pair<bool (worker::*) (message &), statistics::worker>, static_cast<std::size_t> (message_type::TYPE_COUNT)
+    > handler =
+    {
+      {
+	/* START	   */ { &worker::handle_message_queue_start,		statistics::worker::NA },
+	/* HIBERNATE	   */ { &worker::handle_message_queue_hibernate,	statistics::worker::NA },
+	/* AWAKEN	   */ { &worker::handle_message_queue_awaken,		statistics::worker::NA },
+	/* SHUTDOWN	   */ { &worker::handle_message_queue_shutdown,		statistics::worker::NA },
+	/* NEW_CLIENT	   */ { &worker::handle_message_queue_new_client,	statistics::worker::MQ_NEW_CLIENT },
+	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT },
+	/* SEND_PACKET	   */ { &worker::handle_message_queue_send_packet,	statistics::worker::MQ_SEND_PACKET },
+	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET },
+      }
+    };
     message request;
     uint64_t size, i;
 
@@ -1104,74 +1119,21 @@ retry:
 		     "recevied message_id = %lld, request_type = %d from message queue in the worker = %d\n", request.message_id,
 		     request.type, m_index);
 #endif
-
-	switch (request.type)
+	if (! (message_type::START <= request.type && message_type::TYPE_COUNT > request.type))
 	  {
-	  case message_type::START:
-	    if (!this->handle_message_queue_start (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::HIBERNATE:
-	    if (!this->handle_message_queue_hibernate (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::AWAKEN:
-	    if (!this->handle_message_queue_awaken (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::SHUTDOWN:
-	    if (!this->handle_message_queue_shutdown (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::NEW_CLIENT:
-	    m_stats.add (statistics::worker::MQ_NEW_CLIENT, 1);
-	    if (!this->handle_message_queue_new_client (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::SHUTDOWN_CLIENT:
-	    m_stats.add (statistics::worker::MQ_SHUTDOWN_CLIENT, 1);
-	    if (!this->handle_message_queue_shutdown_client (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::SEND_PACKET:
-	    m_stats.add (statistics::worker::MQ_SEND_PACKET, 1);
-	    if (!this->handle_message_queue_send_packet (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::RELEASE_PACKET:
-	    m_stats.add (statistics::worker::MQ_RELEASE_PACKET, 1);
-	    if (!this->handle_message_queue_release_packet (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  default:
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection::worker->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
 	    assert_release (false);
-	    break;
+	    continue;
+	  }
+
+	if (handler[static_cast <std::size_t> (request.type)].second != statistics::worker::NA)
+	  {
+	    m_stats.add (handler[static_cast <std::size_t> (request.type)].second, 1);
+	  }
+	if (! (this->*handler[static_cast <std::size_t> (request.type)].first) (request))
+	  {
+	    return false;
 	  }
       }
 
