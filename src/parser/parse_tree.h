@@ -778,7 +778,6 @@ struct json_t;
 #define PT_NAME_ORIGINAL(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.original)
 #define PT_NAME_RESOLVED(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.resolved)
 #define PT_NAME_DB_OBJECT(n)		(PT_NAME_ASSERT ((n)), (n)->info.name.db_object)
-#define PT_NAME_ORIGINAL(n)             (PT_NAME_ASSERT ((n)), (n)->info.name.original)
 
 /* PT_CREATE_ENTITY */
 #define PT_CREATE_ENTITY_ASSERT(n)	(PT_ASSERT_NODE_TYPE ((n), PT_CREATE_ENTITY))

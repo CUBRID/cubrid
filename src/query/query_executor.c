@@ -7193,7 +7193,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     {
       assert (!force_select_lock);
 
-      /* We expect to update or delete a non MVCC objects via a scan are only db_serial, db_ha_apply_info and
+      /* We expect to update or delete a non MVCC objects via a scan are only _db_serial, _db_ha_apply_info and
        * _db_collation objects. */
       assert ((scan_op_type != S_DELETE && scan_op_type != S_UPDATE) || oid_is_serial (&ACCESS_SPEC_CLS_OID (curr_spec))
 	      || (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &ACCESS_SPEC_CLS_OID (curr_spec)))
@@ -9251,6 +9251,13 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
+				  
+				  /* only one row is need for exists OP */
+				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				    {
+				      return S_SUCCESS;
+				    }
+
 				  if (ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
 				    {
 				      assert (xasl->curr_spec->indexptr != NULL);
@@ -9350,6 +9357,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
 					  return S_ERROR;
+					}
+				      /* only one row is need for exists OP */
+				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+					{
+					  return S_SUCCESS;
 					}
 				      scan_ptr_qualified = true;
 				    }

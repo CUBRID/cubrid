@@ -24,9 +24,6 @@
 
 #include <assert.h>
 
-#include "config.h"
-
-#include "misc_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
 #include "dbtype.h"
@@ -36,7 +33,6 @@
 #include "schema_manager.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
-#include "object_print.h"
 #include "set_object.h"
 #include "authenticate.h"
 #include "db.h"
@@ -45,8 +41,9 @@
 #include "locator_cl.h"
 #include "transaction_cl.h"
 #include "execute_statement.h"
-
 #include "dbtype.h"
+#include "string_opfunc.h"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -105,14 +102,6 @@ static const int TR_RETURN_ERROR = -1;
 static const int TR_RETURN_FALSE = 0;
 static const int TR_RETURN_TRUE = 1;
 
-/*
- * tr_init
- *
- * Note: Trigger initialization function.
- *              This function should be called at the beginning of a
- *              transaction.
- */
-
 static const int TR_EST_MAP_SIZE = 1024;
 
 static const char *OBJ_REFERENCE_NAME = "obj";
@@ -128,7 +117,7 @@ static const char *OLD_REFERENCE_NAME = "old";
 const char *EVAL_PREFIX = "EVALUATE ( ";
 const char *EVAL_SUFFIX = " ) ";
 
-const char *TR_CLASS_NAME = "db_trigger";
+const char *TR_CLASS_NAME = CT_TRIGGER_NAME;
 const char *TR_ATT_UNIQUE_NAME = "unique_name";
 const char *TR_ATT_NAME = "name";
 const char *TR_ATT_OWNER = "owner";
@@ -147,6 +136,8 @@ const char *TR_ATT_ACTION = "action_definition";
 const char *TR_ATT_ACTION_OLD = "action";
 const char *TR_ATT_PROPERTIES = "properties";
 const char *TR_ATT_COMMENT = "comment";
+const char *TR_ATT_CREATED_TIME = "created_time";
+const char *TR_ATT_UPDATED_TIME = "updated_time";
 
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
@@ -249,9 +240,9 @@ static void tr_finish (TR_STATE * state);
 static int its_deleted (DB_OBJECT * object);
 
 static int map_flush_helper (const void *key, void *data, void *args);
-static int define_trigger_classes (void);
 
 static TR_RECURSION_DECISION tr_check_recursivity (OID oid, OID stack[], int stack_size, bool is_statement);
+static int tr_set_trigger_timestamps (TR_TRIGGER * trigger);
 
 /* ERROR HANDLING */
 
@@ -413,6 +404,8 @@ tr_make_trigger (void)
   trigger->temp_refname = NULL;
   trigger->chn = NULL_CHN;
   trigger->comment = NULL;
+  trigger->created_time = DATETIME_NULL_VALUE;
+  trigger->updated_time = DATETIME_NULL_VALUE;
 
   return trigger;
 }
@@ -1134,6 +1127,11 @@ trigger_to_object (TR_TRIGGER * trigger)
   err = dbt_put_internal (obt_p, TR_ATT_COMMENT, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (db_set_otmpl_timestamps (obt_p) != NO_ERROR)
     {
       goto error;
     }
@@ -1967,6 +1965,10 @@ register_user_trigger (DB_OBJECT * object)
 
       db_make_object (&value, object);
       error = set_insert_element (table, 0, &value);
+      if (error != NO_ERROR)
+	{
+	  error = au_update_user_timestamp (Au_user);
+	}
       /* if an error is set, probably must abort the transaction */
     }
 
@@ -2030,6 +2032,10 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 	  db_make_object (&value, trigger->object);
 	  error = set_drop_element (table, &value, false);
 	  set_free (table);
+	}
+      if (error != NO_ERROR)
+	{
+	  error = au_update_user_timestamp (Au_user);
 	}
       /* else, should have "trigger not found" error ? */
     }
@@ -4098,6 +4104,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       has_savepoint = true;
     }
 
+  if (tr_set_trigger_timestamps (trigger) != NO_ERROR)
+    {
+      goto error;
+    }
+
   /* from here down, the unwinding when errors are encountered gets rather complex */
 
   /* convert to a persistent instance */
@@ -4340,7 +4351,7 @@ tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_mop, const cha
  *    This is used to see if a particular authorization is enabled for a trigger object.
  *    It is intended to be called by do_trigger to make sure that statement operations involving multiple triggers
  *    can be performed without authorization errors.
- *    Since trigger objects are individually authorized, we can't use db_check_authorization because the db_trigger class
+ *    Since trigger objects are individually authorized, we can't use db_check_authorization because the _db_trigger class
  *    is normally completely protected.
  *    If the alter-flag is zero, we just check for basic read authorization
  *    if the flag is non-zero, we also check for ALTER authorization on the associated class.
@@ -4396,7 +4407,6 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 {
   int error = NO_ERROR;
   int save;
-  bool has_savepoint = false;
 
   if (need_savepoint)
     {
@@ -4406,8 +4416,6 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	{
 	  return error;
 	}
-
-      has_savepoint = true;
     }
 
   AU_DISABLE (save);
@@ -6939,6 +6947,14 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
     }
   pr_clear_value (&value);
 
+  error = tr_update_trigger_timestamp (trigger_object);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      is_abort = true;
+      goto end;
+    }
+
   if (!deferred_flush)
     {
       error = locator_flush_instance (trigger_object);
@@ -7362,157 +7378,6 @@ tr_dump (FILE * fpp)
     }
 }
 
-
-/*
- * TRIGGER DATABASE INSTALLATION
- */
-
-/*
- * define_trigger_classes() - This defines the classes necessary for storing triggers.
- *    return: error code
- *
- * Note:
- *    Currently there is only a single trigger object class.
- *    This should only be called during createdb.
- */
-static int
-define_trigger_classes (void)
-{
-  DB_CTMPL *tmp;
-  DB_OBJECT *class_mop;
-  DB_VALUE value;
-
-  tmp = NULL;
-
-  tmp = dbt_create_class (TR_CLASS_NAME);
-  if (tmp == NULL)
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_UNIQUE_NAME, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_OWNER, AU_USER_CLASS_NAME, NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_NAME, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_STATUS_ACTIVE);
-  if (dbt_add_attribute (tmp, TR_ATT_STATUS, "integer", &value))
-    {
-      goto tmp_error;
-    }
-
-  db_make_float (&value, TR_LOWEST_PRIORITY);
-  if (dbt_add_attribute (tmp, TR_ATT_PRIORITY, "double", &value))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_EVENT_NULL);
-  if (dbt_add_attribute (tmp, TR_ATT_EVENT, "integer", &value))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_CLASS, "object", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_ATTRIBUTE, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, 0);
-  if (dbt_add_attribute (tmp, TR_ATT_CLASS_ATTRIBUTE, "integer", &value))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_CONDITION_TYPE, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_CONDITION, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_TIME_AFTER);
-  if (dbt_add_attribute (tmp, TR_ATT_CONDITION_TIME, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_ACTION_TYPE, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_ACTION, "string", NULL))
-    {
-      goto tmp_error;
-    }
-
-  db_make_int (&value, TR_TIME_AFTER);
-  if (dbt_add_attribute (tmp, TR_ATT_ACTION_TIME, "integer", NULL))
-    {
-      goto tmp_error;
-    }
-
-  if (dbt_add_attribute (tmp, TR_ATT_COMMENT, "varchar(1024)", NULL))
-    {
-      goto tmp_error;
-    }
-
-  class_mop = dbt_finish_class (tmp);
-  if (class_mop == NULL)
-    {
-      goto tmp_error;
-    }
-
-  if (locator_create_heap_if_needed (class_mop, false) == NULL)
-    {
-      goto tmp_error;
-    }
-
-  return NO_ERROR;
-
-tmp_error:
-  if (tmp != NULL)
-    {
-      dbt_abort_class (tmp);
-    }
-
-  ASSERT_ERROR ();
-  return er_errid ();
-}
-
-/*
- * tr_install() - Trigger installation function.
- *    return: error code
- *
- * Note:
- *    A system class called TRIGGER is created, and initialized.
- *    The function should be called exactly once in createdb.
- */
-int
-tr_install (void)
-{
-  return (define_trigger_classes ());
-}
-
 /*
  * tr_get_execution_state() - Returns the current trigger execution state.
  *    return: bool
@@ -7641,4 +7506,33 @@ remove_appended_trigger_evaluate (char *trigger_stmt_str, int with_evaluate)
     }
 
   return trigger_stmt_str;
+}
+
+static int
+tr_set_trigger_timestamps (TR_TRIGGER * trigger)
+{
+  DB_VALUE current_datetime;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  trigger->created_time = *db_get_datetime (&current_datetime);
+  trigger->updated_time = *db_get_datetime (&current_datetime);
+
+  return NO_ERROR;
+}
+
+int
+tr_update_trigger_timestamp (DB_OBJECT * obj)
+{
+  int save;
+  int error = NO_ERROR;
+
+  AU_DISABLE (save);
+  error = db_update_obj_timestamp (obj);
+  AU_ENABLE (save);
+
+  return error;
 }

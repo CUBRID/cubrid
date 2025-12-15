@@ -510,7 +510,7 @@ struct cte_proc_node
 #define XASL_DECACHE_CLONE	       (0x1 << 12)	/* decache clone */
 #define XASL_RETURN_GENERATED_KEYS     (0x1 << 13)	/* return generated keys */
 #define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
-#define XASL_FLAG_RESERVED_1	       (0x1 << 15)	/* reserved for future use */
+#define XASL_NEED_SINGLE_TUPLE_SCAN    (0x1 << 15)	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
 #define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
