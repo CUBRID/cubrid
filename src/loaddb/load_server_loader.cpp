@@ -129,6 +129,7 @@ namespace cubload
 	if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 	  {
 	    thread_ref.conn_entry->client_type = DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4;
+	    m_session.append_log_msg (LOADDB_MSG_COMPAT_UNDER_11_4);
 	  }
       }
     else if (sm_check_system_class_by_name (class_name))

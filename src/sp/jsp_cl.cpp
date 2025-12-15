@@ -285,6 +285,8 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
 
 	  error = ER_SP_NOT_EXIST;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, name);
+
+	  return error;
 	}
 
       db_make_string (&value, other_class_name);
