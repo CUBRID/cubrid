@@ -427,36 +427,6 @@ namespace cubpacking
     return DB_ALIGN (curr_offset, INT_ALIGNMENT) - curr_offset + (OR_INT_SIZE * (count + 1));
   }
 
-  void
-  unpacker::unpack_int_vector (std::vector<int> &array)
-  {
-    int count;
-
-    align (INT_ALIGNMENT);
-    if (check_range (m_ptr, m_end_ptr, OR_INT_SIZE) != NO_ERROR)
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
-	m_error_code = ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
-	return;
-      }
-
-    count = OR_GET_INT (m_ptr);
-    m_ptr += OR_INT_SIZE;
-
-    if (check_range (m_ptr, m_end_ptr, OR_INT_SIZE * count) != NO_ERROR)
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
-	m_error_code = ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
-	return;
-      }
-
-    for (int i = 0; i < count; i++)
-      {
-	array.push_back (OR_GET_INT (m_ptr));
-	m_ptr += OR_INT_SIZE;
-      }
-  }
-
   size_t
   packer::get_packed_db_value_size (const db_value &value, size_t curr_offset)
   {
@@ -547,47 +517,6 @@ namespace cubpacking
       {
 	std::memcpy (m_ptr, string, str_size);
 	m_ptr += str_size;
-      }
-
-    align (INT_ALIGNMENT);
-  }
-
-  void
-  unpacker::unpack_small_string (char *string, const size_t max_size)
-  {
-    size_t len;
-
-    if (check_range (m_ptr, m_end_ptr, OR_BYTE_SIZE) != NO_ERROR)
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
-	m_error_code = ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
-	return;
-      }
-
-    len = OR_GET_BYTE (m_ptr);
-    if (len > max_size)
-      {
-	assert (false);
-	return;
-      }
-
-    m_ptr += OR_BYTE_SIZE;
-
-    if (check_range (m_ptr, m_end_ptr, len) != NO_ERROR)
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
-	m_error_code = ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
-	return;
-      }
-    if (len > 0)
-      {
-	std::memcpy (string, m_ptr, len);
-	string[len] = '\0';
-	m_ptr += len;
-      }
-    else
-      {
-	*string = '\0';
       }
 
     align (INT_ALIGNMENT);
@@ -907,11 +836,6 @@ namespace cubpacking
   unpacker::unpack_overloaded (OID &oid)
   {
     return unpack_oid (oid);
-  }
-
-  void unpacker::peek_unpack_block_length (int &value)
-  {
-    return peek_unpack_int (value);
   }
 
   size_t
