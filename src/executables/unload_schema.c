@@ -3074,7 +3074,7 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 
   emit_domain_def (ctxt, output_ctx, db_attribute_domain (attribute));
 
-  
+
   /* emit invisible */
   if (db_attribute_is_invisible_column (attribute))
     {
