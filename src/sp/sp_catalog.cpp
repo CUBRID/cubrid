@@ -33,6 +33,7 @@
 #include "object_accessor.h"
 #include "set_object.h"
 #include "locator_cl.h"
+#include "sp_constants.hpp"
 #include "transaction_cl.h"
 #include "schema_manager.h"
 #include "dbtype.h"
@@ -58,8 +59,11 @@ static const std::vector<std::string> sp_entry_names
   SP_ATTR_TARGET_CLASS,
   SP_ATTR_TARGET_METHOD,
   SP_ATTR_DIRECTIVE,
+  SP_ATTR_SQL_DATA_ACCESS,
   SP_ATTR_OWNER,
-  SP_ATTR_COMMENT
+  SP_ATTR_COMMENT,
+  SP_ATTR_CREATED_TIME,
+  SP_ATTR_UPDATED_TIME
 };
 
 static const std::vector<std::string> sp_args_entry_names
@@ -89,14 +93,20 @@ static int sp_builtin_init ()
 
   sp_info v;
   sp_arg_info a;
+  DB_VALUE current_datetime;
+
+  db_sys_datetime (&current_datetime);
 
   // common
-  v.is_system_generated = true;
   v.lang = SP_LANG_PLCSQL;
-  v.owner = Au_public_user;
-  v.comment = "";
+  v.is_system_generated = true;
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
+  v.owner = Au_public_user;
+  v.sql_data_access = SP_SQL_TYPE_UNKNOWN;
+  v.comment = "";
   v.target_class = "com.cubrid.plcsql.builtin.DBMS_OUTPUT";
+  v.created_time = *db_get_datetime (&current_datetime);
+  v.updated_time = *db_get_datetime (&current_datetime);
 
   a.is_system_generated = true;
 
@@ -546,11 +556,34 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    db_make_int (&value, info.sql_data_access);
+    err = dbt_put_internal (obt_p, SP_ATTR_SQL_DATA_ACCESS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
     if (!info.comment.empty ())
       {
 	db_make_string (&value, info.comment.data ());
       }
     err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_datetime (&value, &info.created_time);
+    err = dbt_put_internal (obt_p, SP_ATTR_CREATED_TIME, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_datetime (&value, &info.updated_time);
+    err = dbt_put_internal (obt_p, SP_ATTR_UPDATED_TIME, &value);
     pr_clear_value (&value);
     if (err != NO_ERROR)
       {

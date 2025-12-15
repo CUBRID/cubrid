@@ -65,11 +65,9 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "transaction_transient.hpp"
 #include "xserver_interface.h"
+#include "catalog_class.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-/* TODO : remove */
-extern bool catcls_Enable;
 
 static const int LOCATOR_GUESS_NUM_NESTED_REFERENCES = 100;
 #define LOCATOR_GUESS_HT_SIZE    LOCATOR_GUESS_NUM_NESTED_REFERENCES * 2
@@ -83,12 +81,6 @@ typedef enum
   FOR_MOVE			/* It is an update statement on partitioned table, move a record from one partition to
 				 * another */
 } LOCATOR_INDEX_ACTION_FLAG;
-
-extern int catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record);
-extern int catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name, OID * class_oid);
-extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name, RECDES * record, OID * class_oid_p,
-					  UPDATE_INPLACE_STYLE force_in_place);
-extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
 
 typedef struct locator_classname_action LOCATOR_CLASSNAME_ACTION;
 struct locator_classname_action
