@@ -1110,6 +1110,9 @@ retry:
     message request;
     uint64_t size, i;
 
+    static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
+
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
     while (i++ < size && m_queue[static_cast<std::size_t> (type)].try_pop (request))
