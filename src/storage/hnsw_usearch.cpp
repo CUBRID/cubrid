@@ -24,11 +24,6 @@
 #include "hnsw.hpp"
 
 #include "error_manager.h"
-#include "page_buffer.h"
-#include "slotted_page.h"
-#include "page_buffer.h"
-#include "storage_common.h"
-#include "object_representation.h"
 #include "system_parameter.h"
 #include "vector_opfunc.hpp"
 #include "boot_sr.h"
@@ -39,7 +34,6 @@
 #include "porting.h"
 #include "vector_distance_enum.h"
 #include "heap_file.h"
-#include <assert.h>
 #include <cstddef>
 #include <fstream>
 #include <filesystem>

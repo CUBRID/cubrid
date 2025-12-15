@@ -3840,6 +3840,7 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATA
       for (i = 0; i < n_btstats; i++)
 	{
 	  btree_stats_p = &disk_attr_p->bt_stats[i];
+          // TODO (CUBVEC): 'disk_attr_p->type == DB_TYPE_VECTOR' should be removed after CUBVEC-135 is resolved.
 	  if (BTID_IS_VECTOR_INDEX (&btree_stats_p->btid) || disk_attr_p->type == DB_TYPE_VECTOR)
 	    {
 	      continue;

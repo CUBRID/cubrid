@@ -43,67 +43,67 @@
 
 class hnsw_usearch_ng_backend final:public hnsw_index_backend
 {
-public:
-  hnsw_usearch_ng_backend (const std::string & id):hnsw_index_backend (id)
-  {
-  }
-   ~hnsw_usearch_ng_backend () override = default;
+  public:
+    hnsw_usearch_ng_backend (const std::string &id):hnsw_index_backend (id)
+    {
+    }
+    ~hnsw_usearch_ng_backend () override = default;
 
-  virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC & metric)
+    virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric)
     const override;
-  virtual bool is_disk_index () const override
-  {
-    return true;
-  }
+    virtual bool is_disk_index () const override
+    {
+      return true;
+    }
 
-  virtual hnsw_index *create_index (THREAD_ENTRY * thread_p,
-				    const BTID * btid,
-				    const std::string & name,
-				    const hnsw_build_params & build_params)
+    virtual hnsw_index *create_index (THREAD_ENTRY *thread_p,
+				      const BTID *btid,
+				      const std::string &name,
+				      const hnsw_build_params &build_params)
     override;
-  virtual int drop_index (THREAD_ENTRY * thread_p, const BTID * btid) override
-  {
-    return NO_ERROR;
-  }
+    virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) override
+    {
+      return NO_ERROR;
+    }
 };
 
 /* thread scope */
 class hnsw_usearch_ng final:public hnsw_index
 {
-public:
-  // TODO: factory pattern
-  using traits = cubhnsw::disk_traits_t;
+  public:
+    // TODO: factory pattern
+    using traits = cubhnsw::disk_traits_t;
 
-  using algo_type = cubhnsw::algo < traits >;
-  using storage_type = cubhnsw::disk_storage;
+    using algo_type = cubhnsw::algo < traits >;
+    using storage_type = cubhnsw::disk_storage;
 
-    hnsw_usearch_ng (hnsw_index_backend & backend, const BTID & btid,
-		     const std::string & name,
-		     const hnsw_build_params & build_params,
-		     PAGE_PTR page_ptr, RECDES & rec);
-   ~hnsw_usearch_ng () = default;
+    hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
+		     const std::string &name,
+		     const hnsw_build_params &build_params,
+		     PAGE_PTR page_ptr, RECDES &rec);
+    ~hnsw_usearch_ng () = default;
 
-  virtual int prepare_to_add (int n_vectors, const OID * oid,
-			      const float *vector) override;
-  virtual int add (int n_vectors, const OID * oid,
-		   const float *vector) override;
+    virtual int prepare_to_add (int n_vectors, const OID *oid,
+				const float *vector) override;
+    virtual int add (int n_vectors, const OID *oid,
+		     const float *vector) override;
 
-  virtual int search (const float *query, const int k, const int ef_search,
-		      OID * rec_oids, float *distances) override;
-  virtual int remove (const OID * oid) override;
-  virtual int update (const OID * oid, const float *vector) override;
+    virtual int search (const float *query, const int k, const int ef_search,
+			OID *rec_oids, float *distances) override;
+    virtual int remove (const OID *oid) override;
+    virtual int update (const OID *oid, const float *vector) override;
 
-  // SCAN_PRED from query_evaluator.h
-  virtual int filtered_search (const float *query, const int k,
-			       const SCAN_PRED & filter, OID * rec_oids,
-			       float *distances) override;
-  virtual int dump (FILE * fp) override;
+    // SCAN_PRED from query_evaluator.h
+    virtual int filtered_search (const float *query, const int k,
+				 const SCAN_PRED &filter, OID *rec_oids,
+				 float *distances) override;
+    virtual int dump (FILE *fp) override;
 
-  virtual int save (const std::string & path) override;
-  virtual int load (const std::string & path) override;
+    virtual int save (const std::string &path) override;
+    virtual int load (const std::string &path) override;
 
-  THREAD_ENTRY *m_thread_p;
-  VPID m_root_vpid;
+    THREAD_ENTRY *m_thread_p;
+    VPID m_root_vpid;
 
     std::unique_ptr < algo_type > m_algo;
     std::unique_ptr < storage_type > m_storage;
@@ -114,8 +114,8 @@ public:
 // =====================================================================
 
 bool
-  hnsw_usearch_ng_backend::
-is_metric_supported (const DB_VECTOR_DISTANCE_METRIC & metric) const const
+hnsw_usearch_ng_backend::
+is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const
 {
   switch (metric)
     {
@@ -131,15 +131,15 @@ is_metric_supported (const DB_VECTOR_DISTANCE_METRIC & metric) const const
 }
 
 hnsw_index *
-hnsw_usearch_ng_backend::create_index (THREAD_ENTRY * thread_p,
-				       const BTID * btid,
-				       const std::string & name,
-				       const hnsw_build_params & build_params)
+hnsw_usearch_ng_backend::create_index (THREAD_ENTRY *thread_p,
+				       const BTID *btid,
+				       const std::string &name,
+				       const hnsw_build_params &build_params)
 {
   VPID root_vpid = { btid->root_pageid, btid->vfid.volid };
   PAGE_PTR page_ptr =
-    pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
-	       PGBUF_UNCONDITIONAL_LATCH);
+	  pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+		     PGBUF_UNCONDITIONAL_LATCH);
   if (page_ptr == NULL)
     {
       ASSERT_ERROR ();
@@ -149,10 +149,10 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY * thread_p,
   char rec_buf[IO_MAX_PAGE_SIZE + INT_ALIGNMENT];
   RECDES rec
   {
-  DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
+    DB_PAGESIZE, 0, REC_HOME, PTR_ALIGN (rec_buf, INT_ALIGNMENT)};
 
   hnsw_index *index =
-    new hnsw_usearch_ng (*this, *btid, name, build_params, page_ptr, rec);
+	  new hnsw_usearch_ng (*this, *btid, name, build_params, page_ptr, rec);
 
   // pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   //log_sysop_attach_to_outer (thread_p);
@@ -165,19 +165,21 @@ hnsw_usearch_ng_backend::create_index (THREAD_ENTRY * thread_p,
 // hnsw_usearch_ng
 // =====================================================================
 
-hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend & backend, const BTID & btid, const std::string & name, const hnsw_build_params & build_params, PAGE_PTR page_ptr, RECDES & rec):hnsw_index (backend, btid, name,
-	    build_params)
+hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
+				  const hnsw_build_params &build_params, PAGE_PTR page_ptr, RECDES &rec):hnsw_index (backend, btid, name,
+					build_params)
 {
   m_root_vpid =
   {
-  btid.root_pageid, btid.vfid.volid};
+    btid.root_pageid, btid.vfid.volid
+  };
   this->m_thread_p = thread_get_thread_entry_info ();
 
   m_storage = std::make_unique < cubhnsw::disk_storage > (btid, build_params);
   m_storage->set_thread_entry (thread_get_thread_entry_info ());
 
   std::size_t root_size;
-  m_storage->init_root (reinterpret_cast < std::byte * >(rec.data),
+  m_storage->init_root (reinterpret_cast < std::byte * > (rec.data),
 			root_size);
   rec.length = (int) root_size;
 
@@ -194,7 +196,7 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend & backend, const BTID & bti
 }
 
 int
-hnsw_usearch_ng::prepare_to_add (int n_vectors, const OID * oid,
+hnsw_usearch_ng::prepare_to_add (int n_vectors, const OID *oid,
 				 const float *vector)
 {
   // do nothing
@@ -202,7 +204,7 @@ hnsw_usearch_ng::prepare_to_add (int n_vectors, const OID * oid,
 }
 
 int
-hnsw_usearch_ng::add (int n_vectors, const OID * oid, const float *vector)
+hnsw_usearch_ng::add (int n_vectors, const OID *oid, const float *vector)
 {
   #pragma omp parallel
   #pragma omp for
@@ -212,8 +214,7 @@ hnsw_usearch_ng::add (int n_vectors, const OID * oid, const float *vector)
 	  && db_vector_is_all_zeros (vector + i * m_build_params.dimension,
 				     m_build_params.dimension))
 	{
-	  er_log_debug (ARG_FILE_LINE,
-			"Vector is all zeros, skipping add");
+	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
 	  continue;
 	}
       m_algo->add (oid[i], vector + i * m_build_params.dimension,
@@ -224,7 +225,7 @@ hnsw_usearch_ng::add (int n_vectors, const OID * oid, const float *vector)
 
 int
 hnsw_usearch_ng::search (const float *query, const int k, const int ef_search,
-			 OID * rec_oids, float *distances)
+			 OID *rec_oids, float *distances)
 {
   if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
       && db_vector_is_all_zeros (query, m_build_params.dimension))
@@ -242,7 +243,7 @@ hnsw_usearch_ng::search (const float *query, const int k, const int ef_search,
       return ER_FAILED;
     }
 
-  const auto & results_view = results.results;
+  const auto &results_view = results.results;
   for (std::size_t i = 0; i != results_view.size (); ++i)
     {
       rec_oids[i] = results.oids[i];
@@ -252,45 +253,46 @@ hnsw_usearch_ng::search (const float *query, const int k, const int ef_search,
 }
 
 int
-hnsw_usearch_ng::remove (const OID * oid)
+hnsw_usearch_ng::remove (const OID *oid)
 {
   return ER_FAILED;
 }
 
 int
-hnsw_usearch_ng::update (const OID * oid, const float *vector)
+hnsw_usearch_ng::update (const OID *oid, const float *vector)
 {
   return ER_FAILED;
 }
 
 int
 hnsw_usearch_ng::filtered_search (const float *query, const int k,
-				  const SCAN_PRED & filter, OID * rec_oids,
+				  const SCAN_PRED &filter, OID *rec_oids,
 				  float *distances)
 {
   return ER_FAILED;
 }
 
 int
-hnsw_usearch_ng::dump (FILE * fp)
+hnsw_usearch_ng::dump (FILE *fp)
 {
   return ER_FAILED;
 }
 
 int
-hnsw_usearch_ng::save (const std::string & path)
+hnsw_usearch_ng::save (const std::string &path)
 {
   return ER_FAILED;
 }
 
 int
-hnsw_usearch_ng::load (const std::string & path)
+hnsw_usearch_ng::load (const std::string &path)
 {
   return ER_FAILED;
 }
 
-HNSW_REGISTER_BACKEND ("usearchng",[](const char *id)
-		       {
-		       return std::make_unique < hnsw_usearch_ng_backend >
-		       (id);}
-);
+HNSW_REGISTER_BACKEND ("usearchng",[] (const char *id)
+{
+  return std::make_unique < hnsw_usearch_ng_backend >
+	 (id);
+}
+		      );

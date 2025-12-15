@@ -50,34 +50,54 @@ namespace cubhnsw
     MAX
   };
 
-  inline float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
+  inline float
+  cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
   {
-    float ip = faiss::fvec_inner_product (vec1, vec2, dim);
-    float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
-    float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
+    float dot = 0.0f;
+    float norm1_sq = 0.0f;
+    float norm2_sq = 0.0f;
 
-    // Handle zero vectors to avoid division by zero
-    if (norm1 == 0.0f || norm2 == 0.0f)
+    #pragma omp simd reduction(+ : dot, norm1_sq, norm2_sq)
+    for (size_t i = 0; i < dim; ++i)
       {
-	// NaN distance
-	return std::numeric_limits<float>::quiet_NaN();
+	const float a = vec1[i];
+	const float b = vec2[i];
+
+	dot       += a * b;
+	norm1_sq  += a * a;
+	norm2_sq  += b * b;
       }
 
-    float similarity = ip / (sqrtf (norm1) * sqrtf (norm2));
+    // zero-vector handling
+    if (norm1_sq == 0.0f && norm2_sq == 0.0f)
+      {
+	return 0.0f;   // identical zero vectors
+      }
+    if (norm1_sq == 0.0f || norm2_sq == 0.0f)
+      {
+	return 1.0f;   // maximally distant
+      }
 
-    // Clamp the similarity value to [-1, 1] to handle floating-point errors
-    similarity = std::max (-1.0f, std::min (1.0f, similarity));
+    const float inv_norm =
+	    1.0f / (std::sqrt (norm1_sq) * std::sqrt (norm2_sq));
 
-    // cosine distance = 1 - cosine similarity
-    float distance = 1.0f - similarity;
-    assert (distance >= 0.0f && distance <= 2.0f);
-    return distance;
+    const float cosine_similarity = dot * inv_norm;
+    return 1.0f - cosine_similarity;
   }
 
-  inline float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
+  inline float
+  cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
   {
-    float l2 = faiss::fvec_L2sqr (vec1, vec2, dim);
-    return std::sqrt (l2);
+    float sum_sq = 0.0f;
+
+    #pragma omp simd reduction(+ : sum_sq)
+    for (size_t i = 0; i < dim; ++i)
+      {
+	const float diff = vec1[i] - vec2[i];
+	sum_sq += diff * diff;
+      }
+
+    return sum_sq;
   }
 
   using distance_t = float;

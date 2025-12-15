@@ -172,7 +172,6 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid,
       return ER_FAILED;
     }
 
-  // log_sysop_start (thread_p);
   btid_out = index_manager->create_btid (thread_p, backend_instance, class_oid, attrid, params);
   if (BTID_IS_NULL (&btid_out))
     {
@@ -186,14 +185,14 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid,
     {
       // failed to create index
       assert (false);
-      goto error;
+      return ER_FAILED;
     }
 
   if (index_manager->add_index (&btid_out, index) != NO_ERROR)
     {
       // failed to add index
       assert (false);
-      goto error;
+      return ER_FAILED;
     }
 
 #if !defined(NDEBUG)
@@ -203,12 +202,6 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid,
 #endif
 
   return NO_ERROR;
-
-error:
-
-  // log_sysop_abort (thread_p);
-
-  return ER_FAILED;
 }
 
 int

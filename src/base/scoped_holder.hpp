@@ -80,7 +80,6 @@ class scoped_holder
       , m_guard (
 		cleanup_state_t {std::addressof (m_data), std::move (other.m_guard.functor ().cleanup)})
     {
-      // 기존 객체는 더 이상 cleanup 하지 않도록 무효화
       other.m_guard.functor ().data = nullptr;
       other.m_guard.release();
     }

@@ -11623,6 +11623,7 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       spacedb_ftype = SPACEDB_HEAP_FILE;
       break;
     case FILE_HNSW:
+      // TODO (CUBVEC): not implemented yet, the following line is for suppressing uninitialized variable warning
       spacedb_ftype = SPACEDB_SYSTEM_FILE;
       assert (false);
       break;
