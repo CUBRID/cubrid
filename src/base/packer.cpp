@@ -428,28 +428,6 @@ namespace cubpacking
   }
 
   void
-  packer::pack_int_vector (const std::vector<int> &array)
-  {
-    const size_t count = array.size ();
-
-    align (INT_ALIGNMENT);
-    if (check_range (m_ptr, m_end_ptr, (OR_INT_SIZE * (count + 1))) != NO_ERROR)
-      {
-	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
-	m_error_code = ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
-	return;
-      }
-
-    OR_PUT_INT (m_ptr, count);
-    m_ptr += OR_INT_SIZE;
-    for (size_t i = 0; i < count; ++i)
-      {
-	OR_PUT_INT (m_ptr, array[i]);
-	m_ptr += OR_INT_SIZE;
-      }
-  }
-
-  void
   unpacker::unpack_int_vector (std::vector<int> &array)
   {
     int count;
@@ -551,50 +529,24 @@ namespace cubpacking
     unpack_db_value (value);
   }
 
-  size_t
-  packer::get_packed_small_string_size (const char *string, const size_t curr_offset)
-  {
-    size_t entry_size;
-
-    entry_size = OR_BYTE_SIZE + strlen (string);
-
-    return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;
-  }
-
   void
-  packer::pack_small_string (const char *string, const size_t str_size)
+  packer::pack_small_c_string (const char *string, const size_t str_size)
   {
-    size_t len;
+    assert (str_size < MAX_SMALL_STRING_SIZE);
 
-    if (str_size == 0)
-      {
-	len = strlen (string);
-      }
-    else
-      {
-	len = str_size;
-      }
-
-    if (len > MAX_SMALL_STRING_SIZE)
-      {
-	assert (false);
-	pack_c_string (string, len);
-	return;
-      }
-
-    if (check_range (m_ptr, m_end_ptr, len + 1) != NO_ERROR)
+    if (check_range (m_ptr, m_end_ptr, str_size + 1) != NO_ERROR)
       {
 	er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_ENOUGH_DATA_SIZE, 0);
 	m_error_code = ER_INTERFACE_NOT_ENOUGH_DATA_SIZE;
 	return;
       }
 
-    OR_PUT_BYTE (m_ptr, len);
+    OR_PUT_BYTE (m_ptr, str_size);
     m_ptr += OR_BYTE_SIZE;
-    if (len > 0)
+    if (str_size > 0)
       {
-	std::memcpy (m_ptr, string, len);
-	m_ptr += len;
+	std::memcpy (m_ptr, string, str_size);
+	m_ptr += str_size;
       }
 
     align (INT_ALIGNMENT);
@@ -641,17 +593,6 @@ namespace cubpacking
     align (INT_ALIGNMENT);
   }
 
-
-  size_t
-  packer::get_packed_large_string_size (const std::string &str, const size_t curr_offset)
-  {
-    size_t entry_size;
-
-    entry_size = OR_INT_SIZE + str.size ();
-
-    return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;
-  }
-
   void
   packer::pack_large_c_string (const char *string, const size_t str_size)
   {
@@ -681,12 +622,6 @@ namespace cubpacking
     m_ptr += len;
 
     align (INT_ALIGNMENT);
-  }
-
-  void
-  packer::pack_large_string (const std::string &str)
-  {
-    pack_large_c_string (str.c_str (), str.size ());
   }
 
   void
@@ -805,7 +740,7 @@ namespace cubpacking
   {
     if (str_size < MAX_SMALL_STRING_SIZE)
       {
-	pack_small_string (str, str_size);
+	pack_small_c_string (str, str_size);
       }
     else
       {
