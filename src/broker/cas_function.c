@@ -162,7 +162,7 @@ FN_RETURN
 fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int tran_type;
-  int err_code;
+  int err_code = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval end_tran_begin, end_tran_end;
 
@@ -188,7 +188,13 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-  err_code = ux_end_tran ((char) tran_type, false, false);
+  if (is_xa_prepared ())
+    {
+    }
+  else
+    {
+      err_code = ux_end_tran ((char) tran_type, false, false);
+    }
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
