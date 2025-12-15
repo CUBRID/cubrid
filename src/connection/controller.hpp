@@ -31,6 +31,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cerrno>
+#include <utility>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -44,6 +45,11 @@ namespace cubconn::connection
     public:
       controller ();
       ~controller ();
+
+      controller (const controller &) = delete;
+      controller &operator= (const controller &) = delete;
+      controller (controller &&) noexcept;
+      controller &operator= (controller &&) noexcept;
 
       bool open (std::string path, int flags);
       int get_fd ();
@@ -61,6 +67,39 @@ namespace cubconn::connection
     m_ctrlfd (-1),
     m_path ()
   {
+  }
+
+  template <typename RX, typename TX>
+  controller<RX, TX>::controller (controller &&other) noexcept :
+    m_ctrlfd (other.m_ctrlfd),
+    m_path (std::move (other.m_path))
+  {
+    other.m_ctrlfd = -1;
+    other.m_path.clear ();
+  }
+
+  template <typename RX, typename TX>
+  controller<RX, TX> &controller<RX, TX>::operator= (controller &&other) noexcept
+  {
+    if (this != &other)
+      {
+	if (m_ctrlfd >= 0)
+	  {
+	    ::close (m_ctrlfd);
+	  }
+	if (!m_path.empty ())
+	  {
+	    ::unlink (m_path.c_str());
+	  }
+
+	m_ctrlfd = other.m_ctrlfd;
+	m_path = std::move (other.m_path);
+
+	other.m_ctrlfd = -1;
+	other.m_path.clear ();
+      }
+
+    return *this;
   }
 
   template <typename RX, typename TX>
@@ -83,6 +122,17 @@ namespace cubconn::connection
 
     assert (flags & SOCK_NONBLOCK);
 
+    if (m_ctrlfd >= 0)
+      {
+	::close (m_ctrlfd);
+	m_ctrlfd = -1;
+      }
+    if (!m_path.empty ())
+      {
+	::unlink (m_path.c_str());
+	m_path.clear ();
+      }
+
     /* remove the first one if a previous exists */
     ::unlink (path.c_str());
 
@@ -99,6 +149,8 @@ namespace cubconn::connection
     if (::bind (m_ctrlfd, reinterpret_cast<sockaddr *> (&addr), sizeof (addr)) < 0)
       {
 	er_log_debug (__FILE__, __LINE__, "controller: bind failed: %s\n", strerror (errno));
+	::close (m_ctrlfd);
+	m_ctrlfd = -1;
 	return false;
       }
     m_path = path;
