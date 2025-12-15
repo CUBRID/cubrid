@@ -495,7 +495,7 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
   int remain = prompt_size - 3;	// for prompt delimeter + space + null character
   int len;
 
-  if (prompt_size <= 0)
+  if (remain <= 0)
     {
       return;
     }
