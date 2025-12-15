@@ -423,7 +423,11 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	  break;
 
 	default:
-	  assert (srv_handle->schema_type < CCI_SCH_FIRST || srv_handle->schema_type > CCI_SCH_LAST);
+	  if (srv_handle->schema_type < 0)
+	    {
+	      hm_qresult_end (srv_handle, TRUE);
+	      hm_session_free (srv_handle);
+	    }
 	  break;
 	}
     }
@@ -432,7 +436,6 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
       srv_handle->session = NULL;
     }
 }
-
 
 static void
 col_update_info_free (T_QUERY_RESULT * q_result)
