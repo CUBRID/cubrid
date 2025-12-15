@@ -39,11 +39,6 @@ namespace cubpacking
       virtual size_t get_packed_size (packer &serializator, std::size_t start_offset = 0) const = 0;
       virtual void pack (packer &serializator) const = 0;
       virtual void unpack (unpacker &deserializator) = 0;
-
-      virtual bool is_equal (const packable_object *other)
-      {
-	return true;
-      }
   };
 
 } /* namespace cubpacking */
