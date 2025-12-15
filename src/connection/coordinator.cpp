@@ -94,6 +94,9 @@ namespace cubconn::connection
       {
 	m_statistics[i].m_score = 0;
 
+	m_statistics[i].m_core = 0;
+	m_statistics[i].m_last_cpu_time = 0;
+
 	m_statistics[i].m_client_num = 0;
 	m_statistics[i].m_last_updated = 0;
 
@@ -507,6 +510,8 @@ namespace cubconn::connection
       "NOK"
     };
 
+    static_assert (static_cast<int> (control_type::TYPE_COUNT) == sizeof (name_table) / sizeof (name_table[0]));
+
     printf ("\033[2J\033[H");
     printf ("controller\n");
     printf ("  type: %s\n", name_table[static_cast<std::size_t> (rx.type)]);
@@ -645,7 +650,6 @@ namespace cubconn::connection
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    //this->statistics_print ();
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {

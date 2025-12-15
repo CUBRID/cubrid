@@ -73,7 +73,9 @@ namespace cubconn::connection
 
 	/* SEND */
 	OK,
-	NOK
+	NOK,
+
+	TYPE_COUNT
       };
 
       struct control_recv
