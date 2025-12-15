@@ -21,6 +21,7 @@
  */
 
 #include "hardware_topology.hpp"
+#include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "connection_pool.hpp"
 #include "coordinator.hpp"
@@ -54,6 +55,14 @@ namespace cubconn::connection
   {
     std::size_t i;
 
+    /* external controller */
+    if (!m_controller.open ("/tmp/cub_server_" + std::to_string (getpid ()) + "_coordinator.sock",
+			    SOCK_NONBLOCK | SOCK_CLOEXEC))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to attach controller: %s\n", strerror (errno));
+	assert_release (false);
+      }
+    m_ctrlfd = m_controller.get_fd ();
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -64,7 +73,8 @@ namespace cubconn::connection
       }
 
     if (!this->eventfd_register (m_eventfd) ||
-	!this->eventfd_register (m_timerfd))
+	!this->eventfd_register (m_timerfd) ||
+	!this->eventfd_register (m_ctrlfd))
       {
 	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to register fd\n");
 	assert_release (false);
@@ -210,7 +220,6 @@ namespace cubconn::connection
 
     core = 0;
 
-    printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
 	core += m_statistics[i].m_core;
@@ -314,21 +323,21 @@ namespace cubconn::connection
 
   bool coordinator::handle_message_queue_start (message &item)
   {
+    /*
     std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
     connection::worker::message request;
-    std::size_t worker, i;
-
-    worker = 0;
+    std::size_t i;
 
     for (i = 1; i < m_max_worker; i++)
       {
-	request.type = connection::worker::message_type::HIBERNATE;
-	workers[worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-	if (!workers[worker]->notify ())
-	  {
-	    assert_release (false);
-	  }
+    request.type = connection::worker::message_type::HIBERNATE;
+    workers[i]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[i]->notify ())
+      {
+        assert_release (false);
       }
+      }
+      */
 
     return true;
   }
@@ -342,7 +351,6 @@ namespace cubconn::connection
     std::size_t worker;
 
     std::tie (worker, std::ignore) = statistics_find_score_extremes ();
-    worker = 0;
 
     assert (m_statistics[worker].m_contexts.find (id) == m_statistics[worker].m_contexts.end ());
 
@@ -488,6 +496,72 @@ namespace cubconn::connection
     return true;
   }
 
+  bool coordinator::handle_controller_request (control_recv &rx, control_send &tx)
+  {
+    const char *name_table[] =
+    {
+      "SHOW_STATS",
+      "WORKER_INC",
+      "WORKER_DEC",
+      "OK",
+      "NOK"
+    };
+
+    printf ("\033[2J\033[H");
+    printf ("controller\n");
+    printf ("  type: %s\n", name_table[static_cast<std::size_t> (rx.type)]);
+    printf ("  value: %d\n\n", rx.value);
+
+    switch (rx.type)
+      {
+      case control_type::SHOW_STATS:
+	this->statistics_print ();
+	tx.type = control_type::OK;
+	break;
+
+      case control_type::WORKER_INC:
+      case control_type::WORKER_DEC:
+      default:
+	tx.type = control_type::NOK;
+	break;
+      }
+
+    return true;
+  }
+
+  bool coordinator::handle_controller ()
+  {
+    sockaddr_un peer;
+    socklen_t peerlen;
+    control_recv rx;
+    control_send tx;
+    result status;
+
+    while (true)
+      {
+	status = m_controller.recv (rx, peer, peerlen);
+	if (status == result::Pending)
+	  {
+	    break;
+	  }
+	if (status == result::Error)
+	  {
+	    return false;
+	  }
+
+	assert (status == result::Ok);
+
+	if (!this->handle_controller_request (rx, tx))
+	  {
+	    return false;
+	  }
+
+	m_controller.send (tx, peer, peerlen);
+      }
+
+    return true;
+  }
+
   void coordinator::initialize ()
   {
     /* watch me */
@@ -571,13 +645,17 @@ namespace cubconn::connection
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    this->statistics_print ();
+		    //this->statistics_print ();
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
 			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
 			return false;
 		      }
+		  }
+		else if (events[i].data.fd == m_ctrlfd)
+		  {
+		    this->handle_controller ();
 		  }
 	      }
 	  }

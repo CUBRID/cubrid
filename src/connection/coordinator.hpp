@@ -23,8 +23,9 @@
 #ifndef _COORDINATOR_HPP_
 #define _COORDINATOR_HPP_
 
-#include "connection_context.hpp"
 #include "epoll.hpp"
+#include "connection_context.hpp"
+#include "controller.hpp"
 #include "tbb/concurrent_queue.h"
 
 #include <thread>
@@ -60,6 +61,30 @@ namespace cubconn::connection
 	std::pair<statistics::metrics<statistics::worker, double>, statistics::metrics<statistics::worker>> m_worker;
 	std::unordered_map<uint64_t, std::pair<statistics::metrics<statistics::context, double>, statistics::metrics<statistics::context>>>
 	m_contexts;
+      };
+
+      enum class control_type : uint32_t
+      {
+	/* RECV */
+	SHOW_STATS,
+
+	WORKER_INC,
+	WORKER_DEC,
+
+	/* SEND */
+	OK,
+	NOK
+      };
+
+      struct control_recv
+      {
+	control_type type;
+	int value;
+      };
+
+      struct control_send
+      {
+	control_type type;
       };
 
     public:
@@ -138,6 +163,9 @@ namespace cubconn::connection
       int m_eventfd;
       /* timer based */
       int m_timerfd;
+      /* controller */
+      controller<control_recv, control_send> m_controller;
+      int m_ctrlfd;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
@@ -190,6 +218,12 @@ namespace cubconn::connection
       bool handle_message_queue_statistics (message &item);
 
       bool handle_message_queue ();
+
+      /* --------------------------------------------------------------------------- */
+      /* controller								     */
+      /* --------------------------------------------------------------------------- */
+      bool handle_controller_request (control_recv &rx, control_send &tx);
+      bool handle_controller ();
   };
 
   template <typename T>
