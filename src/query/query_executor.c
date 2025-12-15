@@ -85,7 +85,7 @@
 #include "memoize.hpp"
 
 #if SERVER_MODE && !WINDOWS
-#include "parallel.hpp"		/* parallel_query::compute_parallel_degree */
+#include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_heap_scan_trace_handler.hpp"
 #include "px_heap_scan.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
@@ -9251,7 +9251,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
-				  
+
 				  /* only one row is need for exists OP */
 				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
 				    {

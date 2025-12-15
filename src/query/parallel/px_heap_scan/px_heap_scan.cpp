@@ -35,7 +35,7 @@
 #include "fetch.h"
 #include "px_heap_scan_task.hpp"
 #include "px_heap_scan_input_handler_single_table.hpp"
-#include "parallel.hpp"			/* parallel_query::compute_parallel_degree */
+#include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

@@ -27,9 +27,9 @@
 #include "list_file.h"		/* qfile_open_list, qfile_close_list */
 #include "memory_alloc.h"	/* CEIL_PTVDIV */
 #include "object_representation.h"	/* TP_DOMAIN */
-#include "parallel.hpp"		/* parallel_query::compute_parallel_degree */
 #include "perf_monitor.h"	/* perfmon_get_from_statistic, PSTAT_... */
 #include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
+#include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */

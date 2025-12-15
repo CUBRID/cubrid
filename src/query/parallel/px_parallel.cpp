@@ -20,7 +20,7 @@
  * parallel.c - parallel module
  */
 
-#include "parallel.hpp"
+#include "px_parallel.hpp"
 
 #include <mutex>
 

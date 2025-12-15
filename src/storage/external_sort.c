@@ -55,8 +55,8 @@
 #include "object_representation.h"
 #include "px_worker_manager.hpp"
 #include "px_callable_task.hpp"
+#include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
-#include "parallel.hpp"		/* parallel_query::compute_parallel_degree */
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
