@@ -492,7 +492,7 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
   char *database_name = NULL;
   char *host_name = NULL;
   char *pos = prompt;
-  int remain = prompt_size - 2;	// for space + null character
+  int remain = prompt_size - 3;	// for prompt delimeter + space + null character
   int len;
 
   if (prompt_size <= 0)
@@ -504,7 +504,14 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 
   for (int i = 0; fmt[i] != '\0' && remain > 0;)
     {
-      if (fmt[i] == '\\' && fmt[i + 1] != '\0')
+      /* ignore non-ascii character */
+      if (fmt[i] < 0)
+	{
+	  i++;
+	  continue;
+	}
+
+      if (fmt[i] == '\\' && fmt[i + 1] != '\0' && fmt[i + 1] >= 0)
 	{
 	  char next = fmt[i + 1];
 	  const char *src = NULL;
@@ -552,12 +559,16 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 	}
     }
 
-  if ((csql_Prompt < pos && *(pos - 1) != ' ') && remain >= 1)
-    {
-      *pos++ = ' ';
-    }
+  for (; prompt <= pos && (*pos == '\0' || *pos == ' '); --pos);
 
-  *pos = '\0';
+  if (*pos != '>')
+    {
+      memcpy (pos + 1, "> \0", 3);
+    }
+  else
+    {
+      memcpy (pos + 1, " \0", 2);
+    }
 
   if (user_name)
     {
