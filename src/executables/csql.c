@@ -719,14 +719,13 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
       if (csql_Is_interactive)
 	{
-	  if (csql_Prompt_user_defined == CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME)
+	  if (csql_Database_connected && csql_Prompt_user_defined == CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME)
 	    {
 	      char *username = db_get_user_name ();
 
 	      if (strcmp (csql_Prompt_username, username))
 		{
 		  change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
-		  strcpy (csql_Prompt_username, username);
 		}
 
 	      if (username)
