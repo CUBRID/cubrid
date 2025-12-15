@@ -57,13 +57,23 @@ namespace cubconn::connection
   };
 
   template <typename RX, typename TX>
-  controller<RX, TX>::controller ()
+  controller<RX, TX>::controller () :
+    m_ctrlfd (-1),
+    m_path ()
   {
   }
 
   template <typename RX, typename TX>
   controller<RX, TX>::~controller ()
   {
+    if (m_ctrlfd >= 0)
+      {
+	::close (m_ctrlfd);
+      }
+    if (!m_path.empty ())
+      {
+	::unlink (m_path.c_str());
+      }
   }
 
   template <typename RX, typename TX>
@@ -73,10 +83,8 @@ namespace cubconn::connection
 
     assert (flags & SOCK_NONBLOCK);
 
-    m_path = path;
-
     /* remove the first one if a previous exists */
-    ::unlink (m_path.c_str());
+    ::unlink (path.c_str());
 
     m_ctrlfd = ::socket (AF_UNIX, SOCK_DGRAM | flags, 0);
     if (m_ctrlfd < 0)
@@ -86,13 +94,14 @@ namespace cubconn::connection
       }
 
     addr.sun_family = AF_UNIX;
-    std::snprintf (addr.sun_path, sizeof (addr.sun_path), "%s", m_path.c_str ());
+    std::snprintf (addr.sun_path, sizeof (addr.sun_path), "%s", path.c_str ());
 
     if (::bind (m_ctrlfd, reinterpret_cast<sockaddr *> (&addr), sizeof (addr)) < 0)
       {
 	er_log_debug (__FILE__, __LINE__, "controller: bind failed: %s\n", strerror (errno));
 	return false;
       }
+    m_path = path;
 
     er_log_debug (__FILE__, __LINE__, "controller: bind unix to %s\n", m_path.c_str ());
 
