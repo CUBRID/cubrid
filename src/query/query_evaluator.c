@@ -1844,11 +1844,46 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	      if (et_comp->lhs->type == TYPE_LIST_ID)
 		{
 		  /* execute linked query */
-		  EXECUTE_REGU_VARIABLE_XASL (thread_p, et_comp->lhs, vd);
-		  if (CHECK_REGU_VARIABLE_XASL_STATUS (et_comp->lhs) != XASL_SUCCESS)
+		  REGU_VARIABLE *regu_var = et_comp->lhs;
+		  XASL_NODE *xasl = regu_var->xasl;
+		  if (xasl && XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE)
+		      && !(SQ_CACHE_HT (xasl) && !SQ_CACHE_ENABLED (xasl)))
 		    {
-		      result = V_ERROR;
-		      goto exit;
+		      if (!sq_get (thread_p, SQ_CACHE_KEY_STRUCT (xasl), xasl, regu_var))
+			{
+			  SQ_KEY *key;
+			  /* execute linked query */
+			  EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+			  if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+			    {
+			      result = V_ERROR;
+			      goto exit;
+			    }
+			  if ((key = sq_make_key (thread_p, xasl)) == NULL)
+			    {
+			      XASL_CLEAR_FLAG (xasl, XASL_USES_SQ_CACHE);
+			      result = V_ERROR;
+			      goto exit;
+			    }
+			  if (sq_put (thread_p, key, xasl, regu_var) == ER_FAILED)
+			    {
+			      sq_free_key (thread_p, key);
+			    }
+			}
+		      else
+			{
+			  /* FOUND */
+			  xasl->status = XASL_SUCCESS;
+			}
+		    }
+		  else
+		    {
+		      EXECUTE_REGU_VARIABLE_XASL (thread_p, regu_var, vd);
+		      if (CHECK_REGU_VARIABLE_XASL_STATUS (regu_var) != XASL_SUCCESS)
+			{
+			  result = V_ERROR;
+			  goto exit;
+			}
 		    }
 
 		  srlist_id = et_comp->lhs->value.srlist_id;
