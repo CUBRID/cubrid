@@ -4918,6 +4918,10 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
       if (dot)
 	{
 	  /* user specified name */
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	    {
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	    }
 
 	  /* user name of user specified name */
 	  sub_len = STATIC_CAST (int, dot - class_name);
@@ -6332,6 +6336,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int64_t lastcommit = 0;
   volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
+  int client_type;
 
   std::ifstream object_file (args->object_file);
 
@@ -6369,6 +6374,8 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
     }
   object_file.seekg (0, std::ios::beg);
 
+  client_type = db_get_client_type ();
+
   /* Check if we need to perform syntax checking. */
   if (!args->load_only)
     {
@@ -6403,6 +6410,24 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 
       if (object_file.is_open ())
 	{
+	  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	    {
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+		{
+		  if (args->verbose)
+		    {
+		      print_log_msg (1, "\n");
+		      print_log_msg (1,
+				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						     LOADDB_MSG_COMPAT_UNDER_11_4));
+		    }
+		}
+	      else
+		{
+		  assert (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2);
+		}
+	    }
+
 	  print_log_msg ((int) args->verbose,
 			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERTING));
 

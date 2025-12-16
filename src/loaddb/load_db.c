@@ -584,8 +584,6 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       if (strcasecmp (args.user_name.c_str (), "DBA") == 0 && args.no_user_specified_name)
 	{
 	  db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2);
-	  print_log_msg (1,
-			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMPAT_UNDER_11_2));
 	}
       else
 	{
@@ -757,6 +755,16 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "The default behavior of loaddb is loading without checking the file.\n");
     }
 #endif
+
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+    {
+      if (args.verbose)
+	{
+	  print_log_msg (1, "\n");
+	  print_log_msg (1,
+			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMPAT_UNDER_11_2));
+	}
+    }
 
   /* if multiload schema file is specified, do schema loading */
   if (schema_file_list != NULL && num_schema_file_list > 0)
@@ -1035,7 +1043,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	{
 	  assert (stmt_cnt == 1);
 
-	  /* db_client_type_is_loaddb_compat () */
 	  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
 	      || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
 	    {
@@ -1103,31 +1110,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       res = (DB_QUERY_RESULT *) NULL;
       error = db_execute_statement (session, stmt_id, &res);
 
-      /* db_client_type_is_loaddb_compat () */
-      if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
-	  || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
-	{
-	  /* For stored procedures, jsp_find_stored_procedure() is invoked from db_execute_statement()
-	   * and may change the client type.
-	   * Check whether the client type has changed after db_execute_statement(). */
-
-	  if (client_type != DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4	/* before */
-	      && db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4 /* after */ )
-	    {
-	      client_type = DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4;
-	      print_log_msg (1,
-			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-					     LOADDB_MSG_COMPAT_UNDER_11_4));
-	    }
-
-	  if (client_type != DB_CLIENT_TYPE_LOADDB_UTILITY	/* before */
-	      && db_get_client_type () == DB_CLIENT_TYPE_LOADDB_UTILITY /* after */ )
-	    {
-	      client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
-	      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMPAT_OFF));
-	    }
-	}
-
       if (error < 0)
 	{
 	  int line, col;
@@ -1175,6 +1157,45 @@ end:
       logddl_set_msg ("Total %8d statements executed.", executed_cnt);
       fflush (stdout);
       db_commit_transaction ();
+    }
+
+  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+      || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+    {
+      /* For stored procedures, jsp_find_stored_procedure() is invoked from db_execute_statement()
+       * and may change the client type.
+       * Check whether the client type has changed after db_execute_statement(). */
+
+      int load_client_type = db_get_client_type ();
+
+      if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+	  && load_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+	{
+	  if (args->verbose)
+	    {
+	      print_log_msg (1, "\n");
+	      print_log_msg (1,
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+					     LOADDB_MSG_COMPAT_UNDER_11_4));
+	      if (error == NO_ERROR)
+		{
+		  print_log_msg (1, "\n");
+		}
+	    }
+	}
+
+      if (load_client_type == DB_CLIENT_TYPE_LOADDB_UTILITY)
+	{
+	  if (args->verbose)
+	    {
+	      print_log_msg (1, "\n");
+	      print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_COMPAT_OFF));
+	      if (error == NO_ERROR)
+		{
+		  print_log_msg (1, "\n");
+		}
+	    }
+	}
     }
 
   db_set_client_statement_type (CUBRID_STMT_NONE);
@@ -1249,6 +1270,9 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
       return;
     }
 
+  int client_type = db_get_client_type ();
+  int load_client_type = client_type;
+
   error_code = load_object_file (args, exit_status);
   if (error_code != NO_ERROR)
     {
@@ -1279,6 +1303,9 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
 	  *exit_status = 3;
 	  break;
 	}
+
+      /* ADMIN_LOADDB_COMPAT_UNDER_11_2 or ADMIN_LOADDB_COMPAT_UNDER_11_4 */
+      load_client_type = MAX (load_client_type, status.get_load_client_type ());
 
       print_stats (status.get_load_stats (), *args, exit_status);
       if (!status.get_load_stats ().empty ())
@@ -1315,6 +1342,24 @@ ldr_server_load (load_args * args, int *exit_status, bool * interrupted)
     {
       print_log_msg (1, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERT_AND_FAIL_COUNT),
 		     last_stat.rows_committed, last_stat.rows_failed);
+    }
+
+  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+    {
+      if (load_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+	{
+	  if (args->verbose)
+	    {
+	      print_log_msg (1, "\n");
+	      print_log_msg (1,
+			     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+					     LOADDB_MSG_COMPAT_UNDER_11_4));
+	    }
+	}
+      else
+	{
+	  assert (load_client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2);
+	}
     }
 
   if (!load_interrupted && !status.is_load_failed () && !args->syntax_check && error_code == NO_ERROR

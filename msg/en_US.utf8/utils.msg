@@ -491,12 +491,12 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 121 Class %1$s is ignored.\n
 122 Maximum length of user name is %1$d bytes.\n
 123 %1$s is an empty file.\n
-124 \nIgnore user-specified names when loading objects for all object types\n\
-(--no-user-specified-name: enabled, unload version < 11.2).\n\n
-125 \nIgnore user-specified names when loading objects for specific object types\n\
-(--no-user-specified-name: enabled, unload version >= 11.2 and < 11.4).\n\n
-126 \nUse user-specified names when loading objects for all object types\n\
-(--no-user-specified-name: disabled, unload version >= 11.4).\n\n
+124 Ignore user-specified names when loading objects for all object types\n\
+(--no-user-specified-name: enabled, unload version < 11.2).\n
+125 Ignore user-specified names when loading objects for specific object types\n\
+(--no-user-specified-name: enabled, unload version >= 11.2 and < 11.4).\n
+126 Use user-specified names when loading objects for all object types\n\
+(--no-user-specified-name: disabled, unload version >= 11.4).\n
 127 \
 loaddb: Import objects and schemas to the database.\n\
 usage: %1$s loaddb [OPTION] database-name[@host]\n\

@@ -126,10 +126,10 @@ namespace cubload
 	found = xlocator_find_class_oid (&thread_ref, class_name, &class_oid, BU_LOCK);
 
 	/* maybe unloaded from version 11.2+ or later */
-	if (thread_ref.conn_entry->client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	if (m_session.get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 	  {
-	    thread_ref.conn_entry->client_type = DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4;
-	    m_session.append_log_msg (LOADDB_MSG_COMPAT_UNDER_11_4);
+	    assert (m_session.get_client_type() == thread_ref.conn_entry->client_type);
+	    m_session.set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
 	  }
       }
     else if (sm_check_system_class_by_name (class_name))
