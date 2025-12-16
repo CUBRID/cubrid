@@ -74,7 +74,7 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #if defined(SA_MODE)
-extern bool catcls_Enable;
+#include "catalog_class.h"
 #endif /* SA_MODE */
 
 /* Macro to determine if a name is system catalog class */
