@@ -1035,7 +1035,12 @@ retry:
     ctx = *iterator;
 
     rmutex_lock (NULL, &ctx->m_conn->cmutex);
-    if (ctx->m_conn->status != CONN_OPEN)
+
+    /* handle the entries in the message queue */
+    this->handle_message_queue_by_index (queue_type::IMMEDIATE);
+    this->handle_message_queue_by_index (queue_type::LAZY);
+
+    if (ctx->m_conn->status != CONN_OPEN || ctx->m_removed)
       {
 	/* this connection will be terminated soon */
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
@@ -1043,9 +1048,6 @@ retry:
 	transferred = false;
 	goto respond;
       }
-
-    /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    this->handle_message_queue_by_index (queue_type::IMMEDIATE);
 
     ctx->m_conn->worker = item.worker_ptr;
     ctx->m_worker = item.worker_index;
@@ -1080,9 +1082,10 @@ retry:
 respond:
     /* respond to the coordinator */
     response.type = coordinator::message_type::HANDOFF_REPLY;
-    response.id = id;
+    response.transferred = transferred;
     response.from = m_index;
-    response.to = transferred ? item.worker_index : -1;
+    response.to = item.worker_index;
+    response.id = id;
     m_coordinator->enqueue (std::move (response));
     if (!m_coordinator->notify ())
       {

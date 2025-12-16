@@ -192,8 +192,6 @@ namespace cubconn::connection
     );
     /* the stats in worker[from] are removed when the worker responds. */
 
-    m_statistics[to].m_client_num++;
-
     request.type = connection::worker::message_type::HANDOFF_CLIENT;
     request.id = stats->first;
     request.worker_ptr = workers[to].get ();
@@ -467,9 +465,12 @@ namespace cubconn::connection
   {
     assert (static_cast<std::size_t> (item.from) < m_max_worker);
 
-    if (item.to < 0)
+    if (!item.transferred)
       {
 	/* not transferred */
+
+	m_statistics[item.to].m_contexts.erase (item.id);
+
 	return true;
       }
 
@@ -477,11 +478,15 @@ namespace cubconn::connection
     if (iterator == m_statistics[item.from].m_contexts.end ())
       {
 	/* the connection has already been cleared */
+
+	m_statistics[item.to].m_contexts.erase (item.id);
+
 	return true;
       }
 
     m_statistics[item.from].m_contexts.erase (iterator);
     m_statistics[item.from].m_client_num--;
+    m_statistics[item.to].m_client_num++;
 
     return true;
   }

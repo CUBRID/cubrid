@@ -131,6 +131,7 @@ namespace cubconn::connection
 	  std::vector<context *> resource;
 
 	  /* HANDOFF_REPLY */
+	  bool transferred;
 	  int from;
 	  int to;
 	  uint64_t id;
