@@ -61,7 +61,7 @@ dependencies {
     implementation("cubrid:cubrid-jdbc:latest.integration")
 
     // netty
-    implementation("io.netty:netty-buffer:4.1.95.Final")
+    implementation("io.netty:netty-buffer:4.1.115.Final")
 }
 
 // Antlr
