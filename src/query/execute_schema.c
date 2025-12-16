@@ -1756,14 +1756,15 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (need_check_repl_constraint)
     {
       vclass = db_find_class (entity_name);
+      
       if (!sm_is_replication_class (vclass))
 	{
 	  return NO_ERROR;
 	}
+
       error_code = check_ha_repl_constraint (vclass);
       if (error_code != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 	  goto error_exit;
 	}
     }
@@ -9016,11 +9017,13 @@ check_ha_repl_constraint (DB_OBJECT * class_obj)
 
   if (!classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
       return ER_HA_REQUIRES_REPLICATION_KEY;
     }
 
   if (!check_ha_repl_fk_ref_all_replicated (class_obj))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_FK_CONSTRAINT_VIOLATION, 0);
       return ER_HA_FK_CONSTRAINT_VIOLATION;
     }
 
@@ -9412,7 +9415,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  error = check_ha_repl_constraint (class_obj);
 	  if (error != NO_ERROR)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	      goto error_exit;
 	    }
 	}
