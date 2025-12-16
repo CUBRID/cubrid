@@ -133,7 +133,7 @@ namespace cubpacking
   }
 
   void
-  packer::pack_overloaded (int value)
+  packer::pack_overloaded (const int value)
   {
     pack_int (value);
   }
@@ -180,7 +180,7 @@ namespace cubpacking
   }
 
   void
-  packer::pack_bool (bool value)
+  packer::pack_bool (const bool value)
   {
     pack_int (value ? 1 : 0);
   }
@@ -192,7 +192,7 @@ namespace cubpacking
   }
 
   void
-  packer::pack_overloaded (bool value)
+  packer::pack_overloaded (const bool value)
   {
     pack_bool (value);
   }
