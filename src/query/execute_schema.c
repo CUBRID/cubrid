@@ -1756,6 +1756,10 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (need_check_repl_constraint)
     {
       vclass = db_find_class (entity_name);
+      if (!sm_is_replication_class (vclass))
+	{
+	  return NO_ERROR;
+	}
       error_code = check_ha_repl_constraint (vclass);
       if (error_code != NO_ERROR)
 	{
