@@ -149,6 +149,8 @@ namespace cubconn::connection
   void worker::enqueue (queue_type type, message &&item)
   {
     assert ((item.conn ? (item.conn->fd != -1) : false) ||
+	    (item.ctx ? (item.ctx->m_conn ? item.ctx->m_conn->fd != -1 : false) : false) ||
+	    (item.id > 0) ||
 	    (item.type == message_type::START || item.type == message_type::SHUTDOWN ||
 	     item.type == message_type::HIBERNATE || item.type == message_type::AWAKEN));
 
@@ -424,7 +426,6 @@ namespace cubconn::connection
       }
 
     pthread_mutex_unlock (&m_entry->tran_index_lock);
-
 
     /* stop the sessions associated with conn */
 
@@ -1013,48 +1014,81 @@ retry:
 
   bool worker::handle_message_queue_handoff_client (message &item)
   {
+    coordinator::message response;
+    message request;
     context *ctx;
+    uint64_t id;
+    bool transferred = true;
 
-    ctx = item.ctx;
+    id = item.id;
+    auto iterator = std::find_if (m_context.begin (), m_context.end (), [id] (context *ptr)
+    {
+      return ptr->m_id == id;
+    });
+
+    if (iterator == m_context.end ())
+      {
+	/* the connection has already been cleaned up */
+	transferred = false;
+	goto respond;
+      }
+    ctx = *iterator;
 
     rmutex_lock (NULL, &ctx->m_conn->cmutex);
-    /* If this connection is closing */
     if (ctx->m_conn->status != CONN_OPEN)
       {
+	/* this connection will be terminated soon */
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
-	return true;
+
+	transferred = false;
+	goto respond;
       }
+
+    /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
+    this->handle_message_queue_by_index (queue_type::IMMEDIATE);
 
     ctx->m_conn->worker = item.worker_ptr;
     ctx->m_worker = item.worker_index;
 
     if (!m_events.remove_descriptor (ctx->m_conn->fd))
       {
-	ctx->m_conn->worker = nullptr;
-	ctx->m_conn->context = nullptr;
-	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
-
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: add_descriptor failed\n");
-	return false;
+	assert_release (false);
       }
     if (m_context.erase (ctx) == 0)
       {
-	ctx->m_conn->worker = nullptr;
-	ctx->m_conn->context = nullptr;
-	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
-
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: context not found\n");
-	return false;
+	assert_release (false);
       }
-
-    /* todo: IF EXHAUSED ? */
     m_exhausted.erase (ctx->m_id);
 
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
     ctx->m_stats.add (statistics::context::MOVE_COUNT, 1);
-
     m_stats.sub (statistics::worker::CLIENT_NUM, 1);
+
+    /* hand off the context */
+    request.type = message_type::TAKEOVER_CLIENT;
+    request.ctx = ctx;
+    request.conn = item.conn;
+    item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+    if (!item.worker_ptr->notify ())
+      {
+	assert_release (false);
+      }
+
+respond:
+    /* respond to the coordinator */
+    response.type = coordinator::message_type::HANDOFF_REPLY;
+    response.id = id;
+    response.from = m_index;
+    response.to = transferred ? item.worker_index : -1;
+    m_coordinator->enqueue (std::move (response));
+    if (!m_coordinator->notify ())
+      {
+	assert_release (false);
+      }
+
     return true;
   }
 
@@ -1104,7 +1138,7 @@ retry:
 
     ctx->m_stats.set (statistics::context::LAST_MOVED_NS, m_timens);
 
-    er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
+    er_log_conn (__FILE__, __LINE__, "take over the client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
 
@@ -1214,6 +1248,7 @@ retry:
 
     static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
     static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 10, "this must be modified");
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);

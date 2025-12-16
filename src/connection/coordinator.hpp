@@ -71,6 +71,8 @@ namespace cubconn::connection
 	WORKER_INC,
 	WORKER_DEC,
 
+	CLIENT_MOVE,
+
 	/* SEND */
 	OK,
 	NOK,
@@ -81,7 +83,9 @@ namespace cubconn::connection
       struct control_recv
       {
 	control_type type;
-	int value;
+	int from;
+	int to;
+	int id;
       };
 
       struct control_send
@@ -97,9 +101,13 @@ namespace cubconn::connection
 	NEW_CLIENT,
 	RETURN_TO_POOL,
 
+	HANDOFF_REPLY,
+
 	STATISTICS,
 
-	SHUTDOWN
+	SHUTDOWN,
+
+	TYPE_COUNT
       };
 
       struct message
@@ -121,6 +129,11 @@ namespace cubconn::connection
 
 	  /* RETURN_TO_POOL */
 	  std::vector<context *> resource;
+
+	  /* HANDOFF_REPLY */
+	  int from;
+	  int to;
+	  uint64_t id;
 
 	  /* STATISTICS */
 	  struct
@@ -192,8 +205,10 @@ namespace cubconn::connection
       uint64_t get_monotonic_ns ();
 
       /* --------------------------------------------------------------------------- */
-      /* scale									     */
+      /* transfer and scale							     */
       /* --------------------------------------------------------------------------- */
+      bool transfer_connection (uint64_t id, int from, int to);
+
       bool scale_up ();
       bool scale_down ();
 
@@ -221,9 +236,14 @@ namespace cubconn::connection
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
       bool handle_message_queue_start (message &item);
+
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue_return_to_pool (message &item);
+      bool handle_message_queue_handoff_reply (message &item);
+
       bool handle_message_queue_statistics (message &item);
+
+      bool handle_message_queue_shutdown (message &item);
 
       bool handle_message_queue ();
 

@@ -125,7 +125,7 @@ namespace cubconn::connection
 	/* CLIENT */
 
 	NEW_CLIENT,
-	HANDOFF_CLIENT,
+	HANDOFF_CLIENT, /* lazy queue */
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 
@@ -139,6 +139,7 @@ namespace cubconn::connection
       {
 	public:
 	  message () :
+	    id (0),
 	    ctx (nullptr),
 	    conn (nullptr),
 	    worker_ptr (nullptr),
@@ -158,6 +159,7 @@ namespace cubconn::connection
 
 	  message_type type;
 
+	  uint64_t id;
 	  context *ctx;
 	  css_conn_entry *conn;
 
