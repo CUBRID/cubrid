@@ -19995,7 +19995,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
 
   if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
     {
-      if (strcmp (qualifier_name, current_schema_name) != 0)
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER has been called */ )
 	{
 	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
 	   * are beyond the scope of the compatibility option */
@@ -20007,8 +20008,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
 
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20057,6 +20058,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
     }
 
 end:
@@ -20111,8 +20114,8 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
 
   serial_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20211,7 +20214,8 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
 
   if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
     {
-      if (strcmp (qualifier_name, current_schema_name) != 0)
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER has been called */ )
 	{
 	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
 	   * are beyond the scope of the compatibility option */
@@ -20222,8 +20226,8 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
 
   trigger_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20357,6 +20361,8 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
     }
 
 end:
@@ -20412,8 +20418,8 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
 
   sp_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20462,6 +20468,8 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
     }
 
 end:
