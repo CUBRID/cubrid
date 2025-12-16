@@ -987,7 +987,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
   int executed_cnt = 0;
   int last_statement_line_no = 0;	// tracks line no of the last successfully executed stmt. -1 for failed ones.
   int base_line = *start_line - 1;
-  int client_type;		/* ADMIN_LOADDB_COMPAT_UNDER_11_2 or ADMIN_LOADDB_COMPAT_UNDER_11_4 or LOADDB_UTILITY */
+  int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
 
   if ((*start_line) > 1)
     {

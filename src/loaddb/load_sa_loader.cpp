@@ -6336,7 +6336,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int64_t lastcommit = 0;
   volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
-  int client_type;
+  int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
 
   std::ifstream object_file (args->object_file);
 
