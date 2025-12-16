@@ -486,6 +486,15 @@ namespace cubconn::connection
     /* remove from in flight list */
     m_migrating.erase (item.id);
 
+    if (m_statistics[item.from].m_contexts.find (item.id) == m_statistics[item.from].m_contexts.end () &&
+	m_statistics[item.to].m_contexts.find (item.id) == m_statistics[item.to].m_contexts.end ())
+      {
+	/* this stats has already been cleard in return_to_pool routine */
+	m_statistics[item.to].m_client_num--;
+
+	return true;
+      }
+
     if (!item.transferred)
       {
 	goto not_transferred;
