@@ -1069,16 +1069,6 @@ retry:
     ctx->m_stats.add (statistics::context::MOVE_COUNT, 1);
     m_stats.sub (statistics::worker::CLIENT_NUM, 1);
 
-    /* hand off the context */
-    request.type = message_type::TAKEOVER_CLIENT;
-    request.ctx = ctx;
-    request.conn = item.conn;
-    item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!item.worker_ptr->notify ())
-      {
-	assert_release (false);
-      }
-
 respond:
     /* respond to the coordinator */
     response.type = coordinator::message_type::HANDOFF_REPLY;
@@ -1092,6 +1082,18 @@ respond:
 	assert_release (false);
       }
 
+    if (transferred)
+      {
+	/* hand off the context */
+	request.type = message_type::TAKEOVER_CLIENT;
+	request.ctx = ctx;
+	request.conn = item.conn;
+	item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+	if (!item.worker_ptr->notify ())
+	  {
+	    assert_release (false);
+	  }
+      }
     return true;
   }
 

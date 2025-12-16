@@ -31,6 +31,7 @@
 #include <thread>
 #include <vector>
 #include <utility>
+#include <unordered_set>
 #include <unordered_map>
 
 namespace cubconn::connection
@@ -196,6 +197,9 @@ namespace cubconn::connection
       std::uint32_t m_max_worker;
       std::uint32_t m_min_worker;
       std::uint32_t m_current_worker;
+
+      /* in flight client id set (hand-off - take over) */
+      std::unordered_set<uint64_t> m_migrating;
 
       /* statistics */
       std::vector<statistics_chunk> m_statistics;

@@ -27,6 +27,7 @@
 #include "coordinator.hpp"
 #include "connection_sr.h"
 
+#include <random>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
@@ -178,15 +179,19 @@ namespace cubconn::connection
     connection::worker::message request;
 
     assert (static_cast<std::size_t> (from) < m_max_worker);
-    assert (static_cast<std::size_t> (to) < m_current_worker);
+    assert (static_cast<std::size_t> (to) < m_max_worker);
+    assert (from != to);
+    assert (id > 0);
+
+    if (m_migrating.find (id) != m_migrating.end ())
+      {
+	/* already in flight */
+	return false;
+      }
+    m_migrating.insert (id);
+
     assert (m_statistics[from].m_contexts.find (id) != m_statistics[from].m_contexts.end ());
     assert (m_statistics[to].m_contexts.find (id) == m_statistics[to].m_contexts.end ());
-
-    if (from == to || id == 0)
-      {
-	/* nothing to do */
-	return true;
-      }
 
     auto stats = m_statistics[from].m_contexts.find (id);
     m_statistics[to].m_contexts.emplace (
@@ -208,6 +213,8 @@ namespace cubconn::connection
       {
 	assert_release (false);
       }
+
+    m_statistics[to].m_client_num++;
 
     return true;
   }
@@ -449,15 +456,17 @@ namespace cubconn::connection
 
   bool coordinator::handle_message_queue_return_to_pool (message &item)
   {
+    std::size_t i;
+
     for (context *ctx : item.resource)
       {
-	assert (m_statistics[ctx->m_worker].m_contexts.find (ctx->m_id) != m_statistics[ctx->m_worker].m_contexts.end ());
-
 	m_statistics[ctx->m_worker].m_client_num--;
-	m_statistics[ctx->m_worker].m_contexts.erase (ctx->m_id);
 
-	ctx->m_worker = -1;
-	ctx->m_id = 0;
+	/* remove all stats with id as m_id */
+	for (i = 0; i < m_max_worker; i++)
+	  {
+	    m_statistics[i].m_contexts.erase (ctx->m_id);
+	  }
 
 	/* release the conneciton */
 	css_free_conn (ctx->m_conn);
@@ -470,29 +479,31 @@ namespace cubconn::connection
   bool coordinator::handle_message_queue_handoff_reply (message &item)
   {
     assert (static_cast<std::size_t> (item.from) < m_max_worker);
+    assert (static_cast<std::size_t> (item.to) < m_max_worker);
+    assert (item.id > 0);
+    assert (m_migrating.find (item.id) != m_migrating.end ());
+
+    /* remove from in flight list */
+    m_migrating.erase (item.id);
 
     if (!item.transferred)
       {
-	/* not transferred */
-
-	m_statistics[item.to].m_contexts.erase (item.id);
-
-	return true;
+	goto not_transferred;
       }
 
-    auto iterator = m_statistics[item.from].m_contexts.find (item.id);
-    if (iterator == m_statistics[item.from].m_contexts.end ())
-      {
-	/* the connection has already been cleared */
+    assert (m_statistics[item.from].m_contexts.find (item.id) != m_statistics[item.from].m_contexts.end ());
 
-	m_statistics[item.to].m_contexts.erase (item.id);
-
-	return true;
-      }
-
-    m_statistics[item.from].m_contexts.erase (iterator);
+    m_statistics[item.from].m_contexts.erase (item.id);
     m_statistics[item.from].m_client_num--;
-    m_statistics[item.to].m_client_num++;
+
+    return true;
+
+not_transferred:
+    assert (m_statistics[item.to].m_contexts.find (item.id) != m_statistics[item.to].m_contexts.end ());
+
+    /* revert */
+    m_statistics[item.to].m_contexts.erase (item.id);
+    m_statistics[item.to].m_client_num--;
 
     return true;
   }
@@ -535,7 +546,7 @@ namespace cubconn::connection
 	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
 
 	    m_statistics[worker].m_contexts[stats.first].first = stats.second;
-	    m_statistics[worker].m_contexts[stats.first].second  = stats.second;
+	    m_statistics[worker].m_contexts[stats.first].second = stats.second;
 	  }
       }
     m_statistics[worker].m_last_cpu_time = item.statistics.cpu_time_ns;

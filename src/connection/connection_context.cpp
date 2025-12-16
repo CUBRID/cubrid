@@ -118,6 +118,7 @@ namespace cubconn::connection
   {
     m_conn = nullptr;
     m_worker = -1;
+    m_id = 0;
     m_ignore = ignore_level::DONT_IGNORE;
     m_removed = false;
 
