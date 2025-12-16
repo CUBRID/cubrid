@@ -140,7 +140,7 @@ namespace cubpacking
       bool has_error (void) const;
 
       // int array
-      size_t get_packed_int_vector_size (size_t curr_offset, const size_t count);
+      size_t get_packed_int_array_size (size_t curr_offset, const size_t count);
       void pack_int_array (const int *array, const int count);
 
     private:
