@@ -594,9 +594,7 @@ namespace cubpacking
   void
   packer::pack_string (const std::string &str)
   {
-    size_t len = str.size ();
-
-    pack_c_string (str.c_str (), len);
+    pack_c_string (str.c_str (), str.size ());
   }
 
   size_t
@@ -609,6 +607,18 @@ namespace cubpacking
   packer::pack_overloaded (const std::string &str)
   {
     pack_string (str);
+  }
+
+  size_t
+  packer::get_packed_size_overloaded (const char *value, size_t curr_offset)
+  {
+    return get_packed_c_string_size (value, strlen (value), curr_offset);
+  }
+
+  void
+  packer::pack_overloaded (const char *str)
+  {
+    pack_c_string (str, strlen (str));
   }
 
   void

@@ -171,7 +171,9 @@ namespace cubpacking
       size_t get_packed_size_overloaded (const std::string &value, size_t curr_offset);
       void pack_overloaded (const std::string &str);
 
-      // no overload for c string ?
+      // C string
+      size_t get_packed_size_overloaded (const char *value, size_t curr_offset);
+      void pack_overloaded (const char *str);
 
       // oid
       size_t get_packed_size_overloaded (const OID &oid, size_t curr_offset);
