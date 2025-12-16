@@ -182,6 +182,12 @@ namespace cubconn::connection
     assert (m_statistics[from].m_contexts.find (id) != m_statistics[from].m_contexts.end ());
     assert (m_statistics[to].m_contexts.find (id) == m_statistics[to].m_contexts.end ());
 
+    if (from == to || id == 0)
+      {
+	/* nothing to do */
+	return true;
+      }
+
     auto stats = m_statistics[from].m_contexts.find (id);
     m_statistics[to].m_contexts.emplace (
 	    stats->first,
