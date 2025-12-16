@@ -172,6 +172,24 @@ namespace cubconn::connection
     return (uint64_t) ts.tv_sec * 1000000000ULL + ts.tv_nsec;
   }
 
+  bool coordinator::scale_up ()
+  {
+  }
+
+  bool coordinator::scale_down ()
+  {
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+
+    request.type = connection::worker::message_type::HIBERNATE;
+
+    workers[m_current_worker - 1]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[m_current_worker - 1]->notify ())
+      {
+	assert_release (false);
+      }
+  }
+
   void coordinator::statistics_update_score (std::size_t worker)
   {
     statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;

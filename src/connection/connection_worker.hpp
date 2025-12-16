@@ -125,6 +125,8 @@ namespace cubconn::connection
 	/* CLIENT */
 
 	NEW_CLIENT,
+	HANDOFF_CLIENT,
+	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 
 	SEND_PACKET,
@@ -139,6 +141,8 @@ namespace cubconn::connection
 	  message () :
 	    ctx (nullptr),
 	    conn (nullptr),
+	    worker_ptr (nullptr),
+	    worker_index (-1),
 	    ignore (ignore_level::DONT_IGNORE),
 	    retry (false),
 	    waiter_handle (nullptr)
@@ -166,6 +170,10 @@ namespace cubconn::connection
 
 	  /* SEND_PACKET    */
 	  std::function<void ()> deleter;
+
+	  /* HANDOFF_CLIENT */
+	  worker *worker_ptr;
+	  int worker_index;
 
 	  /* SHUTDOWN_CLIENT */
 	  ignore_level ignore;
@@ -299,6 +307,8 @@ namespace cubconn::connection
       bool handle_message_queue_release_packet (message &item);
 
       bool handle_message_queue_new_client (message &item);
+      bool handle_message_queue_handoff_client (message &item);
+      bool handle_message_queue_takeover_client (message &item);
       bool handle_message_queue_shutdown_client (message &item);
 
       bool handle_message_queue_start (message &item);

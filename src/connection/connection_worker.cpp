@@ -1011,6 +1011,106 @@ retry:
     return true;
   }
 
+  bool worker::handle_message_queue_handoff_client (message &item)
+  {
+    context *ctx;
+
+    ctx = item.ctx;
+
+    rmutex_lock (NULL, &ctx->m_conn->cmutex);
+    /* If this connection is closing */
+    if (ctx->m_conn->status != CONN_OPEN)
+      {
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+	return true;
+      }
+
+    ctx->m_conn->worker = item.worker_ptr;
+    ctx->m_worker = item.worker_index;
+
+    if (!m_events.remove_descriptor (ctx->m_conn->fd))
+      {
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: add_descriptor failed\n");
+	return false;
+      }
+    if (m_context.erase (ctx) == 0)
+      {
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: context not found\n");
+	return false;
+      }
+
+    /* todo: IF EXHAUSED ? */
+    m_exhausted.erase (ctx->m_id);
+
+    rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+    ctx->m_stats.add (statistics::context::MOVE_COUNT, 1);
+
+    m_stats.sub (statistics::worker::CLIENT_NUM, 1);
+    return true;
+  }
+
+  bool worker::handle_message_queue_takeover_client (message &item)
+  {
+    context *ctx;
+    int flags;
+
+    ctx = item.ctx;
+
+    rmutex_lock (NULL, &ctx->m_conn->cmutex);
+
+    assert (ctx->m_conn->worker == this);
+    assert (static_cast<std::size_t> (ctx->m_worker) == m_index);
+
+    flags = EPOLLET | EPOLLIN | EPOLLRDHUP;
+    if (!ctx->m_send.m_transmitter.empty ())
+      {
+	flags |= EPOLLOUT;
+      }
+
+    if (!m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
+      {
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	m_removed_context.push_back (ctx);
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
+	return false;
+      }
+    if (!m_context.insert (ctx).second)
+      {
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	m_events.remove_descriptor (ctx->m_conn->fd);
+
+	m_removed_context.push_back (ctx);
+	er_log_conn (__FILE__, __LINE__,
+		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
+	return false;
+      }
+
+    rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+    ctx->m_stats.set (statistics::context::LAST_MOVED_NS, m_timens);
+
+    er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
+
+    m_stats.add (statistics::worker::CLIENT_NUM, 1);
+
+    return true;
+  }
+
   bool worker::handle_message_queue_shutdown_client (message &item)
   {
     context *ctx;
@@ -1102,9 +1202,11 @@ retry:
 	/* AWAKEN	   */ { &worker::handle_message_queue_awaken,		statistics::worker::NA },
 	/* SHUTDOWN	   */ { &worker::handle_message_queue_shutdown,		statistics::worker::NA },
 	/* NEW_CLIENT	   */ { &worker::handle_message_queue_new_client,	statistics::worker::MQ_NEW_CLIENT },
+	/* HANDOFF_CLIENT  */ { &worker::handle_message_queue_handoff_client,	statistics::worker::MQ_HANDOFF_CLIENT },
+	/* TAKEOVER_CLIENT */ { &worker::handle_message_queue_takeover_client,	statistics::worker::MQ_TAKEOVER_CLIENT },
 	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT },
 	/* SEND_PACKET	   */ { &worker::handle_message_queue_send_packet,	statistics::worker::MQ_SEND_PACKET },
-	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET },
+	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET }
       }
     };
     message request;

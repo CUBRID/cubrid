@@ -70,6 +70,8 @@ namespace cubconn::statistics
     /* --------------------------------------------------------------------------- */
     MQ_REQUESTED, /* count */
     MQ_NEW_CLIENT, /* count */
+    MQ_HANDOFF_CLIENT, /* count */
+    MQ_TAKEOVER_CLIENT, /* count */
     MQ_SHUTDOWN_CLIENT, /* count */
     MQ_SEND_PACKET, /* count */
     MQ_RELEASE_PACKET, /* count */
@@ -93,6 +95,8 @@ namespace cubconn::statistics
 
     { "MQ_REQUESTED", "" },
     { "MQ_NEW_CLIENT", "" },
+    { "MQ_HANDOFF_CLIENT", "" },
+    { "MQ_TAKEOVER_CLIENT", "" },
     { "MQ_SHUTDOWN_CLIENT", "" },
     { "MQ_SEND_PACKET", "" },
     { "MQ_RELEASE_PACKET", "" },
