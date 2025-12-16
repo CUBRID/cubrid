@@ -292,15 +292,15 @@ namespace cubconn::connection
     std::size_t i;
 
     core = 0;
-
+    bytes_in = 0;
+    bytes_out = 0;
+    printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
-	printf ("------ worker %d ------\n", static_cast<int> (i));
+	//printf ("------ worker %d ------\n", static_cast<int> (i));
 
 	core += m_statistics[i].m_core;
 
-	bytes_in = 0;
-	bytes_out = 0;
 	budget_recv_hit = 0;
 	budget_send_hit = 0;
 	for (auto &stats : m_statistics[i].m_contexts)
@@ -310,9 +310,10 @@ namespace cubconn::connection
 	    budget_recv_hit += stats.second.second.get (statistics::context::RECV_BUDGET_HIT);
 	    budget_send_hit += stats.second.second.get (statistics::context::SEND_BUDGET_HIT);
 
-	    printf ("  client id: %lld\n", static_cast<unsigned long long> (stats.first));
+	    //printf ("  client id: %lld\n", static_cast<unsigned long long> (stats.first));
 	  }
 
+	/*
 	printf ("SCORE: %lf\n", m_statistics[i].m_score);
 	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
 	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
@@ -322,14 +323,15 @@ namespace cubconn::connection
 		m_statistics[i].m_worker.first.get (statistics::worker::MQ_REQUESTED));
 	printf ("PACKET COUNT: %lf\n",
 		m_statistics[i].m_worker.first.get (statistics::worker::PACKET_COUNT));
-	printf ("BYTES IN: %lf\n", bytes_in);
-	printf ("BYTES OUT: %lf\n", bytes_out);
 	printf ("RECV BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_recv_hit));
 	printf ("SEND BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_send_hit));
+	*/
       }
     printf ("------ workers ------\n");
     printf ("CORE USAGE: %0.4lf / %d\n", core, m_max_worker);
     printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
+    printf ("BYTES IN: %lf\n", bytes_in);
+    printf ("BYTES OUT: %lf\n\n", bytes_out);
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -747,6 +749,9 @@ not_transferred:
     std::array<epoll_event, 4> events;
     int nfds, i;
 
+    std::mt19937 gen (std::random_device { } ());
+    std::uniform_int_distribution<int> dis (0, m_max_worker - 1);
+
     while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
@@ -779,6 +784,27 @@ not_transferred:
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
+		    //this->statistics_print ();
+
+		    /* a code for verification */
+		    for (std::size_t i = 0; i < m_max_worker; i++)
+		      {
+			for (auto &ctx : m_statistics[i].m_contexts)
+			  {
+			    std::size_t to = dis (gen);
+			    if (i != to)
+			      {
+				if (this->transfer_connection (ctx.first, i, to))
+				  {
+				    /*
+				    printf ("request to transfer connection: %d -> %d: (id, %d)\n", static_cast<int> (i), static_cast<int> (to),
+				        static_cast<int> (ctx.first));
+				    fflush (stdout);
+				    */
+				  }
+			      }
+			  }
+		      }
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
