@@ -1671,6 +1671,11 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 
 	    case PT_EXISTS:
 	      regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1, UNBOX_AS_TABLE);
+	      if (regu_var1->xasl && pt_prepare_corr_subquery_hash_result_cache
+		  (parser, (PT_NODE *) node->info.expr.arg1, regu_var1->xasl))
+		{
+		  XASL_SET_FLAG (regu_var1->xasl, XASL_USES_SQ_CACHE);
+		}
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
 
 	      /* exists op must fetch one tuple */
