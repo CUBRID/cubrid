@@ -94,7 +94,7 @@ typedef enum
   GET_SHARID,
   TEST,
   REPLICATION,
-  SC_RKCHECK
+  RKCHECK
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -223,7 +223,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
 #define COMMAND_TYPE_TEST       "test"
 #define COMMAND_TYPE_REPLICATION	"replication"
 #define COMMAND_TYPE_REPLICATION_SHORT	"repl"
-#define COMMAND_TYPE_RKCHECK   "rkcheck"
+#define COMMAND_TYPE_RKCHECK    "rkcheck"
 
 static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {START, COMMAND_TYPE_START, MASK_ALL & ~MASK_PL},
@@ -244,7 +244,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION_SHORT, MASK_HEARTBEAT},
-  {RKCHECK, COMMAND_TYPE_RKCHECK, MASK_HEARTBEAT},
+  {CHECK_REPL_CONS, COMMAND_TYPE_RKCHECK, MASK_HEARTBEAT},
   {-1, "", MASK_ALL}
 };
 
@@ -411,7 +411,7 @@ command_string (int command_type)
     case REPLICATION:
       command = PRINT_CMD_REPLICATION;
       break;
-    case RKCHECK:
+    case CHECK_REPL_CONS:
       command = PRINT_CMD_RKCHECK;
       break;
     case STOP:
@@ -3222,15 +3222,19 @@ us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
 
   for (i = 0; dbs[i] != NULL; i++)
     {
-      db_name = dbs[i];
-      const char *lw_argv[] = { UTIL_ADMIN_NAME, UTIL_RKCHECK,
-	db_name, NULL,
+      if (db_name != NULL && strcmp (dbs[i], db_name) != 0)
+	{
+	  continue;
+	}
+
+      const char *rkcheck_args[] = { UTIL_ADMIN_NAME, UTIL_RKCHECK,
+	dbs[i], NULL,
 	NULL, NULL,
 	NULL,
 	NULL
       };
 
-      status = proc_execute (UTIL_ADMIN_NAME, lw_argv, true, false, false, NULL);
+      status = proc_execute (UTIL_ADMIN_NAME, rkcheck_args, true, false, false, NULL);
       if (status != NO_ERROR)
 	{
 	  break;
@@ -5029,7 +5033,7 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
     case SC_APPLYLOGDB:
       status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
-    case SC_RKCHECK:
+    case RKCHECK:
       status = us_hb_process_rkcheck (ha_conf, db_name_p);
       break;
     }
@@ -5175,7 +5179,6 @@ process_heartbeat (int command_type, int argc, const char **argv)
       break;
     case SC_COPYLOGDB:
     case SC_APPLYLOGDB:
-    case SC_RKCHECK:
       status = process_heartbeat_util (&ha_conf, command_type, argc, argv);
       break;
     case REPLICATION:

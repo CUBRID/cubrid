@@ -2775,16 +2775,12 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   violation_list_file_path[PATH_MAX - 1] = '\0';
   fp = fopen (violation_list_file_path, "w");
 
-  if (user == NULL || user[0] == '\0')
-    {
-      user = (char *) "DBA";
-    }
-
-  error = db_restart_ex (arg->command_name, database_name, user, password, NULL, DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (error != NO_ERROR)
+  AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
+  db_login ("DBA", NULL);
+  if (db_restart (arg->command_name, TRUE, database_name))
     {
       fclose (fp);
-      // TODO: Check if password-error handling (like unloaddb) is needed, even though this logic doesn’t use authentication.
       PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
       return ER_FAILED;
     }
@@ -2837,7 +2833,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   if (violation_count > 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION, 2, violation_count,
-	      er_msg_file);
+	      violation_list_file);
       return ER_HA_REPLICATION_CONSTRAINT_VIOLATION;
     }
 

@@ -805,7 +805,7 @@ typedef enum
   TDE,
   FLASHBACK,
   MEMMON,
-  RKCHECK,
+  CHECK_REPL_CONS,
   LOGFILEDUMP
 } UTIL_INDEX;
 
@@ -933,7 +933,7 @@ typedef struct _ha_config
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
 #define PRINT_CMD_REPLICATION	"replication"
-#define PRINT_CMD_RKCHECK      "rkcheck"
+#define PRINT_CMD_RKCHECK       "check_repl_cons"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
@@ -1023,7 +1023,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_TDE			        "tde"
 #define UTIL_OPTION_FLASHBACK                   "flashback"
 #define UTIL_OPTION_MEMMON                      "memmon"
-#define UTIL_OPTION_RKCHECK                    "rkcheck"
+#define UTIL_OPTION_RKCHECK                     "rkcheck"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1759,12 +1759,6 @@ typedef struct _ha_config
 #define MEMMON_OUTPUT_L             "output-file"
 #define MEMMON_DISABLE_FORCE_S      14103
 #define MEMMON_DISABLE_FORCE_L      "disable-force"
-
-#define RKCHECK_USER_S             'u'
-#define RKCHECK_USER_L             "user"
-#define RKCHECK_PASSWORD_S         'p'
-#define RKCHECK_PASSWORD_L         "password"
-
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
