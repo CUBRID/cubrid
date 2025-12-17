@@ -194,7 +194,7 @@ static void css_process_shutdown_request (SOCKET master_fd);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
-static unsigned int css_enqueue_and_notify (cubconn::connection_worker::queue_type type, cubconn::connection_worker::message &&item);
+static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
@@ -549,9 +549,10 @@ css_start_shutdown_server ()
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
-  cubconn::master_connector connector;
-  cubconn::connection_pool connections;
-  std::size_t core_count, worker_count, connection_thread_count;
+  cubconn::master::connector connector;
+  cubconn::connection::pool connections;
+  std::size_t core_count, worker_count;
+  std::size_t max_connection_workers, min_connection_workers;
   std::string name;
   int status = NO_ERROR;
 
@@ -568,7 +569,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   core_count = (int) prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
   worker_count = (int) prm_get_integer_value (PRM_ID_THREAD_WORKER_COUNT);
-  connection_thread_count = (int) prm_get_integer_value (PRM_ID_CSS_CONNECTION_THREAD_COUNT);
+  max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+  min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
   // create request worker pool
   css_Server_request_worker_pool =
@@ -587,7 +589,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  connections.initialize (MAX_CONNECTIONS, connection_thread_count);
+  connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers);
 
   /* attach thread entry */
   connector.attach (*thread_p);
@@ -602,12 +604,12 @@ shutdown:
    */
   css_start_shutdown_server ();
 
+  connector.stop ();
+  connections.finalize ();
+
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
-
-  connector.stop ();
-  connections.finalize ();
 
   /* stop vacuum threads. */
   vacuum_stop_workers (thread_p);
@@ -649,7 +651,7 @@ shutdown:
  *   item (in): request
  */
 static unsigned int
-css_enqueue_and_notify (cubconn::connection_worker::queue_type type, cubconn::connection_worker::message &&item)
+css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item)
 {
   CSS_CONN_ENTRY * conn;
   int r;
@@ -706,7 +708,7 @@ unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
   // *INDENT-OFF*
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   NET_HEADER *mem_header;
   std::byte * mem_reply = nullptr;
 
@@ -720,7 +722,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
     }
   rmutex_unlock (NULL, &conn->rmutex);
 
-  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
   request.conn = conn;
   request.packet.clear ();
 
@@ -749,7 +751,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
+  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 unsigned int
@@ -790,7 +792,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
 				   int buffer_size, std::function < void () > &&deleter)
 {
   // *INDENT-OFF*
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   NET_HEADER *mem_header[2] = { nullptr, nullptr };
   std::byte * mem_reply = nullptr;
 
@@ -810,7 +812,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
     }
   rmutex_unlock (NULL, &conn->rmutex);
 
-  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
   request.conn = conn;
   request.packet.clear ();
 
@@ -857,7 +859,7 @@ css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
+  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 #if 0
@@ -958,7 +960,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 				     std::function < void () > &&deleter)
 {
   // *INDENT-OFF*
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   NET_HEADER *mem_header[3] = { nullptr, nullptr, nullptr };
   std::byte * mem_reply = nullptr;
 
@@ -980,7 +982,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     }
   rmutex_unlock (NULL, &conn->rmutex);
 
-  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
   request.conn = conn;
   request.packet.clear ();
 
@@ -1046,7 +1048,7 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
+  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 /*
@@ -1072,7 +1074,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 				     int buffer3_size, std::function < void () > &&deleter)
 {
   // *INDENT-OFF*
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   NET_HEADER *mem_header[4] = { nullptr, nullptr, nullptr, nullptr };
   std::byte * mem_reply = nullptr;
 
@@ -1095,7 +1097,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
     }
   rmutex_unlock (NULL, &conn->rmutex);
 
-  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
   request.conn = conn;
   request.packet.clear ();
 
@@ -1175,7 +1177,7 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
+  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 /*
@@ -1193,7 +1195,7 @@ unsigned int
 css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
   // *INDENT-OFF*
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   NET_HEADER *mem_header;
   std::byte * mem_reply = nullptr;
 
@@ -1208,7 +1210,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
     }
   rmutex_unlock (NULL, &conn->rmutex);
 
-  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
   request.conn = conn;
   request.packet.clear ();
 
@@ -1237,7 +1239,7 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
+  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
 }
 
 /*
@@ -1249,7 +1251,7 @@ unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
   // *INDENT-OFF*
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   NET_HEADER *header;
   unsigned short flags = 0;
   int r;
@@ -1264,7 +1266,7 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
     }
   rmutex_unlock (NULL, &conn->rmutex);
 
-  request.type = cubconn::connection_worker::message_type::SEND_PACKET;
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
   request.conn = conn;
   request.packet.clear ();
 
@@ -1298,7 +1300,7 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   };
   // *INDENT-ON*
 
-  if (css_enqueue_and_notify (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request)) != NO_ERROR)
+  if (css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)) != NO_ERROR)
     {
       return INTERNAL_CSS_ERROR;
     }
@@ -2408,7 +2410,7 @@ css_server_task::execute (context_type &thread_ref)
 
   if (m_conn.end_working_task () == 0 && m_conn.status == CONN_CLOSING)
     {
-      css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
+      css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
     }
   else
     {

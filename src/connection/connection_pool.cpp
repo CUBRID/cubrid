@@ -21,15 +21,18 @@
  */
 
 #include "hardware_topology.hpp"
+#include "thread_manager.hpp"
 #include "connection_pool.hpp"
 #include "connection_worker.hpp"
 #include "server_support.h"
 #include "system_parameter.h"
 #include "error_manager.h"
 
-#include <csignal>
-#include <cstdint>
+#include <cmath>
 #include <chrono>
+#include <csignal>
+#include <cstddef>
+#include <cstdint>
 #include <unistd.h>
 #include <stdint.h>
 #include <fcntl.h>
@@ -40,63 +43,247 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-namespace cubconn
+namespace cubconn::connection
 {
-  connection_pool::connection_pool () :
+  pool::pool () :
     m_max_connections (-1),
-    m_counter (0)
+    m_max_connection_workers (-1),
+    m_min_connection_workers (-1)
   {
     m_watcher = std::make_shared<thread_watcher> ();
     m_watcher->active = 0;
   }
 
-  connection_pool::~connection_pool ()
+  pool::~pool ()
   {
   }
 
-  void connection_pool::initialize (std::uint32_t max_connections, int connection_threads)
+  void pool::initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers)
+  {
+    (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
+    (void) os_set_signal_handler (SIGFPE, SIG_IGN);
+
+    this->initialize_topology (max_connection_workers);
+
+    this->lock_resource ();
+
+    this->initialize_freelist (max_connections);
+    this->initialize_coordinator (max_connection_workers, min_connection_workers);
+    this->initialize_workers (max_connection_workers, min_connection_workers);
+
+    this->release_resource ();
+
+    m_max_connections = max_connections;
+    m_max_connection_workers = max_connection_workers;
+    m_min_connection_workers = min_connection_workers;
+  }
+
+  void pool::finalize ()
+  {
+    this->finalize_workers ();
+    this->finalize_coordinator ();
+
+    /* acquire the lock or kill itself */
+    this->try_to_lock_resource ();
+
+    m_workers.clear ();
+    this->finalize_freelist ();
+
+    this->release_resource ();
+
+    this->finalize_topology ();
+
+    m_max_connections = -1;
+    m_max_connection_workers = -1;
+    m_min_connection_workers = -1;
+  }
+
+  void pool::dispatch (css_conn_entry *conn)
+  {
+    coordinator::message request;
+
+    request.type = coordinator::message_type::NEW_CLIENT;
+    request.conn = conn;
+    m_coordinator->enqueue (std::move (request));
+    if (!m_coordinator->notify ())
+      {
+	assert_release (false);
+      }
+  }
+
+  void pool::lock_resource ()
+  {
+    m_mutex.lock ();
+
+#if !defined (NDEBUG)
+    m_mutex_holder = std::this_thread::get_id ();
+#endif
+  }
+
+  void pool::release_resource ()
+  {
+#if !defined (NDEBUG)
+    m_mutex_holder = std::thread::id ();
+#endif
+
+    m_mutex.unlock ();
+  }
+
+  context *pool::claim_context ()
+  {
+    freelist *head;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
+    head = m_freelist.m_head;
+    if (head)
+      {
+	m_freelist.m_head = m_freelist.m_head->m_next;
+      }
+    else
+      {
+	head = new freelist (32 * 1024);
+      }
+    m_freelist.m_claim++;
+
+    return &head->m_context;
+  }
+
+  void pool::retire_context (context *ctx)
+  {
+    freelist *head;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
+    head = reinterpret_cast<freelist *> (ctx);
+    head->m_context.reset ();
+    if (m_freelist.m_claim > m_freelist.m_max)
+      {
+	delete head;
+      }
+    else
+      {
+	head->m_next = m_freelist.m_head;
+	m_freelist.m_head = head;
+      }
+    m_freelist.m_claim--;
+  }
+
+  std::vector<std::unique_ptr<worker>> &pool::get_workers ()
+  {
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
+    return m_workers;
+  }
+
+  void pool::try_to_lock_resource ()
+  {
+    int i;
+
+    for (i = 0; i < 1000; i++)
+      {
+	if (m_mutex.try_lock ())
+	  {
+	    break;
+	  }
+
+	thread_sleep (10); /* 10 ms */
+      }
+
+    /* timeout */
+    if (i == 1000)
+      {
+	er_log_debug (ARG_FILE_LINE, "could not stop coordinator");
+	_exit (0);
+      }
+
+#if !defined (NDEBUG)
+    m_mutex_holder = std::this_thread::get_id ();
+#endif
+  }
+
+  void pool::initialize_freelist (std::uint32_t max_connections)
+  {
+    freelist *head;
+    std::size_t i;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
+
+    m_freelist.m_head = nullptr;
+    m_freelist.m_claim = 0;
+    m_freelist.m_max = static_cast<std::size_t> (static_cast<float> (max_connections) * /* margin */ 1.1);
+    for (i = 0; i < m_freelist.m_max; i++)
+      {
+	head = m_freelist.m_head;
+	m_freelist.m_head = new freelist (32 * 1024);
+	m_freelist.m_head->m_next = head;
+      }
+  }
+
+  void pool::finalize_freelist ()
+  {
+    freelist *head;
+
+    assert (m_mutex_holder == std::this_thread::get_id ());
+    assert (m_freelist.m_claim == 0);
+
+    while (m_freelist.m_head)
+      {
+	head = m_freelist.m_head;
+	m_freelist.m_head = m_freelist.m_head->m_next;
+	delete head;
+      }
+
+    m_freelist.m_max = 0;
+    m_freelist.m_claim = 0;
+  }
+
+  void pool::initialize_topology (std::uint32_t max_connection_workers)
+  {
+    cubbase::topology.load_cpu (max_connection_workers);
+    cubbase::topology.map_nic_to_core ();
+  }
+
+  void pool::finalize_topology ()
+  {
+  }
+
+  void pool::initialize_workers (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
     std::vector<int> *cores;
     std::uint32_t i;
 
-    /* signal */
-    (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
-    (void) os_set_signal_handler (SIGFPE, SIG_IGN);
+    assert (m_mutex_holder == std::this_thread::get_id ());
 
-    /* topology setting */
-    cubbase::topology.load_cpu (connection_threads);
-    cubbase::topology.map_nic_to_core ();
+    m_workers.reserve (max_connection_workers);
+
     cores = &cubbase::topology.get_cores ();
 
-    /* TODO: need to consider dynamic increase */
-    m_workers.reserve (cores->size () + 1);
+    assert (cores->size () == max_connection_workers);
 
-    i = 0;
-    for (int core : *cores)
+    for (i = 0; i < max_connection_workers; i++)
       {
-	m_workers.emplace_back (std::make_unique<connection_worker> (this, m_watcher, core, i++));
+	m_workers.emplace_back (std::make_unique<worker> (this, m_coordinator, m_watcher, (*cores)[i], i));
       }
 
-    /* pre-warm the connection thread and its queue to avoid a race condition. */
-    for (std::unique_ptr<connection_worker> &worker : m_workers)
+    /* pre-warm the connection worker and its queue to avoid a race condition. */
+    for (std::unique_ptr<worker> &worker : m_workers)
       {
-	for (i = 0; i < static_cast<std::size_t> (connection_worker::queue_type::TYPE_COUNT); i++)
+	for (i = 0; i < static_cast<std::size_t> (worker::queue_type::TYPE_COUNT); i++)
 	  {
-	    connection_worker::message request;
+	    worker::message request;
 
-	    request.type = connection_worker::message_type::START;
-	    if (!worker->enqueue_and_notify (static_cast<connection_worker::queue_type> (i), std::move (request), nullptr,
+	    request.type = worker::message_type::START;
+	    if (!worker->enqueue_and_notify (static_cast<worker::queue_type> (i), std::move (request), nullptr,
 					     -1 /* infinite */))
 	      {
 		assert_release (false);
 	      }
 	  }
       }
-
-    m_max_connections = max_connections;
   }
 
-  void connection_pool::finalize ()
+  void pool::finalize_workers ()
   {
     std::chrono::system_clock::time_point deadline, now;
     std::chrono::microseconds wait_for (0);
@@ -105,9 +292,9 @@ namespace cubconn
 
     for (auto &worker : m_workers)
       {
-	connection_worker::message request;
-	request.type = connection_worker::message_type::SHUTDOWN;
-	worker->enqueue (connection_worker::queue_type::IMMEDIATE, std::move (request));
+	worker::message request;
+	request.type = worker::message_type::SHUTDOWN;
+	worker->enqueue (worker::queue_type::IMMEDIATE, std::move (request));
 	if (!worker->notify ())
 	  {
 	    assert_release (false);
@@ -126,45 +313,70 @@ namespace cubconn
       }
 
     std::unique_lock<std::mutex> lock (m_watcher->mtx);
-    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
-    lock.unlock();
+    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 1; /* coordinator */ });
+    lock.unlock ();
     if (!compelete)
       {
 	er_log_debug (ARG_FILE_LINE, "could not stop all active connection workers");
 	_exit (0);
       }
-
-    m_max_connections = -1;
-    m_workers.clear ();
   }
 
-  void connection_pool::dispatch (css_conn_entry *conn)
+  void pool::initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
-    /* TODO: in this function, we can take some kind of strategies how	      */
-    /* the connection pool distributes the connections to connection workers. */
-    /* but now, just uses round robin					      */
-    connection_worker::message request;
+    coordinator::message request;
+    std::vector<int> *cores;
 
-    request.type = connection_worker::message_type::NEW_CLIENT;
-    request.conn = conn;
-    m_workers[m_counter]->enqueue (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
-    if (!m_workers[m_counter]->notify ())
+    cores = &cubbase::topology.get_cores ();
+    m_coordinator = std::make_shared<coordinator> (
+			    this,
+			    m_watcher,
+			    (*cores)[0],
+			    max_connection_workers,
+			    min_connection_workers
+		    );
+
+    request.type = coordinator::message_type::START;
+    m_coordinator->enqueue (std::move (request));
+    if (!m_coordinator->notify ())
+      {
+	assert_release (false);
+      }
+  }
+
+  void pool::finalize_coordinator ()
+  {
+    std::chrono::system_clock::time_point deadline, now;
+    std::chrono::microseconds wait_for (0);
+    coordinator::message request;
+    struct timeval *timeout;
+    bool compelete;
+
+    request.type = coordinator::message_type::SHUTDOWN;
+    m_coordinator->enqueue (std::move (request));
+    if (!m_coordinator->notify ())
       {
 	assert_release (false);
       }
 
-    m_counter++;
-    if (m_counter == m_workers.size ())
+    /* shutdown timeout */
+    timeout = css_get_shutdown_timeout ();
+    deadline = std::chrono::system_clock::time_point (
+		       std::chrono::seconds (timeout->tv_sec) +
+		       std::chrono::microseconds (timeout->tv_usec));
+    now = std::chrono::system_clock::now ();
+    if (deadline > now)
       {
-	m_counter = 0;
+	wait_for = std::chrono::duration_cast<std::chrono::microseconds> (deadline - now);
       }
-  }
 
-  void connection_pool::stats ()
-  {
-    for (auto &conn : m_workers)
+    std::unique_lock<std::mutex> lock (m_watcher->mtx);
+    compelete = m_watcher->cv.wait_for (lock, wait_for, [this] { return m_watcher->active == 0; });
+    lock.unlock ();
+    if (!compelete)
       {
-	conn->stats ();
+	er_log_debug (ARG_FILE_LINE, "could not stop coordinator");
+	_exit (0);
       }
   }
 }

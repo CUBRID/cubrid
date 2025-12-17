@@ -23,42 +23,96 @@
 #ifndef _CONNECTION_POOL_HPP_
 #define _CONNECTION_POOL_HPP_
 
+#include "connection_context.hpp"
 #include "connection_worker.hpp"
+#include "coordinator.hpp"
 
+#include <mutex>
 #include <cstring>
 #include <cstdint>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
 
-namespace cubconn
+namespace cubconn::connection
 {
-  struct thread_watcher
+  class pool
   {
-    std::mutex mtx;
-    std::condition_variable cv;
-    int active;
-  };
+    private:
+      struct freelist
+      {
+	/* THIS MUST BE THE FIRST */
+	context m_context;
 
-  class connection_pool
-  {
+	freelist *m_next;
+
+	freelist (std::size_t capacity) :
+	  m_context (capacity),
+	  m_next (nullptr)
+	{
+	}
+
+	~freelist () = default;
+      };
+
     public:
-      connection_pool ();
-      ~connection_pool ();
+      pool ();
+      ~pool ();
 
-      void initialize (std::uint32_t max_connections, int connection_threads);
+      void initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers);
       void finalize ();
 
       void dispatch (css_conn_entry *conn);
 
-      void stats ();
+      void lock_resource ();
+      void release_resource ();
+
+      context *claim_context ();
+      void retire_context (context *ctx);
+
+      std::vector<std::unique_ptr<worker>> &get_workers ();
 
     private:
-      std::uint32_t m_max_connections;
-      std::vector<std::unique_ptr<connection_worker>> m_workers;
+      /* the members in connection pool can be managed entirely by other threads. */
+      /* so you must acquire the mutex to access belows.			  */
+      std::mutex m_mutex;
+#if !defined (NDEBUG)
+      std::atomic<std::thread::id> m_mutex_holder { std::thread::id () };
+#endif
+
+      /* components */
+      std::vector<std::unique_ptr<worker>> m_workers;
+      std::shared_ptr<coordinator> m_coordinator;
+
       std::shared_ptr<thread_watcher> m_watcher;
 
-      std::size_t m_counter;
+      /* base */
+      std::uint32_t m_max_connections;
+
+      std::uint32_t m_max_connection_workers;
+      std::uint32_t m_min_connection_workers;
+
+      /* freelist */
+      struct
+      {
+	freelist *m_head;
+	std::size_t m_max;
+	std::size_t m_claim;
+      } m_freelist;
+
+      void try_to_lock_resource ();
+
+      void initialize_freelist (std::uint32_t max_connections);
+      void finalize_freelist ();
+
+      void initialize_topology (std::uint32_t max_connection_workers);
+      void finalize_topology ();
+
+      void initialize_workers (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers);
+      void finalize_workers ();
+
+      void initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers);
+      void finalize_coordinator ();
   };
 }
 

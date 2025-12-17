@@ -78,6 +78,7 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
+#include "connection_context.hpp"
 #include "connection_worker.hpp"
 #include "connection_sr.h"
 #include "server_support.h"
@@ -1365,7 +1366,7 @@ css_shutdown_conn_by_tran_index (int tran_index, int wait_time)
 
 		  css_request_shutdown_conn (conn,
 					     static_cast < uint8_t >
-					     (cubconn::connection_worker::ignore_level::DONT_IGNORE), false, wait_time);
+					     (cubconn::connection::ignore_level::DONT_IGNORE), false, wait_time);
 
 		  error = NO_ERROR;
 		}
@@ -3101,14 +3102,14 @@ css_get_argv (void)
 void
 css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, int wait_time)
 {
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   int r;
 
   assert (conn);
 
-  request.type = cubconn::connection_worker::message_type::SHUTDOWN_CLIENT;
+  request.type = cubconn::connection::worker::message_type::SHUTDOWN_CLIENT;
   request.conn = conn;
-  request.ignore = static_cast < cubconn::connection_worker::ignore_level > (ignore);
+  request.ignore = static_cast < cubconn::connection::ignore_level > (ignore);
   request.retry = retry;
 
   /* lock to access worker and context */
@@ -3133,7 +3134,7 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, in
     rmutex_unlock (NULL, &conn->cmutex);
   };
 
-  if (!conn->worker->enqueue_and_notify (cubconn::connection_worker::queue_type::LAZY,
+  if (!conn->worker->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY,
 					 std::move (request), func, wait_time))
     {
       assert_release (false);
@@ -3143,12 +3144,12 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, in
 void
 css_request_release_packet (css_conn_entry * conn, void *buffer)
 {
-  cubconn::connection_worker::message request;
+  cubconn::connection::worker::message request;
   int r;
 
   assert (conn && buffer);
 
-  request.type = cubconn::connection_worker::message_type::RELEASE_PACKET;
+  request.type = cubconn::connection::worker::message_type::RELEASE_PACKET;
   request.conn = conn;
   request.packet.emplace_back ((std::byte *) buffer, 0 /* idk the size */ );
 
@@ -3169,7 +3170,7 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
       return;
     }
 
-  conn->worker->enqueue (cubconn::connection_worker::queue_type::IMMEDIATE, std::move (request));
+  conn->worker->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
 
   /* unlock */
   r = rmutex_unlock (NULL, &conn->cmutex);

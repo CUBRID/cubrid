@@ -24,7 +24,6 @@
 #define _CONNECTION_EPOLL_HPP_
 
 #include "nonblocking.hpp"
-#include "packet_buffer.hpp"
 
 #include <sys/socket.h>
 #include <sys/types.h>
