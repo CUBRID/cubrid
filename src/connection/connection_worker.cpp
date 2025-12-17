@@ -1064,6 +1064,16 @@ retry:
       }
     m_exhausted.erase (ctx->m_id);
 
+    /* hand off the context */
+    request.type = message_type::TAKEOVER_CLIENT;
+    request.ctx = ctx;
+    request.conn = item.conn;
+    item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+    if (!item.worker_ptr->notify ())
+      {
+	assert_release (false);
+      }
+
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
     ctx->m_stats.add (statistics::context::MOVE_COUNT, 1);
@@ -1080,19 +1090,6 @@ respond:
     if (!m_coordinator->notify ())
       {
 	assert_release (false);
-      }
-
-    if (transferred)
-      {
-	/* hand off the context */
-	request.type = message_type::TAKEOVER_CLIENT;
-	request.ctx = ctx;
-	request.conn = item.conn;
-	item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-	if (!item.worker_ptr->notify ())
-	  {
-	    assert_release (false);
-	  }
       }
     return true;
   }

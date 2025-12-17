@@ -220,8 +220,6 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    m_statistics[to].m_client_num++;
-
     return true;
   }
 
@@ -558,7 +556,6 @@ namespace cubconn::connection
 	m_statistics[item.to].m_contexts.find (item.id) == m_statistics[item.to].m_contexts.end ())
       {
 	/* this stats has already been cleard in return_to_pool routine */
-	m_statistics[item.to].m_client_num--;
 
 	return true;
       }
@@ -572,6 +569,7 @@ namespace cubconn::connection
 
     m_statistics[item.from].m_contexts.erase (item.id);
     m_statistics[item.from].m_client_num--;
+    m_statistics[item.to].m_client_num++;
 
     return true;
 
@@ -580,7 +578,6 @@ not_transferred:
 
     /* revert */
     m_statistics[item.to].m_contexts.erase (item.id);
-    m_statistics[item.to].m_client_num--;
 
     return true;
   }
