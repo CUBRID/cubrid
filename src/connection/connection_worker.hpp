@@ -37,6 +37,7 @@
 #include <tuple>
 #include <functional>
 #include <unordered_set>
+#include <unordered_map>
 #include <condition_variable>
 #include <cstring>
 #include <fcntl.h>
@@ -84,6 +85,13 @@ namespace cubconn::connection
 	std::mutex m;
 	std::condition_variable cv;
 	bool done;
+      };
+
+      struct exhausted_context
+      {
+	bool prepared;
+	uint32_t events;
+	context *ctx;
       };
 
     public:
@@ -197,7 +205,6 @@ namespace cubconn::connection
       /* timer based */
       int m_timerfd;
       uint64_t m_timens;
-
       /* index is a type of timer handle block */
       std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
 
@@ -213,6 +220,11 @@ namespace cubconn::connection
       std::atomic<uint64_t> m_queue_size[static_cast<std::size_t> (queue_type::TYPE_COUNT)];
 
       std::vector<context *> m_removed_context;
+
+      /* limiter */
+      size_t m_recv_budget;
+      size_t m_send_budget;
+      std::unordered_map<uint64_t, exhausted_context> m_exhausted;
 
       /* statistics */
       statistics::metrics<statistics::worker> m_stats;
@@ -292,12 +304,18 @@ namespace cubconn::connection
 
       /* reception */
       result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
-      result handle_reception (context *ctx);
+      result handle_reception (context *ctx, bool in_exhausted);
 
       /* --------------------------------------------------------------------------- */
       /* transmission								     */
       /* --------------------------------------------------------------------------- */
-      result handle_transmission (context *ctx);
+      result handle_transmission (context *ctx, bool in_exhausted);
+
+      /* --------------------------------------------------------------------------- */
+      /* exhausted								     */
+      /* --------------------------------------------------------------------------- */
+      void handle_exhausted_add_context (context *ctx, uint32_t event);
+      bool handle_exhausted ();
   };
 }
 

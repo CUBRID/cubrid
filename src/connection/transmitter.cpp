@@ -63,20 +63,28 @@ namespace cubconn
   {
   }
 
-  result transmitter::fill (int fd)
+  result transmitter::fill (int fd, int limit)
   {
     struct ::msghdr *msg;
     std::size_t advance;
-    ssize_t bytes;
+    ssize_t bytes, consumption;
 
     msg = &m_buf.get_msghdr ();
+    consumption = 0;
     while (msg->msg_iovlen)
       {
+	if (limit > 0 && consumption >= limit)
+	  {
+	    m_stats->add (statistics::context::SEND_BUDGET_HIT, 1);
+	    return result::BudgetExhausted;
+	  }
+
 	bytes = ::sendmsg (fd, msg, MSG_NOSIGNAL);
 	er_log_conn (__FILE__, __LINE__, "transmitter->fill: sendmsg returned fd = %d, bytes = %u\n", fd, bytes);
 	if (bytes > 0)
 	  {
 	    m_stats->add (statistics::context::BYTES_OUT_TOTAL, bytes);
+	    consumption += bytes;
 
 	    advance = static_cast<std::size_t> (bytes);
 	    while (advance && msg->msg_iovlen)
