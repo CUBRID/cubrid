@@ -16,14 +16,20 @@
  *
  */
 
+
 /*
- * cas_cgw.h 
+ * cas_ssl.h -
  */
 
-#ifndef _CAS_CGW_H_
-#define _CAS_CGW_H_
+#ifndef _CAS_SSL_H_
+#define _CAS_SSL_H_
 
-#ident "$Id$"
+extern bool ssl_client;
 
+extern int cas_init_ssl (int sd);
+extern int cas_ssl_read (int sd, char *buf, int size);
+extern int cas_ssl_write (int sd, const char *buf, int size);
+extern void cas_ssl_close (int client_sock_fd);
+extern bool is_ssl_data_ready (int sock_fd);
 
-#endif /* _CAS_CGW_H_ */
+#endif /* _CAS_SSL_H_ */
