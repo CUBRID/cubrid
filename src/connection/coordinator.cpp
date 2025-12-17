@@ -869,6 +869,7 @@ not_transferred:
 			for (auto &ctx : m_statistics[i].m_contexts)
 			  {
 			    std::size_t to = dis (gen);
+
 			    if (i != to)
 			      {
 				if (this->transfer_connection (ctx.first, i, to))
