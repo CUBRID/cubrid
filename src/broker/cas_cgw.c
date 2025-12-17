@@ -1,5 +1,5 @@
 /*
- *
+ * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,2820 +16,952 @@
  *
  */
 
- /*
-  * cas_cgw.c -
-  */
+/*
+ * cas_cgw.c
+ *
+ */
 
 #ident "$Id$"
 
-#if !defined(WINDOWS)
-#define __STDC_FORMAT_MACROS
-#include <inttypes.h>
-#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <assert.h>
 
-#include "cas_cgw.h"
-#include "cas.h"
-#include "cas_util.h"
+#if defined(WINDOWS)
+#include <winsock2.h>
+#include <windows.h>
+#include <process.h>
+#include <sys/timeb.h>
+#include <dbgHelp.h>
+#else /* WINDOWS */
+#include <unistd.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#endif /* WINDOWS */
+
+#include "cas_common_main.h"
+#include "cas_common_vars.h"
+#include "broker_shm.h"
+#include "broker_util.h"
+#include "broker_env_def.h"
+#include "broker_filename.h"
 #include "cas_log.h"
+#include "cas_common_execute.h"
+#include "perf_monitor.h"
+#include "cas_sql_log2.h"
+#include "error_manager.h"
+#include "ddl_log.h"
+#include "broker_cas_cci.h"
 
-#ifndef WINDOWS
-#include <iconv.h>
-#endif
+#include "cas_cgw_function.h"
+#include "cas_cgw_odbc.h"
+#include "cas_cgw_execute.h"
 
-#define STRING_MAX_SIZE         (16*1024*1024)
-#define LOGIN_TIME_OUT          5
-#define NUM_OF_DIGITS(NUMBER)   (int)log10(NUMBER) + 1
-#define DISCONNECTED_STATE      -1
-#define CONNECTED_STATE         0
+#include "cas_ssl.h"
 
-#define ODBC_SQLSUCCESS(rc) ((rc == SQL_SUCCESS) || (rc == SQL_SUCCESS_WITH_INFO) )
-#define SQL_CHK_ERR(h, ht, x)   {   RETCODE rc = (x);\
-                                if (rc != SQL_SUCCESS) \
-                                { \
-                                    cgw_error_msg ((h), (ht), rc); \
-                                } \
-                                if (rc <= SQL_ERROR) \
-                                { \
-                                   if (db_error_code () == 0)  \
-                                     {  \
-                                       er_set (ER_ERROR_SEVERITY, \
-					           ARG_FILE_LINE,  \
-					           ER_CGW_NATIVE_ODBC, \
-					           3, cgw_get_dbms_name (cgw_get_dbms_type ()), -1, "Unknown ODBC Driver Error");   \
-				     }  \
-                                    goto ODBC_ERROR;  \
-                                } \
-                            }
-
-#define UNICODE_CODE_PAGE       "UCS-2"
-#define UTF8_CODE_PAGE          "UTF-8"
-#define CONV_STRING_BUF_SIZE    (STRING_MAX_SIZE)
-
-#if defined (WINDOWS)
-#define CONV_M_TO_W(M, W, LEN)	MultiByteToWideChar(CP_UTF8, 0, M, -1, W, LEN)
-#else
-#define CONV_M_TO_W(M, W, LEN)      mbstowcs(W, M, LEN)
-#endif
-#define CONV_WCS_TO_SQLWCS(string, len) cgw_wchar_to_sqlwchar((string), (len))
-
-typedef struct t_supported_dbms T_SUPPORTED_DBMS;
-struct t_supported_dbms
+/* ========================================================================
+ * Type Definitions
+ * ======================================================================== */
+/* CGW context structure */
+typedef struct
 {
-  const char *dbms_name;
+  char odbc_resolved_url[CGW_LINK_URL_MAX_LEN];
+  char odbc_connect_url[CGW_LINK_URL_MAX_LEN];
+  char tmp_name[SRV_CON_DBNAME_SIZE];
+  char tmp_user[SRV_CON_DBUSER_SIZE];
+  char tmp_passwd[SRV_CON_DBPASSWD_SIZE];
   T_DBMS_TYPE dbms_type;
+} CGW_CONTEXT;
+
+/* ========================================================================
+ * Global Variable Definitions
+ * ======================================================================== */
+/* Database connection info */
+static char cas_db_name[MAX_HA_DBINFO_LENGTH];
+static char cas_db_user[SRV_CON_DBUSER_SIZE];
+static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
+
+/* ========================================================================
+ * Static Variable Definitions
+ * ======================================================================== */
+static SOCKET srv_sock_fd;
+static CGW_CONTEXT *cgw_current_ctx = NULL;	/* Global CGW context for db_connect callback */
+
+/* ========================================================================
+ * Function Tables
+ * ======================================================================== */
+static T_SERVER_FUNC server_fn_table[] = {
+  fn_cgw_end_tran,		/* CAS_FC_END_TRAN */
+  fn_cgw_prepare,		/* CAS_FC_PREPARE */
+  fn_cgw_execute,		/* CAS_FC_EXECUTE */
+  fn_not_supported,		/* CAS_FC_GET_DB_PARAMETER */
+  fn_not_supported,		/* CAS_FC_SET_DB_PARAMETER */
+  fn_cgw_close_req_handle,	/* CAS_FC_CLOSE_REQ_HANDLE */
+  fn_cgw_cursor,		/* CAS_FC_CURSOR */
+  fn_cgw_get_fetch,		/* CAS_FC_FETCH */
+  fn_not_supported,		/* CAS_FC_SCHEMA_INFO */
+  fn_not_supported,		/* CAS_FC_OID_GET */
+  fn_not_supported,		/* CAS_FC_OID_SET */
+  fn_not_supported,		/* CAS_FC_DEPRECATED1 */
+  fn_not_supported,		/* CAS_FC_DEPRECATED2 */
+  fn_not_supported,		/* CAS_FC_DEPRECATED3 */
+  fn_cgw_get_db_version,	/* CAS_FC_GET_DB_VERSION */
+  fn_not_supported,		/* CAS_FC_GET_CLASS_NUM_OBJS */
+  fn_not_supported,		/* CAS_FC_OID_CMD */
+  fn_not_supported,		/* CAS_FC_COLLECTION */
+  fn_not_supported,		/* CAS_FC_NEXT_RESULT */
+  fn_not_supported,		/* CAS_FC_EXECUTE_BATCH */
+  fn_not_supported,		/* CAS_FC_EXECUTE_ARRAY */
+  fn_not_supported,		/* CAS_FC_CURSOR_UPDATE */
+  fn_not_supported,		/* CAS_FC_GET_ATTR_TYPE_STR */
+  fn_not_supported,		/* CAS_FC_GET_QUERY_INFO */
+  fn_not_supported,		/* CAS_FC_DEPRECATED4 */
+  fn_not_supported,		/* CAS_FC_SAVEPOINT */
+  fn_not_supported,		/* CAS_FC_PARAMETER_INFO */
+  fn_not_supported,		/* CAS_FC_XA_PREPARE */
+  fn_not_supported,		/* CAS_FC_XA_RECOVER */
+  fn_not_supported,		/* CAS_FC_XA_END_TRAN */
+  fn_cgw_con_close,		/* CAS_FC_CON_CLOSE */
+  fn_cgw_check_cas,		/* CAS_FC_CHECK_CAS */
+  fn_not_supported,		/* CAS_FC_MAKE_OUT_RS */
+  fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
+  fn_not_supported,		/* CAS_FC_LOB_NEW */
+  fn_not_supported,		/* CAS_FC_LOB_WRITE */
+  fn_not_supported,		/* CAS_FC_LOB_READ */
+  fn_not_supported,		/* CAS_FC_END_SESSION */
+  fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
+  fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
+  fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
+  fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
+  fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
+  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
 };
 
-static INTL_CODESET client_charset = INTL_CODESET_UTF8;
-static char conv_str_buff[CONV_STRING_BUF_SIZE + 1];
-static T_SUPPORTED_DBMS supported_dbms_list[] =
-  { {"oracle", CAS_CGW_DBMS_ORACLE}, {"mysql", CAS_CGW_DBMS_MYSQL}, {"mariadb", CAS_CGW_DBMS_MARIADB},
-{"not supported db", CAS_DBMS_NONE}
+static const char *server_func_name[] = {
+  "end_tran",
+  "prepare",
+  "execute",
+  "get_db_parameter",
+  "set_db_parameter",
+  "close_req_handle",
+  "cursor",
+  "fetch",
+  "schema_info",
+  "oid_get",
+  "oid_put",
+  "deprecated1",
+  "deprecated2",
+  "deprecated3",
+  "get_db_version",
+  "get_class_num_objs",
+  "oid",
+  "collection",
+  "next_result",
+  "execute_batch",
+  "execute_array",
+  "cursor_update",
+  "get_attr_type_str",
+  "get_query_info",
+  "deprecated4",
+  "savepoint",
+  "parameter_info",
+  "xa_prepare",
+  "xa_recover",
+  "xa_end_tran",
+  "con_close",
+  "check_cas",
+  "make_out_rs",
+  "get_generated_keys",
+  "lob_new",
+  "lob_write",
+  "lob_read",
+  "end_session",
+  "get_row_count",
+  "get_last_insert_id",
+  "prepare_and_execute",
+  "cursor_close",
+  "get_shard_info",
+  "set_cas_change_mode"
 };
 
-static int supported_dbms_max_num = sizeof (supported_dbms_list) / sizeof (T_SUPPORTED_DBMS);
-static T_DBMS_TYPE curr_dbms_type = CAS_DBMS_NONE;
+static int cgw_cas_main (void);
+static int cgw_cas_init (void);
+static int cgw_init_shm (void);
 
-T_CGW_HANDLE *local_odbc_handle = NULL;
+/* Callback functions for cas_main_loop() */
+static int cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_passwd, const char *url,
+			       void *context);
+static int cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd,
+			   const char *url, T_REQ_INFO * req_info, char *cas_info);
+static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr,
+				 char *db_name, char *db_user, const char *url, bool is_new_connection);
+static void cgw_cleanup_session (void);
 
-static char connected_db_name[SRV_CON_DBNAME_SIZE] = { 0, };
-static char connected_db_user[SRV_CON_DBUSER_SIZE] = { 0, };
-static char connected_db_passwd[SRV_CON_DBPASSWD_SIZE] = { 0, };
+static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
+static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 
-static void cgw_error_msg (SQLHANDLE hHandle, SQLSMALLINT hType, RETCODE retcode);
-static int numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string);
-static int hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr);
-static int hex_to_char (char c, unsigned char *result);
-static int cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type);
-static int cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *net_value,
-			      ODBC_BIND_INFO * value_list);
-static char cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type);
-static char cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type);
-static void cgw_cleanup_handle (T_CGW_HANDLE * handle);
-static void cgw_set_charset (char charset);
-static char cgw_get_charset (void);
-static void cgw_link_server_info (SQLHDBC hdbc);
-static bool cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size);
-static int cgw_count_number_of_digits (int num_bits);
 
-static SQLSMALLINT get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type);
-static SQLULEN get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale);
-static char *cgw_datatype_to_string (SQLLEN type);
-static char *cgw_utype_to_string (int type);
-static int cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length);
-static int cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen);
-static int cgw_conv_mtow (wchar_t * destStr, char *sourStr);
-static int cgw_uint32_to_uni16 (uint32_t i, uint16_t * u);
-static SQLWCHAR *cgw_wchar_to_sqlwchar (wchar_t * src, size_t len);
-static const char *cgw_get_dbms_name (T_DBMS_TYPE db_type);
-
+#if defined(WINDOWS)
+int WINAPI
+WinMain (HINSTANCE hInstance,	// handle to current instance
+	 HINSTANCE hPrevInstance,	// handle to previous instance
+	 LPSTR lpCmdLine,	// pointer to command line
+	 int nShowCmd		// show state of window
+  )
+#else /* WINDOWS */
 int
-cgw_init ()
-{
-  SQLRETURN err_code;
-  err_code = cgw_init_odbc_handle ();
-  if (err_code < 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-      goto ODBC_ERROR;
-    }
-
-  if (SQLAllocHandle (SQL_HANDLE_ENV, SQL_NULL_HANDLE, &local_odbc_handle->henv) == SQL_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_ALLOCATE_ENV_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (local_odbc_handle->henv,
-	       SQL_HANDLE_ENV,
-	       err_code = SQLSetEnvAttr (local_odbc_handle->henv, SQL_ATTR_ODBC_VERSION, (SQLPOINTER) SQL_OV_ODBC3, 0));
-
-  return NO_ERROR;
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-void
-cgw_cleanup ()
-{
-  cgw_cleanup_handle (local_odbc_handle);
-}
-
-void
-cgw_free_stmt (T_SRV_HANDLE * srv_handle)
-{
-  if (srv_handle->cgw_handle->hstmt)
-    {
-      SQLFreeHandle (SQL_HANDLE_STMT, local_odbc_handle->hstmt);
-      local_odbc_handle->hstmt = NULL;
-    }
-}
-
-int
-cgw_get_handle (T_CGW_HANDLE ** cgw_handle)
-{
-  if (local_odbc_handle == NULL || local_odbc_handle->henv == NULL || local_odbc_handle->hdbc == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
-      return ER_CGW_INVALID_HANDLE;
-    }
-  else
-    {
-      *cgw_handle = local_odbc_handle;
-    }
-
-  return NO_ERROR;
-}
-
-int
-cgw_database_connect (T_DBMS_TYPE dbms_type, const char *connect_url, char *db_name, char *db_user, char *db_passwd)
-{
-  SQLRETURN err_code;
-  wchar_t wcs_url[(CGW_LINK_URL_MAX_LEN + 1) * sizeof (wchar_t)] = { 0, };
-  SQLWCHAR *wconn_url = NULL;
-  SQLWCHAR out_connect_str[(CGW_LINK_URL_MAX_LEN + 1) * sizeof (SQLWCHAR)];
-  SQLSMALLINT out_connect_str_len;
-  bool is_conneted = false;
-
-  if (cgw_is_database_connected () == CONNECTED_STATE)
-    {
-      if (strcmp (db_name, connected_db_name) == 0 && strcmp (db_user, connected_db_user) == 0
-	  && strcmp (db_passwd, connected_db_passwd) == 0)
-	{
-	  return NO_ERROR;
-	}
-      cgw_database_disconnect ();
-    }
-
-  SQL_CHK_ERR (local_odbc_handle->henv,
-	       SQL_HANDLE_ENV,
-	       err_code = SQLAllocHandle (SQL_HANDLE_DBC, local_odbc_handle->henv, &local_odbc_handle->hdbc));
-
-  if (dbms_type == CAS_CGW_DBMS_MYSQL || dbms_type == CAS_CGW_DBMS_MARIADB)
-    {
-      SQL_CHK_ERR (local_odbc_handle->hdbc,
-		   SQL_HANDLE_ENV,
-		   err_code =
-		   SQLSetConnectAttrW (local_odbc_handle->hdbc, SQL_ATTR_LOGIN_TIMEOUT, (SQLPOINTER) LOGIN_TIME_OUT,
-				       0));
-    }
-
-  if (connect_url != NULL && strlen (connect_url) > 0)
-    {
-      err_code = cgw_conv_mtow ((wchar_t *) wcs_url, (char *) connect_url);
-      if (err_code < 0)
-	{
-	  goto ODBC_ERROR;
-	}
-
-      wconn_url = CONV_WCS_TO_SQLWCS (wcs_url, wcslen (wcs_url) + 1);
-
-      if (wconn_url == NULL)
-	{
-	  goto ODBC_ERROR;
-	}
-
-      SQL_CHK_ERR (local_odbc_handle->hdbc,
-		   SQL_HANDLE_DBC,
-		   err_code = SQLDriverConnectW (local_odbc_handle->hdbc,
-						 NULL,
-						 wconn_url,
-						 SQL_NTS,
-						 (SQLWCHAR *) out_connect_str,
-						 (SQLSMALLINT) sizeof (out_connect_str),
-						 &out_connect_str_len, SQL_DRIVER_NOPROMPT));
-
-      FREE_MEM (wconn_url);
-      is_conneted = true;
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_EXIST_LINK_NAME, 0);
-      goto ODBC_ERROR;
-    }
-
-  cgw_link_server_info (local_odbc_handle->hdbc);
-
-  SQL_CHK_ERR (local_odbc_handle->hdbc,
-	       SQL_HANDLE_DBC,
-	       err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
-
-  strncpy (connected_db_name, db_name, sizeof (connected_db_name) - 1);
-  strncpy (connected_db_user, db_user, sizeof (connected_db_user) - 1);
-  strncpy (connected_db_passwd, db_passwd, sizeof (connected_db_passwd) - 1);
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  FREE_MEM (wconn_url);
-
-  if (local_odbc_handle->hdbc)
-    {
-      if (is_conneted)
-	{
-	  SQLDisconnect (local_odbc_handle->hdbc);
-	}
-      SQLFreeHandle (SQL_HANDLE_DBC, local_odbc_handle->hdbc);
-      local_odbc_handle->hdbc = NULL;
-    }
-  return ER_FAILED;
-}
-
-int
-cgw_execute (T_SRV_HANDLE * srv_handle, SQLLEN * row_count)
-{
-  SQLRETURN err_code;
-
-  if (srv_handle->num_markers > 0)
-    {
-      if (srv_handle->cgw_handle->hdbc == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_DBC_HANDLE, 0);
-	  goto ODBC_ERROR;
-	}
-
-      if (srv_handle->cgw_handle->hstmt == NULL)
-	{
-	  SQL_CHK_ERR (srv_handle->cgw_handle->hdbc,
-		       SQL_HANDLE_DBC, err_code =
-		       SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &srv_handle->cgw_handle->hstmt));
-	}
-    }
-
-  SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (srv_handle->cgw_handle->hstmt));
-
-  if (err_code < 0)
-    {
-      cgw_error_msg (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code);
-      goto ODBC_ERROR;
-    }
-
-  SQLRowCount (srv_handle->cgw_handle->hstmt, row_count);
-
-  srv_handle->is_cursor_open = true;
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  if (srv_handle->cgw_handle->hstmt)
-    {
-      SQLFreeHandle (SQL_HANDLE_STMT, srv_handle->cgw_handle->hstmt);
-      srv_handle->cgw_handle->hstmt = NULL;
-    }
-
-  return ER_FAILED;
-}
-
-int
-cgw_row_data (SQLHSTMT hstmt)
-{
-  SQLRETURN err_code;
-  int no_data = 0;
-
-  if (hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  err_code = SQLFetchScroll (hstmt, SQL_FETCH_NEXT, 0);
-
-  if (err_code < 0)
-    {
-      cgw_error_msg (hstmt, SQL_HANDLE_STMT, err_code);
-      goto ODBC_ERROR;
-    }
-
-  if (err_code == SQL_NO_DATA_FOUND)
-    {
-      no_data = SQL_NO_DATA_FOUND;
-    }
-
-  return no_data;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-int
-cgw_cursor_close (T_SRV_HANDLE * srv_handle)
-{
-  SQLRETURN err_code = 0;
-
-  if (srv_handle->cgw_handle->hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (srv_handle->cgw_handle->hstmt, SQL_HANDLE_STMT, err_code =
-	       SQLFreeStmt (srv_handle->cgw_handle->hstmt, SQL_CLOSE));
-
-  srv_handle->is_cursor_open = false;
-
-  return err_code;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-int
-cgw_copy_tuple (T_COL_BINDER * src_col_binding, T_COL_BINDER * dst_col_binding)
-{
-  SQLRETURN err_code = 0;
-  T_COL_BINDER *src_binder;
-  T_COL_BINDER *dst_binder;
-
-  if (src_col_binding == NULL || dst_col_binding == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NULL_COL_BINDER, 0);
-      return ER_FAILED;
-    }
-
-  dst_binder = dst_col_binding;
-  for (src_binder = src_col_binding; src_binder; src_binder = src_binder->next)
-    {
-      memcpy (dst_binder->data_buffer, src_binder->data_buffer, src_binder->col_size);
-      dst_binder->indPtr = src_binder->indPtr;
-      dst_binder->is_exist_col_data = true;
-      dst_binder = dst_binder->next;
-    }
-
-  return err_code;
-}
-
-int
-cgw_cur_tuple (T_NET_BUF * net_buf, T_COL_BINDER * first_col_binding, int cursor_pos)
-{
-  DB_BIGINT bigint = 0;
-  T_OBJECT tuple_obj;
-  T_COL_BINDER *this_col_binding;
-  int str_len;
-  SQL_DATE_STRUCT *date;
-  SQL_TIME_STRUCT *time;
-  SQL_TIMESTAMP_STRUCT *timestamp;
-  char *conv_string;
-  int conv_string_len = 0;
-  int conv_ret = 0;
-
-  net_buf_cp_int (net_buf, cursor_pos, NULL);
-
-  memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
-  net_buf_cp_object (net_buf, &tuple_obj);
-
-  for (this_col_binding = first_col_binding; this_col_binding; this_col_binding = this_col_binding->next)
-    {
-      if (this_col_binding->indPtr == SQL_NULL_DATA)
-	{
-	  net_buf_cp_int (net_buf, -1, NULL);
-	}
-      else
-	{
-	  str_len = this_col_binding->indPtr;
-
-	  switch (this_col_binding->col_data_type)
-	    {
-	    case SQL_UNKNOWN_TYPE:
-	      net_buf_cp_int (net_buf, -1, NULL);
-	      break;
-	    case SQL_CHAR:
-	    case SQL_VARCHAR:
-	    case SQL_LONGVARCHAR:
-	    case SQL_WCHAR:
-	    case SQL_WVARCHAR:
-	    case SQL_WLONGVARCHAR:
-	    case SQL_NUMERIC:
-	    case SQL_DECIMAL:
-	      conv_ret =
-		cgw_unicode_to_utf8 ((wchar_t *) this_col_binding->data_buffer, str_len, &conv_string,
-				     &conv_string_len);
-	      if (conv_ret < 0)
-		{
-		  net_buf_cp_int (net_buf, -1, NULL);
-		  continue;
-		}
-
-	      net_buf_cp_int (net_buf, (int) conv_string_len, NULL);
-	      net_buf_cp_str (net_buf, (char *) conv_string, conv_string_len - 1);
-	      net_buf_cp_byte (net_buf, 0);
-	      break;
-	    case SQL_INTEGER:
-	      if (this_col_binding->col_unsigned_type)
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_INT, NULL);
-		  net_buf_cp_int (net_buf, *((unsigned int *) this_col_binding->data_buffer), NULL);
-		}
-	      else
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_INT, NULL);
-		  net_buf_cp_int (net_buf, *((int *) this_col_binding->data_buffer), NULL);
-		}
-	      break;
-	    case SQL_SMALLINT:
-	      if (this_col_binding->col_unsigned_type)
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-		  net_buf_cp_short (net_buf, *((unsigned short *) this_col_binding->data_buffer));
-		}
-	      else
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-		  net_buf_cp_short (net_buf, *((short *) this_col_binding->data_buffer));
-		}
-	      break;
-	    case SQL_TINYINT:
-	      if (this_col_binding->col_unsigned_type)
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-		  net_buf_cp_short (net_buf, *((unsigned char *) this_col_binding->data_buffer));
-		}
-	      else
-		{
-		  net_buf_cp_int (net_buf, NET_SIZE_SHORT, NULL);
-		  net_buf_cp_short (net_buf, *((char *) this_col_binding->data_buffer));
-		}
-	      break;
-	    case SQL_FLOAT:
-	    case SQL_REAL:
-	      net_buf_cp_int (net_buf, NET_SIZE_FLOAT, NULL);
-	      net_buf_cp_float (net_buf, *((float *) this_col_binding->data_buffer));
-	      break;
-	    case SQL_DOUBLE:
-	      net_buf_cp_int (net_buf, NET_SIZE_DOUBLE, NULL);
-	      net_buf_cp_double (net_buf, *((double *) this_col_binding->data_buffer));
-	      break;
-	    case SQL_BIGINT:
-	      net_buf_cp_int (net_buf, NET_SIZE_BIGINT, NULL);
-	      bigint = *((DB_BIGINT *) (this_col_binding->data_buffer));
-	      net_buf_cp_bigint (net_buf, bigint, NULL);
-	      break;
-#if (ODBCVER >= 0x0300)
-	    case SQL_DATETIME:
-	      timestamp = (SQL_TIMESTAMP_STRUCT *) (this_col_binding->data_buffer);
-	      net_buf_cp_int (net_buf, NET_SIZE_DATETIME, NULL);
-	      net_buf_cp_short (net_buf, (short) timestamp->year);
-	      net_buf_cp_short (net_buf, (short) timestamp->month);
-	      net_buf_cp_short (net_buf, (short) timestamp->day);
-	      net_buf_cp_short (net_buf, (short) timestamp->hour);
-	      net_buf_cp_short (net_buf, (short) timestamp->minute);
-	      net_buf_cp_short (net_buf, (short) timestamp->second);
-	      if (timestamp->fraction > 0)
-		{
-		  net_buf_cp_short (net_buf, (short) (timestamp->fraction / 1000000));
-		}
-	      else
-		{
-		  net_buf_cp_short (net_buf, 0);
-		}
-	      break;
-#else
-	    case SQL_DATE:
-	      {
-		date = (SQL_DATE_STRUCT *) (this_col_binding->data_buffer);
-		net_buf_cp_int (net_buf, NET_SIZE_DATE, NULL);
-		net_buf_cp_short (net_buf, (short) date->year);
-		net_buf_cp_short (net_buf, (short) date->month);
-		net_buf_cp_short (net_buf, (short) date->day);
-		break;
-	      }
+main (int argc, char *argv[])
 #endif
+{
+  int res = 0;
 
-#if (ODBCVER >= 0x0300)
-	    case SQL_TYPE_DATE:
-	      {
-		date = (SQL_DATE_STRUCT *) (this_col_binding->data_buffer);
-		net_buf_cp_int (net_buf, NET_SIZE_DATE, NULL);
-		net_buf_cp_short (net_buf, (short) date->year);
-		net_buf_cp_short (net_buf, (short) date->month);
-		net_buf_cp_short (net_buf, (short) date->day);
-		break;
-	      }
-	    case SQL_TYPE_TIME:
-	      {
-		time = (SQL_TIME_STRUCT *) (this_col_binding->data_buffer);
-		net_buf_cp_int (net_buf, NET_SIZE_TIME, NULL);
-		net_buf_cp_short (net_buf, (short) time->hour);
-		net_buf_cp_short (net_buf, (short) time->minute);
-		net_buf_cp_short (net_buf, (short) time->second);
-		break;
-	      }
-	    case SQL_TYPE_TIMESTAMP:
-	      {
-		timestamp = (SQL_TIMESTAMP_STRUCT *) (this_col_binding->data_buffer);
-		net_buf_cp_int (net_buf, NET_SIZE_DATETIME, NULL);
-		net_buf_cp_short (net_buf, (short) timestamp->year);
-		net_buf_cp_short (net_buf, (short) timestamp->month);
-		net_buf_cp_short (net_buf, (short) timestamp->day);
-		net_buf_cp_short (net_buf, (short) timestamp->hour);
-		net_buf_cp_short (net_buf, (short) timestamp->minute);
-		net_buf_cp_short (net_buf, (short) timestamp->second);
-		if (timestamp->fraction > 0)
-		  {
-		    net_buf_cp_short (net_buf, (short) (timestamp->fraction / 1000000));
-		  }
-		else
-		  {
-		    net_buf_cp_short (net_buf, 0);
-		  }
-		break;
-	      }
-#if (ODBCVER >= 0x0300)
-	    case SQL_INTERVAL:
-	      net_buf_cp_int (net_buf, -1, NULL);
-	      break;
-#else
-	    case SQL_TIME:
-	      {
-		time = (SQL_TIME_STRUCT *) (this_col_binding->data_buffer);
-		net_buf_cp_int (net_buf, NET_SIZE_TIME, NULL);
-		net_buf_cp_short (net_buf, (short) time->hour);
-		net_buf_cp_short (net_buf, (short) time->minute);
-		net_buf_cp_short (net_buf, (short) time->second);
-		break;
-	      }
-#endif /* ODBCVER >= 0x0300 */
-	    case SQL_TIMESTAMP:
-	      {
-		timestamp = (SQL_TIMESTAMP_STRUCT *) (this_col_binding->data_buffer);
-		net_buf_cp_int (net_buf, NET_SIZE_DATETIME, NULL);
-		net_buf_cp_short (net_buf, (short) timestamp->year);
-		net_buf_cp_short (net_buf, (short) timestamp->month);
-		net_buf_cp_short (net_buf, (short) timestamp->day);
-		net_buf_cp_short (net_buf, (short) timestamp->hour);
-		net_buf_cp_short (net_buf, (short) timestamp->minute);
-		net_buf_cp_short (net_buf, (short) timestamp->second);
-		if (timestamp->fraction > 0)
-		  {
-		    net_buf_cp_short (net_buf, (short) (timestamp->fraction / 1000000));
-		  }
-		else
-		  {
-		    net_buf_cp_short (net_buf, 0);
-		  }
+#if !defined(WINDOWS)
+  signal (SIGTERM, cas_sig_handler);
+  signal (SIGINT, cas_sig_handler);
+  signal (SIGSEGV, cas_sig_handler);
+  signal (SIGABRT, cas_sig_handler);
+  signal (SIGFPE, cas_sig_handler);
+  signal (SIGILL, cas_sig_handler);
+  signal (SIGBUS, cas_sig_handler);
+  signal (SIGSYS, cas_sig_handler);
+  signal (SIGUSR1, SIG_IGN);
+  signal (SIGPIPE, SIG_IGN);
+  signal (SIGXFSZ, SIG_IGN);
+#endif /* WINDOWS */
 
-		break;
-	      }
-	    case SQL_BIT:
-	    case SQL_BINARY:
-	    case SQL_VARBINARY:
-	    case SQL_LONGVARBINARY:
-#if (ODBCVER >= 0x0350)
-	    case SQL_GUID:
-	      net_buf_cp_int (net_buf, -1, NULL);
-	      break;
-#endif
-	    default:
-	      net_buf_cp_int (net_buf, -1, NULL);
-	      break;
-#endif
-	    }
-	}
+  if (cgw_init () < 0)
+    {
+      fprintf (stderr, "CGW initialization failed. Exiting.\n");
+      return -1;
     }
 
-  return NO_ERROR;
+#if !defined(WINDOWS)
+  program_name = argv[0];
+  if (argc == 2 && strcmp (argv[1], "--version") == 0)
+    {
+      printf ("%s\n", makestring (BUILD_NUMBER));
+      return 0;
+    }
+#else /* !WINDOWS */
+  program_name = APPL_SERVER_CAS_CGW_NAME;
+#endif /* !WINDOWS */
+
+  memset (&req_info, 0, sizeof (req_info));
+
+  set_cubrid_home ();
+
+  res = cgw_cas_main ();
+  return res;
 }
 
-int
-cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info)
+static int
+cgw_cas_main (void)
 {
-  SQLRETURN err_code;
-  SQLSMALLINT col_name_length = 0;
-  SQLSMALLINT class_name_length = 0;
-  SQLSMALLINT col_data_type = 0;
-  SQLLEN col_unsigned_type = 0;
-  SQLSMALLINT col_decimal_digits = 0;
+  CGW_CONTEXT cgw_ctx = { 0 };
+  CAS_MAIN_OPS ops = {
+    .init_specific = cgw_init,	/* CGW specific initialization */
+    .pre_db_connect = cgw_pre_db_connect,
+    .db_connect = cgw_db_connect,
+    .post_db_connect = cgw_post_db_connect,
+    .cleanup_session = cgw_cleanup_session,
+    .process_request = process_request,
+    .set_session_id = NULL,	/* CGW doesn't use session ID */
+    .send_connect_reply = cas_send_connect_reply_to_driver,
+    .context = &cgw_ctx
+  };
 
-  memset (col_info, 0x0, sizeof (T_ODBC_COL_INFO));
+  /* Initialize error log file path for CGW */
+  char errplog_path[BROKER_PATH_MAX] = { 0, };
+  char errlog_file[BROKER_PATH_MAX] = { 0, };
 
-  if (hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
+  sprintf (errlog_file, "%s%s_%d.err",
+	   get_cubrid_file (FID_CUBRID_ERR_DIR, errplog_path, BROKER_PATH_MAX), shm_appl->broker_name,
+	   shm_as_index + 1);
 
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLDescribeCol (hstmt,
-					  (SQLSMALLINT) col_num,
-					  (SQLCHAR *) col_info->col_name,
-					  sizeof (col_info->col_name),
-					  &col_name_length, &col_data_type, &col_info->precision, &col_decimal_digits,
-					  &col_info->is_not_null));
+  er_init (errlog_file, ER_NEVER_EXIT);
 
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_SCALE, NULL, 0, NULL, &col_info->scale));
+  /* Set global context for db_connect callback */
+  cgw_current_ctx = &cgw_ctx;
 
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt, col_num, SQL_DESC_UNSIGNED, NULL, 0, NULL, &col_unsigned_type));
-
-  if (col_data_type == SQL_REAL || col_data_type == SQL_FLOAT || col_data_type == SQL_DOUBLE)
-    {
-      int num = cgw_count_number_of_digits (col_info->precision);
-      if (num < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_PRECISION_VALUE, 1, col_info->col_name);
-	  goto ODBC_ERROR;
-	}
-      col_info->precision = num;
-    }
-
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt,
-					   col_num,
-					   SQL_DESC_TABLE_NAME,
-					   col_info->class_name, sizeof (col_info->class_name), &class_name_length,
-					   NULL));
-
-  SQL_CHK_ERR (hstmt,
-	       SQL_HANDLE_STMT,
-	       err_code = SQLColAttribute (hstmt,
-					   col_num,
-					   SQL_DESC_AUTO_UNIQUE_VALUE, NULL, 0, NULL, &col_info->is_auto_increment));
-
-  col_info->data_type = cgw_odbc_type_to_cci_u_type (col_data_type, col_unsigned_type);
-  col_info->charset = cgw_odbc_type_to_charset (col_data_type, col_unsigned_type);
-
-  // mariadb has an error in returning the precision value of unsigned bigint (18446744073709551615) as 19.
-  if (cgw_get_dbms_type () == CAS_CGW_DBMS_MARIADB && col_data_type == SQL_BIGINT && col_unsigned_type)
-    {
-      col_info->precision = 20;
-      col_info->scale = 0;
-    }
-
-  return err_code;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-static char
-cgw_odbc_type_to_cci_u_type (SQLLEN odbc_type, SQLLEN is_unsigned_type)
-{
-  char data_type = CCI_U_TYPE_UNKNOWN;
-  switch (odbc_type)
-    {
-    case SQL_CHAR:
-    case SQL_WCHAR:
-      data_type = CCI_U_TYPE_CHAR;
-      break;
-    case SQL_NUMERIC:
-    case SQL_DECIMAL:
-      data_type = CCI_U_TYPE_NUMERIC;
-      break;
-    case SQL_INTEGER:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_BIGINT : CCI_U_TYPE_INT;
-      break;
-    case SQL_TINYINT:
-      data_type = CCI_U_TYPE_SHORT;
-      break;
-    case SQL_SMALLINT:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_INT : CCI_U_TYPE_SHORT;
-      break;
-    case SQL_FLOAT:
-    case SQL_REAL:
-      data_type = CCI_U_TYPE_FLOAT;
-      break;
-    case SQL_DOUBLE:
-      data_type = CCI_U_TYPE_DOUBLE;
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_DATETIME:
-      data_type = CCI_U_TYPE_DATETIME;
-      break;
-#else
-    case SQL_DATE:
-      data_type = CCI_U_TYPE_DATE;
-      break;
-#endif
-#if (ODBCVER >= 0x0300)
-    case SQL_TYPE_TIMESTAMP:
-      data_type = CCI_U_TYPE_DATETIME;
-      break;
-    case SQL_TYPE_DATE:
-      data_type = CCI_U_TYPE_DATE;
-      break;
-
-    case SQL_TYPE_TIME:
-      data_type = CCI_U_TYPE_TIME;
-      break;
-#endif
-    case SQL_VARCHAR:
-    case SQL_LONGVARCHAR:
-    case SQL_WVARCHAR:
-    case SQL_WLONGVARCHAR:
-      data_type = CCI_U_TYPE_STRING;
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_INTERVAL:
-      data_type = CCI_U_TYPE_UNKNOWN;
-      break;
-#else /* ODBCVER >= 0x0300 */
-    case SQL_TIME:
-      data_type = CCI_U_TYPE_TIME;
-      break;
-#endif
-    case SQL_TIMESTAMP:
-      data_type = CCI_U_TYPE_DATETIME;
-      break;
-    case SQL_BIGINT:
-      data_type = (is_unsigned_type) ? CCI_U_TYPE_NUMERIC : CCI_U_TYPE_BIGINT;
-      break;
-#if (ODBCVER >= 0x0350)
-    case SQL_GUID:
-      data_type = CCI_U_TYPE_UNKNOWN;
-      break;
-#endif
-    case SQL_BIT:
-    case SQL_BINARY:
-    case SQL_VARBINARY:
-    case SQL_LONGVARBINARY:
-      data_type = CCI_U_TYPE_UNKNOWN;
-      break;
-    default:
-      data_type = CCI_U_TYPE_UNKNOWN;
-    }
-
-  return data_type;
-}
-
-static char
-cgw_odbc_type_to_charset (SQLLEN odbc_type, SQLLEN is_unsigned_type)
-{
-  char code_set = (char) INTL_CODESET_NONE;
-
-  switch (odbc_type)
-    {
-    case SQL_CHAR:
-    case SQL_WCHAR:
-      code_set = cgw_get_charset ();
-      break;
-    case SQL_NUMERIC:
-    case SQL_DECIMAL:
-      code_set = INTL_CODESET_ASCII;
-      break;
-    case SQL_INTEGER:
-      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
-      break;
-    case SQL_TINYINT:
-    case SQL_SMALLINT:
-      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
-      break;
-    case SQL_FLOAT:
-      code_set = INTL_CODESET_ASCII;
-      break;
-    case SQL_REAL:
-      code_set = INTL_CODESET_ASCII;
-      break;
-    case SQL_DOUBLE:
-      code_set = INTL_CODESET_ASCII;
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_DATETIME:
-      code_set = INTL_CODESET_ASCII;
-      break;
-#else
-    case SQL_DATE:
-      code_set = INTL_CODESET_ASCII;
-      break;
-#endif
-#if (ODBCVER >= 0x0300)
-    case SQL_TYPE_TIMESTAMP:
-      code_set = INTL_CODESET_ASCII;
-      break;
-    case SQL_TYPE_DATE:
-      code_set = INTL_CODESET_ASCII;
-      break;
-
-    case SQL_TYPE_TIME:
-      code_set = INTL_CODESET_ASCII;
-      break;
-#endif
-    case SQL_VARCHAR:
-    case SQL_LONGVARCHAR:
-    case SQL_WVARCHAR:
-    case SQL_WLONGVARCHAR:
-      code_set = cgw_get_charset ();
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_INTERVAL:
-      break;
-#else /* ODBCVER >= 0x0300 */
-    case SQL_TIME:
-      code_set = INTL_CODESET_ASCII;
-      break;
-#endif
-    case SQL_TIMESTAMP:
-      code_set = INTL_CODESET_ASCII;
-      break;
-    case SQL_BIGINT:
-      code_set = (is_unsigned_type != 0) ? cgw_get_charset () : (char) INTL_CODESET_ASCII;
-      break;
-#if (ODBCVER >= 0x0350)
-    case SQL_GUID:
-#endif
-    case SQL_BIT:
-    case SQL_BINARY:
-    case SQL_VARBINARY:
-    case SQL_LONGVARBINARY:
-      code_set = INTL_CODESET_NONE;
-      break;
-    default:
-      code_set = INTL_CODESET_NONE;
-    }
-
-  return code_set;
+  return cas_main_loop (&ops);
 }
 
 static void
-cgw_set_charset (char charset)
+cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
 {
-  client_charset = (INTL_CODESET) charset;
-}
+  char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
+  char *p = msgbuf;
+  char sessid[DRIVER_SESSION_SIZE];
+  int v;
 
+  memset (sessid, 0, DRIVER_SESSION_SIZE);
 
-static char
-cgw_get_charset (void)
-{
-  return (char) client_charset;
-}
-
-int
-cgw_set_execute_info (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, int stmt_type)
-{
-  SQLRETURN err_code;
-  char cache_reusable = 0;
-
-  net_buf_cp_int (net_buf, srv_handle->total_tuple_count, NULL);
-  net_buf_cp_byte (net_buf, cache_reusable);
-  net_buf_cp_int (net_buf, (int) srv_handle->num_q_result, NULL);
-
-  for (int i = 0; i < srv_handle->num_q_result; i++)
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V4))
     {
-      err_code = cgw_get_stmt_Info (srv_handle, srv_handle->cgw_handle->hstmt, net_buf, stmt_type);
-      if (err_code < 0)
-	{
-	  goto ODBC_ERROR;
-	}
+      v = htonl (CAS_CONNECTION_REPLY_SIZE);
     }
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-int
-cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit)
-{
-  SQLRETURN err_code = 0;
-
-  if (hdbc == NULL)
+  else if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  if (auto_commit)
-    {
-      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC,
-		   err_code = SQLSetConnectAttr (hdbc, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER *) SQL_AUTOCOMMIT_ON, SQL_NTS));
+      v = htonl (CAS_CONNECTION_REPLY_SIZE_V3);
     }
   else
     {
-      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC,
-		   err_code =
-		   SQLSetConnectAttr (hdbc, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER *) SQL_AUTOCOMMIT_OFF, SQL_NTS));
+      v = htonl (CAS_CONNECTION_REPLY_SIZE_PRIOR_PROTOCOL_V3);
+    }
+  memcpy (p, &v, sizeof (int));
+  p += sizeof (int);
+  if (cas_info_size > 0)
+    {
+      memcpy (p, cas_info, cas_info_size);
+      p += cas_info_size;
+    }
+  v = htonl (getpid ());
+  memcpy (p, &v, CAS_PID_SIZE);
+  p += CAS_PID_SIZE;
+  memcpy (p, cas_bi_get_broker_info (), BROKER_INFO_SIZE);
+  p += BROKER_INFO_SIZE;
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V4))
+    {
+      v = htonl (shm_as_index + 1);
+      memcpy (p, &v, CAS_PID_SIZE);
+      p += CAS_PID_SIZE;
+    }
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
+    {
+      memcpy (p, sessid, DRIVER_SESSION_SIZE);
+      p += DRIVER_SESSION_SIZE;
+    }
+  else
+    {
+      v = 0;
+      memcpy (p, &v, SESSION_ID_SIZE);
+      p += SESSION_ID_SIZE;
+    }
+  net_write_stream (client_sock_fd, msgbuf, p - msgbuf);
+}
+
+static int
+cgw_pre_db_connect (const char *db_name, const char *db_user, const char *db_passwd, const char *url, void *context)
+{
+  CGW_CONTEXT *cgw_ctx = (CGW_CONTEXT *) context;
+  const char *find_gateway;
+
+  if (url == NULL)
+    {
+      return -1;
+    }
+
+  find_gateway = strstr (url, "__gateway=true");
+  if (find_gateway == NULL)
+    {
+      return -1;		/* Will be handled as authorization error */
+    }
+
+  cgw_ctx->dbms_type = cgw_is_supported_dbms (shm_appl->cgw_link_server);
+  cgw_set_dbms_type (cgw_ctx->dbms_type);
+
+  strncpy (cgw_ctx->tmp_name, db_name, SRV_CON_DBNAME_SIZE - 1);
+  cgw_ctx->tmp_name[SRV_CON_DBNAME_SIZE - 1] = '\0';
+  strncpy (cgw_ctx->tmp_user, db_user, SRV_CON_DBUSER_SIZE - 1);
+  cgw_ctx->tmp_user[SRV_CON_DBUSER_SIZE - 1] = '\0';
+  strncpy (cgw_ctx->tmp_passwd, db_passwd, SRV_CON_DBPASSWD_SIZE - 1);
+  cgw_ctx->tmp_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
+
+  if (cgw_ctx->dbms_type == CAS_CGW_DBMS_ORACLE)
+    {
+      snprintf (cgw_ctx->odbc_connect_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
+		shm_appl->cgw_link_odbc_driver_name,
+		cgw_ctx->tmp_name,
+		shm_appl->cgw_link_server_port,
+		cgw_ctx->tmp_name, cgw_ctx->tmp_user, cgw_ctx->tmp_passwd, shm_appl->cgw_link_connect_url_property);
+
+      snprintf (cgw_ctx->odbc_resolved_url, CGW_LINK_URL_MAX_LEN, ORACLE_CONNECT_URL_FORMAT,
+		shm_appl->cgw_link_odbc_driver_name,
+		cgw_ctx->tmp_name,
+		shm_appl->cgw_link_server_port,
+		cgw_ctx->tmp_name, cgw_ctx->tmp_user, "********", shm_appl->cgw_link_connect_url_property);
+    }
+  else if (cgw_ctx->dbms_type == CAS_CGW_DBMS_MYSQL || cgw_ctx->dbms_type == CAS_CGW_DBMS_MARIADB)
+    {
+      snprintf (cgw_ctx->odbc_connect_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
+		shm_appl->cgw_link_odbc_driver_name,
+		shm_appl->cgw_link_server_ip,
+		shm_appl->cgw_link_server_port,
+		cgw_ctx->tmp_name, cgw_ctx->tmp_user, cgw_ctx->tmp_passwd, shm_appl->cgw_link_connect_url_property);
+
+      snprintf (cgw_ctx->odbc_resolved_url, CGW_LINK_URL_MAX_LEN, MYSQL_CONNECT_URL_FORMAT,
+		shm_appl->cgw_link_odbc_driver_name,
+		shm_appl->cgw_link_server_ip,
+		shm_appl->cgw_link_server_port,
+		cgw_ctx->tmp_name, cgw_ctx->tmp_user, "********", shm_appl->cgw_link_connect_url_property);
+    }
+  else
+    {
+      return -1;		/* Unsupported DBMS */
+    }
+
+  return 0;
+}
+
+static int
+cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd, const char *url,
+		T_REQ_INFO * req_info, char *cas_info)
+{
+  int err_code;
+  char *db_err_msg = NULL;
+
+  if (cgw_current_ctx == NULL)
+    {
+      return -1;
+    }
+
+  err_code = cgw_database_connect (cgw_current_ctx->dbms_type, cgw_current_ctx->odbc_connect_url, (char *) db_name,
+				   (char *) db_user, (char *) db_passwd);
+
+  if (err_code < 0)
+    {
+      char msg_buf[LINE_MAX];
+      cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      db_err_msg = (char *) db_error_string (1);
+      net_write_error (client_sock_fd, req_info->client_version, req_info->driver_info, cas_info, cas_info_size,
+		       err_info.err_indicator, err_info.err_number, db_err_msg);
+
+      if (db_err_msg == NULL)
+	{
+	  snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d", cgw_current_ctx->odbc_connect_url,
+		    err_info.err_number);
+	}
+      else
+	{
+	  snprintf (msg_buf, LINE_MAX, "connect url %s, error:%d, %s", cgw_current_ctx->odbc_connect_url,
+		    err_info.err_number, db_err_msg);
+	}
+
+      cas_log_write_and_end (0, false, msg_buf);
+      cas_slow_log_write_and_end (NULL, 0, msg_buf);
+      cas_finish_session (client_sock_fd, ssl_client);
+      return err_code;
     }
 
   return err_code;
-
-ODBC_ERROR:
-  return ER_FAILED;
 }
 
-static int
-cgw_get_stmt_Info (T_SRV_HANDLE * srv_handle, SQLHSTMT hstmt, T_NET_BUF * net_buf, int stmt_type)
+static void
+cgw_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr, char *db_name,
+		     char *db_user, const char *url, bool is_new_connection)
 {
-  T_OBJECT ins_oid;
-  CACHE_TIME srv_cache_time;
-  char statement_type = (char) stmt_type;
+  CGW_CONTEXT *cgw_ctx = (CGW_CONTEXT *) context;
 
-  if (hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  net_buf_cp_byte (net_buf, statement_type);
-  net_buf_cp_int (net_buf, srv_handle->total_tuple_count, NULL);
-
-  memset (&ins_oid, 0, sizeof (T_OBJECT));
-  net_buf_cp_object (net_buf, &ins_oid);
-
-  CACHE_TIME_RESET (&srv_cache_time);
-  net_buf_cp_int (net_buf, srv_cache_time.sec, NULL);
-  net_buf_cp_int (net_buf, srv_cache_time.usec, NULL);
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  return ER_FAILED;
+  cas_bi_set_dbms_type (cgw_ctx->dbms_type);
+  cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s", cgw_ctx->tmp_name,
+			 shm_appl->cgw_link_server_ip, cgw_ctx->tmp_user, cgw_ctx->odbc_resolved_url);
 }
 
-
-int
-cgw_col_bindings (SQLHSTMT hstmt, SQLSMALLINT num_cols, T_COL_BINDER ** col_binding, T_COL_BINDER ** col_binding_buff)
+static void
+cgw_cleanup_session (void)
 {
-  SQLRETURN err_code;
-  SQLSMALLINT col;
-  T_COL_BINDER *this_col_binding, *last_col_binding = NULL;
-  T_COL_BINDER *this_col_binding_buff, *last_col_binding_buff = NULL;
-  SQLSMALLINT col_name_len;
-  SQLSMALLINT col_data_type, col_decimal_digits, nullable;
-  SQLULEN col_size, bind_col_size;
-  SQLLEN precision, scale;
-  SQLCHAR col_name[COL_NAME_LEN];
-  SQLLEN col_unsigned_type = 0;
+  extern FN_RETURN cas_main_fn_ret;
 
-  if (hstmt == NULL)
+  if (ux_cgw_end_tran (CCI_TRAN_ROLLBACK, false, true) < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  for (col = 1; col <= num_cols; col++)
-    {
-      this_col_binding = (T_COL_BINDER *) (MALLOC (sizeof (T_COL_BINDER)));
-      if (!(this_col_binding))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	  goto ODBC_ERROR;
-	}
-
-      this_col_binding_buff = (T_COL_BINDER *) (MALLOC (sizeof (T_COL_BINDER)));
-      if (!(this_col_binding_buff))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	  goto ODBC_ERROR;
-	}
-
-      memset (this_col_binding, 0x0, sizeof (T_COL_BINDER));
-      memset (this_col_binding_buff, 0x0, sizeof (T_COL_BINDER));
-
-      if (col == 1)
-	{
-	  *col_binding = this_col_binding;
-	  *col_binding_buff = this_col_binding_buff;
-	}
-      else
-	{
-	  last_col_binding->next = this_col_binding;
-	  last_col_binding_buff->next = this_col_binding_buff;
-	}
-      last_col_binding = this_col_binding;
-      last_col_binding_buff = this_col_binding_buff;
-
-      SQL_CHK_ERR (hstmt,
-		   SQL_HANDLE_STMT,
-		   err_code = SQLDescribeCol (hstmt,
-					      col,
-					      col_name,
-					      sizeof (col_name),
-					      &col_name_len, &col_data_type, &col_size, &col_decimal_digits,
-					      &nullable));
-
-      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLColAttribute (hstmt, col, SQL_DESC_SCALE, NULL, 0, NULL, &scale));
-
-      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, SQLColAttribute (hstmt, col, SQL_DESC_PRECISION, NULL, 0, NULL, &precision));
-
-      SQL_CHK_ERR (hstmt,
-		   SQL_HANDLE_STMT,
-		   err_code = SQLColAttribute (hstmt, col, SQL_DESC_UNSIGNED, NULL, 0, NULL, &col_unsigned_type));
-
-      this_col_binding->col_unsigned_type = col_unsigned_type;
-      this_col_binding_buff->col_unsigned_type = col_unsigned_type;
-
-      if (col_unsigned_type)
-	{
-	  bind_col_size = col_size + 10;
-	}
-      else
-	{
-	  bind_col_size = get_datatype_size (col_data_type, col_size, precision, scale);
-	}
-
-      if (cgw_is_support_datatype (col_data_type, bind_col_size))
-	{
-	  bind_col_size = bind_col_size * 2;
-
-	  if (col_unsigned_type)
-	    {
-	      if (col_data_type == SQL_SMALLINT)
-		{
-		  col_data_type = SQL_INTEGER;
-		}
-	      else if (col_data_type == SQL_INTEGER)
-		{
-		  col_data_type = SQL_BIGINT;
-		}
-	      else if (col_data_type == SQL_BIGINT)
-		{
-		  col_data_type = SQL_NUMERIC;
-		}
-	    }
-
-	  this_col_binding->col_data_type = col_data_type;
-	  this_col_binding->col_size = bind_col_size;
-	  this_col_binding->next = NULL;
-
-	  this_col_binding_buff->col_data_type = col_data_type;
-	  this_col_binding_buff->col_size = bind_col_size;
-	  this_col_binding_buff->next = NULL;
-	  this_col_binding_buff->is_exist_col_data = false;
-
-	  this_col_binding->data_buffer = (wchar_t *) MALLOC (bind_col_size);
-	  if (!(this_col_binding->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-	  this_col_binding_buff->data_buffer = (wchar_t *) MALLOC (bind_col_size);
-	  if (!(this_col_binding_buff->data_buffer))
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	      goto ODBC_ERROR;
-	    }
-
-	  SQL_CHK_ERR (hstmt,
-		       SQL_HANDLE_STMT,
-		       err_code = SQLBindCol (hstmt,
-					      col,
-					      get_c_type (col_data_type, col_unsigned_type),
-					      (SQLPOINTER) this_col_binding->data_buffer, bind_col_size,
-					      &this_col_binding->indPtr));
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 2,
-		  cgw_datatype_to_string (col_data_type), col_data_type);
-	  goto ODBC_ERROR;
-	}
-    }
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-
-void
-cgw_cleanup_binder (T_COL_BINDER * first_col_binding)
-{
-  T_COL_BINDER *this_col_binding;
-
-  while (first_col_binding)
-    {
-      this_col_binding = first_col_binding->next;
-      FREE_MEM (first_col_binding->data_buffer);
-      FREE_MEM (first_col_binding);
-      first_col_binding = this_col_binding;
+      as_info->reset_flag = TRUE;
     }
 }
 
-void
-cgw_error_msg (SQLHANDLE hHandle, SQLSMALLINT hType, RETCODE retcode)
+static FN_RETURN
+process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  SQLSMALLINT iRec = 0;
-  SQLINTEGER iError;
-  char szMessage[SQL_MAX_MESSAGE_LENGTH + 1];
-  char szState[SQL_SQLSTATE_SIZE + 1];
-
-  er_clear ();
-
-  if (retcode == SQL_INVALID_HANDLE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      return;
-    }
-
-  while (SQLGetDiagRec (hType,
-			hHandle,
-			++iRec,
-			(SQLCHAR *) szState,
-			&iError,
-			(SQLCHAR *) szMessage,
-			(SQLSMALLINT) (sizeof (szMessage) / sizeof (char)), (SQLSMALLINT *) NULL) == SQL_SUCCESS)
-    {
-      if (iRec == 1)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NATIVE_ODBC, 3, szState, iError, szMessage);
-	}
-    }
-}
-
-void
-cgw_database_disconnect ()
-{
-  if (local_odbc_handle == NULL)
-    {
-      return;
-    }
-
-  if (local_odbc_handle->hstmt)
-    {
-      SQLFreeHandle (SQL_HANDLE_STMT, local_odbc_handle->hstmt);
-      local_odbc_handle->hstmt = NULL;
-    }
-
-  if (local_odbc_handle->hdbc)
-    {
-      SQLDisconnect (local_odbc_handle->hdbc);
-      SQLFreeHandle (SQL_HANDLE_DBC, local_odbc_handle->hdbc);
-      local_odbc_handle->hdbc = NULL;
-    }
-
-  connected_db_name[0] = '\0';
-  connected_db_user[0] = '\0';
-  connected_db_passwd[0] = '\0';
-}
-
-static int
-cgw_set_bindparam (T_CGW_HANDLE * handle, int bind_num, void *net_type, void *net_value, ODBC_BIND_INFO * value_list)
-{
-  char type;
-  char src_type = -1;
-  int err_code = 0;
-  int data_size;
-  SQLLEN indPtr = 0;
-  SQLSMALLINT c_data_type;
-  SQLSMALLINT sql_bind_type;
-
-  if (handle == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
-      return ER_CGW_INVALID_HANDLE;
-    }
-
-  if (handle->hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      return ER_CGW_INVALID_STMT_HANDLE;
-    }
-
-  net_arg_get_char (type, net_type);
-  net_arg_get_size (&data_size, net_value);
-
-  // Oracle ODBC does not support the BIGINT type.
-  // So, change it to Numeric type.
-  if (curr_dbms_type == CAS_CGW_DBMS_ORACLE && type == CCI_U_TYPE_BIGINT)
-    {
-      src_type = type;
-      type = CCI_U_TYPE_NUMERIC;
-    }
-
-  switch (type)
-    {
-    case CCI_U_TYPE_CHAR:
-    case CCI_U_TYPE_STRING:
-      {
-	char *value;
-	int val_size;
-	wchar_t *out_string = NULL;
-	size_t out_length = 0;
-
-	net_arg_get_str (&value, &val_size, net_value);
-
-	c_data_type = SQL_C_WCHAR;
-	sql_bind_type = SQL_WVARCHAR;
-
-	out_length = (strlen (value) + 1) * sizeof (wchar_t);
-	out_string = (wchar_t *) malloc (out_length);
-	if (out_string == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-	    return ER_INTERFACE_NO_MORE_MEMORY;
-	  }
-
-	err_code = cgw_utf8_to_unicode (value, out_string, out_length);
-
-	if (err_code < 0)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_SQL_CONV_ERROR, 0);
-	    goto ODBC_ERROR;
-	  }
-
-	value_list->wchar_val = out_string;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type, out_length, 0, (SQLWCHAR *) out_string, 0, NULL));
-      }
-      break;
-
-    case CCI_U_TYPE_NULL:
-      {
-	char *value;
-	int val_size;
-
-	net_arg_get_str (&value, &val_size, net_value);
-
-	c_data_type = SQL_C_WCHAR;
-	sql_bind_type = SQL_WVARCHAR;
-
-	value_list->cbValue = SQL_NULL_DATA;
-	value_list->string_val = value;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type, val_size + 1, 0, value_list->string_val, 0,
-						  &value_list->cbValue));
-      }
-      break;
-
-    case CCI_U_TYPE_NUMERIC:
-      {
-	if (curr_dbms_type == CAS_CGW_DBMS_MARIADB)
-	  {
-
-	    char *value = NULL;
-	    int val_size = 0;
-
-	    net_arg_get_str (&value, &val_size, net_value);
-
-	    c_data_type = SQL_C_CHAR;
-	    sql_bind_type = SQL_CHAR;
-
-	    value_list->string_val = value;
-
-	    SQL_CHK_ERR (handle->hstmt,
-			 SQL_HANDLE_STMT,
-			 err_code = SQLBindParameter (handle->hstmt,
-						      bind_num,
-						      SQL_PARAM_INPUT,
-						      c_data_type,
-						      sql_bind_type, val_size + 1, 0, value_list->string_val, 0, NULL));
-	  }
-	else
-	  {
-	    char *value = NULL, *p = NULL;
-	    int val_size = 0;
-	    size_t precision = 0, scale = 0;
-	    char num_str[64] = { 0, };
-	    char tmp[64] = { 0, };
-	    SQLHDESC hdesc = NULL;
-	    DB_BIGINT bi_val;
-
-	    SQL_CHK_ERR (handle->hdbc, SQL_HANDLE_DBC, err_code =
-			 SQLAllocHandle (SQL_HANDLE_DESC, handle->hdbc, &hdesc));
-
-	    memset (&value_list->ns_val, 0x00, sizeof (SQL_NUMERIC_STRUCT));
-
-	    if (src_type == CCI_U_TYPE_BIGINT)
-	      {
-		net_arg_get_bigint (&bi_val, net_value);
-		snprintf (tmp, sizeof (tmp), "%" PRId64, bi_val);
-	      }
-	    else
-	      {
-		net_arg_get_str (&value, &val_size, net_value);
-		if (value != NULL)
-		  {
-		    strcpy (tmp, value);
-		  }
-		tmp[val_size] = '\0';
-	      }
-
-	    ut_trim (tmp);
-	    precision = strlen (tmp);
-	    p = strchr (tmp, '.');
-	    if (p == NULL)
-	      {
-		scale = 0;
-	      }
-	    else
-	      {
-		scale = strlen (p + 1);
-		precision--;
-	      }
-
-	    if (tmp[0] == '-')
-	      {
-		precision--;
-		value_list->ns_val.sign = MINUS;
-	      }
-	    else
-	      {
-		value_list->ns_val.sign = PLUS;
-	      }
-
-	    value_list->ns_val.precision = precision;
-	    value_list->ns_val.scale = scale;
-
-	    if (value_list->ns_val.sign == MINUS)
-	      {
-		strcpy (num_str, &tmp[1]);
-	      }
-	    else
-	      {
-		strcpy (num_str, &tmp[0]);
-	      }
-
-	    err_code = numeric_string_adjust (&value_list->ns_val, num_str);
-	    if (err_code < 0)
-	      {
-		goto ODBC_ERROR;
-	      }
-
-
-	    c_data_type = SQL_C_NUMERIC;
-	    sql_bind_type = SQL_DECIMAL;
-
-	    indPtr = sizeof (value_list->ns_val);
-	    SQL_CHK_ERR (handle->hstmt,
-			 SQL_HANDLE_STMT,
-			 err_code = SQLBindParameter (handle->hstmt,
-						      bind_num,
-						      SQL_PARAM_INPUT,
-						      c_data_type,
-						      sql_bind_type,
-						      value_list->ns_val.precision,
-						      value_list->ns_val.scale, &value_list->ns_val, 0,
-						      (SQLLEN *) & indPtr));
-
-	    SQL_CHK_ERR (hdesc,
-			 SQL_HANDLE_DESC,
-			 err_code =
-			 SQLSetDescField (hdesc, bind_num, SQL_DESC_TYPE, (SQLPOINTER) SQL_C_NUMERIC, SQL_NTS));
-
-	    SQL_CHK_ERR (hdesc,
-			 SQL_HANDLE_DESC,
-			 err_code =
-			 SQLSetDescField (hdesc, bind_num, SQL_DESC_PRECISION,
-					  (SQLPOINTER) (uintptr_t) value_list->ns_val.precision, 0));
-
-	    SQL_CHK_ERR (hdesc,
-			 SQL_HANDLE_DESC,
-			 err_code =
-			 SQLSetDescField (hdesc, bind_num, SQL_DESC_SCALE,
-					  (SQLPOINTER) (uintptr_t) value_list->ns_val.scale, 0));
-
-	    SQL_CHK_ERR (hdesc,
-			 SQL_HANDLE_DESC,
-			 err_code =
-			 SQLSetDescField (hdesc, bind_num, SQL_DESC_DATA_PTR, (SQLPOINTER) & value_list->ns_val, 0));
-
-	    SQLFreeHandle (SQL_HANDLE_DESC, hdesc);
-	  }
-      }
-      break;
-    case CCI_U_TYPE_BIGINT:
-    case CCI_U_TYPE_UBIGINT:
-      {
-	DB_BIGINT bi_val;
-	net_arg_get_bigint (&bi_val, net_value);
-
-	c_data_type = SQL_C_SBIGINT;
-	sql_bind_type = SQL_BIGINT;
-
-	value_list->bigint_val = bi_val;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type, sql_bind_type, 0, 0, &value_list->bigint_val, 0,
-						  &indPtr));
-      }
-      break;
-    case CCI_U_TYPE_INT:
-    case CCI_U_TYPE_UINT:
-      {
-	int i_val;
-
-	net_arg_get_int (&i_val, net_value);
-
-	c_data_type = SQL_C_LONG;
-	sql_bind_type = SQL_INTEGER;
-
-	value_list->integer_val = i_val;
-
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type, sql_bind_type, 0, 0, &value_list->integer_val, 0,
-						  &indPtr));
-
-      }
-      break;
-    case CCI_U_TYPE_SHORT:
-    case CCI_U_TYPE_USHORT:
-      {
-	short s_val;
-
-	net_arg_get_short (&s_val, net_value);
-
-	c_data_type = SQL_C_SHORT;
-	sql_bind_type = SQL_SMALLINT;
-	value_list->smallInt_val = s_val;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type, sql_bind_type, 0, 0, &value_list->smallInt_val, 0,
-						  &indPtr));
-      }
-      break;
-    case CCI_U_TYPE_FLOAT:
-      {
-	float f_val;
-
-	net_arg_get_float (&f_val, net_value);
-
-	c_data_type = SQL_C_FLOAT;
-	sql_bind_type = SQL_REAL;
-	value_list->real_val = f_val;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type, sql_bind_type, 0, 0, &value_list->real_val, 0, &indPtr));
-      }
-      break;
-    case CCI_U_TYPE_DOUBLE:
-      {
-	double d_val;
-	net_arg_get_double (&d_val, net_value);
-
-	c_data_type = SQL_C_DOUBLE;
-	sql_bind_type = SQL_DOUBLE;
-	value_list->double_val = d_val;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type, sql_bind_type, 0, 0, &value_list->double_val, 0,
-						  &indPtr));
-      }
-      break;
-    case CCI_U_TYPE_DATE:
-      {
-	short month, day, year;
-	net_arg_get_date (&year, &month, &day, net_value);
-
-	c_data_type = SQL_C_TYPE_DATE;
-	sql_bind_type = SQL_TYPE_DATE;
-
-	value_list->ds_val.year = year;
-	value_list->ds_val.month = month;
-	value_list->ds_val.day = day;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  sizeof (SQL_DATE_STRUCT), 0, &value_list->ds_val, 0, &indPtr));
-      }
-      break;
-    case CCI_U_TYPE_TIME:
-      {
-	short hh, mm, ss;
-	net_arg_get_time (&hh, &mm, &ss, net_value);
-
-	c_data_type = SQL_C_TYPE_TIME;
-	sql_bind_type = SQL_TYPE_TIME;
-
-	value_list->ts_val.hour = hh;
-	value_list->ts_val.minute = mm;
-	value_list->ts_val.second = ss;
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  sizeof (SQL_TIME_STRUCT), 0, &value_list->ts_val, 0, &indPtr));
-      }
-      break;
-    case CCI_U_TYPE_TIMESTAMP:
-      {
-	short yr, mon, day, hh, mm, ss;
-	DB_DATE date;
-	DB_TIME time;
-	DB_TIMESTAMP ts;
-
-	net_arg_get_timestamp (&yr, &mon, &day, &hh, &mm, &ss, net_value);
-	err_code = db_date_encode (&date, mon, day, yr);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-	err_code = db_time_encode (&time, hh, mm, ss);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-	err_code = db_timestamp_encode_ses (&date, &time, &ts, NULL);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	c_data_type = SQL_C_CHAR;
-	sql_bind_type = SQL_TYPE_TIMESTAMP;
-
-	sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
-
-	SQL_CHK_ERR (handle->hstmt,
-		     SQL_HANDLE_STMT,
-		     err_code = SQLBindParameter (handle->hstmt,
-						  bind_num,
-						  SQL_PARAM_INPUT,
-						  c_data_type,
-						  sql_bind_type,
-						  0,
-						  0,
-						  (SQLPOINTER) (&value_list->time_stemp_str_val),
-						  sizeof (value_list->time_stemp_str_val), NULL));
-      }
-      break;
-    case CCI_U_TYPE_DATETIME:
-      {
-	short yr, mon, day, hh, mm, ss, ms;
-	DB_DATETIME dt;
-
-	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
-	err_code = db_datetime_encode (&dt, mon, day, yr, hh, mm, ss, ms);
-	if (err_code != NO_ERROR)
-	  {
-	    break;
-	  }
-
-	if (curr_dbms_type == CAS_CGW_DBMS_MYSQL || curr_dbms_type == CAS_CGW_DBMS_MARIADB)
-	  {
-	    c_data_type = SQL_C_CHAR;
-	    sql_bind_type = SQL_TYPE_TIMESTAMP;
-
-	    sprintf (value_list->time_stemp_str_val, "%d-%d-%d %d:%d:%d.%d", yr, mon, day, hh, mm, ss, ms);
-
-	    SQL_CHK_ERR (handle->hstmt,
-			 SQL_HANDLE_STMT,
-			 err_code = SQLBindParameter (handle->hstmt,
-						      bind_num,
-						      SQL_PARAM_INPUT,
-						      c_data_type,
-						      sql_bind_type,
-						      0,
-						      0,
-						      (SQLPOINTER) (&value_list->time_stemp_str_val),
-						      sizeof (value_list->time_stemp_str_val), NULL));
-	  }
-	else if (curr_dbms_type == CAS_CGW_DBMS_ORACLE)
-	  {
-	    c_data_type = SQL_C_TYPE_TIMESTAMP;
-	    sql_bind_type = SQL_TYPE_TIMESTAMP;
-
-	    value_list->tss_val.year = yr;
-	    value_list->tss_val.month = mon;
-	    value_list->tss_val.day = day;
-	    value_list->tss_val.hour = hh;
-	    value_list->tss_val.minute = mm;
-	    value_list->tss_val.second = ss;
-	    value_list->tss_val.fraction = ms;
-
-	    SQL_CHK_ERR (handle->hstmt,
-			 SQL_HANDLE_STMT,
-			 err_code = SQLBindParameter (handle->hstmt,
-						      bind_num,
-						      SQL_PARAM_INPUT,
-						      c_data_type,
-						      sql_bind_type,
-						      0,
-						      0,
-						      (SQLPOINTER) (&value_list->tss_val),
-						      sizeof (value_list->tss_val), NULL));
-	  }
-	else
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_DBMS, 0);
-	    return ER_CGW_NOT_SUPPORTED_DBMS;
-	  }
-      }
-      break;
-      /* Not Support Type  */
-    case CCI_U_TYPE_BIT:
-    case CCI_U_TYPE_VARBIT:
-    case CCI_U_TYPE_MONETARY:
-    case CCI_U_TYPE_SET:
-    case CCI_U_TYPE_MULTISET:
-    case CCI_U_TYPE_SEQUENCE:
-    case CCI_U_TYPE_OBJECT:
-    case CCI_U_TYPE_BLOB:
-    case CCI_U_TYPE_CLOB:
-    case CCI_U_TYPE_JSON:
-    case CCI_U_TYPE_ENUM:
-    case CCI_U_TYPE_DATETIMELTZ:
-    case CCI_U_TYPE_DATETIMETZ:
-    case CCI_U_TYPE_TIMESTAMPTZ:
-    case CCI_U_TYPE_TIMESTAMPLTZ:
-    default:
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NOT_SUPPORTED_TYPE, 2, cgw_utype_to_string (type), type);
-	return ER_CGW_NOT_SUPPORTED_TYPE;
-      }
-    }
-
-  if (err_code < 0)
-    {
-      return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-    }
-
-  return data_size;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-int
-cgw_sql_prepare (SQLCHAR * sql_stmt)
-{
-  SQLRETURN err_code;
-  wchar_t *out_string = NULL;
-  char *in_string = NULL;
-  size_t out_length = 0;
-
-  in_string = (char *) sql_stmt;
-
-  if (local_odbc_handle->hstmt == NULL)
-    {
-      SQL_CHK_ERR (local_odbc_handle->hdbc,
-		   SQL_HANDLE_DBC,
-		   err_code = SQLAllocHandle (SQL_HANDLE_STMT, local_odbc_handle->hdbc, &local_odbc_handle->hstmt));
-    }
-
-  out_length = (strlen (in_string) + 1) * sizeof (wchar_t);
-  out_string = (wchar_t *) malloc (out_length);
-  if (out_string == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-      return ER_INTERFACE_NO_MORE_MEMORY;
-    }
-
-  memset (out_string, 0x0, out_length);
-
-  err_code = cgw_utf8_to_unicode (in_string, out_string, out_length);
-
-  if (err_code < 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_SQL_CONV_ERROR, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (local_odbc_handle->hstmt, SQL_HANDLE_STMT, err_code =
-	       SQLPrepareW (local_odbc_handle->hstmt, (SQLWCHAR *) out_string, SQL_NTS));
-
-  FREE_MEM (out_string);
-  return (int) err_code;
-
-ODBC_ERROR:
-  FREE_MEM (out_string);
-  return ER_FAILED;
-}
-
-int
-cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols)
-{
-  SQLRETURN err_code;
-
-  if (hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_cols));
-
-  if (*num_cols == 0)
-    {
-      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLExecute (hstmt));
-      SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLNumResultCols (hstmt, num_cols));
-    }
-
-  return (int) err_code;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-int
-cgw_make_bind_value (T_CGW_HANDLE * handle, int num_bind, int argc, void **argv, ODBC_BIND_INFO ** ret_val)
-{
-  int i, type_idx, val_idx;
+  MSG_HEADER client_msg_header;
+  MSG_HEADER cas_msg_header;
+  char *read_msg;
+  char func_code;
+  int argc;
+  void **argv = NULL;
   int err_code;
-  ODBC_BIND_INFO *bind_value_list = NULL;
 
-  *ret_val = NULL;
+  int con_status_to_restore, old_con_status;
+  T_SERVER_FUNC server_fn;
+  FN_RETURN fn_ret = FN_KEEP_CONN;
 
-  if (handle == NULL)
+  error_info_clear ();
+  init_msg_header (&client_msg_header);
+  init_msg_header (&cas_msg_header);
+
+  old_con_status = as_info->con_status;
+
+  if (cas_shard_flag == ON)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
-      return ER_CGW_INVALID_HANDLE;
-    }
-
-  if (num_bind != (argc / 2))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_NUM_BIND, 0);
-      return ER_CGW_NUM_BIND;
-    }
-
-  bind_value_list = (ODBC_BIND_INFO *) MALLOC (sizeof (ODBC_BIND_INFO) * num_bind);
-  if (bind_value_list == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NO_MORE_MEMORY, 0);
-      return ER_INTERFACE_NO_MORE_MEMORY;
-    }
-
-  memset (bind_value_list, 0, sizeof (ODBC_BIND_INFO) * num_bind);
-
-  for (i = 0; i < num_bind; i++)
-    {
-      type_idx = 2 * i;
-      val_idx = 2 * i + 1;
-      err_code = cgw_set_bindparam (handle, i + 1, argv[type_idx], argv[val_idx], &(bind_value_list[i]));
-      if (err_code < 0)
-	{
-	  for (int j = 0; j < i; j++)
-	    {
-	      if (bind_value_list[j].wchar_val)
-		{
-		  FREE_MEM (bind_value_list[j].wchar_val);
-		}
-	    }
-	  FREE_MEM (bind_value_list);
-	  return err_code;
-	}
-    }
-
-  *ret_val = bind_value_list;
-
-  return NO_ERROR;
-}
-
-int
-cgw_is_database_connected ()
-{
-  SQLRETURN err_code;
-  SQLINTEGER is_conn_dead = DISCONNECTED_STATE;
-
-  if (local_odbc_handle == NULL || local_odbc_handle->hdbc == NULL)
-    {
-      return DISCONNECTED_STATE;
-    }
-
-  err_code =
-    SQLGetConnectAttr (local_odbc_handle->hdbc, SQL_ATTR_CONNECTION_DEAD, (SQLPOINTER) & is_conn_dead, SQL_IS_INTEGER,
-		       0);
-
-  if (err_code < 0)
-    {
-      return DISCONNECTED_STATE;
-    }
-
-  return (is_conn_dead == SQL_CD_FALSE) ? CONNECTED_STATE : DISCONNECTED_STATE;
-}
-
-static int
-numeric_string_adjust (SQL_NUMERIC_STRUCT * numeric, char *string)
-{
-  char *pt, *pt2;
-  char hexstr[SQL_MAX_NUMERIC_LEN + 1] = { 0 };
-  char num_val[DECIMAL_DIGIT_MAX_LEN + 1] = { 0 };
-  short i;
-  int num_add_zero;
-  UINT64 number = 0;
-  char *endptr = NULL;
-  int error;
-
-  pt = string;
-
-  pt2 = strchr (pt, '.');
-  if (pt2 != NULL)
-    {
-      strncpy (num_val, pt, pt2 - pt);
-      num_val[pt2 - pt] = '\0';
-      ++pt2;
-      strcat (num_val, pt2);
-
-      num_add_zero = numeric->scale - strlen (pt2);
-      if (num_add_zero < 0)
-	{
-	  num_val[strlen (num_val) + num_add_zero] = '\0';
-	}
-      else
-	{
-	  // add additional '0' for scale
-	  for (pt = num_val + strlen (num_val), i = 1; i <= num_add_zero; ++pt, ++i)
-	    {
-	      *pt = '0';
-	    }
-	  *pt = '\0';
-	}
+      assert (0);
+      return FN_CLOSE_CONN;
     }
   else
     {
-      strcpy (num_val, pt);
-    }
-
-  error = str_to_uint64 (&number, &endptr, num_val, 10);
-  if (error < 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_NUMERIC_VALUE, 0);
-      return ER_CGW_INVALID_NUMERIC_VALUE;
-    }
-
-  sprintf (hexstr, "%" PRIX64, number);
-
-  error = hex_to_numeric_val (numeric, hexstr);
-  if (error < 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_NUMERIC_VALUE, 0);
-      return ER_CGW_INVALID_NUMERIC_VALUE;
-    }
-
-  return NO_ERROR;
-}
-
-static int
-hex_to_numeric_val (SQL_NUMERIC_STRUCT * numeric, char *hexstr)
-{
-  size_t slen = 0;
-  size_t loop = 0;
-  int error;
-  unsigned char ms_val = 0, ls_val = 0;
-
-  slen = strlen (hexstr);
-  if (slen < 1)
-    {
-      return ER_FAILED;
-    }
-
-  loop = (slen % 2) + (slen / 2);
-
-  for (size_t i = 0; i < loop; i++)
-    {
-      if (slen == 1)
+      unset_hang_check_time ();
+      if (as_info->cur_keep_con == KEEP_CON_AUTO)
 	{
-	  error = hex_to_char (*(hexstr), &ms_val);
-	  if (error < 0)
+	  err_code = net_read_int_keep_con_auto (sock_fd, &client_msg_header, req_info, srv_sock_fd);
+	}
+      else
+	{
+	  err_code = net_read_header_keep_con_on (sock_fd, &client_msg_header);
+
+	  if (as_info->cur_keep_con == KEEP_CON_ON && as_info->con_status == CON_STATUS_OUT_TRAN)
 	    {
-	      return ER_FAILED;
+	      as_info->con_status = CON_STATUS_IN_TRAN;
+	      as_info->transaction_start_time = time (0);
+	      errors_in_transaction = 0;
 	    }
-	  numeric->val[i] = ms_val;
+	}
+      if (err_code < 0)
+	{
+	  const char *cas_log_msg = NULL;
+
+	  fn_ret = FN_CLOSE_CONN;
+
+	  if (as_info->reset_flag)
+	    {
+	      cas_log_msg = "RESET";
+	      cas_log_write_and_end (0, true, cas_log_msg);
+	      fn_ret = FN_KEEP_SESS;
+	      db_set_keep_session (true);
+	    }
+	  if (as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
+	    {
+	      cas_log_msg = "CHANGE CLIENT";
+	      fn_ret = FN_KEEP_SESS;
+	      db_set_keep_session (true);
+	    }
+
+	  if (cas_log_msg == NULL)
+	    {
+	      if (is_net_timed_out ())
+		{
+		  if (as_info->reset_flag == TRUE)
+		    {
+		      cas_log_msg = "CONNECTION RESET";
+		    }
+		  else
+		    {
+		      cas_log_msg = "SESSION TIMEOUT";
+		    }
+		}
+	      else
+		{
+		  cas_log_msg = "COMMUNICATION ERROR net_read_header()";
+		}
+	    }
+	  cas_log_write_and_end (0, true, cas_log_msg);
+	  return fn_ret;
+	}
+    }
+
+  if (shm_appl->session_timeout < 0)
+    net_timeout_set (NET_DEFAULT_TIMEOUT);
+  else
+    net_timeout_set (MIN (shm_appl->session_timeout, NET_DEFAULT_TIMEOUT));
+
+  if (cas_shard_flag == ON && req_info->client_version == 0)
+    {
+      assert (0);
+      req_info->client_version = CAS_PROTO_CURRENT_VER;
+    }
+
+  read_msg = (char *) MALLOC (*(client_msg_header.msg_body_size_ptr));
+  if (read_msg == NULL)
+    {
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_NO_MORE_MEMORY, NULL);
+      return FN_CLOSE_CONN;
+    }
+  if (net_read_stream (sock_fd, read_msg, *(client_msg_header.msg_body_size_ptr)) < 0)
+    {
+      FREE_MEM (read_msg);
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+      cas_log_write_and_end (0, true, "COMMUNICATION ERROR net_read_stream()");
+      return FN_CLOSE_CONN;
+    }
+
+  argc = net_decode_str (read_msg, *(client_msg_header.msg_body_size_ptr), &func_code, &argv);
+  if (argc < 0)
+    {
+      FREE_MEM (read_msg);
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+      return FN_CLOSE_CONN;
+    }
+
+  if (func_code <= 0 || func_code >= CAS_FC_MAX)
+    {
+      FREE_MEM (argv);
+      FREE_MEM (read_msg);
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+      return FN_CLOSE_CONN;
+    }
+
+  /* PROTOCOL_V2 is used only 9.0.0 */
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
+    {
+      switch (func_code)
+	{
+	case CAS_FC_PREPARE_AND_EXECUTE:
+	  func_code = CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2;
+	  break;
+	case CAS_FC_CURSOR_CLOSE:
+	  func_code = CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2;
+	  break;
+	default:
 	  break;
 	}
-      else
+    }
+
+  con_status_to_restore = -1;
+
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
+    {
+      if (is_first_request == true)
 	{
-	  error = hex_to_char (*(hexstr + (slen - 2)), &ms_val);
-	  if (error < 0)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  error = hex_to_char (*(hexstr + slen - 1), &ls_val);
-	  if (error < 0)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  numeric->val[i] = (ms_val << 4) | (ls_val);
+	  /* If this request is the first request after connection established, con_status should be
+	   * CON_STATUS_OUT_TRAN. */
+	  con_status_to_restore = CON_STATUS_OUT_TRAN;
 	}
-      slen -= 2;
-    }
-
-  return NO_ERROR;
-}
-
-static int
-hex_to_char (char c, unsigned char *result)
-{
-  int error = NO_ERROR;
-
-  if (c >= '0' && c <= '9')
-    *result = c - '0';
-  else if (c >= 'a' && c <= 'f')
-    *result = c - 'a' + 10;
-  else if (c >= 'A' && c <= 'F')
-    *result = c - 'A' + 10;
-  else
-    error = ER_FAILED;
-
-  return error;
-}
-
-static void
-cgw_cleanup_handle (T_CGW_HANDLE * handle)
-{
-  if (handle == NULL)
-    {
-      return;
-    }
-
-  if (handle->hstmt)
-    {
-      SQLFreeHandle (SQL_HANDLE_STMT, handle->hstmt);
-      handle->hstmt = NULL;
-    }
-
-  if (handle->hdbc)
-    {
-      SQLDisconnect (handle->hdbc);
-      SQLFreeHandle (SQL_HANDLE_DBC, handle->hdbc);
-      handle->hdbc = NULL;
-    }
-
-  if (handle->henv)
-    {
-      SQLFreeHandle (SQL_HANDLE_ENV, handle->henv);
-      handle->henv = NULL;
-    }
-
-  FREE_MEM (handle);
-
-  local_odbc_handle = NULL;
-}
-
-int
-cgw_endtran (SQLHDBC hdbc, int tran_type)
-{
-  SQLRETURN err_code;
-  if (hdbc == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_DBC_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  if (tran_type == CCI_TRAN_COMMIT)
-    {
-      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLEndTran (SQL_HANDLE_DBC, hdbc, SQL_COMMIT));
-    }
-  else
-    {
-      SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLEndTran (SQL_HANDLE_DBC, hdbc, SQL_ROLLBACK));
-    }
-
-  return err_code;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-int
-cgw_init_odbc_handle (void)
-{
-  local_odbc_handle = (T_CGW_HANDLE *) MALLOC (sizeof (T_CGW_HANDLE));
-
-  if (local_odbc_handle == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  memset (local_odbc_handle, 0x0, sizeof (T_CGW_HANDLE));
-
-  return NO_ERROR;
-}
-
-int
-cgw_get_driver_info (SQLHDBC hdbc, SQLUSMALLINT info_type, void *driver_info, SQLSMALLINT size)
-{
-  SQLRETURN err_code;
-  SQLSMALLINT len;
-
-  if (hdbc == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_DBC_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, err_code = SQLGetInfo (hdbc, info_type, driver_info, size, &len));
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-
-SQLULEN
-get_datatype_size (SQLSMALLINT s_type, SQLULEN chars, SQLLEN precision, SQLLEN scale)
-{
-  switch (s_type)
-    {
-    case SQL_CHAR:
-    case SQL_VARCHAR:
-    case SQL_LONGVARCHAR:
-    case SQL_WCHAR:
-    case SQL_WVARCHAR:
-    case SQL_WLONGVARCHAR:
-      chars++;
-      break;
-#if (ODBCVER >= 0x0350)
-    case SQL_GUID:
-#endif
-    case SQL_BINARY:
-    case SQL_VARBINARY:
-    case SQL_LONGVARBINARY:
-      break;
-    case SQL_DECIMAL:
-    case SQL_NUMERIC:
-      if (precision > scale)
+      else if (con_status_before_check_cas != -1)
 	{
-	  chars += 3;		// sign symbol and decimal symbol
+	  con_status_to_restore = con_status_before_check_cas;
 	}
       else
 	{
-	  chars = scale + 3;	// if the scale is larger. ex)number(4, 6)
+	  con_status_to_restore = old_con_status;
 	}
-      break;
-    case SQL_BIT:
-      chars = sizeof (unsigned char);
-      break;
-    case SQL_TINYINT:
-      chars = sizeof (char);
-      break;
-    case SQL_SMALLINT:
-      chars = sizeof (short);
-      break;
-    case SQL_INTEGER:
-      chars = sizeof (int);
-      break;
-    case SQL_BIGINT:
-      chars = sizeof (INT64);
-      break;
-    case SQL_REAL:
-    case SQL_FLOAT:
-      chars = sizeof (float);
-      break;
-    case SQL_DOUBLE:
-      chars = sizeof (double);
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_DATETIME:
-      chars = sizeof (TIMESTAMP_STRUCT);
-      break;
-#else
-    case SQL_DATE:
-      chars = sizeof (DATE_STRUCT);
-      break;
-#endif
-    case SQL_TIME:
-      chars = sizeof (TIME_STRUCT);
-      break;
-    case SQL_TIMESTAMP:
-      chars = sizeof (TIMESTAMP_STRUCT);
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_TYPE_DATE:
-      chars = sizeof (SQL_DATE_STRUCT);
-      break;
-    case SQL_TYPE_TIME:
-      chars = sizeof (TIME_STRUCT);
-      break;
-    case SQL_TYPE_TIMESTAMP:
-      chars = sizeof (TIMESTAMP_STRUCT);
-      break;
 
-    case SQL_INTERVAL_YEAR:
-    case SQL_INTERVAL_MONTH:
-    case SQL_INTERVAL_YEAR_TO_MONTH:
-    case SQL_INTERVAL_DAY:
-    case SQL_INTERVAL_HOUR:
-    case SQL_INTERVAL_MINUTE:
-    case SQL_INTERVAL_SECOND:
-    case SQL_INTERVAL_DAY_TO_HOUR:
-    case SQL_INTERVAL_DAY_TO_MINUTE:
-    case SQL_INTERVAL_DAY_TO_SECOND:
-    case SQL_INTERVAL_HOUR_TO_MINUTE:
-    case SQL_INTERVAL_HOUR_TO_SECOND:
-    case SQL_INTERVAL_MINUTE_TO_SECOND:
-      chars = sizeof (SQL_INTERVAL_STRUCT);
-      break;
-#endif
-    default:
-      chars = 0;
-      break;
+      con_status_before_check_cas = -1;
     }
-  return chars;
-}
-
-static SQLSMALLINT
-get_c_type (SQLSMALLINT s_type, SQLLEN is_unsigned_type)
-{
-  SQLSMALLINT c_type;
-  switch (s_type)
+  else if (func_code == CAS_FC_CHECK_CAS)
     {
-#if (ODBCVER >= 0x0350)
-    case SQL_GUID:
-#endif
-    case SQL_CHAR:
-    case SQL_VARCHAR:
-    case SQL_LONGVARCHAR:
-      c_type = SQL_C_WCHAR;
-      break;
-    case SQL_WCHAR:
-    case SQL_WVARCHAR:
-    case SQL_WLONGVARCHAR:
-      c_type = SQL_C_WCHAR;
-      break;
-    case SQL_BINARY:
-    case SQL_VARBINARY:
-    case SQL_LONGVARBINARY:
-      c_type = SQL_C_BINARY;
-      break;
-    case SQL_DECIMAL:
-    case SQL_NUMERIC:
-      c_type = SQL_C_WCHAR;
-      break;
-    case SQL_BIT:
-      c_type = SQL_C_BIT;
-      break;
-    case SQL_TINYINT:
-      c_type = (is_unsigned_type) ? SQL_C_UTINYINT : SQL_C_TINYINT;
-      break;
-    case SQL_SMALLINT:
-      c_type = (is_unsigned_type) ? SQL_C_USHORT : SQL_C_SHORT;
-      break;
-    case SQL_INTEGER:
-      c_type = (is_unsigned_type) ? SQL_C_ULONG : SQL_C_LONG;
-      break;
-    case SQL_BIGINT:
-      c_type = (is_unsigned_type) ? SQL_C_UBIGINT : SQL_C_SBIGINT;
-      break;
-    case SQL_REAL:
-    case SQL_FLOAT:
-      c_type = SQL_C_FLOAT;
-      break;
-    case SQL_DOUBLE:
-      c_type = SQL_C_DOUBLE;
-      break;
-    case SQL_DATE:
-      c_type = SQL_C_DATE;
-      break;
-    case SQL_TIME:
-      c_type = SQL_C_TIME;
-      break;
-    case SQL_TIMESTAMP:
-      c_type = SQL_C_TIMESTAMP;
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_TYPE_DATE:
-      c_type = SQL_C_TYPE_DATE;
-      break;
-    case SQL_TYPE_TIME:
-      c_type = SQL_C_TYPE_TIME;
-      break;
-    case SQL_TYPE_TIMESTAMP:
-      c_type = SQL_C_TYPE_TIMESTAMP;
-      break;
-    case SQL_INTERVAL_YEAR:
-      c_type = SQL_C_INTERVAL_YEAR;
-      break;
-    case SQL_INTERVAL_MONTH:
-      c_type = SQL_C_INTERVAL_MONTH;
-      break;
-    case SQL_INTERVAL_YEAR_TO_MONTH:
-      c_type = SQL_C_INTERVAL_YEAR_TO_MONTH;
-      break;
-    case SQL_INTERVAL_DAY:
-      c_type = SQL_C_INTERVAL_DAY;
-      break;
-    case SQL_INTERVAL_HOUR:
-      c_type = SQL_C_INTERVAL_HOUR;
-      break;
-    case SQL_INTERVAL_MINUTE:
-      c_type = SQL_C_INTERVAL_MINUTE;
-      break;
-    case SQL_INTERVAL_SECOND:
-      c_type = SQL_C_INTERVAL_SECOND;
-      break;
-    case SQL_INTERVAL_DAY_TO_HOUR:
-      c_type = SQL_C_INTERVAL_DAY_TO_HOUR;
-      break;
-    case SQL_INTERVAL_DAY_TO_MINUTE:
-      c_type = SQL_C_INTERVAL_DAY_TO_MINUTE;
-      break;
-    case SQL_INTERVAL_DAY_TO_SECOND:
-      c_type = SQL_C_INTERVAL_DAY_TO_SECOND;
-      break;
-    case SQL_INTERVAL_HOUR_TO_MINUTE:
-      c_type = SQL_C_INTERVAL_HOUR_TO_MINUTE;
-      break;
-    case SQL_INTERVAL_HOUR_TO_SECOND:
-      c_type = SQL_C_INTERVAL_HOUR_TO_SECOND;
-      break;
-    case SQL_INTERVAL_MINUTE_TO_SECOND:
-      c_type = SQL_C_INTERVAL_MINUTE_TO_SECOND;
-      break;
-#endif
-    default:
-      c_type = SQL_UNKNOWN_TYPE;
-      break;
-    }
-  return c_type;
-}
-
-int
-cgw_set_stmt_attr (SQLHSTMT hstmt, SQLINTEGER attr, SQLPOINTER val, SQLINTEGER len)
-{
-  SQLRETURN err_code;
-
-  if (hstmt == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_STMT_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (hstmt, SQL_HANDLE_STMT, err_code = SQLSetStmtAttr (hstmt, attr, val, len));
-
-  return err_code;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-static void
-cgw_link_server_info (SQLHDBC hdbc)
-{
-  SQLCHAR dbms_name[CGW_LINK_SERVER_NAME_LEN] = { 0, };
-  SQLCHAR dbms_ver[CGW_LINK_SERVER_NAME_LEN] = { 0, };
-  SQLCHAR driver_name[CGW_LINK_SERVER_NAME_LEN] = { 0, };
-  SQLCHAR driver_version[CGW_LINK_SERVER_NAME_LEN] = { 0, };
-  SQLCHAR odbc_version[CGW_LINK_SERVER_NAME_LEN] = { 0, };
-
-  if (hdbc != NULL)
-    {
-      cas_log_write_and_end (0, false, "Link Server Info.");
-
-      cgw_get_driver_info (hdbc, SQL_DBMS_NAME, dbms_name, sizeof (dbms_name));
-      cas_log_write_and_end (0, false, "DBMS Name : %s", dbms_name);
-
-      cgw_get_driver_info (hdbc, SQL_DBMS_VER, dbms_ver, sizeof (dbms_ver));
-      cas_log_write_and_end (0, false, "DBMS Version : %s", dbms_ver);
-
-      cgw_get_driver_info (hdbc, SQL_DRIVER_NAME, driver_name, sizeof (driver_name));
-      cas_log_write_and_end (0, false, "Driver Name : %s", driver_name);
-
-      cgw_get_driver_info (hdbc, SQL_DRIVER_VER, driver_version, sizeof (driver_version));
-      cas_log_write_and_end (0, false, "Driver Version : %s", driver_version);
-
-      cgw_get_driver_info (hdbc, SQL_ODBC_VER, odbc_version, sizeof (odbc_version));
-      cas_log_write_and_end (0, false, "ODBC Version : %s", odbc_version);
-    }
-}
-
-static bool
-cgw_is_support_datatype (SQLSMALLINT data_type, SQLLEN type_size)
-{
-  bool support_data_type = true;
-
-  switch (data_type)
-    {
-    case SQL_CHAR:
-    case SQL_VARCHAR:
-    case SQL_LONGVARCHAR:
-    case SQL_WCHAR:
-    case SQL_WVARCHAR:
-    case SQL_WLONGVARCHAR:
-    case SQL_DECIMAL:
-    case SQL_REAL:
-    case SQL_NUMERIC:
-    case SQL_INTEGER:
-    case SQL_SMALLINT:
-    case SQL_TINYINT:
-    case SQL_FLOAT:
-    case SQL_DOUBLE:
-    case SQL_BIGINT:
-#if (ODBCVER >= 0x0300)
-    case SQL_DATETIME:
-#else
-    case SQL_DATE:
-#endif
-    case SQL_TIMESTAMP:
-#if (ODBCVER >= 0x0300)
-    case SQL_TYPE_TIMESTAMP:
-    case SQL_TYPE_DATE:
-    case SQL_TYPE_TIME:
-#endif
-      if ((data_type == SQL_LONGVARCHAR || data_type == SQL_WLONGVARCHAR) && type_size > STRING_MAX_SIZE)
-	{
-	  support_data_type = false;
-	}
-      break;
-    case SQL_VARBINARY:
-    case SQL_BINARY:
-    case SQL_BIT:
-    case SQL_UNKNOWN_TYPE:
-    case SQL_LONGVARBINARY:
-#if (ODBCVER >= 0x0350)
-    case SQL_GUID:
-#endif
-      support_data_type = false;
-      break;
-    default:
-      support_data_type = false;
-      break;
-    }
-
-  return support_data_type;
-}
-
-static int
-cgw_count_number_of_digits (int num_bits)
-{
-
-  if (num_bits < 0 || num_bits > 64)
-    {
-      return ER_FAILED;
-    }
-
-  return (num_bits == 0) ? 0 : NUM_OF_DIGITS (pow (2, num_bits) - 1);
-}
-
-T_DBMS_TYPE
-cgw_is_supported_dbms (char *dbms)
-{
-  if (dbms == NULL)
-    return CAS_DBMS_NONE;
-
-  ut_tolower (dbms);
-
-  for (int i = 0; i < supported_dbms_max_num; i++)
-    {
-      if (strcmp (dbms, supported_dbms_list[i].dbms_name) == 0)
-	{
-	  return supported_dbms_list[i].dbms_type;
-	}
-    }
-  return CAS_DBMS_NONE;
-}
-
-int
-cgw_get_stmt_handle (SQLHDBC hdbc, SQLHSTMT * stmt)
-{
-  if (hdbc == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_DBC_HANDLE, 0);
-      goto ODBC_ERROR;
-    }
-
-  SQL_CHK_ERR (hdbc, SQL_HANDLE_DBC, SQLAllocHandle (SQL_HANDLE_STMT, hdbc, stmt));
-
-  return NO_ERROR;
-
-ODBC_ERROR:
-  return ER_FAILED;
-}
-
-void
-cgw_set_dbms_type (T_DBMS_TYPE dbms_type)
-{
-  curr_dbms_type = dbms_type;
-}
-
-T_DBMS_TYPE
-cgw_get_dbms_type ()
-{
-  return curr_dbms_type;
-}
-
-static char *
-cgw_datatype_to_string (SQLLEN type)
-{
-  switch (type)
-    {
-    case SQL_UNKNOWN_TYPE:
-      return (char *) "SQL_UNKNOWN_TYPE";
-      break;
-    case SQL_CHAR:
-      return (char *) "SQL_CHAR";
-      break;
-    case SQL_NUMERIC:
-      return (char *) "SQL_NUMERIC";
-      break;
-    case SQL_DECIMAL:
-      return (char *) "SQL_DECIMAL";
-      break;
-    case SQL_INTEGER:
-      return (char *) "SQL_INTEGER";
-      break;
-    case SQL_SMALLINT:
-      return (char *) "SQL_SMALLINT";
-      break;
-    case SQL_FLOAT:
-      return (char *) "SQL_FLOAT";
-      break;
-    case SQL_REAL:
-      return (char *) "SQL_REAL";
-      break;
-    case SQL_DOUBLE:
-      return (char *) "SQL_DOUBLE";
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_DATETIME:
-      return (char *) "SQL_DATETIME";
-      break;
-#else
-    case SQL_DATE:
-      return (char *) "SQL_DATE";
-      break;
-#endif
-    case SQL_VARCHAR:
-      return (char *) "SQL_VARCHAR";
-      break;
-#if (ODBCVER >= 0x0300)
-    case SQL_TYPE_DATE:
-      return (char *) "SQL_TYPE_DATE";
-      break;
-    case SQL_TYPE_TIME:
-      return (char *) "SQL_TYPE_TIME";
-      break;
-    case SQL_TYPE_TIMESTAMP:
-      return (char *) "SQL_TYPE_TIMESTAMP";
-      break;
-#endif
-
-#if (ODBCVER >= 0x0300)
-    case SQL_INTERVAL:
-      return (char *) "SQL_INTERVAL";
-      break;
-#else
-    case SQL_TIME:
-      return (char *) "SQL_TIME";
-      break;
-#endif
-    case SQL_TIMESTAMP:
-      return (char *) "SQL_TIMESTAMP";
-      break;
-    case SQL_LONGVARCHAR:
-      return (char *) "SQL_LONGVARCHAR";
-      break;
-    case SQL_BINARY:
-      return (char *) "SQL_BINARY";
-      break;
-    case SQL_VARBINARY:
-      return (char *) "SQL_VARBINARY";
-      break;
-    case SQL_LONGVARBINARY:
-      return (char *) "SQL_LONGVARBINARY";
-      break;
-    case SQL_BIGINT:
-      return (char *) "SQL_BIGINT";
-      break;
-    case SQL_TINYINT:
-      return (char *) "SQL_TINYINT";
-      break;
-    case SQL_BIT:
-      return (char *) "SQL_BIT";
-      break;
-#if (ODBCVER >= 0x0350)
-    case SQL_GUID:
-      return (char *) "SQL_GUID";
-      break;
-#endif
-    case SQL_WCHAR:
-      return (char *) "SQL_WCHAR";
-    case SQL_WVARCHAR:
-      return (char *) "SQL_WVARCHAR";
-    case SQL_WLONGVARCHAR:
-      return (char *) "SQL_WLONGVARCHAR";
-    default:
-      return (char *) "Unknown type";
-    }
-}
-
-static char *
-cgw_utype_to_string (int type)
-{
-  switch (type)
-    {
-    case CCI_U_TYPE_CHAR:
-      return (char *) "char";
-    case CCI_U_TYPE_STRING:
-      return (char *) "char varying";
-    case CCI_U_TYPE_NUMERIC:
-      return (char *) "numeric";
-    case CCI_U_TYPE_BIGINT:
-      return (char *) "bigint";
-    case CCI_U_TYPE_INT:
-      return (char *) "integer";
-    case CCI_U_TYPE_SHORT:
-      return (char *) "smallint";
-    case CCI_U_TYPE_FLOAT:
-      return (char *) "float";
-    case CCI_U_TYPE_DOUBLE:
-      return (char *) "double";
-    case CCI_U_TYPE_DATE:
-      return (char *) "date";
-    case CCI_U_TYPE_TIME:
-      return (char *) "time";
-    case CCI_U_TYPE_TIMESTAMP:
-      return (char *) "timestamp";
-    case CCI_U_TYPE_DATETIME:
-      return (char *) "datetime";
-    case CCI_U_TYPE_NULL:
-      return (char *) "null";
-    case CCI_U_TYPE_BIT:
-      return (char *) "bit";
-    case CCI_U_TYPE_VARBIT:
-      return (char *) "bit varying";
-    case CCI_U_TYPE_MONETARY:
-      return (char *) "monetary";
-    case CCI_U_TYPE_SET:
-      return (char *) "set";
-    case CCI_U_TYPE_MULTISET:
-      return (char *) "multiset";
-    case CCI_U_TYPE_SEQUENCE:
-      return (char *) "sequence";
-    case CCI_U_TYPE_OBJECT:
-      return (char *) "object";
-    case CCI_U_TYPE_BLOB:
-      return (char *) "blob";
-    case CCI_U_TYPE_CLOB:
-      return (char *) "clob";
-    case CCI_U_TYPE_JSON:
-      return (char *) "json";
-    case CCI_U_TYPE_ENUM:
-      return (char *) "enum";
-    case CCI_U_TYPE_DATETIMELTZ:
-      return (char *) "datetimeltz";
-    case CCI_U_TYPE_DATETIMETZ:
-      return (char *) "datetimetz";
-    case CCI_U_TYPE_TIMESTAMPTZ:
-      return (char *) "timestamptz";
-    case CCI_U_TYPE_TIMESTAMPLTZ:
-      return (char *) "timestampltz";
-    default:
-      return (char *) "";
-    }
-}
-
-static int
-cgw_unicode_to_utf8 (wchar_t * in_src, int in_size, char **out_target, int *out_length)
-{
-#if defined(WINDOWS)
-  int length;
-  unsigned char *in_string = (unsigned char *) in_src;
-
-  if (in_string == NULL || out_length == NULL)
-    {
-      return (-1);
-    }
-
-  if (in_size < 0)
-    {
-      return (-1);
-    }
-
-  length = WideCharToMultiByte (CP_UTF8, 0, in_src, -1, conv_str_buff, CONV_STRING_BUF_SIZE, NULL, NULL);
-  if (length <= 0)
-    {
-      return -1;
-    }
-
-  if (out_target)
-    {
-      *out_target = conv_str_buff;
-    }
-
-  if (out_length)
-    {
-      *out_length = length;
-    }
-
-#else /* WINDOWS */
-
-  iconv_t cd;
-  size_t ret = 0;
-
-  uint16_t *iconv_in = (uint16_t *) in_src;
-  char *iconv_out = conv_str_buff;
-
-  size_t inlen = in_size;
-  size_t outlen_org = CONV_STRING_BUF_SIZE;
-  size_t outlen = CONV_STRING_BUF_SIZE;
-
-  if (iconv_in == NULL || out_length == NULL)
-    {
-      return (-1);
-    }
-
-  cd = iconv_open (UTF8_CODE_PAGE, UNICODE_CODE_PAGE);
-  if (cd == (iconv_t) (-1))
-    {
-      return -1;
-    }
-
-  ret = iconv (cd, (char **) &iconv_in, &inlen, &iconv_out, &outlen);
-
-  if (ret == (size_t) (-1))
-    {
-      iconv_close (cd);
-      return (-1);
-    }
-
-  iconv_close (cd);
-
-  if (out_target)
-    {
-      conv_str_buff[outlen_org - outlen] = '\0';
-      *out_target = conv_str_buff;
-    }
-
-  if (out_length)
-    {
-      *out_length = (outlen_org - outlen) + 1;
-    }
-
-#endif
-  return 0;
-}
-
-
-static int
-cgw_utf8_to_unicode (const char *in_utf8_str, wchar_t * out_unicode_str, size_t out_unicode_strLen)
-{
-#if defined(WINDOWS)
-  int result = MultiByteToWideChar (CP_UTF8, 0, in_utf8_str, -1, out_unicode_str, out_unicode_strLen);
-
-  if (result == 0)
-    {
-      return -1;
-    }
-
-#else
-  char *in_buf = (char *) in_utf8_str;
-  char *out_buf = (char *) out_unicode_str;
-
-  size_t in_strlen = strlen (in_utf8_str);
-  size_t out_strlen = out_unicode_strLen;
-
-  iconv_t conv = iconv_open (UNICODE_CODE_PAGE, UTF8_CODE_PAGE);
-  if (conv == (iconv_t) - 1)
-    {
-      return -1;
-    }
-
-  if (iconv (conv, &in_buf, &in_strlen, &out_buf, &out_strlen) == (size_t) (-1))
-    {
-      iconv_close (conv);
-      return -1;
-    }
-
-  *((wchar_t *) out_buf) = L'\0';
-
-  iconv_close (conv);
-#endif
-
-  return 0;
-}
-
-static int
-cgw_conv_mtow (wchar_t * dest_wc, char *src_mbc)
-{
-  size_t length;
-
-  if (src_mbc == NULL || dest_wc == NULL)
-    {
-      return -1;
-    }
-
-  length = strlen (src_mbc);
-  if (length == 0)
-    {
-      return -1;
-    }
-
-  CONV_M_TO_W (src_mbc, dest_wc, length);
-
-  dest_wc[length] = L'\0';
-
-  return 0;
-}
-
-static int
-cgw_uint32_to_uni16 (uint32_t i, uint16_t * u)
-{
-  if (i < 0xffff)
-    {
-      *u = (uint16_t) (i & 0xffff);
-      return 1;
-    }
-
-  return 0;
-}
-
-static SQLWCHAR *
-cgw_wchar_to_sqlwchar (wchar_t * src, size_t len)
-{
-  SQLWCHAR *dest;
-  SQLWCHAR *sqlwchar_string;
-  size_t i;
-
-  if (sizeof (wchar_t) == sizeof (SQLWCHAR))
-    {
-      dest = (SQLWCHAR *) malloc (len * sizeof (SQLWCHAR));
-      memcpy (dest, src, len * sizeof (wchar_t));
-      return dest;
+      con_status_before_check_cas = old_con_status;
     }
   else
     {
-      dest = (SQLWCHAR *) malloc (2 * len * sizeof (SQLWCHAR));
-      sqlwchar_string = dest;
-
-      for (i = 0; i < len; i++)
-	{
-	  dest += cgw_uint32_to_uni16 ((uint32_t) src[i], (uint16_t *) dest);
-	}
-      *dest = 0;
-      return sqlwchar_string;
+      con_status_before_check_cas = -1;
     }
 
-  return NULL;
+  strcpy (as_info->log_msg, server_func_name[func_code - 1]);
+
+  server_fn = server_fn_table[func_code - 1];
+
+  if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
+    {
+      assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
+#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
+      if (prev_cas_info[CAS_INFO_STATUS] != client_msg_header.info_ptr[CAS_INFO_STATUS])
+	{
+	  cas_log_debug (ARG_FILE_LINE,
+			 "[%d][PREV : %d, RECV : %d], " "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
+			 "[JID : %d] \n", func_code - 1, prev_cas_info[CAS_INFO_STATUS],
+			 client_msg_header.info_ptr[CAS_INFO_STATUS], prev_cas_info[CAS_INFO_RESERVED_1],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1], prev_cas_info[CAS_INFO_RESERVED_2],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
+			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
+	}
+#endif /* end for debug */
+    }
+
+  req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
+
+  cas_send_result_flag = TRUE;
+
+  /* for 9.0 driver */
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
+    {
+      ux_set_utype_for_enum (CCI_U_TYPE_STRING);
+    }
+
+  /* for driver less than 10.0 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
+    {
+      ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIME);
+      ux_set_utype_for_timestamptz (CCI_U_TYPE_TIMESTAMP);
+      ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIME);
+      ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMP);
+    }
+
+  /* driver version < 10.2 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V8))
+    {
+      ux_set_utype_for_json (CCI_U_TYPE_STRING);
+    }
+
+  as_info->fn_status = FN_STATUS_BUSY;
+
+  net_buf->client_version = req_info->client_version;
+  set_hang_check_time ();
+  fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
+  set_hang_check_time ();
+
+  /* set back original utype for enum, date-time, JSON */
+  if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
+    {
+      ux_set_utype_for_enum (CCI_U_TYPE_ENUM);
+    }
+
+  /* for driver less than 10.0 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V7))
+    {
+      ux_set_utype_for_datetimetz (CCI_U_TYPE_DATETIMETZ);
+      ux_set_utype_for_timestamptz (CCI_U_TYPE_TIMESTAMPTZ);
+      ux_set_utype_for_datetimeltz (CCI_U_TYPE_DATETIMETZ);
+      ux_set_utype_for_timestampltz (CCI_U_TYPE_TIMESTAMPTZ);
+    }
+
+  /* driver version < 10.2 */
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V8))
+    {
+      ux_set_utype_for_json (CCI_U_TYPE_JSON);
+    }
+
+  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
+		 err_info.err_number);
+
+  if (con_status_to_restore != -1)
+    {
+      CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+      as_info->con_status = con_status_to_restore;
+      CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
+    }
+
+
+  if (cas_shard_flag == ON && (func_code == CAS_FC_PREPARE || func_code == CAS_FC_CHECK_CAS)
+      && (client_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] & CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN))
+    {
+      /* for shard dummy prepare */
+      /* for connection check */
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
+
+  if (fn_ret == FN_KEEP_CONN && net_buf->err_code == 0 && as_info->con_status == CON_STATUS_IN_TRAN
+      && req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT && err_info.err_number != CAS_ER_STMT_POOLING)
+    {
+      /* no communication error and auto commit is needed */
+      err_code = ux_cgw_auto_commit (net_buf, req_info);
+      if (err_code < 0)
+	{
+	  fn_ret = FN_CLOSE_CONN;
+	}
+      else
+	{
+	  if (as_info->cas_log_reset)
+	    {
+	      cas_log_reset (broker_name);
+	    }
+	  if (as_info->cas_slow_log_reset)
+	    {
+	      cas_slow_log_reset (broker_name);
+	    }
+	  if (!ux_cgw_is_database_connected ())
+	    {
+	      fn_ret = FN_CLOSE_CONN;
+	    }
+	  else if (restart_is_needed ())
+	    {
+	      fn_ret = FN_KEEP_SESS;
+	      db_set_keep_session (true);
+	    }
+	  if (shm_appl->sql_log2 != as_info->cur_sql_log2)
+	    {
+	      sql_log2_end (false);
+	      as_info->cur_sql_log2 = shm_appl->sql_log2;
+	      sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
+	    }
+	}
+      as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_transactions_processed++;
+
+      /* should be OUT_TRAN in auto commit */
+      CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+      if (as_info->con_status == CON_STATUS_IN_TRAN)
+	{
+	  as_info->con_status = CON_STATUS_OUT_TRAN;
+	}
+      CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
+    }
+
+  if ((func_code == CAS_FC_EXECUTE) || (func_code == CAS_FC_SCHEMA_INFO))
+    {
+      as_info->num_requests_received %= MAX_DIAG_DATA_VALUE;
+      as_info->num_requests_received++;
+    }
+  else if (func_code == CAS_FC_END_TRAN)
+    {
+      as_info->num_transactions_processed %= MAX_DIAG_DATA_VALUE;
+      as_info->num_transactions_processed++;
+    }
+
+  as_info->log_msg[0] = '\0';
+  if (as_info->con_status == CON_STATUS_IN_TRAN)
+    {
+      cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
+    }
+  else
+    {
+      cas_msg_header.info_ptr[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+    }
+
+  if (func_code == CAS_FC_EXECUTE || func_code == CAS_FC_EXECUTE_ARRAY || func_code == CAS_FC_EXECUTE_BATCH
+      || err_info.err_number < 0)
+    {
+      logddl_write_end ();
+    }
+
+  if (net_buf->err_code)
+    {
+      net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
+		       CAS_ERROR_INDICATOR, net_buf->err_code, NULL);
+      fn_ret = FN_CLOSE_CONN;
+      goto exit_on_end;
+    }
+
+  if (cas_send_result_flag && net_buf->data != NULL)
+    {
+
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
+	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
+
+      if (cas_shard_flag == ON)
+	{
+	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
+	}
+#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
+      cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
+      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
+      prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
+      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
+      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
+#endif /* end for debug */
+
+
+
+      *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
+      memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr, NET_BUF_HEADER_MSG_SIZE);
+
+      if (cas_info_size > 0)
+	{
+	  memcpy (net_buf->data + NET_BUF_HEADER_MSG_SIZE, cas_msg_header.info_ptr, cas_info_size);
+	}
+
+      assert (NET_BUF_CURR_SIZE (net_buf) <= net_buf->alloc_size);
+      if (net_write_stream (sock_fd, net_buf->data, NET_BUF_CURR_SIZE (net_buf)) < 0)
+	{
+	  cas_log_write_and_end (0, true, "COMMUNICATION ERROR net_write_stream()");
+	}
+    }
+
+  if (cas_shard_flag == OFF && cas_send_result_flag && net_buf->post_send_file != NULL)
+    {
+      err_code = net_write_from_file (sock_fd, net_buf->post_file_size, net_buf->post_send_file);
+      unlink (net_buf->post_send_file);
+      if (err_code < 0)
+	{
+	  fn_ret = FN_CLOSE_CONN;
+	  goto exit_on_end;
+	}
+    }
+
+exit_on_end:
+
+  if (cas_shard_flag == ON && as_info->con_status != CON_STATUS_IN_TRAN && as_info->uts_status == UTS_STATUS_BUSY)
+    {
+      as_info->uts_status = UTS_STATUS_IDLE;
+    }
+
+
+  net_buf_clear (net_buf);
+
+  FREE_MEM (read_msg);
+  FREE_MEM (argv);
+
+  return fn_ret;
 }
 
-static const char *
-cgw_get_dbms_name (T_DBMS_TYPE db_type)
+static int
+cgw_cas_init ()
 {
-  for (int i = 0; i < supported_dbms_max_num; i++)
+  if (cgw_init_shm () < 0)
     {
-      if (db_type == supported_dbms_list[i].dbms_type)
-	{
-	  return supported_dbms_list[i].dbms_name;
-	}
+      return -1;
     }
-  return "";
+
+  assert (sizeof (broker_name) == sizeof (shm_appl->broker_name));
+  strcpy (broker_name, shm_appl->broker_name);
+
+  set_cubrid_file (FID_SQL_LOG_DIR, shm_appl->log_dir);
+  set_cubrid_file (FID_SLOW_LOG_DIR, shm_appl->slow_log_dir);
+  set_cubrid_file (FID_CUBRID_ERR_DIR, shm_appl->err_log_dir);
+
+  as_pid_file_create (broker_name, as_info->as_id);
+  as_db_err_log_set (broker_name, shm_proxy_id, shm_shard_id, shm_shard_cas_id, shm_as_index, cas_shard_flag);
+
+  /* Set cleanup callback for CGW specific cleanup */
+  cas_set_cleanup_callback (cgw_cleanup);
+
+  return 0;
+}
+
+static int
+cgw_init_shm (void)
+{
+  char *p;
+  int as_shm_key;
+  int pxy_id, shd_id, shard_cas_id, as_id;
+
+  p = getenv (APPL_SERVER_SHM_KEY_STR);
+  if (p == NULL)
+    {
+      goto return_error;
+    }
+
+  parse_int (&as_shm_key, p, 10);
+  SHARD_ERR ("<CAS> APPL_SERVER_SHM_KEY_STR:[%d:%x]\n", as_shm_key, as_shm_key);
+  shm_appl = (T_SHM_APPL_SERVER *) uw_shm_open (as_shm_key, SHM_APPL_SERVER, SHM_MODE_ADMIN);
+
+  if (shm_appl == NULL)
+    {
+      goto return_error;
+    }
+
+  p = getenv (AS_ID_ENV_STR);
+  if (p == NULL)
+    {
+      goto return_error;
+    }
+
+  parse_int (&as_id, p, 10);
+  SHARD_ERR ("<CAS> AS_ID_ENV_STR:[%d]\n", as_id);
+  as_info = &shm_appl->as_info[as_id];
+
+  shm_as_index = as_id;
+
+  cas_shard_flag = shm_appl->shard_flag;
+
+  if (cas_shard_flag == OFF)
+    {
+      return 0;
+    }
+
+return_error:
+
+  if (shm_appl)
+    {
+      uw_shm_detach (shm_appl);
+      shm_appl = NULL;
+    }
+
+  return -1;
 }
