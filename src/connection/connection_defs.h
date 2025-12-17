@@ -421,10 +421,12 @@ struct css_queue_entry
 struct session_state;
 #endif
 
-namespace cubconn
+// *INDENT-OFF*
+namespace cubconn::connection
 {
-  class connection_worker;
+  class worker;
 };
+// *INDENT-ON*
 
 /*
  * This data structure is the interface between the client and the
@@ -457,7 +459,7 @@ struct css_conn_entry
 
   SYNC_RMUTEX cmutex;		/* context mutex */
   // *INDENT-OFF*
-  cubconn::connection_worker *worker;
+  cubconn::connection::worker *worker;
   // *INDENT-ON*
   void *context;
 

@@ -22,6 +22,7 @@
 
 #include "system_parameter.h"
 #include "connection_defs.h"
+#include "connection_statistics.hpp"
 #include "transmitter.hpp"
 #include "error_manager.h"
 #include "span.hpp"
@@ -47,7 +48,7 @@
 
 namespace cubconn
 {
-  transmitter::transmitter (connection_stats *stats) :
+  transmitter::transmitter (statistics::metrics<statistics::context> *stats) :
     m_buf (IOV_MAX),
     m_stats (stats)
   {
@@ -75,7 +76,7 @@ namespace cubconn
 	er_log_conn (__FILE__, __LINE__, "transmitter->fill: sendmsg returned fd = %d, bytes = %u\n", fd, bytes);
 	if (bytes > 0)
 	  {
-	    m_stats->add (stats::NET_SEND, bytes);
+	    m_stats->add (statistics::context::BYTES_OUT_TOTAL, bytes);
 
 	    advance = static_cast<std::size_t> (bytes);
 	    while (advance && msg->msg_iovlen)

@@ -24,6 +24,7 @@
 #define _CONNECTION_MASTER_CONNECTOR_HPP_
 
 #include "connection_globals.h"
+#include "connection_context.hpp"
 #include "connection_pool.hpp"
 #include "packet_buffer.hpp"
 #include "buffer.hpp"
@@ -36,33 +37,11 @@
 #include <fcntl.h>
 #include <string>
 
-namespace cubconn
+namespace cubconn::master
 {
-  class master_connector
+  class connector
   {
     private:
-      enum class state
-      {
-	/* handshake with master */
-	SendInHandshake,
-	RecvInHandshake,
-
-	SwitchToUnixSocket,
-
-	/* request from master */
-	RecvRequestType,
-
-	RecvNewClient,
-
-	RecvHAMode,
-
-	/* send to clients */
-	SendReplyToClient,
-
-	/* send for HA */
-	SendHBToMaster
-      };
-
       enum class master_state
       {
 	CONNECTED,
@@ -71,55 +50,14 @@ namespace cubconn
 	CLOSED
       };
 
-      struct context
-      {
-	css_conn_entry *m_conn;
-
-	buffer m_recvbuf;
-	cubbase::packet_buffer m_sendbuf;
-
-	state m_state { state::SendInHandshake };
-	bool m_has_error;
-
-	context ();
-	~context ();
-
-	context (const context &) = delete;
-	context &operator= (const context &) = delete;
-
-	context (context &&) noexcept = delete;
-	context &operator= (context &&) noexcept = delete;
-
-	void reset ();
-	bool has_data_to_send ();
-
-	template <typename... Spans>
-	void push_for_send (const cubbase::span<std::byte> &first, const Spans &... rest)
-	{
-	  m_sendbuf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
-	}
-
-	template <typename... Spans>
-	void push (const cubbase::span<std::byte> &first, const Spans &... rest)
-	{
-	  m_sendbuf.push (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
-	}
-
-	template <typename T>
-	T *allocate ()
-	{
-	  return m_sendbuf.allocate<T> ();
-	}
-      };
-
     public:
-      master_connector ();
-      ~master_connector ();
+      connector ();
+      ~connector ();
 
       void stop () noexcept;
 
       bool attach (cubthread::entry &entry) noexcept;
-      bool attach (connection_pool &pool) noexcept;
+      bool attach (connection::pool &pool) noexcept;
       bool run (int port, std::string &server_name) noexcept;
 
     private:
@@ -141,7 +79,7 @@ namespace cubconn
       int m_master_port;
 
       /* dispatch */
-      connection_pool *m_connection_pool;
+      connection::pool *m_connection_pool;
 
       /* socket */
       inline bool make_nonblocking (int fd) noexcept;

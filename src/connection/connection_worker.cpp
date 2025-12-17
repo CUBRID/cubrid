@@ -20,6 +20,7 @@
  * connection_worker.cpp
  */
 
+#include "porting.h"
 #include "hardware_topology.hpp"
 #include "tcp.h"
 #include "network.h"
@@ -37,10 +38,13 @@
 #include <chrono>
 #include <array>
 #include <thread>
+#include <cstdint>
+#include <cstdio>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <sys/epoll.h>
+#include <time.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -60,57 +64,17 @@ std::atomic<uint64_t> message_counter (0);
     (ctx->sel.m_state = state::x); \
 } while (0)
 
-namespace cubconn
+namespace cubconn::connection
 {
-  connection_worker::context::context (std::size_t capacity, connection_stats *stats) :
-    m_conn (nullptr),
-    m_ignore (ignore_level::DONT_IGNORE),
-    m_removed (false),
-    m_recv
-  {
-    .m_state = state::HEADER,
-    .m_receiver = receiver (capacity, stats),
-    .m_header = { nullptr, 0 },
-    .m_request_id = -1,
-    .m_command = false
-  },
-  m_send
-  {
-    .m_transmitter = transmitter (stats)
-  }
-  {
-  }
-
-  connection_worker::context::context () :
-    m_conn (nullptr),
-    m_recv
-  {
-    .m_state = state::HEADER,
-    .m_receiver = receiver (),
-    .m_header = { nullptr, 0 },
-    .m_request_id = -1,
-    .m_command = false
-  },
-  m_send
-  {
-    .m_transmitter = transmitter ()
-  }
-  {
-  }
-
-  connection_worker::context::~context ()
-  {
-  }
-
-  connection_worker::connection_worker (connection_pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
-					std::size_t index) :
+  worker::worker (pool *pool, std::shared_ptr<coordinator> coord, std::shared_ptr<thread_watcher> watcher,
+		  std::size_t core, std::size_t index) :
     m_parent (pool),
+    m_coordinator (coord),
     m_watcher (watcher),
     m_core (core),
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
-    m_timer_latency (timer_latency::NA),
     m_has_retry (false)
   {
     std::size_t i;
@@ -120,21 +84,36 @@ namespace cubconn
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (m_eventfd < 0 || m_timerfd < 0)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to create fd. %s\n", strerror (errno));
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to create fd. %s\n", strerror (errno));
 	assert_release (false);
       }
 
     if (!this->eventfd_register (m_eventfd) ||
 	!this->eventfd_register (m_timerfd))
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to register fd\n");
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to register fd\n");
 	assert_release (false);
       }
 
-    m_notification = static_cast<uint32_t> (notification_type::HA);
-    if (!this->eventfd_settimer (m_timerfd, timer_latency::MEDIUM_LATENCY))
+    /* timer */
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker: failed to eventfd_settimer\n");
+	m_timer_handler[i].valid = false;
+	m_timer_handler[i].latency = timer_latency::NA;
+	m_timer_handler[i].function = nullptr;
+	m_timer_handler[i].last_time = 0;
+      }
+    if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::MEDIUM_LATENCY,
+				 std::bind (&worker::statistics_metrics_to_coordinator, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
+	assert_release (false);
+
+      }
+    if (!this->eventfd_addtimer (timer_type::HA, timer_latency::HIGH_LATENCY,
+				 std::bind (&worker::ha_close_all_connections, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
 	assert_release (false);
       }
 
@@ -144,10 +123,10 @@ namespace cubconn
 	m_queue_size[i].store (0, std::memory_order_relaxed);
       }
 
-    m_thread = std::thread (&connection_worker::attach, this);
+    m_thread = std::thread (&worker::attach, this);
   }
 
-  connection_worker::~connection_worker ()
+  worker::~worker ()
   {
     if (m_thread.joinable ())
       {
@@ -159,7 +138,7 @@ namespace cubconn
     assert (m_context.size () == 0);
   }
 
-  void connection_worker::enqueue (queue_type type, message &&item)
+  void worker::enqueue (queue_type type, message &&item)
   {
     assert ((item.conn ? (item.conn->fd != -1) : false) ||
 	    (item.type == message_type::START || item.type == message_type::SHUTDOWN));
@@ -178,7 +157,7 @@ namespace cubconn
 #endif
   }
 
-  bool connection_worker::notify ()
+  bool worker::notify ()
   {
     std::uint64_t u;
     ssize_t bytes;
@@ -214,8 +193,8 @@ namespace cubconn
     return true;
   }
 
-  bool connection_worker::enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func,
-      int wait_time)
+  bool worker::enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func,
+				   int wait_time)
   {
     /* wait_time is implemented only for  */
     /*	START				  */
@@ -265,51 +244,51 @@ namespace cubconn
     return true;
   }
 
-  void connection_worker::stats ()
+  uint64_t worker::get_monotonic_ns ()
   {
-    int i;
+    struct timespec ts;
 
-    std::cout << "connection worker: " << m_index << std::endl;
-    for (i = 0; i < stats::STATS_COUNT; i++)
+    if (clock_gettime (CLOCK_MONOTONIC, &ts) == -1)
       {
-	std::cout << "  " << stats_name[i] << ": " << m_stats.get (static_cast<enum stats> (i)) << std::endl;
+	er_log_conn (__FILE__, __LINE__, "clock_gettime (CLOCK_MONOTONIC) failed: %s\n", strerror (errno));
+	return 0;
       }
-    std::cout << "-------------- clients --------------" << std::endl;
-    for (auto &ctx : m_context)
-      {
-	std::cout << "  fd: " << ctx->m_conn->fd << std::endl;
-	/* whenever whenever whenever ... */
-	std::cout << std::endl;
-      }
-    std::cout << std::endl;
-    std::cout << std::endl;
+
+    return (uint64_t) ts.tv_sec * 1000000000ULL + ts.tv_nsec;
   }
 
-  void connection_worker::push_task_into_worker_pool (context *ctx)
+  void worker::push_task_into_worker_pool (context *ctx)
   {
     /* push new task into worker pool */
     css_push_server_task (*ctx->m_conn);
   }
 
-  void connection_worker::purge_stale_contexts ()
+  void worker::purge_stale_contexts ()
   {
-    for (auto &ctx : m_removed_context)
-      {
-	/* release the conneciton */
-	css_free_conn (ctx->m_conn);
+    coordinator::message message;
 
-	/* remove from the context list and delete it */
+    message.type = coordinator::message_type::RETURN_TO_POOL;
+    message.resource = m_removed_context;
+
+    /* remove from the context list */
+    for (context *ctx : m_removed_context)
+      {
 	if (m_context.erase (ctx) == 0)
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->purge_stale_contexts: context not found\n");
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->purge_stale_contexts: context not found\n");
 	    continue;
 	  }
-	delete ctx;
       }
     m_removed_context.clear ();
+
+    m_coordinator->enqueue (std::move (message));
+    if (!m_coordinator->notify ())
+      {
+	assert_release (false);
+      }
   }
 
-  void connection_worker::wakeup_blocked_worker (std::shared_ptr<message_blocker> handle)
+  void worker::wakeup_blocked_worker (std::shared_ptr<message_blocker> handle)
   {
     if (handle)
       {
@@ -319,7 +298,7 @@ namespace cubconn
       }
   }
 
-  bool connection_worker::is_wait_required (context *ctx)
+  bool worker::is_wait_required (context *ctx)
   {
     if (ctx->m_conn->fd == cdc_Gl.conn.fd)
       {
@@ -329,7 +308,7 @@ namespace cubconn
     return true;
   }
 
-  bool connection_worker::has_remaining_tasks (context *ctx)
+  bool worker::has_remaining_tasks (context *ctx)
   {
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
     this->handle_message_queue_by_index (queue_type::IMMEDIATE);
@@ -337,14 +316,14 @@ namespace cubconn
     if (ctx->m_ignore < ignore_level::IGNORE_ALL && !ctx->m_send.m_transmitter.empty ())
       {
 	er_log_conn (ARG_FILE_LINE,
-		     "connection_worker->handle_connection_close: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
+		     "connection::worker->handle_connection_close: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
 	return true;
       }
 
     return false;
   }
 
-  std::pair<int, int> connection_worker::start_connection_close (context *ctx)
+  std::pair<int, int> worker::start_connection_close (context *ctx)
   {
     css_conn_entry *conn;
     int tran_index, client_id;
@@ -364,7 +343,7 @@ namespace cubconn
     return { tran_index, client_id };
   }
 
-  void connection_worker::end_connection_close ()
+  void worker::end_connection_close ()
   {
     pthread_mutex_lock (&m_entry->tran_index_lock);
 
@@ -375,7 +354,7 @@ namespace cubconn
     pthread_mutex_unlock (&m_entry->tran_index_lock);
   }
 
-  bool connection_worker::handle_connection_close (context *ctx, bool retry, std::shared_ptr<message_blocker> handle)
+  bool worker::handle_connection_close (context *ctx, bool retry, std::shared_ptr<message_blocker> handle)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     message request;
@@ -387,7 +366,7 @@ namespace cubconn
 	/* wake up the thread blocked until this request is complete */
 	this->wakeup_blocked_worker (handle);
 
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: already removed context. conn = %p\n",
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_connection_close: already removed context. conn = %p\n",
 		     ctx->m_conn);
 	return true;
       }
@@ -419,7 +398,7 @@ namespace cubconn
 	    pthread_mutex_unlock (&m_entry->tran_index_lock);
 
 	    er_log_conn (__FILE__, __LINE__,
-			 "connection_worker->handle_connection_close: wait for transaction index. conn = %d, fd = %d\n", ctx->m_conn,
+			 "connection::worker->handle_connection_close: wait for transaction index. conn = %d, fd = %d\n", ctx->m_conn,
 			 ctx->m_conn->fd);
 
 	    /* the connected client does not yet finished boot_client_register */
@@ -459,7 +438,7 @@ namespace cubconn
     if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_connection_close: net_server_active_workers. conn = %d, fd = %d\n", ctx->m_conn,
+		     "connection::worker->handle_connection_close: net_server_active_workers. conn = %d, fd = %d\n", ctx->m_conn,
 		     ctx->m_conn->fd);
 	goto retry;
       }
@@ -469,7 +448,7 @@ namespace cubconn
     if (this->has_remaining_tasks (ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_connection_close: has_remaining_tasks. conn = %d, fd = %d\n", ctx->m_conn,
+		     "connection::worker->handle_connection_close: has_remaining_tasks. conn = %d, fd = %d\n", ctx->m_conn,
 		     ctx->m_conn->fd);
 	goto retry;
       }
@@ -505,7 +484,8 @@ namespace cubconn
     rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
 
     end = std::chrono::steady_clock::now ();
-    m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
+    m_stats.add (statistics::worker::BLOCKED_RMUTEX,
+		 std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);
@@ -521,12 +501,12 @@ namespace cubconn
     ctx->m_removed = true;
     m_removed_context.push_back (ctx);
 
-    m_stats.sub (stats::NET_CLIENTS, 1);
+    m_stats.sub (statistics::worker::CLIENT_NUM, 1);
 
     return true;
 
 retry:
-    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_connection_close: retry fd = %d, ignore = %d, conn = %p\n",
+    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_connection_close: retry fd = %d, ignore = %d, conn = %p\n",
 		 ctx->m_conn ? ctx->m_conn->fd : -1, ctx->m_ignore, ctx->m_conn);
 
     this->end_connection_close ();
@@ -542,18 +522,49 @@ retry:
 
     /* rezily notified */
     m_has_retry = true;
-    m_notification |= static_cast<uint32_t> (notification_type::QUEUE);
-    return this->eventfd_settimer (m_timerfd, timer_latency::LOW_LATENCY);
+
+    return this->eventfd_addtimer (
+		   timer_type::QUEUE,
+		   timer_latency::LOW_LATENCY,
+		   std::bind (&worker::handle_message_queue, this)
+	   );
   }
 
-  void connection_worker::ha_close_all_connections ()
+  bool worker::statistics_metrics_to_coordinator ()
   {
+    coordinator::message message;
+
+    message.type = coordinator::message_type::STATISTICS;
+
+    message.statistics.time_ns = m_timens;
+    message.statistics.worker.first = m_index;
+    message.statistics.worker.second = m_stats;
+    message.statistics.contexts.reserve (m_context.size ());
+    for (context *ctx : m_context)
+      {
+	message.statistics.contexts.emplace_back (ctx->m_id, ctx->m_stats);
+      }
+
+    /* just enqueue */
+    m_coordinator->enqueue (std::move (message));
+
+    return true;
+  }
+
+  bool worker::ha_close_all_connections ()
+  {
+    /* HA msut continue to check */
+    if (css_ha_server_state () != HA_SERVER_STATE_TO_BE_STANDBY)
+      {
+	return true;
+      }
+
     /* alive context */
     for (auto &ctx : m_context)
       {
 	if (!ctx->m_conn->in_transaction)
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->ha_close_all_connections: close fd = %d, conn = %p\n",
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->ha_close_all_connections: close fd = %d, conn = %p\n",
 			 ctx->m_conn->fd, ctx->m_conn);
 	    this->handle_connection_close (ctx);
 	  }
@@ -561,9 +572,11 @@ retry:
 
     /* the actual release of the context is handled last */
     this->purge_stale_contexts ();
+
+    return true;
   }
 
-  bool connection_worker::eventfd_register (int fd)
+  bool worker::eventfd_register (int fd)
   {
     context *ctx;
     css_conn_entry *conn;
@@ -572,14 +585,14 @@ retry:
     conn = reinterpret_cast<css_conn_entry *> (new int { fd });
     if (!ctx || !conn)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_register: failed to allocate memory\n");
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: failed to allocate memory\n");
 	return false;
       }
     ctx->m_conn = conn;
 
     if (!m_events.add_descriptor (fd, EPOLLET | EPOLLIN, ctx))
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_register: add_descriptor failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_register: add_descriptor failed\n");
 
 	delete ctx;
 	delete conn;
@@ -589,7 +602,7 @@ retry:
     return true;
   }
 
-  bool connection_worker::eventfd_clear (int fd)
+  bool worker::eventfd_clear (int fd)
   {
     ssize_t bytes;
     uint64_t u;
@@ -623,7 +636,7 @@ retry:
     return true;
   }
 
-  bool connection_worker::eventfd_settimer (int fd, uint32_t sec, uint64_t nsec)
+  bool worker::eventfd_settimer (int fd, uint64_t sec, uint64_t nsec)
   {
     struct itimerspec its;
 
@@ -635,46 +648,107 @@ retry:
 
     if (timerfd_settime (fd, 0, &its, NULL) < 0)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_settimer: %s\n", strerror (errno));
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_settimer: %s\n", strerror (errno));
 	return false;
       }
 
     return true;
   }
 
-  bool connection_worker::eventfd_settimer (int fd, timer_latency latency)
+  bool worker::eventfd_settimer (int fd, timer_latency latency)
   {
-    uint32_t sec, nsec;
+    uint64_t sec, nsec;
 
-    if (m_timer_latency == latency)
-      {
-	er_log_conn (ARG_FILE_LINE, "eventfd_settimer: index = %d, skipped m_timer_latency = %d, latency = %d\n", m_index,
-		     m_timer_latency, latency);
-	/* no need to change */
-	return true;
-      }
-
-    sec = static_cast<uint32_t> (latency) / static_cast<uint32_t> (1e9);
-    nsec = static_cast<uint32_t> (latency) % static_cast<uint32_t> (1e9);
+    sec = static_cast<uint64_t> (latency) / static_cast<uint64_t> (1e9);
+    nsec = static_cast<uint64_t> (latency) % static_cast<uint64_t> (1e9);
     if (eventfd_settimer (fd, sec, nsec))
       {
-	m_timer_latency = latency;
 	return true;
       }
     return false;
   }
 
-  bool connection_worker::eventfd_handler (bool *eventfds)
+  bool worker::eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle)
   {
+    timer_latency min;
+    std::size_t i;
+
+    if (m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return true;
+      }
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = true;
+    m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
+    m_timer_handler[static_cast<std::size_t> (type)].function = handle;
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = 0;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    assert (min != timer_latency::NA);
+
+    return this->eventfd_settimer (m_timerfd, min);
+  }
+
+  void worker::eventfd_removetimer (timer_type type)
+  {
+    timer_latency min;
+    std::size_t i;
+
+    /* avoid resetting the timerfd unnecessarily */
+    if (!m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return ;
+      }
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = false;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    if (min != timer_latency::NA)
+      {
+	this->eventfd_settimer (m_timerfd, min);
+      }
+    else
+      {
+	this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+      }
+  }
+
+  bool worker::eventfd_handler (bool *eventfds)
+  {
+    std::size_t i;
+
+    m_has_retry = false;
+
     /* event fd */
     if (eventfds[0])
       {
 	eventfds[0] = false;
-	m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
 
 	if (!this->eventfd_clear (m_eventfd))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_handler: eventfd_clear failed\n");
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
 	    return false;
 	  }
 
@@ -682,6 +756,8 @@ retry:
 	  {
 	    return false;
 	  }
+
+	m_timer_handler[static_cast<std::size_t> (timer_type::QUEUE)].last_time = m_timens;
       }
 
     /* timer fd */
@@ -689,41 +765,40 @@ retry:
       {
 	eventfds[1] = false;
 
-	m_has_retry = false;
-	if (m_notification & static_cast<uint32_t> (notification_type::QUEUE))
+	for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
 	  {
-	    m_notification &= ~static_cast<uint32_t> (notification_type::QUEUE);
-
-	    if (!this->handle_message_queue ())
+	    if (!m_timer_handler[i].valid)
 	      {
-		return false;
+		continue;
 	      }
-	  }
-	if (m_notification & static_cast<uint32_t> (notification_type::HA))
-	  {
-	    /* HA msut continue to check */
-	    if (css_ha_server_state () == HA_SERVER_STATE_TO_BE_STANDBY)
+
+	    if (m_timens - m_timer_handler[i].last_time > static_cast<uint64_t> (m_timer_handler[i].latency))
 	      {
-		this->ha_close_all_connections ();
+		if (!m_timer_handler[i].function ())
+		  {
+		    return false;
+		  }
+
+		m_timer_handler[i].last_time = m_timens;
 	      }
 	  }
 
 	if (!this->eventfd_clear (m_timerfd))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->eventfd_handler: eventfd_clear failed\n");
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
 	    return false;
 	  }
 
 	if (!m_has_retry)
 	  {
-	    this->eventfd_settimer (m_timerfd, timer_latency::MEDIUM_LATENCY);
+	    this->eventfd_removetimer (timer_type::QUEUE);
 	  }
       }
 
     return true;
   }
 
-  bool connection_worker::handle_message_queue_send_packet (message &item)
+  bool worker::handle_message_queue_send_packet (message &item)
   {
     context *ctx;
     result status;
@@ -747,7 +822,7 @@ retry:
 
 #if !defined (NDEBUG)
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_message_queue_send_packet: message_id = %lld, context is already cleared for conn = %p\n",
+		     "connection::worker->handle_message_queue_send_packet: message_id = %lld, context is already cleared for conn = %p\n",
 		     item.message_id, static_cast<void *> (item.conn));
 #endif
 
@@ -804,7 +879,7 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue_send_packet: modify_descriptor failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_send_packet: modify_descriptor failed\n");
 	return false;
       }
 
@@ -814,7 +889,7 @@ retry:
     return true;
   }
 
-  bool connection_worker::handle_message_queue_release_packet (message &item)
+  bool worker::handle_message_queue_release_packet (message &item)
   {
     context *ctx;
     int r;
@@ -832,7 +907,7 @@ retry:
 	assert (r == NO_ERROR);
 
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
+		     "connection::worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
 		     static_cast<void *> (item.conn));
 	return true;
       }
@@ -841,7 +916,7 @@ retry:
       {
 	ctx->m_recv.m_receiver.release (packet.data ());
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
+		     "connection::worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
       }
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
@@ -850,16 +925,11 @@ retry:
     return true;
   }
 
-  bool connection_worker::handle_message_queue_new_client (message &item)
+  bool worker::handle_message_queue_new_client (message &item)
   {
     context *ctx;
 
-    ctx = new context (32 * 1024, &m_stats);
-    if (!ctx)
-      {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: failed to allocate memory\n");
-	return false;
-      }
+    ctx = item.ctx;
     ctx->m_conn = item.conn;
 
     rmutex_lock (NULL, &ctx->m_conn->cmutex);
@@ -872,8 +942,8 @@ retry:
 	ctx->m_conn->context = nullptr;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
-	delete ctx;
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue_new_client: add_descriptor failed\n");
+	m_removed_context.push_back (ctx);
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
     if (!m_context.insert (ctx).second)
@@ -884,18 +954,24 @@ retry:
 
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
-	delete ctx;
+	m_removed_context.push_back (ctx);
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_message_queue_new_client: context can not be duplicated\n");
+		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
 	return false;
       }
 
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+    ctx->m_stats.set (statistics::context::OPEND_NS, m_timens);
+    ctx->m_stats.set (statistics::context::LAST_ACTIVE_NS, m_timens);
+    ctx->m_stats.set (statistics::context::LAST_MOVED_NS, 0);
+    ctx->m_stats.set (statistics::context::MOVE_COUNT, 0);
+
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
     return true;
   }
 
-  bool connection_worker::handle_message_queue_shutdown_client (message &item)
+  bool worker::handle_message_queue_shutdown_client (message &item)
   {
     context *ctx;
     int r;
@@ -912,7 +988,7 @@ retry:
 	assert (r == NO_ERROR);
 
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
+		     "connection::worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
 		     static_cast<void *> (item.conn));
 	return true;
       }
@@ -927,7 +1003,7 @@ retry:
     return true;
   }
 
-  bool connection_worker::handle_message_queue_by_index (queue_type type)
+  bool worker::handle_message_queue_by_index (queue_type type)
   {
     message request;
     uint64_t size, i;
@@ -949,16 +1025,16 @@ retry:
 	    break;
 
 	  case message_type::NEW_CLIENT:
-	    m_stats.add (stats::MQ_NEW_CLIENT, 1);
+	    m_stats.add (statistics::worker::MQ_NEW_CLIENT, 1);
 	    if (!this->handle_message_queue_new_client (request))
 	      {
 		return false;
 	      }
-	    m_stats.add (stats::NET_CLIENTS, 1);
+	    m_stats.add (statistics::worker::CLIENT_NUM, 1);
 	    break;
 
 	  case message_type::SHUTDOWN_CLIENT:
-	    m_stats.add (stats::MQ_SHUTDOWN_CLIENT, 1);
+	    m_stats.add (statistics::worker::MQ_SHUTDOWN_CLIENT, 1);
 	    if (!this->handle_message_queue_shutdown_client (request))
 	      {
 		return false;
@@ -966,7 +1042,7 @@ retry:
 	    break;
 
 	  case message_type::SEND_PACKET:
-	    m_stats.add (stats::MQ_SEND_PACKET, 1);
+	    m_stats.add (statistics::worker::MQ_SEND_PACKET, 1);
 	    if (!this->handle_message_queue_send_packet (request))
 	      {
 		return false;
@@ -974,7 +1050,7 @@ retry:
 	    break;
 
 	  case message_type::RELEASE_PACKET:
-	    m_stats.add (stats::MQ_RELEASE_PACKET, 1);
+	    m_stats.add (statistics::worker::MQ_RELEASE_PACKET, 1);
 	    if (!this->handle_message_queue_release_packet (request))
 	      {
 		return false;
@@ -987,7 +1063,7 @@ retry:
 
 	  default:
 	    er_log_conn (__FILE__, __LINE__,
-			 "master_connector->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
+			 "connection::worker->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
 	    assert_release (false);
 	    break;
 	  }
@@ -996,17 +1072,17 @@ retry:
     return true;
   }
 
-  bool connection_worker::handle_message_queue ()
+  bool worker::handle_message_queue ()
   {
     std::size_t i;
 
-    m_stats.add (stats::MQ_REQUESTED, 1);
+    m_stats.add (statistics::worker::MQ_REQUESTED, 1);
 
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
       {
 	if (!this->handle_message_queue_by_index (static_cast<queue_type> (i)))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_message_queue: handle_message_queue_by_index failed\n");
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue: handle_message_queue_by_index failed\n");
 	    return false;
 	  }
       }
@@ -1017,7 +1093,7 @@ retry:
     return true;
   }
 
-  void connection_worker::handle_hangup_or_error (context *ctx, bool err)
+  void worker::handle_hangup_or_error (context *ctx, bool err)
   {
     socklen_t length;
     int error;
@@ -1028,21 +1104,21 @@ retry:
 	length = sizeof (error);
 	if (getsockopt (ctx->m_conn->fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0)
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_hangup_or_error: socket error (EPOLLERR) on fd %d: %s",
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_hangup_or_error: socket error (EPOLLERR) on fd %d: %s",
 			 ctx->m_conn->fd,
 			 strerror (error));
 	  }
 	else
 	  {
 	    er_log_conn (__FILE__, __LINE__,
-			 "connection_worker->handle_hangup_or_error: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
+			 "connection::worker->handle_hangup_or_error: socket error (EPOLLERR) on fd %d, but getsockopt failed.",
 			 ctx->m_conn->fd);
 	  }
       }
     else
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_hangup_or_error: connection closed by peer (HUP/RDHUP) on fd %d.",
+		     "connection::worker->handle_hangup_or_error: connection closed by peer (HUP/RDHUP) on fd %d.",
 		     ctx->m_conn->fd);
       }
 
@@ -1052,7 +1128,7 @@ retry:
     this->handle_connection_close (ctx);
   }
 
-  result connection_worker::handle_error_packet (context *ctx, cubbase::span<std::byte> &packet)
+  result worker::handle_error_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
     css_conn_entry *conn;
     css_error_code error;
@@ -1068,7 +1144,7 @@ retry:
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_error_packet: the expected size by header and packet size is different\n");
+		     "connection::worker->handle_error_packet: the expected size by header and packet size is different\n");
 	return result::Skewed;
       }
 
@@ -1092,7 +1168,7 @@ retry:
     return result::Ok;
   }
 
-  result connection_worker::handle_data_packet (context *ctx, cubbase::span<std::byte> &packet)
+  result worker::handle_data_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
     THREAD_ENTRY *waiter_thread;
     css_wait_queue_entry *waiter;
@@ -1110,7 +1186,7 @@ retry:
     if (packet.size () != static_cast<std::size_t> (size) && packet.size () != ((static_cast<std::size_t> (size) + 7) & ~7))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_data_packet: the expected size by header and packet size is different\n");
+		     "connection::worker->handle_data_packet: the expected size by header and packet size is different\n");
 	return result::Skewed;
       }
 
@@ -1187,7 +1263,7 @@ retry:
     return result::Ok;
   }
 
-  result connection_worker::handle_command_header_packet (context *ctx)
+  result worker::handle_command_header_packet (context *ctx)
   {
     css_conn_entry *conn;
     NET_HEADER *header;
@@ -1228,7 +1304,7 @@ retry:
     return result::Ok;
   }
 
-  result connection_worker::handle_header_packet (context *ctx, cubbase::span<std::byte> &packet)
+  result worker::handle_header_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
     css_conn_entry *conn;
     NET_HEADER *header;
@@ -1245,7 +1321,7 @@ retry:
 	/* from the socket to recover this state machine and handle   */
 	/* the next request properly.				      */
 	er_log_conn (__FILE__, __LINE__,
-		     "connection_worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
+		     "connection::worker->handle_header_packet: the expected size, sizeof (NET_HEADER) and packet size is different\n");
 	return result::Skewed;
       }
 
@@ -1300,7 +1376,7 @@ retry:
 
       default:
 	er_log_conn (ARG_FILE_LINE,
-		     "connection_worker->handle_header_packet: unknown state - will be reset by skew handler\n");
+		     "connection::worker->handle_header_packet: unknown state - will be reset by skew handler\n");
 	status = result::Skewed;
 	break;
       }
@@ -1308,7 +1384,7 @@ retry:
     return status;
   }
 
-  result connection_worker::handle_packet (context *ctx, cubbase::span<std::byte> &packet)
+  result worker::handle_packet (context *ctx, cubbase::span<std::byte> &packet)
   {
     result status;
 
@@ -1328,7 +1404,7 @@ retry:
 
       default:
 	status = result::Error;
-	er_log_conn (ARG_FILE_LINE, "connection_worker->handle_packet: unknown state\n");
+	er_log_conn (ARG_FILE_LINE, "connection::worker->handle_packet: unknown state\n");
 	assert_release (false);
 	break;
       }
@@ -1336,7 +1412,7 @@ retry:
     return status;
   }
 
-  result connection_worker::handle_reception (context *ctx)
+  result worker::handle_reception (context *ctx)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     std::vector<cubbase::span<std::byte>> *packets;
@@ -1355,7 +1431,7 @@ retry:
     status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: status = %d\n", status);
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_reception: status = %d\n", status);
 	ctx->m_send.m_transmitter.empty ();
 	this->handle_connection_close (ctx);
 	return status;
@@ -1368,7 +1444,7 @@ retry:
 	return result::Ok;
       }
 
-    m_stats.add (stats::NET_PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
+    m_stats.add (statistics::worker::PACKET_COUNT, ctx->m_recv.m_receiver.get_result ()->size ());
 
     start = std::chrono::steady_clock::now ();
 
@@ -1380,7 +1456,8 @@ retry:
       }
 
     end = std::chrono::steady_clock::now ();
-    m_stats.add (stats::BLOCKED_RMUTEX, std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
+    m_stats.add (statistics::worker::BLOCKED_RMUTEX,
+		 std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     /* received at least one packet */
     packets = ctx->m_recv.m_receiver.get_result ();
@@ -1395,7 +1472,7 @@ retry:
 	  }
 	else if (status == result::ClosedConnection)
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_reception: requested to close the connection\n");
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_reception: requested to close the connection\n");
 	    mtx = rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 	    if (mtx != NO_ERROR)
 	      {
@@ -1418,14 +1495,14 @@ retry:
     return result::Ok;
   }
 
-  result connection_worker::handle_transmission (context *ctx)
+  result worker::handle_transmission (context *ctx)
   {
     result status;
 
     status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
     if (status == result::PeerReset || status == result::Error)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: status = %d\n", status);
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_transmission: status = %d\n", status);
 
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
@@ -1445,14 +1522,14 @@ retry:
 	    /* this transmission is the last handling on this connection */
 	    this->handle_connection_close (ctx);
 	    er_log_conn (__FILE__, __LINE__,
-			 "connection_worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
+			 "connection::worker->handle_transmission: this transmission is the last handling on this connection: closed\n");
 	    return result::ClosedConnection;
 	  }
 	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 
 	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection_worker->handle_transmission: modify_descriptor failed\n");
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_transmission: modify_descriptor failed\n");
 
 	    /* ctx will be forcibly removed */
 	    ctx->m_ignore = ignore_level::IGNORE_ALL;
@@ -1466,7 +1543,7 @@ retry:
     return status;
   }
 
-  void connection_worker::initialize ()
+  void worker::initialize ()
   {
     /* watch me */
     m_watcher->mtx.lock ();
@@ -1474,7 +1551,7 @@ retry:
     m_watcher->mtx.unlock ();
 
     /* set name */
-    pthread_setname_np (pthread_self (), "cub_server:conn");
+    pthread_setname_np (pthread_self (), "connections");
 
     /* pin myself */
     cubbase::topology.pin_core (m_core);
@@ -1483,11 +1560,10 @@ retry:
     m_entry = cubthread::get_manager ()->claim_entry ();
     if (m_entry == nullptr)
       {
-	er_log_conn (__FILE__, __LINE__, "connection_worker->initialize: claim_entry failed\n");
+	er_log_conn (__FILE__, __LINE__, "connection::worker->initialize: claim_entry failed\n");
 	assert_release (false);
       }
     m_entry->register_id ();
-    m_entry->index = m_index;
     m_entry->type = TT_SERVER;
     m_entry->tran_index = -1;
     m_entry->m_status = cubthread::entry::status::TS_RUN;
@@ -1499,7 +1575,7 @@ retry:
     m_removed_context.clear ();
   }
 
-  void connection_worker::finalize ()
+  void worker::finalize ()
   {
     /* alive context */
     for (auto &ctx : m_context)
@@ -1531,7 +1607,7 @@ retry:
     m_watcher->cv.notify_one ();
   }
 
-  bool connection_worker::run ()
+  bool worker::run ()
   {
     std::array<epoll_event, 512> events;
     bool eventfds[2] = { false, false };
@@ -1548,9 +1624,13 @@ retry:
 	      {
 		continue;
 	      }
-	    er_log_conn (__FILE__, __LINE__, "master_connector->execute: m_events->wait failed: %s", strerror (errno));
+	    er_log_conn (__FILE__, __LINE__, "master::connector->execute: m_events->wait failed: %s", strerror (errno));
 	    assert_release (false);
+	    continue;
 	  }
+
+	/* criterion time to use during this loop */
+	m_timens = this->get_monotonic_ns ();
 
 	for (i = 0; i < nfds; i++)
 	  {
@@ -1564,6 +1644,7 @@ retry:
 		this->handle_hangup_or_error (ctx, events[i].events & EPOLLERR);
 		continue;
 	      }
+	    ctx->m_stats.set (statistics::context::LAST_ACTIVE_NS, m_timens);
 	    if (events[i].events & EPOLLIN)
 	      {
 		if (ctx->m_conn->fd == m_eventfd)
@@ -1583,7 +1664,7 @@ retry:
 		  }
 		if (status == result::Error)
 		  {
-		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_reception failed");
+		    er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_reception failed");
 		    return false;
 		  }
 	      }
@@ -1596,7 +1677,7 @@ retry:
 		  }
 		if (status == result::Error)
 		  {
-		    er_log_conn (__FILE__, __LINE__, "connection_worker->run: handle_transmission failed");
+		    er_log_conn (__FILE__, __LINE__, "connection::worker->run: handle_transmission failed");
 		    return false;
 		  }
 	      }
@@ -1607,7 +1688,7 @@ retry:
 	  {
 	    if (!this->eventfd_handler (eventfds))
 	      {
-		er_log_conn (__FILE__, __LINE__, "connection_worker->run: eventfd_handler failed");
+		er_log_conn (__FILE__, __LINE__, "connection::worker->run: eventfd_handler failed");
 		return false;
 	      }
 	  }
@@ -1616,7 +1697,7 @@ retry:
     return true;
   }
 
-  void connection_worker::attach ()
+  void worker::attach ()
   {
     this->initialize ();
     this->run ();
