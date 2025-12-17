@@ -1497,13 +1497,11 @@ cas_main (void)
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 
 #if !defined(CAS_FOR_CGW)
-#if 0
 	    if (is_xa_prepared ())
 	      {
 		ux_database_shutdown (true);
 		ux_database_connect (db_name, db_user, db_passwd, NULL);
 	      }
-#endif
 
 	    if (as_info->reset_flag == TRUE)
 	      {
