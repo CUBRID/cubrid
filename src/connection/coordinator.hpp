@@ -41,6 +41,14 @@ namespace cubconn::connection
   class coordinator
   {
     private:
+      enum class status
+      {
+	PREPARING,
+	STABLE,
+	DRAINING,
+	EXPANDING
+      };
+
       struct statistics_chunk
       {
 	/* score */
@@ -69,8 +77,8 @@ namespace cubconn::connection
 	/* RECV */
 	SHOW_STATS,
 
-	WORKER_INC,
-	WORKER_DEC,
+	SCALE_UP,
+	SCALE_DOWN,
 
 	CLIENT_MOVE,
 
@@ -170,6 +178,7 @@ namespace cubconn::connection
       /* thread handle */
       std::thread m_thread;
       std::size_t m_core;
+      status m_status;
       bool m_stop;
 
       cubthread::entry *m_entry;
@@ -201,6 +210,14 @@ namespace cubconn::connection
       /* in flight client id set (hand-off - take over) */
       std::unordered_set<uint64_t> m_migrating;
 
+      /* dynamic scaling of the worker */
+      struct
+      {
+	uint64_t last_drain_ns;
+	uint64_t last_expand_ns;
+	int draining_worker;
+      } m_scaling;
+
       /* statistics */
       std::vector<statistics_chunk> m_statistics;
 
@@ -215,6 +232,8 @@ namespace cubconn::connection
       bool transfer_connection (uint64_t id, int from, int to);
 
       bool scale_up ();
+
+      bool scale_down_finish ();
       bool scale_down ();
 
       /* --------------------------------------------------------------------------- */

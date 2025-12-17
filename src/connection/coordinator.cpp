@@ -49,6 +49,7 @@ namespace cubconn::connection
     m_parent (pool),
     m_watcher (watcher),
     m_core (core),
+    m_status (status::PREPARING),
     m_stop (false),
     m_max_worker (max_worker),
     m_min_worker (min_worker),
@@ -89,6 +90,11 @@ namespace cubconn::connection
 
     /* request queue */
     m_queue_size.store (0, std::memory_order_relaxed);
+
+    /* scaling */
+    m_scaling.last_drain_ns = 0;
+    m_scaling.last_expand_ns = 0;
+    m_scaling.draining_worker = -1;
 
     /* statistics */
     for (i = 0; i < max_worker; i++)
@@ -221,23 +227,78 @@ namespace cubconn::connection
 
   bool coordinator::scale_up ()
   {
-    /* TODO */
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+
+    if (m_current_worker >= m_max_worker)
+      {
+	/* there is no extra worker */
+	return false;
+      }
+
+    assert (m_current_worker < m_max_worker);
+
+    m_status = status::EXPANDING;
+
+    /* new clients must be entered in this worker */
+    m_statistics[m_current_worker].m_score = 0;
+
+    request.type = connection::worker::message_type::AWAKEN;
+    workers[m_current_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[m_current_worker]->notify ())
+      {
+	assert_release (false);
+      }
+    m_current_worker++;
+
+    m_status = status::STABLE;
+
+    return true;
+  }
+
+  bool coordinator::scale_down_finish ()
+  {
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+
+    request.type = connection::worker::message_type::HIBERNATE;
+    workers[m_scaling.draining_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[m_scaling.draining_worker]->notify ())
+      {
+	assert_release (false);
+      }
+
+    m_scaling.last_drain_ns = get_monotonic_ns ();
+    m_scaling.draining_worker = -1;
+
+    m_status = status::STABLE;
+
     return true;
   }
 
   bool coordinator::scale_down ()
   {
-    /* TODO */
-    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
-    connection::worker::message request;
+    std::size_t newhome;
 
-    request.type = connection::worker::message_type::HIBERNATE;
-
-    workers[m_current_worker - 1]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[m_current_worker - 1]->notify ())
+    if (m_current_worker <= m_min_worker)
       {
-	assert_release (false);
+	/* the number of workers cannot be further reduced */
+	return false;
       }
+
+    m_current_worker--;
+
+    /* TODO: we need more graceful migration method using statistics */
+    for (auto &stats : m_statistics[m_current_worker].m_contexts)
+      {
+	std::tie (newhome, std::ignore) = this->statistics_find_score_extremes ();
+	transfer_connection (stats.first, m_current_worker, newhome);
+      }
+
+    /* register the target worker index */
+    m_scaling.draining_worker = m_current_worker;
+
+    m_status = status::DRAINING;
 
     return true;
   }
@@ -572,6 +633,12 @@ not_transferred:
     /* update score */
     this->statistics_update_score (worker);
 
+    if ((m_status == status::DRAINING && static_cast<int> (worker) == m_scaling.draining_worker) &&
+	item.statistics.contexts.empty ())
+      {
+	this->scale_down_finish ();
+      }
+
     return true;
   }
 
@@ -626,10 +693,10 @@ not_transferred:
   {
     const char *name_table[] =
     {
-      "SHOW_STATS",
-      "WORKER_INC",
-      "WORKER_DEC",
-      "CLIENT_MOVE",
+      "SHOW STATS",
+      "SCALE UP",
+      "SCALE DOWN",
+      "CLIENT MOVE",
       "OK",
       "NOK"
     };
@@ -655,8 +722,14 @@ not_transferred:
 	tx.type = control_type::OK;
 	break;
 
-      case control_type::WORKER_INC:
-      case control_type::WORKER_DEC:
+      case control_type::SCALE_UP:
+	tx.type = this->scale_up () ? control_type::OK : control_type::NOK;
+	break;
+
+      case control_type::SCALE_DOWN:
+	tx.type = this->scale_down () ? control_type::OK : control_type::NOK;
+	break;
+
       default:
 	tx.type = control_type::NOK;
 	break;
@@ -726,6 +799,8 @@ not_transferred:
 
     m_entry->get_error_context ().register_thread_local ();
 
+    m_status = status::STABLE;
+
     m_parent->lock_resource ();
   }
 
@@ -784,7 +859,7 @@ not_transferred:
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    //this->statistics_print ();
+		    this->statistics_print ();
 
 		    /* a code for verification */
 		    for (std::size_t i = 0; i < m_max_worker; i++)
