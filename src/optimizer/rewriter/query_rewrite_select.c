@@ -1679,10 +1679,16 @@ qo_get_name_cnt_keep_unique (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
     {
       /* keep going */
     }
-  else
+  else if (node->node_type == PT_DATA_TYPE || node->node_type == PT_VALUE || node->node_type == PT_HOST_VAR)
     {
       /* don't walk into node */
       *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      /* impossible case */
+      info->my_spec_cnt = 2;
+      *continue_walk = PT_STOP_WALK;
     }
 
   if (info->my_spec_cnt >= 2 || (info->my_spec_cnt == 1 && info->other_spec_cnt >= 1))
