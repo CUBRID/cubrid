@@ -230,7 +230,8 @@ namespace cubconn::connection
     std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
     connection::worker::message request;
 
-    if (m_current_worker >= m_max_worker)
+    if (m_current_worker >= m_max_worker ||
+	m_status != status::STABLE)
       {
 	/* there is no extra worker */
 	return false;
@@ -280,7 +281,8 @@ namespace cubconn::connection
   {
     std::size_t newhome;
 
-    if (m_current_worker <= m_min_worker)
+    if (m_current_worker <= m_min_worker ||
+	m_status != status::STABLE)
       {
 	/* the number of workers cannot be further reduced */
 	return false;
@@ -358,7 +360,10 @@ namespace cubconn::connection
     printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
-	//printf ("------ worker %d ------\n", static_cast<int> (i));
+	if (!m_statistics[i].m_contexts.empty ())
+	  {
+	    printf ("------ worker %d ------\n", static_cast<int> (i));
+	  }
 
 	core += m_statistics[i].m_core;
 
@@ -371,7 +376,7 @@ namespace cubconn::connection
 	    budget_recv_hit += stats.second.second.get (statistics::context::RECV_BUDGET_HIT);
 	    budget_send_hit += stats.second.second.get (statistics::context::SEND_BUDGET_HIT);
 
-	    //printf ("  client id: %lld\n", static_cast<unsigned long long> (stats.first));
+	    printf ("  CLIENT (id, %lld)\n", static_cast<unsigned long long> (stats.first));
 	  }
 
 	/*
@@ -388,7 +393,7 @@ namespace cubconn::connection
 	printf ("SEND BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_send_hit));
 	*/
       }
-    printf ("------ workers ------\n");
+    printf ("------ summary ------\n");
     printf ("CORE USAGE: %0.4lf / %d\n", core, m_max_worker);
     printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
     printf ("BYTES IN: %lf\n", bytes_in);
@@ -859,7 +864,7 @@ not_transferred:
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    this->statistics_print ();
+		    //this->statistics_print ();
 
 		    /* a code for verification */
 		    for (std::size_t i = 0; i < m_max_worker; i++)
