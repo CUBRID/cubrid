@@ -61,7 +61,7 @@
 #include "cas_function.h"
 #include "cas_net_buf.h"
 #include "cas_execute.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "broker_process_size.h"
 #include "cas_ssl.h"
 
