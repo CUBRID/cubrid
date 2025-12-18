@@ -28,6 +28,12 @@
 
 #include "cas_db_inc.h"
 
+/* ODBC SQL types - only needed for CGW (Gateway) mode */
+/* Note: These headers are conditionally included because they are only required
+ *       when building CGW. CAS (normal broker) does not need ODBC dependencies.
+ *       The T_CGW_HANDLE structure uses these types, but forward declaration
+ *       allows the structure to be defined without including these headers in CAS mode.
+ */
 #if defined(CAS_FOR_CGW)
 /*
 * If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
@@ -81,8 +87,9 @@ struct t_query_result
   bool is_holdable;
 };
 
-#if defined (CAS_FOR_CGW)
 typedef struct t_cgw_handle T_CGW_HANDLE;
+
+#if defined (CAS_FOR_CGW)
 struct t_cgw_handle
 {
   SQLHENV henv;
@@ -90,6 +97,23 @@ struct t_cgw_handle
   SQLHSTMT hstmt;
 };
 #endif /* CAS_FOR_CGW */
+
+typedef struct t_fk_info_result T_FK_INFO_RESULT;
+struct t_fk_info_result
+{
+  struct t_fk_info_result *prev;
+  struct t_fk_info_result *next;
+
+  char *pktable_name;
+  char *pkcolumn_name;
+  char *fktable_name;
+  char *fkcolumn_name;
+  short key_seq;
+  SM_FOREIGN_KEY_ACTION update_action;
+  SM_FOREIGN_KEY_ACTION delete_action;
+  char *fk_name;
+  char *pk_name;
+};
 
 typedef struct t_srv_handle T_SRV_HANDLE;
 struct t_srv_handle
@@ -126,12 +150,12 @@ struct t_srv_handle
   bool is_fetch_completed;
   bool is_holdable;
   bool is_from_current_transaction;
-#if defined (CAS_FOR_CGW)
+
+  /* CGW fields */
   T_CGW_HANDLE *cgw_handle;
   int total_tuple_count;
   int stmt_type;
   bool is_cursor_open;
-#endif				/* CAS_FOR_CGW */
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
@@ -151,4 +175,13 @@ extern void hm_set_current_srv_handle (int h_id);
 
 extern int hm_srv_handle_get_current_count (void);
 extern void hm_srv_handle_unset_prepare_flag_all (void);
+extern void hm_free_result (void *res);
+extern void hm_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info);
+extern void release_all_fk_info_results (T_FK_INFO_RESULT * fk_res);
+
+typedef void (*cgw_free_stmt_func_t) (T_SRV_HANDLE * srv_handle);
+
+extern void hm_set_cgw_mode (bool enabled);
+extern void hm_set_cgw_free_stmt_func (cgw_free_stmt_func_t func);
+
 #endif /* _CAS_HANDLE_H_ */

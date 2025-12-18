@@ -5655,7 +5655,7 @@ tran_abort_reason_to_string (TRAN_ABORT_REASON val)
  *
  * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
  *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
- *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and db_trigger
+ *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and _db_trigger
  *	 are accessed when triggers are modified.
  *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
  *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last

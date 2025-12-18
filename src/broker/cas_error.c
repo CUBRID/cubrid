@@ -40,17 +40,9 @@
 #include <sys/time.h>
 #endif
 
-#include "cas.h"
-#include "cas_common.h"
-#include "cas_execute.h"
-#include "cas_network.h"
 #include "cas_util.h"
 #include "cas_schema_info.h"
 #include "cas_log.h"
-#include "cas_str_like.h"
-
-#include "broker_filename.h"
-#include "cas_sql_log2.h"
 
 #define CUBRID_CAS_ERR_TRACE        "CUBRID_CAS_ERR_TRACE"
 

@@ -1,0 +1,45 @@
+
+Time: 12/04/25 06:50:37.642 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1655
+trying to connect 'demodb@localhost'
+
+Time: 12/04/25 06:50:37.643 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1677
+ping server with handshake
+
+Time: 12/04/25 06:50:37.644 - NOTIFICATION *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1084  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 549240) connected to database server 'demodb' on the host 'localhost' (port 1523).
+
+Time: 12/04/25 06:50:37.645 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1134
+boot_restart_client: register client { type 2 db demodb user dba password (null) program csql login yahong host yahong1 pid 549240 }
+
+Time: 12/09/25 14:00:28.158 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1655
+trying to connect 'ycsb@localhost'
+
+Time: 12/09/25 14:00:28.158 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1677
+ping server with handshake
+
+Time: 12/09/25 14:00:28.160 - NOTIFICATION *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1084  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 790921) connected to database server 'ycsb' on the host 'localhost' (port 1523).
+
+Time: 12/09/25 14:00:28.161 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1134
+boot_restart_client: register client { type 2 db ycsb user dba password (null) program csql login yahong host yahong1 pid 790921 }
+
+Time: 12/09/25 14:00:30.504 - DEBUG *** file /home/yahong/cubrid/src/communication/network_interface_cl.c, line 7148
+qmgr_execute_query requested: EXECUTION_WITH_AUTOCOMMIT
+
+Time: 12/12/25 12:16:55.920 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1655
+trying to connect 'ycsb@localhost'
+
+Time: 12/12/25 12:16:55.922 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1677
+ping server with handshake
+
+Time: 12/12/25 12:16:55.923 - NOTIFICATION *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1084  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 1133461) connected to database server 'ycsb' on the host 'localhost' (port 1523).
+
+Time: 12/12/25 12:16:55.925 - DEBUG *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1134
+boot_restart_client: register client { type 2 db ycsb user dba password (null) program csql login yahong host yahong1 pid 1133461 }
+
+Time: 12/15/25 05:56:52.192 - NOTIFICATION *** file /home/yahong/cubrid/src/transaction/boot_cl.c, line 1084  CODE = -971, Tran = -1, EID = 1
+Program 'csql' (pid 1321894) connected to database server 'ycsb' on the host 'localhost' (port 1523).
+
+*** The previous error message is the last one. ***
+

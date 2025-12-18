@@ -38,11 +38,11 @@ SELECT 'user', name, '', ''
 FROM   db_user WHERE LOWER(name) IN :reserved
 UNION ALL
 SELECT 'trigger', name, '', ''
-FROM   db_trigger WHERE name IN :reserved
+FROM   _db_trigger WHERE name IN :reserved
 UNION ALL
 SELECT 'trigger_attribute', target_attribute, '', name 
-FROM   db_trigger WHERE target_attribute IN :reserved
+FROM   _db_trigger WHERE target_attribute IN :reserved
 UNION ALL
 SELECT 'serial', name, '', ''
-FROM   db_serial WHERE name IN :reserved;
+FROM   _db_serial WHERE name IN :reserved;
 

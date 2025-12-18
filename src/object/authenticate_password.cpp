@@ -347,6 +347,12 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 	    }
 	}
     }
+
+  if (error == NO_ERROR)
+    {
+      error = au_update_user_timestamp (user);
+    }
+
   AU_ENABLE (save);
   return (error);
 }
