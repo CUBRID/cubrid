@@ -460,6 +460,10 @@ using thread_clock_type = std::chrono::system_clock;
 
 static void thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
 				    bool had_mutex);
+static void thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
+    thread_resume_suspend_status resume_reason,
+    thread_resume_suspend_status suspend_reason,
+    bool had_mutex);
 
 // todo - remove timeval and use std::chrono
 static void
@@ -475,7 +479,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
 }
 
 /*
- * thread_suspend() -
+ * thread_suspend_wakeup_and_unlock_entry() -
  *   return:
  *   thread_p(in):
  *   suspended_reason(in):
@@ -483,7 +487,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
  * Note: this function must be called by current thread also, the lock must have already been acquired.
  */
 void
-thread_suspend (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
+thread_suspend_wakeup_and_unlock_entry (cubthread::entry *thread_p, thread_resume_suspend_status suspended_reason)
 {
   cubthread::entry::status old_status;
 
@@ -519,18 +523,20 @@ thread_suspend (cubthread::entry *thread_p, thread_resume_suspend_status suspend
     }
 
   thread_p->m_status = old_status;
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
 }
 
 /*
- * thread_timed_suspend() -
+ * thread_suspend_timeout_wakeup_and_unlock_entry() -
  *   return:
  *   thread_p(in):
  *   time_p(in):
  *   suspended_reason(in):
  */
 int
-thread_timed_suspend (cubthread::entry *thread_p, struct timespec *time_p,
-		      thread_resume_suspend_status suspended_reason)
+thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, struct timespec *time_p,
+    thread_resume_suspend_status suspended_reason)
 {
   int r;
   cubthread::entry::status old_status;
@@ -552,8 +558,6 @@ thread_timed_suspend (cubthread::entry *thread_p, struct timespec *time_p,
 
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
 
-  thread_p->m_status = old_status;
-
   if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
     {
       usecs = std::chrono::duration_cast < std::chrono::microseconds > (thread_clock_type::now () - start_time_pt);
@@ -561,18 +565,20 @@ thread_timed_suspend (cubthread::entry *thread_p, struct timespec *time_p,
       thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
     }
 
-  if (r != 0)
+  if (r != 0 && r != ETIMEDOUT)
     {
-      if (r != ETIMEDOUT)
-	{
-	  error = ER_CSS_PTHREAD_COND_TIMEDWAIT;
-	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      else
-	{
-	  error = ER_CSS_PTHREAD_COND_TIMEDOUT;
-	}
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_TIMEDWAIT, 0);
+      return ER_CSS_PTHREAD_COND_TIMEDWAIT;
     }
+
+  if (r == ETIMEDOUT)
+    {
+      error = ER_CSS_PTHREAD_COND_TIMEDOUT;
+    }
+
+  thread_p->m_status = old_status;
+
+  pthread_mutex_unlock (&thread_p->th_entry_lock);
 
   return error;
 }
@@ -601,17 +607,22 @@ thread_wakeup_internal (cubthread::entry *thread_p, thread_resume_suspend_status
 }
 
 /*
- * thread_check_suspend_reason_and_wakeup () -
+ * thread_check_suspend_reason_and_wakeup_internal () -
+ *   return:
  *   thread_p(in):
  *   resume_reason:
  *   suspend_reason:
+ *   had_mutex:
  */
-void
-thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p,
-					thread_resume_suspend_status resume_reason,
-					thread_resume_suspend_status suspend_reason)
+static void
+thread_check_suspend_reason_and_wakeup_internal (cubthread::entry *thread_p,
+    thread_resume_suspend_status resume_reason,
+    thread_resume_suspend_status suspend_reason, bool had_mutex)
 {
-  thread_lock_entry (thread_p);
+  if (had_mutex == false)
+    {
+      thread_lock_entry (thread_p);
+    }
 
   if (thread_p->resume_status != suspend_reason)
     {
@@ -638,6 +649,12 @@ thread_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_r
   thread_wakeup_internal (thread_p, resume_reason, false);
 }
 
+void
+thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
+					thread_resume_suspend_status suspend_reason)
+{
+  thread_check_suspend_reason_and_wakeup_internal (thread_p, resume_reason, suspend_reason, false);
+}
 
 /*
  * thread_wakeup_already_had_mutex () -
