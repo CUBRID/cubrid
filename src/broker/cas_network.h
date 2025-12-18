@@ -27,7 +27,6 @@
 #ident "$Id$"
 
 #include <string.h>
-
 #include "cas_net_buf.h"
 
 #define NET_MIN_TIMEOUT		2
@@ -37,19 +36,6 @@
 #ifndef MIN
 #define MIN(X, Y)	((X) < (Y) ? (X) : (Y))
 #endif
-
-#define NET_SIZE_BYTE		((int) sizeof(char))
-#define NET_SIZE_SHORT		((int) sizeof(short))
-#define NET_SIZE_INT        	((int) sizeof(int))
-#define NET_SIZE_FLOAT      	((int) sizeof(float))
-#define NET_SIZE_DOUBLE     	((int) sizeof(double))
-#define NET_SIZE_INT64      	((int) sizeof(INT64))
-#define NET_SIZE_BIGINT     	NET_SIZE_INT64
-#define NET_SIZE_DATE       	(NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
-#define NET_SIZE_TIME       	(NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
-#define NET_SIZE_OBJECT     	(NET_SIZE_INT + NET_SIZE_SHORT + NET_SIZE_SHORT)
-#define NET_SIZE_TIMESTAMP	(NET_SIZE_SHORT * 6)
-#define NET_SIZE_DATETIME       (NET_SIZE_SHORT * 7)
 
 #define NET_ARG_GET_SIZE(SIZE, ARG)                     \
 	do {                                            \

@@ -42,19 +42,13 @@
 #include "porting.h"
 #include "cas_common.h"
 #include "cas_log.h"
-#include "cas_util.h"
 #include "broker_config.h"
-#include "cas.h"
-#include "cas_execute.h"
-
-#include "broker_env_def.h"
 #include "broker_filename.h"
 #include "broker_util.h"
 #include "dbi.h"
-#include "cas_db_inc.h"
-#include "chartype.h"
 #include "hide_password.h"
-
+#include "cas_optimization.h"
+#include "cas_common_vars.h"
 
 #if defined(WINDOWS)
 typedef int mode_t;
