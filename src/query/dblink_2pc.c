@@ -62,7 +62,8 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
       ids = (char *) calloc (num_ids, id_size);
       if (ids == NULL)
 	{
-	  return -1;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, num_ids * id_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
       dblink = dblink_conn;
@@ -116,7 +117,6 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
   T_CCI_ERROR err_buf;
   DBLINK_CONN_INFO *dblink;
   char type;			/* for COMMIT or ABORT */
-  char cas_info[64];		/* for checking invalid connection */
 
   xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
   xid.gtrid_length = sizeof (int);
@@ -145,6 +145,7 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
 	    {
 	      do
 		{
+		  /* TODO: remove the sleep and sending decision repeatedly */
 		  thread_sleep (1000);	/* wait 1 second for retry */
 		  conn_handle =
 		    cci_connect_with_url_ex (dblink[i].conn_url, dblink[i].user_name, dblink[i].password, &err_buf);
