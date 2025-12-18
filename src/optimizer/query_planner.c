@@ -653,8 +653,8 @@ qo_plan_compute_cost (QO_PLAN * plan)
    */
   if (plan->info)
     {
-      plan->variable_cpu_cost += (plan->info)->scan_rows * subq_cpu_cost;
-      plan->variable_io_cost += (plan->info)->scan_rows * subq_io_cost;
+      plan->variable_cpu_cost += plan->scan_rows * subq_cpu_cost;
+      plan->variable_io_cost += plan->scan_rows * subq_io_cost;
     }
 }
 
@@ -1298,7 +1298,7 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
 
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f (number of rows)expected %.0f scan %.0f total %.0f", (int) howfar, ' ', "cost:", fixed + variable,
-	   (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows);
+	   (plan->info)->cardinality, plan->scan_rows, (plan->info)->total_rows);
 }
 
 
@@ -1488,6 +1488,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   plan->analytic_eval_list = NULL;
   plan->plan_type = QO_PLANTYPE_SCAN;
   plan->order = QO_UNORDERED;
+  plan->scan_rows = 0;
 
   plan->plan_un.scan.scan_method = scan_method;
   plan->plan_un.scan.node = node;
@@ -1583,7 +1584,7 @@ qo_sscan_cost (QO_PLAN * planp)
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
   planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
-  planp->info->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
+  planp->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nSequential Scan Cost: \n");
@@ -2109,7 +2110,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
-  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
+  planp->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -5482,7 +5483,6 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   qo_compute_projected_segs (planner, nodes, terms, &info->projected_segs);
   info->projected_size = qo_compute_projected_size (planner, &info->projected_segs);
   info->cardinality = cardinality;
-  info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
   info->total_rows = total_rows;
 
   qo_init_planvec (&info->best_no_order);
@@ -7471,7 +7471,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (new_info == NULL)
     {
 
-      double selectivity, cardinality;
+      double selectivity, cardinality, total_rows;
       BITSET eqclasses;
 
       bitset_init (&eqclasses, planner->env);
@@ -7480,6 +7480,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       selectivity = 1.0;	/* init */
 
       cardinality = head_info->cardinality * tail_info->cardinality;
+      total_rows = head_info->total_rows * tail_info->total_rows;
       if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* set lower bound of outer join result */
@@ -7511,11 +7512,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      else
 		{
 		  selectivity *= QO_TERM_SELECTIVITY (term);
-		  selectivity = MAX (1.0 / cardinality, selectivity);
+		  selectivity = MAX (1.0 / MAX (head_info->cardinality, tail_info->cardinality), selectivity);
 		}
 	    }
 	  cardinality *= selectivity;
 	  cardinality = MAX (1.0, cardinality);
+          total_rows *= selectivity;
+	  total_rows = MAX (1.0, total_rows);
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
@@ -7535,7 +7538,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_union (&eqclasses, &(tail_info->eqclasses));
 
       new_info = planner->join_info[QO_INFO_INDEX (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)] =
-	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, cardinality);
+	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
 
       bitset_delset (&eqclasses);
     }
@@ -9215,7 +9218,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
   BITSET subqueries;
   BITSET_ITERATOR bi;
   int i, t, s;
-  double cardinality;
+  double cardinality, total_rows;
   QO_PLAN *next_plan;
 
   bitset_init (&nodes, planner->env);
@@ -9243,6 +9246,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
    */
   plan = QO_PARTITION_PLAN (partition);
   cardinality = (plan->info)->cardinality;
+  total_rows = (plan->info)->total_rows;
 
   bitset_assign (&nodes, &((plan->info)->nodes));
   bitset_assign (&terms, &((plan->info)->terms));
@@ -9256,8 +9260,9 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
       bitset_union (&terms, &((next_plan->info)->terms));
       bitset_union (&eqclasses, &((next_plan->info)->eqclasses));
       cardinality *= (next_plan->info)->cardinality;
+      total_rows *= (next_plan->info)->total_rows;
 
-      planner->cp_info[i] = qo_alloc_info (planner, &nodes, &terms, &eqclasses, cardinality, cardinality);
+      planner->cp_info[i] = qo_alloc_info (planner, &nodes, &terms, &eqclasses, cardinality, total_rows);
 
       for (t = planner->E; t < (signed) planner->T; ++t)
 	{
