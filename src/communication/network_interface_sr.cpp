@@ -589,6 +589,7 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
     {
       client_release = NULL;
       client_bit_platform = 0;
+      client_type = DB_CLIENT_TYPE_UNKNOWN;
       client_capabilities = 0;
       client_host = NULL;
     }
@@ -5036,6 +5037,7 @@ sqfile_get_list_file_page (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   int error = NO_ERROR;
 
   aligned_page_buf = (char *) malloc (IO_MAX_PAGE_SIZE);
+  // cppcheck-suppress uninitdata
   deleter = [aligned_page_buf]() noexcept
   {
     if (aligned_page_buf != NULL)
