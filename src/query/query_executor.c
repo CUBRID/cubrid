@@ -1196,9 +1196,10 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
-	  && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 	{
+	  assert (xasl->proc.buildlist.a_eval_list);
+
 	  buildlist = &xasl->proc.buildlist;
 	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
 	    {
@@ -20878,7 +20879,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     {
       if (xasl->instnum_val != NULL)
 	{
-	  if (xasl->instnum_val_offset != NULL)
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 	    {
 	      pr_clone_value (xasl->instnum_val_offset, xasl->instnum_val);
 	    }

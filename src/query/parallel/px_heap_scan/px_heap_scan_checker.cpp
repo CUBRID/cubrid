@@ -576,14 +576,12 @@ namespace parallel_heap_scan
 	  }
 	if (xasl->proc.buildlist.a_eval_list)
 	  {
-	    for (ANALYTIC_EVAL_TYPE *eval = xasl->proc.buildlist.a_eval_list; eval; eval = eval->next)
+	    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 	      {
-		if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
-		  {
-		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
-		    break;
-		  }
+		result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+		break;
 	      }
+
 	    if (result != CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
 	      {
 		result = CHECK_RESULT::PARALLEL_LIST_MERGE;
