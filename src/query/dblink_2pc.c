@@ -166,6 +166,8 @@ dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_
   int i, participant_num = block_length / sizeof (DBLINK_CONN_INFO);
   DBLINK_CONN_INFO *dblink = (DBLINK_CONN_INFO *) block_particps_ids;
 
+  assert (participant_num > 0);
+
   for (i = 0; i < participant_num; i++)
     {
       fprintf (fp, "  CONN-HANDLE = %d, CONN-URL = %s, USER = %s\n", dblink[i].conn_handle, dblink[i].conn_url,

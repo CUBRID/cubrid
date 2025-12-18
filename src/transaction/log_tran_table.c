@@ -1409,7 +1409,7 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2
 	    }
 	}
       fprintf (out_fp, "\n");
-
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
       if (coord->ack_received)
 	{
 	  fprintf (out_fp, "    Acknowledgement vector =");
@@ -1425,6 +1425,7 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2
 		}
 	    }
 	}
+#endif
       fprintf (out_fp, "\n");
     }
 }
