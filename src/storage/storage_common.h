@@ -1031,6 +1031,71 @@ extern const int SM_MAX_STRING_LENGTH;
 #define SM_FUNCTION_INDEX_ID "*FI*"
 #define SM_PREFIX_INDEX_ID "*PLID*"
 
+typedef enum
+{
+  SM_INDEX_FLAG_NONE = 0,
+  SM_INDEX_FLAG_FILTER = 1,
+  SM_INDEX_FLAG_FUNCTION = 2,
+  SM_INDEX_FLAG_PREFIX = 3
+} SM_INDEX_FLAG;
+
+/*
+ * Enum values represent reverse indexes from the end of the constraint sequence to optional info:
+ * e.g., COMMENT_INDEX == seq_len - 1, OPTIONS_INDEX == seq_len - 2, ...
+ * See SM_CLASS_CONSTRAINT in class_object.h for structure details.
+*/
+typedef enum
+{
+  SM_CONSTRAINT_COMMENT_INDEX = 1,	// seq_len - 1
+  SM_CONSTRAINT_OPTIONS_INDEX = 2,	// seq_len - 2
+  SM_CONSTRAINT_INDEX_TYPE_INDEX = 3,	// seq_len - 3
+  SM_CONSTRAINT_STATUS_INDEX = 4,	// seq_len - 4
+  SM_CONSTRAINT_OPTIONAL_INFO_INDEX = 5,	// seq_len - 5 (optional)
+  // [att_name|id, asc_desc]... (forward from here)
+  // BTID
+
+  SM_CONSTRAINT_FIXED_FIELD_COUNT = SM_CONSTRAINT_OPTIONAL_INFO_INDEX	// Excludes OPTIONAL_INFO
+} SM_CONSTRAINT_FIXED_FIELD_REVERSE_INDEX;
+
+
+typedef enum
+{
+  SM_FK_INFO_REF_CLASS_OID_INDEX = 0,
+  SM_FK_INFO_REF_CLASS_PK_BTID_INDEX = 1,
+  SM_FK_INFO_DELETE_ACTION_INDEX = 2,
+  SM_FK_INFO_UPDATE_ACTION_INDEX = 3,
+  SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX = 4,
+  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 5,
+
+  SM_FK_INFO_SIZE
+} SM_FOREIGN_KEY_INFO_INDEX;
+
+/*
+ * All fields except [att_name|id, asc_desc] pairs are fixed in number.
+ * (See SM_CLASS_CONSTRAINT in class_object.h for structure details)
+ * To compute the number of attributes, we subtract the fixed field count
+ * and divide the remaining size by 2 (each attribute is represented by 2 fields).
+ * Optional info (1 field) is ignored, since it doesn't affect integer division by 2.
+*/
+static inline int
+get_class_constraint_att_count (int size)
+{
+  assert (((size - SM_CONSTRAINT_FIXED_FIELD_COUNT) / 2) > 0);
+  return ((size - SM_CONSTRAINT_FIXED_FIELD_COUNT) / 2);
+}
+
+/*
+ * Given the total size of a class constraint sequence, this function computes
+ * the absolute index of a fixed field (e.g., status, index_type, comment)
+ * based on its reverse position from the end of the sequence.
+*/
+static inline int
+get_class_constraint_index (int size, SM_CONSTRAINT_FIXED_FIELD_REVERSE_INDEX index)
+{
+  return size - index;
+}
+
+
 /*
  *    Bit field identifiers for attribute flags.  These could be defined
  *    with individual unsigned bit fields but this makes it easier
@@ -1064,6 +1129,13 @@ typedef enum
   SM_FOREIGN_KEY_SET_NULL
 } SM_FOREIGN_KEY_ACTION;
 
+typedef enum
+{
+  SM_FK_MATCH_NONE,		// no match check if any FK column is NULL
+  SM_FK_MATCH_PARTIAL,		// check non-NULL FK columns
+  SM_FK_MATCH_FULL		// all FK columns must be NULL or all valid
+} SM_FOREIGN_KEY_MATCH_OPTION;
+
 /*
  *    These identify "namespaces" for class components like attributes
  *    and methods.  A name_space identifier is frequently used
@@ -1091,6 +1163,8 @@ typedef enum
 #define SM_MAX_IDENTIFIER_LENGTH    DB_MAX_IDENTIFIER_LENGTH
 #define SM_MAX_USER_LENGTH          DB_MAX_USER_LENGTH
 
+// TODO: move to serial.c with related with serial
+// TODO: refactoring serial authorization check
 #define SERIAL_ATTR_UNIQUE_NAME     "unique_name"
 #define SERIAL_ATTR_NAME            "name"
 #define SERIAL_ATTR_OWNER           "owner"
@@ -1098,6 +1172,7 @@ typedef enum
 #define SERIAL_ATTR_INCREMENT_VAL   "increment_val"
 #define SERIAL_ATTR_MAX_VAL         "max_val"
 #define SERIAL_ATTR_MIN_VAL         "min_val"
+#define SERIAL_ATTR_START_VAL       "start_val"
 #define SERIAL_ATTR_CYCLIC          "cyclic"
 #define SERIAL_ATTR_STARTED         "started"
 #define SERIAL_ATTR_CLASS_NAME      "class_name"

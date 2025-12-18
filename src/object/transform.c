@@ -236,6 +236,7 @@ META_CLASS tf_Metaclass_query_spec = { META_QUERY_SPEC_NAME, {META_PAGE_QUERY_SP
 /* PARTITION */
 static META_ATTRIBUTE partition_atts[] = {
   {"ptype", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
+  {"class_partition_type", DB_TYPE_INTEGER, 1, NULL, 0, 0, NULL},
   {"pname", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"pexpr", DB_TYPE_STRING, 1, NULL, 0, 0, NULL},
   {"pvalues", DB_TYPE_SEQUENCE, 0, NULL, 0, 0, NULL},
@@ -293,6 +294,11 @@ static CT_ATTR ct_class_atts[] = {
   {"owner", NULL_ATTRID, DB_TYPE_OBJECT},
   {"collation_id", NULL_ATTRID, DB_TYPE_INTEGER},
   {"tde_algorithm", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"statistics_strategy", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"flags", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"created_time", NULL_ATTRID, DB_TYPE_DATETIME},
+  {"updated_time", NULL_ATTRID, DB_TYPE_DATETIME},
+  {"checked_time", NULL_ATTRID, DB_TYPE_DATETIME},
   {"unique_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"class_name", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"sub_classes", NULL_ATTRID, DB_TYPE_SEQUENCE},
@@ -394,8 +400,16 @@ static CT_ATTR ct_index_atts[] = {
   {"is_foreign_key", NULL_ATTRID, DB_TYPE_INTEGER},
   {"filter_expression", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"have_function", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"status", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"referential_index", NULL_ATTRID, DB_TYPE_OBJECT},
+  {"delete_rule", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"update_rule", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"referential_match_option", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"index_type", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"options", NULL_ATTRID, DB_TYPE_INTEGER},
   {"comment", NULL_ATTRID, DB_TYPE_VARCHAR},
-  {"status", NULL_ATTRID, DB_TYPE_INTEGER}
+  {"created_time", NULL_ATTRID, DB_TYPE_DATETIME},
+  {"updated_time", NULL_ATTRID, DB_TYPE_DATETIME},
 };
 
 static CT_ATTR ct_indexkey_atts[] = {
@@ -410,6 +424,7 @@ static CT_ATTR ct_indexkey_atts[] = {
 static CT_ATTR ct_partition_atts[] = {
   {"index_of", NULL_ATTRID, DB_TYPE_OBJECT},
   {"ptype", NULL_ATTRID, DB_TYPE_INTEGER},
+  {"class_partition_type", NULL_ATTRID, DB_TYPE_INTEGER},
   {"pname", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"pexpr", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"pvalues", NULL_ATTRID, DB_TYPE_SEQUENCE},

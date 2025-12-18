@@ -46,16 +46,6 @@
 #include <sys/stat.h>
 #endif /* WINDOWS */
 
-#include "cas_common.h"
-#include "cas.h"
-#include "cas_network.h"
-#include "cas_function.h"
-#include "cas_net_buf.h"
-#include "cas_log.h"
-#include "cas_util.h"
-#include "broker_filename.h"
-#include "cas_execute.h"
-
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
 #include <openssl/pem.h>
@@ -67,6 +57,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 #endif
+
+#include "cas_common.h"
+#include "cas_log.h"
+#include "cas_ssl.h"
 
 #define CERTF "cas_ssl_cert.crt"
 #define KEYF "cas_ssl_cert.key"

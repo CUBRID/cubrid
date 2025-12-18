@@ -42,10 +42,6 @@ namespace cubschema
     if (sm_is_system_class (name))
       {
 	class_mop = db_create_class (name.data ());
-	if (class_mop != nullptr)
-	  {
-	    sm_mark_system_class (class_mop, 1);
-	  }
       }
     else if (sm_is_system_vclass (name))
       {
@@ -54,6 +50,11 @@ namespace cubschema
     else
       {
 	assert (false);
+      }
+
+    if (class_mop != nullptr)
+      {
+	sm_mark_system_class (class_mop, 1);
       }
 
     return class_mop;
@@ -226,6 +227,14 @@ namespace cubschema
 	    break;
 	  case attribute_kind::QUERY_SPEC:
 	    error_code = db_add_query_spec (class_mop, name);
+	    break;
+	  case attribute_kind::CLASS_METHOD:
+	    /*
+	     * Temporary: class method support in system view class for
+	     * compatibility. To be removed when class/instance method support
+	     * is officially dropped.
+	     */
+	    error_code = db_add_class_method (class_mop, name, type);
 	    break;
 	  default:
 	    error_code = ER_FAILED;
