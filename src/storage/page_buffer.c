@@ -6592,7 +6592,7 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
       /* is it safe to use infinite wait instead of timed sleep? */
       thread_lock_entry (cur_thrd_entry);
       PGBUF_BCB_UNLOCK (bufptr);
-      thread_suspend_and_unlock_entry (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
+      thread_suspend_wakeup_and_unlock_entry (cur_thrd_entry, THREAD_PGBUF_SUSPENDED);
 
       if (cur_thrd_entry->resume_status != THREAD_PGBUF_RESUMED)
 	{
@@ -6776,7 +6776,7 @@ try_again:
     }
 
   thread_p->resume_status = THREAD_PGBUF_SUSPENDED;
-  r = thread_timed_suspend_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
+  r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
 
   if (thread_p->type == TT_WORKER)
     {
@@ -7626,7 +7626,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
 
       show_status->num_flusher_waiting_threads++;
 
-      r = thread_timed_suspend_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
+      r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
 
       show_status->num_flusher_waiting_threads--;
 
@@ -10865,7 +10865,7 @@ pgbuf_sleep (THREAD_ENTRY * thread_p, pthread_mutex_t * mutex_p)
   thread_lock_entry (thread_p);
   pthread_mutex_unlock (mutex_p);
 
-  thread_suspend_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
+  thread_suspend_wakeup_and_unlock_entry (thread_p, THREAD_PGBUF_SUSPENDED);
 }
 
 STATIC_INLINE int
