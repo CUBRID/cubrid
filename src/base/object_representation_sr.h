@@ -86,6 +86,13 @@ struct or_auto_increment
 };
 // *INDENT-ON*
 
+typedef struct or_attribute_index OR_ATTRIBUTE_INDEX;
+struct or_attribute_index
+{
+  BTID btid;			/* B-tree ID for index or constraint */
+  BTREE_TYPE type;		/* index type */
+};
+
 typedef struct or_attribute OR_ATTRIBUTE;
 struct or_attribute
 {
@@ -101,15 +108,16 @@ struct or_attribute
   DB_DEFAULT_EXPR_TYPE on_update_expr;	/* on update default expr type */
   OR_DEFAULT_VALUE default_value;	/* default value */
   OR_DEFAULT_VALUE current_default_value;	/* default value */
-  BTID *btids;			/* B-tree ID's for indexes and constraints */
+  OR_ATTRIBUTE_INDEX *btids;	/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
 
   int n_btids;			/* Number of ID's in the btids array */
+  int n_vector_indexes;		/* Number of vector indexes */
   BTID index;			/* btree id if indexed */
 
   /* local array of btid's to use if possible */
   int max_btids;		/* Size of the btids array */
-  BTID btid_pack[OR_ATT_BTID_PREALLOC];
+  OR_ATTRIBUTE_INDEX btid_pack[OR_ATT_BTID_PREALLOC];
 
   unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
