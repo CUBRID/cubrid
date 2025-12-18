@@ -57,36 +57,28 @@ namespace cubpacking
       packer (char *storage, const size_t amount);
       void set_buffer (char *storage, const size_t amount);
 
-      // int
       size_t get_packed_int_size (size_t curr_offset);
       void pack_int (const int value);
 
-      // bool
       size_t get_packed_bool_size (size_t curr_offset);
       void pack_bool (const bool value);
 
-      // short
       size_t get_packed_short_size (size_t curr_offset);
       void pack_short (const short value);
 
-      // (u)int64
       size_t get_packed_bigint_size (size_t curr_offset);
       void pack_bigint (const std::int64_t &value);
       void pack_bigint (const std::uint64_t &value);
 
-      // db_value
       size_t get_packed_db_value_size (const db_value &value, size_t curr_offset);
       void pack_db_value (const db_value &value);
 
-      // string
       size_t get_packed_string_size (const std::string &str, const size_t curr_offset);
       void pack_string (const std::string &str);
 
-      // c string
       size_t get_packed_c_string_size (const char *str, const size_t str_size, const size_t curr_offset);
       void pack_c_string (const char *str, const size_t str_size);
 
-      // oid
       size_t get_packed_oid_size (const size_t curr_offset);
       void pack_oid (const OID &oid);
 
@@ -139,67 +131,52 @@ namespace cubpacking
 
       bool has_error (void) const;
 
-      // int array
       size_t get_packed_int_array_size (size_t curr_offset, const size_t count);
       void pack_int_array (const int *array, const int count);
 
     private:
 
-      // int
       size_t get_packed_size_overloaded (const int value, size_t curr_offset);
       void pack_overloaded (const int value);
 
-      // bool
       size_t get_packed_size_overloaded (const bool value, size_t curr_offset);
       void pack_overloaded (const bool value);
 
-      // short
       size_t get_packed_size_overloaded (const short value, size_t curr_offset);
       void pack_overloaded (const short value);
 
-      // (u)int64
       size_t get_packed_size_overloaded (const std::int64_t &value, size_t curr_offset);
       void pack_overloaded (const std::int64_t &value);
       size_t get_packed_size_overloaded (const std::uint64_t &value, size_t curr_offset);
       void pack_overloaded (const std::uint64_t &value);
 
-      // db_value
       size_t get_packed_size_overloaded (const db_value &value, size_t curr_offset);
       void pack_overloaded (const db_value &value);
 
-      // string
       size_t get_packed_size_overloaded (const std::string &value, size_t curr_offset);
       void pack_overloaded (const std::string &str);
 
-      // C string
       size_t get_packed_size_overloaded (const char *value, size_t curr_offset);
       void pack_overloaded (const char *str);
 
-      // oid
       size_t get_packed_size_overloaded (const OID &oid, size_t curr_offset);
       void pack_overloaded (const OID &oid);
 
-      // packable_object
       size_t get_packed_size_overloaded (const packable_object &po, size_t curr_offset);
       void pack_overloaded (const packable_object &po);
 
-      // std::reference_wrapper<T>
       template <typename T>
       size_t get_packed_size_overloaded (const std::reference_wrapper<T> &wrapper, const size_t curr_offset);
       template <typename T>
       void pack_overloaded (const std::reference_wrapper<T> &wrapper);
 
-      // std::vector<T>
       template <typename T>
       size_t get_packed_size_overloaded (const std::vector<T> &container, const size_t curr_offset);
       template <typename T>
       void pack_overloaded (const std::vector<T> &container);
 
-      // cubmem::block
       size_t get_packed_size_overloaded (const cubmem::block &blk, size_t curr_offset);
       void pack_overloaded (const cubmem::block &blk);
-
-
 
       void pack_small_c_string (const char *string, const size_t str_size);
       void pack_large_c_string (const char *string, const size_t str_size);
