@@ -15257,7 +15257,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		}
 	    }
 
-
 	  /* nullify domains */
 	  for (agg_p = xasl->proc.buildlist.g_agg_list; agg_p != NULL; agg_p = agg_p->next)
 	    {

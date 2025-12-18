@@ -5762,7 +5762,6 @@ xts_process_analytic_eval_type (char *ptr, const ANALYTIC_EVAL_TYPE * analytic_e
     }
   ptr = or_pack_int (ptr, offset);
 
-
   return ptr;
 }
 
