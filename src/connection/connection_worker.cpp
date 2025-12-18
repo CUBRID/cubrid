@@ -210,7 +210,13 @@ namespace cubconn::connection
     /* wait_time is implemented only for  */
     /*	START				  */
     /*	SHUTDOWN_CLIENT			  */
+    /*	SEND_PACKET			  */
     /* you must implement a logic to use a waiter whose message type is not in above */
+
+    assert (!wait_time ||
+	    (item.type == message_type::START ||
+	     item.type == message_type::SHUTDOWN_CLIENT ||
+	     item.type == message_type::SEND_PACKET));
 
     std::shared_ptr<message_blocker> handle;
     std::unique_lock<std::mutex> lock;
@@ -863,6 +869,7 @@ retry:
 		     "connection::worker->handle_message_queue_send_packet: message_id = %lld, context is already cleared for conn = %p\n",
 		     item.message_id, static_cast<void *> (item.conn));
 #endif
+	this->wakeup_blocked_worker (item.waiter_handle);
 
 	return true;
       }
@@ -886,6 +893,8 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
+	this->wakeup_blocked_worker (item.waiter_handle);
+
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
@@ -908,6 +917,8 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
+	this->wakeup_blocked_worker (item.waiter_handle);
+
 	return true;
       }
 
@@ -917,12 +928,16 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
+	this->wakeup_blocked_worker (item.waiter_handle);
+
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_send_packet: modify_descriptor failed\n");
 	return false;
       }
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
+
+    ctx->m_send.m_blocker = std::move (item.waiter_handle);
 
     return true;
   }
@@ -1722,6 +1737,7 @@ respond:
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
+	this->wakeup_blocked_worker (ctx->m_send.m_blocker);
 	this->handle_connection_close (ctx);
 	return status;
       }
@@ -1730,6 +1746,8 @@ respond:
 
     if (status == result::Ok)
       {
+	this->wakeup_blocked_worker (ctx->m_send.m_blocker);
+
 	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
 	if (ctx->m_conn->status == CONN_CLOSING)
 	  {

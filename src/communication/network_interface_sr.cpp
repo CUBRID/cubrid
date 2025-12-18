@@ -2706,7 +2706,7 @@ slock_dump (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 	   * junk (i.e., whatever it is in the buffers) is sent.
 	   */
 	}
-      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size, TIMEOUT_INFINITE);
     }
   fclose (outfp);
   db_private_free_and_init (thread_p, buffer);

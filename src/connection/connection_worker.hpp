@@ -88,13 +88,6 @@ namespace cubconn::connection
 	uint64_t last_time;
       };
 
-      struct message_blocker
-      {
-	std::mutex m;
-	std::condition_variable cv;
-	bool done;
-      };
-
       struct exhausted_context
       {
 	bool prepared;
@@ -184,6 +177,7 @@ namespace cubconn::connection
 	  /* waiter handle (implemented only for START, SHUTDOWN_CLIENT) */
 	  /* START	     */
 	  /* SHUTDOWN_CLIENT */
+	  /* SEND_PACKET     */
 	  std::shared_ptr<message_blocker> waiter_handle;
 
 	  /* debug purpose */

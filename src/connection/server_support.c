@@ -194,7 +194,8 @@ static void css_process_shutdown_request (SOCKET master_fd);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
-static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item);
+static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type,
+					    cubconn::connection::worker::message &&item, int wait_time = 0);
 
 #if defined(WINDOWS)
 static int css_process_new_connection_request (void);
@@ -651,7 +652,8 @@ shutdown:
  *   item (in): request
  */
 static unsigned int
-css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item)
+css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item,
+			int wait_time)
 {
   CSS_CONN_ENTRY * conn;
   int r;
@@ -677,8 +679,7 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
       return 0;
     }
 
-  conn->worker->enqueue (type, std::move (item));
-  if (!conn->worker->notify ())
+  if (!conn->worker->enqueue_and_notify (type, std::move (item), nullptr, wait_time))
     {
       /* unlock */
       r = rmutex_unlock (NULL, &conn->cmutex);
@@ -705,7 +706,7 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
  * Note: This is to be used ONLY by the server to return data to the client
  */
 unsigned int
-css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
+css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size, int wait_time)
 {
   // *INDENT-OFF*
   cubconn::connection::worker::message request;
@@ -751,7 +752,7 @@ css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, 
   };
   // *INDENT-ON*
 
-  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request), wait_time);
 }
 
 unsigned int

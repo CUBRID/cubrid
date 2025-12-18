@@ -84,7 +84,8 @@ namespace cubconn::connection
   },
   m_send
   {
-    .m_transmitter = transmitter (&m_stats)
+    .m_transmitter = transmitter (&m_stats),
+    .m_blocker = nullptr
   }
   {
   }
@@ -105,7 +106,8 @@ namespace cubconn::connection
   },
   m_send
   {
-    .m_transmitter = transmitter ()
+    .m_transmitter = transmitter (),
+    .m_blocker = nullptr
   }
   {
   }
@@ -129,6 +131,7 @@ namespace cubconn::connection
     m_recv.m_command = false;
 
     m_send.m_transmitter.clear ();
+    m_send.m_blocker = nullptr;
 
     m_stats.reset ();
   }
