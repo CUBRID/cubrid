@@ -10103,7 +10103,7 @@ start_copy_page:
     }
   if (uses_dwb)
     {
-      error = dwb_set_data_on_next_slot (thread_p, iopage, false, &dwb_slot);
+      error = dwb_set_data_on_next_slot (thread_p, iopage, false, false, &dwb_slot);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -10152,7 +10152,7 @@ copy_unflushed_lsa:
    */
   if (uses_dwb)
     {
-      error = dwb_add_page (thread_p, iopage, &bufptr->vpid, &dwb_slot);
+      error = dwb_add_page (thread_p, iopage, &bufptr->vpid, false, &dwb_slot);
       if (error == NO_ERROR)
 	{
 	  if (dwb_slot == NULL)

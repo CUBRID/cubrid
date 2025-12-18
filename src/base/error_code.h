@@ -1753,7 +1753,9 @@
 // CAUTION: sync this value with that in CUBRIDServerSideJDBCErrorCode.java
 #define ER_SP_INVALID_CURSOR                        -1368
 
-#define ER_LAST_ERROR                               -1369
+#define ER_AU_LOGIN_DISABLED                        -1369
+
+#define ER_LAST_ERROR                               -1370
 
 
 

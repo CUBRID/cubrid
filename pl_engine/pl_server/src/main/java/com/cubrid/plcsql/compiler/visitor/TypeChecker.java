@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler.visitor;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.Dependency;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
@@ -58,14 +59,18 @@ import java.util.Stack;
 
 public class TypeChecker extends AstVisitor<Type> {
 
+    public Set<Dependency> dependencies = new HashSet<>();
+
     public TypeChecker(
             InstanceStore iStore,
             SymbolStack symbolStack,
-            ParseTreeConverter ptConv,
+            Set<Dependency> dependenciesOfStaticSql,
+            String spOwner,
             Set<SqlUse> sqlUsesInRecursiveCalls) {
         this.iStore = iStore;
         this.symbolStack = symbolStack;
-        this.ptConv = ptConv;
+        dependencies.addAll(dependenciesOfStaticSql);
+        this.spOwner = spOwner;
         this.sqlUsesInRecursiveCalls = sqlUsesInRecursiveCalls;
     }
 
@@ -90,11 +95,18 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitTypeSpec(TypeSpec node) {
+        if (node.type instanceof TypeRecord) {
+            TypeRecord tyRec = (TypeRecord) node.type;
+            if (tyRec.ofTable) {
+                dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, tyRec.rowName, spOwner));
+            }
+        }
         return node.type;
     }
 
     @Override
     public Type visitTypeSpecPercent(TypeSpecPercent node) {
+        dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, node.table, spOwner));
         assert node.type != null;
         return node.type;
     }
@@ -538,6 +550,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
         assert node.decl != null;
         checkRoutineCall(node.decl, node.args.nodes);
+        dependencies.add(new Dependency(Dependency.OBJ_TYPE_FUNCTION, node.name, spOwner));
         return node.decl.retTypeSpec.type;
     }
 
@@ -800,6 +813,8 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitExprSerialVal(ExprSerialVal node) {
         assert node.verified;
+
+        dependencies.add(new Dependency(Dependency.OBJ_TYPE_SERIAL, node.name, spOwner));
         return Type.NUMERIC_ANY;
     }
 
@@ -1213,6 +1228,7 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitStmtGlobalProcCall(StmtGlobalProcCall node) {
         assert node.decl != null;
         checkRoutineCall(node.decl, node.args.nodes);
+        dependencies.add(new Dependency(Dependency.OBJ_TYPE_PROCEDURE, node.name, spOwner));
         return null;
     }
 
@@ -1329,6 +1345,7 @@ public class TypeChecker extends AstVisitor<Type> {
     private InstanceStore iStore;
     private SymbolStack symbolStack;
     private ParseTreeConverter ptConv;
+    private String spOwner;
     private Set<SqlUse> sqlUsesInRecursiveCalls;
 
     private List<Type> caseComparedTypes;

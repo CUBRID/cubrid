@@ -110,10 +110,8 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-/* TODO : Move .h */
 #if defined(SA_MODE)
-extern bool catcls_Enable;
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
+#include "catalog_class.h"
 #endif /* SA_MODE */
 
 #define BOOT_FORMAT_MAX_LENGTH 500
@@ -160,6 +158,7 @@ static bool boot_Set_client_at_exit = false;
 static int boot_Process_id = -1;
 
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
+static int install_system_metadata (void);
 static void boot_shutdown_client_at_exit (void);
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap,
@@ -197,6 +196,36 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
   boot_Set_client_at_exit = true;
   boot_Process_id = getpid ();
   atexit (boot_shutdown_client_at_exit);
+
+  return NO_ERROR;
+}
+
+static int
+install_system_metadata (void)
+{
+  int error = NO_ERROR;
+
+  /* Create system classes such as the root and authorization classes */
+  au_init ();
+  error = au_install ();
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  /* Create authorization classes and enable authorization */
+  error = au_start ();
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  tr_init ();
+  catcls_init ();
+  error = catcls_install ();
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   return NO_ERROR;
 }
@@ -538,43 +567,18 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   OID_INIT_TEMPID ();
 
   error_code = ws_init ();
-
   if (error_code == NO_ERROR)
     {
-      /* Create system classes such as the root and authorization classes */
-
       sm_create_root (&rootclass_oid, &rootclass_hfid);
-      au_init ();
-
-      /* Create authorization classes and enable authorization */
-      error_code = au_install ();
+      error_code = install_system_metadata ();
       if (error_code == NO_ERROR)
 	{
-	  error_code = au_start ();
+	  error_code = tran_commit (false);
 	}
+
       if (error_code == NO_ERROR)
 	{
-	  tr_init ();
-	  error_code = tr_install ();
-	  if (error_code == NO_ERROR)
-	    {
-	      catcls_init ();
-	      error_code = catcls_install ();
-	      if (error_code == NO_ERROR)
-		{
-		  /*
-		   * mark all classes created during the initialization as "system"
-		   * classes,
-		   */
-		  sm_mark_system_classes ();
-		  error_code = tran_commit (false);
-		}
-
-	      if (error_code == NO_ERROR)
-		{
-		  error_code = sp_builtin_install ();
-		}
-	    }
+	  error_code = sp_builtin_install ();
 	}
     }
 
@@ -1867,8 +1871,8 @@ boot_destroy_catalog_classes (void)
     CTV_STORED_PROC_NAME,
     CTV_STORED_PROC_ARGS_NAME,
     CT_COLLATION_NAME,
-    CT_DB_SERVER_NAME,
-    CTV_DB_SERVER_NAME,
+    CT_SERVER_NAME,
+    CTV_SERVER_NAME,
     CT_SYNONYM_NAME,
     CTV_SYNONYM_NAME,
     NULL

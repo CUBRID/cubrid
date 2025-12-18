@@ -16098,7 +16098,7 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.update_stats.with_fullscan > 0)
     {
-      assert (p->info.update_stats.with_fullscan == 1);
+      assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
       b = pt_append_nulstring (parser, b, " with fullscan");
     }
 
