@@ -1067,7 +1067,6 @@ retry:
     /* hand off the context */
     request.type = message_type::TAKEOVER_CLIENT;
     request.ctx = ctx;
-    request.conn = item.conn;
     item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
     if (!item.worker_ptr->notify ())
       {
@@ -1140,7 +1139,8 @@ respond:
 
     ctx->m_stats.set (statistics::context::LAST_MOVED_NS, m_timens);
 
-    er_log_conn (__FILE__, __LINE__, "take over the client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
+    er_log_conn (__FILE__, __LINE__, "take over the client that has fd = %d in the worker = %d\n", ctx->m_conn->fd,
+		 m_index);
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
 
