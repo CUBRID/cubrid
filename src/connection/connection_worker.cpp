@@ -510,6 +510,7 @@ namespace cubconn::connection
 
     /* wake up the thread blocked until this request is complete */
     this->wakeup_blocked_worker (handle);
+    this->wakeup_blocked_worker (ctx->m_send.m_blocker);
 
     /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
     css_prepare_shutdown_conn (ctx->m_conn);

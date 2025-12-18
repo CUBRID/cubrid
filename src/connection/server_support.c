@@ -679,18 +679,15 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
       return 0;
     }
 
-  if (!conn->worker->enqueue_and_notify (type, std::move (item), nullptr, wait_time))
-    {
-      /* unlock */
-      r = rmutex_unlock (NULL, &conn->cmutex);
-      assert (r == NO_ERROR);
+  auto func =[conn] ()noexcept {
+    /* unlock */
+    rmutex_unlock (NULL, &conn->cmutex);
+  };
 
+  if (!conn->worker->enqueue_and_notify (type, std::move (item), func, wait_time))
+    {
       return INTERNAL_CSS_ERROR;
     }
-
-  /* unlock */
-  r = rmutex_unlock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
 
   return 0;
 }

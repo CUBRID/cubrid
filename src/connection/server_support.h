@@ -33,8 +33,13 @@
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 
+#ifndef TIMEOUT_INFINITE
 #define TIMEOUT_INFINITE -1
+#endif
+
+#ifndef TIMEOUT_NOWAIT
 #define TIMEOUT_NOWAIT 0
+#endif
 
 enum css_thread_stop_type
 {
