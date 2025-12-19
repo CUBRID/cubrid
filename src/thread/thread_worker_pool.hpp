@@ -341,10 +341,11 @@ namespace cubthread
       worker **m_available_workers;
       std::size_t m_available_count;
       std::queue<task_type *> m_task_queue;           // list of tasks pushed while all workers were occupied
-      std::mutex m_workers_mutex;                     // mutex to synchronize activity on worker lists
+      mutable std::mutex m_workers_mutex;                     // mutex to synchronize activity on worker lists
 
       std::set<worker *> m_temp_workers;              // temporary executed workers for method/stored procedure
       std::vector<worker *> m_temp_free_workers;      //
+      mutable std::mutex m_temp_workers_mutex;        // mutex to synchronize temp worker lists
   };
 
   // worker_pool<Context>::worker
@@ -855,6 +856,8 @@ namespace cubthread
     , m_task_queue ()
     , m_workers_mutex ()
     , m_temp_workers ()
+    , m_temp_free_workers ()
+    , m_temp_workers_mutex ()
   {
     //
   }
@@ -868,6 +871,8 @@ namespace cubthread
     delete [] m_available_workers;
     m_available_workers = NULL;
 
+    std::lock_guard<std::mutex> ulock (m_temp_workers_mutex);
+
     for (worker *w : m_temp_workers)
       {
 	if (w)
@@ -876,6 +881,12 @@ namespace cubthread
 	  }
       }
     m_temp_workers.clear ();
+
+    for (worker *w : m_temp_free_workers)
+      {
+	delete w;
+      }
+    m_temp_free_workers.clear ();
   }
 
   template <typename Context>
@@ -966,8 +977,10 @@ namespace cubthread
   worker_pool<Context>::core::execute_temp_task (task_type *task_p, const cubperf::time_point &push_time)
   {
     worker *w = new worker (true);
-    m_temp_workers.insert (w);
     w->init_core (*this);
+
+    std::lock_guard<std::mutex> ulock (m_temp_workers_mutex);
+    m_temp_workers.insert (w);
     w->assign_task (task_p, push_time);
   }
 
@@ -1042,6 +1055,7 @@ namespace cubthread
 	  }
       }
 
+    std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
     for (worker *w : m_temp_workers)
       {
 	w->map_context_if_running (stop, func, args...);
@@ -1058,10 +1072,12 @@ namespace cubthread
   worker_pool<Context>::core::notify_stop (bool &is_not_stopped)
   {
     // stop all temp workers first
+    std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
     for (worker *w : m_temp_workers)
       {
 	w->stop_execution (is_not_stopped);
       }
+    ulock.unlock ();
 
     // tell all workers to stop
     for (std::size_t it = 0; it < m_max_workers; it++)
@@ -1165,6 +1181,7 @@ namespace cubthread
 	m_worker_array[it].get_stats (stats_out);
       }
 
+    std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
     for (worker *w: m_temp_workers)
       {
 	w->get_stats (stats_out);
@@ -1175,7 +1192,7 @@ namespace cubthread
   void
   worker_pool<Context>::core::register_free_temp_list (worker *w)
   {
-    std::unique_lock<std::mutex> ulock (m_workers_mutex);
+    std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
 
     m_temp_workers.erase (w);
     m_temp_free_workers.push_back (w);
@@ -1185,7 +1202,7 @@ namespace cubthread
   void
   worker_pool<Context>::core::free_all_temp_list ()
   {
-    std::unique_lock<std::mutex> ulock (m_workers_mutex);
+    std::unique_lock<std::mutex> ulock (m_temp_workers_mutex);
 
     for (worker *w: m_temp_free_workers)
       {

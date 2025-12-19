@@ -27,7 +27,6 @@
 #include "coordinator.hpp"
 #include "connection_sr.h"
 
-#include <random>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
