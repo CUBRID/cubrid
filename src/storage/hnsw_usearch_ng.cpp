@@ -175,7 +175,7 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
   };
   this->m_thread_p = thread_get_thread_entry_info ();
 
-  m_storage = std::make_unique < cubhnsw::disk_storage > (btid, build_params);
+  m_storage = std::make_unique < storage_type > (btid, build_params);
   m_storage->set_thread_entry (thread_get_thread_entry_info ());
 
   std::size_t root_size;
