@@ -26,6 +26,7 @@
 #include "connection_pool.hpp"
 #include "coordinator.hpp"
 #include "connection_sr.h"
+#include "server_support.h"
 
 #include <unistd.h>
 #include <sys/eventfd.h>
@@ -350,6 +351,7 @@ namespace cubconn::connection
     double core;
     uint64_t budget_recv_hit, budget_send_hit;
     std::size_t i;
+    uint64_t task_stats[3] = { 0, 0, 0 };
 
     core = 0;
     bytes_in = 0;
@@ -391,14 +393,19 @@ namespace cubconn::connection
 	*/
       }
     printf ("------ summary ------\n");
-    printf ("STATUS: %s (draining worker: %d)\n",
+    printf ("STATUS               : %s (draining worker: %d)\n",
 	    m_status == status::STABLE ? "STABLE" : (m_status == status::DRAINING ? "DRAINING" : "EXPANDING"),
 	    m_scaling.draining_worker);
-    printf ("WORKER COUNT: %d (min: %d, max: %d)\n", m_current_worker, m_min_worker, m_max_worker);
-    printf ("CORE USAGE: %0.4lf / %d\n", core, m_max_worker);
+    printf ("WORKER COUNT         : %d (min: %d, max: %d)\n", m_current_worker, m_min_worker, m_max_worker);
+    printf ("CORE USAGE           : %0.4lf / %d\n", core, m_max_worker);
     printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
-    printf ("BYTES IN: %lf\n", bytes_in);
-    printf ("BYTES OUT: %lf\n\n", bytes_out);
+    printf ("BYTES IN             : %lf\n", bytes_in);
+    printf ("BYTES OUT            : %lf\n\n", bytes_out);
+
+    css_get_task_stats (task_stats);
+    printf ("TASK REQUESTED       : %lld\n", static_cast<unsigned long long> (task_stats[0]));
+    printf ("TASK STARTED         : %lld\n", static_cast<unsigned long long> (task_stats[1]));
+    printf ("TASK COMPLETED       : %lld\n\n", static_cast<unsigned long long> (task_stats[2]));
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -861,7 +868,7 @@ not_transferred:
 		else if (events[i].data.fd == m_timerfd)
 		  {
 		    this->handle_message_queue ();
-		    //this->statistics_print ();
+		    this->statistics_print ();
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {

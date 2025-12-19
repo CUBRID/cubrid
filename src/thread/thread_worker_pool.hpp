@@ -181,6 +181,7 @@ namespace cubthread
       // get worker pool statistics
       // note: the statistics are collected from all cores and all their workers adding up all local statistics
       void get_stats (cubperf::stat_value *stats_out) const;
+      void get_task_stats (uint64_t *stats_out) noexcept;
 
       // log stats to error log file
       void er_log_stats (void) const;
@@ -325,6 +326,12 @@ namespace cubthread
       void register_free_temp_list (worker *w);
       void free_all_temp_list ();
 
+      inline uint64_t on_task_requested () noexcept;
+      inline uint64_t on_task_started () noexcept;
+      inline uint64_t on_task_completed () noexcept;
+
+      std::tuple<uint64_t, uint64_t, uint64_t> get_task_stats () noexcept;
+
     private:
       // execute task for method/stored procedure by recursive call; This task is not pooled and executes in a temporary created thread.
       void execute_temp_task (task_type *task_p, const cubperf::time_point &push_time);
@@ -341,11 +348,18 @@ namespace cubthread
       worker **m_available_workers;
       std::size_t m_available_count;
       std::queue<task_type *> m_task_queue;           // list of tasks pushed while all workers were occupied
-      mutable std::mutex m_workers_mutex;                     // mutex to synchronize activity on worker lists
+      mutable std::mutex m_workers_mutex;             // mutex to synchronize activity on worker lists
 
       std::set<worker *> m_temp_workers;              // temporary executed workers for method/stored procedure
       std::vector<worker *> m_temp_free_workers;      //
       mutable std::mutex m_temp_workers_mutex;        // mutex to synchronize temp worker lists
+
+      struct
+      {
+	std::atomic<uint64_t> requested;
+	std::atomic<uint64_t> started;
+	std::atomic<uint64_t> completed;
+      } m_task_metrics;
   };
 
   // worker_pool<Context>::worker
@@ -750,6 +764,18 @@ namespace cubthread
   }
 
   template<typename Context>
+  void worker_pool<Context>::get_task_stats (uint64_t *stats_out) noexcept
+  {
+    for (std::size_t it = 0; it < m_core_count; it++)
+      {
+	auto [requested, started, completed] = m_core_array[it].get_task_stats ();
+	stats_out[0] += requested;
+	stats_out[1] += started;
+	stats_out[2] += completed;
+      }
+  }
+
+  template<typename Context>
   void
   worker_pool<Context>::er_log_stats (void) const
   {
@@ -859,7 +885,9 @@ namespace cubthread
     , m_temp_free_workers ()
     , m_temp_workers_mutex ()
   {
-    //
+    m_task_metrics.requested.store (0, std::memory_order_relaxed);
+    m_task_metrics.started.store (0, std::memory_order_relaxed);
+    m_task_metrics.completed.store (0, std::memory_order_relaxed);
   }
 
   template <typename Context>
@@ -941,14 +969,16 @@ namespace cubthread
     cubperf::time_point push_time = cubperf::clock::now ();
     worker *refp = NULL;
 
-    std::unique_lock<std::mutex> ulock (m_workers_mutex);
-
     if (m_parent_pool->m_stopped)
       {
 	// reject task
 	task_p->retire ();
 	return;
       }
+
+    on_task_requested ();
+
+    std::unique_lock<std::mutex> ulock (m_workers_mutex);
 
     if (m_available_count > 0)
       {
@@ -1211,6 +1241,35 @@ namespace cubthread
     m_temp_free_workers.clear ();
   }
 
+  template <typename Context>
+  inline uint64_t worker_pool<Context>::core::on_task_requested () noexcept
+  {
+    return m_task_metrics.requested.fetch_add (1, std::memory_order_relaxed);
+  }
+
+  template <typename Context>
+  inline uint64_t worker_pool<Context>::core::on_task_started () noexcept
+  {
+    return m_task_metrics.started.fetch_add (1, std::memory_order_relaxed);
+  }
+
+  template <typename Context>
+  inline uint64_t worker_pool<Context>::core::on_task_completed () noexcept
+  {
+    return m_task_metrics.completed.fetch_add (1, std::memory_order_relaxed);
+  }
+
+  template <typename Context>
+  std::tuple<uint64_t, uint64_t, uint64_t> worker_pool<Context>::core::get_task_stats () noexcept
+  {
+    return
+    {
+      m_task_metrics.requested.load (std::memory_order_relaxed),
+      m_task_metrics.started.load (std::memory_order_relaxed),
+      m_task_metrics.completed.load (std::memory_order_relaxed)
+    };
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // worker_pool<Context>::core::worker
   //////////////////////////////////////////////////////////////////////////
@@ -1418,8 +1477,12 @@ namespace cubthread
   {
     assert (m_task_p != NULL);
 
+    m_parent_core->on_task_started ();
+
     // execute task
     m_task_p->execute (*m_context_p);
+
+    m_parent_core->on_task_completed ();
     wp_worker_statset_time_and_increment (m_statistics, Wpstat_execute_task);
 
     // and retire task

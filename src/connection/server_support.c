@@ -2643,6 +2643,17 @@ css_get_thread_stats (UINT64 *stats_out)
 }
 
 //
+// css_get_task_stats () - get task statistics for server request handlers
+//
+// stats_out (out) : output statistics
+//
+void
+css_get_task_stats (UINT64 *stats_out)
+{
+  css_Server_request_worker_pool->get_task_stats (stats_out);
+}
+
+//
 // css_get_num_request_workers () - get number of workers executing server requests
 //
 size_t
