@@ -29,8 +29,13 @@
 #include <sys/types.h>
 #include <cstdint>
 
+#ifndef TIMEOUT_INFINITE
 #define TIMEOUT_INFINITE -1
+#endif
+
+#ifndef TIMEOUT_NOWAIT
 #define TIMEOUT_NOWAIT 0
+#endif
 
 namespace cubsocket
 {

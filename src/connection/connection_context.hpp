@@ -41,6 +41,13 @@ namespace cubconn
     std::condition_variable cv;
     int active;
   };
+
+  struct message_blocker
+  {
+    std::mutex m;
+    std::condition_variable cv;
+    bool done;
+  };
 }
 
 /* --------------------------------------------------------------------------- */
@@ -170,6 +177,10 @@ namespace cubconn::connection
     struct
     {
       transmitter m_transmitter;
+
+      /* if multiple task workers request blocking transmissions simultaneously, below */
+      /* member should be replaced with a vector (or a similar collection)	       */
+      std::shared_ptr<message_blocker> m_blocker;
     } m_send;
 
     /* --------------------------------------------------------------------------- */

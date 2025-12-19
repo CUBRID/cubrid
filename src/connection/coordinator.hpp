@@ -23,13 +23,15 @@
 #ifndef _COORDINATOR_HPP_
 #define _COORDINATOR_HPP_
 
-#include "connection_context.hpp"
 #include "epoll.hpp"
+#include "connection_context.hpp"
+#include "controller.hpp"
 #include "tbb/concurrent_queue.h"
 
 #include <thread>
 #include <vector>
 #include <utility>
+#include <unordered_set>
 #include <unordered_map>
 
 namespace cubconn::connection
@@ -39,10 +41,22 @@ namespace cubconn::connection
   class coordinator
   {
     private:
+      enum class status
+      {
+	PREPARING,
+	STABLE,
+	DRAINING,
+	EXPANDING
+      };
+
       struct statistics_chunk
       {
 	/* score */
 	double m_score;
+
+	/* resource */
+	double m_core;
+	uint64_t m_last_cpu_time;
 
 	/* immediate */
 	uint32_t m_client_num;
@@ -58,6 +72,36 @@ namespace cubconn::connection
 	m_contexts;
       };
 
+      enum class control_type : uint32_t
+      {
+	/* RECV */
+	SHOW_STATS,
+
+	SCALE_UP,
+	SCALE_DOWN,
+
+	CLIENT_MOVE,
+
+	/* SEND */
+	OK,
+	NOK,
+
+	TYPE_COUNT
+      };
+
+      struct control_recv
+      {
+	control_type type;
+	int from;
+	int to;
+	int id;
+      };
+
+      struct control_send
+      {
+	control_type type;
+      };
+
     public:
       enum class message_type
       {
@@ -66,9 +110,13 @@ namespace cubconn::connection
 	NEW_CLIENT,
 	RETURN_TO_POOL,
 
+	HANDOFF_REPLY,
+
 	STATISTICS,
 
-	SHUTDOWN
+	SHUTDOWN,
+
+	TYPE_COUNT
       };
 
       struct message
@@ -91,9 +139,16 @@ namespace cubconn::connection
 	  /* RETURN_TO_POOL */
 	  std::vector<context *> resource;
 
+	  /* HANDOFF_REPLY */
+	  bool transferred;
+	  int from;
+	  int to;
+	  uint64_t id;
+
 	  /* STATISTICS */
 	  struct
 	  {
+	    uint64_t cpu_time_ns;
 	    uint64_t time_ns;
 	    std::pair<std::size_t, statistics::metrics<statistics::worker>> worker;
 	    std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> contexts;
@@ -123,6 +178,7 @@ namespace cubconn::connection
       /* thread handle */
       std::thread m_thread;
       std::size_t m_core;
+      status m_status;
       bool m_stop;
 
       cubthread::entry *m_entry;
@@ -133,6 +189,9 @@ namespace cubconn::connection
       int m_eventfd;
       /* timer based */
       int m_timerfd;
+      /* controller */
+      controller<control_recv, control_send> m_controller;
+      int m_ctrlfd;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
@@ -148,6 +207,17 @@ namespace cubconn::connection
       std::uint32_t m_min_worker;
       std::uint32_t m_current_worker;
 
+      /* in flight client id set (hand-off - take over) */
+      std::unordered_set<uint64_t> m_migrating;
+
+      /* dynamic scaling of the worker */
+      struct
+      {
+	uint64_t last_drain_ns;
+	uint64_t last_expand_ns;
+	int draining_worker;
+      } m_scaling;
+
       /* statistics */
       std::vector<statistics_chunk> m_statistics;
 
@@ -155,6 +225,16 @@ namespace cubconn::connection
       /* utility								     */
       /* --------------------------------------------------------------------------- */
       uint64_t get_monotonic_ns ();
+
+      /* --------------------------------------------------------------------------- */
+      /* transfer and scale							     */
+      /* --------------------------------------------------------------------------- */
+      bool transfer_connection (uint64_t id, int from, int to);
+
+      bool scale_up ();
+
+      bool scale_down_finish ();
+      bool scale_down ();
 
       /* --------------------------------------------------------------------------- */
       /* statistics								     */
@@ -179,11 +259,23 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
+      bool handle_message_queue_start (message &item);
+
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue_return_to_pool (message &item);
+      bool handle_message_queue_handoff_reply (message &item);
+
       bool handle_message_queue_statistics (message &item);
 
+      bool handle_message_queue_shutdown (message &item);
+
       bool handle_message_queue ();
+
+      /* --------------------------------------------------------------------------- */
+      /* controller								     */
+      /* --------------------------------------------------------------------------- */
+      bool handle_controller_request (control_recv &rx, control_send &tx);
+      bool handle_controller ();
   };
 
   template <typename T>

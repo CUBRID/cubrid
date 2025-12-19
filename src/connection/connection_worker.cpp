@@ -72,6 +72,7 @@ namespace cubconn::connection
     m_coordinator (coord),
     m_watcher (watcher),
     m_core (core),
+    m_status (status::READY),
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
@@ -148,7 +149,10 @@ namespace cubconn::connection
   void worker::enqueue (queue_type type, message &&item)
   {
     assert ((item.conn ? (item.conn->fd != -1) : false) ||
-	    (item.type == message_type::START || item.type == message_type::SHUTDOWN));
+	    (item.ctx ? (item.ctx->m_conn ? item.ctx->m_conn->fd != -1 : false) : false) ||
+	    (item.id > 0) ||
+	    (item.type == message_type::START || item.type == message_type::SHUTDOWN ||
+	     item.type == message_type::HIBERNATE || item.type == message_type::AWAKEN));
 
 #if !defined (NDEBUG)
     item.message_id = message_counter++;
@@ -206,7 +210,13 @@ namespace cubconn::connection
     /* wait_time is implemented only for  */
     /*	START				  */
     /*	SHUTDOWN_CLIENT			  */
+    /*	SEND_PACKET			  */
     /* you must implement a logic to use a waiter whose message type is not in above */
+
+    assert (!wait_time ||
+	    (item.type == message_type::START ||
+	     item.type == message_type::SHUTDOWN_CLIENT ||
+	     item.type == message_type::SEND_PACKET));
 
     std::shared_ptr<message_blocker> handle;
     std::unique_lock<std::mutex> lock;
@@ -251,11 +261,11 @@ namespace cubconn::connection
     return true;
   }
 
-  uint64_t worker::get_monotonic_ns ()
+  uint64_t worker::get_time_ns (clockid_t type)
   {
     struct timespec ts;
 
-    if (clock_gettime (CLOCK_MONOTONIC, &ts) == -1)
+    if (clock_gettime (type, &ts) == -1)
       {
 	er_log_conn (__FILE__, __LINE__, "clock_gettime (CLOCK_MONOTONIC) failed: %s\n", strerror (errno));
 	return 0;
@@ -423,7 +433,6 @@ namespace cubconn::connection
 
     pthread_mutex_unlock (&m_entry->tran_index_lock);
 
-
     /* stop the sessions associated with conn */
 
     css_end_server_request (ctx->m_conn);
@@ -501,6 +510,7 @@ namespace cubconn::connection
 
     /* wake up the thread blocked until this request is complete */
     this->wakeup_blocked_worker (handle);
+    this->wakeup_blocked_worker (ctx->m_send.m_blocker);
 
     /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
     css_prepare_shutdown_conn (ctx->m_conn);
@@ -544,7 +554,8 @@ retry:
 
     message.type = coordinator::message_type::STATISTICS;
 
-    message.statistics.time_ns = m_timens;
+    message.statistics.cpu_time_ns = get_time_ns (CLOCK_THREAD_CPUTIME_ID);
+    message.statistics.time_ns = get_time_ns (CLOCK_MONOTONIC);
     message.statistics.worker.first = m_index;
     message.statistics.worker.second = m_stats;
     message.statistics.contexts.reserve (m_context.size ());
@@ -676,6 +687,35 @@ retry:
     return false;
   }
 
+  bool worker::eventfd_starttimer ()
+  {
+    timer_latency min;
+    std::size_t i;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    if (min != timer_latency::NA)
+      {
+	return this->eventfd_settimer (m_timerfd, min);
+      }
+    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+  }
+
+  bool worker::eventfd_stoptimer ()
+  {
+    return eventfd_settimer (m_timerfd, 0, 0);
+  }
+
   bool worker::eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle)
   {
     timer_latency min;
@@ -708,7 +748,7 @@ retry:
     return this->eventfd_settimer (m_timerfd, min);
   }
 
-  void worker::eventfd_removetimer (timer_type type)
+  bool worker::eventfd_removetimer (timer_type type)
   {
     timer_latency min;
     std::size_t i;
@@ -716,7 +756,7 @@ retry:
     /* avoid resetting the timerfd unnecessarily */
     if (!m_timer_handler[static_cast<std::size_t> (type)].valid)
       {
-	return ;
+	return true;
       }
 
     m_timer_handler[static_cast<std::size_t> (type)].valid = false;
@@ -735,12 +775,9 @@ retry:
 
     if (min != timer_latency::NA)
       {
-	this->eventfd_settimer (m_timerfd, min);
+	return this->eventfd_settimer (m_timerfd, min);
       }
-    else
-      {
-	this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
-      }
+    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
   }
 
   bool worker::eventfd_handler (bool *eventfds)
@@ -799,7 +836,7 @@ retry:
 
 	if (!m_has_retry)
 	  {
-	    this->eventfd_removetimer (timer_type::QUEUE);
+	    return this->eventfd_removetimer (timer_type::QUEUE);
 	  }
       }
 
@@ -833,6 +870,7 @@ retry:
 		     "connection::worker->handle_message_queue_send_packet: message_id = %lld, context is already cleared for conn = %p\n",
 		     item.message_id, static_cast<void *> (item.conn));
 #endif
+	this->wakeup_blocked_worker (item.waiter_handle);
 
 	return true;
       }
@@ -856,6 +894,8 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
+	this->wakeup_blocked_worker (item.waiter_handle);
+
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
@@ -878,6 +918,8 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
+	this->wakeup_blocked_worker (item.waiter_handle);
+
 	return true;
       }
 
@@ -887,12 +929,16 @@ retry:
 	r = rmutex_unlock (m_entry, &item.conn->cmutex);
 	assert (r == NO_ERROR);
 
+	this->wakeup_blocked_worker (item.waiter_handle);
+
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_send_packet: modify_descriptor failed\n");
 	return false;
       }
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
+
+    ctx->m_send.m_blocker = std::move (item.waiter_handle);
 
     return true;
   }
@@ -976,6 +1022,144 @@ retry:
     ctx->m_stats.set (statistics::context::MOVE_COUNT, 0);
 
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
+
+    m_stats.add (statistics::worker::CLIENT_NUM, 1);
+
+    return true;
+  }
+
+  bool worker::handle_message_queue_handoff_client (message &item)
+  {
+    coordinator::message response;
+    message request;
+    context *ctx;
+    uint64_t id;
+    bool transferred = true;
+
+    id = item.id;
+    auto iterator = std::find_if (m_context.begin (), m_context.end (), [id] (context *ptr)
+    {
+      return ptr->m_id == id;
+    });
+
+    if (iterator == m_context.end ())
+      {
+	/* the connection has already been cleaned up */
+	transferred = false;
+	goto respond;
+      }
+    ctx = *iterator;
+
+    rmutex_lock (NULL, &ctx->m_conn->cmutex);
+
+    /* handle the entries in the message queue */
+    this->handle_message_queue_by_index (queue_type::IMMEDIATE);
+    this->handle_message_queue_by_index (queue_type::LAZY);
+
+    if (ctx->m_conn->status != CONN_OPEN || ctx->m_removed)
+      {
+	/* this connection will be terminated soon */
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	transferred = false;
+	goto respond;
+      }
+
+    ctx->m_conn->worker = item.worker_ptr;
+    ctx->m_worker = item.worker_index;
+
+    if (!m_events.remove_descriptor (ctx->m_conn->fd))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: add_descriptor failed\n");
+	assert_release (false);
+      }
+    if (m_context.erase (ctx) == 0)
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: context not found\n");
+	assert_release (false);
+      }
+    m_exhausted.erase (ctx->m_id);
+
+    /* hand off the context */
+    request.type = message_type::TAKEOVER_CLIENT;
+    request.ctx = ctx;
+    item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+    if (!item.worker_ptr->notify ())
+      {
+	assert_release (false);
+      }
+
+    rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+    ctx->m_stats.add (statistics::context::MOVE_COUNT, 1);
+    m_stats.sub (statistics::worker::CLIENT_NUM, 1);
+
+respond:
+    /* respond to the coordinator */
+    response.type = coordinator::message_type::HANDOFF_REPLY;
+    response.transferred = transferred;
+    response.from = m_index;
+    response.to = item.worker_index;
+    response.id = id;
+    m_coordinator->enqueue (std::move (response));
+    if (!m_coordinator->notify ())
+      {
+	assert_release (false);
+      }
+    return true;
+  }
+
+  bool worker::handle_message_queue_takeover_client (message &item)
+  {
+    context *ctx;
+    int flags;
+
+    ctx = item.ctx;
+
+    rmutex_lock (NULL, &ctx->m_conn->cmutex);
+
+    assert (ctx->m_conn->worker == this);
+    assert (static_cast<std::size_t> (ctx->m_worker) == m_index);
+
+    flags = EPOLLET | EPOLLIN | EPOLLRDHUP;
+    if (!ctx->m_send.m_transmitter.empty ())
+      {
+	flags |= EPOLLOUT;
+      }
+
+    if (!m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
+      {
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	m_removed_context.push_back (ctx);
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
+	return false;
+      }
+    if (!m_context.insert (ctx).second)
+      {
+	ctx->m_conn->worker = nullptr;
+	ctx->m_conn->context = nullptr;
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+	m_events.remove_descriptor (ctx->m_conn->fd);
+
+	m_removed_context.push_back (ctx);
+	er_log_conn (__FILE__, __LINE__,
+		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
+	return false;
+      }
+
+    rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+
+    ctx->m_stats.set (statistics::context::LAST_MOVED_NS, m_timens);
+
+    er_log_conn (__FILE__, __LINE__, "take over the client that has fd = %d in the worker = %d\n", ctx->m_conn->fd,
+		 m_index);
+
+    m_stats.add (statistics::worker::CLIENT_NUM, 1);
+
     return true;
   }
 
@@ -1011,10 +1195,78 @@ retry:
     return true;
   }
 
+  bool worker::handle_message_queue_start (message &item)
+  {
+    assert (m_status == status::READY || m_status == status::RUNNING);
+
+    m_status = status::RUNNING;
+    this->wakeup_blocked_worker (item.waiter_handle);
+
+    return true;
+  }
+
+  bool worker::handle_message_queue_hibernate (message &item)
+  {
+    if (!this->eventfd_stoptimer ())
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_hibernate: failed to stop the timer\n");
+	assert_release (false);
+      }
+
+    assert (m_context.empty ());
+    assert (m_exhausted.empty ());
+
+    m_status = status::HIBERNATING;
+
+    return true;
+  }
+
+  bool worker::handle_message_queue_awaken (message &item)
+  {
+    if (!this->eventfd_starttimer ())
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_awaken: failed to start the timer\n");
+	assert_release (false);
+      }
+
+    m_status = status::RUNNING;
+
+    return true;
+  }
+
+  bool worker::handle_message_queue_shutdown (message &item)
+  {
+    m_status = status::TERMINATING;
+    m_stop = true;
+
+    return true;
+  }
+
   bool worker::handle_message_queue_by_index (queue_type type)
   {
+    static constexpr std::array<
+    std::pair<bool (worker::*) (message &), statistics::worker>, static_cast<std::size_t> (message_type::TYPE_COUNT)
+    > handler =
+    {
+      {
+	/* START	   */ { &worker::handle_message_queue_start,		statistics::worker::NA },
+	/* HIBERNATE	   */ { &worker::handle_message_queue_hibernate,	statistics::worker::NA },
+	/* AWAKEN	   */ { &worker::handle_message_queue_awaken,		statistics::worker::NA },
+	/* SHUTDOWN	   */ { &worker::handle_message_queue_shutdown,		statistics::worker::NA },
+	/* NEW_CLIENT	   */ { &worker::handle_message_queue_new_client,	statistics::worker::MQ_NEW_CLIENT },
+	/* HANDOFF_CLIENT  */ { &worker::handle_message_queue_handoff_client,	statistics::worker::MQ_HANDOFF_CLIENT },
+	/* TAKEOVER_CLIENT */ { &worker::handle_message_queue_takeover_client,	statistics::worker::MQ_TAKEOVER_CLIENT },
+	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT },
+	/* SEND_PACKET	   */ { &worker::handle_message_queue_send_packet,	statistics::worker::MQ_SEND_PACKET },
+	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET }
+      }
+    };
     message request;
     uint64_t size, i;
+
+    static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 10, "this must be modified");
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
@@ -1025,55 +1277,21 @@ retry:
 		     "recevied message_id = %lld, request_type = %d from message queue in the worker = %d\n", request.message_id,
 		     request.type, m_index);
 #endif
-
-	switch (request.type)
+	if (! (message_type::START <= request.type && message_type::TYPE_COUNT > request.type))
 	  {
-	  case message_type::START:
-	    this->wakeup_blocked_worker (request.waiter_handle);
-	    break;
-
-	  case message_type::NEW_CLIENT:
-	    m_stats.add (statistics::worker::MQ_NEW_CLIENT, 1);
-	    if (!this->handle_message_queue_new_client (request))
-	      {
-		return false;
-	      }
-	    m_stats.add (statistics::worker::CLIENT_NUM, 1);
-	    break;
-
-	  case message_type::SHUTDOWN_CLIENT:
-	    m_stats.add (statistics::worker::MQ_SHUTDOWN_CLIENT, 1);
-	    if (!this->handle_message_queue_shutdown_client (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::SEND_PACKET:
-	    m_stats.add (statistics::worker::MQ_SEND_PACKET, 1);
-	    if (!this->handle_message_queue_send_packet (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::RELEASE_PACKET:
-	    m_stats.add (statistics::worker::MQ_RELEASE_PACKET, 1);
-	    if (!this->handle_message_queue_release_packet (request))
-	      {
-		return false;
-	      }
-	    break;
-
-	  case message_type::SHUTDOWN:
-	    m_stop = true;
-	    break;
-
-	  default:
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection::worker->handle_message_queue: received unknown event from eventfd in the worker = %d\n", m_index);
 	    assert_release (false);
-	    break;
+	    continue;
+	  }
+
+	if (handler[static_cast <std::size_t> (request.type)].second != statistics::worker::NA)
+	  {
+	    m_stats.add (handler[static_cast <std::size_t> (request.type)].second, 1);
+	  }
+	if (! (this->*handler[static_cast <std::size_t> (request.type)].first) (request))
+	  {
+	    return false;
 	  }
       }
 
@@ -1520,6 +1738,7 @@ retry:
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 
+	this->wakeup_blocked_worker (ctx->m_send.m_blocker);
 	this->handle_connection_close (ctx);
 	return status;
       }
@@ -1528,6 +1747,8 @@ retry:
 
     if (status == result::Ok)
       {
+	this->wakeup_blocked_worker (ctx->m_send.m_blocker);
+
 	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
 	if (ctx->m_conn->status == CONN_CLOSING)
 	  {
@@ -1753,7 +1974,7 @@ retry:
 	  }
 
 	/* criterion time to use during this loop */
-	m_timens = this->get_monotonic_ns ();
+	m_timens = this->get_time_ns (CLOCK_MONOTONIC);
 
 	for (i = 0; i < nfds; i++)
 	  {
