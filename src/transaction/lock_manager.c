@@ -2168,8 +2168,6 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   int client_id;
   LOG_TDES *tdes;
 
-  thread_lock_entry (entry_ptr->thrd_entry);
-
   /* The threads must not hold a page latch to be blocked on a lock request. */
   assert (lock_is_safe_lock_with_page (thread_p, entry_ptr) || !pgbuf_has_perm_pages_fixed (thread_p));
 
@@ -2215,7 +2213,7 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   lock_event_set_tran_wait_entry (entry_ptr->tran_index, entry_ptr);
 
   /* suspend the worker thread (transaction) */
-  thread_suspend_and_unlock_entry (entry_ptr->thrd_entry, THREAD_LOCK_SUSPENDED);
+  thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry, THREAD_LOCK_SUSPENDED);
 
   lk_Gl.deadlock_and_timeout_detector--;
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
@@ -3574,8 +3572,7 @@ start:
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
 	  is_res_mutex_locked = false;
 
-	  thread_suspend_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
-
+	  thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
 	  if (entry_ptr)
 	    {
 	      if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
@@ -3783,8 +3780,7 @@ lock_tran_lk_entry:
       pthread_mutex_unlock (&res_ptr->res_mutex);
       is_res_mutex_locked = false;
 
-      thread_suspend_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
-
+      thread_suspend_wakeup_and_unlock_entry (thrd_entry, THREAD_LOCK_SUSPENDED);
       if (thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
 	{
 	  /* a shutdown thread wakes me up */
@@ -3859,6 +3855,7 @@ blocked:
   LK_MSG_LOCK_WAITFOR (entry_ptr);
 #endif /* LK_TRACE_OBJECT */
 
+  thread_lock_entry (entry_ptr->thrd_entry);
   if (is_res_mutex_locked)
     {
       pthread_mutex_unlock (&res_ptr->res_mutex);

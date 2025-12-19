@@ -39,6 +39,7 @@
 #include "locator_cl.h"
 #include "virtual_object.h"
 #include "dbtype.h"
+#include "boot.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -415,6 +416,8 @@ static void mq_copy_view_error_msgs (PARSER_CONTEXT * parser, PARSER_CONTEXT * q
 static void mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_query);
 static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * order_by,
 					 PT_NODE * subquery, PT_NODE * class_);
+static bool mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * subquery,
+				     PT_NODE * class_);
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list,
 						   PT_NODE * old_select_list);
@@ -1217,6 +1220,8 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	    {
 	      PT_NODE *from;
 	      int i = 0;
+	      bool is_reuse_oid_class;
+	      int client_type = db_get_client_type ();
 
 	      for (from = statement->info.query.q.select.from; from != NULL; from = from->next)
 		{
@@ -1226,12 +1231,15 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 
 	      for (i = 0; i < *num_classes; ++i)
 		{
-		  if (sm_is_reuse_oid_class ((*classes)[i]) || sm_is_system_class ((*classes)[i]) > 0)
+		  is_reuse_oid_class = sm_is_reuse_oid_class ((*classes)[i]);
+
+		  if (is_reuse_oid_class
+		      || (!BOOT_ADMIN_CSQL_CLIENT_TYPE (client_type) && (sm_is_system_class ((*classes)[i]) > 0)))
 		    {
 		      local = (PT_UPDATABILITY) (local & PT_NOT_UPDATABLE);
 		      if (parser->view_cache)
 			{
-			  parser->view_cache->has_reuse_oid_table = true;
+			  parser->view_cache->has_reuse_oid_table = is_reuse_oid_class;
 			}
 		      break;
 		    }
@@ -1955,6 +1963,13 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
 
+  /* select node from UPDATE, DELETE */
+  if (pt_is_select (mainquery) &&
+      (mainquery->info.query.scan_op_type == S_DELETE || mainquery->info.query.scan_op_type == S_UPDATE))
+    {
+      return NON_PUSHABLE;
+    }
+
   /* determine if class_spec is the only spec in the statement */
   is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by, subquery, class_);
   is_only_spec =
@@ -2005,7 +2020,8 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     {
       /* view for single table + left outer join can be merged */
       if (pt_length_of_list (subquery->info.query.q.select.from) != 1 || !MQ_IS_LEFT_JOIN_SPEC (class_spec)
-	  || mq_is_right_outer_join_spec (parser, class_spec) || pt_has_path_expr (parser, subquery))
+	  || mq_is_right_outer_join_spec (parser, class_spec) || pt_has_path_expr (parser, subquery)
+	  || !mq_check_keep_join_pred (parser, class_spec, mainquery, subquery, class_))
 	{
 	  /* not pushable */
 	  return NON_PUSHABLE;
@@ -4341,6 +4357,110 @@ mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * 
   if (where != NULL)
     {
       parser_free_tree (parser, where);
+    }
+  return result;
+}
+
+/*
+ * mq_check_keep_join_pred () - check if join predicates don't convert to const predicates
+ *   return: bool
+ *   parser(in):
+ *   spec(in):
+ *   node(in):
+ *
+ * Note:
+ */
+bool
+mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * subquery, PT_NODE * class_)
+{
+  PT_NODE *on_cond, *from, *attributes, *query_spec_columns, *col, *attr, *pred, *ori_on_cond, *ori_pred;
+  PT_NODE *arg1, *arg2, *sub_where, *sub_sel_list, *sub_order_by, *save_next, *ori_save_next;
+  int num_node, ori_num_node;
+  bool result;
+
+  if (PT_IS_VALUE_QUERY (subquery))
+    {
+      return false;
+    }
+
+  /* subquery check */
+  if (!pt_is_select (subquery))
+    {
+      return false;
+    }
+
+  /* get attr_list */
+  if (PT_SPEC_IS_DERIVED (spec))
+    {
+      attributes = spec->info.spec.as_attr_list;
+    }
+  else if (class_ != NULL)
+    {
+      attributes = mq_fetch_attributes (parser, class_);
+    }
+  else
+    {
+      return false;
+    }
+  query_spec_columns = subquery->info.query.q.select.list;
+
+  col = query_spec_columns;
+  attr = attributes;
+
+  for (; col && attr; col = col->next, attr = attr->next)
+    {
+      /* set spec_id */
+      attr->info.name.spec_id = spec->info.spec.id;
+    }
+
+  while (col)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  col = col->next;
+	  continue;
+	}
+      break;
+    }
+
+  if (col != NULL || attr != NULL)
+    {				/* error */
+      return false;
+    }
+  on_cond = parser_copy_tree_list (parser, spec->info.spec.on_cond);
+
+  /* substitute attributes for query_spec_columns in statement */
+  on_cond = mq_lambda (parser, on_cond, attributes, query_spec_columns);
+  result = true;
+
+  ori_on_cond = spec->info.spec.on_cond;
+  pred = on_cond;
+  ori_pred = ori_on_cond;
+  while (pred != NULL && ori_pred != NULL)
+    {
+      save_next = pred->next;
+      pred->next = NULL;
+      ori_save_next = ori_pred->next;
+      ori_pred->next = NULL;
+      num_node = ori_num_node = 0;
+
+      (void) parser_walk_tree (parser, pred, pt_count_name_nodes, &num_node, NULL, NULL);
+      (void) parser_walk_tree (parser, ori_pred, pt_count_name_nodes, &ori_num_node, NULL, NULL);
+
+      pred = pred->next = save_next;
+      ori_pred = ori_pred->next = ori_save_next;
+
+      /* check if join pred change to const pred */
+      if (ori_num_node >= 2 && ori_num_node != num_node)
+	{
+	  result = false;
+	  break;
+	}
+    }
+
+  if (on_cond != NULL)
+    {
+      parser_free_tree (parser, on_cond);
     }
   return result;
 }

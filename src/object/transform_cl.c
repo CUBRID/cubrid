@@ -3716,7 +3716,6 @@ put_class_attributes (OR_BUF * buf, SM_CLASS * class_)
 
   or_put_int (buf, class_->tde_algorithm);
 
-
   /* 0: NAME */
   put_string (buf, sm_ch_name ((MOBJ) class_));
 
@@ -4898,6 +4897,7 @@ partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info)
 
   /* ATTRIBUTES */
   or_put_int (buf, partition_info->partition_type);
+  or_put_int (buf, partition_info->class_partition_type);
 
   put_string (buf, partition_info->pname);
   put_string (buf, partition_info->expr);
@@ -4967,8 +4967,6 @@ disk_to_partition_info (OR_BUF * buf)
       return NULL;
     }
 
-  assert (vars != NULL);
-
   partition_info = classobj_make_partition_info ();
   if (partition_info == NULL)
     {
@@ -4984,6 +4982,16 @@ disk_to_partition_info (OR_BUF * buf)
 	  classobj_free_partition_info (partition_info);
 	  return NULL;
 	}
+
+      partition_info->class_partition_type = (DB_CLASS_PARTITION_TYPE) or_get_int (buf, &error);
+      if (error != NO_ERROR)
+	{
+	  free_var_table (vars);
+	  classobj_free_partition_info (partition_info);
+	  return NULL;
+	}
+      assert (partition_info->class_partition_type >= DB_PARTITIONED_CLASS
+	      && partition_info->class_partition_type <= DB_PARTITION_CLASS);
 
       partition_info->pname = get_string (buf, vars[ORC_PARTITION_NAME_INDEX].length);
       partition_info->expr = get_string (buf, vars[ORC_PARTITION_EXPR_INDEX].length);
