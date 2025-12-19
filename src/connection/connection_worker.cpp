@@ -1270,6 +1270,8 @@ respond:
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
+    m_stats.add (statistics::worker::MQ_REQUESTED, size);
+
     while (i++ < size && m_queue[static_cast<std::size_t> (type)].try_pop (request))
       {
 #if !defined (NDEBUG)
@@ -1285,14 +1287,15 @@ respond:
 	    continue;
 	  }
 
-	if (handler[static_cast <std::size_t> (request.type)].second != statistics::worker::NA)
-	  {
-	    m_stats.add (handler[static_cast <std::size_t> (request.type)].second, 1);
-	  }
 	if (! (this->*handler[static_cast <std::size_t> (request.type)].first) (request))
 	  {
 	    return false;
 	  }
+	if (handler[static_cast <std::size_t> (request.type)].second != statistics::worker::NA)
+	  {
+	    m_stats.add (handler[static_cast <std::size_t> (request.type)].second, 1);
+	  }
+	m_stats.add (statistics::worker::MQ_COMPLETED, 1);
       }
 
     return true;
@@ -1301,8 +1304,6 @@ respond:
   bool worker::handle_message_queue ()
   {
     std::size_t i;
-
-    m_stats.add (statistics::worker::MQ_REQUESTED, 1);
 
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
       {

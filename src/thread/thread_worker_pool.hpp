@@ -1262,12 +1262,10 @@ namespace cubthread
   template <typename Context>
   std::tuple<uint64_t, uint64_t, uint64_t> worker_pool<Context>::core::get_task_stats () noexcept
   {
-    return
-    {
-      m_task_metrics.requested.load (std::memory_order_relaxed),
-      m_task_metrics.started.load (std::memory_order_relaxed),
-      m_task_metrics.completed.load (std::memory_order_relaxed)
-    };
+    uint64_t completed = m_task_metrics.completed.load (std::memory_order_relaxed);
+    uint64_t started = m_task_metrics.started.load (std::memory_order_relaxed);
+    uint64_t requested = m_task_metrics.requested.load (std::memory_order_relaxed);
+    return { requested, started, completed };
   }
 
   //////////////////////////////////////////////////////////////////////////

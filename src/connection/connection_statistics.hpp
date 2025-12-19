@@ -69,6 +69,8 @@ namespace cubconn::statistics
     /* message queue								   */
     /* --------------------------------------------------------------------------- */
     MQ_REQUESTED, /* count */
+
+    MQ_COMPLETED, /* count */
     MQ_NEW_CLIENT, /* count */
     MQ_HANDOFF_CLIENT, /* count */
     MQ_TAKEOVER_CLIENT, /* count */
@@ -94,6 +96,8 @@ namespace cubconn::statistics
     { "CLIENT_NUM", "" },
 
     { "MQ_REQUESTED", "" },
+
+    { "MQ_COMPLETED", "" },
     { "MQ_NEW_CLIENT", "" },
     { "MQ_HANDOFF_CLIENT", "" },
     { "MQ_TAKEOVER_CLIENT", "" },

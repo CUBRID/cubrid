@@ -351,7 +351,9 @@ namespace cubconn::connection
     double core;
     uint64_t budget_recv_hit, budget_send_hit;
     std::size_t i;
+    static uint64_t before[3] = { 0, 0, 0 };
     uint64_t task_stats[3] = { 0, 0, 0 };
+    uint64_t requested, started, completed;
 
     core = 0;
     bytes_in = 0;
@@ -391,6 +393,7 @@ namespace cubconn::connection
 	printf ("RECV BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_recv_hit));
 	printf ("SEND BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_send_hit));
 	*/
+
       }
     printf ("------ summary ------\n");
     printf ("STATUS               : %s (draining worker: %d)\n",
@@ -403,9 +406,15 @@ namespace cubconn::connection
     printf ("BYTES OUT            : %lf\n\n", bytes_out);
 
     css_get_task_stats (task_stats);
-    printf ("TASK REQUESTED       : %lld\n", static_cast<unsigned long long> (task_stats[0]));
-    printf ("TASK STARTED         : %lld\n", static_cast<unsigned long long> (task_stats[1]));
-    printf ("TASK COMPLETED       : %lld\n\n", static_cast<unsigned long long> (task_stats[2]));
+    requested = task_stats[0] - before[0];
+    started = task_stats[1] - before[1];
+    completed = task_stats[2] - before[2];
+    printf ("TASK REQUESTED       : %lld\n", static_cast<unsigned long long> (requested));
+    printf ("TASK STARTED         : %lld\n", static_cast<unsigned long long> (started));
+    printf ("TASK COMPLETED       : %lld\n\n", static_cast<unsigned long long> (completed));
+    printf ("TASK QUEUE DEPTH     : %lld\n", static_cast<unsigned long long> (task_stats[0] - task_stats[1]));
+    printf ("TASK IN PROGRESS     : %lld\n\n", static_cast<unsigned long long> (task_stats[1] - task_stats[2]));
+    std::memcpy (before, task_stats, sizeof (uint64_t) * 3);
   }
 
   bool coordinator::eventfd_register (int fd)
