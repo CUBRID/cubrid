@@ -19996,7 +19996,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
     {
       if (strcmp (qualifier_name, current_schema_name) != 0
-	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER has been called */ )
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
 	{
 	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
 	   * are beyond the scope of the compatibility option */
@@ -20215,7 +20215,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
     {
       if (strcmp (qualifier_name, current_schema_name) != 0
-	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER has been called */ )
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
 	{
 	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
 	   * are beyond the scope of the compatibility option */

@@ -188,6 +188,7 @@ namespace cubload
     LC_FIND_CLASSNAME found = LC_CLASSNAME_EXIST;
     HEAP_CACHE_ATTRINFO attr_info;
     HEAP_SCANCACHE scan_cache;
+    MVCC_SNAPSHOT *mvcc_snapshot = NULL;
     SCAN_CODE scan_code = S_SUCCESS;
     RECDES recdes = RECDES_INITIALIZER;
     HFID hfid = HFID_INITIALIZER;
@@ -215,7 +216,14 @@ namespace cubload
 	return LC_CLASSNAME_ERROR;
       }
 
-    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, NULL);
+    mvcc_snapshot = logtb_get_mvcc_snapshot (&thread_ref);
+    if (mvcc_snapshot == NULL)
+      {
+	/* TODO: er_set() */
+	return LC_CLASSNAME_ERROR;
+      }
+
+    error = heap_scancache_start (&thread_ref, &scan_cache, &hfid, NULL, true, mvcc_snapshot);
     if (error != NO_ERROR)
       {
 	ASSERT_ERROR ();
@@ -232,6 +240,12 @@ namespace cubload
 	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
 	if (scan_code == S_SUCCESS)
 	  {
+	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
+	    if (scan_code != S_SUCCESS)
+	      {
+		continue;
+	      }
+
 	    error = heap_attrinfo_read_dbvalues (&thread_ref, &inst_oid, &recdes, &attr_info);
 	    if (error != NO_ERROR)
 	      {
