@@ -100,10 +100,9 @@
 #define IS_ALTER_STMT_SET_REPL_OPTION(_node) \
   ((_node)->info.value.data_value.i )
 
-/* 
- * IS_REPL_CONSTRAINT_RELATED_ALTER() 
- *    return: true if ALTER clause affects replication constraints
- *    code(in): PT_ALTER_CODE value
+/* Returns true if the ALTER clause affects replication constraints.
+ * Used to check whether the given PT_ALTER_CODE value modifies
+ * replication-related properties.
  */
 #define IS_REPL_CONSTRAINT_RELATED_ALTER(code)              \
   ( ((code) == PT_ADD_ATTR_MTHD)         ||                 \
@@ -1756,7 +1755,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (need_check_repl_constraint)
     {
       vclass = db_find_class (entity_name);
-      
+
       if (!sm_is_replication_class (vclass))
 	{
 	  return NO_ERROR;
@@ -8967,10 +8966,6 @@ error_exit:
  *   class_obj(in): The class object being validated
  *
  */
-/* TODO: When creating a table, replication information can be obtained from the parse tree (PT), 
-but when adding a constraint to a column with ALTER TABLE, it has to be retrieved from the schema manager (SM). 
-If the time required to patch the SM is small, the same patch-based approach can be applied consistently. 
-*/
 bool
 check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
 {
@@ -9017,8 +9012,8 @@ check_ha_repl_constraint (DB_OBJECT * class_obj)
 
   if (!classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REQUIRES_REPLICATION_KEY, 0);
-      return ER_HA_REQUIRES_REPLICATION_KEY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_KEY_REQUIRED, 0);
+      return ER_HA_REPLICATION_KEY_REQUIRED;
     }
 
   if (!check_ha_repl_fk_ref_all_replicated (class_obj))
@@ -10869,7 +10864,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
 
   if (!HA_DISABLED ())
     {
-      error = ER_REPLICATION_OPTION_CHANGE_IN_HA_MODE;
+      error = ER_HA_REPLICATION_KEY_REQUIRED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto exit;
     }
