@@ -21,11 +21,13 @@
  */
 
 #include "hardware_topology.hpp"
+#include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "connection_pool.hpp"
 #include "coordinator.hpp"
 #include "connection_sr.h"
 
+#include <random>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
@@ -47,6 +49,7 @@ namespace cubconn::connection
     m_parent (pool),
     m_watcher (watcher),
     m_core (core),
+    m_status (status::PREPARING),
     m_stop (false),
     m_max_worker (max_worker),
     m_min_worker (min_worker),
@@ -54,6 +57,14 @@ namespace cubconn::connection
   {
     std::size_t i;
 
+    /* external controller */
+    if (!m_controller.open ("/tmp/cub_server_" + std::to_string (getpid ()) + "_coordinator.sock",
+			    SOCK_NONBLOCK | SOCK_CLOEXEC))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to attach controller: %s\n", strerror (errno));
+	assert_release (false);
+      }
+    m_ctrlfd = m_controller.get_fd ();
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -64,7 +75,8 @@ namespace cubconn::connection
       }
 
     if (!this->eventfd_register (m_eventfd) ||
-	!this->eventfd_register (m_timerfd))
+	!this->eventfd_register (m_timerfd) ||
+	!this->eventfd_register (m_ctrlfd))
       {
 	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to register fd\n");
 	assert_release (false);
@@ -79,10 +91,18 @@ namespace cubconn::connection
     /* request queue */
     m_queue_size.store (0, std::memory_order_relaxed);
 
+    /* scaling */
+    m_scaling.last_drain_ns = 0;
+    m_scaling.last_expand_ns = 0;
+    m_scaling.draining_worker = -1;
+
     /* statistics */
     for (i = 0; i < max_worker; i++)
       {
 	m_statistics[i].m_score = 0;
+
+	m_statistics[i].m_core = 0;
+	m_statistics[i].m_last_cpu_time = 0;
 
 	m_statistics[i].m_client_num = 0;
 	m_statistics[i].m_last_updated = 0;
@@ -159,6 +179,130 @@ namespace cubconn::connection
     return (uint64_t) ts.tv_sec * 1000000000ULL + ts.tv_nsec;
   }
 
+  bool coordinator::transfer_connection (uint64_t id, int from, int to)
+  {
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+
+    assert (static_cast<std::size_t> (from) < m_max_worker);
+    assert (static_cast<std::size_t> (to) < m_max_worker);
+    assert (from != to);
+    assert (id > 0);
+
+    if (m_migrating.find (id) != m_migrating.end ())
+      {
+	/* already in flight */
+	return false;
+      }
+    m_migrating.insert (id);
+
+    assert (m_statistics[from].m_contexts.find (id) != m_statistics[from].m_contexts.end ());
+    assert (m_statistics[to].m_contexts.find (id) == m_statistics[to].m_contexts.end ());
+
+    auto stats = m_statistics[from].m_contexts.find (id);
+    m_statistics[to].m_contexts.emplace (
+	    stats->first,
+	    std::pair<
+	    statistics::metrics<statistics::context, double>,
+	    statistics::metrics<statistics::context>
+	    > (stats->second.first, stats->second.second)
+    );
+    /* the stats in worker[from] are removed when the worker responds. */
+
+    request.type = connection::worker::message_type::HANDOFF_CLIENT;
+    request.id = stats->first;
+    request.worker_ptr = workers[to].get ();
+    request.worker_index = to;
+
+    workers[from]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[from]->notify ())
+      {
+	assert_release (false);
+      }
+
+    return true;
+  }
+
+  bool coordinator::scale_up ()
+  {
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+
+    if (m_current_worker >= m_max_worker ||
+	m_status != status::STABLE)
+      {
+	/* there is no extra worker */
+	return false;
+      }
+
+    assert (m_current_worker < m_max_worker);
+
+    m_status = status::EXPANDING;
+
+    /* new clients must be entered in this worker */
+    m_statistics[m_current_worker].m_score = 0;
+
+    request.type = connection::worker::message_type::AWAKEN;
+    workers[m_current_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[m_current_worker]->notify ())
+      {
+	assert_release (false);
+      }
+    m_current_worker++;
+
+    m_status = status::STABLE;
+
+    return true;
+  }
+
+  bool coordinator::scale_down_finish ()
+  {
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+
+    request.type = connection::worker::message_type::HIBERNATE;
+    workers[m_scaling.draining_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[m_scaling.draining_worker]->notify ())
+      {
+	assert_release (false);
+      }
+
+    m_scaling.last_drain_ns = get_monotonic_ns ();
+    m_scaling.draining_worker = -1;
+
+    m_status = status::STABLE;
+
+    return true;
+  }
+
+  bool coordinator::scale_down ()
+  {
+    std::size_t newhome;
+
+    if (m_current_worker <= m_min_worker ||
+	m_status != status::STABLE)
+      {
+	/* the number of workers cannot be further reduced */
+	return false;
+      }
+
+    m_current_worker--;
+
+    /* TODO: we need more graceful migration method using statistics */
+    for (auto &stats : m_statistics[m_current_worker].m_contexts)
+      {
+	std::tie (newhome, std::ignore) = this->statistics_find_score_extremes ();
+	transfer_connection (stats.first, m_current_worker, newhome);
+      }
+
+    /* register the target worker index */
+    m_scaling.draining_worker = m_current_worker;
+
+    m_status = status::DRAINING;
+
+    return true;
+  }
+
   void coordinator::statistics_update_score (std::size_t worker)
   {
     statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
@@ -171,7 +315,7 @@ namespace cubconn::connection
 
     /* temporary formula */
     m_statistics[worker].m_score =
-	    static_cast<double> (m_statistics[worker].m_client_num) / 10 +
+	    static_cast<double> (m_statistics[worker].m_client_num) +
 	    /* throughput per ms */
 	    w_ewma.get (statistics::worker::MQ_REQUESTED) / 500 +
 	    w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
@@ -204,14 +348,23 @@ namespace cubconn::connection
   void coordinator::statistics_print ()
   {
     double bytes_in, bytes_out;
+    double core;
     uint64_t budget_recv_hit, budget_send_hit;
     std::size_t i;
 
+    core = 0;
+    bytes_in = 0;
+    bytes_out = 0;
     printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
-	bytes_in = 0;
-	bytes_out = 0;
+	if (!m_statistics[i].m_contexts.empty ())
+	  {
+	    printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_statistics[i].m_contexts.size ()));
+	  }
+
+	core += m_statistics[i].m_core;
+
 	budget_recv_hit = 0;
 	budget_send_hit = 0;
 	for (auto &stats : m_statistics[i].m_contexts)
@@ -220,22 +373,33 @@ namespace cubconn::connection
 	    bytes_out += stats.second.first.get (statistics::context::BYTES_OUT_TOTAL);
 	    budget_recv_hit += stats.second.second.get (statistics::context::RECV_BUDGET_HIT);
 	    budget_send_hit += stats.second.second.get (statistics::context::SEND_BUDGET_HIT);
+
+	    //printf ("  CLIENT (id, %lld)\n", static_cast<unsigned long long> (stats.first));
 	  }
 
-	printf ("------ worker %d ------\n", static_cast<int> (i));
+	/*
 	printf ("SCORE: %lf\n", m_statistics[i].m_score);
 	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
+	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
 	printf ("CLIENT NUM: %d (heuristic: %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
 		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
 	printf ("MQ REQUESTED: %lf\n",
 		m_statistics[i].m_worker.first.get (statistics::worker::MQ_REQUESTED));
 	printf ("PACKET COUNT: %lf\n",
 		m_statistics[i].m_worker.first.get (statistics::worker::PACKET_COUNT));
-	printf ("BYTES IN: %lf\n", bytes_in);
-	printf ("BYTES OUT: %lf\n", bytes_out);
 	printf ("RECV BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_recv_hit));
 	printf ("SEND BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_send_hit));
+	*/
       }
+    printf ("------ summary ------\n");
+    printf ("STATUS: %s (draining worker: %d)\n",
+	    m_status == status::STABLE ? "STABLE" : (m_status == status::DRAINING ? "DRAINING" : "EXPANDING"),
+	    m_scaling.draining_worker);
+    printf ("WORKER COUNT: %d (min: %d, max: %d)\n", m_current_worker, m_min_worker, m_max_worker);
+    printf ("CORE USAGE: %0.4lf / %d\n", core, m_max_worker);
+    printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
+    printf ("BYTES IN: %lf\n", bytes_in);
+    printf ("BYTES OUT: %lf\n\n", bytes_out);
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -303,6 +467,27 @@ namespace cubconn::connection
     return true;
   }
 
+  bool coordinator::handle_message_queue_start (message &item)
+  {
+    /*
+    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
+    connection::worker::message request;
+    std::size_t i;
+
+    for (i = 1; i < m_max_worker; i++)
+      {
+    request.type = connection::worker::message_type::HIBERNATE;
+    workers[i]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
+    if (!workers[i]->notify ())
+      {
+        assert_release (false);
+      }
+      }
+      */
+
+    return true;
+  }
+
   bool coordinator::handle_message_queue_new_client (message &item)
   {
     static uint64_t id = 1;
@@ -341,20 +526,62 @@ namespace cubconn::connection
 
   bool coordinator::handle_message_queue_return_to_pool (message &item)
   {
+    std::size_t i;
+
     for (context *ctx : item.resource)
       {
-	assert (m_statistics[ctx->m_worker].m_contexts.find (ctx->m_id) != m_statistics[ctx->m_worker].m_contexts.end ());
-
 	m_statistics[ctx->m_worker].m_client_num--;
-	m_statistics[ctx->m_worker].m_contexts.erase (ctx->m_id);
 
-	ctx->m_worker = -1;
-	ctx->m_id = 0;
+	/* remove all stats with id as m_id */
+	for (i = 0; i < m_max_worker; i++)
+	  {
+	    m_statistics[i].m_contexts.erase (ctx->m_id);
+	  }
 
 	/* release the conneciton */
 	css_free_conn (ctx->m_conn);
 	m_parent->retire_context (ctx);
       }
+
+    return true;
+  }
+
+  bool coordinator::handle_message_queue_handoff_reply (message &item)
+  {
+    assert (static_cast<std::size_t> (item.from) < m_max_worker);
+    assert (static_cast<std::size_t> (item.to) < m_max_worker);
+    assert (item.id > 0);
+    assert (m_migrating.find (item.id) != m_migrating.end ());
+
+    /* remove from in flight list */
+    m_migrating.erase (item.id);
+
+    if (m_statistics[item.from].m_contexts.find (item.id) == m_statistics[item.from].m_contexts.end () &&
+	m_statistics[item.to].m_contexts.find (item.id) == m_statistics[item.to].m_contexts.end ())
+      {
+	/* this stats has already been cleard in return_to_pool routine */
+
+	return true;
+      }
+
+    if (!item.transferred)
+      {
+	goto not_transferred;
+      }
+
+    assert (m_statistics[item.from].m_contexts.find (item.id) != m_statistics[item.from].m_contexts.end ());
+
+    m_statistics[item.from].m_contexts.erase (item.id);
+    m_statistics[item.from].m_client_num--;
+    m_statistics[item.to].m_client_num++;
+
+    return true;
+
+not_transferred:
+    assert (m_statistics[item.to].m_contexts.find (item.id) != m_statistics[item.to].m_contexts.end ());
+
+    /* revert */
+    m_statistics[item.to].m_contexts.erase (item.id);
 
     return true;
   }
@@ -367,6 +594,9 @@ namespace cubconn::connection
 
     worker = item.statistics.worker.first;
     delta = item.statistics.time_ns - m_statistics[worker].m_last_updated;
+
+    m_statistics[worker].m_core =
+	    static_cast <double> (item.statistics.cpu_time_ns - m_statistics[worker].m_last_cpu_time) / delta;
 
     if (m_statistics[worker].m_last_updated)
       {
@@ -394,9 +624,10 @@ namespace cubconn::connection
 	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
 
 	    m_statistics[worker].m_contexts[stats.first].first = stats.second;
-	    m_statistics[worker].m_contexts[stats.first].second  = stats.second;
+	    m_statistics[worker].m_contexts[stats.first].second = stats.second;
 	  }
       }
+    m_statistics[worker].m_last_cpu_time = item.statistics.cpu_time_ns;
     m_statistics[worker].m_last_updated = item.statistics.time_ns;
 
     /* calculate the summation */
@@ -408,45 +639,139 @@ namespace cubconn::connection
     /* update score */
     this->statistics_update_score (worker);
 
+    if ((m_status == status::DRAINING && static_cast<int> (worker) == m_scaling.draining_worker) &&
+	item.statistics.contexts.empty ())
+      {
+	this->scale_down_finish ();
+      }
+
+    return true;
+  }
+
+  bool coordinator::handle_message_queue_shutdown (message &item)
+  {
+    m_stop = true;
+
     return true;
   }
 
   bool coordinator::handle_message_queue ()
   {
+    static constexpr std::array<
+    bool (coordinator::*) (message &), static_cast<std::size_t> (message_type::TYPE_COUNT)
+    > handler =
+    {
+      /* START		*/ &coordinator::handle_message_queue_start,
+      /* NEW_CLIENT	*/ &coordinator::handle_message_queue_new_client,
+      /* RETURN_TO_POOL */ &coordinator::handle_message_queue_return_to_pool,
+      /* HANDOFF_REPLY	*/ &coordinator::handle_message_queue_handoff_reply,
+      /* STATISTICS	*/ &coordinator::handle_message_queue_statistics,
+      /* SHUTDOWN	*/ &coordinator::handle_message_queue_shutdown
+    };
     message request;
     uint64_t size, i;
+
+    static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 6, "this must be modified");
 
     i = 0;
     size = m_queue_size.exchange (0, std::memory_order_acquire);
     while (i++ < size && m_queue.try_pop (request))
       {
-	switch (request.type)
+	if (! (message_type::START <= request.type && message_type::TYPE_COUNT > request.type))
 	  {
-	  case message_type::START:
-	    break;
-
-	  case message_type::NEW_CLIENT:
-	    this->handle_message_queue_new_client (request);
-	    break;
-
-	  case message_type::RETURN_TO_POOL:
-	    this->handle_message_queue_return_to_pool (request);
-	    break;
-
-	  case message_type::STATISTICS:
-	    this->handle_message_queue_statistics (request);
-	    break;
-
-	  case message_type::SHUTDOWN:
-	    m_stop = true;
-	    break;
-
-	  default:
 	    er_log_conn (__FILE__, __LINE__,
 			 "connection::coordinator->handle_message_queue: received unknown event from eventfd\n");
 	    assert_release (false);
+	    continue;
+	  }
+	if (! (this->*handler[static_cast <std::size_t> (request.type)]) (request))
+	  {
+	    return false;
+	  }
+      }
+
+    return true;
+  }
+
+  bool coordinator::handle_controller_request (control_recv &rx, control_send &tx)
+  {
+    const char *name_table[] =
+    {
+      "SHOW STATS",
+      "SCALE UP",
+      "SCALE DOWN",
+      "CLIENT MOVE",
+      "OK",
+      "NOK"
+    };
+
+    static_assert (static_cast<int> (control_type::TYPE_COUNT) == sizeof (name_table) / sizeof (name_table[0]));
+
+    printf ("\033[2J\033[H");
+    printf ("controller\n");
+    printf ("  type: %s\n", name_table[static_cast<std::size_t> (rx.type)]);
+    printf ("  from: %d\n", rx.from);
+    printf ("  to: %d\n", rx.to);
+    printf ("  id: %d\n\n", rx.id);
+
+    switch (rx.type)
+      {
+      case control_type::SHOW_STATS:
+	this->statistics_print ();
+	tx.type = control_type::OK;
+	break;
+
+      case control_type::CLIENT_MOVE:
+	this->transfer_connection (rx.id, rx.from, rx.to);
+	tx.type = control_type::OK;
+	break;
+
+      case control_type::SCALE_UP:
+	tx.type = this->scale_up () ? control_type::OK : control_type::NOK;
+	break;
+
+      case control_type::SCALE_DOWN:
+	tx.type = this->scale_down () ? control_type::OK : control_type::NOK;
+	break;
+
+      default:
+	tx.type = control_type::NOK;
+	break;
+      }
+
+    return true;
+  }
+
+  bool coordinator::handle_controller ()
+  {
+    sockaddr_un peer;
+    socklen_t peerlen;
+    control_recv rx;
+    control_send tx;
+    result status;
+
+    while (true)
+      {
+	status = m_controller.recv (rx, peer, peerlen);
+	if (status == result::Pending)
+	  {
 	    break;
 	  }
+	if (status == result::Error)
+	  {
+	    return false;
+	  }
+
+	assert (status == result::Ok);
+
+	if (!this->handle_controller_request (rx, tx))
+	  {
+	    return false;
+	  }
+
+	m_controller.send (tx, peer, peerlen);
       }
 
     return true;
@@ -480,6 +805,8 @@ namespace cubconn::connection
 
     m_entry->get_error_context ().register_thread_local ();
 
+    m_status = status::STABLE;
+
     m_parent->lock_resource ();
   }
 
@@ -502,6 +829,10 @@ namespace cubconn::connection
   {
     std::array<epoll_event, 4> events;
     int nfds, i;
+
+    std::mt19937 gen (std::random_device { } ());
+    std::uniform_int_distribution<int> sc (0, 2);
+    int a = 0;
 
     while (!m_stop)
       {
@@ -537,11 +868,48 @@ namespace cubconn::connection
 		    this->handle_message_queue ();
 		    //this->statistics_print ();
 
+		    std::uniform_int_distribution<int> dis (0, m_current_worker - 1);
+
+		    /* a code for verification */
+		    for (std::size_t i = 0; i < m_max_worker; i++)
+		      {
+			for (auto &ctx : m_statistics[i].m_contexts)
+			  {
+			    std::size_t to = dis (gen);
+
+			    if (i != to)
+			      {
+				if (this->transfer_connection (ctx.first, i, to))
+				  {
+				    /* success */
+				  }
+			      }
+			  }
+		      }
+
+		    a++;
+		    if (a % 10 == 0)
+		      {
+			std::size_t sca = sc (gen);
+			if (sca == 0)
+			  {
+			    this->scale_up ();
+			  }
+			else if (sca == 2)
+			  {
+			    this->scale_down ();
+			  }
+		      }
+
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
 			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
 			return false;
 		      }
+		  }
+		else if (events[i].data.fd == m_ctrlfd)
+		  {
+		    this->handle_controller ();
 		  }
 	      }
 	  }

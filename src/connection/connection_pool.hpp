@@ -112,6 +112,7 @@ namespace cubconn::connection
       void finalize_workers ();
 
       void initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers);
+      void start_coordinator ();
       void finalize_coordinator ();
   };
 }

@@ -70,6 +70,8 @@ namespace cubconn::statistics
     /* --------------------------------------------------------------------------- */
     MQ_REQUESTED, /* count */
     MQ_NEW_CLIENT, /* count */
+    MQ_HANDOFF_CLIENT, /* count */
+    MQ_TAKEOVER_CLIENT, /* count */
     MQ_SHUTDOWN_CLIENT, /* count */
     MQ_SEND_PACKET, /* count */
     MQ_RELEASE_PACKET, /* count */
@@ -80,9 +82,10 @@ namespace cubconn::statistics
     BLOCKED_RMUTEX, /* us */
 
     /* --------------------------------------------------------------------------- */
-    /* stats count		 						   */
+    /* stats count (will not be allocated)					   */
     /* --------------------------------------------------------------------------- */
-    STATS_COUNT
+    STATS_COUNT,
+    NA
   };
 
   inline std::pair<std::string, std::string> worker_to_string[static_cast <std::size_t> (worker::STATS_COUNT)] =
@@ -92,6 +95,8 @@ namespace cubconn::statistics
 
     { "MQ_REQUESTED", "" },
     { "MQ_NEW_CLIENT", "" },
+    { "MQ_HANDOFF_CLIENT", "" },
+    { "MQ_TAKEOVER_CLIENT", "" },
     { "MQ_SHUTDOWN_CLIENT", "" },
     { "MQ_SEND_PACKET", "" },
     { "MQ_RELEASE_PACKET", "" },

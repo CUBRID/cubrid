@@ -52,6 +52,14 @@ namespace cubconn::connection
   class worker
   {
     private:
+      enum class status
+      {
+	READY,
+	RUNNING,
+	HIBERNATING,
+	TERMINATING
+      };
+
       enum class timer_type : uint32_t
       {
 	NA,
@@ -80,13 +88,6 @@ namespace cubconn::connection
 	uint64_t last_time;
       };
 
-      struct message_blocker
-      {
-	std::mutex m;
-	std::condition_variable cv;
-	bool done;
-      };
-
       struct exhausted_context
       {
 	bool prepared;
@@ -105,23 +106,37 @@ namespace cubconn::connection
 
       enum class message_type
       {
+	/* WORKER */
+
 	START,
 
+	HIBERNATE, /* lazy queue */
+	AWAKEN, /* lazy queue */
+
+	SHUTDOWN,
+
+	/* CLIENT */
+
 	NEW_CLIENT,
+	HANDOFF_CLIENT, /* lazy queue */
+	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 
 	SEND_PACKET,
 	RELEASE_PACKET,
 
-	SHUTDOWN
+	TYPE_COUNT
       };
 
       struct message
       {
 	public:
 	  message () :
+	    id (0),
 	    ctx (nullptr),
 	    conn (nullptr),
+	    worker_ptr (nullptr),
+	    worker_index (-1),
 	    ignore (ignore_level::DONT_IGNORE),
 	    retry (false),
 	    waiter_handle (nullptr)
@@ -137,6 +152,7 @@ namespace cubconn::connection
 
 	  message_type type;
 
+	  uint64_t id;
 	  context *ctx;
 	  css_conn_entry *conn;
 
@@ -150,6 +166,10 @@ namespace cubconn::connection
 	  /* SEND_PACKET    */
 	  std::function<void ()> deleter;
 
+	  /* HANDOFF_CLIENT */
+	  worker *worker_ptr;
+	  int worker_index;
+
 	  /* SHUTDOWN_CLIENT */
 	  ignore_level ignore;
 	  bool retry;
@@ -157,6 +177,7 @@ namespace cubconn::connection
 	  /* waiter handle (implemented only for START, SHUTDOWN_CLIENT) */
 	  /* START	     */
 	  /* SHUTDOWN_CLIENT */
+	  /* SEND_PACKET     */
 	  std::shared_ptr<message_blocker> waiter_handle;
 
 	  /* debug purpose */
@@ -191,6 +212,7 @@ namespace cubconn::connection
       /* thread handle */
       std::thread m_thread;
       std::size_t m_core;
+      status m_status;
       bool m_stop;
 
       cubthread::entry *m_entry;
@@ -232,7 +254,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* utility								     */
       /* --------------------------------------------------------------------------- */
-      uint64_t get_monotonic_ns ();
+      uint64_t get_time_ns (clockid_t type);
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
@@ -267,8 +289,10 @@ namespace cubconn::connection
       bool eventfd_settimer (int fd, uint64_t sec, uint64_t nsec);
       bool eventfd_settimer (int fd, timer_latency latency);
 
+      bool eventfd_starttimer ();
+      bool eventfd_stoptimer ();
       bool eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle);
-      void eventfd_removetimer (timer_type type);
+      bool eventfd_removetimer (timer_type type);
 
       bool eventfd_handler (bool *eventfds);
 
@@ -279,7 +303,14 @@ namespace cubconn::connection
       bool handle_message_queue_release_packet (message &item);
 
       bool handle_message_queue_new_client (message &item);
+      bool handle_message_queue_handoff_client (message &item);
+      bool handle_message_queue_takeover_client (message &item);
       bool handle_message_queue_shutdown_client (message &item);
+
+      bool handle_message_queue_start (message &item);
+      bool handle_message_queue_hibernate (message &item);
+      bool handle_message_queue_awaken (message &item);
+      bool handle_message_queue_shutdown (message &item);
 
       bool handle_message_queue_by_index (queue_type type);
       bool handle_message_queue ();

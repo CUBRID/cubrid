@@ -73,6 +73,9 @@ namespace cubconn::connection
 
     this->release_resource ();
 
+    /* request to start coordinating */
+    this->start_coordinator ();
+
     m_max_connections = max_connections;
     m_max_connection_workers = max_connection_workers;
     m_min_connection_workers = min_connection_workers;
@@ -324,7 +327,6 @@ namespace cubconn::connection
 
   void pool::initialize_coordinator (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers)
   {
-    coordinator::message request;
     std::vector<int> *cores;
 
     cores = &cubbase::topology.get_cores ();
@@ -335,6 +337,11 @@ namespace cubconn::connection
 			    max_connection_workers,
 			    min_connection_workers
 		    );
+  }
+
+  void pool::start_coordinator ()
+  {
+    coordinator::message request;
 
     request.type = coordinator::message_type::START;
     m_coordinator->enqueue (std::move (request));
