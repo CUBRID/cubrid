@@ -830,10 +830,6 @@ not_transferred:
     std::array<epoll_event, 4> events;
     int nfds, i;
 
-    std::mt19937 gen (std::random_device { } ());
-    std::uniform_int_distribution<int> sc (0, 2);
-    int a = 0;
-
     while (!m_stop)
       {
 	nfds = m_events.wait (events.data (), events.size (), TIMEOUT_INFINITE);
@@ -867,39 +863,6 @@ not_transferred:
 		  {
 		    this->handle_message_queue ();
 		    //this->statistics_print ();
-
-		    std::uniform_int_distribution<int> dis (0, m_current_worker - 1);
-
-		    /* a code for verification */
-		    for (std::size_t i = 0; i < m_max_worker; i++)
-		      {
-			for (auto &ctx : m_statistics[i].m_contexts)
-			  {
-			    std::size_t to = dis (gen);
-
-			    if (i != to)
-			      {
-				if (this->transfer_connection (ctx.first, i, to))
-				  {
-				    /* success */
-				  }
-			      }
-			  }
-		      }
-
-		    a++;
-		    if (a % 10 == 0)
-		      {
-			std::size_t sca = sc (gen);
-			if (sca == 0)
-			  {
-			    this->scale_up ();
-			  }
-			else if (sca == 2)
-			  {
-			    this->scale_down ();
-			  }
-		      }
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {

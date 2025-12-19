@@ -552,7 +552,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t core_count, worker_count;
+  std::size_t task_group, task_worker;
   std::size_t max_connection_workers, min_connection_workers;
   std::string name;
   int status = NO_ERROR;
@@ -568,15 +568,15 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 #define MAX_TASK_COUNT css_get_max_task_count ()
 #define MAX_CONNECTIONS css_get_max_connections ()
 
-  core_count = (int) prm_get_integer_value (PRM_ID_THREAD_CORE_COUNT);
-  worker_count = (int) prm_get_integer_value (PRM_ID_THREAD_WORKER_COUNT);
+  task_group = (int) prm_get_integer_value (PRM_ID_TASK_GROUP);
+  task_worker = (int) prm_get_integer_value (PRM_ID_TASK_WORKER);
   max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
   // create request worker pool
   css_Server_request_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (worker_count, MAX_TASK_COUNT, "transaction workers", NULL,
-						   core_count,
+    cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction workers", NULL,
+						   task_group,
 						   cubthread::is_logging_configured
 						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
 						   css_get_server_request_thread_pooling_configuration (),
