@@ -2792,14 +2792,14 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       if (tfile_vfid_p->tde_encrypted)
 	{
 	  tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
-	}
 
-      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
-	  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
-	  return NULL;
+	  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	      VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
+	      return NULL;
+	    }
 	}
     }
 
@@ -3070,13 +3070,13 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       tfile_vfid_p->tde_encrypted = true;
       tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
-    }
+      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
+	{
+	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	  free_and_init (tfile_vfid_p);
+	  return NULL;
+	}
 
-  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
-    {
-      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
-      free_and_init (tfile_vfid_p);
-      return NULL;
     }
 
   if (qmgr_is_allowed_result_cache (query_p->query_flag))
