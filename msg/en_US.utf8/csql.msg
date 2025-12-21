@@ -215,3 +215,4 @@ $ csql help messages
 235 <Partitions>
 236 A class name is required.
 237 <Comment>
+238 Failed to compile system catalog classes.
