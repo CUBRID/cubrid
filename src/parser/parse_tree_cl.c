@@ -18594,6 +18594,36 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 }
 
 /*
+ *   pt_expr_keep_uniqueness () : checks if the given operator
+ *				  is keeping uniqueness
+ *   return:
+ *   expr(in): expression parse tree node
+ */
+bool
+pt_expr_keep_uniqueness (const PT_NODE * expr)
+{
+  switch (expr->info.expr.op)
+    {
+    case PT_REVERSE:
+    case PT_CONCAT:
+    case PT_STRCAT:
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_EQ:		/* for predicate */
+      return true;
+    case PT_CAST:
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))	/* auto generated cast */
+	{
+	  return true;
+	}
+      return false;
+    default:
+      return false;
+    }
+  return false;
+}
+
+/*
  *   pt_is_function_index_expr () : checks if the given PT_EXPR
  *				    is allowed in the structure of a
  *				    function index. This is true if the
