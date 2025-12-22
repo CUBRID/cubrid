@@ -222,6 +222,7 @@ namespace cubconn::connection
       struct
       {
 	std::uint32_t workers;
+	uint64_t time_ns;
 
 	std::pair<double, uint64_t> requested;
 	std::pair<double, uint64_t> started;
@@ -259,7 +260,7 @@ namespace cubconn::connection
       void statistics_update_connection (uint64_t delta,
 					 std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
 					 std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts);
-      void statistics_update_task (uint64_t delta);
+      void statistics_update_task ();
 
       void statistics_print ();
 

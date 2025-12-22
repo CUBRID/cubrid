@@ -98,6 +98,7 @@ namespace cubconn::connection
 
     /* task statistics */
     m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
+    m_task_statistics.time_ns = get_monotonic_ns ();
     m_task_statistics.requested = { 0, 0 };
     m_task_statistics.started = { 0, 0 };
     m_task_statistics.completed = { 0, 0 };
@@ -329,7 +330,14 @@ namespace cubconn::connection
 
   void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current)
   {
-    acc = acc * (1 - alpha) + (current - prev) * (alpha / (time_delta * 1e-6));
+    double diff;
+
+    diff = 0;
+    if (current > prev)
+      {
+	diff = static_cast<double> (current - prev);
+      }
+    acc = acc * (1 - alpha) + diff * (alpha / (time_delta * 1e-6));
     prev = current;
   }
 
@@ -421,19 +429,25 @@ namespace cubconn::connection
       }
   }
 
-  void coordinator::statistics_update_task (uint64_t delta)
+  void coordinator::statistics_update_task ()
   {
     constexpr double alpha = 0.1;
     uint64_t stats[3] = { 0, 0, 0 };
+    uint64_t depth;
+    uint64_t delta, time_ns;
+
+    time_ns = get_monotonic_ns ();
+    delta = time_ns - m_task_statistics.time_ns;
 
     css_get_task_stats (stats);
+    /* queue depth is a gauge. smooth the absolute value to avoid negative delta. */
+    depth = stats[0] > stats[1] ? stats[0] - stats[1] : 0;
     if (m_task_statistics.requested.second)
       {
 	this->statistics_EWMA (alpha, delta, m_task_statistics.requested.first, m_task_statistics.requested.second, stats[0]);
 	this->statistics_EWMA (alpha, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
 	this->statistics_EWMA (alpha, delta, m_task_statistics.completed.first, m_task_statistics.completed.second, stats[2]);
-	this->statistics_EWMA (alpha, delta, m_task_statistics.depth.first, m_task_statistics.depth.second,
-			       stats[0] - stats[1]);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.depth.first, m_task_statistics.depth.second, depth);
       }
     else
       {
@@ -441,8 +455,10 @@ namespace cubconn::connection
 	m_task_statistics.requested.second = stats[0];
 	m_task_statistics.started.second = stats[1];
 	m_task_statistics.completed.second = stats[2];
-	m_task_statistics.depth.second = stats[0] - stats[1];
+	m_task_statistics.depth.second = depth;
       }
+
+    m_task_statistics.time_ns = time_ns;
   }
 
   void coordinator::statistics_print ()
@@ -564,22 +580,6 @@ namespace cubconn::connection
 
   bool coordinator::handle_message_queue_start (message &item)
   {
-    /*
-    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
-    connection::worker::message request;
-    std::size_t i;
-
-    for (i = 1; i < m_max_worker; i++)
-      {
-    request.type = connection::worker::message_type::HIBERNATE;
-    workers[i]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[i]->notify ())
-      {
-        assert_release (false);
-      }
-      }
-      */
-
     return true;
   }
 
@@ -695,7 +695,7 @@ not_transferred:
 
     this->statistics_update_connection (delta, item.statistics.worker,
 					item.statistics.contexts);
-    this->statistics_update_task (delta);
+    this->statistics_update_task ();
 
     m_statistics[index].m_last_cpu_time = item.statistics.cpu_time_ns;
     m_statistics[index].m_last_updated = item.statistics.time_ns;
