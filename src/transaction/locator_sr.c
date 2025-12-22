@@ -7906,7 +7906,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		  assert (scan_cache->m_index_stats != NULL);
 
 		  // TODO (CUBVEC): refactor this code
-		  if (!BTID_IS_VECTOR_INDEX (&index->btid))
+		  if (index->type != VECTOR_INDEX)
 		    {
 		      unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 		    }
@@ -7937,7 +7937,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 #if defined(ENABLE_SYSTEMTAP)
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
-	      if (BTID_IS_VECTOR_INDEX (&index->btid))
+	      if (index->type == VECTOR_INDEX)
 		{
 		  const DB_VECTOR_FLOAT *vf = db_get_vector_float (key_dbvalue);
 
@@ -8546,7 +8546,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	    {
 	      assert (scan_cache->m_index_stats != NULL);
 	      // TODO (CUBVEC): refactor this code
-	      if (!BTID_IS_VECTOR_INDEX (&index->btid))
+	      if (index->type != VECTOR_INDEX)
 		{
 		  unique_stat_info = &scan_cache->m_index_stats->get_stats_of (index->btid);
 		}

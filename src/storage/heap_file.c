@@ -7013,7 +7013,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
 	      // TODO (CUBVEC): refactor this code
-	      if (!BTID_IS_VECTOR_INDEX (&classrepr->indexes[i].btid))
+	      if (classrepr->indexes[i].type != VECTOR_INDEX)
 		{
 		  scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
 		}
@@ -12792,7 +12792,7 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
     {
       value = &idx_attrinfo->values[value_index];
       *n_btids = value->last_attrepr->n_btids;
-      // TODO : OR_ATTRIBUTE structure has been changed due to CUBVEC-142 issue.
+      // TODO (CUBVEC) : OR_ATTRIBUTE structure has been changed due to CUBVEC-142 issue.
       // Currently, btids contains index type, we need to collect BTID from array.
       *btids = value->last_attrepr->btids;
       *attrid = value->attrid;

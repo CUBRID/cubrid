@@ -23982,7 +23982,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	  found_index_type = -1;
 	  search_index_type = true;
 	  for (j = 0; j < attrepr->n_btids && search_index_type; j++)
-	    {;
+	    {
 	      btid = &attrepr->btids[j].btid;
 	      for (k = 0; k < rep->n_indexes; k++)
 		{
