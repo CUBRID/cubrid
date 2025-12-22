@@ -23546,9 +23546,17 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 
       if (*advance_to_page == NULL)
 	{
-	  /* child page not present - cached page deprecated */
-	  *restart = true;
-	  return NO_ERROR;
+	  error_code = er_errid ();
+	  if (error_code != NO_ERROR)
+	    {
+	      /* handle interrupt, internal error, ...etc */
+	      return error_code;
+	    }
+	  else
+	    {
+	      /* child page not present - cached page deprecated */
+	      *restart = true;
+	    }
 	}
     }
 
