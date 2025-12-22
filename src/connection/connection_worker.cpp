@@ -1216,6 +1216,9 @@ respond:
     assert (m_context.empty ());
     assert (m_exhausted.empty ());
 
+    /* reset counters so resumed workers don't report stale totals */
+    m_stats.reset ();
+
     m_status = status::HIBERNATING;
 
     return true;

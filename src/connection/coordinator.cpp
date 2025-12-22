@@ -96,7 +96,14 @@ namespace cubconn::connection
     m_scaling.last_expand_ns = 0;
     m_scaling.draining_worker = -1;
 
-    /* statistics */
+    /* task statistics */
+    m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
+    m_task_statistics.requested = { 0, 0 };
+    m_task_statistics.started = { 0, 0 };
+    m_task_statistics.completed = { 0, 0 };
+    m_task_statistics.depth = { 0, 0 };
+
+    /* connection statistics */
     for (i = 0; i < max_worker; i++)
       {
 	m_statistics[i].m_score = 0;
@@ -237,6 +244,8 @@ namespace cubconn::connection
 
     assert (m_current_worker < m_max_worker);
 
+    m_scaling.draining_worker = -1;
+
     m_status = status::EXPANDING;
 
     /* new clients must be entered in this worker */
@@ -249,6 +258,8 @@ namespace cubconn::connection
 	assert_release (false);
       }
     m_current_worker++;
+
+    m_scaling.last_expand_ns = get_monotonic_ns ();
 
     m_status = status::STABLE;
 
@@ -266,6 +277,17 @@ namespace cubconn::connection
       {
 	assert_release (false);
       }
+
+    /* clear the statistics */
+    m_statistics[m_scaling.draining_worker].m_score = 0;
+    m_statistics[m_scaling.draining_worker].m_core = 0;
+    m_statistics[m_scaling.draining_worker].m_last_cpu_time = 0;
+    m_statistics[m_scaling.draining_worker].m_client_num = 0;
+    m_statistics[m_scaling.draining_worker].m_last_updated = 0;
+    m_statistics[m_scaling.draining_worker].m_sum.reset ();
+    m_statistics[m_scaling.draining_worker].m_worker.first.reset ();
+    m_statistics[m_scaling.draining_worker].m_worker.second.reset ();
+    m_statistics[m_scaling.draining_worker].m_contexts.clear ();
 
     m_scaling.last_drain_ns = get_monotonic_ns ();
     m_scaling.draining_worker = -1;
@@ -293,6 +315,8 @@ namespace cubconn::connection
       {
 	std::tie (newhome, std::ignore) = this->statistics_find_score_extremes ();
 	transfer_connection (stats.first, m_current_worker, newhome);
+
+	/* TODO: m_statistics[newhome].m_score += CLIENT_SCORE */
       }
 
     /* register the target worker index */
@@ -301,6 +325,12 @@ namespace cubconn::connection
     m_status = status::DRAINING;
 
     return true;
+  }
+
+  void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current)
+  {
+    acc = acc * (1 - alpha) + (current - prev) * (alpha / (time_delta * 1e-6));
+    prev = current;
   }
 
   void coordinator::statistics_update_score (std::size_t worker)
@@ -345,56 +375,110 @@ namespace cubconn::connection
     return { min, max };
   }
 
+  void coordinator::statistics_update_connection (uint64_t delta,
+      std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
+      std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts)
+  {
+    constexpr double alpha = 0.1;
+    std::size_t index;
+
+    index = worker.first;
+
+    if (m_statistics[index].m_last_updated)
+      {
+	m_statistics[index].m_sum.reset ();
+
+	/* update EWMA */
+	this->statistics_EWMA (alpha, delta, m_statistics[index].m_worker.first, m_statistics[index].m_worker.second,
+			       worker.second);
+	for (auto &stats : contexts)
+	  {
+	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
+
+	    this->statistics_EWMA (alpha, delta, m_statistics[index].m_contexts[stats.first].first,
+				   m_statistics[index].m_contexts[stats.first].second, stats.second);
+	  }
+      }
+    else
+      {
+	/* there is no previous */
+	m_statistics[index].m_worker.first = worker.second;
+	m_statistics[index].m_worker.second = worker.second;
+
+	for (auto &stats : contexts)
+	  {
+	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
+
+	    m_statistics[index].m_contexts[stats.first].first = stats.second;
+	    m_statistics[index].m_contexts[stats.first].second = stats.second;
+	  }
+      }
+
+    /* calculate the summation */
+    for (auto &stats : m_statistics[index].m_contexts)
+      {
+	m_statistics[index].m_sum += stats.second.first;
+      }
+  }
+
+  void coordinator::statistics_update_task (uint64_t delta)
+  {
+    constexpr double alpha = 0.1;
+    uint64_t stats[3] = { 0, 0, 0 };
+
+    css_get_task_stats (stats);
+    if (m_task_statistics.requested.second)
+      {
+	this->statistics_EWMA (alpha, delta, m_task_statistics.requested.first, m_task_statistics.requested.second, stats[0]);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.completed.first, m_task_statistics.completed.second, stats[2]);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.depth.first, m_task_statistics.depth.second,
+			       stats[0] - stats[1]);
+      }
+    else
+      {
+	/* there is no previous */
+	m_task_statistics.requested.second = stats[0];
+	m_task_statistics.started.second = stats[1];
+	m_task_statistics.completed.second = stats[2];
+	m_task_statistics.depth.second = stats[0] - stats[1];
+      }
+  }
+
   void coordinator::statistics_print ()
   {
     double bytes_in, bytes_out;
+    double mq_completed;
     double core;
-    uint64_t budget_recv_hit, budget_send_hit;
     std::size_t i;
-    static uint64_t before[3] = { 0, 0, 0 };
-    uint64_t task_stats[3] = { 0, 0, 0 };
-    uint64_t requested, started, completed;
 
-    core = 0;
     bytes_in = 0;
     bytes_out = 0;
+    mq_completed = 0;
+    core = 0;
+
     printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
-	if (!m_statistics[i].m_contexts.empty ())
-	  {
-	    printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_statistics[i].m_contexts.size ()));
-	  }
+	printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_statistics[i].m_contexts.size ()));
 
 	core += m_statistics[i].m_core;
 
-	budget_recv_hit = 0;
-	budget_send_hit = 0;
-	for (auto &stats : m_statistics[i].m_contexts)
-	  {
-	    bytes_in += stats.second.first.get (statistics::context::BYTES_IN_TOTAL);
-	    bytes_out += stats.second.first.get (statistics::context::BYTES_OUT_TOTAL);
-	    budget_recv_hit += stats.second.second.get (statistics::context::RECV_BUDGET_HIT);
-	    budget_send_hit += stats.second.second.get (statistics::context::SEND_BUDGET_HIT);
-
-	    //printf ("  CLIENT (id, %lld)\n", static_cast<unsigned long long> (stats.first));
-	  }
-
-	/*
 	printf ("SCORE: %lf\n", m_statistics[i].m_score);
 	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
 	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
-	printf ("CLIENT NUM: %d (heuristic: %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
+	printf ("CLIENT NUM: %d (EWMA): %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
 		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
-	printf ("MQ REQUESTED: %lf\n",
-		m_statistics[i].m_worker.first.get (statistics::worker::MQ_REQUESTED));
-	printf ("PACKET COUNT: %lf\n",
-		m_statistics[i].m_worker.first.get (statistics::worker::PACKET_COUNT));
-	printf ("RECV BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_recv_hit));
-	printf ("SEND BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_send_hit));
-	*/
+	printf ("MQ COMPLETED: %lf\n",
+		m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED));
+	printf ("RECV: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL));
+	printf ("SEND: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL));
 
+	mq_completed += m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED);
+	bytes_in += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
+	bytes_out += m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL);
       }
+
     printf ("------ summary ------\n");
     printf ("STATUS               : %s (draining worker: %d)\n",
 	    m_status == status::STABLE ? "STABLE" : (m_status == status::DRAINING ? "DRAINING" : "EXPANDING"),
@@ -405,16 +489,12 @@ namespace cubconn::connection
     printf ("BYTES IN             : %lf\n", bytes_in);
     printf ("BYTES OUT            : %lf\n\n", bytes_out);
 
-    css_get_task_stats (task_stats);
-    requested = task_stats[0] - before[0];
-    started = task_stats[1] - before[1];
-    completed = task_stats[2] - before[2];
-    printf ("TASK REQUESTED       : %lld\n", static_cast<unsigned long long> (requested));
-    printf ("TASK STARTED         : %lld\n", static_cast<unsigned long long> (started));
-    printf ("TASK COMPLETED       : %lld\n\n", static_cast<unsigned long long> (completed));
-    printf ("TASK QUEUE DEPTH     : %lld\n", static_cast<unsigned long long> (task_stats[0] - task_stats[1]));
-    printf ("TASK IN PROGRESS     : %lld\n\n", static_cast<unsigned long long> (task_stats[1] - task_stats[2]));
-    std::memcpy (before, task_stats, sizeof (uint64_t) * 3);
+    printf ("MQ COMPLETED         : %0.4lf\n\n", mq_completed);
+
+    printf ("TASK REQUESTED       : %lf\n", m_task_statistics.requested.first);
+    printf ("TASK STARTED         : %lf\n", m_task_statistics.started.first);
+    printf ("TASK COMPLETED       : %lf\n", m_task_statistics.completed.first);
+    printf ("TASK QUEUE DEPTH     : %lf\n\n", m_task_statistics.depth.first);
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -603,58 +683,28 @@ not_transferred:
 
   bool coordinator::handle_message_queue_statistics (message &item)
   {
-    constexpr double alpha = 0.4;
-    std::size_t worker;
+    std::size_t index;
     uint64_t delta;
 
-    worker = item.statistics.worker.first;
-    delta = item.statistics.time_ns - m_statistics[worker].m_last_updated;
+    index = item.statistics.worker.first;
+    delta = item.statistics.time_ns - m_statistics[index].m_last_updated;
 
-    m_statistics[worker].m_core =
-	    static_cast <double> (item.statistics.cpu_time_ns - m_statistics[worker].m_last_cpu_time) / delta;
+    /* update stats */
+    m_statistics[index].m_core = static_cast <double> (item.statistics.cpu_time_ns - m_statistics[index].m_last_cpu_time) /
+				 delta;
 
-    if (m_statistics[worker].m_last_updated)
-      {
-	m_statistics[worker].m_sum.reset ();
+    this->statistics_update_connection (delta, item.statistics.worker,
+					item.statistics.contexts);
+    this->statistics_update_task (delta);
 
-	/* update EWMA */
-	this->statistics_EWMA (alpha, delta, m_statistics[worker].m_worker.first, m_statistics[worker].m_worker.second,
-			       item.statistics.worker.second);
-	for (auto &stats : item.statistics.contexts)
-	  {
-	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
-
-	    this->statistics_EWMA (alpha, delta, m_statistics[worker].m_contexts[stats.first].first,
-				   m_statistics[worker].m_contexts[stats.first].second, stats.second);
-	  }
-      }
-    else
-      {
-	/* there is no previous */
-	m_statistics[worker].m_worker.first = item.statistics.worker.second;
-	m_statistics[worker].m_worker.second = item.statistics.worker.second;
-
-	for (auto &stats : item.statistics.contexts)
-	  {
-	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
-
-	    m_statistics[worker].m_contexts[stats.first].first = stats.second;
-	    m_statistics[worker].m_contexts[stats.first].second = stats.second;
-	  }
-      }
-    m_statistics[worker].m_last_cpu_time = item.statistics.cpu_time_ns;
-    m_statistics[worker].m_last_updated = item.statistics.time_ns;
-
-    /* calculate the summation */
-    for (auto &stats : m_statistics[worker].m_contexts)
-      {
-	m_statistics[worker].m_sum += stats.second.first;
-      }
+    m_statistics[index].m_last_cpu_time = item.statistics.cpu_time_ns;
+    m_statistics[index].m_last_updated = item.statistics.time_ns;
 
     /* update score */
-    this->statistics_update_score (worker);
+    this->statistics_update_score (index);
 
-    if ((m_status == status::DRAINING && static_cast<int> (worker) == m_scaling.draining_worker) &&
+    /* hibernate */
+    if ((m_status == status::DRAINING && static_cast<int> (index) == m_scaling.draining_worker) &&
 	item.statistics.contexts.empty ())
       {
 	this->scale_down_finish ();

@@ -219,6 +219,15 @@ namespace cubconn::connection
       } m_scaling;
 
       /* statistics */
+      struct
+      {
+	std::uint32_t workers;
+
+	std::pair<double, uint64_t> requested;
+	std::pair<double, uint64_t> started;
+	std::pair<double, uint64_t> completed;
+	std::pair<double, uint64_t> depth;
+      } m_task_statistics;
       std::vector<statistics_chunk> m_statistics;
 
       /* --------------------------------------------------------------------------- */
@@ -242,9 +251,15 @@ namespace cubconn::connection
       template <typename T>
       void statistics_EWMA (double alpha, uint64_t time_delta, statistics::metrics<T, double> &acc,
 			    statistics::metrics<T> &prev, statistics::metrics<T> &current);
+      void statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current);
 
       void statistics_update_score (std::size_t worker);
       std::pair<std::size_t, std::size_t> statistics_find_score_extremes ();
+
+      void statistics_update_connection (uint64_t delta,
+					 std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
+					 std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts);
+      void statistics_update_task (uint64_t delta);
 
       void statistics_print ();
 
