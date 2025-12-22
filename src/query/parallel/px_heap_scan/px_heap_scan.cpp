@@ -177,6 +177,8 @@ extern "C"
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+
+		    manager_p->close();
 		    break;
 		  }
 
@@ -207,6 +209,8 @@ extern "C"
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+
+		    manager_p->close();
 		    break;
 		  }
 
@@ -237,6 +241,8 @@ extern "C"
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+
+		    manager_p->close();
 		    break;
 		  }
 

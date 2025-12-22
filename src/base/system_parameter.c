@@ -9801,6 +9801,33 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%d", PRM_GET_INT (max_parallel_workers_prm->value));
 	  (void) prm_set (parallelism_prm, newval, false);
 	}
+
+      if (PRM_GET_BOOL (test_mode_prm->value) == true)
+	{
+	  SYSPRM_PARAM *heap_scan_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
+	  SYSPRM_PARAM *hash_join_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
+	  SYSPRM_PARAM *sort_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
+
+	  if (PRM_GET_INT (heap_scan_page_threshold_prm->value) ==
+	      PRM_GET_INT (heap_scan_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 32);
+	      (void) prm_set (heap_scan_page_threshold_prm, newval, false);
+	    }
+
+	  if (PRM_GET_INT (hash_join_page_threshold_prm->value) ==
+	      PRM_GET_INT (hash_join_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 0);
+	      (void) prm_set (hash_join_page_threshold_prm, newval, false);
+	    }
+
+	  if (PRM_GET_INT (sort_page_threshold_prm->value) == PRM_GET_INT (sort_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 0);
+	      (void) prm_set (sort_page_threshold_prm, newval, false);
+	    }
+	}
 #endif
     }
 
