@@ -232,7 +232,7 @@ main (int argc, char *argv[])
   signal (SIGXFSZ, SIG_IGN);
 #endif /* WINDOWS */
 
-  if (cgw_init () < 0)
+  if (cgw_cas_init () < 0)
     {
       fprintf (stderr, "CGW initialization failed. Exiting.\n");
       return -1;
