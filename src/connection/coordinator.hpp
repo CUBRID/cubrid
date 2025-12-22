@@ -219,6 +219,8 @@ namespace cubconn::connection
       } m_scaling;
 
       /* statistics */
+      double m_alpha;
+
       struct
       {
 	std::uint32_t workers;
