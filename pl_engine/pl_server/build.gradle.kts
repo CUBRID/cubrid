@@ -51,9 +51,9 @@ dependencies {
 
     implementation("org.apache.commons:commons-text:1.10.0")
     implementation("org.apache.commons:commons-collections4:4.4")
-    implementation("org.apache.commons:commons-lang3:3.13.0")
+    implementation("org.apache.commons:commons-lang3:3.18.0")
     implementation("commons-io:commons-io:2.15.1")
-    implementation("org.apache.commons:commons-compress:1.25.0")
+    implementation("org.apache.commons:commons-compress:1.26.0")
 
     implementation("org.antlr:antlr4-runtime:4.9.3")
 
@@ -61,7 +61,7 @@ dependencies {
     implementation("cubrid:cubrid-jdbc:latest.integration")
 
     // netty
-    implementation("io.netty:netty-buffer:4.1.95.Final")
+    implementation("io.netty:netty-buffer:4.1.115.Final")
 }
 
 // Antlr

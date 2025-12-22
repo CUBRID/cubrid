@@ -16098,7 +16098,7 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.update_stats.with_fullscan > 0)
     {
-      assert (p->info.update_stats.with_fullscan == 1);
+      assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
       b = pt_append_nulstring (parser, b, " with fullscan");
     }
 
@@ -18587,6 +18587,36 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_CRC32:
       return true;
     case PT_TZ_OFFSET:
+    default:
+      return false;
+    }
+  return false;
+}
+
+/*
+ *   pt_expr_keep_uniqueness () : checks if the given operator
+ *				  is keeping uniqueness
+ *   return:
+ *   expr(in): expression parse tree node
+ */
+bool
+pt_expr_keep_uniqueness (const PT_NODE * expr)
+{
+  switch (expr->info.expr.op)
+    {
+    case PT_REVERSE:
+    case PT_CONCAT:
+    case PT_STRCAT:
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_EQ:		/* for predicate */
+      return true;
+    case PT_CAST:
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))	/* auto generated cast */
+	{
+	  return true;
+	}
+      return false;
     default:
       return false;
     }
