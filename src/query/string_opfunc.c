@@ -19682,15 +19682,17 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _m = 1;
 
       /* days for years */
-      while (_d >= 366)
+
+      int maxdays = (days[2] == 29) ? 366 : 365;
+      while (_d >= maxdays)
 	{
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _d -= (days[2] == 29) ? 366 : 365;
+	  _d -= maxdays;
 	  _y++;
 	  if (_y > 9999)
 	    {
 	      goto set_and_return;
 	    }
+	  maxdays = LEAP (_y) ? 366 : 365;
 	}
 
       /* days within a year */
@@ -19707,11 +19709,14 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 
   if (_m == 0)
     {
+      assert (false);
       _m = 1;
     }
   if (_d == 0)
     {
-      _d = 1;
+      _y--;
+      _m = (_m == 1) ? 12 : (_m - 1);
+      _d = days[_m];
     }
 
 set_and_return:
@@ -19875,8 +19880,8 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	    {
 	      goto set_and_return;
 	    }
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _d += (days[2] == 29) ? 366 : 365;
+
+	  _d += (LEAP (_y) ? 366 : 365);
 	}
 
       /* days within a year */
@@ -19897,7 +19902,9 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
     }
   if (_d == 0)
     {
-      _d = 1;
+      _y--;
+      _m = (_m == 1) ? 12 : (_m - 1);
+      _d = days[_m];
     }
 
 set_and_return:
