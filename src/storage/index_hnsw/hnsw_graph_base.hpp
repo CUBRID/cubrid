@@ -207,15 +207,15 @@ namespace cubhnsw
 	return misaligned_store<level_t> (tape_ + offset_level, v);
       }
 
-      float* get_vector () const noexcept
+      float *get_vector () const noexcept
       {
-	return reinterpret_cast<float*> (vector_tape());
+	return reinterpret_cast<float *> (vector_tape());
       }
 
       void set_vector (const float *vector, std::size_t dim) noexcept
       {
 	std::size_t offset = offset_header_end + sizeof (float) * dim;
-        set_neighbors_offset (offset);
+	set_neighbors_offset (offset);
 	std::memcpy (vector_tape(), vector, dim * sizeof (float));
       }
 
@@ -229,7 +229,7 @@ namespace cubhnsw
 	return misaligned_store<std::size_t> (tape_ + offset_neighbors_offset, offset);
       }
 
-      static constexpr std::size_t get_size(std::size_t dim, std::size_t neighbors_count) noexcept
+      static constexpr std::size_t get_size (std::size_t dim, std::size_t neighbors_count) noexcept
       {
 	return offset_vector + sizeof (float) * dim;
       }
