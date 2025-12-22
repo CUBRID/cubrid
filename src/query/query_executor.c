@@ -729,6 +729,7 @@ static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_stat
 static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
 					    AGGREGATE_HASH_KEY * key, bool * found);
 static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
+static int qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 
 /*
  * Utility routines
@@ -796,12 +797,11 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP;
 	    }
-	  else
+	  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 	    {
-	      if (xasl->instnum_val_offset)
-		{
-		  xasl->instnum_val_offset->data.bigint++;
-		}
+	      assert (xasl->instnum_val_offset);
+
+	      xasl->instnum_val_offset->data.bigint++;
 	    }
 	  break;
 	case V_TRUE:
@@ -1196,33 +1196,9 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+      if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) != NO_ERROR)
 	{
-	  assert (xasl->proc.buildlist.a_eval_list);
-
-	  buildlist = &xasl->proc.buildlist;
-	  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
-	    {
-	      if (fetch_val_list
-		  (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, tplrec->tpl, true) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-
-	      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
-		{
-		  ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
-		  if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  if (a_func_list->function == PT_ROW_NUMBER)
-		    {
-		      pr_clone_value (a_func_list->out_value, a_func_list->value);
-		    }
-		}
-	    }
+	  GOTO_EXIT_ON_ERROR;
 	}
 
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
@@ -9278,40 +9254,9 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				   * so analytic functions must be evaluated at this point. */
 				  if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK))
 				    {
-				      BUILDLIST_PROC_NODE *buildlist;
-				      ANALYTIC_EVAL_TYPE *a_eval_list;
-				      ANALYTIC_TYPE *a_func_list;
-
-				      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
-					  && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+				      if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) != NO_ERROR)
 					{
-					  buildlist = &xasl->proc.buildlist;
-					  for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list;
-					       a_eval_list = a_eval_list->next)
-					    {
-					      if (fetch_val_list
-						  (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL,
-						   tplrec->tpl, true) != NO_ERROR)
-						{
-						  return S_ERROR;
-						}
-
-					      for (a_func_list = a_eval_list->head; a_func_list;
-						   a_func_list = a_func_list->next)
-						{
-						  ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
-						  if (qdata_evaluate_analytic_func
-						      (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
-						    {
-						      return S_ERROR;
-						    }
-
-						  if (a_func_list->function == PT_ROW_NUMBER)
-						    {
-						      pr_clone_value (a_func_list->out_value, a_func_list->value);
-						    }
-						}
-					    }
+					  return S_ERROR;
 					}
 				    }
 				}
@@ -23030,6 +22975,46 @@ cleanup:
 
   /* all ok */
   return rc;
+}
+
+static int
+qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  BUILDLIST_PROC_NODE *buildlist;
+  ANALYTIC_EVAL_TYPE *a_eval_list;
+  ANALYTIC_TYPE *a_func_list;
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+    {
+      assert (xasl->type == BUILDLIST_PROC);
+      assert (xasl->proc.buildlist.a_eval_list);
+
+      buildlist = &xasl->proc.buildlist;
+      for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+	{
+	  if (fetch_val_list
+	      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, NULL, true) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+	    {
+	      ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
+	      if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+
+	      if (a_func_list->function == PT_ROW_NUMBER)
+		{
+		  pr_clone_value (a_func_list->out_value, a_func_list->value);
+		}
+	    }
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*

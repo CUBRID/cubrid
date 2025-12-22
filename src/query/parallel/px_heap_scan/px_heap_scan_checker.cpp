@@ -27,7 +27,6 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
-#include "xasl_analytic.hpp"
 #include <set>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -579,10 +578,8 @@ namespace parallel_heap_scan
 	    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
 	      {
 		result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
-		break;
 	      }
-
-	    if (result != CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
+	    else
 	      {
 		result = CHECK_RESULT::PARALLEL_LIST_MERGE;
 	      }
