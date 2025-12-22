@@ -22977,6 +22977,13 @@ cleanup:
   return rc;
 }
 
+/*
+ * qexec_analytic_eval_in_processing () - evaluate analytic functions in processing
+ *   return: NO_ERROR, or ER_code
+ *   thread_p (in) : thread pointer
+ *   xasl (in) : xasl tree
+ *   xasl_state (in) : xasl state
+ */
 static int
 qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {

@@ -28255,7 +28255,15 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
   return new_node;
 }
 
-
+/*
+ * pt_set_analytic_eval_in_processing () -
+ *   Determine if analytic functions can be evaluated in the processing stage.
+ *   If evaluatable, set the flag and create instnum_val_offset.
+ * 
+ * return :
+ * xasl (in)  :
+ * eval_list (in) :
+ */
 static int
 pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list)
 {
@@ -28268,6 +28276,9 @@ pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_
       return NO_ERROR;
     }
 
+  /* NOTE: If eval->sort_list is NULL, eval_list length is always 1.
+   *       If eval_list length >= 2, all eval entries have non-NULL sort_list.
+   *       Since we check sort_list == NULL here, checking only one eval is sufficient. */
   for (eval = eval_list; eval != NULL; eval = eval->next)
     {
       is_evaluatable = !(eval->sort_list) ? true : false;
