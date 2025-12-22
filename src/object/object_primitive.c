@@ -7861,6 +7861,9 @@ mr_data_cmpdisk_vector_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do
 			      int total_order, int *start_colp)
 {
   ASSERT_CUBVEC (false);
+
+  // TODO (CUBVEC): not implemented yet, the following line is for suppressing warnings.
+  return DB_UNK;
 }
 
 static DB_VALUE_COMPARE_RESULT

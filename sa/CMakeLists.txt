@@ -515,22 +515,29 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
-  ${STORAGE_DIR}/hnsw_usearch.cpp
-  ${STORAGE_DIR}/hnsw.cpp
-  ${STORAGE_DIR}/hnsw_api.cpp
+
+  ${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
+  ${INDEX_HNSW_DIR}/hnsw.cpp
+  ${INDEX_HNSW_DIR}/hnsw_api.cpp
+  # ${STORAGE_DIR}/hnsw_storage_mem.cpp
+  ${INDEX_HNSW_DIR}/hnsw_storage_disk.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+
+  ${INDEX_HNSW_DIR}/hnsw_storage.hpp
+  ${INDEX_HNSW_DIR}/hnsw_algo.hpp
+  ${INDEX_HNSW_DIR}/hnsw_api.hpp
 )
 
 if(USE_SIMD_NATIVE)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
         PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
     )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
         PROPERTIES COMPILE_FLAGS "-march=native -O3 -fvectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
     )
   endif()

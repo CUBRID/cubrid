@@ -64,6 +64,16 @@ class scope_exit
       return active_;
     }
 
+    fun_t &functor() noexcept
+    {
+      return f_;
+    }
+
+    const fun_t &functor() const noexcept
+    {
+      return f_;
+    }
+
   private:
     bool active_{false};
     // [[no_unique_address]] fun_t f_; // EBO when possible <- use this line when C++20 is available later.
@@ -79,4 +89,3 @@ template<class F>
 {
   return scope_exit<std::decay_t<F>> (std::forward<F> (f));
 }
-

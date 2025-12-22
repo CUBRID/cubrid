@@ -979,6 +979,10 @@ qo_top_plan_new (QO_PLAN * plan)
       /* already found out that multi range optimization can be applied on current plan, skip any other checks */
       return plan;
     }
+  if (qo_is_viscan (plan))
+    {
+      return plan;
+    }
 
   all_distinct = tree->info.query.all_distinct;
   group_by = tree->info.query.q.select.group_by;

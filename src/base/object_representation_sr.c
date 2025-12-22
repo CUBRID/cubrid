@@ -285,6 +285,14 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
       /* initialize B+tree statistics information */
 
       n_btstats = att->n_btstats = or_att->n_btids;
+
+      // TODO (CUBVEC): vector
+      if (or_att->type == DB_TYPE_VECTOR)
+	{
+	  att->n_btstats = 0;
+	  continue;
+	}
+
       if (n_btstats > 0)
 	{
 	  att->bt_stats = (BTREE_STATS *) malloc (sizeof (BTREE_STATS) * n_btstats);
@@ -2278,7 +2286,7 @@ or_install_btids_constraint (OR_CLASSREP * rep, DB_SEQ * constraint_seq, BTREE_T
        * for vector indexes, we temporarily skip including vector indexes
        * in the classrep so they are not written into the catalog.
        */
-      if (type != VECTOR_INDEX)
+      if (true)			// type != VECTOR_INDEX
 	{
 	  (void) or_install_btids_attribute (rep, att_id, &id);
 	}
