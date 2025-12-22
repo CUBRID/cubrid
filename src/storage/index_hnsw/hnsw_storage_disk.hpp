@@ -24,10 +24,8 @@
 #include <unordered_map>
 #include <cstring>
 
-#include "hnsw_storage.hpp"
+#include "hnsw_storage.hpp"          // storage<memory_id_traits>
 #include "thread_compat.hpp"
-
-#include <ankerl/unordered_dense.h>
 
 namespace cubhnsw
 {
@@ -80,24 +78,6 @@ namespace cubhnsw
       }
   };
 
-  struct vpid_hash
-  {
-    std::size_t operator() (const VPID &v) const noexcept
-    {
-      // 단순 + 충분히 빠름
-      return (static_cast<std::size_t> (v.volid) << 32)
-	     ^ static_cast<std::size_t> (v.pageid);
-    }
-  };
-
-  struct vpid_equal
-  {
-    bool operator() (const VPID &a, const VPID &b) const noexcept
-    {
-      return a.volid == b.volid && a.pageid == b.pageid;
-    }
-  };
-
   // =====================================================================
   // disk storage
   // =====================================================================
@@ -110,17 +90,7 @@ namespace cubhnsw
       using block_id_t = disk_traits_t::block_id_t;
       using slot_id_t = disk_traits_t::slot_id_t;
 
-      template <typename Cleanup>
-      using page_handle_t = scoped_holder<PAGE_PTR, Cleanup>;
-
-      template <typename Cleanup>
-      inline auto make_page_handle (PAGE_PTR page, Cleanup &&cleanup)
-      -> page_handle_t<std::decay_t<Cleanup>>
-      {
-	return page_handle_t<std::decay_t<Cleanup>> (
-		       page,
-		       std::forward<Cleanup> (cleanup));
-      }
+      using page_handle = scoped_holder<PAGE_PTR, std::function<void (PAGE_PTR)>>;
 
       disk_storage (const BTID &giid, const hnsw_build_params &params);
       virtual ~disk_storage();
@@ -141,24 +111,16 @@ namespace cubhnsw
       // TODO: not implemented
       virtual void promote_root (pinned_t &root) override;
 
-      virtual void end_resource_cleanup () noexcept override
-      {
-	for (auto it = m_pinned_pages.begin(); it != m_pinned_pages.end(); ++it)
-	  {
-	    pgbuf_unfix (m_thread_p, it->second);
-	  }
-	m_pinned_pages.clear();
-      }
-
     protected:
+
+      slot_id_t add_vector (const OID &key, const float *vector);
+
       // page alloc helpers
       static int initialize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 
       int create_continous_file (THREAD_ENTRY *thread_p, VFID &vfid, VPID &vpid);
       PAGE_PTR alloc_new_page (VFID &vfid, VPID &vpid);
-      auto get_page_to_insert (VFID &vfid, VPID &last_vpid, std::size_t bytes);
-
-      ankerl::unordered_dense::map<uint64_t, PAGE_PTR> m_pinned_pages;
+      page_handle get_page_to_insert (VFID &vfid, VPID &last_vpid, std::size_t bytes);
 
     private:
       VFID m_vfid;
@@ -170,7 +132,5 @@ namespace cubhnsw
       VPID m_last_vec_vpid;
 
       bool m_is_empty = true;
-
-      PAGE_PTR m_root_page_ptr;
   };
 }

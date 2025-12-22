@@ -32,7 +32,6 @@
 #include "hnsw_storage.hpp" // storage_t
 
 #include "faiss/utils/distances.h" // faiss
-#include <ankerl/unordered_dense.h>
 
 #define HNSW_ALGO_DEBUG 0
 #define HNSW_ALGO_PRINT(fmt, ...) do { if (HNSW_ALGO_DEBUG) { fprintf (stdout, fmt, ##__VA_ARGS__); fflush (stdout); } } while (0)
@@ -161,13 +160,13 @@ namespace cubhnsw
   template <typename T>
   struct visit_set_helper
   {
-    using type = ankerl::unordered_dense::set<T>;
+    using type = std::unordered_set<T>;
   };
 
   template <>
   struct visit_set_helper<OID>
   {
-    using type = ankerl::unordered_dense::set<uint64_t>;
+    using type = std::unordered_set<OID, oid_hash, oid_equal>;
   };
 
   template <typename Traits>
@@ -221,9 +220,7 @@ namespace cubhnsw
       using node_type   = node_t<traits>;
       using neighbors_ref_type = neighbors_ref_t<traits>;
 
-      // using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
-      using pinned_t = typename storage_t::pinned_t;
-
+      using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
       struct context_t
       {
 	top_candidates_t<Traits> m_top_candidates;
@@ -280,8 +277,7 @@ namespace cubhnsw
       inline distance_t compute_distance_from_query_ (const float *query, const slot_id_t &slot) const
       {
 	pinned_t vec_blk = m_storage->get_vector_by_slot_id (slot, lock_mode::shared);
-	node_type node = node_type (vec_blk->data_ptr());
-	return compute_distance_ (query, node.get_vector());
+	return compute_distance_ (query, reinterpret_cast<const float *> (vec_blk->data));
       }
 
       inline distance_t compute_distance_between (const slot_id_t &a, const slot_id_t &b) const
@@ -289,8 +285,7 @@ namespace cubhnsw
 	auto get_vec = [&] (const slot_id_t &slot) -> const float *
 	{
 	  pinned_t vec_blk = m_storage->get_vector_by_slot_id (slot, lock_mode::shared);
-	  node_type node = node_type (vec_blk->data_ptr());
-	  return node.get_vector();
+	  return reinterpret_cast<const float *> (vec_blk->data);
 	};
 
 	return compute_distance_ (get_vec (a), get_vec (b));
@@ -298,7 +293,7 @@ namespace cubhnsw
 
       inline neighbors_ref_type get_neighbors (const pinned_t &node_blk, const level_t level)
       {
-	node_type node = node_type (node_blk->data_ptr());
+	node_type node = node_type (node_blk->data);
 	neighbors_ref_type neighbors = neighbors_ref_type (node.neighbors_tape() + m_storage->node_neighbors_offset_ (level));
 
 	HNSW_ALGO_PRINT ("[node] node: %s\n", node.dump().c_str());
@@ -367,19 +362,19 @@ namespace cubhnsw
     if (!top.reserve (top_limit))
       {
 	assert (false);
-	return {ER_FAILED, slot_id_t {}};
+	return {ER_FAILED, OID_INITIALIZER};
       }
     if (!next.reserve (expansion))
       {
 	assert (false);
-	return {ER_FAILED, slot_id_t {}};
+	return {ER_FAILED, OID_INITIALIZER};
       }
 
     level_t curr_max_level, new_target_level;
     slot_id_t entry_slot, new_slot;
 
     pinned_t root_block = m_storage->get_root (lock_mode::exclusive);
-    root_type root_node = root_type (root_block->data_ptr());
+    root_type root_node = root_type (root_block->data);
     {
       curr_max_level = root_node.get_level(); // get max_level from root page
       new_target_level = choose_random_level_ (m_context.m_level_generator, m_inverse_log_connectivity);
@@ -460,8 +455,6 @@ namespace cubhnsw
 	m_storage->set_empty (false);
       }
 
-    m_storage->end_resource_cleanup();
-
     return result;
   }
 
@@ -499,7 +492,7 @@ namespace cubhnsw
     level_t root_level;
     {
       pinned_t root_block = m_storage->get_root (lock_mode::shared);
-      root_type root_node = root_type (root_block->data_ptr());
+      root_type root_node = root_type (root_block->data);
       entry_slot = root_node.get_entry();
       root_level = root_node.get_level();
     }
@@ -524,36 +517,9 @@ namespace cubhnsw
     for (std::size_t i = 0; i < top.size (); ++i)
       {
 	pinned_t node_blk = m_storage->get_node_by_slot_id (result.results[i].slot, lock_mode::shared);
-	result.oids.push_back (node_type (node_blk->data_ptr ()).get_key());
+	result.oids.push_back (node_type (node_blk->data).get_key());
       }
-
-    m_storage->end_resource_cleanup();
-
     return result;
-  }
-
-  static inline uint64_t
-  get_hash (const OID &oid)
-  {
-    return (static_cast<uint64_t> (static_cast<uint32_t> (oid.pageid)) << 32) |
-	   (static_cast<uint64_t> (static_cast<uint16_t> (oid.slotid)) << 16) |
-	   static_cast<uint64_t> (static_cast<uint16_t> (oid.volid));
-  }
-
-  static inline uint64_t
-  get_hash (const uint64_t &t)
-  {
-    return t;
-  }
-
-  static inline OID
-  get_oid_from_hash (const uint64_t &hash)
-  {
-    OID oid;
-    oid.pageid = static_cast<int32_t> (static_cast<uint32_t> (hash >> 32));
-    oid.slotid = static_cast<int16_t> ((hash >> 16) & 0xFFFF);
-    oid.volid = static_cast<int16_t> (hash & 0xFFFF);
-    return oid;
   }
 
   template <typename Traits>
@@ -571,7 +537,7 @@ namespace cubhnsw
 
     next.insert_reserved (candidate_t<Traits> (-radius, start_slot));
     top.insert_reserved (candidate_t<Traits> (radius, start_slot));
-    visits.insert (get_hash (start_slot));
+    visits.insert (start_slot);
 
     while (!next.empty ())
       {
@@ -590,14 +556,14 @@ namespace cubhnsw
 	  {
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
 
-	    bool already_visited = (visits.find (get_hash (successor_slot)) != visits.end());
+	    bool already_visited = (visits.find (successor_slot) != visits.end());
 	    if (already_visited)
 	      {
 		continue;
 	      }
 	    else
 	      {
-		visits.insert (get_hash (successor_slot));
+		visits.insert (successor_slot);
 	      }
 
 	    distance_t sucessor_dist = compute_distance_from_query_ (query, successor_slot);
@@ -681,7 +647,7 @@ namespace cubhnsw
     for (auto n : new_neighbors)
       {
 	slot_id_t close_slot = n.slot;
-	slot_id_t new_slot = new_node_blk->get().id;
+	slot_id_t new_slot = new_node_blk->id;
 	if (close_slot == new_slot)
 	  {
 	    continue;
