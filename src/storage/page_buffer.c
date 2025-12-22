@@ -7797,7 +7797,8 @@ pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MO
     {
       impl = get_impl (&bufptr->atomic_latch);
       new_impl = impl;
-      if (impl.impl.latch_mode != PGBUF_LATCH_READ || impl.impl.waiter_exists || impl.impl.fcnt == 0)
+      if (impl.impl.latch_mode != PGBUF_LATCH_READ || impl.impl.waiter_exists || impl.impl.fcnt == 0
+	  || bufptr->vpid.pageid != vpid->pageid || bufptr->vpid.volid != vpid->volid)
 	{
 	  return NULL;
 	}
