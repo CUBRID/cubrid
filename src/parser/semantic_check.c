@@ -5603,18 +5603,8 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_ADD_MONTHS:
     case PT_LAST_DAY:
     case PT_MONTHS_BETWEEN:
-    case PT_SYS_DATE:
     case PT_TO_DATE:
     case PT_TO_NUMBER:
-    case PT_SYS_TIME:
-    case PT_CURRENT_DATE:
-    case PT_CURRENT_TIME:
-    case PT_SYS_TIMESTAMP:
-    case PT_CURRENT_TIMESTAMP:
-    case PT_SYS_DATETIME:
-    case PT_CURRENT_DATETIME:
-    case PT_UTC_TIME:
-    case PT_UTC_DATE:
     case PT_TO_TIME:
     case PT_TO_TIMESTAMP:
     case PT_TO_DATETIME:
@@ -5671,12 +5661,10 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_INET_NTOA:
     case PT_DBTIMEZONE:
     case PT_SESSIONTIMEZONE:
-    case PT_TZ_OFFSET:
     case PT_FROM_TZ:
     case PT_NEW_TIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_UTC_TIMESTAMP:
     case PT_CONV_TZ:
       break;
 
