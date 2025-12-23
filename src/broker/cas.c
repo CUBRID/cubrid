@@ -69,12 +69,6 @@ static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
 static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
-#if defined(WINDOWS)
-static int cas_req_count;	/* Request count for restart check (WINDOWS only) */
-#endif /* WINDOWS */
-
-static SOCKET srv_sock_fd;
-
 /* ========================================================================
  * Function Tables
  * ======================================================================== */
@@ -930,7 +924,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       unset_hang_check_time ();
       if (as_info->cur_keep_con == KEEP_CON_AUTO)
 	{
-	  err_code = net_read_int_keep_con_auto (sock_fd, &client_msg_header, req_info, srv_sock_fd);
+	  err_code = net_read_int_keep_con_auto (sock_fd, &client_msg_header, req_info);
 	}
       else
 	{

@@ -63,6 +63,12 @@ char prev_cas_info[CAS_INFO_SIZE];
 
 /* Network socket */
 SOCKET new_req_sock_fd = INVALID_SOCKET;
+SOCKET srv_sock_fd = INVALID_SOCKET;
+
+#if defined(WINDOWS)
+/* Request count for restart check (WINDOWS only) */
+int cas_req_count = 0;
+#endif /* WINDOWS */
 
 /* Program info */
 const char *program_name;

@@ -49,8 +49,7 @@ extern int query_seq_num_next_value (void);
 extern int query_seq_num_current_value (void);
 T_BROKER_VERSION cas_get_client_version (void);
 int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header);
-int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info,
-				SOCKET srv_sock_fd);
+int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info);
 void set_cas_info_size (void);
 #if !defined(WINDOWS)
 void query_cancel (int signo);
@@ -107,7 +106,7 @@ typedef struct
 } CAS_MAIN_OPS;
 
 int cas_main_loop (CAS_MAIN_OPS * ops);
-int cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd);
+int cas_main_init (T_NET_BUF * net_buf);
 int cas_accept_client (SOCKET br_sock_fd, SOCKET * client_sock_fd, int *client_ip_addr);
 int cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_CONN_INFO * conn_info);
 int cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,

@@ -94,6 +94,12 @@ extern char prev_cas_info[CAS_INFO_SIZE];
 
 /* Network socket */
 extern SOCKET new_req_sock_fd;
+extern SOCKET srv_sock_fd;
+
+#if defined(WINDOWS)
+/* Request count for restart check (WINDOWS only) */
+extern int cas_req_count;
+#endif /* WINDOWS */
 
 /* Program info */
 extern const char *program_name;

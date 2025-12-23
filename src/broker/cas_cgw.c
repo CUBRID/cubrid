@@ -87,7 +87,6 @@ static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 /* ========================================================================
  * Static Variable Definitions
  * ======================================================================== */
-static SOCKET srv_sock_fd;
 static CGW_CONTEXT *cgw_current_ctx = NULL;	/* Global CGW context for db_connect callback */
 
 /* ========================================================================
@@ -504,7 +503,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       unset_hang_check_time ();
       if (as_info->cur_keep_con == KEEP_CON_AUTO)
 	{
-	  err_code = net_read_int_keep_con_auto (sock_fd, &client_msg_header, req_info, srv_sock_fd);
+	  err_code = net_read_int_keep_con_auto (sock_fd, &client_msg_header, req_info);
 	}
       else
 	{

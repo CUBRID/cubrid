@@ -70,10 +70,6 @@
 
 static int query_sequence_num;
 
-#if defined(WINDOWS)
-static int cas_req_count;	/* Request count for restart check (WINDOWS only) */
-#endif /* WINDOWS */
-
 FN_RETURN cas_main_fn_ret = FN_KEEP_CONN;
 
 static cas_cleanup_callback_t cleanup_callback = NULL;
@@ -83,7 +79,7 @@ int
 cas_main_loop (CAS_MAIN_OPS * ops)
 {
   T_NET_BUF net_buf;
-  SOCKET srv_sock_fd, br_sock_fd, client_sock_fd;
+  SOCKET br_sock_fd, client_sock_fd;
   char read_buf[1024];
   int err_code;
   int one = 1, db_info_size;
@@ -100,7 +96,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
   prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
   /* Initialize */
-  if (cas_main_init (&net_buf, &srv_sock_fd) < 0)
+  if (cas_main_init (&net_buf) < 0)
     {
       return -1;
     }
@@ -382,7 +378,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	cas_log_close (true);
 	cas_slow_log_close ();
 	sql_log2_end (true);
-#if defined(WINDOWS)
+#if defined(WINDOWS)	
 	cas_req_count++;
 #endif /* WINDOWS */
 
@@ -426,7 +422,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 /* cas_main() common initialization */
 int
-cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd)
+cas_main_init (T_NET_BUF * net_buf)
 {
 #if defined(WINDOWS)
   int new_port;
@@ -446,9 +442,9 @@ cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd)
   *srv_sock_fd = net_init_env (&new_port);
 #else /* WINDOWS */
   ut_get_as_port_name (port_name, broker_name, shm_as_index, BROKER_PATH_MAX);
-  *srv_sock_fd = net_init_env (port_name);
+  srv_sock_fd = net_init_env (port_name);
 #endif /* WINDOWS */
-  if (IS_INVALID_SOCKET (*srv_sock_fd))
+  if (IS_INVALID_SOCKET (srv_sock_fd))
     {
       return -1;
     }
@@ -1227,8 +1223,7 @@ cas_get_db_connect_status (void)
 }
 
 int
-net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info,
-			    SOCKET srv_sock_fd)
+net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info)
 {
   int ret_value = 0;
 
