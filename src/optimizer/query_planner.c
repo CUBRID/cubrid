@@ -106,6 +106,13 @@
 typedef enum
 { JOIN_RIGHT_ORDER, JOIN_OPPOSITE_ORDER } JOIN_ORDER_TRY;
 
+struct ndv_info
+{
+  QO_ENV *env;
+  int total_ndv;
+};
+typedef struct ndv_info NDV_INFO;
+
 typedef int (*QO_WALK_FUNCTION) (QO_PLAN *, void *);
 
 static int infos_allocated = 0;
@@ -164,6 +171,10 @@ static void qo_hjoin_cost (QO_PLAN *);
 static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
+
+static void qo_estimate_ngroups (QO_PLAN *);
+static int qo_get_group_ndv (QO_PLAN *);
+static double qo_estimate_ndv (double N, double p, double n);
 
 static QO_PLAN *qo_top_plan_new (QO_PLAN *);
 
@@ -251,6 +262,7 @@ static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
@@ -605,6 +617,96 @@ qo_term_string (QO_TERM * term)
   return p;
 }
 
+/*
+ * qo_estimate_ngroups () -
+ *   return:
+ *   plan(in):
+ */
+static void
+qo_estimate_ngroups (QO_PLAN * plan)
+{
+  int group_ndv, estimate_ndv;
+  double expected_nrows = plan->info->cardinality;
+  double total_nrows = plan->info->total_rows;
+
+  /* get NDV of GROUP BY */
+  group_ndv = MAX (qo_get_group_ndv (plan), 1);
+
+  if (expected_nrows == total_nrows)
+    {
+      estimate_ndv = group_ndv;
+    }
+  else
+    {
+      /* estimate number of groups */
+      estimate_ndv = MAX (qo_estimate_ndv (total_nrows, expected_nrows, group_ndv), 1);
+    }
+
+  plan->info->cardinality = estimate_ndv;
+}
+
+/*
+ * qo_estimate_ndv () - NDV estimation formula derived from extracted data volume
+ *   return:  estimated ndv
+ *
+ * formula:
+ *   n * (1 - ((N - p) / N)^(N / n))
+ *
+ * N: total_nrows
+ * p: expected_nrows
+ * n: NDV of group columns
+ */
+double
+qo_estimate_ndv (double N, double p, double n)
+{
+  if (N <= 0.0 || n <= 0.0)
+    {
+      return 0.0;
+    }
+
+  double ratio = (N - p) / N;
+  double exponent = N / n;
+
+  return n * (1.0 - pow (ratio, exponent));
+}
+
+/*
+ * qo_get_group_ndv () -
+ *   return:
+ *   plan(in):
+ */
+static int
+qo_get_group_ndv (QO_PLAN * plan)
+{
+  PT_NODE *group_by;
+  QO_ENV *env = NULL;
+  PARSER_CONTEXT *parser = NULL;
+  NDV_INFO ndv_info;
+
+
+  env = (plan->info)->env;
+  parser = QO_ENV_PARSER (env);
+
+  /* TO_DO: UNION */
+  if ((QO_ENV_PT_TREE (env))->node_type == PT_SELECT)
+    {
+      group_by = (QO_ENV_PT_TREE (env))->info.query.q.select.group_by;
+    }
+  else
+    {
+      return -1;
+    }
+
+  ndv_info.env = env;
+  ndv_info.total_ndv = 1;
+  /* The NDV is simply extracted from column without considering the function, etc. and product of NDV of each column */
+  parser_walk_tree (parser, group_by, qo_get_col_product_ndv, &ndv_info, NULL, NULL);
+  if (ndv_info.total_ndv == 1)
+    {
+      return -1;
+    }
+  return ndv_info.total_ndv;
+}
 
 /*
  * qo_plan_compute_cost () -
@@ -1297,8 +1399,8 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
   double fixed = plan->fixed_cpu_cost + plan->fixed_io_cost;
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
 
-  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f (number of rows)expected %.0f scan %.0f total %.0f", (int) howfar, ' ', "cost:", fixed + variable,
-	   (plan->info)->cardinality, plan->scan_rows, (plan->info)->total_rows);
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f (number of rows)expected %.0f scan %.0f total %.0f", (int) howfar, ' ',
+	   "cost:", fixed + variable, (plan->info)->cardinality, plan->scan_rows, (plan->info)->total_rows);
 }
 
 
@@ -2427,6 +2529,10 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->need_final_sort = subplan->need_final_sort;
 
   qo_plan_compute_cost (plan);
+  if (sort_type == SORT_GROUPBY)
+    {
+      qo_estimate_ngroups (plan);
+    }
 
   plan = qo_top_plan_new (plan);
 
@@ -5453,7 +5559,8 @@ qo_info_nodes_init (QO_ENV * env)
  *   cardinality(in):
  */
 static QO_INFO *
-qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eqclasses, double cardinality, double total_rows)
+qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eqclasses, double cardinality,
+	       double total_rows)
 {
   QO_INFO *info;
   int i;
@@ -7517,7 +7624,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    }
 	  cardinality *= selectivity;
 	  cardinality = MAX (1.0, cardinality);
-          total_rows *= selectivity;
+	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
@@ -10601,6 +10708,38 @@ qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
 	      env->bail_out = 1;
 	    }
 	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_get_col_product_ndv () -
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   tree(in): tree to walk
+ *   arg(in):
+ *   continue_walk(in):
+ *
+ * Note: get product of NDV of each column on GROUP BY
+ */
+static PT_NODE *
+qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  NDV_INFO *ndv_info = (NDV_INFO *) arg;
+  int ndv;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return tree;
+    }
+  else if (pt_is_attr (tree))
+    {
+      ndv = qo_index_cardinality (ndv_info->env, pt_get_end_path_node (tree));
+      ndv_info->total_ndv *= (ndv == 0) ? 1 : ndv;
     }
 
   return tree;
