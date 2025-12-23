@@ -8543,10 +8543,11 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   /* initialize the BCB */
   bufptr->vpid = *vpid;
   assert (!pgbuf_bcb_avoid_victim (bufptr));
+  impl = get_impl (&bufptr->atomic_latch);
   impl.impl.latch_mode = PGBUF_NO_LATCH;
   impl.impl.waiter_exists = false;
   impl.impl.fcnt = 0;
-  impl.impl.chn = 0;
+  impl.impl.chn = (impl.impl.chn + 1) % UINT16MAX;
   bufptr->atomic_latch.store (impl.raw);
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
@@ -8732,10 +8733,11 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
     {
       return ER_FAILED;
     }
-
+  impl = get_impl (&bufptr->atomic_latch);
   impl.impl.latch_mode = PGBUF_LATCH_INVALID;
   impl.impl.waiter_exists = false;
   impl.impl.fcnt = 0;
+  impl.impl.chn = (impl.impl.chn + 1) % UINT16MAX;
   bufptr->atomic_latch.store (impl.raw);
   /* If above function returns success, the caller is still holding bufptr->mutex.
    * Otherwise, the caller does not hold bufptr->mutex.
