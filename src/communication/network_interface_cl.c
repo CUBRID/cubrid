@@ -11378,7 +11378,7 @@ tdes_reset_query_start_info (PT_NODE * node)
  *
  *   hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
  *   attrid_arr (in): An array that stores LOB attribute ids of the table.
-                      When creating the LOB directory, each LOB attribute is distinguished by its id
+ *                    When creating the LOB directory, each LOB attribute is distinguished by its id
  *   lob_attrid_arr_length(in): length of attrid_arr
  */
 int
