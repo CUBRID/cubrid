@@ -68,9 +68,6 @@
 #include <netinet/tcp.h>
 #endif
 
-// static char cas_db_name[MAX_HA_DBINFO_LENGTH];
-// static char cas_db_user[SRV_CON_DBUSER_SIZE];
-// static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 static int query_sequence_num;
 
 #if defined(WINDOWS)
