@@ -51,31 +51,13 @@ namespace cubhnsw
 
       explicit root_disk_t (byte_t *tape) noexcept : root_t<ID_TRAITS> (tape) {}
 
-      static constexpr std::size_t offset_vec_pool_id = root_t<ID_TRAITS>::offset_entry + sizeof (slot_id_t);
-      static constexpr std::size_t offset_vec_bucket_id = offset_vec_pool_id + sizeof (block_group_id_t);
+      static constexpr std::size_t offset_begin = root_t<ID_TRAITS>::get_size();
 
-      misaligned_ref_gt<block_group_id_t> get_vec_pool_vfid() const noexcept
-      {
-	return {this->tape() + offset_vec_pool_id};
-      }
-
-      void set_vec_pool_vfid (block_group_id_t vfid) noexcept
-      {
-	return misaligned_store<block_group_id_t> (this->tape() + offset_vec_pool_id, vfid);
-      }
-
-      misaligned_ref_gt<block_id_t> get_last_vec_vpid() const noexcept
-      {
-	return {this->tape() + offset_vec_bucket_id};
-      }
-      void set_last_vec_bucket_vpid (block_id_t vpid) noexcept
-      {
-	return misaligned_store<VPID> (this->tape() + offset_vec_bucket_id, vpid);
-      }
+      // TODO: extract extra data from root
 
       static constexpr std::size_t get_bytes() noexcept
       {
-	return root_t<ID_TRAITS>::get_size() + sizeof (block_group_id_t) + sizeof (block_id_t);
+	return root_t<ID_TRAITS>::get_size();
       }
   };
 
