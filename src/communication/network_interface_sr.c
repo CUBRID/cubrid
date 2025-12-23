@@ -11572,7 +11572,7 @@ end:
 
 /*
  * slob_remove_dir - Called when a request is sent from the client to the server.
-                     Invokes xlob_remove_dir() to remove the LOB directory
+ *                   Invokes xlob_remove_dir() to remove the LOB directory
  *
  *   thread_p(in): the thread pointer
  *   rid(in): the request id
