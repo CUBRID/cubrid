@@ -11412,10 +11412,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
       ptr = or_unpack_errcode (reply, &error);
     }
 
-  if (request)
-    {
-      free_and_init (request);
-    }
+  free_and_init (request);
 
   return error;
 #else /* CS_MODE */
