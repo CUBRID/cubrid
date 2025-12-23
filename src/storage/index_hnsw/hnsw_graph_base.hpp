@@ -160,9 +160,13 @@ namespace cubhnsw
       {
 	return tape_;
       }
+      byte_t *vector_tape () const noexcept
+      {
+	return tape_ + offset_vector;
+      }
       byte_t *neighbors_tape() const noexcept
       {
-	return tape_ + offset_neighbors;
+	return tape_ + get_neighbors_offset ();
       }
       explicit operator bool() const noexcept
       {
@@ -180,9 +184,10 @@ namespace cubhnsw
       node_t &operator= (node_t &&) noexcept = default;
 
       static constexpr std::size_t offset_key = 0;
-      static constexpr std::size_t offset_vec_slot = sizeof (OID);
-      static constexpr std::size_t offset_level = offset_vec_slot + sizeof (slot_id_t);
-      static constexpr std::size_t offset_neighbors = offset_level + sizeof (level_t);
+      static constexpr std::size_t offset_level = offset_key + sizeof (slot_id_t);
+      static constexpr std::size_t offset_neighbors_offset = offset_level + sizeof (level_t);
+      static constexpr std::size_t offset_vector = offset_neighbors_offset + sizeof (std::size_t);
+      static constexpr std::size_t offset_header_end = offset_vector;
 
       OID get_key() const noexcept
       {
@@ -193,15 +198,6 @@ namespace cubhnsw
 	return misaligned_store<OID> (tape_, v);
       }
 
-      slot_id_t get_vec_slot() const noexcept
-      {
-	return misaligned_load<slot_id_t> (tape_ + offset_vec_slot);
-      }
-      void set_vec_slot (slot_id_t v) noexcept
-      {
-	return misaligned_store<slot_id_t> (tape_ + offset_vec_slot, v);
-      }
-
       level_t get_level() const noexcept
       {
 	return misaligned_load<level_t> (tape_ + offset_level);
@@ -210,16 +206,36 @@ namespace cubhnsw
       {
 	return misaligned_store<level_t> (tape_ + offset_level, v);
       }
-
-      static constexpr std::size_t get_size() noexcept
+      const float *get_vector() const noexcept
       {
-	return offset_neighbors;
+	return reinterpret_cast<const float *> (vector_tape());
+      }
+      void set_vector (const float *v, std::size_t dim) noexcept
+      {
+	std::size_t offset = offset_header_end + sizeof (float) * dim;
+	set_neighbors_offset (offset);
+	std::memcpy (vector_tape(), v, dim * sizeof (float));
+      }
+
+      std::size_t get_neighbors_offset () const noexcept
+      {
+	return misaligned_load<std::size_t> (tape_ + offset_neighbors_offset);
+      }
+
+      void set_neighbors_offset (std::size_t offset) noexcept
+      {
+	return misaligned_store<std::size_t> (tape_ + offset_neighbors_offset, offset);
+      }
+
+      static constexpr std::size_t get_size (std::size_t dim, std::size_t neighbors_count) noexcept
+      {
+	return offset_vector + sizeof (float) * dim;
       }
 
       std::string dump() const noexcept
       {
 	std::stringstream ss;
-	ss << "key: " << dump_oid (get_key()) << ", vec_slot: " << dump_slot (get_vec_slot()) << ", level: " << get_level();
+	ss << "key: " << dump_oid (get_key()) << ", level: " << get_level() << ", neighbors_offset: " << get_neighbors_offset();
 	return ss.str();
       }
 

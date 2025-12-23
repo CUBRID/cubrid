@@ -24,7 +24,7 @@
 #include <unordered_map>
 #include <cstring>
 
-#include "hnsw_storage.hpp"          // storage<memory_id_traits>
+#include "hnsw_storage.hpp"
 #include "thread_compat.hpp"
 
 namespace cubhnsw
@@ -58,6 +58,7 @@ namespace cubhnsw
       {
 	return {this->tape() + offset_vec_pool_id};
       }
+
       void set_vec_pool_vfid (block_group_id_t vfid) noexcept
       {
 	return misaligned_store<block_group_id_t> (this->tape() + offset_vec_pool_id, vfid);
