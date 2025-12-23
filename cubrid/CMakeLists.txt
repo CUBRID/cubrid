@@ -135,6 +135,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/xml_parser.c
   )
 set (BASE_HEADERS
+  ${BASE_DIR}/compressor.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
@@ -172,6 +173,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/string_buffer.hpp
+  ${BASE_DIR}/fixed_size_allocator.hpp
   )
 
 set(EXECUTABLE_SOURCES
@@ -246,6 +248,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/set_scan.c
   ${QUERY_DIR}/show_scan.c
   ${QUERY_DIR}/subquery_cache.c
+  ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -263,6 +266,7 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
+  ${QUERY_DIR}/memoize.hpp
   )
 
 set(OBJECT_SOURCES
@@ -316,25 +320,23 @@ set(PARALLEL_HASH_JOIN_HEADERS
 )
 
 set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.cpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.cpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.cpp
   )
 
 set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_context.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_manager.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_memory_mapper.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_misc.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_single_table.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
   ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_perf_monitor.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_list_stream.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_mergable_list.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.hpp
+  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.hpp
   )
 
 set(PARALLEL_QUERY_SOURCES
@@ -342,6 +344,8 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
+  ${PARALLEL_QUERY_DIR}/px_sort.c
+  ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
   )
 
 set(PARALLEL_QUERY_HEADERS
@@ -349,6 +353,9 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
+  ${PARALLEL_QUERY_DIR}/px_sort.h
+  ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -358,6 +365,7 @@ set(PARALLEL_QUERY_EXECUTE_SOURCES
 set(PARALLEL_QUERY_EXECUTE_HEADERS
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_executor.hpp
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_task.hpp
+  ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_job.hpp
   )
 
 set(METHOD_SOURCES
@@ -456,24 +464,32 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
-  ${STORAGE_DIR}/hnsw_usearch.cpp
-  ${STORAGE_DIR}/hnsw.cpp
-  ${STORAGE_DIR}/hnsw_api.cpp
+
+  # ${STORAGE_DIR}/hnsw_usearch.cpp
+  ${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
+  ${INDEX_HNSW_DIR}/hnsw.cpp
+  ${INDEX_HNSW_DIR}/hnsw_api.cpp
+  # ${STORAGE_DIR}/hnsw_storage_mem.cpp
+  ${INDEX_HNSW_DIR}/hnsw_storage_disk.cpp
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
+
+  ${INDEX_HNSW_DIR}/hnsw_storage.hpp
+  ${INDEX_HNSW_DIR}/hnsw_algo.hpp
+  ${INDEX_HNSW_DIR}/hnsw_api.hpp
 )
 
 if(USE_SIMD_NATIVE)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
         PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
     )
   elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set_source_files_properties(${STORAGE_DIR}/hnsw_usearch.cpp
+    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
         PROPERTIES COMPILE_FLAGS "-march=native -O3 -fvectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
     )
   endif()
@@ -491,6 +507,7 @@ set(XASL_SOURCES
   ${XASL_DIR}/xasl_spawner.cpp
   ${XASL_DIR}/xasl_stream.cpp
   ${XASL_DIR}/xasl_unpack_info.cpp
+  ${XASL_DIR}/xasl_iteration.cpp
   )
 set(XASL_HEADERS
   ${XASL_DIR}/access_json_table.hpp
@@ -502,6 +519,7 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_predicate.hpp
   ${XASL_DIR}/xasl_spawner.hpp
   ${XASL_DIR}/xasl_stream.hpp
+  ${XASL_DIR}/xasl_iteration.hpp
   )
 
 set(LOADDB_SOURCES
@@ -570,7 +588,8 @@ SET_SOURCE_FILES_PROPERTIES(
   ${THREAD_SOURCES}
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
-  PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-Werror"
+  ${PARALLEL_QUERY_SOURCES}
+  PROPERTIES LANGUAGE CXX
   )
 
 if(UNIX)
@@ -638,9 +657,6 @@ if(WIN32)
 endif(WIN32)
 
 target_compile_definitions(cubrid PRIVATE SERVER_MODE EnableThreadMonitoring CUBRID_EXPORTING ${COMMON_DEFS})
-if(NOT USE_CUBRID_ENV)
-  target_compile_definitions(cubrid PRIVATE ${DIR_DEFS})
-endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   set_source_files_properties(

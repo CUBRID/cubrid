@@ -67,6 +67,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
 /************************************************************************/
@@ -175,8 +176,9 @@ struct file_header
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
 #define FILE_IS_TDE_ENCRYPTED(fh) (((fh)->file_flags & FILE_FLAG_ENCRYPTED_MASK) != 0)
 
-#define FILE_CACHE_LAST_FIND_NTH(fh) \
-  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP)
+#define FILE_CACHE_LAST_FIND_NTH(fh, thread_p) \
+  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP \
+   && thread_p->m_px_orig_thread_entry == NULL /* not parallel thread */)
 
 /* Numerable file types. Currently, we used this property for extensible hashes and sort files. */
 #define FILE_TYPE_CAN_BE_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
@@ -4456,6 +4458,22 @@ file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid)
   return file_temp_retire_internal (thread_p, vfid, true);
 }
 
+int
+file_temp_truncate (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  int error_code = NO_ERROR;
+  if (vfid == NULL || VFID_ISNULL (vfid))
+    {
+      return NO_ERROR;
+    }
+  error_code = file_temp_reset_user_pages (thread_p, vfid);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+    }
+  return error_code;
+}
+
 /*
  * file_temp_retire_internal () - retire temporary file. put it in cache is possible or destroy the file.
  *
@@ -6264,7 +6282,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   file_log ("file_dealloc", "file %d|%d marked vpid %|%d as deleted", VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
 
-  if (FILE_CACHE_LAST_FIND_NTH (fhead))
+  if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p))
     {
       /* reset cached search location */
       VPID_SET_NULL (&fhead->vpid_find_nth_last);
@@ -8262,7 +8280,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   else
     {
-      if (FILE_CACHE_LAST_FIND_NTH (fhead) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
+      if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
 	  && !VPID_EQ (&vpid_fhead, &fhead->vpid_find_nth_last) && nth >= fhead->first_index_find_nth_last)
 	{
 	  /* start searching from last search location */
@@ -8291,7 +8309,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  goto exit;
 	}
 
-      if (FILE_CACHE_LAST_FIND_NTH (fhead))
+      if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p))
 	{
 	  /* note that we consider this file cannot be accessed concurrently. therefore we do not promote to write latch
 	   * and we do not set page dirty to update the cached search location. */
@@ -8662,8 +8680,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	pgbuf_fix (thread_p, &fhead->vpid_last_temp_alloc, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
@@ -8679,7 +8701,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, fhead->volid_last_expand, 1, &partsect_new.vsid);
       if (error_code != NO_ERROR)
 	{
-	  assert_release (false);
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
 
@@ -8784,8 +8811,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       page_ftab = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
@@ -11592,6 +11623,8 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       spacedb_ftype = SPACEDB_HEAP_FILE;
       break;
     case FILE_HNSW:
+      // TODO (CUBVEC): not implemented yet, the following line is for suppressing uninitialized variable warning
+      spacedb_ftype = SPACEDB_SYSTEM_FILE;
       assert (false);
       break;
     default:

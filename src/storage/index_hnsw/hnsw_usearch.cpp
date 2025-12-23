@@ -38,6 +38,10 @@
 #include <fstream>
 #include <filesystem>
 
+#ifdef prefetch
+#undef prefetch
+#endif
+
 #include <usearch/index.hpp>
 #include <usearch/index_dense.hpp>
 #include <usearch/index_plugins.hpp>

@@ -2290,7 +2290,7 @@ _op_get_value_string (DB_VALUE * value)
 #if !defined (NUMERIC_MAX_STRING_SIZE)
 #define NUMERIC_MAX_STRING_SIZE (80 + 1)
 #endif
-  const char *db_varnchar_p = NULL, *db_string_p_tmp = NULL;
+  const char *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;
   DB_TYPE type;
   DB_DATE *date_v;
@@ -2329,14 +2329,6 @@ _op_get_value_string (DB_VALUE * value)
       if (db_string_p_tmp != NULL)
 	{
 	  snprintf (result, result_size, "%s", db_string_p_tmp);
-	}
-      break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      db_varnchar_p = db_get_nchar (value, &size);
-      if (db_varnchar_p != NULL)
-	{
-	  snprintf (result, result_size, "N'%s'", db_varnchar_p);
 	}
       break;
     case DB_TYPE_BIT:
@@ -2524,11 +2516,6 @@ _op_get_set_value (DB_VALUE * val)
 
     case DB_TYPE_DATETIMELTZ:
       snprintf (result, result_size, "%s%s%s", "datetimeltz '", return_result, "'");
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      snprintf (result, result_size, "%s%s%s", "N'", return_result, "'");
       break;
 
     case DB_TYPE_BIT:
@@ -2808,7 +2795,7 @@ revoke_all_from_user (DB_OBJECT * user)
     {
       db_seq_get (col, GRANT_ENTRY_CLASS (i), &v);
       obj = db_get_object (&v);
-      if (is_class_entry (col, i) && db_is_system_class (obj))
+      if (obj->class_mop == NULL || (is_class_entry (col, i) && db_is_system_class (obj)))
 	{
 	  continue;
 	}
@@ -2938,11 +2925,7 @@ get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname)
     {
       return -1;
     }
-#if !defined (DO_NOT_USE_CUBRIDENV)
   envpath = getenv (CUBRID_DATABASES_ENV);
-#else
-  envpath = CUBRID_VARDIR;
-#endif
   if (envpath == NULL || strlen (envpath) == 0)
     {
       return -1;

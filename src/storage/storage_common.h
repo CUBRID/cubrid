@@ -324,6 +324,9 @@ struct lorecdes
     */
 #define BTID_IS_VECTOR_INDEX(btid)  ((btid)->vfid.volid == NULL_VOLID)
 
+// TODO (CUBVEC): the following should be removed after CUBVEC-135 is resolved.
+#define BTID_IS_VECTOR_INDEX_DUMMY(name) (strncmp(name, "vidx", 4) == 0)
+
 #define DISK_VOLPURPOSE DB_VOLPURPOSE
 
 /* Types and defines of transaction management */
@@ -490,7 +493,7 @@ typedef enum
   S_END = 0,
   S_SUCCESS = 1,
   S_SUCCESS_CHN_UPTODATE,	/* only for slotted page */
-  S_DOESNT_FIT,			/* only for slotted page */
+  S_DOESNT_FIT,			/* used for slotted page, heap attrinfo */
   S_DOESNT_EXIST,		/* only for slotted page */
   S_SNAPSHOT_NOT_SATISFIED
 } SCAN_CODE;

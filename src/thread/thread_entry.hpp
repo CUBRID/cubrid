@@ -105,9 +105,9 @@ struct event_stat
   struct timeval lock_waits;
   struct timeval latch_waits;
 
-  /* temp volume expand stats */
-  struct timeval temp_expand_time;
-  int temp_expand_pages;
+  /* volume expand stats */
+  struct timeval extend_time;
+  int extend_pages;
 
   /* save PRM_ID_SQL_TRACE_SLOW_MSECS for performance */
   bool trace_slow_query;
@@ -304,6 +304,7 @@ namespace cubthread
       pthread_mutex_t m_px_stats_mutex;
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
+      bool m_uses_px_stats;
 
       bool m_skip_end_resource_tracks_in_recycle;
 
@@ -479,12 +480,23 @@ thread_unlock_entry (cubthread::entry *thread_p)
   thread_p->unlock ();
 }
 
-void thread_suspend_wakeup_and_unlock_entry (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
-int thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *p, struct timespec *t,
-    thread_resume_suspend_status suspended_reason);
+void thread_suspend (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
+int thread_timed_suspend (cubthread::entry *p, struct timespec *t,
+			  thread_resume_suspend_status suspended_reason);
 void thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
     thread_resume_suspend_status suspend_reason);
+#define thread_suspend_and_unlock_entry(thread_p,suspended_reason) \
+  ({ \
+    thread_suspend((thread_p), (suspended_reason)); \
+    thread_unlock_entry((thread_p)); \
+  })
+#define thread_timed_suspend_and_unlock_entry(thread_p, t, suspended_reason) \
+  ({ \
+    int __r = thread_timed_suspend((thread_p), (t), (suspended_reason)); \
+    thread_unlock_entry((thread_p)); \
+    __r; \
+  })
 void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				     thread_resume_suspend_status suspended_reason);

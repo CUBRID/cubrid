@@ -39,6 +39,21 @@
 class hnsw_index_backend;
 class hnsw_index;
 
+
+/* Maximum Alignment */
+#define HNSW_MAX_ALIGN INT_ALIGNMENT
+#define HEADER 0
+
+typedef struct hnsw_header HNSW_HEADER;
+
+struct hnsw_header
+{
+  int dimension;
+  int hnsw_M;
+  int hnsw_efConstruction;
+  int metric;
+};
+
 struct hnsw_build_params
 {
   int dimension;
@@ -50,6 +65,13 @@ struct hnsw_build_params
     metric (DB_VECTOR_DISTANCE_METRIC::METRIC_EUCLIDEAN) {}
   hnsw_build_params (int dimension, int m, int ef_construction, DB_VECTOR_DISTANCE_METRIC metric) : dimension (dimension),
     m (m), ef_construction (ef_construction), metric (metric) {}
+
+  friend std::ostream &operator<< (std::ostream &os, const hnsw_build_params &params)
+  {
+    os << "dimension: " << params.dimension << ", m: " << params.m << ", ef_construction: " << params.ef_construction <<
+       ", metric: " << params.metric;
+    return os;
+  }
 };
 
 struct hnsw_index_meta
@@ -90,11 +112,11 @@ class hnsw_oid_encoder
     virtual OID decode_oid (const id_type &id)=0;
 };
 
-class hnsw_oid_encoder_default: public hnsw_oid_encoder<int64_t>
+class hnsw_oid_encoder_default: public hnsw_oid_encoder<uint64_t>
 {
   public:
-    int64_t encode_oid (const OID &oid) override;
-    OID decode_oid (const int64_t &id) override;
+    uint64_t encode_oid (const OID &oid) override;
+    OID decode_oid (const uint64_t &id) override;
 };
 
 using hnsw_backend_factory_fn = std::function<std::unique_ptr<hnsw_index_backend> ()>;
@@ -112,10 +134,19 @@ class hnsw_index_backend
 
     virtual std::string get_id() const;
     virtual bool is_metric_supported (const DB_VECTOR_DISTANCE_METRIC &metric) const = 0;
+    virtual bool is_disk_index () const
+    {
+      return false;
+    }
 
     virtual hnsw_index *create_index (THREAD_ENTRY *thread_p, const BTID *btid, const std::string &name,
 				      const hnsw_build_params &build_params) = 0;
     virtual int drop_index (THREAD_ENTRY *thread_p, const BTID *btid) = 0;
+
+    virtual hnsw_index *load_index (THREAD_ENTRY *thread_p, const BTID *btid)
+    {
+      return nullptr;
+    }
 
   private:
     const std::string m_id;

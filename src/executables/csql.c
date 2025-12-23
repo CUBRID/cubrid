@@ -560,11 +560,14 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   /* display product title */
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n\t%s\n\n", csql_get_message (CSQL_INITIAL_CSQL_TITLE));
-  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+  if (!csql_arg->noprint_entrymsg)
+    {
+      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_INITIAL_CSQL_TITLE), rel_release_string ());
+      csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
 
-  snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n", csql_get_message (CSQL_INITIAL_HELP_MSG));
-  csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+      snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, "\n%s\n\n", csql_get_message (CSQL_INITIAL_HELP_MSG));
+      csql_fputs_console_conv (csql_Scratch_text, csql_Tty_fp);
+    }
 
 #if !defined(WINDOWS)
   if (csql_Is_interactive)
@@ -2118,8 +2121,13 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  goto error;
 	}
 
-      snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
+      if (csql_Is_time_on)
+	{
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
+	}
 
+      snprintf (stmt_msg, LINE_BUFFER_SIZE, "Execute OK.");
       csql_Row_count = 0;
       switch (stmt_type)
 	{
@@ -2201,9 +2209,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       if (csql_Is_time_on)
 	{
 	  char time[100];
-
-	  tsc_getticks (&end_tick);
-	  tsc_elapsed_time_usec (&elapsed_time, end_tick, start_tick);
 
 	  sprintf (time, " (%ld.%06ld sec) ", elapsed_time.tv_sec, elapsed_time.tv_usec);
 	  strncat (stmt_msg, time, sizeof (stmt_msg) - strlen (stmt_msg) - 1);

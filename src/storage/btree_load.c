@@ -1618,8 +1618,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	   */
 	  if (DB_IS_NULL (&last_key))
 	    {
-	      /* is the first leaf When the types of leaf node are char, nchar, bit, the type that is saved on non-leaf
-	       * node is different. non-leaf spec (char -> varchar, nchar -> varnchar, bit -> varbit) hence it should
+	      /* is the first leaf When the types of leaf node are char, bit, the type that is saved on non-leaf
+	       * node is different. non-leaf spec (char -> varchar, bit -> varbit) hence it should
 	       * be configured by using setval of nonleaf_key_type. */
 	      ret = load_args->btid->nonleaf_key_type->type->setval (&prefix_key, &first_key, true);
 	      if (ret != NO_ERROR)
@@ -3217,7 +3217,7 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, SORT_PUT_FUNC 
 
   return sort_listfile (thread_p, sort_args->hfids[0].vfid.volid, 0 /* TODO - support parallelism */ ,
 			&btree_sort_get_next, sort_args, out_func, out_args, compare_driver, sort_args, SORT_DUP,
-			NO_SORT_LIMIT, includes_tde_class);
+			NO_SORT_LIMIT, includes_tde_class, SORT_INDEX_LEAF);
 }
 
 /*
