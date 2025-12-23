@@ -30,77 +30,13 @@
 #include "hnsw_utils.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_storage.hpp" // storage_t
-
-#include "faiss/utils/distances.h" // faiss
+#include "vector_distance.hpp"
 
 #define HNSW_ALGO_DEBUG 0
 #define HNSW_ALGO_PRINT(fmt, ...) do { if (HNSW_ALGO_DEBUG) { fprintf (stdout, fmt, ##__VA_ARGS__); fflush (stdout); } } while (0)
 
 namespace cubhnsw
 {
-
-// =====================================================================
-// distance
-// =====================================================================
-
-  enum class vector_distance_metric_t
-  {
-    COSINE,
-    EUCLIDEAN,
-    MAX
-  };
-
-  inline float
-  cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
-  {
-    float dot = 0.0f;
-    float norm1_sq = 0.0f;
-    float norm2_sq = 0.0f;
-
-    #pragma omp simd reduction(+ : dot, norm1_sq, norm2_sq)
-    for (size_t i = 0; i < dim; ++i)
-      {
-	const float a = vec1[i];
-	const float b = vec2[i];
-
-	dot       += a * b;
-	norm1_sq  += a * a;
-	norm2_sq  += b * b;
-      }
-
-    // zero-vector handling
-    if (norm1_sq == 0.0f && norm2_sq == 0.0f)
-      {
-	return 0.0f;   // identical zero vectors
-      }
-    if (norm1_sq == 0.0f || norm2_sq == 0.0f)
-      {
-	return 1.0f;   // maximally distant
-      }
-
-    const float inv_norm =
-	    1.0f / (std::sqrt (norm1_sq) * std::sqrt (norm2_sq));
-
-    const float cosine_similarity = dot * inv_norm;
-    return 1.0f - cosine_similarity;
-  }
-
-  inline float
-  cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
-  {
-    float l2 = faiss::fvec_L2sqr (vec1, vec2, dim);
-    return std::sqrt (l2);
-  }
-
-  using distance_t = float;
-  using Fn = distance_t (*) (const float *, const float *, size_t);
-
-  constexpr std::array<Fn, static_cast<size_t> (vector_distance_metric_t::MAX)> metric_table =
-  {
-    cubvec_cosine_distance,
-    cubvec_l2_distance
-  };
-
   // =====================================================================
   // algo's base structs
   // =====================================================================
