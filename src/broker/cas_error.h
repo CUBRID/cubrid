@@ -87,6 +87,45 @@ extern "C"
     CAS_ER_IS = -10200,
   } T_CAS_ERROR_CODE;
 
+#define ERROR_INDICATOR_UNSET	(0)
+#define CAS_ERROR_INDICATOR	(-1)
+#define DBMS_ERROR_INDICATOR	(-2)
+#define CAS_NO_ERROR		(0)
+#define ERR_MSG_LENGTH		(1024)
+#define ERR_FILE_LENGTH		(256)
+
+#define IS_ERROR_INFO_SET() is_error_info_set()
+#define ERROR_INFO_SET(ERR_CODE, ERR_INDICATOR)\
+	error_info_set(ERR_CODE, ERR_INDICATOR, __FILE__, __LINE__)
+#define ERROR_INFO_SET_FORCE(ERR_CODE, ERR_INDICATOR)\
+	error_info_set_force(ERR_CODE, ERR_INDICATOR, __FILE__, __LINE__)
+#define ERROR_INFO_SET_WITH_MSG(ERR_CODE, ERR_INDICATOR, ERR_MSG)\
+	error_info_set_with_msg(ERR_CODE, ERR_INDICATOR, ERR_MSG, false, __FILE__, __LINE__)
+#define NET_BUF_ERR_SET(NET_BUF)\
+	err_msg_set(NET_BUF, __FILE__, __LINE__)
+
+  typedef struct t_error_info T_ERROR_INFO;
+  struct t_error_info
+  {
+    int err_indicator;
+    int err_number;
+    char err_string[ERR_MSG_LENGTH];
+    char err_file[ERR_FILE_LENGTH];
+    int err_line;
+  };
+
+  struct t_net_buf;
+  typedef struct t_net_buf T_NET_BUF;
+
+  extern int is_error_info_set (void);
+  extern void err_msg_set (T_NET_BUF * net_buf, const char *file, int line);
+  extern int error_info_set (int err_number, int err_indicator, const char *file, int line);
+  extern int error_info_set_force (int err_number, int err_indicator, const char *file, int line);
+  extern int error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg, bool force,
+				      const char *file, int line);
+  extern void error_info_clear (void);
+  extern void set_server_aborted (bool is_aborted);
+  extern bool is_server_aborted (void);
 
 #ifdef __cplusplus
 }

@@ -32,12 +32,22 @@
 #else
 #include <arpa/inet.h>
 #endif
-
 #include "cas_protocol.h"
-#include "cas_network.h"
-#include "cas.h"
-
 #include "dbtype_def.h"
+#include "cas_common_vars.h"
+
+#define NET_SIZE_BYTE           ((int) sizeof(char))
+#define NET_SIZE_SHORT          ((int) sizeof(short))
+#define NET_SIZE_INT            ((int) sizeof(int))
+#define NET_SIZE_FLOAT          ((int) sizeof(float))
+#define NET_SIZE_DOUBLE         ((int) sizeof(double))
+#define NET_SIZE_INT64          ((int) sizeof(INT64))
+#define NET_SIZE_BIGINT         NET_SIZE_INT64
+#define NET_SIZE_DATE           (NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_TIME           (NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_OBJECT         (NET_SIZE_INT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_TIMESTAMP      (NET_SIZE_SHORT * 6)
+#define NET_SIZE_DATETIME       (NET_SIZE_SHORT * 7)
 
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX) || defined(PPC_LINUX)
 #define BYTE_ORDER_BIG_ENDIAN
@@ -87,6 +97,8 @@
 ((net_buf)->client_version, PROTOCOL_V7) ? 2 * NET_SIZE_BYTE : NET_SIZE_BYTE)
 
 #define INT_DEFAULE_NET_BUF_SIZE        (16 * NET_BUF_KBYTE)
+
+#define MAX_SHARD_INFO_LENGTH           (30)
 
 typedef struct t_net_buf T_NET_BUF;
 struct t_net_buf
@@ -158,7 +170,6 @@ extern void net_arg_get_lob_value (DB_VALUE * db_lob, void *arg);
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size);
 extern int net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset);
-extern T_SHM_APPL_SERVER *shm_appl;
 extern int get_net_buf_size (void);
 extern void set_net_buf_size (void);
 #endif /* _CAS_NET_BUF_H_ */

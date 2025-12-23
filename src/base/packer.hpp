@@ -411,7 +411,7 @@ namespace cubpacking
   packer::pack_all_recursive (T &&t, Args &&... args)
   {
     pack_overloaded (std::forward<T> (t));
-    pack_all (std::forward<Args> (args)...);
+    pack_all_recursive (std::forward<Args> (args)...);
   }
 
   template <typename ExtBlk, typename ... Args>
@@ -422,7 +422,7 @@ namespace cubpacking
     eb.extend_to (total_size);
 
     set_buffer (eb.get_ptr (), total_size);
-    pack_all (std::forward<Args> (args)...);
+    pack_all_recursive (std::forward<Args> (args)...);
   }
 
 
@@ -454,7 +454,7 @@ namespace cubpacking
     m_ptr = eb.get_ptr () + offset;
     m_end_ptr = eb.get_ptr () + offset + total_size;
 
-    pack_all (std::forward<Args> (args)...);
+    pack_all_recursive (std::forward<Args> (args)...);
   }
 
   //
