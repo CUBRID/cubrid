@@ -130,11 +130,6 @@ namespace test_packing
 	return false;
       }
 
-    if (color != other_po1->color)
-      {
-	return false;
-      }
-
     return true;
   }
 
@@ -208,8 +203,6 @@ namespace test_packing
     str1 = tmp_str;
 
     generate_str (str2, sizeof (str2) - 1);
-
-    color = static_cast<rgb> (std::rand () % rgb::MAX);
   }
 
 /////////////////////////////

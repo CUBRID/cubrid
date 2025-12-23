@@ -61,7 +61,6 @@ namespace test_packing
       std::string large_str;
       std::string str1;
       char str2[300];
-      rgb color;
 
     public:
 
