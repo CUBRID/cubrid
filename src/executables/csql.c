@@ -504,13 +504,6 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 
   for (int i = 0; fmt[i] != '\0' && remain > 0;)
     {
-      /* ignore non-ascii character */
-      if (fmt[i] < 0)
-	{
-	  i++;
-	  continue;
-	}
-
       if (fmt[i] == '\\' && fmt[i + 1] != '\0' && fmt[i + 1] >= 0)
 	{
 	  char next = fmt[i + 1];
@@ -579,6 +572,60 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
     {
       db_string_free (database_name);
     }
+
+#if !defined (WINDOW)
+  /* check if the prompt contains multi-byte characters */
+  for (pos = prompt; *pos != '\0'; pos++)
+    {
+      if ((signed char) *pos < 0)
+	{
+	  char *locale = setlocale (LC_CTYPE, NULL);
+	  INTL_CODESET codeset = lang_charset ();
+	  const char *find1 = NULL, *find2 = NULL;
+
+	  /* check of DB codeset */
+	  if (codeset == INTL_CODESET_UTF8)
+	    {
+	      find1 = "utf8";
+	      find2 = "utf-8";
+	    }
+	  else if (codeset == INTL_CODESET_KSC5601_EUC)
+	    {
+	      find1 = "euckr";
+	      find2 = "euc-kr";
+	    }
+	  else
+	    {
+	      goto multibyte_warning;
+	    }
+
+	  /* veify if match LANG and DB codeset */
+	  if (strcasestr (locale, find1) || strcasestr (locale, find2))
+	    {
+	      return;
+	    }
+	  else
+	    {
+	      goto multibyte_warning;
+	    }
+	}
+    }
+
+  return;
+
+multibyte_warning:
+
+  strcpy (prompt, csql_get_message (CSQL_PROMPT));
+  if ((prompt_size - strlen (prompt)) > 1)
+    {
+      strcat (prompt, " ");
+    }
+  fprintf (stderr, "Warning: %s\n", csql_get_message (CSQL_E_LANG_TEXT));
+
+  return;
+#else
+  return;
+#endif
 }
 
 /*
@@ -699,6 +746,11 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 #endif /* ENABLE_UNUSED_FUNCTION */
     }
 #endif /* !WINDOWS */
+
+  if (csql_Is_interactive && csql_Prompt_user_defined != CSQL_PROMPT_DEFAULT)
+    {
+      change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
+    }
 
   for (line_no = 1;; line_no++)
     {
@@ -3276,7 +3328,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
     {
       csql_Prompt_user_defined = CSQL_PROMPT_USER_DEFINED;
       strcpy (csql_Prompt_format, env);
-      change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
   if (csql_arg->nopager)
@@ -3316,8 +3367,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
 error:
   nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
-  er_final (ER_ALL_FINAL);
   csql_exit (EXIT_FAILURE);
+  er_final (ER_ALL_FINAL);
   return EXIT_FAILURE;		/* won't get here really */
 }
 
