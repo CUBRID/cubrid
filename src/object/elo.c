@@ -379,7 +379,9 @@ elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
       if (meta_data == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
+	  ret =  er_errid ();
+
+          goto error_return;
 	}
     }
 
