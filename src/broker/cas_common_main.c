@@ -378,7 +378,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	cas_log_close (true);
 	cas_slow_log_close ();
 	sql_log2_end (true);
-#if defined(WINDOWS)	
+#if defined(WINDOWS)
 	cas_req_count++;
 #endif /* WINDOWS */
 
