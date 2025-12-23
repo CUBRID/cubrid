@@ -575,7 +575,7 @@ namespace parallel_heap_scan
 	  }
 	if (xasl->proc.buildlist.a_eval_list)
 	  {
-	    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+	    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	      {
 		result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
 	      }

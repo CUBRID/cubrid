@@ -797,7 +797,7 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP;
 	    }
-	  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+	  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	    {
 	      assert (xasl->instnum_val_offset);
 
@@ -1139,9 +1139,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   TOPN_STATUS topn_stauts = TOPN_SUCCESS;
   int ret = NO_ERROR;
   bool output_tuple = true;
-  BUILDLIST_PROC_NODE *buildlist;
-  ANALYTIC_EVAL_TYPE *a_eval_list;
-  ANALYTIC_TYPE *a_func_list;
 
   if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
@@ -15213,7 +15210,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
 
 	  for (a_eval_list = xasl->proc.buildlist.a_eval_list;
-	       a_eval_list && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING); a_eval_list = a_eval_list->next)
+	       a_eval_list && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT); a_eval_list = a_eval_list->next)
 	    {
 	      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 		{
@@ -20823,7 +20820,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     {
       if (xasl->instnum_val != NULL)
 	{
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	    {
 	      pr_clone_value (xasl->instnum_val_offset, xasl->instnum_val);
 	    }
@@ -20841,7 +20838,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
       {
 	analytic_state.interm_file = list_id;
       }
@@ -20931,7 +20928,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
     {
       for (i = 0; i < analytic_state.func_count; i++)
 	{
@@ -22991,16 +22988,17 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
   ANALYTIC_EVAL_TYPE *a_eval_list;
   ANALYTIC_TYPE *a_func_list;
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
     {
       assert (xasl->type == BUILDLIST_PROC);
       assert (xasl->proc.buildlist.a_eval_list);
+      assert (xasl->proc.buildlist.a_eval_list->next == NULL);
 
       buildlist = &xasl->proc.buildlist;
-      for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+      for (a_eval_list = buildlist->a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
 	{
 	  if (fetch_val_list
-	      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, NULL, true) != NO_ERROR)
+	      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, NULL, PEEK) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }

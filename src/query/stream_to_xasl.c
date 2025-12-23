@@ -2076,18 +2076,25 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     }
 
   ptr = or_unpack_int (ptr, &offset);
-  if (offset == 0)
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
     {
-      xasl->instnum_val_offset = NULL;
+      if (offset == 0)
+	{
+	  xasl->instnum_val_offset = NULL;
+	}
+      else
+	{
+	  xasl->instnum_val_offset = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  if (xasl->instnum_val_offset == NULL)
+	    {
+	      goto error;
+	    }
+	  assert (xasl->instnum_val_offset->need_clear == false);
+	}
     }
   else
     {
-      xasl->instnum_val_offset = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-      if (xasl->instnum_val_offset == NULL)
-	{
-	  goto error;
-	}
-      assert (xasl->instnum_val_offset->need_clear == false);
+      xasl->instnum_val_offset = NULL;
     }
 
   ptr = or_unpack_int (ptr, &offset);

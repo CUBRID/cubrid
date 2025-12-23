@@ -639,7 +639,7 @@ static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parse
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
 
-static int pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
+static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
 
 static void
 pt_init_xasl_supp_info ()
@@ -16463,8 +16463,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	   * happening before making adjustments */
 
 	  ANALYTIC_INFO analytic_info, analytic_info_clone;
-	  ANALYTIC_EVAL_TYPE *eval;
-	  ANALYTIC_TYPE *a_func_list;
 	  PT_NODE *select_list_ex = NULL, *select_list_final = NULL, *node;
 	  int idx, final_idx, final_count, *sort_adjust = NULL;
 	  bool no_optimization_done = false;
@@ -16596,16 +16594,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
-	  int *attr_offsets;
-	  attr_offsets = pt_make_identity_offsets (select_list_ex);
 
 
 	  buildlist->a_scan_regu_list =
-	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);
+	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, NULL);
 
 	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
-	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, attr_offsets);
+	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, NULL);
 
 	  if (buildlist->a_regu_list == NULL)
 	    {
@@ -16648,7 +16644,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* optimize analytic function list */
 	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
 
-	  if (pt_set_analytic_eval_in_processing (xasl, xasl->proc.buildlist.a_eval_list) != NO_ERROR)
+	  if (pt_check_analytic_limit_optimization (xasl, xasl->proc.buildlist.a_eval_list) != NO_ERROR)
 	    {
 	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      goto analytic_exit_on_error;
@@ -16949,7 +16945,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       if ((xasl->instnum_pred != NULL || xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
-	  && pt_has_analytic (parser, select_node) && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING))
+	  && pt_has_analytic (parser, select_node) && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
 	   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
@@ -28256,20 +28252,20 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 }
 
 /*
- * pt_set_analytic_eval_in_processing () -
- *   Determine if analytic functions can be evaluated in the processing stage.
- *   If evaluatable, set the flag and create instnum_val_offset.
+ * pt_check_analytic_limit_optimization () -
+ *   Check if analytic functions are optimizable for limit optimization.
+ *   If optimizable, set the XASL_ANALYTIC_USES_LIMIT_OPT flag.
  * 
  * return :
  * xasl (in)  :
  * eval_list (in) :
  */
 static int
-pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list)
+pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list)
 {
   ANALYTIC_EVAL_TYPE *eval;
   ANALYTIC_TYPE *a_func_list;
-  bool is_evaluatable = false;
+  bool is_optimizable = false;
 
   if (!xasl->instnum_pred && !xasl->instnum_val)
     {
@@ -28281,16 +28277,16 @@ pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_
    *       Since we check sort_list == NULL here, checking only one eval is sufficient. */
   for (eval = eval_list; eval != NULL; eval = eval->next)
     {
-      is_evaluatable = !(eval->sort_list) ? true : false;
+      is_optimizable = !(eval->sort_list) ? true : false;
 
-      for (a_func_list = eval->head; a_func_list && is_evaluatable; a_func_list = a_func_list->next)
+      for (a_func_list = eval->head; a_func_list && is_optimizable; a_func_list = a_func_list->next)
 	{
 	  switch (a_func_list->function)
 	    {
 	    case PT_FIRST_VALUE:
 	      if (a_func_list->ignore_nulls)
 		{
-		  is_evaluatable = false;
+		  is_optimizable = false;
 		  break;
 		}
 
@@ -28300,24 +28296,15 @@ pt_set_analytic_eval_in_processing (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_
 	      break;
 
 	    default:
-	      is_evaluatable = false;
+	      is_optimizable = false;
 	      break;
 	    }
 	}
     }
 
-  if (is_evaluatable)
+  if (is_optimizable)
     {
-      assert (xasl->instnum_val_offset == NULL);
-
-      XASL_SET_FLAG (xasl, XASL_ANALYTIC_EVAL_IN_PROCESSING);
-
-      regu_alloc (xasl->instnum_val_offset);
-      if (xasl->instnum_val_offset == NULL)
-	{
-	  return ER_FAILED;
-	}
-      db_make_bigint (xasl->instnum_val_offset, 0);
+      XASL_SET_FLAG (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
     }
 
   return NO_ERROR;
