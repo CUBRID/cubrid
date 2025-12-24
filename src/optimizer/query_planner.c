@@ -630,7 +630,7 @@ qo_estimate_ngroups (QO_PLAN * plan)
   double total_nrows = plan->info->total_rows;
 
   /* get NDV of GROUP BY */
-  group_ndv = MAX (qo_get_group_ndv (plan), 1);
+  group_ndv = MIN (MAX (qo_get_group_ndv (plan), 1), expected_nrows);
 
   if (expected_nrows == total_nrows)
     {
@@ -642,6 +642,7 @@ qo_estimate_ngroups (QO_PLAN * plan)
       estimate_ndv = MAX (qo_estimate_ndv (total_nrows, expected_nrows, group_ndv), 1);
     }
 
+  estimate_ndv = MIN (expected_nrows, estimate_ndv);
   plan->info->cardinality = estimate_ndv;
 }
 
