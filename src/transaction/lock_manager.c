@@ -77,7 +77,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-extern LOCK_COMPATIBILITY lock_Comp[12][12];
+extern LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT];
 
 #if defined (SERVER_MODE)
 /* object lock hash function */

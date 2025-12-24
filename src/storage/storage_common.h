@@ -383,10 +383,12 @@ typedef enum
   SIX_LOCK = 8,			/* Shared and intention exclusive lock */
   U_LOCK = 9,			/* Update lock */
   X_LOCK = 10,			/* Exclusive lock */
-  SCH_M_LOCK = 11		/* Schema Modification Lock */
+  SCH_M_LOCK = 11,		/* Schema Modification Lock */
+
+  LOCK_COUNT			/* number of lock modes */
 } LOCK;
 
-extern LOCK lock_Conv[12][12];
+extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT];
 
 #define LOCK_TO_LOCKMODE_STRING(lock) \
   (((lock) == NULL_LOCK)  ? "  NULL_LOCK" : \
