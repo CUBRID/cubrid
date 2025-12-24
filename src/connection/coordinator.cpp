@@ -83,9 +83,30 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    if (!this->eventfd_settimer (m_timerfd, 0, 400 * 1e6 /* 400 ms */))
+    /* timer */
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
-	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to eventfd_settimer\n");
+	m_timer_handler[i].valid = false;
+	m_timer_handler[i].latency = timer_latency::NA;
+	m_timer_handler[i].function = nullptr;
+	m_timer_handler[i].last_time = 0;
+      }
+    if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::LOW_LATENCY,
+				 std::bind (&coordinator::statistics_update, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
+	assert_release (false);
+      }
+    if (!this->eventfd_addtimer (timer_type::REBALANCING, timer_latency::MEDIUM_LATENCY,
+				 std::bind (&coordinator::statistics_rebalancing, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
+	assert_release (false);
+      }
+    if (!this->eventfd_addtimer (timer_type::SCALING, timer_latency::HIGH_LATENCY,
+				 std::bind (&coordinator::statistics_scaling, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
 	assert_release (false);
       }
 
@@ -342,26 +363,6 @@ namespace cubconn::connection
     prev = current;
   }
 
-  void coordinator::statistics_update_score (std::size_t worker)
-  {
-    statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
-    statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
-
-    /*
-    c.get (statistics::context::RECV_BUDGET_HIT);
-    c.get (statistics::context::SEND_BUDGET_HIT);
-    */
-
-    /* temporary formula */
-    m_statistics[worker].m_score =
-	    static_cast<double> (m_statistics[worker].m_client_num) +
-	    /* throughput per ms */
-	    w_ewma.get (statistics::worker::MQ_REQUESTED) / 500 +
-	    w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
-	    c_ewma.get (statistics::context::BYTES_IN_TOTAL) / 100 +
-	    c_ewma.get (statistics::context::BYTES_OUT_TOTAL) / 100;
-  }
-
   std::pair<std::size_t, std::size_t> coordinator::statistics_find_score_extremes ()
   {
     double max, min;
@@ -382,6 +383,26 @@ namespace cubconn::connection
       }
 
     return { min, max };
+  }
+
+  void coordinator::statistics_update_score (std::size_t worker)
+  {
+    statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
+    statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
+
+    /*
+    c.get (statistics::context::RECV_BUDGET_HIT);
+    c.get (statistics::context::SEND_BUDGET_HIT);
+    */
+
+    /* temporary formula */
+    m_statistics[worker].m_score =
+	    static_cast<double> (m_statistics[worker].m_client_num) +
+	    /* throughput per ms */
+	    w_ewma.get (statistics::worker::MQ_REQUESTED) / 500 +
+	    w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
+	    c_ewma.get (statistics::context::BYTES_IN_TOTAL) / 100 +
+	    c_ewma.get (statistics::context::BYTES_OUT_TOTAL) / 100;
   }
 
   void coordinator::statistics_update_connection (uint64_t delta,
@@ -458,6 +479,24 @@ namespace cubconn::connection
       }
 
     m_task_statistics.time_ns = time_ns;
+  }
+
+  bool coordinator::statistics_update ()
+  {
+    this->handle_message_queue ();
+    //this->statistics_print ();
+
+    return true;
+  }
+
+  bool coordinator::statistics_rebalancing ()
+  {
+    return true;
+  }
+
+  bool coordinator::statistics_scaling ()
+  {
+    return true;
   }
 
   void coordinator::statistics_print ()
@@ -575,6 +614,112 @@ namespace cubconn::connection
       }
 
     return true;
+  }
+
+  bool coordinator::eventfd_settimer (int fd, timer_latency latency)
+  {
+    uint64_t sec, nsec;
+
+    sec = static_cast<uint64_t> (latency) / static_cast<uint64_t> (1e9);
+    nsec = static_cast<uint64_t> (latency) % static_cast<uint64_t> (1e9);
+    if (eventfd_settimer (fd, sec, nsec))
+      {
+	return true;
+      }
+    return false;
+  }
+
+  bool coordinator::eventfd_starttimer ()
+  {
+    timer_latency min;
+    std::size_t i;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    if (min != timer_latency::NA)
+      {
+	return this->eventfd_settimer (m_timerfd, min);
+      }
+    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+  }
+
+  bool coordinator::eventfd_stoptimer ()
+  {
+    return eventfd_settimer (m_timerfd, 0, 0);
+  }
+
+  bool coordinator::eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle)
+  {
+    timer_latency min;
+    std::size_t i;
+
+    if (m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return true;
+      }
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = true;
+    m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
+    m_timer_handler[static_cast<std::size_t> (type)].function = handle;
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = 0;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    assert (min != timer_latency::NA);
+
+    return this->eventfd_settimer (m_timerfd, min);
+  }
+
+  bool coordinator::eventfd_removetimer (timer_type type)
+  {
+    timer_latency min;
+    std::size_t i;
+
+    /* avoid resetting the timerfd unnecessarily */
+    if (!m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return true;
+      }
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = false;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    if (min != timer_latency::NA)
+      {
+	return this->eventfd_settimer (m_timerfd, min);
+      }
+    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
   }
 
   bool coordinator::handle_message_queue_start (message &item)
@@ -892,7 +1037,7 @@ not_transferred:
   bool coordinator::run ()
   {
     std::array<epoll_event, 4> events;
-    int nfds, i;
+    int nfds, i, j;
 
     while (!m_stop)
       {
@@ -907,6 +1052,9 @@ not_transferred:
 	    assert_release (false);
 	    continue;
 	  }
+
+	/* criterion time to use during this loop */
+	m_timens = this->get_monotonic_ns ();
 
 	for (i = 0; i < nfds; i++)
 	  {
@@ -925,12 +1073,27 @@ not_transferred:
 		  }
 		else if (events[i].data.fd == m_timerfd)
 		  {
-		    this->handle_message_queue ();
-		    this->statistics_print ();
+		    for (j = 0; j < static_cast<int> (timer_type::TYPE_COUNT); j++)
+		      {
+			if (!m_timer_handler[j].valid)
+			  {
+			    continue;
+			  }
+
+			if (m_timens - m_timer_handler[j].last_time > static_cast<uint64_t> (m_timer_handler[j].latency))
+			  {
+			    if (!m_timer_handler[j].function ())
+			      {
+				return false;
+			      }
+
+			    m_timer_handler[j].last_time = m_timens;
+			  }
+		      }
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
+			er_log_conn (__FILE__, __LINE__, "connection::coordinator->eventfd_handler: eventfd_clear failed\n");
 			return false;
 		      }
 		  }

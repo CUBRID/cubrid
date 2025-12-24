@@ -72,6 +72,35 @@ namespace cubconn::connection
 	m_contexts;
       };
 
+      enum class timer_latency : uint64_t
+      {
+	NA = 0, /* off */
+	LOW_LATENCY = static_cast<uint64_t> (400 * 1e6), /* 400 msec */
+	MEDIUM_LATENCY = static_cast<uint64_t> (10 * 1e9), /* 10 sec */
+	HIGH_LATENCY = static_cast<uint64_t> (300 * 1e9), /* 5 min */
+
+	MAXIMUM_LATENCY = static_cast<uint64_t> (UINT64_MAX - 1) /* virtually off */
+      };
+
+      enum class timer_type : uint32_t
+      {
+	NA,
+	STATISTICS,
+	REBALANCING,
+	SCALING,
+
+	TYPE_COUNT
+      };
+
+      struct timer_handle
+      {
+	bool valid;
+	timer_latency latency;
+	std::function<bool ()> function;
+	uint64_t last_time;
+      };
+
+      /* utils */
       enum class control_type : uint32_t
       {
 	/* RECV */
@@ -189,6 +218,8 @@ namespace cubconn::connection
       int m_eventfd;
       /* timer based */
       int m_timerfd;
+      uint64_t m_timens;
+      std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
       /* controller */
       controller<control_recv, control_send> m_controller;
       int m_ctrlfd;
@@ -256,13 +287,17 @@ namespace cubconn::connection
 			    statistics::metrics<T> &prev, statistics::metrics<T> &current);
       void statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current);
 
-      void statistics_update_score (std::size_t worker);
       std::pair<std::size_t, std::size_t> statistics_find_score_extremes ();
 
+      void statistics_update_score (std::size_t worker);
       void statistics_update_connection (uint64_t delta,
 					 std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
 					 std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts);
       void statistics_update_task ();
+      bool statistics_update ();
+
+      bool statistics_rebalancing ();
+      bool statistics_scaling ();
 
       void statistics_print ();
 
@@ -273,6 +308,12 @@ namespace cubconn::connection
       bool eventfd_clear (int fd);
 
       bool eventfd_settimer (int fd, uint64_t sec, uint64_t nsec);
+      bool eventfd_settimer (int fd, timer_latency latency);
+
+      bool eventfd_starttimer ();
+      bool eventfd_stoptimer ();
+      bool eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle);
+      bool eventfd_removetimer (timer_type type);
 
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */

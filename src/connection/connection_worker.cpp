@@ -116,7 +116,6 @@ namespace cubconn::connection
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
 	assert_release (false);
-
       }
     if (!this->eventfd_addtimer (timer_type::HA, timer_latency::HIGH_LATENCY,
 				 std::bind (&worker::ha_close_all_connections, this)))
