@@ -77,9 +77,7 @@ namespace cubconn::connection
 	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint64_t> (400 * 1e6), /* 400 msec */
 	MEDIUM_LATENCY = static_cast<uint64_t> (10 * 1e9), /* 10 sec */
-	HIGH_LATENCY = static_cast<uint64_t> (300 * 1e9), /* 5 min */
-
-	MAXIMUM_LATENCY = static_cast<uint64_t> (UINT64_MAX - 1) /* virtually off */
+	HIGH_LATENCY = static_cast<uint64_t> (300 * 1e9) /* 5 min */
       };
 
       enum class timer_type : uint32_t

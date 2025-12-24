@@ -650,7 +650,7 @@ namespace cubconn::connection
       {
 	return this->eventfd_settimer (m_timerfd, min);
       }
-    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+    return this->eventfd_stoptimer ();
   }
 
   bool coordinator::eventfd_stoptimer ()
@@ -671,7 +671,7 @@ namespace cubconn::connection
     m_timer_handler[static_cast<std::size_t> (type)].valid = true;
     m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
     m_timer_handler[static_cast<std::size_t> (type)].function = handle;
-    m_timer_handler[static_cast<std::size_t> (type)].last_time = 0;
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = this->get_monotonic_ns ();
 
     min = timer_latency::NA;
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
@@ -719,7 +719,7 @@ namespace cubconn::connection
       {
 	return this->eventfd_settimer (m_timerfd, min);
       }
-    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+    return this->eventfd_stoptimer ();
   }
 
   bool coordinator::handle_message_queue_start (message &item)

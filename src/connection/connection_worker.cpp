@@ -109,7 +109,7 @@ namespace cubconn::connection
 	m_timer_handler[i].valid = false;
 	m_timer_handler[i].latency = timer_latency::NA;
 	m_timer_handler[i].function = nullptr;
-	m_timer_handler[i].last_time = 0;
+	m_timer_handler[i].last_time = this->get_time_ns (CLOCK_MONOTONIC);
       }
     if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::MEDIUM_LATENCY,
 				 std::bind (&worker::statistics_metrics_to_coordinator, this)))
@@ -707,7 +707,7 @@ retry:
       {
 	return this->eventfd_settimer (m_timerfd, min);
       }
-    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+    return this->eventfd_stoptimer ();
   }
 
   bool worker::eventfd_stoptimer ()
@@ -776,7 +776,7 @@ retry:
       {
 	return this->eventfd_settimer (m_timerfd, min);
       }
-    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+    return this->eventfd_stoptimer ();
   }
 
   bool worker::eventfd_handler (bool *eventfds)

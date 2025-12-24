@@ -75,9 +75,7 @@ namespace cubconn::connection
 	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint64_t> (1 * 1e6), /* 1 msec */
 	MEDIUM_LATENCY = static_cast<uint64_t> (400 * 1e6), /* 400 msec */
-	HIGH_LATENCY = static_cast<uint64_t> (2 * 1e9), /* 2 sec */
-
-	MAXIMUM_LATENCY = static_cast<uint64_t> (UINT64_MAX - 1) /* virtually off */
+	HIGH_LATENCY = static_cast<uint64_t> (2 * 1e9) /* 2 sec */
       };
 
       struct timer_handle
