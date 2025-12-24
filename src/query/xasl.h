@@ -1084,7 +1084,6 @@ struct xasl_node
   PRED_EXPR *if_pred;		/* if predicate */
   PRED_EXPR *instnum_pred;	/* inst_num() predicate */
   DB_VALUE *instnum_val;	/* inst_num() value result */
-  DB_VALUE *instnum_val_offset;
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
   REGU_VARIABLE *limit_offset;	/* offset of limit clause */
   REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */

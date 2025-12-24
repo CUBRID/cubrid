@@ -15098,7 +15098,6 @@ pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node)
   xasl->if_pred = NULL;
   xasl->instnum_pred = NULL;
   xasl->instnum_val = NULL;
-  xasl->instnum_val_offset = NULL;
   xasl->save_instnum_val = NULL;
   xasl->fptr_list = NULL;
   xasl->scan_ptr = NULL;
@@ -16594,10 +16593,13 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
-
+	  int *attr_offsets;
+	  attr_offsets = pt_make_identity_offsets (select_list_ex);
 
 	  buildlist->a_scan_regu_list =
-	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, NULL);
+	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);
+
+	  free_and_init (attr_offsets);
 
 	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
@@ -16648,6 +16650,46 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 	      goto analytic_exit_on_error;
+	    }
+
+
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      PT_NODE *final_node = NULL;
+	      REGU_VARIABLE_LIST regu_list_new, prev = NULL;
+	      REGU_VARIABLE *regu_var_temp;
+
+	      for (final_node = select_list_final; final_node != NULL; final_node = final_node->next)
+		{
+		  if (pt_is_instnum (final_node))
+		    {
+		      buildlist->a_outptr_list_ex->valptr_cnt++;
+
+		      regu_alloc (regu_list_new);
+		      if (regu_list_new == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+
+		      regu_var_temp = pt_make_regu_numbering (parser, final_node);
+		      regu_list_new->value = *regu_var_temp;
+
+		      if (prev == NULL)
+			{
+			  prev = regu_list_new;
+			  regu_list_new->next = buildlist->a_outptr_list_ex->valptrp;
+			  buildlist->a_outptr_list_ex->valptrp = regu_list_new;
+			}
+		      else
+			{
+			  regu_list_new->next = prev->next;
+			  prev->next = regu_list_new;
+			}
+		      prev = prev->next;
+		    }
+
+		  prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
+		}
 	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
@@ -28305,6 +28347,7 @@ pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eva
   if (is_optimizable)
     {
       XASL_SET_FLAG (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
+      XASL_CLEAR_FLAG (xasl, XASL_INSTNUM_FLAG_EVAL_DEFER);
     }
 
   return NO_ERROR;

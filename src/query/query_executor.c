@@ -797,12 +797,6 @@ qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      xasl->instnum_flag |= XASL_INSTNUM_FLAG_SCAN_STOP;
 	    }
-	  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-	    {
-	      assert (xasl->instnum_val_offset);
-
-	      xasl->instnum_val_offset->data.bigint++;
-	    }
 	  break;
 	case V_TRUE:
 	  /* evaluation is true; if not continue scan mode, set scan check flag */
@@ -15209,14 +15203,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
 
-	  for (a_eval_list = xasl->proc.buildlist.a_eval_list;
-	       a_eval_list && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT); a_eval_list = a_eval_list->next)
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	    {
-	      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+	      for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
 		{
-		  if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+		  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 		    {
-		      GOTO_EXIT_ON_ERROR;
+		      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
 		    }
 		}
 	    }
@@ -15876,7 +15872,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* process analytic functions */
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
+	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
 	  for (eval_list = xasl->proc.buildlist.a_eval_list; eval_list; eval_list = eval_list->next)
@@ -20820,15 +20817,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     {
       if (xasl->instnum_val != NULL)
 	{
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-	    {
-	      pr_clone_value (xasl->instnum_val_offset, xasl->instnum_val);
-	    }
-	  else
-	    {
-	      /* initialize counter to zero */
-	      (void) db_make_bigint (xasl->instnum_val, 0);
-	    }
+	  /* initialize counter to zero */
+	  (void) db_make_bigint (xasl->instnum_val, 0);
 	}
     }
 
@@ -20838,32 +20828,25 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    /* open intermediate file */
+    if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list) != NO_ERROR)
       {
-	analytic_state.interm_file = list_id;
+	GOTO_EXIT_ON_ERROR;
       }
-    else
+
+    interm_list_id = qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, ls_flag, NULL);
+
+    if (interm_type_list.domp)
       {
-	/* open intermediate file */
-	if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list) != NO_ERROR)
-	  {
-	    GOTO_EXIT_ON_ERROR;
-	  }
-
-	interm_list_id = qfile_open_list (thread_p, &interm_type_list, NULL, xasl_state->query_id, ls_flag, NULL);
-
-	if (interm_type_list.domp)
-	  {
-	    db_private_free_and_init (thread_p, interm_type_list.domp);
-	  }
-
-	if (interm_list_id == NULL)
-	  {
-	    GOTO_EXIT_ON_ERROR;
-	  }
-
-	analytic_state.interm_file = interm_list_id;
+	db_private_free_and_init (thread_p, interm_type_list.domp);
       }
+
+    if (interm_list_id == NULL)
+      {
+	GOTO_EXIT_ON_ERROR;
+      }
+
+    analytic_state.interm_file = interm_list_id;
 
     /* last iteration results in xasl result file */
     if (is_last)
@@ -20927,28 +20910,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   /*
    * Now load up the sort module and set it off...
    */
-
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-    {
-      for (i = 0; i < analytic_state.func_count; i++)
-	{
-	  analytic_state.func_state_list[i].curr_group_tuple_count = list_id->tuple_cnt;
-	  analytic_state.func_state_list[i].curr_sort_key_tuple_count = list_id->tuple_cnt;
-
-	  if (qexec_analytic_finalize_group
-	      (thread_p, analytic_state.xasl_state, &analytic_state.func_state_list[i], false) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	}
-
-      if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-      analytic_state.state = NO_ERROR;
-      goto wrapup;
-    }
 
   estimated_pages = qfile_get_estimated_pages_for_sorting (list_id, &analytic_state.key_info);
 
@@ -21887,13 +21848,9 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_s
 
   if (analytic_state->interm_file)
     {
-      /* Don't cleanup if interm_file points to xasl->list_id (it will be cleaned up elsewhere) */
-      if (analytic_state->interm_file != analytic_state->xasl->list_id)
-	{
-	  qfile_close_list (thread_p, analytic_state->interm_file);
-	  qfile_destroy_list (thread_p, analytic_state->interm_file);
-	  qfile_free_list_id (analytic_state->interm_file);
-	}
+      qfile_close_list (thread_p, analytic_state->interm_file);
+      qfile_destroy_list (thread_p, analytic_state->interm_file);
+      qfile_free_list_id (analytic_state->interm_file);
       analytic_state->interm_file = NULL;
     }
   if (analytic_state->output_file)
