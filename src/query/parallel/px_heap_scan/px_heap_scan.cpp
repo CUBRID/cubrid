@@ -109,7 +109,7 @@ extern "C"
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset (scan_id->vd);
+		    manager_p->reset ();
 		    break;
 		  }
 
@@ -121,7 +121,7 @@ extern "C"
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
-	return manager_p->reset (scan_id->vd);
+	return manager_p->reset ();
       }
 
       case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
@@ -140,7 +140,7 @@ extern "C"
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset (scan_id->vd);
+		    manager_p->reset ();
 		    break;
 		  }
 
@@ -152,7 +152,7 @@ extern "C"
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
-	return manager_p->reset (scan_id->vd);
+	return manager_p->reset ();
       }
 
       case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
@@ -171,7 +171,7 @@ extern "C"
 		if (scan_id->s.phsid.trace_storage == nullptr)
 		  {
 		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset (scan_id->vd);
+		    manager_p->reset ();
 		    break;
 		  }
 
@@ -183,7 +183,7 @@ extern "C"
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
-	return manager_p->reset (scan_id->vd);
+	return manager_p->reset ();
       }
 
       default:
@@ -658,18 +658,18 @@ namespace parallel_heap_scan
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	return ER_FAILED;
       }
-    memcpy (new_vd, m_vd, sizeof (VAL_DESCR));
-    if (m_vd->dbval_cnt > 0)
+    memcpy (new_vd, m_orig_vd, sizeof (VAL_DESCR));
+    if (m_orig_vd->dbval_cnt > 0)
       {
-	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_vd->dbval_cnt);
+	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
 	if (new_vd->dbval_ptr == nullptr)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	    return ER_FAILED;
 	  }
-	for (int i = 0; i < m_vd->dbval_cnt; i++)
+	for (int i = 0; i < m_orig_vd->dbval_cnt; i++)
 	  {
-	    pr_clone_value (&m_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
+	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
 	  }
       }
     m_vd = new_vd;
@@ -906,7 +906,7 @@ namespace parallel_heap_scan
   }
 
   template <RESULT_TYPE result_type>
-  int manager<result_type>::reset (val_descr *vd)
+  int manager<result_type>::reset ()
   {
     /* Save current parallelism and prepare for reset */
     int parallelism = m_parallelism;
@@ -952,9 +952,6 @@ namespace parallel_heap_scan
 	m_vd = nullptr;
       }
 
-    /* Set new value descriptor */
-    m_vd = vd;
-
     /* Reserve workers for parallel execution */
     worker_manager_p = worker_manager::try_reserve_workers (parallelism);
     if (worker_manager_p == nullptr)
@@ -962,7 +959,7 @@ namespace parallel_heap_scan
 	return ER_FAILED;
       }
 
-    m_trace_handler.m_stats.clear();
+    m_trace_handler.clear();
 
     /* Open and initialize */
     err_code = open ();

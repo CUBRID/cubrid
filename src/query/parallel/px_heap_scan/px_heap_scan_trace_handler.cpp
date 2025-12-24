@@ -55,13 +55,20 @@ namespace parallel_heap_scan
 	scan_stats->num_fetches += stat.fetches;
       }
   }
+
+  void trace_handler::clear()
+  {
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
+    m_stats.clear();
+  }
+
   void accumulative_trace_storage::add_stats (trace_handler &trace_handler)
   {
     if (!m_is_initialized)
       {
 	m_stats.resize (trace_handler.m_stats.size());
 	m_stats_last = {0,0,0,0,0,{0,0}};
-	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
+	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
 	    m_stats[i] = trace_handler.m_stats[i];
 	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
@@ -73,13 +80,9 @@ namespace parallel_heap_scan
       }
     else
       {
-	if (m_stats.size() < trace_handler.m_stats.size())
-	  {
-	    m_stats.resize (trace_handler.m_stats.size());
-	  }
-
+	assert (m_stats.size() == trace_handler.m_stats.size());
 	m_stats_last = {0,0,0,0,0,{0,0}};
-	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
+	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
 	    m_stats[i].fetches += trace_handler.m_stats[i].fetches;
 	    m_stats[i].ioreads += trace_handler.m_stats[i].ioreads;

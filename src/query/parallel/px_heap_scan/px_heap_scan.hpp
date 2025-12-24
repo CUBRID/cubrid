@@ -31,8 +31,6 @@
 #include "px_heap_scan_result_type.hpp"
 #include "query_manager.h"
 
-#define PARALLEL_HEAP_SCAN_MIN_USER_PAGES ((int)32)
-
 namespace parallel_heap_scan
 {
   template <RESULT_TYPE result_type>
@@ -57,7 +55,8 @@ namespace parallel_heap_scan
 	  m_parallelism (parallelism),
 	  m_hfid (hfid),
 	  m_cls_oid (cls_oid),
-	  m_vd (vd),
+	  m_vd (nullptr),
+	  m_orig_vd (vd),
 	  m_input_handler (nullptr),
 	  m_result_handler (nullptr),
 	  m_on_trace (false),
@@ -78,7 +77,7 @@ namespace parallel_heap_scan
       int open();
       int start_tasks();
       SCAN_CODE next();
-      int reset (val_descr *vd);
+      int reset ();
       int end();
       int close();
       trace_handler &get_trace_handler()
@@ -100,6 +99,7 @@ namespace parallel_heap_scan
       HFID m_hfid;
       OID m_cls_oid;
       val_descr *m_vd;
+      val_descr *m_orig_vd;
       input_handler *m_input_handler;
       result_handler<result_type> *m_result_handler;
       bool m_on_trace;
