@@ -80,7 +80,16 @@ namespace parallel_heap_scan
       }
     else
       {
-	assert (m_stats.size() == trace_handler.m_stats.size());
+	if (m_stats.size() < trace_handler.m_stats.size())
+	  {
+	    size_t old_size = m_stats.size();
+	    m_stats.resize (trace_handler.m_stats.size());
+	    for (size_t i = old_size; i < m_stats.size(); i++)
+	      {
+		m_stats[i] = {0,0,0,0,0,{0,0}};
+	      }
+	  }
+
 	m_stats_last = {0,0,0,0,0,{0,0}};
 	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
