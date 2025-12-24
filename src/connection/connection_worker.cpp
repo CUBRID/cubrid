@@ -728,7 +728,7 @@ retry:
     m_timer_handler[static_cast<std::size_t> (type)].valid = true;
     m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
     m_timer_handler[static_cast<std::size_t> (type)].function = handle;
-    m_timer_handler[static_cast<std::size_t> (type)].last_time = 0;
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = this->m_timens;
 
     min = timer_latency::NA;
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)

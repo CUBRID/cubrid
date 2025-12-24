@@ -671,7 +671,7 @@ namespace cubconn::connection
     m_timer_handler[static_cast<std::size_t> (type)].valid = true;
     m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
     m_timer_handler[static_cast<std::size_t> (type)].function = handle;
-    m_timer_handler[static_cast<std::size_t> (type)].last_time = this->get_monotonic_ns ();
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = this->m_timens;
 
     min = timer_latency::NA;
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
