@@ -57,6 +57,8 @@ namespace parallel_query
     UINT32 auto_degree;
     const UINT32 start_degree = 2;
 
+    assert (hint_degree == -1 || (hint_degree > 0 && hint_degree <= PRM_MAX_PARALLELISM));
+
     switch (type)
       {
       case parallel_type::HEAP_SCAN:
@@ -75,22 +77,24 @@ namespace parallel_query
       {
 	assert (num_pages == 0);
 
-	/* degree fixed to 1 (main + gather = 2) */
+	/* TODO: degree fixed at 1 (main + gather = 2)
+	 *       to be revised when exact parallel count is available
+	 *       for many uncorrelated subqueries */
 	auto_degree = 1;
 
 	/* hint handling */
-	if (hint_degree == -1 /* auto-compute */)
+	if (hint_degree < 0 /* auto-compute */)
 	  {
 	    return MIN (auto_degree, (UINT32) parallelism);
 	  }
-	else if (hint_degree > 1)
+	else if ((UINT32) hint_degree >= start_degree)
 	  {
-	    /* hint first, ignore the parallelism parameter */
+	    /* hint ignored, degree fixed for subquery, ignore the parallelism parameter */
 	    return auto_degree;
 	  }
 	else
 	  {
-	    /* hint 0 or 1 disables parallel execution */
+	    /* hint > 0 and < start_degree disables parallel execution */
 	    return 0;
 	  }
 	}	/* case parallel_type::SUBQUERY */
@@ -101,7 +105,7 @@ namespace parallel_query
 	return 0;	/* disable */
       }
 
-    page_threshold = MAX (page_threshold, 1);
+    page_threshold = MAX (page_threshold, start_degree);
 
     /* threshold check */
     if (num_pages < page_threshold)
@@ -110,19 +114,27 @@ namespace parallel_query
       }
 
     /* hint handling */
-    if (hint_degree == -1 /* auto-compute */)
+    if (hint_degree < 0 /* auto-compute */)
       {
 	/* compute degree based on number of pages */
       }
-    else if (hint_degree > 1)
+    else if ((UINT32) hint_degree >= start_degree)
       {
 	/* hint first, ignore the parallelism parameter */
 	assert ((std::size_t) hint_degree <= cubthread::system_core_count ());
-	return hint_degree;
+
+	if (num_pages >= (UINT64) hint_degree)
+	  {
+	    return hint_degree;
+	  }
+	else
+	  {
+	    return MIN (num_pages, PRM_MAX_PARALLELISM);
+	  }
       }
     else
       {
-	/* hint 0 or 1 disables parallel execution */
+	/* hint > 0 and < start_degree disables parallel execution */
 	return 0;
       }
 

@@ -78,7 +78,7 @@ namespace parallel_heap_scan
       int open();
       int start_tasks();
       SCAN_CODE next();
-      int reset();
+      int reset (val_descr *vd);
       int end();
       int close();
       trace_handler &get_trace_handler()

@@ -15309,8 +15309,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (n_workers_to_reserve > 0 /* only gather */ )
 			    {
 			      /* TODO: Temporarily limited to 2. 
-			       * Remove this when exact parallel count is available 
-			       * for better performance with many uncorrelated subqueries.*/
+			       *       Remove this when exact parallel count is available 
+			       *       for better performance with many uncorrelated subqueries. */
 			      assert (n_workers_to_reserve == 1);
 
 			      using dpool = parallel_query::worker_manager;

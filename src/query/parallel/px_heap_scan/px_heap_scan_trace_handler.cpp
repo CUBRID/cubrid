@@ -40,6 +40,7 @@ namespace parallel_heap_scan
 
   void trace_handler::merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats)
   {
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
     for (auto &stat : m_stats)
       {
 	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
@@ -72,6 +73,11 @@ namespace parallel_heap_scan
       }
     else
       {
+	if (m_stats.size() < trace_handler.m_stats.size())
+	  {
+	    m_stats.resize (trace_handler.m_stats.size());
+	  }
+
 	m_stats_last = {0,0,0,0,0,{0,0}};
 	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
 	  {

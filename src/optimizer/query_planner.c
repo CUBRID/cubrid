@@ -12482,6 +12482,8 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
   if (tree->info.query.q.select.hint & PT_HINT_PARALLEL)
     {
+      assert (tree->info.query.q.select.num_parallel_threads >= 0);
+
       if (tree->info.query.q.select.num_parallel_threads > 1)
 	{
 	  return PLAN_PARALLEL_OPT_USE;
