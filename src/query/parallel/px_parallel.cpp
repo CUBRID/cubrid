@@ -57,7 +57,7 @@ namespace parallel_query
     UINT32 auto_degree;
     const UINT32 start_degree = 2;
 
-    assert (hint_degree == -1 || (hint_degree > 0 && hint_degree <= PRM_MAX_PARALLELISM));
+    assert (hint_degree == -1 /* auto-compute */ || (hint_degree >= 0 && hint_degree <= PRM_MAX_PARALLELISM));
 
     switch (type)
       {

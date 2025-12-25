@@ -241,13 +241,16 @@ namespace cubxasl
 
     if (xasl->type == INSERT_PROC)
       {
-	REGU_VARIABLE_LIST regu_var_list = (* (xasl->proc.insert.valptr_lists))->valptrp;
-	for (; regu_var_list != nullptr; regu_var_list = regu_var_list->next)
+	for (int i = 0; i < xasl->proc.insert.num_val_lists; i++)
 	  {
-	    result = iterate_regu_var (&regu_var_list->value, func, default_value);
-	    if (result != default_value)
+	    REGU_VARIABLE_LIST regu_var_list = xasl->proc.insert.valptr_lists[i]->valptrp;
+	    for (; regu_var_list != nullptr; regu_var_list = regu_var_list->next)
 	      {
-		return result;
+		result = iterate_regu_var (&regu_var_list->value, func, default_value);
+		if (result != default_value)
+		  {
+		    return result;
+		  }
 	      }
 	  }
 
