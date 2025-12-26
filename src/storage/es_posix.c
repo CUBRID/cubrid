@@ -701,7 +701,7 @@ xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const cha
 {
   int rd_fd, wr_fd, new_dir_len, n = 0;
   ssize_t ret;
-  char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];	/* dirname2 is not used. TODO: remove dirname2 */
+  char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];
   char buf[ES_POSIX_COPY_BUFSIZE], new_dir[PATH_MAX];
   const char *p;
 
