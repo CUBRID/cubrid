@@ -12217,10 +12217,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
 
 	  free_and_init (elo_p->meta_data);
-          if (ret != NO_ERROR)
-            {
-              return (SCAN_CODE) ret;
-            }
+	  if (ret != NO_ERROR)
+	    {
+	      return (SCAN_CODE) ret;
+	    }
 
 	  elo_p->meta_data = save_meta_data;
 
