@@ -631,6 +631,11 @@ qo_estimate_ngroups (QO_PLAN * plan)
 
   /* get NDV of GROUP BY */
   group_ndv = MIN (MAX (qo_get_group_ndv (plan), 1), expected_nrows);
+  if (group_ndv == -1)
+    {
+      plan->info->group_rows = expected_nrows;
+      return;
+    }
 
   if (expected_nrows == total_nrows)
     {
@@ -643,7 +648,7 @@ qo_estimate_ngroups (QO_PLAN * plan)
     }
 
   estimate_ndv = MIN (expected_nrows, estimate_ndv);
-  plan->info->cardinality = estimate_ndv;
+  plan->info->group_rows = estimate_ndv;
 }
 
 /*
@@ -756,8 +761,8 @@ qo_plan_compute_cost (QO_PLAN * plan)
    */
   if (plan->info)
     {
-      plan->variable_cpu_cost += plan->scan_rows * subq_cpu_cost;
-      plan->variable_io_cost += plan->scan_rows * subq_io_cost;
+      plan->variable_cpu_cost += (plan->info)->scan_rows * subq_cpu_cost;
+      plan->variable_io_cost += (plan->info)->scan_rows * subq_io_cost;
     }
 }
 
@@ -1400,8 +1405,11 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
   double fixed = plan->fixed_cpu_cost + plan->fixed_io_cost;
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
 
-  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f (number of rows)expected %.0f scan %.0f total %.0f", (int) howfar, ' ',
-	   "cost:", fixed + variable, (plan->info)->cardinality, plan->scan_rows, (plan->info)->total_rows);
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable,
+	   (plan->info)->cardinality);
+  /* fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f", (int) howfar, ' ',
+     "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows, (plan->info)->group_rows);
+   */
 }
 
 
@@ -1591,7 +1599,6 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   plan->analytic_eval_list = NULL;
   plan->plan_type = QO_PLANTYPE_SCAN;
   plan->order = QO_UNORDERED;
-  plan->scan_rows = 0;
 
   plan->plan_un.scan.scan_method = scan_method;
   plan->plan_un.scan.node = node;
@@ -1687,7 +1694,7 @@ qo_sscan_cost (QO_PLAN * planp)
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
   planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
-  planp->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
+  planp->info->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nSequential Scan Cost: \n");
@@ -2213,7 +2220,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
-  planp->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
+  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -5591,7 +5598,9 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   qo_compute_projected_segs (planner, nodes, terms, &info->projected_segs);
   info->projected_size = qo_compute_projected_size (planner, &info->projected_segs);
   info->cardinality = cardinality;
+  info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
   info->total_rows = total_rows;
+  info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
 
   qo_init_planvec (&info->best_no_order);
 
@@ -10284,7 +10293,7 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
     {
       int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
 
-      if (info->cum_stats.is_indexed == true)
+      if (info->cum_stats.is_indexed == true && info->cum_stats.pkeys[0] > 0)
 	{
 	  /* Choose the better NDV of the two. */
 	  return MIN (ndv, info->cum_stats.pkeys[0]);
