@@ -352,15 +352,15 @@ error_return:
 }
 
 /*
- * elo_copy_with_suffix () - Similar to the LOB_PERMANENT_CREATED case in elo_copy(),
-                             but called when adding a suffix to the destination path during copy.
+ * elo_copy_with_prefix () - Similar to the LOB_PERMANENT_CREATED case in elo_copy(),
+                             but called when adding a prefix to the destination path during copy.
  * return: error code
  * elo(in): DB_ELO structure that represents the original source file
+ * prefix(in): prefix that will be added to the destination path when copying
  * dest(out): DB_ELO structure that represents the copied file
- * suffix(in): suffix that will be added to the destination path when copying
  */
 int
-elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
+elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
 {
   int ret = NO_ERROR;
   ES_URI out_uri;
@@ -389,7 +389,7 @@ elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
   elo->es_type = es_get_type (elo->locator);
   if (elo->es_type == ES_POSIX)
     {
-      ret = es_copy_file_with_suffix (elo->locator, elo->meta_data, out_uri, suffix);
+      ret = es_copy_file_with_prefix (elo->locator, elo->meta_data, prefix, out_uri);
       if (ret != NO_ERROR)
 	{
 	  goto error_return;
