@@ -699,10 +699,11 @@ retry:
 int
 xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const char *prefix, char *new_path)
 {
-  int rd_fd, wr_fd, n = 0;
+  int rd_fd, wr_fd, new_dir_len, n = 0;
   ssize_t ret;
   char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];	/* dirname2 is not used. TODO: remove dirname2 */
   char buf[ES_POSIX_COPY_BUFSIZE], new_dir[PATH_MAX];
+  const char *p;
 
   /* Check the existence of the source file by trying to open it */
   rd_fd = es_abs_open (src_path, O_RDONLY | O_LARGEFILE);
@@ -733,7 +734,11 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  snprintf (new_dir, PATH_MAX - 1, "%s%c%s", prefix, PATH_SEPARATOR, dirname1);
+	  p = strrchr (new_path, '/');
+	  new_dir_len = p - new_path;
+
+	  memcpy (new_dir, new_path, new_dir_len);
+	  new_dir[new_dir_len] = '\0';
 
 	  ret = es_make_dirs (new_dir, dirname2);
 	  if (ret != NO_ERROR)
