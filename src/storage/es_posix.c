@@ -692,6 +692,7 @@ retry:
  *
  * return: error code
  * src_path(in): path of the original source file
+ * metaname(in) : meta name combined with in_uri
  * new_path(out): new path of the copied file
  * suffix(in): suffix that will be added to the destination path when copying
  */
@@ -713,7 +714,7 @@ xes_posix_copy_file_with_suffix (const char *src_path, char *metaname, char *new
 
 retry:
   /* create a target file */
-  es_get_unique_name (dirname1, dirname2, "lob", filename);
+  es_get_unique_name (dirname1, dirname2, metaname, filename);
 
   n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", suffix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (n < 0)
