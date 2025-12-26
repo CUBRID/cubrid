@@ -688,16 +688,16 @@ retry:
 }
 
 /*
- * xes_posix_copy_file_with_suffix - copy the external file to new one
+ * xes_posix_copy_file_with_prefix - copy the external file to new one
  *
  * return: error code
  * src_path(in): path of the original source file
  * metaname(in) : meta name combined with in_uri
  * new_path(out): new path of the copied file
- * suffix(in): suffix that will be added to the destination path when copying
+ * prefix(in): prefix that will be added to the destination path when copying
  */
 int
-xes_posix_copy_file_with_suffix (const char *src_path, char *metaname, char *new_path, const char *suffix)
+xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, char *new_path, const char *prefix)
 {
   int rd_fd, wr_fd, n = 0;
   ssize_t ret;
@@ -716,7 +716,7 @@ retry:
   /* create a target file */
   es_get_unique_name (dirname1, dirname2, metaname, filename);
 
-  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", suffix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
+  n = snprintf (new_path, PATH_MAX - 1, "%s%c%s%c%s", prefix, PATH_SEPARATOR, dirname1, PATH_SEPARATOR, filename);
   if (n < 0)
     {
       close (rd_fd);
@@ -733,7 +733,7 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  snprintf (new_dir, PATH_MAX - 1, "%s%c%s", suffix, PATH_SEPARATOR, dirname1);
+	  snprintf (new_dir, PATH_MAX - 1, "%s%c%s", prefix, PATH_SEPARATOR, dirname1);
 
 	  ret = es_make_dirs (new_dir, dirname2);
 	  if (ret != NO_ERROR)
@@ -760,7 +760,7 @@ retry:
   /* copy data */
   do
     {
-      ret = read (rd_fd, buf, ES_POSIX_COPY_BUFSIZE);	// zero copy 방식 알아보고, 성능 생각
+      ret = read (rd_fd, buf, ES_POSIX_COPY_BUFSIZE);
       if (ret == 0)
 	{
 	  break;		/* end of file */
