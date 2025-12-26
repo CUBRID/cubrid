@@ -15701,7 +15701,7 @@ int
 sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
-  HFID old_hfid;
+  HFID prev_hfid;
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
@@ -15748,7 +15748,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
-  old_hfid = *insts_hfid;
+  prev_hfid = *insts_hfid;
 
   for (int i = 0; i < class_->att_count; i++)
     {
@@ -15816,7 +15816,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (lob_attrid_arr_length)
     {
       error =
-	locator_lob_create_or_remove_dir (&old_hfid, insts_hfid,
+	locator_lob_create_or_remove_dir (&prev_hfid, insts_hfid,
 					  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
 					  lob_attrid_arr_length);
     }
