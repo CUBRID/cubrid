@@ -363,7 +363,7 @@ int
 elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
 {
   int ret = NO_ERROR;
-  ES_URI out_uri, real_locator;
+  ES_URI out_uri;
   char *locator = NULL;
   char *meta_data = NULL;
 
@@ -389,9 +389,7 @@ elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
   elo->es_type = es_get_type (elo->locator);
   if (elo->es_type == ES_POSIX)
     {
-      strcpy (real_locator, elo->locator);
-
-      ret = es_copy_file_with_suffix (real_locator, elo->meta_data, out_uri, suffix);
+      ret = es_copy_file_with_suffix (elo->locator, elo->meta_data, out_uri, suffix);
       if (ret != NO_ERROR)
 	{
 	  goto error_return;
