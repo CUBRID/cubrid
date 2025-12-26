@@ -379,9 +379,9 @@ elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
       if (meta_data == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  ret =  er_errid ();
+	  ret = er_errid ();
 
-          goto error_return;
+	  goto error_return;
 	}
     }
 
