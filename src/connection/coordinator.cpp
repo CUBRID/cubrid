@@ -484,7 +484,7 @@ namespace cubconn::connection
   bool coordinator::statistics_update ()
   {
     this->handle_message_queue ();
-    //this->statistics_print ();
+    this->statistics_print ();
 
     return true;
   }

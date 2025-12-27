@@ -63,6 +63,7 @@ namespace cubconn::connection
       enum class timer_type : uint32_t
       {
 	NA,
+	HIBERNATE,
 	STATISTICS,
 	QUEUE,
 	HA,
@@ -253,6 +254,7 @@ namespace cubconn::connection
       /* utility								     */
       /* --------------------------------------------------------------------------- */
       uint64_t get_time_ns (clockid_t type);
+
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
@@ -271,6 +273,8 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* STATISTICS								     */
       /* --------------------------------------------------------------------------- */
+      bool hibernate_check ();
+
       bool statistics_metrics_to_coordinator ();
 
       /* --------------------------------------------------------------------------- */

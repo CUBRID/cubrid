@@ -111,6 +111,12 @@ namespace cubconn::connection
 	m_timer_handler[i].function = nullptr;
 	m_timer_handler[i].last_time = this->get_time_ns (CLOCK_MONOTONIC);
       }
+    if (!this->eventfd_addtimer (timer_type::HIBERNATE, timer_latency::MEDIUM_LATENCY,
+				 std::bind (&worker::hibernate_check, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
+	assert_release (false);
+      }
     if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::MEDIUM_LATENCY,
 				 std::bind (&worker::statistics_metrics_to_coordinator, this)))
       {
@@ -545,6 +551,28 @@ retry:
 		   timer_latency::LOW_LATENCY,
 		   std::bind (&worker::handle_message_queue, this)
 	   );
+  }
+
+  bool worker::hibernate_check ()
+  {
+    if (m_status != status::HIBERNATING || !m_context.empty ())
+      {
+	return true;
+      }
+
+    if (!this->eventfd_stoptimer ())
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->hibernate_check: failed to stop the timer\n");
+	assert_release (false);
+      }
+
+    assert (m_context.empty ());
+    assert (m_exhausted.empty ());
+
+    /* reset counters so resumed workers don't report stale totals */
+    m_stats.reset ();
+
+    return true;
   }
 
   bool worker::statistics_metrics_to_coordinator ()
@@ -1206,18 +1234,6 @@ respond:
 
   bool worker::handle_message_queue_hibernate (message &item)
   {
-    if (!this->eventfd_stoptimer ())
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_hibernate: failed to stop the timer\n");
-	assert_release (false);
-      }
-
-    assert (m_context.empty ());
-    assert (m_exhausted.empty ());
-
-    /* reset counters so resumed workers don't report stale totals */
-    m_stats.reset ();
-
     m_status = status::HIBERNATING;
 
     return true;
