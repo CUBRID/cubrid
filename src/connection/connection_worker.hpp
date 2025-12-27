@@ -271,11 +271,11 @@ namespace cubconn::connection
       bool handle_connection_close (context *ctx, bool retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 
       /* --------------------------------------------------------------------------- */
-      /* STATISTICS								     */
+      /* statistics and hibernation						     */
       /* --------------------------------------------------------------------------- */
-      bool hibernate_check ();
-
       bool statistics_metrics_to_coordinator ();
+
+      bool hibernate_check ();
 
       /* --------------------------------------------------------------------------- */
       /* HA									     */

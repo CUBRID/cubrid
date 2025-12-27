@@ -553,28 +553,6 @@ retry:
 	   );
   }
 
-  bool worker::hibernate_check ()
-  {
-    if (m_status != status::HIBERNATING || !m_context.empty ())
-      {
-	return true;
-      }
-
-    if (!this->eventfd_stoptimer ())
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->hibernate_check: failed to stop the timer\n");
-	assert_release (false);
-      }
-
-    assert (m_context.empty ());
-    assert (m_exhausted.empty ());
-
-    /* reset counters so resumed workers don't report stale totals */
-    m_stats.reset ();
-
-    return true;
-  }
-
   bool worker::statistics_metrics_to_coordinator ()
   {
     coordinator::message message;
@@ -593,6 +571,28 @@ retry:
 
     /* just enqueue */
     m_coordinator->enqueue (std::move (message));
+
+    return true;
+  }
+
+  bool worker::hibernate_check ()
+  {
+    if (m_status != status::HIBERNATING || !m_context.empty ())
+      {
+	return true;
+      }
+
+    if (!this->eventfd_stoptimer ())
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->hibernate_check: failed to stop the timer\n");
+	assert_release (false);
+      }
+
+    assert (m_context.empty ());
+    assert (m_exhausted.empty ());
+
+    /* reset counters so resumed workers don't report stale totals */
+    m_stats.reset ();
 
     return true;
   }
@@ -1052,6 +1052,18 @@ retry:
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
 
+    /* The condition below theoretically cannot be true, so there is no need to start the timer. */
+    /* But if the concurrency queue gets out of sync and the MQ processing order is disrupted,	 */
+    /* we must start the timer.									 */
+    if (m_status == status::HIBERNATING)
+      {
+	if (!this->eventfd_starttimer ())
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: failed to start the timer\n");
+	    assert_release (false);
+	  }
+      }
+
     return true;
   }
 
@@ -1186,6 +1198,19 @@ respond:
 		 m_index);
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
+
+    /* The condition below theoretically cannot be true, so there is no need to start the timer. */
+    /* But if the concurrency queue gets out of sync and the MQ processing order is disrupted,	 */
+    /* we must start the timer.									 */
+    if (m_status == status::HIBERNATING)
+      {
+	if (!this->eventfd_starttimer ())
+	  {
+	    er_log_conn (__FILE__, __LINE__,
+			 "connection::worker->handle_message_queue_takeover_client: failed to start the timer\n");
+	    assert_release (false);
+	  }
+      }
 
     return true;
   }

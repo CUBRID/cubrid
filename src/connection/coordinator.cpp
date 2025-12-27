@@ -484,7 +484,7 @@ namespace cubconn::connection
   bool coordinator::statistics_update ()
   {
     this->handle_message_queue ();
-    this->statistics_print ();
+    //this->statistics_print ();
 
     return true;
   }
@@ -839,7 +839,6 @@ not_transferred:
 
     this->statistics_update_connection (delta, item.statistics.worker,
 					item.statistics.contexts);
-    this->statistics_update_task ();
 
     m_statistics[index].m_last_cpu_time = item.statistics.cpu_time_ns;
     m_statistics[index].m_last_updated = item.statistics.time_ns;
