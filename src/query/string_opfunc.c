@@ -19679,7 +19679,6 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	{
 	  _d += days[i];
 	}
-      _m = 1;
 
       /* days for years */
 
@@ -19870,7 +19869,6 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	{
 	  _d += days[i];
 	}
-      _m = 1;
 
       /* days for years */
       while (_d < 0)
