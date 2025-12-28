@@ -53,7 +53,6 @@ namespace cubconn::connection
     m_stop (false),
     m_max_worker (max_worker),
     m_min_worker (min_worker),
-    m_alpha (0.01),
     m_statistics (max_worker)
   {
     std::size_t i;
@@ -390,25 +389,22 @@ namespace cubconn::connection
     statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
     statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
 
-    /*
-    c.get (statistics::context::RECV_BUDGET_HIT);
-    c.get (statistics::context::SEND_BUDGET_HIT);
-    */
-
-    /* temporary formula */
     m_statistics[worker].m_score =
-	    static_cast<double> (m_statistics[worker].m_client_num) +
-	    /* throughput per ms */
-	    w_ewma.get (statistics::worker::MQ_REQUESTED) / 500 +
-	    w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
-	    c_ewma.get (statistics::context::BYTES_IN_TOTAL) / 100 +
-	    c_ewma.get (statistics::context::BYTES_OUT_TOTAL) / 100;
+	    /* weight * stats / maximum (estimated) */
+	    1 * static_cast<double> (m_statistics[worker].m_client_num) / 1 +
+
+	    25 * w_ewma.get (statistics::worker::MQ_COMPLETED) / 3.5 +
+	    500 * w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1 +
+
+	    25 * (c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
+	    10 * (c_ewma.get (statistics::context::RECV_BUDGET_HIT) + c_ewma.get (statistics::context::SEND_BUDGET_HIT));
   }
 
   void coordinator::statistics_update_connection (uint64_t delta,
       std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
       std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts)
   {
+    constexpr double alpha = 0.01;
     std::size_t index;
 
     index = worker.first;
@@ -418,13 +414,13 @@ namespace cubconn::connection
 	m_statistics[index].m_sum.reset ();
 
 	/* update EWMA */
-	this->statistics_EWMA (m_alpha, delta, m_statistics[index].m_worker.first, m_statistics[index].m_worker.second,
+	this->statistics_EWMA (alpha, delta, m_statistics[index].m_worker.first, m_statistics[index].m_worker.second,
 			       worker.second);
 	for (auto &stats : contexts)
 	  {
 	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
 
-	    this->statistics_EWMA (m_alpha, delta, m_statistics[index].m_contexts[stats.first].first,
+	    this->statistics_EWMA (alpha, delta, m_statistics[index].m_contexts[stats.first].first,
 				   m_statistics[index].m_contexts[stats.first].second, stats.second);
 	  }
       }
@@ -452,6 +448,7 @@ namespace cubconn::connection
 
   void coordinator::statistics_update_task ()
   {
+    constexpr double alpha = 0.99;
     uint64_t stats[3] = { 0, 0, 0 };
     uint64_t depth;
     uint64_t delta, time_ns;
@@ -464,10 +461,10 @@ namespace cubconn::connection
     depth = stats[0] > stats[1] ? stats[0] - stats[1] : 0;
     if (m_task_statistics.requested.second)
       {
-	this->statistics_EWMA (m_alpha, delta, m_task_statistics.requested.first, m_task_statistics.requested.second, stats[0]);
-	this->statistics_EWMA (m_alpha, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
-	this->statistics_EWMA (m_alpha, delta, m_task_statistics.completed.first, m_task_statistics.completed.second, stats[2]);
-	this->statistics_EWMA (m_alpha, delta, m_task_statistics.depth.first, m_task_statistics.depth.second, depth);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.requested.first, m_task_statistics.requested.second, stats[0]);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.completed.first, m_task_statistics.completed.second, stats[2]);
+	this->statistics_EWMA (alpha, delta, m_task_statistics.depth.first, m_task_statistics.depth.second, depth);
       }
     else
       {
@@ -484,13 +481,42 @@ namespace cubconn::connection
   bool coordinator::statistics_update ()
   {
     this->handle_message_queue ();
-    //this->statistics_print ();
 
     return true;
   }
 
   bool coordinator::statistics_rebalancing ()
   {
+    constexpr double threshold = 0.2;
+    std::size_t min, max;
+    /*
+    uint64_t id;
+    double score;
+    */
+
+    std::tie (min, max) = statistics_find_score_extremes ();
+    if (m_statistics[max].m_score - m_statistics[min].m_score <= m_statistics[max].m_score * threshold)
+      {
+	/* no need to rebalance */
+	return true;
+      }
+
+    /*
+    score = -1;
+    for (auto &stats : m_statistics[max].m_contexts)
+      {
+    auto &c_ewma = stats.second.first;
+
+    score = 25 *
+    	(c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
+    	10 * (c_ewma.get (statistics::context::RECV_BUDGET_HIT) + c_ewma.get (statistics::context::SEND_BUDGET_HIT));
+
+    if (score <= m_statistics[max].m_score * threshold && score)
+      {
+      }
+      }
+      */
+
     return true;
   }
 
@@ -525,6 +551,8 @@ namespace cubconn::connection
 		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
 	printf ("MQ COMPLETED: %lf\n",
 		m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED));
+	printf ("BLOCKED RMUTEX: %lf\n",
+		m_statistics[i].m_worker.first.get (statistics::worker::BLOCKED_RMUTEX));
 	printf ("RECV: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL));
 	printf ("SEND: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL));
 
