@@ -2961,7 +2961,7 @@ logpb_write_toflush_pages_to_archive (THREAD_ENTRY * thread_p)
   if ((bg_arv_info->current_page_id - bg_arv_info->last_sync_pageid) > prm_get_integer_value (PRM_ID_PB_SYNC_ON_NFLUSH))
     {
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive);
+      fileio_synchronize (thread_p, bg_arv_info->vdes, log_Name_bg_archive, false);
       bg_arv_info->last_sync_pageid = bg_arv_info->current_page_id;
     }
 }
@@ -3708,7 +3708,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  || (log_Stat.total_sync_count % prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) == 0))
 	{
 	  /* System volume. No need to sync DWB. */
-	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
+	  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
 	    {
 	      error_code = ER_FAILED;
 	      goto error;
@@ -3771,7 +3771,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	}
 
       /* we need to also sync again */
-      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
 	{
 	  error_code = ER_FAILED;
 	  goto error;
@@ -5828,7 +5828,7 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
        * Make sure that the whole log archive is in physical storage at this
        * moment. System volume. No need to sync DWB.
        */
-      if (fileio_synchronize (thread_p, vdes, arv_name) == NULL_VOLDES)
+      if (fileio_synchronize (thread_p, vdes, arv_name, false) == NULL_VOLDES)
 	{
 	  goto error;
 	}

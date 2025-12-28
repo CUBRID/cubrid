@@ -40,6 +40,7 @@
 #include "shard_proxy_function.h"
 #include "cas_protocol.h"
 #include "cas_error.h"
+#include "broker_cas_cci.h"
 #include "shard_shm.h"
 #include "broker_acl.h"
 #include "system_parameter.h"
