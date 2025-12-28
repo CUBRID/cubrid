@@ -1472,6 +1472,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_type = parallel_type;
 
+  tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
+
 #if defined(SERVER_MODE)
   /* check the number of parallel process */
   sort_param->px_parallel_num = sort_check_parallelism (thread_p, sort_param);
@@ -2003,12 +2005,12 @@ sort_inphase_sort (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, SORT_GET_FU
 		  if (sort_param->tde_encrypted)
 		    {
 		      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
-		    }
-		  if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
-		    {
-		      file_temp_retire (thread_p, &sort_param->multipage_file);
-		      ASSERT_ERROR ();
-		      goto exit_on_error;
+		      if (file_apply_tde_algorithm (thread_p, &sort_param->multipage_file, tde_algo) != NO_ERROR)
+			{
+			  file_temp_retire (thread_p, &sort_param->multipage_file);
+			  ASSERT_ERROR ();
+			  goto exit_on_error;
+			}
 		    }
 		}
 
@@ -4192,15 +4194,14 @@ sort_add_new_file (THREAD_ENTRY * thread_p, VFID * vfid, int file_pg_cnt_est, bo
   if (tde_encrypted)
     {
       tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
-    }
-
-  ret = file_apply_tde_algorithm (thread_p, vfid, tde_algo);
-  if (ret != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      file_temp_retire (thread_p, vfid);
-      VFID_SET_NULL (vfid);
-      return ret;
+      ret = file_apply_tde_algorithm (thread_p, vfid, tde_algo);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  file_temp_retire (thread_p, vfid);
+	  VFID_SET_NULL (vfid);
+	  return ret;
+	}
     }
 
   if (force_alloc == false)

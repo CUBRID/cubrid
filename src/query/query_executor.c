@@ -2008,6 +2008,18 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
 	      isidp->caches_inited = false;
 	    }
+	  if (isidp->prebuilt_midxkey_domains)
+	    {
+	      for (int i = 0; i < isidp->indx_info->key_info.key_cnt; i++)
+		{
+		  if (isidp->prebuilt_midxkey_domains[i])
+		    {
+		      tp_domain_free (isidp->prebuilt_midxkey_domains[i]);
+		      isidp->prebuilt_midxkey_domains[i] = NULL;
+		    }
+		}
+	      db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
+	    }
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
 	  isidp = &p->s_id.s.isid;
@@ -2817,10 +2829,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   assert (xasl->composite_lock.lockcomp.class_list == NULL);
   lock_abort_composite_lock (&xasl->composite_lock);
 #endif /* defined (ENABLE_COMPOSITE_LOCK) */
-  if (xasl->memoize_storage)
-    {
-      clear_memoize_storage (thread_p, xasl);
-    }
   /* clear subquery's result-cache */
   if (xasl->sub_xasl_id)
     {
@@ -7189,7 +7197,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
     {
       assert (!force_select_lock);
 
-      /* We expect to update or delete a non MVCC objects via a scan are only db_serial, db_ha_apply_info and
+      /* We expect to update or delete a non MVCC objects via a scan are only _db_serial, _db_ha_apply_info and
        * _db_collation objects. */
       assert ((scan_op_type != S_DELETE && scan_op_type != S_UPDATE) || oid_is_serial (&ACCESS_SPEC_CLS_OID (curr_spec))
 	      || (oid_check_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &ACCESS_SPEC_CLS_OID (curr_spec)))
@@ -9231,6 +9239,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_ERROR;
 				    }
+				  /* only one row is need for exists OP */
+				  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				    {
+				      return S_SUCCESS;
+				    }
 				  if (xasl->curr_spec->flags & ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN)
 				    {
 				      assert (xasl->curr_spec->indexptr != NULL);
@@ -9330,6 +9343,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
 					  return S_ERROR;
+					}
+				      /* only one row is need for exists OP */
+				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+					{
+					  return S_SUCCESS;
 					}
 				      scan_ptr_qualified = true;
 				    }
@@ -15569,7 +15587,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      if (spec_level == 0 && level >= 1)
+		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed)
 			{
 			  if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
 			    {

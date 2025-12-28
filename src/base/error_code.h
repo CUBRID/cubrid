@@ -1752,9 +1752,11 @@
 
 #define ER_SP_INVALID_CURSOR                        -1368
 
-#define ER_BO_DELVOL_CANNOT_DELETE_VOLID            -1369
+#define ER_AU_LOGIN_DISABLED                        -1369
 
-#define ER_LAST_ERROR                               -1370
+#define ER_BO_DELVOL_CANNOT_DELETE_VOLID            -1370
+
+#define ER_LAST_ERROR                               -1371
 
 
 

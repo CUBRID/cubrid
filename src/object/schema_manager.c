@@ -2901,6 +2901,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
   bool need_free_old_name = false;
   bool need_free_new_name = false;
   int error = NO_ERROR;
+  int save;
+  bool is_au_disabled = false;
 
   er_clear ();
 
@@ -2969,6 +2971,9 @@ sm_rename_class (MOP class_mop, const char *new_name)
     }
 
   /* rename related auto_increment serial obj name */
+  AU_DISABLE (save);
+  is_au_disabled = true;
+
   for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
     {
       if (att->auto_increment != NULL)
@@ -3003,6 +3008,8 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  db_value_clear (&value);
 	}
     }
+  AU_ENABLE (save);
+  is_au_disabled = false;
 
   if (is_partition == DB_PARTITIONED_CLASS)
     {
@@ -3031,44 +3038,12 @@ end:
       db_private_free_and_init (NULL, class_new_name);
     }
 
-  return error;
-}
-
-/*
- * sm_mark_system_classes() - Hack used to set the "system class" flag for
- *    all currently resident classes.
- *    This is only to make it more convenient to tell the
- *    difference between CUBRID and user defined classes.  This is intended
- *    to be called after the appropriate CUBRID class initialization function.
- *    Note that authorization is disabled here because these are normally
- *    called on the authorization classes.
- */
-
-void
-sm_mark_system_classes (void)
-{
-  LIST_MOPS *lmops;
-  SM_CLASS *class_;
-  int i;
-
-  if (au_check_user () == NO_ERROR)
+  if (is_au_disabled)
     {
-      lmops = locator_get_all_mops (sm_Root_class_mop, DB_FETCH_QUERY_WRITE, NULL);
-      if (lmops != NULL)
-	{
-	  for (i = 0; i < lmops->num; i++)
-	    {
-	      if (!WS_IS_DELETED (lmops->mops[i]) && lmops->mops[i] != sm_Root_class_mop)
-		{
-		  if (au_fetch_class_force (lmops->mops[i], &class_, AU_FETCH_UPDATE) == NO_ERROR)
-		    {
-		      class_->flags |= SM_CLASSFLAG_SYSTEM;
-		    }
-		}
-	    }
-	  locator_free_list_mops (lmops);
-	}
+      AU_ENABLE (save);
     }
+
+  return error;
 }
 
 /*
@@ -3146,8 +3121,8 @@ sm_mark_system_class_for_catalog (void)
     CTV_STORED_PROC_ARGS_NAME,
     CTV_PARTITION_NAME,
     CT_COLLATION_NAME,
-    CT_DB_SERVER_NAME,
-    CTV_DB_SERVER_NAME,
+    CT_SERVER_NAME,
+    CTV_SERVER_NAME,
     NULL
   };
 
@@ -4242,7 +4217,6 @@ sm_update_statistics (MOP classop, bool with_fullscan)
     }
   if (is_class > 0)
     {
-
       /* make sure the workspace is flushed before calculating stats */
       if (locator_flush_all_instances (classop, DONT_DECACHE) != NO_ERROR)
 	{
@@ -4250,7 +4224,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (classop, (with_fullscan ? 1 : 0));
+      error = stats_update_statistics (classop, with_fullscan);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -4277,6 +4251,10 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 		  /* get the new ones, should do this at the same time as the update operation to avoid two server
 		   * calls */
 		  error = stats_get_statistics (WS_OID (classop), 0, &class_->stats);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -4376,7 +4354,7 @@ sm_update_all_statistics (bool with_fullscan)
       return er_errid ();
     }
 
-  error = stats_update_all_statistics ((with_fullscan ? 1 : 0));
+  error = stats_update_all_statistics (with_fullscan);
   if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
@@ -4385,9 +4363,9 @@ sm_update_all_statistics (bool with_fullscan)
 	  if (!WS_IS_DELETED (cl->op))
 	    {
 	      /* uncache statistics only if object is cached - MOP trickery */
-	      if (cl->op->object != NULL)
+	      class_ = (SM_CLASS *) cl->op->object;
+	      if (class_ != NULL && class_->class_type == SM_CLASS_CT)
 		{
-		  class_ = (SM_CLASS *) cl->op->object;
 		  if (class_->stats != NULL)
 		    {
 		      stats_free_statistics (class_->stats);
@@ -4400,6 +4378,10 @@ sm_update_all_statistics (bool with_fullscan)
 		      return (er_errid ());
 		    }
 		  error = stats_get_statistics (WS_OID (cl->op), 0, &class_->stats);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
 		}
 	    }
 	}
@@ -4419,17 +4401,16 @@ sm_update_all_catalog_statistics (bool with_fullscan)
 {
   int error = NO_ERROR;
   int i;
-
   const char *classes[] = {
     CT_CLASS_NAME, CT_ATTRIBUTE_NAME, CT_DOMAIN_NAME,
     CT_METHOD_NAME, CT_METHSIG_NAME, CT_METHARG_NAME,
     CT_METHFILE_NAME, CT_QUERYSPEC_NAME, CT_INDEX_NAME,
     CT_INDEXKEY_NAME, CT_CLASSAUTH_NAME, CT_DATATYPE_NAME,
-    CT_COLLATION_NAME, CT_CHARSET_NAME, CT_SYNONYM_NAME,
-    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_PARTITION_NAME,
-    CT_SERIAL_NAME, CT_USER_NAME, CT_AUTHORIZATION_NAME,
-    CT_TRIGGER_NAME, CT_PASSWORD_NAME, CT_HA_APPLY_INFO_NAME,
-    CT_DB_SERVER_NAME, NULL
+    CT_STORED_PROC_NAME, CT_STORED_PROC_ARGS_NAME, CT_STORED_PROC_CODE_NAME,
+    CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
+    CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
+    CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
+    CT_SERVER_NAME, CT_SYNONYM_NAME, NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -13569,6 +13550,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
   char *fk_name = NULL;
   const char *table_name;
   MOP save_user, owner;
+  int save;
+  bool is_au_disabled = false;
 
   if (op == NULL)
     {
@@ -13670,6 +13653,9 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
     }
 
   /* remove auto_increment serial object if exist */
+  AU_DISABLE (save);
+  is_au_disabled = true;
+
   for (att = class_->ordered_attributes; att; att = att->order_link)
     {
       if (att->auto_increment != NULL)
@@ -13708,6 +13694,8 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	    }
 	}
     }
+  AU_ENABLE (save);
+  is_au_disabled = false;
 
   /* we don't really need this but some of the support routines use it */
   template_ = classobj_make_template (NULL, op, class_);
@@ -13897,6 +13885,11 @@ end:
 	{
 	  tran_abort_upto_system_savepoint (SM_DROP_CLASS_MOP_SAVEPOINT_NAME);
 	}
+    }
+
+  if (is_au_disabled)
+    {
+      AU_ENABLE (save);
     }
 
   return error;
