@@ -49,7 +49,8 @@ extern int query_seq_num_next_value (void);
 extern int query_seq_num_current_value (void);
 T_BROKER_VERSION cas_get_client_version (void);
 int net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header);
-int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
+int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info,
+				SOCKET srv_sock_fd);
 void set_cas_info_size (void);
 #if !defined(WINDOWS)
 void query_cancel (int signo);
@@ -87,7 +88,8 @@ typedef void (*cas_db_post_connect_fn_t) (void *context, struct timeval * cas_st
 					  int client_ip_addr, char *db_name, char *db_user, const char *url,
 					  bool is_new_connection);
 typedef void (*cas_cleanup_session_fn_t) (void);
-typedef FN_RETURN (*cas_process_request_fn_t) (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
+typedef FN_RETURN (*cas_process_request_fn_t) (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
+					       SOCKET srv_sock_fd);
 typedef void (*cas_set_session_id_fn_t) (T_CAS_PROTOCOL protocol, char *session);
 typedef void (*cas_send_connect_reply_fn_t) (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
 

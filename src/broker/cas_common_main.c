@@ -1223,7 +1223,8 @@ cas_get_db_connect_status (void)
 }
 
 int
-net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info, SOCKET srv_sock_fd)
+net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, T_REQ_INFO * req_info,
+			    SOCKET srv_sock_fd)
 {
   int ret_value = 0;
 
