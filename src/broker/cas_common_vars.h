@@ -94,7 +94,6 @@ extern char prev_cas_info[CAS_INFO_SIZE];
 
 /* Network socket */
 extern SOCKET new_req_sock_fd;
-extern SOCKET srv_sock_fd;
 
 #if defined(WINDOWS)
 /* Request count for restart check (WINDOWS only) */
@@ -126,8 +125,5 @@ extern bool autocommit_deferred;
 /* Common functions */
 extern void cas_set_db_connect_status (int status);
 extern int cas_get_db_connect_status (void);
-// extern T_BROKER_VERSION cas_get_client_version (void);
-/* restart_is_needed(), set_hang_check_time(), and unset_hang_check_time() are now declared in cas_common_main.h */
-
 
 #endif /* _CAS_COMMON_VARS_H_ */
