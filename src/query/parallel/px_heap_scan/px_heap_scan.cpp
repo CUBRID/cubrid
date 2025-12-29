@@ -471,8 +471,9 @@ extern "C"
 	if (error != NO_ERROR)
 	  {
 	    /* cleanup */
-	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager (); /* will release worker_manager_p */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
@@ -502,8 +503,9 @@ extern "C"
 	if (error != NO_ERROR)
 	  {
 	    /* cleanup */
-	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager (); /* will release worker_manager_p */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
@@ -533,8 +535,9 @@ extern "C"
 	if (error != NO_ERROR)
 	  {
 	    /* cleanup */
-	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager (); /* will release worker_manager_p */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
@@ -553,8 +556,11 @@ extern "C"
     if (error != NO_ERROR)
       {
 	/* cleanup */
-	worker_manager_p->release_workers (num_parallel_threads);
-	worker_manager_p = nullptr;
+	if (worker_manager_p != nullptr)
+	  {
+	    worker_manager_p->release_workers (num_parallel_threads);
+	    worker_manager_p = nullptr;
+	  }
 
 	if (error == ER_INTERRUPTED || er_errid () == ER_INTERRUPTED)
 	  {
@@ -817,6 +823,18 @@ namespace parallel_heap_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	scan_code = m_result_handler->read (m_thread_p, m_xasl->list_id);
+	if (scan_code == S_ERROR)
+	  {
+	    if (m_interrupt.get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	      {
+		m_interrupt.set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD);
+	      }
+	    if (m_worker_manager != nullptr)
+	      {
+		m_worker_manager->release_workers (m_parallelism);
+		m_worker_manager = nullptr;
+	      }
+	  }
 	if (m_g_agg_domain_resolve_need)
 	  {
 	    std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
@@ -868,6 +886,11 @@ namespace parallel_heap_scan
 	if (m_interrupt.get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	  {
 	    m_interrupt.set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD);
+	  }
+	if (m_worker_manager != nullptr)
+	  {
+	    m_worker_manager->release_workers (m_parallelism);
+	    m_worker_manager = nullptr;
 	  }
       }
 
@@ -979,17 +1002,12 @@ namespace parallel_heap_scan
   int manager<result_type>::end()
   {
     int err_code = NO_ERROR;
-    if (m_interrupt.get_code() == parallel_query::interrupt::interrupt_code::JOB_ENDED)
-      {
-	if (m_worker_manager != nullptr)
-	  {
-	    m_worker_manager->release_workers (m_parallelism);
-	    m_worker_manager = nullptr;
-	  }
-      }
-    else
+    if (m_interrupt.get_code() != parallel_query::interrupt::interrupt_code::JOB_ENDED)
       {
 	m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
+      }
+    if (m_worker_manager != nullptr)
+      {
 	m_worker_manager->release_workers (m_parallelism);
 	m_worker_manager = nullptr;
       }
