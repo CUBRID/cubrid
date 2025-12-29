@@ -806,6 +806,17 @@ namespace parallel_heap_scan
   {
     SCAN_CODE scan_code = S_SUCCESS;
     int err_code = NO_ERROR;
+
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
+	for (int i=0; i<m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clear_value (valp->val);
+	    valp = valp->next;
+	  }
+      }
+
     if (unlikely (!m_task_started))
       {
 	err_code = start_tasks();
