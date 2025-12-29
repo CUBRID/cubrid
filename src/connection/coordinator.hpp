@@ -76,7 +76,7 @@ namespace cubconn::connection
       {
 	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint64_t> (400 * 1e6), /* 400 msec */
-	MEDIUM_LATENCY = static_cast<uint64_t> (10 * 1e9), /* 10 sec */
+	MEDIUM_LATENCY = static_cast<uint64_t> (5 * 1e9), /* 5 sec */
 	HIGH_LATENCY = static_cast<uint64_t> (300 * 1e9) /* 5 min */
       };
 

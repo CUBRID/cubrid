@@ -396,7 +396,7 @@ namespace cubconn::connection
 	    25 * w_ewma.get (statistics::worker::MQ_COMPLETED) / 3.5 +
 	    500 * w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1 +
 
-	    25 * (c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
+	    50 * (c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
 	    10 * (c_ewma.get (statistics::context::RECV_BUDGET_HIT) + c_ewma.get (statistics::context::SEND_BUDGET_HIT));
   }
 
@@ -489,33 +489,38 @@ namespace cubconn::connection
   {
     constexpr double threshold = 0.2;
     std::size_t min, max;
-    /*
+    double diff, score, target;
     uint64_t id;
-    double score;
-    */
 
     std::tie (min, max) = statistics_find_score_extremes ();
-    if (m_statistics[max].m_score - m_statistics[min].m_score <= m_statistics[max].m_score * threshold)
+    diff = m_statistics[max].m_score - m_statistics[min].m_score;
+    if (diff <= m_statistics[max].m_score * threshold)
       {
 	/* no need to rebalance */
 	return true;
       }
 
-    /*
     score = -1;
+    id = 0;
     for (auto &stats : m_statistics[max].m_contexts)
       {
-    auto &c_ewma = stats.second.first;
+	auto &c_ewma = stats.second.first;
 
-    score = 25 *
-    	(c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
-    	10 * (c_ewma.get (statistics::context::RECV_BUDGET_HIT) + c_ewma.get (statistics::context::SEND_BUDGET_HIT));
+	target = 50 *
+		 (c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
+		 10 * (c_ewma.get (statistics::context::RECV_BUDGET_HIT) + c_ewma.get (statistics::context::SEND_BUDGET_HIT));
 
-    if (score <= m_statistics[max].m_score * threshold && score)
+	if (target <= diff / 2 && score < target)
+	  {
+	    score = target;
+	    id = stats.first;
+	  }
+      }
+
+    if (id != 0)
       {
+	this->transfer_connection (id, max, min);
       }
-      }
-      */
 
     return true;
   }
