@@ -172,8 +172,8 @@ static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
-static void qo_estimate_ngroups (QO_PLAN *);
-static int qo_get_group_ndv (QO_PLAN *);
+static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
+static int qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
 static double qo_estimate_ndv (double N, double p, double n);
 
 static QO_PLAN *qo_top_plan_new (QO_PLAN *);
@@ -623,14 +623,14 @@ qo_term_string (QO_TERM * term)
  *   plan(in):
  */
 static void
-qo_estimate_ngroups (QO_PLAN * plan)
+qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
 {
   int group_ndv, estimate_ndv;
   double expected_nrows = plan->info->cardinality;
   double total_nrows = plan->info->total_rows;
 
   /* get NDV of GROUP BY */
-  group_ndv = MIN (MAX (qo_get_group_ndv (plan), 1), expected_nrows);
+  group_ndv = MIN (qo_get_group_ndv (plan, sort_type), expected_nrows);
   if (group_ndv == -1)
     {
       plan->info->group_rows = expected_nrows;
@@ -648,7 +648,11 @@ qo_estimate_ngroups (QO_PLAN * plan)
     }
 
   estimate_ndv = MIN (expected_nrows, estimate_ndv);
-  plan->info->group_rows = estimate_ndv;
+
+  if (plan->info->group_rows > estimate_ndv)
+    {
+      plan->info->group_rows = estimate_ndv;
+    }
 }
 
 /*
@@ -682,9 +686,9 @@ qo_estimate_ndv (double N, double p, double n)
  *   plan(in):
  */
 static int
-qo_get_group_ndv (QO_PLAN * plan)
+qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
 {
-  PT_NODE *group_by;
+  PT_NODE *nodes;
   QO_ENV *env = NULL;
   PARSER_CONTEXT *parser = NULL;
   NDV_INFO ndv_info;
@@ -693,10 +697,16 @@ qo_get_group_ndv (QO_PLAN * plan)
   env = (plan->info)->env;
   parser = QO_ENV_PARSER (env);
 
-  /* TO_DO: UNION */
   if ((QO_ENV_PT_TREE (env))->node_type == PT_SELECT)
     {
-      group_by = (QO_ENV_PT_TREE (env))->info.query.q.select.group_by;
+      if (sort_type == SORT_GROUPBY)
+	{
+	  nodes = (QO_ENV_PT_TREE (env))->info.query.q.select.group_by;
+	}
+      else
+	{
+	  nodes = (QO_ENV_PT_TREE (env))->info.query.q.select.list;
+	}
     }
   else
     {
@@ -706,7 +716,7 @@ qo_get_group_ndv (QO_PLAN * plan)
   ndv_info.env = env;
   ndv_info.total_ndv = 1;
   /* The NDV is simply extracted from column without considering the function, etc. and product of NDV of each column */
-  parser_walk_tree (parser, group_by, qo_get_col_product_ndv, &ndv_info, NULL, NULL);
+  parser_walk_tree (parser, nodes, qo_get_col_product_ndv, &ndv_info, NULL, NULL);
   if (ndv_info.total_ndv == 1)
     {
       return -1;
@@ -1407,9 +1417,11 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
 
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable,
 	   (plan->info)->cardinality);
-  /* fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f", (int) howfar, ' ',
-     "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows, (plan->info)->group_rows);
-   */
+#if TEST_DUMP_PLAN_SCAN_COST
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f", (int) howfar, ' ',
+	   "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
+	   (plan->info)->group_rows);
+#endif
 }
 
 
@@ -2537,9 +2549,9 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->need_final_sort = subplan->need_final_sort;
 
   qo_plan_compute_cost (plan);
-  if (sort_type == SORT_GROUPBY)
+  if (sort_type == SORT_GROUPBY || sort_type == SORT_DISTINCT)
     {
-      qo_estimate_ngroups (plan);
+      qo_estimate_ngroups (plan, sort_type);
     }
 
   plan = qo_top_plan_new (plan);
