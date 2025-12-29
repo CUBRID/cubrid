@@ -835,34 +835,34 @@ namespace parallel_heap_scan
 		m_worker_manager = nullptr;
 	      }
 	  }
+
+	std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
+	QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
+	for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clone_value (valp->val, &dbval_container[i]);
+	    valp = valp->next;
+	  }
+
+	HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+	valp = m_xasl->val_list->valp;
+	for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clear_value (valp->val);
+	    valp = valp->next;
+	  }
+	db_change_private_heap (m_thread_p, heap_id);
+	valp = m_xasl->val_list->valp;
+	for (int i=0; i<m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clone_value (&dbval_container[i], valp->val);
+	    pr_clear_value (&dbval_container[i]);
+	    valp = valp->next;
+	  }
+
+	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
 	if (m_g_agg_domain_resolve_need)
 	  {
-	    std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
-	    QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
-	    for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (valp->val, &dbval_container[i]);
-		valp = valp->next;
-	      }
-
-	    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
-	    valp = m_xasl->val_list->valp;
-	    for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
-	      {
-		pr_clear_value (valp->val);
-		valp = valp->next;
-	      }
-	    db_change_private_heap (m_thread_p, heap_id);
-	    valp = m_xasl->val_list->valp;
-	    for (int i=0; i<m_xasl->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (&dbval_container[i], valp->val);
-		pr_clear_value (&dbval_container[i]);
-		valp = valp->next;
-	      }
-
-	    fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
-
 	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl, m_vd,
 		&m_xasl->proc.buildlist.g_agg_domains_resolved);
 	  }
