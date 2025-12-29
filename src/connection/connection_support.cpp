@@ -1034,7 +1034,9 @@ css_send_io_vector (CSS_CONN_ENTRY *conn, struct iovec *vec_p, ssize_t total_len
   rc = css_send_io_vector_with_socket (conn->fd, vec_p, total_len, vector_length, timeout);
   if (rc != NO_ERRORS)
     {
+#if !defined (SERVER_MODE)
       css_shutdown_conn (conn);
+#endif
     }
 
   return rc;
@@ -1051,12 +1053,14 @@ css_send_io_vector_with_socket (SOCKET &socket, struct iovec *vec_p, ssize_t tot
       rc = css_vector_send (socket, &vec_p, &vector_length, rc, timeout);
       if (rc < 0)
 	{
+#if !defined (SERVER_MODE)
 	  if (!IS_INVALID_SOCKET (socket))
 	    {
 	      /* if this is the PC, it also shuts down Winsock */
 	      css_shutdown_socket (socket);
 	      socket = INVALID_SOCKET;
 	    }
+#endif
 	  return ERROR_ON_WRITE;
 	}
       total_len -= rc;

@@ -421,7 +421,7 @@ namespace cubconn::connection
 	    pthread_mutex_unlock (&m_entry->tran_index_lock);
 
 	    er_log_conn (__FILE__, __LINE__,
-			 "connection::worker->handle_connection_close: wait for transaction index. conn = %d, fd = %d\n", ctx->m_conn,
+			 "connection::worker->handle_connection_close: wait for transaction index. conn = %p, fd = %d\n", ctx->m_conn,
 			 ctx->m_conn->fd);
 
 	    /* the connected client does not yet finished boot_client_register */
@@ -460,7 +460,7 @@ namespace cubconn::connection
     if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_connection_close: net_server_active_workers. conn = %d, fd = %d\n", ctx->m_conn,
+		     "connection::worker->handle_connection_close: net_server_active_workers. conn = %p, fd = %d\n", ctx->m_conn,
 		     ctx->m_conn->fd);
 	goto retry;
       }
@@ -470,7 +470,7 @@ namespace cubconn::connection
     if (this->has_remaining_tasks (ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_connection_close: has_remaining_tasks. conn = %d, fd = %d\n", ctx->m_conn,
+		     "connection::worker->handle_connection_close: has_remaining_tasks. conn = %p, fd = %d\n", ctx->m_conn,
 		     ctx->m_conn->fd);
 	goto retry;
       }
@@ -1009,6 +1009,8 @@ retry:
   bool worker::handle_message_queue_new_client (message &item)
   {
     context *ctx;
+
+    assert (item.conn && item.conn->fd != -1);
 
     ctx = item.ctx;
     ctx->m_conn = item.conn;
