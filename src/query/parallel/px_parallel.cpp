@@ -57,7 +57,7 @@ namespace parallel_query
     UINT32 auto_degree;
     const UINT32 start_degree = 2;
 
-    assert (hint_degree == -1 || (hint_degree > 0 && hint_degree <= PRM_MAX_PARALLELISM));
+    assert (hint_degree == -1 || (hint_degree >= 0 && hint_degree <= PRM_MAX_PARALLELISM));
 
     switch (type)
       {
@@ -105,7 +105,7 @@ namespace parallel_query
 	return 0;	/* disable */
       }
 
-    page_threshold = MAX (page_threshold, start_degree);
+    page_threshold = MAX (page_threshold, 1);
 
     /* threshold check */
     if (num_pages < page_threshold)

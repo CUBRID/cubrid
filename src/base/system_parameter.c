@@ -9811,7 +9811,7 @@ prm_tune_parameters (void)
 	  if (PRM_GET_INT (heap_scan_page_threshold_prm->value) ==
 	      PRM_GET_INT (heap_scan_page_threshold_prm->default_value))
 	    {
-	      sprintf (newval, "%d", 32);
+	      sprintf (newval, "%d", 0);
 	      (void) prm_set (heap_scan_page_threshold_prm, newval, false);
 	    }
 
