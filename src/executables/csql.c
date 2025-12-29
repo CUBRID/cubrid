@@ -600,7 +600,7 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 	    }
 
 	  /* veify if match LANG and DB codeset */
-	  if (strcasestr (locale, find1) || strcasestr (locale, find2))
+	  if (strcasestr (locale, find1) != NULL || strcasestr (locale, find2) != NULL)
 	    {
 	      return;
 	    }
