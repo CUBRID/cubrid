@@ -263,6 +263,7 @@ namespace parallel_heap_scan
 	  {
 	    dbval.domain.general_info.is_null = 1;
 	  }
+	tl.val_list_domain_resolved = false;
 	tl.val_list_for_domain_resolve = val_list;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -291,6 +292,17 @@ namespace parallel_heap_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	qfile_close_list (thread_p, tl.writer_result_p);
+
+#if !defined(NDEBUG)
+	if (tl.writer_result_p != nullptr && tl.writer_result_p->tuple_cnt > 0)
+	  {
+	    for (auto &dbval : tl.dbvals_for_domain_resolve)
+	      {
+		assert (!dbval.domain.general_info.is_null);
+	      }
+	  }
+#endif
+
 	assert (tl.writer_result_p->last_pgptr == nullptr);
 	if (tl.writer_result_p != nullptr && tl.writer_result_p->tpl_descr.f_valp != nullptr)
 	  {
@@ -310,7 +322,7 @@ namespace parallel_heap_scan
 	  QPROC_DB_VALUE_LIST orig_valp = m_.orig_val_list_for_domain_resolve->valp;
 	  for (int i = 0; i < m_.orig_val_list_for_domain_resolve->val_cnt; i++)
 	    {
-	      if (orig_valp->val->domain.general_info.is_null)
+	      if (orig_valp->val->domain.general_info.is_null && !tl.dbvals_for_domain_resolve[i].domain.general_info.is_null)
 		{
 		  pr_clone_value (&tl.dbvals_for_domain_resolve[i], orig_valp->val);
 		}

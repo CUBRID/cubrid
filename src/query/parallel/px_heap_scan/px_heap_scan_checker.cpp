@@ -243,7 +243,8 @@ namespace parallel_heap_scan
     result |= check<is_outptr_list> (arg->rightptr);
     result |= check<is_outptr_list> (arg->thirdptr);
     result |= check<is_outptr_list> (arg->pred);
-    if (arg->opcode == T_TRACE_STATS)
+    if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE
+	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
       }
