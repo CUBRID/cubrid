@@ -12209,7 +12209,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  fileid = hfid.vfid.fileid;
 	  volid = hfid.vfid.volid;
 
-	  snprintf (lob_path_prefix, PATH_MAX - 1, "%d_%d_%d_id%d", volid, fileid, hpgid, attrid);
+	  snprintf (lob_path_prefix, PATH_MAX - 1, "%d_%d_%d_%d", volid, fileid, hpgid, attrid);
 
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
