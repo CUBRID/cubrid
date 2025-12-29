@@ -11988,7 +11988,8 @@ fileio_lob_remove_dir (char *path_key)
   if (pos != NULL)
     {
       keyword = NULL;
-      snprintf (base_dir, (strlen (es_base_dir) + 1 + strlen (path_key) + 1), "%s%c%s", es_base_dir, PATH_SEPARATOR, path_key);
+      snprintf (base_dir, (strlen (es_base_dir) + 1 + strlen (path_key) + 1), "%s%c%s", es_base_dir, PATH_SEPARATOR,
+		path_key);
 
       if (base_dir[strlen (base_dir)] == PATH_SEPARATOR)
 	{
@@ -12015,7 +12016,8 @@ fileio_lob_remove_dir (char *path_key)
 	  continue;
 	}
 
-      snprintf (full_path, (strlen (base_dir) + 1 + strlen (dir_entry->d_name) + 1), "%s%c%s", base_dir, PATH_SEPARATOR, dir_entry->d_name);
+      snprintf (full_path, (strlen (base_dir) + 1 + strlen (dir_entry->d_name) + 1), "%s%c%s", base_dir, PATH_SEPARATOR,
+		dir_entry->d_name);
 
       if (keyword != NULL)
 	{
