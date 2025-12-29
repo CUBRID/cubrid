@@ -36,6 +36,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define VAL_TO_SCORE(w, m, s) ((w) * static_cast<double> (s) / (m))
+#define EVAL_WORKER(mq, rmutex) (VAL_TO_SCORE (25, 3.5, (mq)) + VAL_TO_SCORE (500, 1, (rmutex)))
+#define EVAL_CONTEXT(bytes, budget) (VAL_TO_SCORE (50, 1000, (bytes)) + VAL_TO_SCORE (10, 1, (budget)))
+
 #if 0
 #define er_log_conn(...) er_log_debug (__VA_ARGS__)
 #else
@@ -386,18 +390,22 @@ namespace cubconn::connection
 
   void coordinator::statistics_update_score (std::size_t worker)
   {
+#define EWMA_CONTEXT(key) c_ewma.get (statistics::context::key)
+#define EWMA_WORKER(key) w_ewma.get (statistics::worker::key)
+
     statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
     statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
 
     m_statistics[worker].m_score =
-	    /* weight * stats / maximum (estimated) */
 	    1 * static_cast<double> (m_statistics[worker].m_client_num) / 1 +
 
-	    25 * w_ewma.get (statistics::worker::MQ_COMPLETED) / 3.5 +
-	    500 * w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1 +
+	    EVAL_WORKER (EWMA_WORKER (MQ_COMPLETED), EWMA_WORKER (BLOCKED_RMUTEX)) +
 
-	    50 * (c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
-	    10 * (c_ewma.get (statistics::context::RECV_BUDGET_HIT) + c_ewma.get (statistics::context::SEND_BUDGET_HIT));
+	    EVAL_CONTEXT (EWMA_CONTEXT (BYTES_IN_TOTAL) + EWMA_CONTEXT (BYTES_OUT_TOTAL),
+			  EWMA_CONTEXT (RECV_BUDGET_HIT) + EWMA_CONTEXT (SEND_BUDGET_HIT));
+
+#undef EWMA_CONTEXT
+#undef EWMA_WORKER
   }
 
   void coordinator::statistics_update_connection (uint64_t delta,
@@ -487,6 +495,8 @@ namespace cubconn::connection
 
   bool coordinator::statistics_rebalancing ()
   {
+#define EWMA_CONTEXT(key) c_ewma.get (statistics::context::key)
+
     constexpr double threshold = 0.2;
     std::size_t min, max;
     double diff, score, target;
@@ -506,9 +516,8 @@ namespace cubconn::connection
       {
 	auto &c_ewma = stats.second.first;
 
-	target = 50 *
-		 (c_ewma.get (statistics::context::BYTES_IN_TOTAL) + c_ewma.get (statistics::context::BYTES_OUT_TOTAL)) / 1000 +
-		 10 * (c_ewma.get (statistics::context::RECV_BUDGET_HIT) + c_ewma.get (statistics::context::SEND_BUDGET_HIT));
+	target = EVAL_CONTEXT (EWMA_CONTEXT (BYTES_IN_TOTAL) + EWMA_CONTEXT (BYTES_OUT_TOTAL),
+			       EWMA_CONTEXT (RECV_BUDGET_HIT) + EWMA_CONTEXT (SEND_BUDGET_HIT));
 
 	if (target <= diff / 2 && score < target)
 	  {
@@ -523,6 +532,8 @@ namespace cubconn::connection
       }
 
     return true;
+
+#undef EWMA_CONTEXT
   }
 
   bool coordinator::statistics_scaling ()
