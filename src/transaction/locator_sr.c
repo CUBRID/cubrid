@@ -14017,7 +14017,9 @@ locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
     }
   else
     {
-      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d_%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
+      ret =
+	snprintf (lob_path, PATH_MAX, "%d_%d_%d_%d%c", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid,
+		  PATH_SEPARATOR);
     }
 
   if (ret < 0 || ret >= PATH_MAX)
