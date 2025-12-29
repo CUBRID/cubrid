@@ -2949,7 +2949,7 @@ csql_rebuild_catalog (const CSQL_ARGUMENT * csql_arg)
     {
       return ER_FAILED;
     }
-  if (sm_force_write_all_classes () != NO_ERROR || au_force_write_new_auth () != NO_ERROR)
+  if (sm_force_write_all_classes () != NO_ERROR)
     {
       return ER_FAILED;
     }
