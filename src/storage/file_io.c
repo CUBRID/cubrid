@@ -12049,8 +12049,8 @@ fileio_lob_remove_dir (char *path_key)
 
 	  if (S_ISDIR (statbuf.st_mode))
 	    {
-	      snprintf (re_path, (strlen (path_key) + 1 + strlen (dir_entry->d_name) + 1), "%s%c%s%c", path_key, PATH_SEPARATOR,
-			dir_entry->d_name, PATH_SEPARATOR);
+	      snprintf (re_path, (strlen (path_key) + 1 + strlen (dir_entry->d_name) + 1), "%s%c%s%c", path_key,
+			PATH_SEPARATOR, dir_entry->d_name, PATH_SEPARATOR);
 
 	      sub_result = fileio_lob_remove_dir (re_path);
 
@@ -12074,6 +12074,6 @@ fileio_lob_remove_dir (char *path_key)
 
   return error;
 #else /* SERVER_MODE || SA_MODE */
-  return ER_FAILED; /* Not supported in CS_MODE because it handles server-side external storage. */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
 #endif /* SERVER_MODE || SA_MODE */
 }
