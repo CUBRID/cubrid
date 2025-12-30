@@ -1333,8 +1333,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   attr_val_p = &attrs[7].value;
   tp_Integer.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
-  int flags;
-  flags = db_get_int (attr_val_p);
+  int flags = db_get_int (attr_val_p);
   /* for 'is_nullable', reverse NON_NULL flag */
   db_make_int (attr_val_p, (flags & SM_ATTFLAG_NON_NULL) ? false : true);
 
