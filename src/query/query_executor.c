@@ -22968,9 +22968,9 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 		  return ER_FAILED;
 		}
 
-	      if (a_func_list->function == PT_ROW_NUMBER)
+	      if (a_func_list->function != PT_ROW_NUMBER)
 		{
-		  pr_clone_value (a_func_list->out_value, a_func_list->value);
+		  pr_clone_value (a_func_list->value, a_func_list->out_value);
 		}
 	    }
 	}
