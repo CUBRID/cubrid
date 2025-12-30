@@ -622,6 +622,27 @@ qo_term_string (QO_TERM * term)
  * qo_estimate_ngroups () -
  *   return:
  *   plan(in):
+ *
+ * GROUP BY cardinality estimation:
+ *
+ * - Single table without filters:
+ *   The number of groups is estimated as the NDV of the GROUP BY column.
+ *   e.g. GROUP BY col2 -> Ngroups = NDV(col2)
+ *
+ * - Multiple GROUP BY columns:
+ *   Columns are assumed to be independent.
+ *   Ngroups = NDV(col1) * NDV(col2)
+ *   This may overestimate the actual number of groups.
+ *
+ * - With filters:
+ *   NDV after filtering is estimated using:
+ *     n * (1 - ((N - p) / N)^(N / n))
+ *   where n = NDV, N = total rows, p = filtered rows.
+ *
+ * - With joins:
+ *   The same formula is applied.
+ *   N is the estimated row count after join conditions,
+ *   and p is the estimated row count after applying all predicates.
  */
 static void
 qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
