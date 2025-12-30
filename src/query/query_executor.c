@@ -24374,6 +24374,9 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      str_len += strlen (default_expr_op_string);
 	    }
 	  char *str_val = (char *) db_private_alloc (thread_p, str_len);
+	  if (str_val == NULL){
+		GOTO_EXIT_ON_ERROR;
+	  }
 
 	  used += snprintf (str_val, str_len, "%s", (attrepr->is_autoincrement ? is_auto_increment_string : ""));
 	  if (attrepr->is_invisible)

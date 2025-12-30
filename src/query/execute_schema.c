@@ -781,17 +781,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		}
 	    }
 
-	  if (p->info.attr_def.attr_invisible)
-	    {
-	      SM_ATTRIBUTE *att;
-	      error = smt_find_attribute (ctemplate, attr_name, class_attr, &att);
-
-	      if (error == NO_ERROR)
-		{
-		  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
-		}
-	    }
-
 	  data_default = p->info.attr_def.data_default;
 	  if (data_default != NULL && data_default->node_type == PT_DATA_DEFAULT)
 	    {
@@ -7375,7 +7364,8 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
 	  if (error == NO_ERROR)
 	    {
-	      if (smt_find_attribute (ctemplate, attr_name, 0, &att) == NO_ERROR)
+        error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	      if (error == NO_ERROR)
 		{
 		  att->auto_increment = auto_increment_obj;
 		  att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
