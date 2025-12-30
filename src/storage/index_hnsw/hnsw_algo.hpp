@@ -532,6 +532,14 @@ namespace cubhnsw
       root_level = root_node.get_level();
     }
 
+    if (m_metric == vector_distance_metric_t::COSINE)
+      {
+	if (!cubvec_cosine_normalize ((float *) query, m_dimension))
+	  {
+	    abort ();
+	  }
+      }
+
     slot_id_t closest_slot;
     if (seek_down_ (query, entry_slot, root_level, 0, closest_slot) != NO_ERROR)
       {
