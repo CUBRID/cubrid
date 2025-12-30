@@ -483,17 +483,17 @@ set(STORAGE_HEADERS
   ${INDEX_HNSW_DIR}/hnsw_api.hpp
 )
 
-if(USE_SIMD_NATIVE)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
-        PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
-    )
-  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
-        PROPERTIES COMPILE_FLAGS "-march=native -O3 -fvectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
-    )
-  endif()
-endif()
+#if(USE_SIMD_NATIVE)
+#  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+#    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
+#        PROPERTIES COMPILE_FLAGS "-march=native -O3 -ftree-vectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+#    )
+#  elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+#    set_source_files_properties(${INDEX_HNSW_DIR}/hnsw_usearch_ng.cpp
+#        PROPERTIES COMPILE_FLAGS "-march=native -O3 -fvectorize -mprefer-vector-width=512 -ffast-math -fno-trapping-math -funroll-loops -fassociative-math -fno-signed-zeros"
+#    )
+#  endif()
+#endif()
 
 set(SESSION_SOURCES
   ${SESSION_DIR}/session.c
