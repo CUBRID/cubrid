@@ -20562,7 +20562,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   char res_s[64], millisec_s[64];
   int error_status = NO_ERROR;
   DB_BIGINT millisec, seconds, minutes, hours;
-  DB_BIGINT days, weeks, months, quarters, years;
+  DB_BIGINT days, months, years;
   DB_DATETIME db_datetime, *dt_p = NULL;
   DB_DATETIMETZ dt_tz;
   DB_TIME db_time;
@@ -20657,66 +20657,88 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       goto error;
     }
 
+  /* we have the sign of the amounts, turn them in absolute value */
+  if (expr_s == NULL)
+    {
+      sign = (unit_int_val >= 0);
+      if (sign == 0)
+	{
+	  unit_int_val = ABS (unit_int_val);
+	}
+    }
+  else if (*expr_s == '-')
+    {
+      sign = 0;
+      expr_s++;
+    }
+  else
+    {
+      sign = 1;
+      if (*expr_s == '+')
+	{
+	  expr_s++;
+	}
+    }
+
   /* 2. the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
 
   millisec_s[0] = '\0';
   millisec = seconds = minutes = hours = 0;
-  days = weeks = months = quarters = years = 0;
+  days = months = years = 0;
 
   switch (unit)
     {
     case PT_MILLISECOND:
       millisec = get_single_unit_value (expr_s, unit_int_val);
-      sign = (millisec >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_SECOND:
       seconds = get_single_unit_value (expr_s, unit_int_val);
-      sign = (seconds >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_MINUTE:
       minutes = get_single_unit_value (expr_s, unit_int_val);
-      sign = (minutes >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_HOUR:
       hours = get_single_unit_value (expr_s, unit_int_val);
-      sign = (hours >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_DAY:
       days = get_single_unit_value (expr_s, unit_int_val);
-      sign = (days >= 0);
-      type |= 2;
+      type = 2;
       break;
 
     case PT_WEEK:
-      weeks = get_single_unit_value (expr_s, unit_int_val);
-      sign = (weeks >= 0);
-      type |= 2;
+      {
+	DB_BIGINT weeks = get_single_unit_value (expr_s, unit_int_val);
+	/* convert weeks and quarters to our units */
+	days += weeks * 7;
+      }
+      type = 2;
       break;
 
     case PT_MONTH:
       months = get_single_unit_value (expr_s, unit_int_val);
-      sign = (months >= 0);
-      type |= 2;
+      type = 2;
       break;
 
     case PT_QUARTER:
-      quarters = get_single_unit_value (expr_s, unit_int_val);
-      sign = (quarters >= 0);
-      type |= 2;
+      {
+	DB_BIGINT quarters = get_single_unit_value (expr_s, unit_int_val);
+	/* convert weeks and quarters to our units */
+	months += 3 * quarters;
+      }
+      type = 2;
       break;
 
     case PT_YEAR:
       years = get_single_unit_value (expr_s, unit_int_val);
-      sign = (years >= 0);
-      type |= 2;
+      type = 2;
       break;
 
     case PT_SECOND_MILLISECOND:
@@ -20730,8 +20752,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  millisec = unit_int_val;
 	}
-      sign = (seconds >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_MINUTE_MILLISECOND:
@@ -20747,8 +20768,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  millisec = unit_int_val;
 	}
-      sign = (minutes >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_MINUTE_SECOND:
@@ -20761,8 +20781,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  seconds = unit_int_val;
 	}
-      sign = (minutes >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_HOUR_MILLISECOND:
@@ -20778,8 +20797,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  millisec = unit_int_val;
 	}
-      sign = (hours >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_HOUR_SECOND:
@@ -20794,8 +20812,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  seconds = unit_int_val;
 	}
-      sign = (hours >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_HOUR_MINUTE:
@@ -20808,8 +20825,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  minutes = unit_int_val;
 	}
-      sign = (hours >= 0);
-      type |= 1;
+      type = 1;
       break;
 
     case PT_DAY_MILLISECOND:
@@ -20825,9 +20841,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  millisec = unit_int_val;
 	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
+      type = 3;
       break;
 
     case PT_DAY_SECOND:
@@ -20842,9 +20856,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  seconds = unit_int_val;
 	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
+      type = 3;
       break;
 
     case PT_DAY_MINUTE:
@@ -20859,9 +20871,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  minutes = unit_int_val;
 	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
+      type = 3;
       break;
 
     case PT_DAY_HOUR:
@@ -20874,9 +20884,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  hours = unit_int_val;
 	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
+      type = 3;
       break;
 
     case PT_YEAR_MONTH:
@@ -20889,38 +20897,13 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  months = unit_int_val;
 	}
-      sign = (years >= 0);
-      type |= 2;
+      type = 2;
       break;
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
-    }
-
-  /* we have the sign of the amounts, turn them in absolute value */
-  years = ABS (years);
-  months = ABS (months);
-  days = ABS (days);
-  weeks = ABS (weeks);
-  quarters = ABS (quarters);
-  hours = ABS (hours);
-  minutes = ABS (minutes);
-  seconds = ABS (seconds);
-  millisec = ABS (millisec);
-
-  /* convert weeks and quarters to our units */
-  if (weeks != 0)
-    {
-      days += weeks * 7;
-      weeks = 0;
-    }
-
-  if (quarters != 0)
-    {
-      months += 3 * quarters;
-      quarters = 0;
     }
 
   /* 3. Convert string with date to DateTime or Time */
