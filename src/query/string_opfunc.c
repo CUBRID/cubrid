@@ -19600,30 +19600,24 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
 			     DB_BIGINT ms)
 {
-  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-  DB_BIGINT i;
+  static const int days[2][13] = {
+    {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+    {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+  };
+  static const int rewind_days[2][13] = {
+    {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334},
+    {0, 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335}
+  };
+  int days_idx;
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
-  DB_BIGINT old_day = *day;
-
-  _y = *year;
-  _m = *month;
-  _d = *day;
-  _h = *hour;
-  _mi = *minute;
-  _s = *second;
-  _ms = *millisecond;
-
-  _y += y;
-  _m += m;
-  _d += d;
-  _h += h;
-  _mi += mi;
-  _s += s;
-  _ms += ms;
 
   /* just years and/or months case */
-  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
+  if (m > 0 || y > 0)
     {
+      assert (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0);
+      _y = *year + y;
+      _m = *month + m;
+
       if (_m % 12 == 0)
 	{
 	  _y += (_m - 12) / 12;
@@ -19635,15 +19629,30 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	  _m %= 12;
 	}
 
-      days[2] = LEAP (_y) ? 29 : 28;
-
-      if (old_day > days[_m])
+      days_idx = LEAP (_y) ? 1 : 0;
+      if (*day > days[days_idx][_m])
 	{
-	  _d = days[_m];
+	  *day = days[days_idx][_m];
 	}
 
-      goto set_and_return;
+      if (_y > 9999)
+	{
+	  return ER_FAILED;
+	}
+
+      *year = (int) _y;
+      *month = (int) _m;
+      return NO_ERROR;
     }
+
+  assert (m == 0 && y == 0);
+  _y = *year;
+  _m = *month;
+  _d = *day + d;
+  _h = *hour + h;
+  _mi = *minute + mi;
+  _s = *second + s;
+  _ms = *millisecond + ms;
 
   /* time */
   _s += _ms / 1000;
@@ -19658,31 +19667,15 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
   _d += _h / 24;
   _h %= 24;
 
-  /* date */
-  if (_m > 12)
-    {
-      _y += _m / 12;
-      _m %= 12;
+  days_idx = LEAP (_y) ? 1 : 0;
 
-      if (_m == 0)
-	{
-	  _m = 1;
-	}
-    }
-
-  days[2] = LEAP (_y) ? 29 : 28;
-
-  if (_d > days[_m])
+  if (_d > days[days_idx][_m])
     {
       /* rewind to 1st january */
-      for (i = 1; i < _m; i++)
-	{
-	  _d += days[i];
-	}
+      _d += rewind_days[days_idx][_m];
 
       /* days for years */
-
-      int maxdays = (days[2] == 29) ? 366 : 365;
+      int maxdays = (days[days_idx][2] == 29) ? 366 : 365;
       while (_d >= maxdays)
 	{
 	  _d -= maxdays;
@@ -19695,32 +19688,29 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	}
 
       /* days within a year */
-      days[2] = LEAP (_y) ? 29 : 28;
+      days_idx = LEAP (_y) ? 1 : 0;
       for (_m = 1;; _m++)
 	{
-	  if (_d <= days[_m])
+	  if (_d <= days[days_idx][_m])
 	    {
 	      break;
 	    }
-	  _d -= days[_m];
+	  _d -= days[days_idx][_m];
 	}
     }
 
-  if (_m == 0)
-    {
-      assert (false);
-      _m = 1;
-    }
+  assert (_m > 0 && _m <= 12);
   if (_d == 0)
     {
+      assert (_m == 1);
       _y--;
-      _m = (_m == 1) ? 12 : (_m - 1);
-      _d = days[_m];
+      _m = 12;
+      _d = 31;
     }
 
 set_and_return:
 
-  if (_y >= 10000 || _y < 0)
+  if (_y > 9999)
     {
       return ER_FAILED;
     }
@@ -19754,28 +19744,62 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
 			     DB_BIGINT ms)
 {
-  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+  static const int days[2][13] = {
+    {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+    {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+  };
+  static const int rewind_days[2][13] = {
+    {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334},
+    {0, 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335}
+  };
+  int days_idx;
+
   DB_BIGINT i;
   DB_BIGINT old_day = *day;
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
 
+  /* just years and/or months case */
+  if (m > 0 || y > 0)
+    {
+      assert (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0);
+      _y = *year - y;
+      _m = *month - m;
+
+      if (_m <= 0)
+	{
+	  _y += (_m / 12);
+	  _m %= 12;
+	  if (_m <= 0)
+	    {
+	      _m += 12;
+	      _y--;
+	    }
+	}
+
+      if (_y < 0)
+	{
+	  return ER_FAILED;
+	}
+
+      days_idx = LEAP (_y) ? 1 : 0;
+      if (*day > days[days_idx][_m])
+	{
+	  *day = days[days_idx][_m];
+	}
+
+      *year = (int) _y;
+      *month = (int) _m;
+      return NO_ERROR;
+    }
+
+  assert (m == 0 && y == 0);
   _y = *year;
   _m = *month;
-  _d = *day;
-  _h = *hour;
-  _mi = *minute;
-  _s = *second;
-  _ms = *millisecond;
-
-  _y -= y;
-  _m -= m;
-  _d -= d;
-  _h -= h;
-  _mi -= mi;
-  _s -= s;
-  _ms -= ms;
-
-  days[2] = LEAP (_y) ? 29 : 28;
+  _d = *day - d;
+  _h = *hour - h;
+  _mi = *minute - mi;
+  _s = *second - s;
+  _ms = *millisecond - ms;
 
   /* time */
   _s += _ms / 1000;
@@ -19810,65 +19834,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d--;
     }
 
-  if (_d == 0)
-    {
-      _m--;
-
-      if (_m == 0)
-	{
-	  _y--;
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _m = 12;
-	}
-      _d = days[_m];
-    }
-
-  /* date */
-  if (_m <= 0)
-    {
-      _y += (_m / 12);
-      _m %= 12;
-      if (_m <= 0)
-	{
-	  _m += 12;
-	  _y--;
-	}
-      days[2] = LEAP (_y) ? 29 : 28;
-    }
-
-  /* just years and/or months case */
-  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
-    {
-      if (_m <= 0)
-	{
-	  _y += (_m / 12);
-	  _m %= 12;
-	  if (_m <= 0)
-	    {
-	      _m += 12;
-	      _y--;
-	    }
-	}
-
-      days[2] = LEAP (_y) ? 29 : 28;
-
-      if (old_day > days[_m])
-	{
-	  _d = days[_m];
-	}
-
-      goto set_and_return;
-    }
-
-  days[2] = LEAP (_y) ? 29 : 28;
-
-  if (_d > days[_m] || _d < 0)
+  days_idx = LEAP (_y) ? 1 : 0;
+  if (_d > days[days_idx][_m] || _d < 0)
     {
       /* rewind to 1st january */
-      for (i = 1; i < _m; i++)
-	{
-	  _d += days[i];
-	}
+      _d += rewind_days[days_idx][_m];
 
       /* days for years */
       while (_d < 0)
@@ -19883,31 +19853,29 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	}
 
       /* days within a year */
-      days[2] = LEAP (_y) ? 29 : 28;
+      days_idx = LEAP (_y) ? 1 : 0;
       for (_m = 1;; _m++)
 	{
-	  if (_d <= days[_m])
+	  if (_d <= days[days_idx][_m])
 	    {
 	      break;
 	    }
-	  _d -= days[_m];
+	  _d -= days[days_idx][_m];
 	}
     }
 
-  if (_m == 0)
-    {
-      _m = 1;
-    }
+  assert (_m > 0 && _m <= 12);
   if (_d == 0)
     {
       _y--;
       _m = (_m == 1) ? 12 : (_m - 1);
-      _d = days[_m];
+      days_idx = LEAP (_y) ? 1 : 0;
+      _d = days[days_idx][_m];
     }
 
 set_and_return:
 
-  if (_y >= 10000 || _y < 0)
+  if (_y < 0)
     {
       return ER_FAILED;
     }
