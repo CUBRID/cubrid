@@ -1462,7 +1462,9 @@ $ LOADDB
 
 1368 유효하지 않은 커서
 
-1369 마지막 에러
+1369 사용자 "%1$s"는 로그인할 수 없습니다.
+
+1370 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1966,6 +1968,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 330 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
 331 Static SQL에 사용된 호스트 표현식은 변수나 레코드 필드이어야 합니다: '%1$s'.
+332 Stored Procedure는 CALL 문에서만 호출할 수 있습니다.
+333 Stored Procedure를 호출하는 CALL 문은 INTO 절을 가질 수 없습니다.
 
 
 

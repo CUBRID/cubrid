@@ -3582,6 +3582,50 @@ pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_having_with_predicate ()
+ *          - check if tree has an HAVING with predicate
+ *   return: true if tree has HAVING with predicate
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_having = false;
+  PT_NODE *having;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+      having = node->info.query.q.select.having;
+      if (having != NULL)
+	{
+	  /* there is only 'groupby_num <= ' */
+	  if (having->next == NULL && pt_is_expr_node (having) && PT_IS_GROUPBYNUM (having->info.expr.arg1)
+	      && (having->info.expr.op == PT_LE || having->info.expr.op == PT_LT))
+	    {
+	      return false;
+	    }
+	  return true;
+	}
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      has_having |= pt_has_having_with_predicate (parser, node->info.query.q.union_.arg1);
+      has_having |= pt_has_having_with_predicate (parser, node->info.query.q.union_.arg2);
+      break;
+
+    default:
+      break;
+    }
+
+  return has_having;
+}
+
+/*
  * pt_has_inst_or_orderby_num_in_where ()
  *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where
  *   return: true if tree has INST_NUM/ORDERBY_NUM
@@ -5851,7 +5895,7 @@ pt_make_select_count_star (PARSER_CONTEXT * parser)
  *   parser(in): Parser context
  *
  *    IF( (SELECT count(*)
- *	      FROM db_serial S
+ *	      FROM _db_serial S
  *	      WHERE S.attr_name = A.attr_name AND
  *		    S.class_name =  C.class_name
  *	    ) >= 1 ,
@@ -5879,7 +5923,7 @@ pt_make_field_extra_expr_node (PARSER_CONTEXT * parser)
       return NULL;
     }
 
-  from_item = pt_add_table_name_to_from_list (parser, query, "db_serial", "S", DB_AUTH_NONE);
+  from_item = pt_add_table_name_to_from_list (parser, query, CT_SERIAL_NAME, "S", DB_AUTH_NONE);
 
   /* S.attr_name = A.attr_name */
   where_item1 = pt_make_pred_with_identifiers (parser, PT_EQ, "S.attr_name", "A.attr_name");
@@ -7711,7 +7755,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                 "WHERE "
                         "[a].[object_of] = [c].[class_of] "
                         "AND [a].[object_type] = 0 "
-                        "AND MOD ([c].[is_system_class], 2) = 0 "
+                        "AND [c].[is_system_class] = 0 "
                         "AND ( "
                         "[a].[grantee].[name] = '%1$s' "
                         "OR "
@@ -12406,4 +12450,25 @@ pt_get_hint_from_query (PARSER_CONTEXT * parser, PT_NODE * query)
     default:
       return PT_HINT_NONE;
     }
+}
+
+/*
+ * pt_count_name_nodes () - returns name node, count by reference
+ *   return:
+ *   parser(in):
+ *   node(in): the node to check
+ *   arg(in/out): count of name nodes
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  int *cnt = (int *) arg;
+
+  if (node->node_type == PT_NAME)
+    {
+      (*cnt)++;
+    }
+
+  return node;
 }

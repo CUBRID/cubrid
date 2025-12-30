@@ -3629,7 +3629,10 @@ db_close_session_local (DB_SESSION * session)
 
       for (i = 0, hv = parser->host_variables; i < parser->host_var_count + parser->auto_param_count; i++, hv++)
 	{
-	  db_value_clear (hv);
+	  if (hv)
+	    {
+	      db_value_clear (hv);
+	    }
 	}
       free_and_init (parser->host_variables);
     }
