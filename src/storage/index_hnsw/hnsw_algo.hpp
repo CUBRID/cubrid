@@ -51,38 +51,24 @@ namespace cubhnsw
   };
 
   inline float
-  cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
+  cubvec_cosine_distance (const float *__restrict vec1,
+			  const float *__restrict vec2,
+			  std::size_t dim)
   {
     float dot = 0.0f;
-    float norm1_sq = 0.0f;
-    float norm2_sq = 0.0f;
 
-    #pragma omp simd reduction(+ : dot, norm1_sq, norm2_sq)
-    for (size_t i = 0; i < dim; ++i)
+    #pragma omp simd reduction(+ : dot)
+    for (std::size_t i = 0; i < dim; ++i)
       {
-	const float a = vec1[i];
-	const float b = vec2[i];
-
-	dot       += a * b;
-	norm1_sq  += a * a;
-	norm2_sq  += b * b;
+	dot += vec1[i] * vec2[i];
       }
 
-    // zero-vector handling
-    if (norm1_sq == 0.0f && norm2_sq == 0.0f)
-      {
-	return 0.0f;   // identical zero vectors
-      }
-    if (norm1_sq == 0.0f || norm2_sq == 0.0f)
-      {
-	return 1.0f;   // maximally distant
-      }
+    // Numerical safety (optional but recommended with fast-math/SIMD)
+    dot = std::min (1.0f, std::max (-1.0f, dot));
 
-    const float inv_norm =
-	    1.0f / (std::sqrt (norm1_sq) * std::sqrt (norm2_sq));
-
-    const float cosine_similarity = dot * inv_norm;
-    return 1.0f - cosine_similarity;
+    // HNSW expects "smaller is better"
+    // cosine similarity maximize <=> minimize (-dot)
+    return -dot;
   }
 
   inline float
@@ -93,7 +79,7 @@ namespace cubhnsw
   }
 
   inline bool
-  cubvec_cosine_normalize (float *vec, std::size_t dim)
+  cubvec_cosine_normalize (float *__restrict vec, std::size_t dim)
   {
     float norm_sq = 0.0f;
 
@@ -106,10 +92,11 @@ namespace cubhnsw
     constexpr float eps = 1e-12f;
     if (norm_sq < eps)
       {
-	return false;		// zero vector
+	// zero / near-zero vector is invalid for cosine/IP
+	return false;
       }
 
-    float inv_norm = 1.0f / std::sqrt (norm_sq);
+    const float inv_norm = 1.0f / std::sqrt (norm_sq);
 
     #pragma omp simd
     for (std::size_t i = 0; i < dim; ++i)
@@ -117,7 +104,7 @@ namespace cubhnsw
 	vec[i] *= inv_norm;
       }
 
-    return true;		// unit vector
+    return true;  // unit vector
   }
 
   using distance_t = float;
