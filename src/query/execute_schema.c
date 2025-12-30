@@ -7364,7 +7364,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
 	  if (error == NO_ERROR)
 	    {
-        error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	      error = smt_find_attribute (ctemplate, attr_name, 0, &att);
 	      if (error == NO_ERROR)
 		{
 		  att->auto_increment = auto_increment_obj;
