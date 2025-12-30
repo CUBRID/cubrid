@@ -110,6 +110,7 @@ struct ndv_info
 {
   QO_ENV *env;
   int total_ndv;
+  BITSET seg_bitset;
 };
 typedef struct ndv_info NDV_INFO;
 
@@ -461,7 +462,7 @@ static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static PRED_CLASS qo_classify (PT_NODE * attr);
 
-static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
+static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
 
 /*
  * log3 () -
@@ -715,12 +716,15 @@ qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
 
   ndv_info.env = env;
   ndv_info.total_ndv = 1;
+  bitset_init (&ndv_info.seg_bitset, env);
   /* The NDV is simply extracted from column without considering the function, etc. and product of NDV of each column */
   parser_walk_tree (parser, nodes, qo_get_col_product_ndv, &ndv_info, NULL, NULL);
   if (ndv_info.total_ndv == 1)
     {
-      return -1;
+      ndv_info.total_ndv = -1;
     }
+  bitset_delset (&ndv_info.seg_bitset);
+
   return ndv_info.total_ndv;
 }
 
@@ -9702,8 +9706,8 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  /* attr = attr */
 
 	  /* check for indexes on either of the attributes */
-	  lhs_icard = qo_index_cardinality (env, lhs);
-	  rhs_icard = qo_index_cardinality (env, rhs);
+	  lhs_icard = qo_index_cardinality (env, lhs, NULL);
+	  rhs_icard = qo_index_cardinality (env, rhs, NULL);
 
 	  icard = MAX (lhs_icard, rhs_icard);
 	  if (icard != 0)
@@ -9725,7 +9729,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  /* attr = const */
 
 	  /* check for index on the attribute.  NOTE: For an equality predicate, we treat subqueries as constants. */
-	  lhs_icard = qo_index_cardinality (env, lhs);
+	  lhs_icard = qo_index_cardinality (env, lhs, NULL);
 	  if (lhs_icard != 0)
 	    {
 	      selectivity = (1.0 / lhs_icard);
@@ -9757,7 +9761,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  /* const = attr */
 
 	  /* check for index on the attribute.  NOTE: For an equality predicate, we treat subqueries as constants. */
-	  rhs_icard = qo_index_cardinality (env, rhs);
+	  rhs_icard = qo_index_cardinality (env, rhs, NULL);
 	  if (rhs_icard != 0)
 	    {
 	      selectivity = (1.0 / rhs_icard);
@@ -9786,7 +9790,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
-	      icard = qo_index_cardinality (env, multi_attr);
+	      icard = qo_index_cardinality (env, multi_attr, NULL);
 	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
@@ -9834,7 +9838,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
-	      icard = qo_index_cardinality (env, multi_attr);
+	      icard = qo_index_cardinality (env, multi_attr, NULL);
 	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
@@ -9867,7 +9871,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
-	      icard = qo_index_cardinality (env, multi_attr);
+	      icard = qo_index_cardinality (env, multi_attr, NULL);
 	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
@@ -9889,7 +9893,7 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  for ( /* none */ ; multi_attr; multi_attr = multi_attr->next)
 	    {
 	      /* get index cardinality */
-	      icard = qo_index_cardinality (env, multi_attr);
+	      icard = qo_index_cardinality (env, multi_attr, NULL);
 	      if (icard <= 0)
 		{
 		  /* the only interesting case is PT_BETWEEN_EQ_NA */
@@ -9988,7 +9992,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       for ( /* none */ ; lhs; lhs = lhs->next)
 	{
 	  /* get index cardinality */
-	  icard = qo_index_cardinality (env, lhs);
+	  icard = qo_index_cardinality (env, lhs, NULL);
 	  if (icard <= 0)
 	    {
 	      /* the only interesting case is PT_BETWEEN_EQ_NA */
@@ -10008,7 +10012,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   else if (pc2 == PC_ATTR)
     {
       /* get index cardinality */
-      lhs_icard = qo_index_cardinality (env, lhs);
+      lhs_icard = qo_index_cardinality (env, lhs, NULL);
     }
   else
     {
@@ -10046,7 +10050,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  if (pc1 == PC_ATTR)
 	    {
 	      /* attr1 range (attr2 = ) */
-	      rhs_icard = qo_index_cardinality (env, arg1);
+	      rhs_icard = qo_index_cardinality (env, arg1, NULL);
 
 	      icard = MAX (lhs_icard, rhs_icard);
 	      if (icard != 0)
@@ -10122,7 +10126,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  for (lhs = arg1->info.function.arg_list; lhs; lhs = lhs->next)
 	    {
 	      /* get index cardinality */
-	      icard = qo_index_cardinality (env, lhs);
+	      icard = qo_index_cardinality (env, lhs, NULL);
 	      if (icard > 0.0)
 		{
 		  equal_selectivity *= (1.0 / icard);
@@ -10137,7 +10141,7 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       else if (pc_lhs == PC_ATTR)
 	{
 	  /* check for index on the attribute.  */
-	  icard = qo_index_cardinality (env, arg1);
+	  icard = qo_index_cardinality (env, arg1, NULL);
 	  if (icard > 0.0)
 	    {
 	      equal_selectivity *= (1.0 / icard);
@@ -10262,9 +10266,10 @@ qo_classify (PT_NODE * attr)
  *   return: cardinality of the index if the index exists, otherwise return 0
  *   env(in): optimizer environment
  *   attr(in): pt node for the attribute for which we want the index cardinality
+ *   seg_bitset(in): segment bitset for checking if there are duplicate columns
  */
 static int
-qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
+qo_index_cardinality (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset)
 {
   PT_NODE *dummy;
   QO_NODE *nodep;
@@ -10288,6 +10293,19 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
   if (segp == NULL)
     {
       return 0;
+    }
+
+  /* check if there are duplicate columns */
+  if (seg_bitset)
+    {
+      if (BITSET_MEMBER (*seg_bitset, QO_SEG_IDX (segp)))
+	{
+	  return 0;
+	}
+      else
+	{
+	  bitset_add (seg_bitset, QO_SEG_IDX (segp));
+	}
     }
 
   if (attr->info.name.meta_class == PT_RESERVED)
@@ -10760,7 +10778,7 @@ qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int 
     }
   else if (pt_is_attr (tree))
     {
-      ndv = qo_index_cardinality (ndv_info->env, pt_get_end_path_node (tree));
+      ndv = qo_index_cardinality (ndv_info->env, pt_get_end_path_node (tree), &ndv_info->seg_bitset);
       ndv_info->total_ndv *= (ndv == 0) ? 1 : ndv;
     }
 
