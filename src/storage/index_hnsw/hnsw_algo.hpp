@@ -92,6 +92,34 @@ namespace cubhnsw
     return std::sqrt (l2);
   }
 
+  inline bool
+  cubvec_cosine_normalize (float *vec, std::size_t dim)
+  {
+    float norm_sq = 0.0f;
+
+    #pragma omp simd reduction(+ : norm_sq)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	norm_sq += vec[i] * vec[i];
+      }
+
+    constexpr float eps = 1e-12f;
+    if (norm_sq < eps)
+      {
+	return false;		// zero vector
+      }
+
+    float inv_norm = 1.0f / std::sqrt (norm_sq);
+
+    #pragma omp simd
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	vec[i] *= inv_norm;
+      }
+
+    return true;		// unit vector
+  }
+
   using distance_t = float;
   using Fn = distance_t (*) (const float *, const float *, size_t);
 
@@ -385,6 +413,13 @@ namespace cubhnsw
 	  new_target_level = MAX_LEVELS;
 	}
 
+      if (m_metric == vector_distance_metric_t::COSINE)
+	{
+	  if (!cubvec_cosine_normalize ((float *) vector, m_dimension))
+	    {
+	      abort ();
+	    }
+	}
       //
       new_slot = m_storage->add_node (key, vector, new_target_level);
       //
