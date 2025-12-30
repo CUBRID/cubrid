@@ -1282,6 +1282,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   OR_VARINFO *vars = NULL;
   int size;
   int error = NO_ERROR;
+  int flags;
   const char *default_expr_type_string = NULL;
   const char *def_expr_format_string = NULL;
   bool with_to_char = false;
@@ -1333,7 +1334,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   attr_val_p = &attrs[7].value;
   tp_Integer.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
-  int flags = db_get_int (attr_val_p);
+  flags = db_get_int (attr_val_p);
   /* for 'is_nullable', reverse NON_NULL flag */
   db_make_int (attr_val_p, (flags & SM_ATTFLAG_NON_NULL) ? false : true);
 
