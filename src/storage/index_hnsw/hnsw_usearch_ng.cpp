@@ -215,6 +215,12 @@ hnsw_usearch_ng::add (int n_vectors, const OID *oid, const float *vector)
 				     m_build_params.dimension))
 	{
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
+	  fprintf (stdout, "Vector is all zeros, skipping add\n");
+	  for (int i = 0; i < m_build_params.dimension; ++i)
+	    {
+	      fprintf (stdout, "%f ", vector[i]);
+	    }
+	  fprintf (stdout, "\n");
 	  continue;
 	}
       m_algo->add (oid[i], vector + i * m_build_params.dimension,
@@ -231,6 +237,12 @@ hnsw_usearch_ng::search (const float *query, const int k, const int ef_search,
       && db_vector_is_all_zeros (query, m_build_params.dimension))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
+      fprintf (stdout, "Vector is all zeros, skipping search\n");
+      for (int i = 0; i < m_build_params.dimension; ++i)
+	{
+	  fprintf (stdout, "%f ", query[i]);
+	}
+      fprintf (stdout, "\n");
       return NO_ERROR;
     }
 
