@@ -20629,10 +20629,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   if (expr_s == NULL)
     {
       sign = (unit_int_val >= 0);
-      if (sign == 0)
-	{
-	  unit_int_val = ABS (unit_int_val);
-	}
     }
   else if (*expr_s == '-')
     {
