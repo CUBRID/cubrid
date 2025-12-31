@@ -19867,9 +19867,13 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
   assert (_m > 0 && _m <= 12);
   if (_d == 0)
     {
-      _y--;
-      _m = (_m == 1) ? 12 : (_m - 1);
-      days_idx = LEAP (_y) ? 1 : 0;
+      _m--;
+      if (_m == 0)
+	{
+	  _y--;
+	  _m = 12;
+	  days_idx = LEAP (_y) ? 1 : 0;
+	}
       _d = days[days_idx][_m];
     }
 
