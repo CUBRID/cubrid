@@ -24,7 +24,7 @@
 #ifndef _LOCK_TABLE_H_
 #define _LOCK_TABLE_H_
 
-#include "storage_common.h"
+#include "storage_common.h" // LOCK, LOCK_COMPATIBILITY
 
 extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT];
 extern const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT];
