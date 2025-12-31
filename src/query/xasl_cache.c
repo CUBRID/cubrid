@@ -39,6 +39,7 @@
 #include "thread_manager.hpp"
 #include "xasl_unpack_info.hpp"
 #include "list_file.h"
+#include "lock_table.h"		// lock_conv
 
 #include <algorithm>
 #include <assert.h>

@@ -388,22 +388,7 @@ typedef enum
   LOCK_COUNT			/* number of lock modes */
 } LOCK;
 
-extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT];
-
-#define LOCK_TO_LOCKMODE_STRING(lock) \
-  (((lock) == NULL_LOCK)  ? "  NULL_LOCK" : \
-   ((lock) == IS_LOCK)    ? "    IS_LOCK" : \
-   ((lock) == S_LOCK)     ? "     S_LOCK" : \
-   ((lock) == IX_LOCK)    ? "    IX_LOCK" : \
-   ((lock) == SIX_LOCK)   ? "   SIX_LOCK" : \
-   ((lock) == U_LOCK)     ? "     U_LOCK" : \
-   ((lock) == BU_LOCK)    ? "    BU_LOCK" : \
-   ((lock) == SCH_S_LOCK) ? " SCH_S_LOCK" : \
-   ((lock) == SCH_M_LOCK) ? " SCH_M_LOCK" : \
-   ((lock) == X_LOCK)     ? "     X_LOCK" : "UNKNOWN")
-
 /* CLASSNAME TO OID RETURN VALUES */
-
 typedef enum
 {
   LC_CLASSNAME_RESERVED,

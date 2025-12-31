@@ -23,9 +23,7 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include "storage_common.h"
+#include "lock_table.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -66,7 +64,7 @@
  */
 
 /* *INDENT-OFF* */
-extern const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
+const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
   /* N/A */
   { /* N/A */ LOCK_COMPAT_UNKNOWN, /* NON2PL */ LOCK_COMPAT_UNKNOWN, /* NULL */ LOCK_COMPAT_UNKNOWN,
     /* SCH-S */ LOCK_COMPAT_UNKNOWN, /* IS */ LOCK_COMPAT_UNKNOWN, /* S */ LOCK_COMPAT_UNKNOWN,
@@ -178,7 +176,7 @@ extern const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
  */
 
 /* *INDENT-OFF* */
-extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
+const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
   /* N/A */
   { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ NA_LOCK, /* SCH-S */ NA_LOCK,
     /* IS */ NA_LOCK, /* S */ NA_LOCK, /* IX */ NA_LOCK, /* BU */ NA_LOCK, /* SIX */ NA_LOCK,
@@ -240,3 +238,33 @@ extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
     /* U */ NA_LOCK, /* X */ SCH_M_LOCK, /* SCH-M */ SCH_M_LOCK}
 };
 /* *INDENT-ON* */
+
+/* 
+previous definition of LOCK_TO_LOCKMODE_STRING is:
+  #define LOCK_TO_LOCKMODE_STRING(lock) \
+    (((lock) == NULL_LOCK)  ? "  NULL_LOCK" : \
+    ((lock) == IS_LOCK)    ? "    IS_LOCK" : \
+    ((lock) == S_LOCK)     ? "     S_LOCK" : \
+    ((lock) == IX_LOCK)    ? "    IX_LOCK" : \
+    ((lock) == SIX_LOCK)   ? "   SIX_LOCK" : \
+    ((lock) == U_LOCK)     ? "     U_LOCK" : \
+    ((lock) == BU_LOCK)    ? "    BU_LOCK" : \
+    ((lock) == SCH_S_LOCK) ? " SCH_S_LOCK" : \
+    ((lock) == SCH_M_LOCK) ? " SCH_M_LOCK" : \
+    ((lock) == X_LOCK)     ? "     X_LOCK" : "UNKNOWN")
+*/
+
+const char *lock_mode_string[LOCK_COUNT] = {
+  "UNKNOWN",
+  "UNKNOWN",
+  "NULL_LOCK",
+  "SCH_S_LOCK",
+  "IS_LOCK",
+  "S_LOCK",
+  "IX_LOCK",
+  "BU_LOCK",
+  "SIX_LOCK",
+  "U_LOCK",
+  "X_LOCK",
+  "SCH_M_LOCK",
+};

@@ -38,6 +38,7 @@
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "transaction_cl.h"
+#include "lock_table.h"		// lock_conv
 
 #include "dbtype.h"
 
@@ -1186,8 +1187,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
    */
   lock = ws_get_lock (mop);
   assert (lock >= NULL_LOCK);
-  lock = lock_Conv[S_LOCK][lock];
-  assert (lock != NA_LOCK);
+  lock = lock_conv (S_LOCK, lock);
 
   ws_set_lock (mop, lock);
 
