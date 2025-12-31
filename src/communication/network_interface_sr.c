@@ -72,6 +72,7 @@
 #include "es.h"
 #include "es_posix.h"
 #include "event_log.h"
+#include "trace_log.h"
 #include "tsc_timer.h"
 #include "vacuum.h"
 #include "object_primitive.h"
@@ -136,7 +137,7 @@ static int check_client_capabilities (THREAD_ENTRY * thread_p, int client_cap, i
 static void sbtree_find_unique_internal (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 static int er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time,
 			      UINT64 * diff_stats, char *queryinfo_string);
-static void event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
+static void trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_many_ioreads (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats);
 static void event_log_extend_pages (THREAD_ENTRY * thread_p, EXECUTION_INFO * info);
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
@@ -5150,7 +5151,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   UINT64 *diff_stats = NULL;
   char *sql_id = NULL;
   int error_code = NO_ERROR, all_error_code = NO_ERROR;
-  int trace_slow_msec, trace_ioreads;
+  int trace_level, trace_slow_msec, trace_ioreads;
   bool tran_abort = false, has_xasl_entry = false;
 
   EXECUTION_INFO info = { NULL, NULL, NULL };
@@ -5161,6 +5162,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   TRAN_STATE tran_state;
   bool is_tran_auto_commit;
 
+  trace_level = prm_get_integer_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN);
   trace_slow_msec = prm_get_integer_value (PRM_ID_SQL_TRACE_SLOW_MSECS);
   trace_ioreads = prm_get_integer_value (PRM_ID_SQL_TRACE_IOREADS);
 
@@ -5174,7 +5176,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;
 	}
-      if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+      if (trace_level > 0)
 	{
 	  xperfmon_server_copy_stats (thread_p, base_stats, false);
 	}
@@ -5424,10 +5426,12 @@ null_list:
 	      goto exit;
 	    }
 
-	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
+	  if (trace_level > 0)
 	    {
-	      xperfmon_server_copy_stats (thread_p, current_stats, response_time >= trace_slow_msec);
-	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats, response_time >= trace_slow_msec);
+	      bool need_pgbuf_stat = (trace_level > 1 && response_time >= trace_slow_msec);
+
+	      xperfmon_server_copy_stats (thread_p, current_stats, need_pgbuf_stat);
+	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats, need_pgbuf_stat);
 	    }
 	  else
 	    {
@@ -5439,7 +5443,7 @@ null_list:
 	    {
 	      queryinfo_string_length =
 		er_log_slow_query (thread_p, &info, response_time, diff_stats, queryinfo_string);
-	      event_log_slow_query (thread_p, &info, response_time, diff_stats);
+	      trace_log_slow_query (thread_p, &info, response_time, diff_stats);
 	    }
 
 	  if (trace_ioreads > 0
@@ -5566,21 +5570,10 @@ static int
 er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats,
 		   char *queryinfo_string)
 {
-  char stat_buf[STATDUMP_BUF_SIZE];
   char *sql_id;
   int queryinfo_string_length;
   const char *line = "--------------------------------------------------------------------------------";
   const char *title = "Operation";
-
-  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXECUTION_PLAN) == true)
-    {
-      perfmon_server_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, NULL);
-    }
-  else
-    {
-      info->sql_plan_text = NULL;
-      stat_buf[0] = '\0';
-    }
 
   if (info->sql_hash_text == NULL
       || qmgr_get_sql_id (thread_p, &sql_id, info->sql_hash_text, strlen (info->sql_hash_text)) != NO_ERROR)
@@ -5589,10 +5582,10 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UIN
     }
 
   queryinfo_string_length =
-    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n /* SQL_ID: %s */ %s%s \n\n%s\n%s\n", line,
+    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n /* SQL_ID: %s */ %s%s \n\n%s\n", line,
 	      title, line, info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)",
 	      sql_id ? sql_id : "(UNKNOWN SQL_ID)", info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)",
-	      info->sql_plan_text ? info->sql_plan_text : "", stat_buf, line);
+	      info->sql_plan_text ? info->sql_plan_text : "", line);
 
   if (sql_id != NULL)
     {
@@ -5606,23 +5599,19 @@ er_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UIN
       queryinfo_string[queryinfo_string_length] = '\0';
     }
 
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_SLOW_QUERY, 2, time, queryinfo_string);
-
   return queryinfo_string_length;
 }
 
 /*
- * event_log_slow_query - log slow query to event log file
+ * trace_log_slow_query - log slow query to trace log file
  * return:
  *   thread_p(in):
  *   info(in):
  *   time(in):
  *   diff_stats(in):
- *   num_bind_vals(in):
- *   bind_vals(in):
  */
 static void
-event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats)
+trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, UINT64 * diff_stats)
 {
   FILE *log_fp;
   int indent = 2;
@@ -5631,31 +5620,55 @@ event_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  log_fp = event_log_start (thread_p, "SLOW_QUERY");
+  log_fp = trace_log_start (thread_p, "SLOW_QUERY");
 
   if (tdes == NULL || log_fp == NULL)
     {
       return;
     }
 
-  event_log_print_client_info (tran_index, indent);
-  event_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
+  trace_log_print_client_info (tran_index, indent);
+  trace_log_sql_without_user_oid (log_fp, "%*csql: %s\n", indent,
 				  info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {
-      event_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
+      trace_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
 
-  fprintf (log_fp, "%*ctime: %d\n", indent, ' ', time);
-  fprintf (log_fp, "%*cbuffer: fetch=%lld, ioread=%lld, iowrite=%lld\n", indent, ' ',
-	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset],
-	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset],
-	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_IOWRITES].start_offset]);
-  fprintf (log_fp, "%*cwait: cs=%d, lock=%d, latch=%d\n\n", indent, ' ', TO_MSEC (thread_p->event_stats.cs_waits),
-	   TO_MSEC (thread_p->event_stats.lock_waits), TO_MSEC (thread_p->event_stats.latch_waits));
+  fprintf (log_fp, "%*ctime: %dmsec\n", indent, ' ', time);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_PB_NUM_FETCHES].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_BT_NUM_COVERED].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_BT_NUM_COVERED].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_BT_NUM_NONCOVERED].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_BT_NUM_NONCOVERED].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_QM_NUM_ISCANS].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_QM_NUM_ISCANS].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_QM_NUM_SSCANS].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_QM_NUM_SSCANS].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_SORT_NUM_DATA_PAGES].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_SORT_NUM_DATA_PAGES].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_PB_HIT_RATIO].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_PB_HIT_RATIO].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_FILE_NUM_IOREADS].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_FILE_NUM_IOREADS].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_FILE_NUM_IOWRITES].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_FILE_NUM_IOWRITES].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_LOG_NUM_IOWRITES].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_LOG_NUM_IOWRITES].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_BT_NUM_SPLITS].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_BT_NUM_SPLITS].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_PC_NUM_HIT].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_PC_NUM_HIT].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_LOG_HIT_RATIO].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_LOG_HIT_RATIO].start_offset]);
+  fprintf (log_fp, "%*c%s: %lld\n", indent, ' ', pstat_Metadata[PSTAT_VACUUM_DATA_HIT_RATIO].stat_name,
+	   (long long int) diff_stats[pstat_Metadata[PSTAT_VACUUM_DATA_HIT_RATIO].start_offset]);
 
-  event_log_end (thread_p);
+  trace_log_end (thread_p);
 }
 
 /*
