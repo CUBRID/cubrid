@@ -19582,6 +19582,17 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
   return error_status;
 }
 
+// Monthly Days and Monthly Cumulative Days Table
+// The 0th position is unused and left blank for array access efficiency.
+static const int days_per_month[2][13] = {
+    {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+    {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+  };
+static const int cumulative_days_per_month[2][13] = {
+    {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365},
+    {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366}
+  };
+
 /*
  * add_and_normalize_date_time ()
  *
@@ -19600,14 +19611,6 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
 			     DB_BIGINT ms)
 {
-  static const int days[2][13] = {
-    {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
-    {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-  };
-  static const int rewind_days[2][13] = {
-    {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334},
-    {0, 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335}
-  };
   int days_idx;
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
 
@@ -19630,9 +19633,9 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	}
 
       days_idx = LEAP (_y) ? 1 : 0;
-      if (*day > days[days_idx][_m])
+      if (*day > days_per_month[days_idx][_m])
 	{
-	  *day = days[days_idx][_m];
+	  *day = days_per_month[days_idx][_m];
 	}
 
       if (_y > 9999)
@@ -19668,14 +19671,13 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
   _h %= 24;
 
   days_idx = LEAP (_y) ? 1 : 0;
-
-  if (_d > days[days_idx][_m])
+  if (_d > days_per_month[days_idx][_m])
     {
       /* rewind to 1st january */
-      _d += rewind_days[days_idx][_m];
+      _d += cumulative_days_per_month[days_idx][_m - 1];
 
-      /* days for years */
-      int maxdays = (days[days_idx][2] == 29) ? 366 : 365;
+      /* days_per_month for years */
+      int maxdays = (days_per_month[days_idx][2] == 29) ? 366 : 365;
       while (_d >= maxdays)
 	{
 	  _d -= maxdays;
@@ -19691,11 +19693,11 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       days_idx = LEAP (_y) ? 1 : 0;
       for (_m = 1;; _m++)
 	{
-	  if (_d <= days[days_idx][_m])
+	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
+	      _d -= cumulative_days_per_month[days_idx][_m - 1];
 	      break;
 	    }
-	  _d -= days[days_idx][_m];
 	}
     }
 
@@ -19744,14 +19746,6 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
 			     DB_BIGINT ms)
 {
-  static const int days[2][13] = {
-    {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
-    {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-  };
-  static const int rewind_days[2][13] = {
-    {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334},
-    {0, 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335}
-  };
   int days_idx;
 
   DB_BIGINT i;
@@ -19782,9 +19776,9 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	}
 
       days_idx = LEAP (_y) ? 1 : 0;
-      if (*day > days[days_idx][_m])
+      if (*day > days_per_month[days_idx][_m])
 	{
-	  *day = days[days_idx][_m];
+	  *day = days_per_month[days_idx][_m];
 	}
 
       *year = (int) _y;
@@ -19835,10 +19829,10 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
     }
 
   days_idx = LEAP (_y) ? 1 : 0;
-  if (_d > days[days_idx][_m] || _d < 0)
+  if (_d > days_per_month[days_idx][_m] || _d < 0)
     {
       /* rewind to 1st january */
-      _d += rewind_days[days_idx][_m];
+      _d += cumulative_days_per_month[days_idx][_m - 1];
 
       /* days for years */
       while (_d < 0)
@@ -19856,11 +19850,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       days_idx = LEAP (_y) ? 1 : 0;
       for (_m = 1;; _m++)
 	{
-	  if (_d <= days[days_idx][_m])
+	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
+	      _d -= cumulative_days_per_month[days_idx][_m - 1];
 	      break;
 	    }
-	  _d -= days[days_idx][_m];
 	}
     }
 
@@ -19874,7 +19868,7 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	  _m = 12;
 	  days_idx = LEAP (_y) ? 1 : 0;
 	}
-      _d = days[days_idx][_m];
+      _d = days_per_month[days_idx][_m];
     }
 
 set_and_return:
