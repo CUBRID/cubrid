@@ -18,7 +18,7 @@
 
 
 /*
- * lock_table.h - Definitions and data types of lock table
+ * lock_table.h - Lock conversion and compatibility tables and inline accessors.
  */
 
 #ifndef _LOCK_TABLE_H_
