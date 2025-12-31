@@ -24,14 +24,14 @@
 #ifndef _LOCK_TABLE_H_
 #define _LOCK_TABLE_H_
 
-#include "porting_inline.hpp"
 #include "storage_common.h"
 
 extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT];
 extern const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT];
 extern const char* lock_mode_string[LOCK_COUNT];
 
-inline LOCK lock_conv (LOCK requested, LOCK current) {
+inline LOCK
+lock_conv (LOCK requested, LOCK current) {
   assert (lock_Conv[requested][current] != NA_LOCK);
   return lock_Conv[requested][current];
 }
