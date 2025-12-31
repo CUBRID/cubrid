@@ -1551,39 +1551,16 @@ pgbuf_initialize (void)
   pgbuf_Pool.ratio_lru2 = 0.0f;
   pgbuf_Pool.buf_LRU_list = NULL;
 
-  /* Initialize buf_AOUT_list */
-#if defined(SERVER_MODE)
-  pgbuf_Pool.buf_AOUT_list.Aout_mutex = PTHREAD_MUTEX_INITIALIZER;
+  memset (&pgbuf_Pool.buf_AOUT_list, 0, sizeof (PGBUF_AOUT_LIST));
+  memset (&pgbuf_Pool.buf_invalid_list, 0, sizeof (PGBUF_INVALID_LIST));
+  memset (&pgbuf_Pool.seq_chkpt_flusher, 0, sizeof (PGBUF_SEQ_FLUSHER));
+  memset (&pgbuf_Pool.quota, 0, sizeof (PGBUF_PAGE_QUOTA));
+  memset (&pgbuf_Pool.show_status_old, 0, sizeof (PGBUF_STATUS_OLD));
+  memset (&pgbuf_Pool.show_status_snapshot, 0, sizeof (PGBUF_STATUS_SNAPSHOT));
+
+#if defined (SERVER_MODE)
+  memset (&pgbuf_Pool.direct_victims, 0, sizeof (PGBUF_VICTIM_CANDIDATE_LIST));
 #endif
-  pgbuf_Pool.buf_AOUT_list.Aout_top = NULL;
-  pgbuf_Pool.buf_AOUT_list.Aout_bottom = NULL;
-  pgbuf_Pool.buf_AOUT_list.Aout_free = NULL;
-  pgbuf_Pool.buf_AOUT_list.bufarray = NULL;
-  pgbuf_Pool.buf_AOUT_list.num_hashes = 0;
-  pgbuf_Pool.buf_AOUT_list.aout_buf_ht = NULL;
-  pgbuf_Pool.buf_AOUT_list.max_count = 0;
-
-  /* Initialize buf_invalid_list */
-#if defined(SERVER_MODE)
-  pgbuf_Pool.buf_invalid_list.invalid_mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
-  pgbuf_Pool.buf_invalid_list.invalid_top = NULL;
-  pgbuf_Pool.buf_invalid_list.invalid_cnt = 0;
-
-  pgbuf_Pool.victim_cand_list = NULL;
-
-  /* Initialize seq_chkpt_flusher */
-  pgbuf_Pool.seq_chkpt_flusher.flush_list = NULL;
-  LSA_SET_NULL (&pgbuf_Pool.seq_chkpt_flusher.flush_upto_lsa);
-  pgbuf_Pool.seq_chkpt_flusher.control_intervals_cnt = 0;
-  pgbuf_Pool.seq_chkpt_flusher.control_flushed = 0;
-  pgbuf_Pool.seq_chkpt_flusher.interval_msec = 0;
-  pgbuf_Pool.seq_chkpt_flusher.flush_max_size = 0;
-  pgbuf_Pool.seq_chkpt_flusher.flush_cnt = 0;
-  pgbuf_Pool.seq_chkpt_flusher.flush_idx = 0;
-  pgbuf_Pool.seq_chkpt_flusher.flushed_pages = 0;
-  pgbuf_Pool.seq_chkpt_flusher.flush_rate = 0.0f;
-  pgbuf_Pool.seq_chkpt_flusher.burst_mode = false;
 
   /* Initialize monitor - C++ members need special handling */
   pgbuf_Pool.monitor.dirties_cnt = 0;
@@ -1597,17 +1574,6 @@ pgbuf_initialize (void)
   pgbuf_Pool.monitor.bcb_locks = NULL;
 #endif
   pgbuf_Pool.monitor.victim_rich = false;
-
-  /* Initialize quota */
-  pgbuf_Pool.quota.num_private_LRU_list = 0;
-  pgbuf_Pool.quota.lru_victim_flush_priority_per_lru = NULL;
-  pgbuf_Pool.quota.private_lru_session_cnt = NULL;
-  pgbuf_Pool.quota.private_pages_ratio = 0.0f;
-  pgbuf_Pool.quota.add_shared_lru_idx = 0;
-  pgbuf_Pool.quota.avoid_shared_lru_idx = 0;
-  pgbuf_Pool.quota.last_adjust_time.tc = 0;
-  pgbuf_Pool.quota.adjust_age = 0;
-  pgbuf_Pool.quota.is_adjusting = 0;
 
   pgbuf_Pool.thrd_holder_info = NULL;
   pgbuf_Pool.thrd_reserved_holder = NULL;
@@ -1624,11 +1590,6 @@ pgbuf_initialize (void)
   pgbuf_Pool.is_flushing_victims = false;
   pgbuf_Pool.is_checkpoint = false;
 
-  /* Initialize direct_victims */
-  pgbuf_Pool.direct_victims.bcb_victims = NULL;
-  pgbuf_Pool.direct_victims.waiter_threads_high_priority = NULL;
-  pgbuf_Pool.direct_victims.waiter_threads_low_priority = NULL;
-
   pgbuf_Pool.flushed_bcbs = NULL;
 #endif
   pgbuf_Pool.private_lrus_with_victims = NULL;
@@ -1636,20 +1597,6 @@ pgbuf_initialize (void)
   pgbuf_Pool.shared_lrus_with_victims = NULL;
 
   pgbuf_Pool.show_status = NULL;
-  pgbuf_Pool.show_status_old.num_hit = 0;
-  pgbuf_Pool.show_status_old.num_page_request = 0;
-  pgbuf_Pool.show_status_old.num_pages_created = 0;
-  pgbuf_Pool.show_status_old.num_pages_written = 0;
-  pgbuf_Pool.show_status_old.num_pages_read = 0;
-  pgbuf_Pool.show_status_old.print_out_time = 0;
-  pgbuf_Pool.show_status_snapshot.free_pages = 0;
-  pgbuf_Pool.show_status_snapshot.victim_candidate_pages = 0;
-  pgbuf_Pool.show_status_snapshot.clean_pages = 0;
-  pgbuf_Pool.show_status_snapshot.dirty_pages = 0;
-  pgbuf_Pool.show_status_snapshot.num_index_pages = 0;
-  pgbuf_Pool.show_status_snapshot.num_data_pages = 0;
-  pgbuf_Pool.show_status_snapshot.num_system_pages = 0;
-  pgbuf_Pool.show_status_snapshot.num_temp_pages = 0;
 #if defined (SERVER_MODE)
   pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
@@ -9020,7 +8967,6 @@ static PGBUF_BCB *
 pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p)
 {
   PGBUF_BCB *bufptr;
-  PGBUF_ATOMIC_LATCH_IMPL impl;
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
@@ -9050,10 +8996,6 @@ pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p)
 
       PGBUF_BCB_LOCK (bufptr);
       bufptr->next_BCB = NULL;
-      impl.impl.latch_mode = PGBUF_LATCH_INVALID;
-      impl.impl.waiter_exists = false;
-      impl.impl.fcnt = 0;
-      bufptr->atomic_latch.store (impl.raw);
       pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_VOID_ZONE);
 
       perfmon_inc_stat (thread_p, PSTAT_PB_VICTIM_USE_INVALID_BCB);
@@ -9076,14 +9018,9 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 #if defined(SERVER_MODE)
   int rv;
 #endif /* SERVER_MODE */
-  PGBUF_ATOMIC_LATCH_IMPL impl;
 
   /* the caller is holding bufptr->mutex */
   VPID_SET_NULL (&bufptr->vpid);
-  impl.impl.latch_mode = PGBUF_LATCH_INVALID;
-  impl.impl.waiter_exists = false;
-  impl.impl.fcnt = 0;
-  bufptr->atomic_latch.store (impl.raw);
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
