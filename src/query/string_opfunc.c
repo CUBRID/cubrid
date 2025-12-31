@@ -20648,6 +20648,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
   millisec_s[0] = '\0';
   millisec = seconds = minutes = hours = 0;
+  quarters = weeks = 0;
   days = months = years = 0;
 
   switch (unit)
