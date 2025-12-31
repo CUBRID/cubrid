@@ -19585,13 +19585,14 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
 // Monthly Days and Monthly Cumulative Days Table
 // The 0th position is unused and left blank for array access efficiency.
 static const int days_per_month[2][13] = {
-    {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
-    {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
-  };
+  {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+  {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+};
+
 static const int cumulative_days_per_month[2][13] = {
-    {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365},
-    {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366}
-  };
+  {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365},
+  {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366}
+};
 
 /*
  * add_and_normalize_date_time ()
@@ -20528,6 +20529,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   char res_s[64], millisec_s[64];
   int error_status = NO_ERROR;
   DB_BIGINT millisec, seconds, minutes, hours;
+  DB_BIGINT quarters, weeks;
   DB_BIGINT days, months, years;
   DB_DATETIME db_datetime, *dt_p = NULL;
   DB_DATETIMETZ dt_tz;
@@ -20681,9 +20683,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
     case PT_WEEK:
       {
-	DB_BIGINT weeks = get_single_unit_value (expr_s, unit_int_val);
-	/* convert weeks and quarters to our units */
-	days += weeks * 7;
+	weeks = get_single_unit_value (expr_s, unit_int_val);
       }
       type = 2;
       break;
@@ -20695,9 +20695,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
     case PT_QUARTER:
       {
-	DB_BIGINT quarters = get_single_unit_value (expr_s, unit_int_val);
-	/* convert weeks and quarters to our units */
-	months += 3 * quarters;
+	quarters = get_single_unit_value (expr_s, unit_int_val);
       }
       type = 2;
       break;
@@ -20870,6 +20868,30 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       error_status = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
+    }
+
+  /* we have the sign of the amounts, turn them in absolute value */
+  years = ABS (years);
+  months = ABS (months);
+  days = ABS (days);
+  weeks = ABS (weeks);
+  quarters = ABS (quarters);
+  hours = ABS (hours);
+  minutes = ABS (minutes);
+  seconds = ABS (seconds);
+  millisec = ABS (millisec);
+
+  /* convert weeks and quarters to our units */
+  if (weeks != 0)
+    {
+      days += weeks * 7;
+      weeks = 0;
+    }
+
+  if (quarters != 0)
+    {
+      months += 3 * quarters;
+      quarters = 0;
     }
 
   /* 3. Convert string with date to DateTime or Time */
