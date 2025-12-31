@@ -24,26 +24,29 @@
 #ifndef _LOCK_TABLE_H_
 #define _LOCK_TABLE_H_
 
-#include "storage_common.h" // LOCK, LOCK_COMPATIBILITY
+#include "storage_common.h"	// LOCK, LOCK_COMPATIBILITY
 
 extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT];
 extern const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT];
-extern const char* lock_mode_string[LOCK_COUNT];
+extern const char *lock_mode_string[LOCK_COUNT];
 
 inline LOCK
-lock_conv (LOCK requested, LOCK current) {
+lock_conv (LOCK requested, LOCK current)
+{
   assert (lock_Conv[requested][current] != NA_LOCK);
   return lock_Conv[requested][current];
 }
 
 inline LOCK_COMPATIBILITY
-lock_compat (LOCK requested, LOCK current) {
+lock_compat (LOCK requested, LOCK current)
+{
   assert (lock_Comp[requested][current] != LOCK_COMPAT_UNKNOWN);
   return lock_Comp[requested][current];
 }
 
-inline const char*
-LOCK_TO_LOCKMODE_STRING (LOCK lock) {
+inline const char *
+LOCK_TO_LOCKMODE_STRING (LOCK lock)
+{
   assert (lock >= 0 && lock < LOCK_COUNT);
   return lock_mode_string[(int) lock];
 }
