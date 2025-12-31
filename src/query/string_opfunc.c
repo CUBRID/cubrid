@@ -20682,9 +20682,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       break;
 
     case PT_WEEK:
-      {
-	weeks = get_single_unit_value (expr_s, unit_int_val);
-      }
+      weeks = get_single_unit_value (expr_s, unit_int_val);
       type = 2;
       break;
 
@@ -20694,9 +20692,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       break;
 
     case PT_QUARTER:
-      {
-	quarters = get_single_unit_value (expr_s, unit_int_val);
-      }
+      quarters = get_single_unit_value (expr_s, unit_int_val);
       type = 2;
       break;
 
