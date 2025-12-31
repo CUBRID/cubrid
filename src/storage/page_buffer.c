@@ -9021,6 +9021,7 @@ pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 
   /* the caller is holding bufptr->mutex */
   VPID_SET_NULL (&bufptr->vpid);
+  set_latch (&bufptr->atomic_latch, PGBUF_LATCH_INVALID);
   assert ((bufptr->flags & PGBUF_BCB_FLAGS_MASK) == 0);
   pgbuf_bcb_change_zone (thread_p, bufptr, 0, PGBUF_INVALID_ZONE);
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
