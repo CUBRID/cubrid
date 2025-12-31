@@ -36,12 +36,14 @@ lock_conv (LOCK requested, LOCK current) {
   return lock_Conv[requested][current];
 }
 
-inline LOCK_COMPATIBILITY lock_compat (LOCK requested, LOCK current) {
+inline LOCK_COMPATIBILITY
+lock_compat (LOCK requested, LOCK current) {
   assert (lock_Comp[requested][current] != LOCK_COMPAT_UNKNOWN);
   return lock_Comp[requested][current];
 }
 
-inline const char* LOCK_TO_LOCKMODE_STRING (LOCK lock) {
+inline const char*
+LOCK_TO_LOCKMODE_STRING (LOCK lock) {
   assert (lock >= 0 && lock < LOCK_COUNT);
   return lock_mode_string[(int) lock];
 }
