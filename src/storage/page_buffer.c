@@ -3138,6 +3138,12 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 extern void
 pgbuf_thread_local_cache_init (THREAD_ENTRY * thread_p)
 {
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
   if (thread_p->m_pgbuf_thread_local_cache != NULL)
     {
       return;
@@ -3226,6 +3232,12 @@ pgbuf_thread_local_cache_init (THREAD_ENTRY * thread_p)
 void
 pgbuf_thread_local_cache_destroy (THREAD_ENTRY * thread_p)
 {
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
   if (thread_p->m_pgbuf_thread_local_cache)
     {
       db_private_free (thread_p, thread_p->m_pgbuf_thread_local_cache->bcb_array);
@@ -3239,6 +3251,12 @@ PAGE_PTR
 pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
 		  PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition)
 {
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
   if (thread_p->m_pgbuf_thread_local_cache == NULL
       || (fetch_mode != OLD_PAGE_PREVENT_DEALLOC && fetch_mode != OLD_PAGE && fetch_mode != OLD_PAGE_MAYBE_DEALLOCATED)
       || requestmode != PGBUF_LATCH_READ || condition != PGBUF_UNCONDITIONAL_LATCH)
@@ -3361,6 +3379,12 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
 bool
 pgbuf_is_chn_valid (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 {
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
   if (thread_p->m_pgbuf_thread_local_cache == NULL)
     {
       return true;		/* always valid page */
@@ -6136,6 +6160,12 @@ pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p)
   int rv;
 #endif /* SERVER_MODE */
 
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
   if (!thread_p->m_holder_anchor)
     {
       thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
@@ -6213,6 +6243,12 @@ pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   PGBUF_HOLDER *holder;
 
   assert (bufptr != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
   if (!thread_p->m_holder_anchor)
     {
       thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
@@ -6317,6 +6353,12 @@ pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
 
   /* holder->fix_count is always set to some meaningful value when the holder entry is allocated for use. So, at this
    * time, we do not need to initialize it. connect the BCB holder entry into free BCB holder list of given thread. */
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
 
   if (!thread_p->m_holder_anchor)
     {
@@ -13379,6 +13421,12 @@ pgbuf_get_holder (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_HOLDER *holder;
 
   assert (pgptr != NULL);
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
   if (!thread_p->m_holder_anchor)
     {
       thread_p->m_holder_anchor = &pgbuf_Pool.thrd_holder_info[thread_p->index];
