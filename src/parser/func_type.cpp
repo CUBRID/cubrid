@@ -2798,7 +2798,7 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 	{
 	  return PT_TYPE_SMALLINT;
 	}
-      return PT_TYPE_NUMERIC;
+      return PT_TYPE_DOUBLE;
 
     case PT_GENERIC_TYPE_CHAR:
     case PT_GENERIC_TYPE_STRING:

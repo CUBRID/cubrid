@@ -10403,7 +10403,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && PT_IS_STRING_TYPE (arg2_type))
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && PT_IS_STRING_TYPE (arg1_type)))
     {
-      common_type = PT_TYPE_NUMERIC;
+      common_type = PT_TYPE_DOUBLE;
     }
   else if ((PT_IS_STRING_TYPE (arg1_type) && arg2_type == PT_TYPE_JSON)
 	   || (arg1_type == PT_TYPE_JSON && PT_IS_STRING_TYPE (arg2_type)))
@@ -10413,7 +10413,7 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
   else if ((PT_IS_NUMERIC_TYPE (arg1_type) && arg2_type == PT_TYPE_MAYBE)
 	   || (PT_IS_NUMERIC_TYPE (arg2_type) && arg1_type == PT_TYPE_MAYBE))
     {
-      common_type = PT_TYPE_NUMERIC;
+      common_type = PT_TYPE_DOUBLE;
     }
   else
     {
@@ -10427,12 +10427,10 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_FLOAT:
 	    case PT_TYPE_DOUBLE:
+	    case PT_TYPE_NUMERIC:
 	    case PT_TYPE_LOGICAL:
 	    case PT_TYPE_ENUMERATION:
 	      common_type = PT_TYPE_DOUBLE;
-	      break;
-	    case PT_TYPE_NUMERIC:
-	      common_type = PT_TYPE_NUMERIC;
 	      break;
 	    case PT_TYPE_MONETARY:
 	      common_type = PT_TYPE_MONETARY;
@@ -10453,9 +10451,11 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    case PT_TYPE_BIGINT:
 	    case PT_TYPE_LOGICAL:
 	    case PT_TYPE_ENUMERATION:
+	      common_type = PT_TYPE_NUMERIC;
+	      break;
 	    case PT_TYPE_FLOAT:
 	    case PT_TYPE_DOUBLE:
-	      common_type = PT_TYPE_NUMERIC;
+	      common_type = PT_TYPE_DOUBLE;
 	      break;
 	    case PT_TYPE_MONETARY:
 	      common_type = PT_TYPE_MONETARY;
@@ -10478,10 +10478,8 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	      common_type = PT_TYPE_FLOAT;
 	      break;
 	    case PT_TYPE_DOUBLE:
-	      common_type = PT_TYPE_DOUBLE;
-	      break;
 	    case PT_TYPE_NUMERIC:
-	      common_type = PT_TYPE_NUMERIC;
+	      common_type = PT_TYPE_DOUBLE;
 	      break;
 	    case PT_TYPE_MONETARY:
 	      common_type = PT_TYPE_MONETARY;

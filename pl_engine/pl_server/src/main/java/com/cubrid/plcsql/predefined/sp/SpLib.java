@@ -4649,23 +4649,23 @@ public class SpLib {
                 // string
                 return opAdd((String) l, (String) r);
             } else if (r instanceof Short) {
-                // numeric
-                return opAdd(convStringToNumeric((String) l), convShortToNumeric((Short) r));
+                // double
+                return opAdd(convStringToDouble((String) l), convShortToDouble((Short) r));
             } else if (r instanceof Integer) {
-                // numeric
-                return opAdd(convStringToNumeric((String) l), convIntToNumeric((Integer) r));
+                // double
+                return opAdd(convStringToDouble((String) l), convIntToDouble((Integer) r));
             } else if (r instanceof Long) {
-                // numeric
-                return opAdd(convStringToNumeric((String) l), convBigintToNumeric((Long) r));
+                // double
+                return opAdd(convStringToDouble((String) l), convBigintToDouble((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opAdd(convStringToNumeric((String) l), (BigDecimal) r);
+                // double
+                return opAdd(convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
-                // numeric
-                return opAdd(convStringToNumeric((String) l), convFloatToNumeric((Float) r));
+                // double
+                return opAdd(convStringToDouble((String) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opAdd(convStringToNumeric((String) l), convDoubleToNumeric((Double) r));
+                // double
+                return opAdd(convStringToDouble((String) l), (Double) r);
             } else if (r instanceof Date) {
                 // (bigint, date)
                 return opAdd(convStringToBigint((String) l), (Date) r);
@@ -4681,8 +4681,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opAdd(convShortToNumeric((Short) l), convStringToNumeric((String) r));
+                // double
+                return opAdd(convShortToDouble((Short) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // short
                 return opAdd((Short) l, (Short) r);
@@ -4716,8 +4716,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opAdd(convIntToNumeric((Integer) l), convStringToNumeric((String) r));
+                // double
+                return opAdd(convIntToDouble((Integer) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // int
                 return opAdd((Integer) l, convShortToInt((Short) r));
@@ -4751,8 +4751,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opAdd(convBigintToNumeric((Long) l), convStringToNumeric((String) r));
+                // double
+                return opAdd(convBigintToDouble((Long) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // bigint
                 return opAdd((Long) l, convShortToBigint((Short) r));
@@ -4801,11 +4801,11 @@ public class SpLib {
                 // numeric
                 return opAdd((BigDecimal) l, (BigDecimal) r);
             } else if (r instanceof Float) {
-                // numeric
-                return opAdd((BigDecimal) l, convFloatToNumeric((Float) r));
+                // double
+                return opAdd(convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opAdd((BigDecimal) l, convDoubleToNumeric((Double) r));
+                // double
+                return opAdd(convNumericToDouble((BigDecimal) l), (Double) r);
             } else if (r instanceof Date) {
                 // (bigint, date)
                 return opAdd(convNumericToBigint((BigDecimal) l), (Date) r);
@@ -4821,8 +4821,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opAdd(convFloatToNumeric((Float) l), convStringToNumeric((String) r));
+                // double
+                return opAdd(convFloatToDouble((Float) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // float
                 return opAdd((Float) l, convShortToFloat((Short) r));
@@ -4833,8 +4833,8 @@ public class SpLib {
                 // float
                 return opAdd((Float) l, convBigintToFloat((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opAdd(convFloatToNumeric((Float) l), (BigDecimal) r);
+                // double
+                return opAdd(convFloatToDouble((Float) l), convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
                 // float
                 return opAdd((Float) l, (Float) r);
@@ -4856,8 +4856,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opAdd(convDoubleToNumeric((Double) l), convStringToNumeric((String) r));
+                // double
+                return opAdd((Double) l, convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // double
                 return opAdd((Double) l, convShortToDouble((Short) r));
@@ -4868,8 +4868,8 @@ public class SpLib {
                 // double
                 return opAdd((Double) l, convBigintToDouble((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opAdd(convDoubleToNumeric((Double) l), (BigDecimal) r);
+                // double
+                return opAdd((Double) l, convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
                 // double
                 return opAdd((Double) l, convFloatToDouble((Float) r));
@@ -4973,26 +4973,27 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opSubtract(convStringToNumeric((String) l), convStringToNumeric((String) r));
+                // double
+                return opSubtract(convStringToDouble((String) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
-                // numeric
-                return opSubtract(convStringToNumeric((String) l), convShortToNumeric((Short) r));
+                // double
+                return opSubtract(convStringToDouble((String) l), convShortToDouble((Short) r));
             } else if (r instanceof Integer) {
-                // numeric
-                return opSubtract(convStringToNumeric((String) l), convIntToNumeric((Integer) r));
+                // double
+                return opSubtract(convStringToDouble((String) l), convIntToDouble((Integer) r));
             } else if (r instanceof Long) {
-                // numeric
-                return opSubtract(convStringToNumeric((String) l), convBigintToNumeric((Long) r));
+                // double
+                return opSubtract(convStringToDouble((String) l), convBigintToDouble((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opSubtract(convStringToNumeric((String) l), (BigDecimal) r);
+                // double
+                return opSubtract(
+                        convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
-                // numeric
-                return opSubtract(convStringToNumeric((String) l), convFloatToNumeric((Float) r));
+                // double
+                return opSubtract(convStringToDouble((String) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opSubtract(convStringToNumeric((String) l), convDoubleToNumeric((Double) r));
+                // double
+                return opSubtract(convStringToDouble((String) l), (Double) r);
             } else if (r instanceof Date) {
                 // datetime
                 return opSubtract(convStringToDatetime((String) l), convDateToDatetime((Date) r));
@@ -5008,8 +5009,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opSubtract(convShortToNumeric((Short) l), convStringToNumeric((String) r));
+                // double
+                return opSubtract(convShortToDouble((Short) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // short
                 return opSubtract((Short) l, (Short) r);
@@ -5041,8 +5042,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opSubtract(convIntToNumeric((Integer) l), convStringToNumeric((String) r));
+                // double
+                return opSubtract(convIntToDouble((Integer) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // int
                 return opSubtract((Integer) l, convShortToInt((Short) r));
@@ -5074,8 +5075,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opSubtract(convBigintToNumeric((Long) l), convStringToNumeric((String) r));
+                // double
+                return opSubtract(convBigintToDouble((Long) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // bigint
                 return opSubtract((Long) l, convShortToBigint((Short) r));
@@ -5107,8 +5108,9 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opSubtract((BigDecimal) l, convStringToNumeric((String) r));
+                // double
+                return opSubtract(
+                        convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // numeric
                 return opSubtract((BigDecimal) l, convShortToNumeric((Short) r));
@@ -5122,11 +5124,12 @@ public class SpLib {
                 // numeric
                 return opSubtract((BigDecimal) l, (BigDecimal) r);
             } else if (r instanceof Float) {
-                // numeric
-                return opSubtract((BigDecimal) l, convFloatToNumeric((Float) r));
+                // double
+                return opSubtract(
+                        convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opSubtract((BigDecimal) l, convDoubleToNumeric((Double) r));
+                // double
+                return opSubtract(convNumericToDouble((BigDecimal) l), (Double) r);
             } else if (r instanceof Date) {
                 // not applicable
             } else if (r instanceof Time) {
@@ -5140,8 +5143,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opSubtract(convFloatToNumeric((Float) l), convStringToNumeric((String) r));
+                // double
+                return opSubtract(convFloatToDouble((Float) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // float
                 return opSubtract((Float) l, convShortToFloat((Short) r));
@@ -5152,8 +5155,9 @@ public class SpLib {
                 // float
                 return opSubtract((Float) l, convBigintToFloat((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opSubtract(convFloatToNumeric((Float) l), (BigDecimal) r);
+                // double
+                return opSubtract(
+                        convFloatToDouble((Float) l), convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
                 // float
                 return opSubtract((Float) l, (Float) r);
@@ -5173,8 +5177,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opSubtract(convDoubleToNumeric((Double) l), convStringToNumeric((String) r));
+                // double
+                return opSubtract((Double) l, convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // double
                 return opSubtract((Double) l, convShortToDouble((Short) r));
@@ -5185,8 +5189,8 @@ public class SpLib {
                 // double
                 return opSubtract((Double) l, convBigintToDouble((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opSubtract(convDoubleToNumeric((Double) l), (BigDecimal) r);
+                // double
+                return opSubtract((Double) l, convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
                 // double
                 return opSubtract((Double) l, convFloatToDouble((Float) r));
@@ -5289,26 +5293,26 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opMult(convStringToNumeric((String) l), convStringToNumeric((String) r));
+                // double
+                return opMult(convStringToDouble((String) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
-                // numeric
-                return opMult(convStringToNumeric((String) l), convShortToNumeric((Short) r));
+                // double
+                return opMult(convStringToDouble((String) l), convShortToDouble((Short) r));
             } else if (r instanceof Integer) {
-                // numeric
-                return opMult(convStringToNumeric((String) l), convIntToNumeric((Integer) r));
+                // double
+                return opMult(convStringToDouble((String) l), convIntToDouble((Integer) r));
             } else if (r instanceof Long) {
-                // numeric
-                return opMult(convStringToNumeric((String) l), convBigintToNumeric((Long) r));
+                // double
+                return opMult(convStringToDouble((String) l), convBigintToDouble((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opMult(convStringToNumeric((String) l), (BigDecimal) r);
+                // double
+                return opMult(convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
-                // numeric
-                return opMult(convStringToNumeric((String) l), convFloatToNumeric((Float) r));
+                // double
+                return opMult(convStringToDouble((String) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opMult(convStringToNumeric((String) l), convDoubleToNumeric((Double) r));
+                // double
+                return opMult(convStringToDouble((String) l), (Double) r);
             } else if (r instanceof Date) {
                 // not applicable
             } else if (r instanceof Time) {
@@ -5322,8 +5326,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opMult(convShortToNumeric((Short) l), convStringToNumeric((String) r));
+                // double
+                return opMult(convShortToDouble((Short) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // short
                 return opMult((Short) l, (Short) r);
@@ -5355,8 +5359,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opMult(convIntToNumeric((Integer) l), convStringToNumeric((String) r));
+                // double
+                return opMult(convIntToDouble((Integer) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // int
                 return opMult((Integer) l, convShortToInt((Short) r));
@@ -5388,8 +5392,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opMult(convBigintToNumeric((Long) l), convStringToNumeric((String) r));
+                // double
+                return opMult(convBigintToDouble((Long) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // bigint
                 return opMult((Long) l, convShortToBigint((Short) r));
@@ -5421,8 +5425,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opMult((BigDecimal) l, convStringToNumeric((String) r));
+                // double
+                return opMult(convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // numeric
                 return opMult((BigDecimal) l, convShortToNumeric((Short) r));
@@ -5436,11 +5440,11 @@ public class SpLib {
                 // numeric
                 return opMult((BigDecimal) l, (BigDecimal) r);
             } else if (r instanceof Float) {
-                // numeric
-                return opMult((BigDecimal) l, convFloatToNumeric((Float) r));
+                // double
+                return opMult(convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opMult((BigDecimal) l, convDoubleToNumeric((Double) r));
+                // double
+                return opMult(convNumericToDouble((BigDecimal) l), (Double) r);
             } else if (r instanceof Date) {
                 // not applicable
             } else if (r instanceof Time) {
@@ -5454,8 +5458,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opMult(convFloatToNumeric((Float) l), convStringToNumeric((String) r));
+                // double
+                return opMult(convFloatToDouble((Float) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // float
                 return opMult((Float) l, convShortToFloat((Short) r));
@@ -5487,8 +5491,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opMult((Double) l, convStringToNumeric((String) r));
+                // double
+                return opMult((Double) l, convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // double
                 return opMult((Double) l, convShortToDouble((Short) r));
@@ -5542,26 +5546,26 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), convStringToNumeric((String) r));
+                // double
+                return opDiv(convStringToDouble((String) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), convShortToNumeric((Short) r));
+                // double
+                return opDiv(convStringToDouble((String) l), convShortToDouble((Short) r));
             } else if (r instanceof Integer) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), convIntToNumeric((Integer) r));
+                // double
+                return opDiv(convStringToDouble((String) l), convIntToDouble((Integer) r));
             } else if (r instanceof Long) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), convBigintToNumeric((Long) r));
+                // double
+                return opDiv(convStringToDouble((String) l), convBigintToDouble((Long) r));
             } else if (r instanceof BigDecimal) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), (BigDecimal) r);
+                // double
+                return opDiv(convStringToDouble((String) l), convNumericToDouble((BigDecimal) r));
             } else if (r instanceof Float) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), convFloatToNumeric((Float) r));
+                // double
+                return opDiv(convStringToDouble((String) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), convDoubleToNumeric((Double) r));
+                // double
+                return opDiv(convStringToDouble((String) l), (Double) r);
             } else if (r instanceof Date) {
                 // not applicable
             } else if (r instanceof Time) {
@@ -5575,8 +5579,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opDiv(convShortToNumeric((Short) l), convStringToNumeric((String) r));
+                // double
+                return opDiv(convShortToDouble((Short) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // short
                 return opDiv((Short) l, (Short) r);
@@ -5608,8 +5612,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opDiv(convIntToNumeric((Integer) l), convStringToNumeric((String) r));
+                // double
+                return opDiv(convIntToDouble((Integer) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // int
                 return opDiv((Integer) l, convShortToInt((Short) r));
@@ -5641,8 +5645,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opDiv(convBigintToNumeric((Long) l), convStringToNumeric((String) r));
+                // double
+                return opDiv(convBigintToDouble((Long) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // bigint
                 return opDiv((Long) l, convShortToBigint((Short) r));
@@ -5674,8 +5678,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opDiv((BigDecimal) l, convStringToNumeric((String) r));
+                // double
+                return opDiv(convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // numeric
                 return opDiv((BigDecimal) l, convShortToNumeric((Short) r));
@@ -5689,11 +5693,11 @@ public class SpLib {
                 // numeric
                 return opDiv((BigDecimal) l, (BigDecimal) r);
             } else if (r instanceof Float) {
-                // numeric
-                return opDiv((BigDecimal) l, convFloatToNumeric((Float) r));
+                // double
+                return opDiv(convNumericToDouble((BigDecimal) l), convFloatToDouble((Float) r));
             } else if (r instanceof Double) {
-                // numeric
-                return opDiv((BigDecimal) l, convDoubleToNumeric((Double) r));
+                // double
+                return opDiv(convNumericToDouble((BigDecimal) l), (Double) r);
             } else if (r instanceof Date) {
                 // not applicable
             } else if (r instanceof Time) {
@@ -5707,8 +5711,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opDiv(convFloatToNumeric((Float) l), convStringToNumeric((String) r));
+                // double
+                return opDiv(convFloatToDouble((Float) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // float
                 return opDiv((Float) l, convShortToFloat((Short) r));
@@ -5740,8 +5744,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opDiv(convStringToNumeric((String) l), convDoubleToNumeric((Double) r));
+                // double
+                return opDiv((Double) l, convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // double
                 return opDiv((Double) l, convShortToDouble((Short) r));
