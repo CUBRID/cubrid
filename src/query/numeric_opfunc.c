@@ -125,7 +125,7 @@ static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
-const int _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
+const int _gv_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
   1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15,
   15, 15, 16, 16, 17, 17, 18, 18, 18
 };
@@ -661,7 +661,7 @@ float_numeric_init_pow10_table (void)
 static int
 float_numeric_precision_to_bytes (int prec)
 {
-  const double log10_256 = log10 (256.0);
+  static const double log10_256 = log10 (256.0);
 
   if (prec == 0)
     {
@@ -3437,7 +3437,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 
   /* 6) initialize new calculation buffers and pad absolute values */
   int extra_bytes = float_numeric_precision_to_bytes (exponent10 > 0 ? exponent10 : 0);
-  calc_bytes = ((int) DB_NUMERIC_BUF_SIZE + extra_bytes + 2);	// +2 여유
+  calc_bytes = ((int) DB_NUMERIC_BUF_SIZE + extra_bytes + 2);
   if (calc_bytes <= (int) DB_NUMERIC_BUF_SIZE)
     {
       calc_bytes = (int) DB_NUMERIC_BUF_SIZE + 2;
@@ -4015,7 +4015,7 @@ void
 float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale)
 {
   int tmp_scale = 0;
-  unsigned char base256_of_zero[DB_NUMERIC_BUF_SIZE];
+  static unsigned char base256_of_zero[DB_NUMERIC_BUF_SIZE];
 
   assert (scale != 0);
 
@@ -4035,7 +4035,7 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
        * until the remainder becomes non-zero.
        */
       int i = 0;
-      unsigned char base256_of_ten[DB_NUMERIC_BUF_SIZE];
+      static unsigned char base256_of_ten[DB_NUMERIC_BUF_SIZE];
 
       numeric_zero (base256_of_ten, DB_NUMERIC_BUF_SIZE);
       base256_of_ten[DB_NUMERIC_BUF_SIZE - 1] = 10;

@@ -17944,7 +17944,6 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    {
 	      int src_prec = value->dbvalue.domain.numeric_info.precision;
 	      int src_scale = value->dbvalue.domain.numeric_info.scale;
-	      int dest_prec = dest_dom->precision;
 	      int dest_scale = dest_dom->scale;
 
 	      bool can_skip_cast = false;

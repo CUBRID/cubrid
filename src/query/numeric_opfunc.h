@@ -89,7 +89,7 @@ typedef enum
  * Conversion formula: bytes = ceil(precision / log10(256))
  * Note: log10(256) = 2.40824
  */
-extern const int _gv_float_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION];
+extern const int _gv_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION];
 
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);
