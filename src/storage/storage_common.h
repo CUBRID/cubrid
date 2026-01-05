@@ -677,7 +677,7 @@ typedef enum
   BTREE_REVERSE_INDEX,
   BTREE_PRIMARY_KEY,
   BTREE_FOREIGN_KEY,
-  VECTOR_INDEX
+  HNSW_VECTOR_INDEX
 } BTREE_TYPE;
 
 /************************************************************************/

@@ -300,11 +300,11 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 	  bt_stat_index = 0;
 	  for (j = 0; j < or_att->n_btids; j++)
 	    {
-	      if (or_att->btids[j].type == VECTOR_INDEX)
+	      if (or_att->btids[j].type == HNSW_VECTOR_INDEX)
 		{
 		  continue;
 		}
-	      bt_statsp = att->bt_stats + bt_stat_index++;
+	      bt_statsp = &att->bt_stats[bt_stat_index++];
 	      bt_statsp->btid = or_att->btids[j].btid;
 
 	      bt_statsp->leafs = 0;
@@ -403,8 +403,8 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		{
 		  bt_statsp->pkeys[k] = 0;
 		}
-	      assert (bt_stat_index == n_btstats);
 	    }			/* for (j = 0, ...) */
+	  assert (bt_stat_index == n_btstats);
 	}
       else
 	{
@@ -2190,7 +2190,7 @@ or_install_btids_attribute (OR_CLASSREP * rep, int att_id, BTID * id, BTREE_TYPE
 	  ptr->btids[ptr->n_btids].btid = *id;
 	  ptr->btids[ptr->n_btids].type = type;
 	  ptr->n_btids += 1;
-	  if (type == VECTOR_INDEX)
+	  if (type == HNSW_VECTOR_INDEX)
 	    {
 	      ptr->n_vector_indexes += 1;
 	    }
@@ -2311,7 +2311,7 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
     {SM_PROPERTY_REVERSE_UNIQUE, NULL, BTREE_REVERSE_UNIQUE, 0},
     {SM_PROPERTY_INDEX, NULL, BTREE_INDEX, 0},
     {SM_PROPERTY_REVERSE_INDEX, NULL, BTREE_REVERSE_INDEX, 0},
-    {SM_PROPERTY_VECTOR_INDEX, NULL, VECTOR_INDEX, 0}
+    {SM_PROPERTY_VECTOR_INDEX, NULL, HNSW_VECTOR_INDEX, 0}
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];
@@ -3557,7 +3557,8 @@ or_get_constraint_comment (RECDES * record, const char *constraint_name)
 
       if (strcmp (prop_name, SM_PROPERTY_PRIMARY_KEY) != 0 && strcmp (prop_name, SM_PROPERTY_UNIQUE) != 0
 	  && strcmp (prop_name, SM_PROPERTY_REVERSE_UNIQUE) != 0 && strcmp (prop_name, SM_PROPERTY_INDEX) != 0
-	  && strcmp (prop_name, SM_PROPERTY_REVERSE_INDEX) != 0 && strcmp (prop_name, SM_PROPERTY_FOREIGN_KEY) != 0)
+	  && strcmp (prop_name, SM_PROPERTY_REVERSE_INDEX) != 0 && strcmp (prop_name, SM_PROPERTY_FOREIGN_KEY) != 0
+	  && strcmp (prop_name, SM_PROPERTY_VECTOR_INDEX) != 0)
 	{
 	  continue;
 	}

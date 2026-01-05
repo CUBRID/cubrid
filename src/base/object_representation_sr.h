@@ -108,6 +108,12 @@ struct or_attribute
   DB_DEFAULT_EXPR_TYPE on_update_expr;	/* on update default expr type */
   OR_DEFAULT_VALUE default_value;	/* default value */
   OR_DEFAULT_VALUE current_default_value;	/* default value */
+
+  /* TODO (CUBVEC): This is a temporary solution to support vector indexes.
+   * Currently, we store vector index with normal indexes in the same array (btids).
+   * Further, we need to separate vector index from normal indexes.
+   * We also need to consider to change name of variable to avoid confusion.
+   */
   OR_ATTRIBUTE_INDEX *btids;	/* B-tree ID's for indexes and constraints */
   TP_DOMAIN *domain;		/* full domain of this attribute */
 

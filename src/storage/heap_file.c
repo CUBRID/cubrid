@@ -7041,7 +7041,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
 	      // TODO (CUBVEC): refactor this code
-	      if (classrepr->indexes[i].type != VECTOR_INDEX)
+	      if (classrepr->indexes[i].type != HNSW_VECTOR_INDEX)
 		{
 		  scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
 		}
