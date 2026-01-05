@@ -1252,7 +1252,7 @@ unix_style_path (char *path)
 static int
 logddl_create_dir (const char *new_dir)
 {
-  char *p, path[PATH_MAX] = { 0 };
+  char *p, path[4096] = { 0 };
   int len;
 
   if (new_dir == NULL)
@@ -1277,7 +1277,7 @@ logddl_create_dir (const char *new_dir)
 #if defined(WINDOWS)
   if (path[0] == '/')
     p = path + 1;
-  else if (strlen (path) > 2 && path[2] == '/')
+  else if (strlen (path) > 3 && path[2] == '/')
     p = path + 3;
 #else /* WINDOWS */
   if (path[0] == '/')
