@@ -72,6 +72,13 @@ namespace cubconn::connection
 	m_contexts;
       };
 
+      enum class scaling_direction
+      {
+	NA,
+	DOWN,
+	UP
+      };
+
       struct scaling_statistics
       {
 	double BYTES_INOUT;
@@ -256,8 +263,14 @@ namespace cubconn::connection
       /* auto scaling */
       struct
       {
-
+	std::size_t window_size;
 	std::vector<scaling_statistics> history;
+
+	scaling_direction previous_direction;
+	std::size_t previous_scale;
+
+	scaling_direction direction;
+	std::size_t count;
       } m_scaling_statistics;
 
       /* statistics */
@@ -277,6 +290,7 @@ namespace cubconn::connection
       /* utility								     */
       /* --------------------------------------------------------------------------- */
       uint64_t get_monotonic_ns ();
+      bool random_bit ();
 
       /* --------------------------------------------------------------------------- */
       /* transfer and scale							     */
@@ -287,6 +301,8 @@ namespace cubconn::connection
 
       bool scale_down_finish ();
       bool scale_down ();
+
+      void scale_determine ();
 
       /* --------------------------------------------------------------------------- */
       /* statistics								     */

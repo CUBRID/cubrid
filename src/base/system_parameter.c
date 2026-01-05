@@ -784,6 +784,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
 #define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
 
+#define PRM_NAME_CSS_AUTO_SCALING_WINDOW_SIZE "auto_scaling_window_size"
+
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
 
@@ -5190,6 +5192,22 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_CSS_MIN_CONNECTION_WORKER,
    PRM_NAME_CSS_MIN_CONNECTION_WORKER,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 4}},
+   {false, {.i = 4}},
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   NULL_SYSPRM_PARAM_VALUE,
+#endif
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE,
+   PRM_NAME_CSS_AUTO_SCALING_WINDOW_SIZE,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,

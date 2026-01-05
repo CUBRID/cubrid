@@ -28,6 +28,8 @@
 #include "connection_sr.h"
 #include "server_support.h"
 
+#include <random>
+#include <algorithm>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
@@ -35,6 +37,8 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+#define EWMA_ALPHA 0.02
 
 #define VAL_TO_SCORE(w, m, s) ((w) * static_cast<double> (s) / (m))
 #define EVAL_WORKER(mq, rmutex) (VAL_TO_SCORE (25, 3.5, (mq)) + VAL_TO_SCORE (500, 1, (rmutex)))
@@ -57,6 +61,7 @@ namespace cubconn::connection
     m_stop (false),
     m_max_worker (max_worker),
     m_min_worker (min_worker),
+    m_current_worker (max_worker),
     m_statistics (max_worker)
   {
     std::size_t i;
@@ -122,7 +127,12 @@ namespace cubconn::connection
     m_scaling.draining_worker = -1;
 
     /* auto scaling */
-    m_scaling_statistics.history.reserve (max_worker);
+    m_scaling_statistics.window_size =
+	    static_cast<std::size_t> (prm_get_integer_value (PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE));
+    m_scaling_statistics.history.reserve (m_scaling_statistics.window_size + 1);
+    m_scaling_statistics.previous_direction = scaling_direction::NA;
+    m_scaling_statistics.previous_scale = m_max_worker;
+    this->scale_determine ();
 
     /* task statistics */
     m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
@@ -146,7 +156,6 @@ namespace cubconn::connection
 	/* this doesn't use much memory */
 	m_statistics[i].m_contexts.reserve (256);
       }
-    m_current_worker = m_max_worker;
 
     m_thread = std::thread (&coordinator::attach, this);
   }
@@ -213,6 +222,14 @@ namespace cubconn::connection
       }
 
     return (uint64_t) ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+  }
+
+  bool coordinator::random_bit ()
+  {
+    static std::mt19937 gen (std::random_device { } ());
+    static std::bernoulli_distribution d (0.5);
+
+    return d (gen);
   }
 
   bool coordinator::transfer_connection (uint64_t id, int from, int to)
@@ -356,6 +373,10 @@ namespace cubconn::connection
     return true;
   }
 
+  void coordinator::scale_determine ()
+  {
+  }
+
   void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current)
   {
     double diff;
@@ -415,7 +436,6 @@ namespace cubconn::connection
       std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
       std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts)
   {
-    constexpr double alpha = 0.02;
     std::size_t index;
 
     index = worker.first;
@@ -425,13 +445,13 @@ namespace cubconn::connection
 	m_statistics[index].m_sum.reset ();
 
 	/* update EWMA */
-	this->statistics_EWMA (alpha, delta, m_statistics[index].m_worker.first, m_statistics[index].m_worker.second,
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_statistics[index].m_worker.first, m_statistics[index].m_worker.second,
 			       worker.second);
 	for (auto &stats : contexts)
 	  {
 	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
 
-	    this->statistics_EWMA (alpha, delta, m_statistics[index].m_contexts[stats.first].first,
+	    this->statistics_EWMA (EWMA_ALPHA, delta, m_statistics[index].m_contexts[stats.first].first,
 				   m_statistics[index].m_contexts[stats.first].second, stats.second);
 	  }
       }
@@ -459,7 +479,6 @@ namespace cubconn::connection
 
   void coordinator::statistics_update_task ()
   {
-    constexpr double alpha = 0.02;
     uint64_t stats[3] = { 0, 0, 0 };
     uint64_t depth;
     uint64_t delta, time_ns;
@@ -472,10 +491,12 @@ namespace cubconn::connection
     depth = stats[0] > stats[1] ? stats[0] - stats[1] : 0;
     if (m_task_statistics.requested.second)
       {
-	this->statistics_EWMA (alpha, delta, m_task_statistics.requested.first, m_task_statistics.requested.second, stats[0]);
-	this->statistics_EWMA (alpha, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
-	this->statistics_EWMA (alpha, delta, m_task_statistics.completed.first, m_task_statistics.completed.second, stats[2]);
-	this->statistics_EWMA (alpha, delta, m_task_statistics.depth.first, m_task_statistics.depth.second, depth);
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.requested.first, m_task_statistics.requested.second,
+			       stats[0]);
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.completed.first, m_task_statistics.completed.second,
+			       stats[2]);
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.depth.first, m_task_statistics.depth.second, depth);
       }
     else
       {
