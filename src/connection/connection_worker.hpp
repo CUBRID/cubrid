@@ -63,6 +63,7 @@ namespace cubconn::connection
       enum class timer_type : uint32_t
       {
 	NA,
+	HIBERNATE,
 	STATISTICS,
 	QUEUE,
 	HA,
@@ -74,10 +75,8 @@ namespace cubconn::connection
       {
 	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint64_t> (1 * 1e6), /* 1 msec */
-	MEDIUM_LATENCY = static_cast<uint64_t> (400 * 1e6), /* 400 msec */
-	HIGH_LATENCY = static_cast<uint64_t> (2 * 1e9), /* 2 sec */
-
-	MAXIMUM_LATENCY = static_cast<uint64_t> (UINT64_MAX - 1) /* virtually off */
+	MEDIUM_LATENCY = static_cast<uint64_t> (1 * 1e9), /* 1 sec */
+	HIGH_LATENCY = static_cast<uint64_t> (2 * 1e9) /* 2 sec */
       };
 
       struct timer_handle
@@ -255,6 +254,7 @@ namespace cubconn::connection
       /* utility								     */
       /* --------------------------------------------------------------------------- */
       uint64_t get_time_ns (clockid_t type);
+
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
@@ -271,9 +271,11 @@ namespace cubconn::connection
       bool handle_connection_close (context *ctx, bool retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 
       /* --------------------------------------------------------------------------- */
-      /* STATISTICS								     */
+      /* statistics and hibernation						     */
       /* --------------------------------------------------------------------------- */
       bool statistics_metrics_to_coordinator ();
+
+      bool hibernate_check ();
 
       /* --------------------------------------------------------------------------- */
       /* HA									     */

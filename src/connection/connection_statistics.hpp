@@ -69,6 +69,8 @@ namespace cubconn::statistics
     /* message queue								   */
     /* --------------------------------------------------------------------------- */
     MQ_REQUESTED, /* count */
+
+    MQ_COMPLETED, /* count */
     MQ_NEW_CLIENT, /* count */
     MQ_HANDOFF_CLIENT, /* count */
     MQ_TAKEOVER_CLIENT, /* count */
@@ -94,6 +96,8 @@ namespace cubconn::statistics
     { "CLIENT_NUM", "" },
 
     { "MQ_REQUESTED", "" },
+
+    { "MQ_COMPLETED", "" },
     { "MQ_NEW_CLIENT", "" },
     { "MQ_HANDOFF_CLIENT", "" },
     { "MQ_TAKEOVER_CLIENT", "" },
@@ -115,16 +119,16 @@ namespace cubconn::statistics
       ~metrics ();
 
       metrics (const metrics &other);
-      metrics &operator= (const metrics &other);
+      inline metrics &operator= (const metrics &other);
 
       metrics (metrics &&other) noexcept = default;
-      metrics &operator= (metrics &&other) noexcept = default;
+      inline metrics &operator= (metrics &&other) noexcept = default;
 
       template <typename OtherVT>
       metrics (metrics<T, OtherVT> &other);
       template <typename OtherVT>
-      metrics &operator= (metrics<T, OtherVT> &other);
-      metrics &operator+= (metrics &other);
+      inline metrics &operator= (metrics<T, OtherVT> &other);
+      inline metrics &operator+= (metrics &other);
 
       inline metrics operator+ (const metrics &other);
       inline metrics<T, double> operator- (const metrics &other);
@@ -161,7 +165,7 @@ namespace cubconn::statistics
   }
 
   template <class T, typename VT>
-  metrics<T, VT> &metrics<T, VT>::operator= (const metrics &other)
+  inline metrics<T, VT> &metrics<T, VT>::operator= (const metrics &other)
   {
     if (this != &other)
       {
@@ -184,7 +188,7 @@ namespace cubconn::statistics
 
   template <class T, typename VT>
   template <typename OtherVT>
-  metrics<T, VT> &metrics<T, VT>::operator= (metrics<T, OtherVT> &other)
+  inline metrics<T, VT> &metrics<T, VT>::operator= (metrics<T, OtherVT> &other)
   {
     std::size_t i;
 
@@ -196,7 +200,7 @@ namespace cubconn::statistics
   }
 
   template <class T, typename VT>
-  metrics<T, VT> &metrics<T, VT>::operator+= (metrics &other)
+  inline metrics<T, VT> &metrics<T, VT>::operator+= (metrics &other)
   {
     std::size_t i;
 
@@ -209,7 +213,7 @@ namespace cubconn::statistics
   }
 
   template <class T, typename VT>
-  metrics<T, VT> metrics<T, VT>::operator+ (const metrics &other)
+  inline metrics<T, VT> metrics<T, VT>::operator+ (const metrics &other)
   {
     metrics result;
     std::size_t i;
@@ -223,7 +227,7 @@ namespace cubconn::statistics
   }
 
   template <class T, typename VT>
-  metrics<T, double> metrics<T, VT>::operator- (const metrics &other)
+  inline metrics<T, double> metrics<T, VT>::operator- (const metrics &other)
   {
     metrics<T, double> result;
     std::size_t i;
@@ -237,7 +241,7 @@ namespace cubconn::statistics
   }
 
   template <class T, typename VT>
-  metrics<T, double> metrics<T, VT>::operator* (double multiplier)
+  inline metrics<T, double> metrics<T, VT>::operator* (double multiplier)
   {
     metrics<T, double> result;
     std::size_t i;
@@ -251,37 +255,37 @@ namespace cubconn::statistics
   }
 
   template <class T, typename VT>
-  void metrics<T, VT>::reset ()
+  inline void metrics<T, VT>::reset ()
   {
     std::memset (m_values, 0, sizeof (m_values));
   }
 
   template <class T, typename VT>
-  void metrics<T, VT>::add (T key, VT value)
+  inline void metrics<T, VT>::add (T key, VT value)
   {
     m_values[static_cast<std::size_t> (key)] += value;
   }
 
   template <class T, typename VT>
-  void metrics<T, VT>::sub (T key, VT value)
+  inline void metrics<T, VT>::sub (T key, VT value)
   {
     m_values[static_cast<std::size_t> (key)] -= value;
   }
 
   template <class T, typename VT>
-  VT metrics<T, VT>::get (T key)
+  inline VT metrics<T, VT>::get (T key)
   {
     return m_values[static_cast<std::size_t> (key)];
   }
 
   template <class T, typename VT>
-  void metrics<T, VT>::set (T key, VT value)
+  inline void metrics<T, VT>::set (T key, VT value)
   {
     m_values[static_cast<std::size_t> (key)] = value;
   }
 
   template <class T, typename VT>
-  void metrics<T, VT>::copy_from (const metrics &src)
+  inline void metrics<T, VT>::copy_from (const metrics &src)
   {
     std::memcpy (m_values, src.m_values, sizeof (m_values));
   }

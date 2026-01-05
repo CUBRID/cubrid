@@ -728,7 +728,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
-#define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
+#define PRM_NAME_TASK_GROUP "task_group"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
@@ -779,10 +779,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
 #define PRM_NAME_TCP_KEEPALIVE_COUNT "tcp_keepalive_count"
 
-#define PRM_NAME_THREAD_WORKER_COUNT "thread_worker_count"
+#define PRM_NAME_TASK_WORKER "task_worker"
 
 #define PRM_NAME_CSS_MAX_CONNECTION_WORKER "max_connection_worker"
 #define PRM_NAME_CSS_MIN_CONNECTION_WORKER "min_connection_worker"
+
+#define PRM_NAME_CSS_AUTO_SCALING_WINDOW_SIZE "auto_scaling_window_size"
 
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
@@ -4725,8 +4727,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_THREAD_CORE_COUNT,
-   PRM_NAME_THREAD_CORE_COUNT,
+  {PRM_ID_TASK_GROUP,
+   PRM_NAME_TASK_GROUP,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
@@ -5153,8 +5155,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_THREAD_WORKER_COUNT,
-   PRM_NAME_THREAD_WORKER_COUNT,
+  {PRM_ID_TASK_WORKER,
+   PRM_NAME_TASK_WORKER,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
@@ -5190,6 +5192,22 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_CSS_MIN_CONNECTION_WORKER,
    PRM_NAME_CSS_MIN_CONNECTION_WORKER,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 4}},
+   {false, {.i = 4}},
+#if defined (SERVER_MODE)
+   {false, {.i = (int) cubthread::system_core_count ()}},
+#else
+   NULL_SYSPRM_PARAM_VALUE,
+#endif
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE,
+   PRM_NAME_CSS_AUTO_SCALING_WINDOW_SIZE,
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
@@ -9810,7 +9828,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
-  SYSPRM_PARAM *thread_core_count_prm;
+  SYSPRM_PARAM *task_group_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
@@ -9863,15 +9881,15 @@ prm_tune_parameters (void)
 	}
 
 #if defined (SERVER_MODE)
-      thread_core_count_prm = GET_PRM (PRM_ID_THREAD_CORE_COUNT);
+      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
       min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
       system_cpu_count = cubthread::system_core_count ();
 
-      if (PRM_GET_INT (thread_core_count_prm->value) > system_cpu_count)
+      if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
-	  (void) prm_set (thread_core_count_prm, newval, false);
+	  (void) prm_set (task_group_prm, newval, false);
 	}
       if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
 	{
