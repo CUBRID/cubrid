@@ -16794,9 +16794,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  select_list_ex = NULL;
 
 	  /* register initial outlist */
-	  xasl->outptr_list =
-	    (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT)) ? buildlist->
-	    a_outptr_list : buildlist->a_outptr_list_ex;
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      xasl->outptr_list = buildlist->a_outptr_list;
+	    }
+	  else
+	    {
+	      xasl->outptr_list = buildlist->a_outptr_list_ex;
+	    }
 
 	  /* all done */
 	  goto analytic_exit;
