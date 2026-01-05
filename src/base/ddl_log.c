@@ -1253,6 +1253,7 @@ static int
 logddl_create_dir (const char *new_dir)
 {
   char *p, path[PATH_MAX] = { 0 };
+  int len;
 
   if (new_dir == NULL)
     return -1;
@@ -1267,14 +1268,16 @@ logddl_create_dir (const char *new_dir)
     {
       return 0;
     }
-  path[(int) strlen (path)] = '/';
+  len = strlen (path);
+  path[len] = '/';
+  path[len + 1] = '\0';
 #endif /* WINDOWS */
 
   p = path;
 #if defined(WINDOWS)
   if (path[0] == '/')
     p = path + 1;
-  else if (strlen (path) > 3 && path[2] == '/')
+  else if (strlen (path) > 2 && path[2] == '/')
     p = path + 3;
 #else /* WINDOWS */
   if (path[0] == '/')
