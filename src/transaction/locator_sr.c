@@ -14013,11 +14013,11 @@ locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
 
   if (attrid == -1)
     {
-      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d", HFID_AS_ARGS (hfid));
     }
   else
     {
-      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (hfid), attrid);
     }
 
   if (ret < 0 || ret >= PATH_MAX)
