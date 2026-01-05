@@ -220,9 +220,9 @@ if(UNIX)
     set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
 
     # C flags for debug build
-    set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
+    set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
     # C++ flags for debug build
-    set(CMAKE_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
+    set(CMAKE_CXX_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
 
     # C flags for release build
     set(CMAKE_C_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_C_COMMON_FLAGS}")

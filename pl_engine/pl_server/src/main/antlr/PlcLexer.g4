@@ -203,7 +203,7 @@ FLOATING_POINT_NUM: FPNUM_W_POINT | FPNUM_WO_POINT;
 UNSIGNED_INTEGER:   BASIC_UINT;
 
 DELIMITED_ID: ('"' REGULAR_ID '"') | ('[' REGULAR_ID ']') | ('`' REGULAR_ID '`') ;
-CHAR_STRING: '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'';
+CHAR_STRING: '\''  ( ~('\'') | '\'\'')* '\'';
 
 NULL_SAFE_EQUALS_OP:          '<=>';
 
@@ -271,7 +271,7 @@ SS_SEMICOLON :  ';' {
         checkFirstLParen = false;
         mode(DEFAULT_MODE);
     };
-SS_STR :        '\''  (~('\'' | '\r' | '\n') | '\'' '\'' | NEWLINE)* '\'' {
+SS_STR :        '\''  (~('\'') | '\'\'')* '\'' {
         checkFirstLParen = false;
     };
 SS_WS :         [ \t\r\n]+ ;
@@ -296,7 +296,22 @@ SS_RPAREN :     ')' {
             setType(PlcParser.SS_NON_STR);
         }
     };
-SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' )+ {
+SS_BIND_PARAM:  '?' {
+        checkFirstLParen = false;
+    };
+SS_DELIMITED_ID: '"' (~('"') | '""')+ '"' {
+        checkFirstLParen = false;
+        setType(PlcParser.SS_NON_STR);
+    };
+SS_BRACKET_ID: '[' ~(']')+ ']' {
+        checkFirstLParen = false;
+        setType(PlcParser.SS_NON_STR);
+    };
+SS_BACKTICK_ID: '`' (~('`') | '``')+ '`' {
+        checkFirstLParen = false;
+        setType(PlcParser.SS_NON_STR);
+    };
+SS_NON_STR:     ~( ';' | '\'' | ' ' | '\t' | '\r' | '\n' | '(' | ')' | '?' | '"' | '[' | '`' )+ {
         checkFirstLParen = false;
     };
 

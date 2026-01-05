@@ -1463,7 +1463,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1368 Invalid cursor
 
-1369 Last Error
+1369 Login is disabled for user "%1$s".
+
+1370 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1967,6 +1969,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 
 330 String representation of a default value of a Stored procedure/function parameter may not exceed 255 characters.
 331 A host expression in a Static SQL must be a variable or record field: '%1$s'.
+332 Stored Procedures can be invoked only through CALL statements.
+333 CALL statements invoking a Stored Procedure may not have an INTO clause.
 
 
 

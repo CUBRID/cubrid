@@ -16098,7 +16098,7 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.update_stats.with_fullscan > 0)
     {
-      assert (p->info.update_stats.with_fullscan == 1);
+      assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
       b = pt_append_nulstring (parser, b, " with fullscan");
     }
 
@@ -18594,6 +18594,36 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 }
 
 /*
+ *   pt_expr_keep_uniqueness () : checks if the given operator
+ *				  is keeping uniqueness
+ *   return:
+ *   expr(in): expression parse tree node
+ */
+bool
+pt_expr_keep_uniqueness (const PT_NODE * expr)
+{
+  switch (expr->info.expr.op)
+    {
+    case PT_REVERSE:
+    case PT_CONCAT:
+    case PT_STRCAT:
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_EQ:		/* for predicate */
+      return true;
+    case PT_CAST:
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))	/* auto generated cast */
+	{
+	  return true;
+	}
+      return false;
+    default:
+      return false;
+    }
+  return false;
+}
+
+/*
  *   pt_is_function_index_expr () : checks if the given PT_EXPR
  *				    is allowed in the structure of a
  *				    function index. This is true if the
@@ -19350,16 +19380,8 @@ pt_print_remote_info (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pt, bool is_dml)
 		     pt->user->info.value.data_value.str->length);
   var = pt_append_nulstring (parser, var, ":");
 
-  if (pt->is_name || is_dml)
-    {
-      var = pt_append_nulstring (parser, var, "*");
-    }
-  else
-    {
-      var = pt_append_bytes (parser, var, (char *) pt->pwd->info.value.data_value.str->bytes,
-			     pt->pwd->info.value.data_value.str->length);
-    }
-
+  var = pt_append_bytes (parser, var, (char *) pt->pwd->info.value.data_value.str->bytes,
+			 pt->pwd->info.value.data_value.str->length);
   // properties
   if (!is_dml)
     {
