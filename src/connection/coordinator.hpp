@@ -49,7 +49,7 @@ namespace cubconn::connection
 	EXPANDING
       };
 
-      struct statistics_chunk
+      struct worker_statistics
       {
 	/* score */
 	double m_score;
@@ -72,10 +72,16 @@ namespace cubconn::connection
 	m_contexts;
       };
 
+      struct scaling_statistics
+      {
+	double BYTES_INOUT;
+	double TASK_COMPLETED;
+      };
+
       enum class timer_latency : uint64_t
       {
 	NA = 0, /* off */
-	LOW_LATENCY = static_cast<uint64_t> (400 * 1e6), /* 400 msec */
+	LOW_LATENCY = static_cast<uint64_t> (1 * 1e9), /* 1 sec */
 	MEDIUM_LATENCY = static_cast<uint64_t> (5 * 1e9), /* 5 sec */
 	HIGH_LATENCY = static_cast<uint64_t> (300 * 1e9) /* 5 min */
       };
@@ -236,7 +242,7 @@ namespace cubconn::connection
       std::uint32_t m_min_worker;
       std::uint32_t m_current_worker;
 
-      /* in flight client id set (hand-off - take over) */
+      /* rebalancing, in flight client id set (hand-off - take over) */
       std::unordered_set<uint64_t> m_migrating;
 
       /* dynamic scaling of the worker */
@@ -246,6 +252,13 @@ namespace cubconn::connection
 	uint64_t last_expand_ns;
 	int draining_worker;
       } m_scaling;
+
+      /* auto scaling */
+      struct
+      {
+
+	std::vector<scaling_statistics> history;
+      } m_scaling_statistics;
 
       /* statistics */
       struct
@@ -258,7 +271,7 @@ namespace cubconn::connection
 	std::pair<double, uint64_t> completed;
 	std::pair<double, uint64_t> depth;
       } m_task_statistics;
-      std::vector<statistics_chunk> m_statistics;
+      std::vector<worker_statistics> m_statistics;
 
       /* --------------------------------------------------------------------------- */
       /* utility								     */

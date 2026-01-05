@@ -121,6 +121,9 @@ namespace cubconn::connection
     m_scaling.last_expand_ns = 0;
     m_scaling.draining_worker = -1;
 
+    /* auto scaling */
+    m_scaling_statistics.history.reserve (max_worker);
+
     /* task statistics */
     m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
     m_task_statistics.time_ns = get_monotonic_ns ();
@@ -412,7 +415,7 @@ namespace cubconn::connection
       std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
       std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts)
   {
-    constexpr double alpha = 0.01;
+    constexpr double alpha = 0.02;
     std::size_t index;
 
     index = worker.first;
@@ -456,7 +459,7 @@ namespace cubconn::connection
 
   void coordinator::statistics_update_task ()
   {
-    constexpr double alpha = 0.99;
+    constexpr double alpha = 0.02;
     uint64_t stats[3] = { 0, 0, 0 };
     uint64_t depth;
     uint64_t delta, time_ns;
@@ -489,6 +492,7 @@ namespace cubconn::connection
   bool coordinator::statistics_update ()
   {
     this->handle_message_queue ();
+    this->statistics_update_task ();
 
     return true;
   }
@@ -538,6 +542,19 @@ namespace cubconn::connection
 
   bool coordinator::statistics_scaling ()
   {
+    double bytes_inout;
+    std::size_t i;
+
+    /* record at this point */
+    bytes_inout = 0;
+    for (i = 0; i < m_max_worker; i++)
+      {
+	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
+	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL);
+      }
+    m_scaling_statistics.history[m_current_worker - 1].BYTES_INOUT = bytes_inout;
+    m_scaling_statistics.history[m_current_worker - 1].TASK_COMPLETED = m_task_statistics.completed.first;
+
     return true;
   }
 
@@ -556,21 +573,28 @@ namespace cubconn::connection
     printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
+	if (m_statistics[i].m_contexts.size () == 0)
+	  {
+	    continue;
+	  }
+
 	printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_statistics[i].m_contexts.size ()));
 
 	core += m_statistics[i].m_core;
 
 	printf ("SCORE: %lf\n", m_statistics[i].m_score);
+	/*
 	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
-	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
 	printf ("CLIENT NUM: %d (EWMA): %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
 		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
+	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
 	printf ("MQ COMPLETED: %lf\n",
 		m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED));
 	printf ("BLOCKED RMUTEX: %lf\n",
 		m_statistics[i].m_worker.first.get (statistics::worker::BLOCKED_RMUTEX));
 	printf ("RECV: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL));
 	printf ("SEND: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL));
+	*/
 
 	mq_completed += m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED);
 	bytes_in += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
