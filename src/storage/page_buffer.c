@@ -7515,7 +7515,7 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   THREAD_ENTRY *prev_thrd_entry = NULL;
   THREAD_ENTRY *next_thrd_entry = NULL;
   PGBUF_ATOMIC_LATCH_IMPL impl = get_impl (&bufptr->atomic_latch), impl_new;
-  bool can_grant = false;
+  bool can_grant = false, should_stop = false;
 
   /* the caller is holding bufptr->mutex */
 #if !defined (NDEBUG)
@@ -7599,16 +7599,22 @@ pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 	    {
 	      /* Look for other readers. */
 	      prev_thrd_entry = thrd_entry;
-	      continue;
+	      break;
 	    }
 	  else
 	    {
 	      assert (impl.impl.latch_mode == PGBUF_LATCH_WRITE);
+	      should_stop = true;
 	      break;
 	    }
 	}
       while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
 							    std::memory_order_acquire));
+
+      if (should_stop)
+	{
+	  break;
+	}
 
       if (can_grant)
 	{
