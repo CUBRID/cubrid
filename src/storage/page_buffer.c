@@ -7771,7 +7771,7 @@ try_again:
 STATIC_INLINE PAGE_PTR
 pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode)
 {
-  assert (fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC);
+  assert (fetch_mode == OLD_PAGE || fetch_mode == OLD_PAGE_PREVENT_DEALLOC || fetch_mode == OLD_PAGE_MAYBE_DEALLOCATED);
   PGBUF_HOLDER *holder = NULL;
   PGBUF_ATOMIC_LATCH_IMPL impl, new_impl;
   PGBUF_BCB *bufptr =
