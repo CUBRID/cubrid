@@ -72,17 +72,22 @@ namespace cubconn::connection
 	m_contexts;
       };
 
+      enum class scaling_status
+      {
+	TRIAL,
+	STABLE
+      };
+
       enum class scaling_direction
       {
-	NA,
 	DOWN,
 	UP
       };
 
       struct scaling_statistics
       {
-	double BYTES_INOUT;
-	double TASK_COMPLETED;
+	std::size_t scale;
+	double score;
       };
 
       enum class timer_latency : uint64_t
@@ -90,7 +95,7 @@ namespace cubconn::connection
 	NA = 0, /* off */
 	LOW_LATENCY = static_cast<uint64_t> (1 * 1e9), /* 1 sec */
 	MEDIUM_LATENCY = static_cast<uint64_t> (5 * 1e9), /* 5 sec */
-	HIGH_LATENCY = static_cast<uint64_t> (300 * 1e9) /* 5 min */
+	HIGH_LATENCY = static_cast<uint64_t> (10 * 1e9) /* 5 min */
       };
 
       enum class timer_type : uint32_t
@@ -263,6 +268,8 @@ namespace cubconn::connection
       /* auto scaling */
       struct
       {
+	scaling_status status;
+
 	std::size_t window_size;
 	std::vector<scaling_statistics> history;
 
@@ -302,7 +309,8 @@ namespace cubconn::connection
       bool scale_down_finish ();
       bool scale_down ();
 
-      void scale_determine ();
+      void scale_trial ();
+      std::size_t scale_selection ();
 
       /* --------------------------------------------------------------------------- */
       /* statistics								     */

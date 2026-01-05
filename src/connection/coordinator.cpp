@@ -127,12 +127,12 @@ namespace cubconn::connection
     m_scaling.draining_worker = -1;
 
     /* auto scaling */
+    m_scaling_statistics.status = scaling_status::STABLE;
     m_scaling_statistics.window_size =
 	    static_cast<std::size_t> (prm_get_integer_value (PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE));
     m_scaling_statistics.history.reserve (m_scaling_statistics.window_size + 1);
-    m_scaling_statistics.previous_direction = scaling_direction::NA;
+    m_scaling_statistics.previous_direction = scaling_direction::UP;
     m_scaling_statistics.previous_scale = m_max_worker;
-    this->scale_determine ();
 
     /* task statistics */
     m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
@@ -373,8 +373,69 @@ namespace cubconn::connection
     return true;
   }
 
-  void coordinator::scale_determine ()
+  void coordinator::scale_trial ()
   {
+    m_scaling_statistics.history.clear ();
+
+    if (m_scaling_statistics.previous_scale == m_current_worker)
+      {
+	m_scaling_statistics.direction = m_scaling_statistics.previous_direction == scaling_direction::DOWN ?
+					 scaling_direction::UP : scaling_direction::DOWN;
+      }
+    else
+      {
+	m_scaling_statistics.direction = m_scaling_statistics.previous_direction;
+      }
+
+    if (m_scaling_statistics.direction == scaling_direction::DOWN)
+      {
+	m_scaling_statistics.count = std::min (m_current_worker - m_min_worker,
+					       static_cast<std::uint32_t> (m_scaling_statistics.window_size));
+      }
+    else
+      {
+	m_scaling_statistics.count = std::min (m_max_worker - m_current_worker,
+					       static_cast<std::uint32_t> (m_scaling_statistics.window_size));
+      }
+
+    if (m_scaling_statistics.count == 0)
+      {
+	m_scaling_statistics.previous_direction = (m_scaling_statistics.previous_direction == scaling_direction::DOWN) ?
+	    scaling_direction::UP : scaling_direction::DOWN;
+	m_scaling_statistics.status = scaling_status::STABLE;
+      }
+    else
+      {
+	m_scaling_statistics.status = scaling_status::TRIAL;
+      }
+  }
+
+  std::size_t coordinator::scale_selection ()
+  {
+    static std::mt19937 gen (std::random_device { } ());
+    std::vector<std::size_t> candidates;
+    double max_score;
+
+    max_score = 0;
+    for (auto &stats : m_scaling_statistics.history)
+      {
+	if (max_score < stats.score)
+	  {
+	    max_score = stats.score;
+	  }
+      }
+
+    for (auto &stats : m_scaling_statistics.history)
+      {
+	if (max_score * 0.95 < stats.score)
+	  {
+	    candidates.push_back (stats.scale);
+	  }
+      }
+
+    std::uniform_int_distribution<size_t> dis (0, candidates.size() - 1);
+
+    return candidates[dis (gen)];
   }
 
   void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current)
@@ -564,7 +625,16 @@ namespace cubconn::connection
   bool coordinator::statistics_scaling ()
   {
     double bytes_inout;
+    std::size_t selected;
     std::size_t i;
+
+    if (m_scaling_statistics.status == scaling_status::STABLE)
+      {
+	this->scale_trial ();
+	return true;
+      }
+
+    assert (m_scaling_statistics.status == scaling_status::TRIAL);
 
     /* record at this point */
     bytes_inout = 0;
@@ -573,8 +643,45 @@ namespace cubconn::connection
 	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
 	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL);
       }
-    m_scaling_statistics.history[m_current_worker - 1].BYTES_INOUT = bytes_inout;
-    m_scaling_statistics.history[m_current_worker - 1].TASK_COMPLETED = m_task_statistics.completed.first;
+    m_scaling_statistics.history.push_back (
+    {
+      m_current_worker,
+      VAL_TO_SCORE (50, 1000, bytes_inout) + m_task_statistics.completed.first * 2
+    });
+    m_scaling_statistics.count--;
+
+    if (m_scaling_statistics.count == 0)
+      {
+	selected = this->scale_selection ();
+	if (selected < m_current_worker)
+	  {
+	    m_scaling_statistics.previous_direction = scaling_direction::DOWN;
+	    this->scale_down ();
+	  }
+	else if (selected > m_current_worker)
+	  {
+	    m_scaling_statistics.previous_direction = scaling_direction::UP;
+	    for (i = 0; i < selected - m_current_worker; i++)
+	      {
+		this->scale_up ();
+	      }
+	  }
+	else
+	  {
+	    m_scaling_statistics.status = scaling_status::STABLE;
+	  }
+      }
+    else
+      {
+	if (m_scaling_statistics.direction == scaling_direction::DOWN)
+	  {
+	    this->scale_down ();
+	  }
+	else
+	  {
+	    this->scale_up ();
+	  }
+      }
 
     return true;
   }
