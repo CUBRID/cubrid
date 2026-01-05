@@ -475,12 +475,11 @@ extern "C"
    * attribute's options(no constraint)
    * These flags are displayed in the ‘flags’ column of the system catalog table.
    */
-  typedef enum
-  {
-    DB_ATTOPT_AUTO_INCREMENT = 1,
-    DB_ATTOPT_INVISIBLE_COLUMN = 2,
-    DB_ATTOPT_PARTITION_KEY = 4
-  } DB_ATTRIBUTE_OPTION_TYPE;
+typedef enum {
+    DB_ATTOPT_AUTO_INCREMENT     = 1 << 0,
+    DB_ATTOPT_INVISIBLE_COLUMN   = 1 << 1,
+    DB_ATTOPT_PARTITION_KEY      = 1 << 2
+} DB_ATTRIBUTE_OPTION_TYPE;
 
   typedef enum
   {
