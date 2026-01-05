@@ -825,8 +825,8 @@ enum t_diag_server_type
 typedef enum t_diag_server_type T_DIAG_SERVER_TYPE;
 
 extern void perfmon_server_dump_stats (const UINT64 * stats, FILE * stream, const char *substr);
-
 extern void perfmon_server_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, const char *substr);
+extern void perfmon_trace_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, int trace_level);
 
 extern void perfmon_get_current_times (time_t * cpu_usr_time, time_t * cpu_sys_time, time_t * elapsed_time);
 

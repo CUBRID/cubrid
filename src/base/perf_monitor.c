@@ -1459,6 +1459,102 @@ perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_s
   return NO_ERROR;
 }
 
+void
+perfmon_trace_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, int trace_level)
+{
+  int i;
+  int ret;
+  UINT64 *stats_ptr;
+  int remained_size;
+  const char *s;
+  char *p;
+
+  if (buffer == NULL || buf_size <= 0)
+    {
+      return;
+    }
+
+  p = buffer;
+  remained_size = buf_size - 1;
+  ret = snprintf (p, remained_size, "\n *** SERVER EXECUTION STATISTICS *** \n");
+  remained_size -= ret;
+  p += ret;
+
+  if (remained_size <= 0)
+    {
+      return;
+    }
+
+  stats_ptr = (UINT64 *) stats;
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+	{
+	  break;
+	}
+
+      if (trace_level < 2)
+	{
+	  switch (i)
+	    {
+	    case PSTAT_PB_NUM_FETCHES:
+	    case PSTAT_BT_NUM_COVERED:
+	    case PSTAT_BT_NUM_NONCOVERED:
+	    case PSTAT_QM_NUM_ISCANS:
+	    case PSTAT_QM_NUM_SSCANS:
+	    case PSTAT_SORT_NUM_DATA_PAGES:
+	    case PSTAT_PB_HIT_RATIO:
+	    case PSTAT_FILE_NUM_IOREADS:
+	    case PSTAT_FILE_NUM_IOWRITES:
+	    case PSTAT_LOG_NUM_IOWRITES:
+	    case PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS:
+	    case PSTAT_BT_NUM_SPLITS:
+	    case PSTAT_PC_NUM_HIT:
+	    case PSTAT_LOG_HIT_RATIO:
+	    case PSTAT_VACUUM_DATA_HIT_RATIO:
+	      break;
+	    default:
+	      continue;
+	    }
+	}
+
+      s = pstat_Metadata[i].stat_name;
+
+      if (s)
+	{
+	  int offset = pstat_Metadata[i].start_offset;
+
+	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
+	    {
+	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+		{
+		  ret = snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stats_ptr[offset]);
+		}
+	      else
+		{
+		  perfmon_print_timer_to_buffer (&p, i, stats_ptr, &remained_size);
+		  ret = 0;
+		}
+	    }
+	  else
+	    {
+	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name,
+			      (float) stats_ptr[offset] / 100);
+	    }
+	  remained_size -= ret;
+	  p += ret;
+	  if (remained_size <= 0)
+	    {
+	      assert (remained_size == 0);	/* should not overrun the buffer */
+	      return;
+	    }
+	}
+    }
+
+  buffer[buf_size - 1] = '\0';
+}
+
 /*
  *   perfmon_server_dump_stats_to_buffer -
  *   return: none
