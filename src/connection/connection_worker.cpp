@@ -109,14 +109,19 @@ namespace cubconn::connection
 	m_timer_handler[i].valid = false;
 	m_timer_handler[i].latency = timer_latency::NA;
 	m_timer_handler[i].function = nullptr;
-	m_timer_handler[i].last_time = 0;
+	m_timer_handler[i].last_time = this->get_time_ns (CLOCK_MONOTONIC);
+      }
+    if (!this->eventfd_addtimer (timer_type::HIBERNATE, timer_latency::MEDIUM_LATENCY,
+				 std::bind (&worker::hibernate_check, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
+	assert_release (false);
       }
     if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::MEDIUM_LATENCY,
 				 std::bind (&worker::statistics_metrics_to_coordinator, this)))
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker: failed to add timer\n");
 	assert_release (false);
-
       }
     if (!this->eventfd_addtimer (timer_type::HA, timer_latency::HIGH_LATENCY,
 				 std::bind (&worker::ha_close_all_connections, this)))
@@ -416,7 +421,7 @@ namespace cubconn::connection
 	    pthread_mutex_unlock (&m_entry->tran_index_lock);
 
 	    er_log_conn (__FILE__, __LINE__,
-			 "connection::worker->handle_connection_close: wait for transaction index. conn = %d, fd = %d\n", ctx->m_conn,
+			 "connection::worker->handle_connection_close: wait for transaction index. conn = %p, fd = %d\n", ctx->m_conn,
 			 ctx->m_conn->fd);
 
 	    /* the connected client does not yet finished boot_client_register */
@@ -455,7 +460,7 @@ namespace cubconn::connection
     if (net_server_active_workers (m_entry, ctx->m_conn, tran_index, client_id) > 0)
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_connection_close: net_server_active_workers. conn = %d, fd = %d\n", ctx->m_conn,
+		     "connection::worker->handle_connection_close: net_server_active_workers. conn = %p, fd = %d\n", ctx->m_conn,
 		     ctx->m_conn->fd);
 	goto retry;
       }
@@ -465,7 +470,7 @@ namespace cubconn::connection
     if (this->has_remaining_tasks (ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_connection_close: has_remaining_tasks. conn = %d, fd = %d\n", ctx->m_conn,
+		     "connection::worker->handle_connection_close: has_remaining_tasks. conn = %p, fd = %d\n", ctx->m_conn,
 		     ctx->m_conn->fd);
 	goto retry;
       }
@@ -566,6 +571,28 @@ retry:
 
     /* just enqueue */
     m_coordinator->enqueue (std::move (message));
+
+    return true;
+  }
+
+  bool worker::hibernate_check ()
+  {
+    if (m_status != status::HIBERNATING || !m_context.empty ())
+      {
+	return true;
+      }
+
+    if (!this->eventfd_stoptimer ())
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::worker->hibernate_check: failed to stop the timer\n");
+	assert_release (false);
+      }
+
+    assert (m_context.empty ());
+    assert (m_exhausted.empty ());
+
+    /* reset counters so resumed workers don't report stale totals */
+    m_stats.reset ();
 
     return true;
   }
@@ -708,7 +735,7 @@ retry:
       {
 	return this->eventfd_settimer (m_timerfd, min);
       }
-    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+    return this->eventfd_stoptimer ();
   }
 
   bool worker::eventfd_stoptimer ()
@@ -729,7 +756,7 @@ retry:
     m_timer_handler[static_cast<std::size_t> (type)].valid = true;
     m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
     m_timer_handler[static_cast<std::size_t> (type)].function = handle;
-    m_timer_handler[static_cast<std::size_t> (type)].last_time = 0;
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = this->m_timens;
 
     min = timer_latency::NA;
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
@@ -777,7 +804,7 @@ retry:
       {
 	return this->eventfd_settimer (m_timerfd, min);
       }
-    return this->eventfd_settimer (m_timerfd, timer_latency::MAXIMUM_LATENCY);
+    return this->eventfd_stoptimer ();
   }
 
   bool worker::eventfd_handler (bool *eventfds)
@@ -983,6 +1010,8 @@ retry:
   {
     context *ctx;
 
+    assert (item.conn && item.conn->fd != -1);
+
     ctx = item.ctx;
     ctx->m_conn = item.conn;
 
@@ -1024,6 +1053,18 @@ retry:
     er_log_conn (__FILE__, __LINE__, "add new client that has fd = %d in the worker = %d\n", item.conn->fd, m_index);
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
+
+    /* The condition below theoretically cannot be true, so there is no need to start the timer. */
+    /* But if the concurrency queue gets out of sync and the MQ processing order is disrupted,	 */
+    /* we must start the timer.									 */
+    if (m_status == status::HIBERNATING)
+      {
+	if (!this->eventfd_starttimer ())
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: failed to start the timer\n");
+	    assert_release (false);
+	  }
+      }
 
     return true;
   }
@@ -1160,6 +1201,19 @@ respond:
 
     m_stats.add (statistics::worker::CLIENT_NUM, 1);
 
+    /* The condition below theoretically cannot be true, so there is no need to start the timer. */
+    /* But if the concurrency queue gets out of sync and the MQ processing order is disrupted,	 */
+    /* we must start the timer.									 */
+    if (m_status == status::HIBERNATING)
+      {
+	if (!this->eventfd_starttimer ())
+	  {
+	    er_log_conn (__FILE__, __LINE__,
+			 "connection::worker->handle_message_queue_takeover_client: failed to start the timer\n");
+	    assert_release (false);
+	  }
+      }
+
     return true;
   }
 
@@ -1207,15 +1261,6 @@ respond:
 
   bool worker::handle_message_queue_hibernate (message &item)
   {
-    if (!this->eventfd_stoptimer ())
-      {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_hibernate: failed to stop the timer\n");
-	assert_release (false);
-      }
-
-    assert (m_context.empty ());
-    assert (m_exhausted.empty ());
-
     m_status = status::HIBERNATING;
 
     return true;
@@ -1270,6 +1315,8 @@ respond:
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
+    m_stats.add (statistics::worker::MQ_REQUESTED, size);
+
     while (i++ < size && m_queue[static_cast<std::size_t> (type)].try_pop (request))
       {
 #if !defined (NDEBUG)
@@ -1285,14 +1332,15 @@ respond:
 	    continue;
 	  }
 
-	if (handler[static_cast <std::size_t> (request.type)].second != statistics::worker::NA)
-	  {
-	    m_stats.add (handler[static_cast <std::size_t> (request.type)].second, 1);
-	  }
 	if (! (this->*handler[static_cast <std::size_t> (request.type)].first) (request))
 	  {
 	    return false;
 	  }
+	if (handler[static_cast <std::size_t> (request.type)].second != statistics::worker::NA)
+	  {
+	    m_stats.add (handler[static_cast <std::size_t> (request.type)].second, 1);
+	  }
+	m_stats.add (statistics::worker::MQ_COMPLETED, 1);
       }
 
     return true;
@@ -1301,8 +1349,6 @@ respond:
   bool worker::handle_message_queue ()
   {
     std::size_t i;
-
-    m_stats.add (statistics::worker::MQ_REQUESTED, 1);
 
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
       {

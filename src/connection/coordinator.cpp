@@ -26,8 +26,10 @@
 #include "connection_pool.hpp"
 #include "coordinator.hpp"
 #include "connection_sr.h"
+#include "server_support.h"
 
 #include <random>
+#include <algorithm>
 #include <unistd.h>
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
@@ -35,6 +37,12 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+#define EWMA_ALPHA 0.06
+
+#define VAL_TO_SCORE(w, m, s) ((w) * static_cast<double> (s) / (m))
+#define EVAL_WORKER(mq, rmutex) (VAL_TO_SCORE (25, 3.5, (mq)) + VAL_TO_SCORE (500, 1, (rmutex)))
+#define EVAL_CONTEXT(bytes, budget) (VAL_TO_SCORE (50, 1000, (bytes)) + VAL_TO_SCORE (10, 1, (budget)))
 
 #if 0
 #define er_log_conn(...) er_log_debug (__VA_ARGS__)
@@ -53,6 +61,7 @@ namespace cubconn::connection
     m_stop (false),
     m_max_worker (max_worker),
     m_min_worker (min_worker),
+    m_current_worker (max_worker),
     m_statistics (max_worker)
   {
     std::size_t i;
@@ -82,9 +91,30 @@ namespace cubconn::connection
 	assert_release (false);
       }
 
-    if (!this->eventfd_settimer (m_timerfd, 0, 400 * 1e6 /* 400 ms */))
+    /* timer */
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
-	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to eventfd_settimer\n");
+	m_timer_handler[i].valid = false;
+	m_timer_handler[i].latency = timer_latency::NA;
+	m_timer_handler[i].function = nullptr;
+	m_timer_handler[i].last_time = 0;
+      }
+    if (!this->eventfd_addtimer (timer_type::STATISTICS, timer_latency::LOW_LATENCY,
+				 std::bind (&coordinator::statistics_update, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
+	assert_release (false);
+      }
+    if (!this->eventfd_addtimer (timer_type::REBALANCING, timer_latency::MEDIUM_LATENCY,
+				 std::bind (&coordinator::statistics_rebalancing, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
+	assert_release (false);
+      }
+    if (!this->eventfd_addtimer (timer_type::SCALING, timer_latency::HIGH_LATENCY,
+				 std::bind (&coordinator::statistics_scaling, this)))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to add timer\n");
 	assert_release (false);
       }
 
@@ -96,7 +126,23 @@ namespace cubconn::connection
     m_scaling.last_expand_ns = 0;
     m_scaling.draining_worker = -1;
 
-    /* statistics */
+    /* auto scaling */
+    m_scaling_statistics.status = scaling_status::STABLE;
+    m_scaling_statistics.window_size =
+	    static_cast<std::size_t> (prm_get_integer_value (PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE));
+    m_scaling_statistics.history.reserve (m_scaling_statistics.window_size + 1);
+    m_scaling_statistics.previous_direction = scaling_direction::UP;
+    m_scaling_statistics.previous_scale = m_max_worker;
+
+    /* task statistics */
+    m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
+    m_task_statistics.time_ns = get_monotonic_ns ();
+    m_task_statistics.requested = { 0, 0 };
+    m_task_statistics.started = { 0, 0 };
+    m_task_statistics.completed = { 0, 0 };
+    m_task_statistics.depth = { 0, 0 };
+
+    /* connection statistics */
     for (i = 0; i < max_worker; i++)
       {
 	m_statistics[i].m_score = 0;
@@ -110,7 +156,6 @@ namespace cubconn::connection
 	/* this doesn't use much memory */
 	m_statistics[i].m_contexts.reserve (256);
       }
-    m_current_worker = m_max_worker;
 
     m_thread = std::thread (&coordinator::attach, this);
   }
@@ -179,6 +224,14 @@ namespace cubconn::connection
     return (uint64_t) ts.tv_sec * 1000000000ULL + ts.tv_nsec;
   }
 
+  bool coordinator::random_bit ()
+  {
+    static std::mt19937 gen (std::random_device { } ());
+    static std::bernoulli_distribution d (0.5);
+
+    return d (gen);
+  }
+
   bool coordinator::transfer_connection (uint64_t id, int from, int to)
   {
     std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
@@ -237,6 +290,8 @@ namespace cubconn::connection
 
     assert (m_current_worker < m_max_worker);
 
+    m_scaling.draining_worker = -1;
+
     m_status = status::EXPANDING;
 
     /* new clients must be entered in this worker */
@@ -249,6 +304,8 @@ namespace cubconn::connection
 	assert_release (false);
       }
     m_current_worker++;
+
+    m_scaling.last_expand_ns = get_monotonic_ns ();
 
     m_status = status::STABLE;
 
@@ -266,6 +323,17 @@ namespace cubconn::connection
       {
 	assert_release (false);
       }
+
+    /* clear the statistics */
+    m_statistics[m_scaling.draining_worker].m_score = 0;
+    m_statistics[m_scaling.draining_worker].m_core = 0;
+    m_statistics[m_scaling.draining_worker].m_last_cpu_time = 0;
+    m_statistics[m_scaling.draining_worker].m_client_num = 0;
+    m_statistics[m_scaling.draining_worker].m_last_updated = 0;
+    m_statistics[m_scaling.draining_worker].m_sum.reset ();
+    m_statistics[m_scaling.draining_worker].m_worker.first.reset ();
+    m_statistics[m_scaling.draining_worker].m_worker.second.reset ();
+    m_statistics[m_scaling.draining_worker].m_contexts.clear ();
 
     m_scaling.last_drain_ns = get_monotonic_ns ();
     m_scaling.draining_worker = -1;
@@ -293,6 +361,8 @@ namespace cubconn::connection
       {
 	std::tie (newhome, std::ignore) = this->statistics_find_score_extremes ();
 	transfer_connection (stats.first, m_current_worker, newhome);
+
+	/* TODO: m_statistics[newhome].m_score += CLIENT_SCORE */
       }
 
     /* register the target worker index */
@@ -303,24 +373,86 @@ namespace cubconn::connection
     return true;
   }
 
-  void coordinator::statistics_update_score (std::size_t worker)
+  void coordinator::scale_trial ()
   {
-    statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
-    statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
+    m_scaling_statistics.history.clear ();
 
-    /*
-    c.get (statistics::context::RECV_BUDGET_HIT);
-    c.get (statistics::context::SEND_BUDGET_HIT);
-    */
+    if (m_scaling_statistics.previous_scale == m_current_worker)
+      {
+	m_scaling_statistics.direction = m_scaling_statistics.previous_direction == scaling_direction::DOWN ?
+					 scaling_direction::UP : scaling_direction::DOWN;
+      }
+    else
+      {
+	m_scaling_statistics.direction = m_scaling_statistics.previous_direction;
+      }
 
-    /* temporary formula */
-    m_statistics[worker].m_score =
-	    static_cast<double> (m_statistics[worker].m_client_num) +
-	    /* throughput per ms */
-	    w_ewma.get (statistics::worker::MQ_REQUESTED) / 500 +
-	    w_ewma.get (statistics::worker::BLOCKED_RMUTEX) / 1000 +
-	    c_ewma.get (statistics::context::BYTES_IN_TOTAL) / 100 +
-	    c_ewma.get (statistics::context::BYTES_OUT_TOTAL) / 100;
+    if (m_scaling_statistics.direction == scaling_direction::DOWN)
+      {
+	m_scaling_statistics.count = std::min (m_current_worker - m_min_worker,
+					       static_cast<std::uint32_t> (m_scaling_statistics.window_size));
+      }
+    else
+      {
+	m_scaling_statistics.count = std::min (m_max_worker - m_current_worker,
+					       static_cast<std::uint32_t> (m_scaling_statistics.window_size));
+      }
+
+    if (m_scaling_statistics.count == 0)
+      {
+	m_scaling_statistics.previous_direction = (m_scaling_statistics.previous_direction == scaling_direction::DOWN) ?
+	    scaling_direction::UP : scaling_direction::DOWN;
+	m_scaling_statistics.status = scaling_status::STABLE;
+      }
+    else
+      {
+	m_scaling_statistics.status = scaling_status::TRIAL;
+      }
+  }
+
+  std::size_t coordinator::scale_selection ()
+  {
+    static std::mt19937 gen (std::random_device { } ());
+    std::vector<std::size_t> candidates;
+    double max_score;
+
+    max_score = 0;
+    for (auto &stats : m_scaling_statistics.history)
+      {
+	if (max_score < stats.score)
+	  {
+	    max_score = stats.score;
+	  }
+      }
+
+    for (auto &stats : m_scaling_statistics.history)
+      {
+	if (max_score * 0.95 < stats.score)
+	  {
+	    candidates.push_back (stats.scale);
+	  }
+      }
+
+    if (candidates.size () != 0)
+      {
+	std::uniform_int_distribution<size_t> dis (0, candidates.size () - 1);
+
+	return candidates[dis (gen)];
+      }
+    return m_current_worker;
+  }
+
+  void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current)
+  {
+    double diff;
+
+    diff = 0;
+    if (current > prev)
+      {
+	diff = static_cast<double> (current - prev);
+      }
+    acc = acc * (1 - alpha) + diff * (alpha / (time_delta * 1e-6));
+    prev = current;
   }
 
   std::pair<std::size_t, std::size_t> coordinator::statistics_find_score_extremes ()
@@ -345,61 +477,282 @@ namespace cubconn::connection
     return { min, max };
   }
 
+  void coordinator::statistics_update_score (std::size_t worker)
+  {
+#define EWMA_CONTEXT(key) c_ewma.get (statistics::context::key)
+#define EWMA_WORKER(key) w_ewma.get (statistics::worker::key)
+
+    statistics::metrics<statistics::context, double> &c_ewma = m_statistics[worker].m_sum;
+    statistics::metrics<statistics::worker, double> &w_ewma = m_statistics[worker].m_worker.first;
+
+    m_statistics[worker].m_score =
+	    1 * static_cast<double> (m_statistics[worker].m_client_num) / 1 +
+
+	    EVAL_WORKER (EWMA_WORKER (MQ_COMPLETED), EWMA_WORKER (BLOCKED_RMUTEX)) +
+
+	    EVAL_CONTEXT (EWMA_CONTEXT (BYTES_IN_TOTAL) + EWMA_CONTEXT (BYTES_OUT_TOTAL),
+			  EWMA_CONTEXT (RECV_BUDGET_HIT) + EWMA_CONTEXT (SEND_BUDGET_HIT));
+
+#undef EWMA_CONTEXT
+#undef EWMA_WORKER
+  }
+
+  void coordinator::statistics_update_connection (uint64_t delta,
+      std::pair<std::size_t, statistics::metrics<statistics::worker>> &worker,
+      std::vector<std::pair<uint64_t, statistics::metrics<statistics::context>>> &contexts)
+  {
+    std::size_t index;
+
+    index = worker.first;
+
+    if (m_statistics[index].m_last_updated)
+      {
+	m_statistics[index].m_sum.reset ();
+
+	/* update EWMA */
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_statistics[index].m_worker.first, m_statistics[index].m_worker.second,
+			       worker.second);
+	for (auto &stats : contexts)
+	  {
+	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
+
+	    this->statistics_EWMA (EWMA_ALPHA, delta, m_statistics[index].m_contexts[stats.first].first,
+				   m_statistics[index].m_contexts[stats.first].second, stats.second);
+	  }
+      }
+    else
+      {
+	/* there is no previous */
+	m_statistics[index].m_worker.first = worker.second;
+	m_statistics[index].m_worker.second = worker.second;
+
+	for (auto &stats : contexts)
+	  {
+	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
+
+	    m_statistics[index].m_contexts[stats.first].first = stats.second;
+	    m_statistics[index].m_contexts[stats.first].second = stats.second;
+	  }
+      }
+
+    /* calculate the summation */
+    for (auto &stats : m_statistics[index].m_contexts)
+      {
+	m_statistics[index].m_sum += stats.second.first;
+      }
+  }
+
+  void coordinator::statistics_update_task ()
+  {
+    uint64_t stats[3] = { 0, 0, 0 };
+    uint64_t depth;
+    uint64_t delta, time_ns;
+
+    time_ns = get_monotonic_ns ();
+    delta = time_ns - m_task_statistics.time_ns;
+
+    css_get_task_stats (stats);
+    /* queue depth is a gauge. smooth the absolute value to avoid negative delta. */
+    depth = stats[0] > stats[1] ? stats[0] - stats[1] : 0;
+    if (m_task_statistics.requested.second)
+      {
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.requested.first, m_task_statistics.requested.second,
+			       stats[0]);
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.started.first, m_task_statistics.started.second, stats[1]);
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.completed.first, m_task_statistics.completed.second,
+			       stats[2]);
+	this->statistics_EWMA (EWMA_ALPHA, delta, m_task_statistics.depth.first, m_task_statistics.depth.second, depth);
+      }
+    else
+      {
+	/* there is no previous */
+	m_task_statistics.requested.second = stats[0];
+	m_task_statistics.started.second = stats[1];
+	m_task_statistics.completed.second = stats[2];
+	m_task_statistics.depth.second = depth;
+      }
+
+    m_task_statistics.time_ns = time_ns;
+  }
+
+  bool coordinator::statistics_update ()
+  {
+    this->handle_message_queue ();
+    this->statistics_update_task ();
+
+    return true;
+  }
+
+  bool coordinator::statistics_rebalancing ()
+  {
+#define EWMA_CONTEXT(key) c_ewma.get (statistics::context::key)
+
+    constexpr double threshold = 0.2;
+    std::size_t min, max;
+    double diff, score, target;
+    uint64_t id;
+
+    std::tie (min, max) = statistics_find_score_extremes ();
+    diff = m_statistics[max].m_score - m_statistics[min].m_score;
+    if (diff <= m_statistics[max].m_score * threshold)
+      {
+	/* no need to rebalance */
+	return true;
+      }
+
+    score = -1;
+    id = 0;
+    for (auto &stats : m_statistics[max].m_contexts)
+      {
+	auto &c_ewma = stats.second.first;
+
+	target = EVAL_CONTEXT (EWMA_CONTEXT (BYTES_IN_TOTAL) + EWMA_CONTEXT (BYTES_OUT_TOTAL),
+			       EWMA_CONTEXT (RECV_BUDGET_HIT) + EWMA_CONTEXT (SEND_BUDGET_HIT));
+
+	if (target <= diff / 2 && score < target)
+	  {
+	    score = target;
+	    id = stats.first;
+	  }
+      }
+
+    if (id != 0)
+      {
+	this->transfer_connection (id, max, min);
+      }
+
+    return true;
+
+#undef EWMA_CONTEXT
+  }
+
+  bool coordinator::statistics_scaling ()
+  {
+    double bytes_inout;
+    std::size_t selected;
+    std::size_t i;
+
+    if (m_scaling_statistics.status == scaling_status::STABLE)
+      {
+	this->scale_trial ();
+	return true;
+      }
+
+    assert (m_scaling_statistics.status == scaling_status::TRIAL);
+
+    /* record at this point */
+    bytes_inout = 0;
+    for (i = 0; i < m_max_worker; i++)
+      {
+	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
+	bytes_inout += m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL);
+      }
+    m_scaling_statistics.history.push_back (
+    {
+      m_current_worker,
+      VAL_TO_SCORE (50, 1000, bytes_inout) + m_task_statistics.completed.first * 2
+    });
+    m_scaling_statistics.count--;
+
+    if (m_scaling_statistics.count == 0)
+      {
+	m_scaling_statistics.previous_scale = m_current_worker;
+
+	selected = this->scale_selection ();
+	if (selected < m_current_worker)
+	  {
+	    m_scaling_statistics.previous_direction = scaling_direction::DOWN;
+	    this->scale_down ();
+	    this->scale_trial ();
+	  }
+	else if (selected > m_current_worker)
+	  {
+	    m_scaling_statistics.previous_direction = scaling_direction::UP;
+	    for (i = 0; i < selected - m_current_worker; i++)
+	      {
+		this->scale_up ();
+	      }
+	    this->scale_trial ();
+	  }
+	else
+	  {
+	    m_scaling_statistics.status = scaling_status::STABLE;
+	  }
+      }
+    else
+      {
+	if (m_scaling_statistics.direction == scaling_direction::DOWN)
+	  {
+	    this->scale_down ();
+	  }
+	else
+	  {
+	    this->scale_up ();
+	  }
+      }
+
+    return true;
+  }
+
   void coordinator::statistics_print ()
   {
     double bytes_in, bytes_out;
+    double mq_completed;
     double core;
-    uint64_t budget_recv_hit, budget_send_hit;
     std::size_t i;
 
-    core = 0;
     bytes_in = 0;
     bytes_out = 0;
+    mq_completed = 0;
+    core = 0;
+
     printf ("\033[2J\033[H");
     for (i = 0; i < m_max_worker; i++)
       {
-	if (!m_statistics[i].m_contexts.empty ())
+	if (m_statistics[i].m_contexts.size () == 0)
 	  {
-	    printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_statistics[i].m_contexts.size ()));
+	    continue;
 	  }
+
+	printf ("------ worker %d (%d) ------\n", static_cast<int> (i), static_cast<int> (m_statistics[i].m_contexts.size ()));
 
 	core += m_statistics[i].m_core;
 
-	budget_recv_hit = 0;
-	budget_send_hit = 0;
-	for (auto &stats : m_statistics[i].m_contexts)
-	  {
-	    bytes_in += stats.second.first.get (statistics::context::BYTES_IN_TOTAL);
-	    bytes_out += stats.second.first.get (statistics::context::BYTES_OUT_TOTAL);
-	    budget_recv_hit += stats.second.second.get (statistics::context::RECV_BUDGET_HIT);
-	    budget_send_hit += stats.second.second.get (statistics::context::SEND_BUDGET_HIT);
-
-	    //printf ("  CLIENT (id, %lld)\n", static_cast<unsigned long long> (stats.first));
-	  }
-
-	/*
 	printf ("SCORE: %lf\n", m_statistics[i].m_score);
+	/*
 	printf ("LAST UPDATED: %d\n", static_cast<int> (static_cast<double> (m_statistics[i].m_last_updated) / 1e9));
-	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
-	printf ("CLIENT NUM: %d (heuristic: %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
+	printf ("CLIENT NUM: %d (EWMA): %lf)\n", static_cast<int> (m_statistics[i].m_client_num),
 		m_statistics[i].m_worker.first.get (statistics::worker::CLIENT_NUM));
-	printf ("MQ REQUESTED: %lf\n",
-		m_statistics[i].m_worker.first.get (statistics::worker::MQ_REQUESTED));
-	printf ("PACKET COUNT: %lf\n",
-		m_statistics[i].m_worker.first.get (statistics::worker::PACKET_COUNT));
-	printf ("RECV BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_recv_hit));
-	printf ("SEND BUDGET HIT: %llu\n", static_cast<unsigned long long> (budget_send_hit));
+	printf ("CORE USAGE: %0.4lf\n", m_statistics[i].m_core);
+	printf ("MQ COMPLETED: %lf\n",
+		m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED));
+	printf ("BLOCKED RMUTEX: %lf\n",
+		m_statistics[i].m_worker.first.get (statistics::worker::BLOCKED_RMUTEX));
+	printf ("RECV: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL));
+	printf ("SEND: %lf\n", m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL));
 	*/
+
+	mq_completed += m_statistics[i].m_worker.first.get (statistics::worker::MQ_COMPLETED);
+	bytes_in += m_statistics[i].m_sum.get (statistics::context::BYTES_IN_TOTAL);
+	bytes_out += m_statistics[i].m_sum.get (statistics::context::BYTES_OUT_TOTAL);
       }
+
     printf ("------ summary ------\n");
-    printf ("STATUS: %s (draining worker: %d)\n",
+    printf ("STATUS               : %s (draining worker: %d)\n",
 	    m_status == status::STABLE ? "STABLE" : (m_status == status::DRAINING ? "DRAINING" : "EXPANDING"),
 	    m_scaling.draining_worker);
-    printf ("WORKER COUNT: %d (min: %d, max: %d)\n", m_current_worker, m_min_worker, m_max_worker);
-    printf ("CORE USAGE: %0.4lf / %d\n", core, m_max_worker);
+    printf ("WORKER COUNT         : %d (min: %d, max: %d)\n", m_current_worker, m_min_worker, m_max_worker);
+    printf ("CORE USAGE           : %0.4lf / %d\n", core, m_max_worker);
     printf ("CORE USAGE PER WORKER: %0.4lf\n", core / m_max_worker);
-    printf ("BYTES IN: %lf\n", bytes_in);
-    printf ("BYTES OUT: %lf\n\n", bytes_out);
+    printf ("BYTES IN             : %lf\n", bytes_in);
+    printf ("BYTES OUT            : %lf\n\n", bytes_out);
+
+    printf ("MQ COMPLETED         : %0.4lf\n\n", mq_completed);
+
+    printf ("TASK REQUESTED       : %lf\n", m_task_statistics.requested.first);
+    printf ("TASK STARTED         : %lf\n", m_task_statistics.started.first);
+    printf ("TASK COMPLETED       : %lf\n", m_task_statistics.completed.first);
+    printf ("TASK QUEUE DEPTH     : %lf\n\n", m_task_statistics.depth.first / m_task_statistics.workers * 100);
   }
 
   bool coordinator::eventfd_register (int fd)
@@ -467,24 +820,114 @@ namespace cubconn::connection
     return true;
   }
 
-  bool coordinator::handle_message_queue_start (message &item)
+  bool coordinator::eventfd_settimer (int fd, timer_latency latency)
   {
-    /*
-    std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
-    connection::worker::message request;
+    uint64_t sec, nsec;
+
+    sec = static_cast<uint64_t> (latency) / static_cast<uint64_t> (1e9);
+    nsec = static_cast<uint64_t> (latency) % static_cast<uint64_t> (1e9);
+    if (eventfd_settimer (fd, sec, nsec))
+      {
+	return true;
+      }
+    return false;
+  }
+
+  bool coordinator::eventfd_starttimer ()
+  {
+    timer_latency min;
     std::size_t i;
 
-    for (i = 1; i < m_max_worker; i++)
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
-    request.type = connection::worker::message_type::HIBERNATE;
-    workers[i]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[i]->notify ())
-      {
-        assert_release (false);
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
       }
-      }
-      */
 
+    if (min != timer_latency::NA)
+      {
+	return this->eventfd_settimer (m_timerfd, min);
+      }
+    return this->eventfd_stoptimer ();
+  }
+
+  bool coordinator::eventfd_stoptimer ()
+  {
+    return eventfd_settimer (m_timerfd, 0, 0);
+  }
+
+  bool coordinator::eventfd_addtimer (timer_type type, timer_latency latency, std::function<bool ()> handle)
+  {
+    timer_latency min;
+    std::size_t i;
+
+    if (m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return true;
+      }
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = true;
+    m_timer_handler[static_cast<std::size_t> (type)].latency = latency;
+    m_timer_handler[static_cast<std::size_t> (type)].function = handle;
+    m_timer_handler[static_cast<std::size_t> (type)].last_time = this->m_timens;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    assert (min != timer_latency::NA);
+
+    return this->eventfd_settimer (m_timerfd, min);
+  }
+
+  bool coordinator::eventfd_removetimer (timer_type type)
+  {
+    timer_latency min;
+    std::size_t i;
+
+    /* avoid resetting the timerfd unnecessarily */
+    if (!m_timer_handler[static_cast<std::size_t> (type)].valid)
+      {
+	return true;
+      }
+
+    m_timer_handler[static_cast<std::size_t> (type)].valid = false;
+
+    min = timer_latency::NA;
+    for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
+      {
+	if (m_timer_handler[i].valid)
+	  {
+	    if (min == timer_latency::NA || static_cast<uint64_t> (min) > static_cast<uint64_t> (m_timer_handler[i].latency))
+	      {
+		min = m_timer_handler[i].latency;
+	      }
+	  }
+      }
+
+    if (min != timer_latency::NA)
+      {
+	return this->eventfd_settimer (m_timerfd, min);
+      }
+    return this->eventfd_stoptimer ();
+  }
+
+  bool coordinator::handle_message_queue_start (message &item)
+  {
     return true;
   }
 
@@ -588,58 +1031,27 @@ not_transferred:
 
   bool coordinator::handle_message_queue_statistics (message &item)
   {
-    constexpr double alpha = 0.4;
-    std::size_t worker;
+    std::size_t index;
     uint64_t delta;
 
-    worker = item.statistics.worker.first;
-    delta = item.statistics.time_ns - m_statistics[worker].m_last_updated;
+    index = item.statistics.worker.first;
+    delta = item.statistics.time_ns - m_statistics[index].m_last_updated;
 
-    m_statistics[worker].m_core =
-	    static_cast <double> (item.statistics.cpu_time_ns - m_statistics[worker].m_last_cpu_time) / delta;
+    /* update stats */
+    m_statistics[index].m_core = static_cast <double> (item.statistics.cpu_time_ns - m_statistics[index].m_last_cpu_time) /
+				 delta;
 
-    if (m_statistics[worker].m_last_updated)
-      {
-	m_statistics[worker].m_sum.reset ();
+    this->statistics_update_connection (delta, item.statistics.worker,
+					item.statistics.contexts);
 
-	/* update EWMA */
-	this->statistics_EWMA (alpha, delta, m_statistics[worker].m_worker.first, m_statistics[worker].m_worker.second,
-			       item.statistics.worker.second);
-	for (auto &stats : item.statistics.contexts)
-	  {
-	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
-
-	    this->statistics_EWMA (alpha, delta, m_statistics[worker].m_contexts[stats.first].first,
-				   m_statistics[worker].m_contexts[stats.first].second, stats.second);
-	  }
-      }
-    else
-      {
-	/* there is no previous */
-	m_statistics[worker].m_worker.first = item.statistics.worker.second;
-	m_statistics[worker].m_worker.second = item.statistics.worker.second;
-
-	for (auto &stats : item.statistics.contexts)
-	  {
-	    assert (m_statistics[worker].m_contexts.find (stats.first) != m_statistics[worker].m_contexts.end ());
-
-	    m_statistics[worker].m_contexts[stats.first].first = stats.second;
-	    m_statistics[worker].m_contexts[stats.first].second = stats.second;
-	  }
-      }
-    m_statistics[worker].m_last_cpu_time = item.statistics.cpu_time_ns;
-    m_statistics[worker].m_last_updated = item.statistics.time_ns;
-
-    /* calculate the summation */
-    for (auto &stats : m_statistics[worker].m_contexts)
-      {
-	m_statistics[worker].m_sum += stats.second.first;
-      }
+    m_statistics[index].m_last_cpu_time = item.statistics.cpu_time_ns;
+    m_statistics[index].m_last_updated = item.statistics.time_ns;
 
     /* update score */
-    this->statistics_update_score (worker);
+    this->statistics_update_score (index);
 
-    if ((m_status == status::DRAINING && static_cast<int> (worker) == m_scaling.draining_worker) &&
+    /* hibernate */
+    if ((m_status == status::DRAINING && static_cast<int> (index) == m_scaling.draining_worker) &&
 	item.statistics.contexts.empty ())
       {
 	this->scale_down_finish ();
@@ -828,11 +1240,7 @@ not_transferred:
   bool coordinator::run ()
   {
     std::array<epoll_event, 4> events;
-    int nfds, i;
-
-    std::mt19937 gen (std::random_device { } ());
-    std::uniform_int_distribution<int> sc (0, 2);
-    int a = 0;
+    int nfds, i, j;
 
     while (!m_stop)
       {
@@ -847,6 +1255,9 @@ not_transferred:
 	    assert_release (false);
 	    continue;
 	  }
+
+	/* criterion time to use during this loop */
+	m_timens = this->get_monotonic_ns ();
 
 	for (i = 0; i < nfds; i++)
 	  {
@@ -865,45 +1276,27 @@ not_transferred:
 		  }
 		else if (events[i].data.fd == m_timerfd)
 		  {
-		    this->handle_message_queue ();
-		    //this->statistics_print ();
-
-		    std::uniform_int_distribution<int> dis (0, m_current_worker - 1);
-
-		    /* a code for verification */
-		    for (std::size_t i = 0; i < m_max_worker; i++)
+		    for (j = 0; j < static_cast<int> (timer_type::TYPE_COUNT); j++)
 		      {
-			for (auto &ctx : m_statistics[i].m_contexts)
+			if (!m_timer_handler[j].valid)
 			  {
-			    std::size_t to = dis (gen);
+			    continue;
+			  }
 
-			    if (i != to)
+			if (m_timens - m_timer_handler[j].last_time > static_cast<uint64_t> (m_timer_handler[j].latency))
+			  {
+			    if (!m_timer_handler[j].function ())
 			      {
-				if (this->transfer_connection (ctx.first, i, to))
-				  {
-				    /* success */
-				  }
+				return false;
 			      }
-			  }
-		      }
 
-		    a++;
-		    if (a % 10 == 0)
-		      {
-			std::size_t sca = sc (gen);
-			if (sca == 0)
-			  {
-			    this->scale_up ();
-			  }
-			else if (sca == 2)
-			  {
-			    this->scale_down ();
+			    m_timer_handler[j].last_time = m_timens;
 			  }
 		      }
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
-			er_log_conn (__FILE__, __LINE__, "connection::coordinator->run: eventfd_clear failed\n");
+			er_log_conn (__FILE__, __LINE__, "connection::coordinator->eventfd_handler: eventfd_clear failed\n");
 			return false;
 		      }
 		  }

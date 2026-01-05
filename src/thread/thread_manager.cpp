@@ -426,7 +426,7 @@ namespace cubthread
     std::size_t max_coordinator_workers = 1;
     std::size_t max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
     std::size_t max_active_workers = NUM_NON_SYSTEM_TRANS;  // this may be needed in utils
-    std::size_t max_transaction_workers = prm_get_integer_value (PRM_ID_THREAD_WORKER_COUNT);
+    std::size_t max_transaction_workers = prm_get_integer_value (PRM_ID_TASK_WORKER);
     std::size_t max_vacuum_workers = prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT);
     std::size_t max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
     std::size_t max_daemons = 128;  // magic number to cover predictable requirements; not cool
