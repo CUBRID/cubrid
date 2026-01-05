@@ -837,8 +837,8 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVHF_LOB_REMOVE_DIR,
    "RVHF_LOB_REMOVE_DIR",
-   heap_lob_rv_remove_dir,
-   heap_lob_rv_remove_dir,
+   heap_rv_lob_remove_dir,
+   heap_rv_lob_remove_dir,
    NULL,
    NULL},
 };

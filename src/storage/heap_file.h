@@ -720,5 +720,5 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 // *INDENT-ON*
 
 /* lob */
-extern int heap_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #endif /* _HEAP_FILE_H_ */
