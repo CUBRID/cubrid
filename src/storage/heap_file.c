@@ -26776,7 +26776,7 @@ heap_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   snprintf (lob_path, (strlen (path) + 1), "%s", path);
 
-  error = fileio_lob_remove_dir (lob_path);
+  error = fileio_lob_remove_keyword_dir (lob_path);
 
   return error;
 }
