@@ -1550,6 +1550,7 @@ pgbuf_initialize (void)
   pgbuf_Pool.ratio_lru1 = 0.0f;
   pgbuf_Pool.ratio_lru2 = 0.0f;
   pgbuf_Pool.buf_LRU_list = NULL;
+  pgbuf_Pool.victim_cand_list = NULL;
 
   memset (&pgbuf_Pool.buf_AOUT_list, 0, sizeof (PGBUF_AOUT_LIST));
   memset (&pgbuf_Pool.buf_invalid_list, 0, sizeof (PGBUF_INVALID_LIST));
@@ -1997,6 +1998,8 @@ pgbuf_finalize (void)
 #if defined(SERVER_MODE)
   pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
 #endif
+
+  thread_clear_all_holder_anchor ();
 }
 
 /*
@@ -6081,9 +6084,6 @@ pgbuf_initialize_thrd_holder (void)
   pthread_mutex_init (&pgbuf_Pool.free_holder_set_mutex, NULL);
   pgbuf_Pool.free_holder_set = NULL;
   pgbuf_Pool.free_index = -1;	/* -1 means that there is no free holder entry */
-
-  thread_get_thread_entry_info ()->m_holder_anchor = NULL;
-  thread_get_thread_entry_info ()->m_is_private_lru_enabled = false;
 
   return NO_ERROR;
 }
@@ -13745,10 +13745,6 @@ pgbuf_initialize_page_monitor (void)
   monitor->dirties_cnt = 0;
   monitor->lru_hits = NULL;
   monitor->lru_activity = NULL;
-  monitor->lru_victim_req_cnt = 0;
-  monitor->fix_req_cnt.store (0);
-  monitor->pg_unfix_cnt.store (0);
-  monitor->lru_shared_pgs_cnt = 0;
 #if defined (SERVER_MODE)
   monitor->bcb_locks = NULL;
 #endif /* SERVER_MODE */
