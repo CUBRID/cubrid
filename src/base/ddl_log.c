@@ -769,7 +769,7 @@ ddl_log_free:
 void
 logddl_write ()
 {
-  FILE *fp = NULL;  
+  FILE *fp = NULL;
   char *dbname = NULL;
   char *user_name = NULL;
 
