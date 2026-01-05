@@ -12207,7 +12207,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
 	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
 
-	  snprintf (lob_path_prefix, PATH_MAX - 1, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
+	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
 
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
