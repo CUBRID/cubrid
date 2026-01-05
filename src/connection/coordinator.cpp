@@ -38,7 +38,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define EWMA_ALPHA 0.02
+#define EWMA_ALPHA 0.06
 
 #define VAL_TO_SCORE(w, m, s) ((w) * static_cast<double> (s) / (m))
 #define EVAL_WORKER(mq, rmutex) (VAL_TO_SCORE (25, 3.5, (mq)) + VAL_TO_SCORE (500, 1, (rmutex)))
@@ -433,9 +433,13 @@ namespace cubconn::connection
 	  }
       }
 
-    std::uniform_int_distribution<size_t> dis (0, candidates.size() - 1);
+    if (candidates.size () != 0)
+      {
+	std::uniform_int_distribution<size_t> dis (0, candidates.size () - 1);
 
-    return candidates[dis (gen)];
+	return candidates[dis (gen)];
+      }
+    return m_current_worker;
   }
 
   void coordinator::statistics_EWMA (double alpha, uint64_t time_delta, double &acc, uint64_t &prev, uint64_t current)
@@ -652,11 +656,14 @@ namespace cubconn::connection
 
     if (m_scaling_statistics.count == 0)
       {
+	m_scaling_statistics.previous_scale = m_current_worker;
+
 	selected = this->scale_selection ();
 	if (selected < m_current_worker)
 	  {
 	    m_scaling_statistics.previous_direction = scaling_direction::DOWN;
 	    this->scale_down ();
+	    this->scale_trial ();
 	  }
 	else if (selected > m_current_worker)
 	  {
@@ -665,6 +672,7 @@ namespace cubconn::connection
 	      {
 		this->scale_up ();
 	      }
+	    this->scale_trial ();
 	  }
 	else
 	  {
