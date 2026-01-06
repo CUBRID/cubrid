@@ -70,7 +70,6 @@
 #include "sp_catalog.hpp"
 #include "px_heap_scan_checker.hpp"
 #include "px_query_checker.hpp"
-#include "lock_table.h"		// lock_conv
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */

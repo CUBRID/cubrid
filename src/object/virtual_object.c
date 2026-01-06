@@ -38,7 +38,6 @@
 #include "schema_manager.h"
 #include "view_transform.h"
 #include "transaction_cl.h"
-#include "lock_table.h"		// lock_conv
 
 #include "dbtype.h"
 
