@@ -36,18 +36,6 @@
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
 
-/*
- * Authorization Class Names
- */
-#define AU_ROOT_CLASS_NAME      CT_ROOT_NAME
-#define AU_OLD_ROOT_CLASS_NAME  CT_AUTHORIZATIONS_NAME
-#define AU_USER_CLASS_NAME      CT_USER_NAME
-#define AU_PASSWORD_CLASS_NAME  CT_PASSWORD_NAME
-#define AU_AUTH_CLASS_NAME      CT_AUTHORIZATION_NAME
-
-#define AU_PUBLIC_USER_NAME     "PUBLIC"
-#define AU_DBA_USER_NAME        "DBA"
-
 // static functions
 static int au_add_method_check_authorization (void);
 
@@ -55,7 +43,7 @@ void
 authenticate_context::reset (void)
 {
   root = nullptr;
-  authorizations_class = nullptr;
+  root_class = nullptr;
   authorization_class = nullptr;
   user_class = nullptr;
   password_class = nullptr;
@@ -133,7 +121,7 @@ authenticate_context::start (void)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       return (error);
     }
-  authorizations_class = class_mop;
+  root_class = class_mop;
 
   class_mop = sm_find_class (AU_AUTH_CLASS_NAME);
   if (class_mop == NULL)
@@ -162,7 +150,7 @@ authenticate_context::start (void)
     }
   password_class = class_mop;
 
-  mops = db_get_all_objects (authorizations_class);
+  mops = db_get_all_objects (root_class);
   if (mops == NULL)
     {
       error = ER_AU_NO_AUTHORIZATION;
@@ -295,7 +283,7 @@ authenticate_context::login (const char *name, const char *password, bool ignore
 int
 authenticate_context::install (void)
 {
-  MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL, old_cls = NULL;
+  MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL;
   SM_TEMPLATE *def;
   AU_USER_CACHE *user_cache;
   int exists, save, index;
@@ -310,9 +298,8 @@ authenticate_context::install (void)
   user_cls = db_create_class (AU_USER_CLASS_NAME);
   pass_cls = db_create_class (AU_PASSWORD_CLASS_NAME);
   auth_cls = db_create_class (AU_AUTH_CLASS_NAME);
-  old_cls = db_create_class (AU_OLD_ROOT_CLASS_NAME);
 
-  if (root_cls == NULL || user_cls == NULL || pass_cls == NULL || auth_cls == NULL || old_cls == NULL)
+  if (root_cls == NULL || user_cls == NULL || pass_cls == NULL || auth_cls == NULL)
     {
       goto exit_on_error;
     }
@@ -321,7 +308,6 @@ authenticate_context::install (void)
   sm_mark_system_class (user_cls, 1);
   sm_mark_system_class (pass_cls, 1);
   sm_mark_system_class (auth_cls, 1);
-  sm_mark_system_class (old_cls, 1);
 
   /*
    * db_root
@@ -362,36 +348,6 @@ authenticate_context::install (void)
     }
 
   /*
-   * db_authorizations
-   */
-
-  /*
-   * temporary support for the old name, need to migrate
-   * users over to db_root
-   */
-  def = smt_edit_class_mop (old_cls, AU_ALTER);
-  if (def == NULL)
-    {
-      goto exit_on_error;
-    }
-  smt_add_class_method (def, "add_user", "au_add_user_method");
-  smt_add_class_method (def, "drop_user", "au_drop_user_method");
-
-  smt_add_class_method (def, "find_user", "au_find_user_method");
-  smt_assign_argument_domain (def, "find_user", true, NULL, 0, "string", (DB_DOMAIN *) 0);
-
-  smt_add_class_method (def, "print_authorizations", "au_describe_root_method");
-  smt_add_class_method (def, "info", "au_info_method");
-  smt_add_class_method (def, "change_owner", "au_change_owner_method");
-  smt_add_class_method (def, "change_trigger_owner", "au_change_trigger_owner_method");
-  smt_add_class_method (def, "get_owner", "au_get_owner_method");
-
-  if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (old_cls, false) == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /*
    * db_user
    */
 
@@ -410,7 +366,11 @@ authenticate_context::install (void)
   smt_add_attribute (def, "groups", "set of (db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
+  smt_add_attribute (def, AU_USER_ATTR_IS_SYSTEM_CREATED, "integer", NULL);
   smt_add_attribute (def, "comment", "varchar(1024)", NULL);
+  smt_add_attribute (def, "created_time", "datetime", NULL);
+  smt_add_attribute (def, "updated_time", "datetime", NULL);
   /* need signatures for these */
   smt_add_method (def, "set_password", "au_set_password_method");
   smt_add_method (def, "set_password_encoded", "au_set_password_encoded_method");
@@ -512,7 +472,6 @@ authenticate_context::install (void)
   set_user (dba_user);
 
   au_change_class_owner_including_partitions (root_cls, current_user);
-  au_change_class_owner_including_partitions (old_cls, current_user);
   au_change_class_owner_including_partitions (user_cls, current_user);
   au_change_class_owner_including_partitions (pass_cls, current_user);
   au_change_class_owner_including_partitions (auth_cls, current_user);
@@ -529,12 +488,16 @@ authenticate_context::install (void)
    * note that the password class cannot be read by anyone except the DBA
    */
   au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, old_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
   au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
 
   au_add_method_check_authorization ();
+
+  if (set_system_user() != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   AU_ENABLE (save);
 
@@ -555,10 +518,6 @@ exit_on_error:
     {
       obj_delete (root);
       root = NULL;
-    }
-  if (old_cls != NULL)
-    {
-      db_drop_class (old_cls);
     }
   if (auth_cls != NULL)
     {
@@ -635,6 +594,13 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	}
       else
 	{
+	  if (is_loginable_user (user) == false)
+	    {
+	      error = ER_AU_LOGIN_DISABLED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      return error;
+	    }
+
 	  if (obj_get (user, "password", &value) != NO_ERROR)
 	    {
 	      error = ER_AU_CORRUPTED;
@@ -975,6 +941,59 @@ authenticate_context::pop_user (void)
     }
 }
 
+int
+authenticate_context::set_system_user (void)
+{
+  DB_VALUE value;
+  int error = NO_ERROR;
+
+  db_make_int (&value, true);
+
+  error = obj_set (Au_dba_user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = obj_set (Au_public_user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::disable_login (MOP user)
+{
+  DB_VALUE value;
+  int error = NO_ERROR;
+
+  db_make_int (&value, false);
+
+  error = obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+int authenticate_context::is_loginable_user (MOP user)
+{
+  DB_VALUE value;
+
+  if (obj_get (user, AU_USER_ATTR_IS_LOGINABLE, &value) == NO_ERROR &&
+      db_get_int (&value) == true)
+    {
+      return true;
+    }
+
+  return false;
+}
+
 //
 // STATIC FUNCTIONS
 //
@@ -1019,4 +1038,3 @@ exit_on_error:
   AU_ENABLE (save);
   return ER_FAILED;
 }
-

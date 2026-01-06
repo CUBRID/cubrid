@@ -32,6 +32,9 @@
 #include "authenticate_cache.hpp"
 #include "authenticate_password.hpp" /* AU_MAX_PASSWORD_BUF */
 
+#define AU_USER_ATTR_IS_LOGINABLE      "is_loginable"
+#define AU_USER_ATTR_IS_SYSTEM_CREATED "is_system_created"
+
 class EXPORT_IMPORT authenticate_context
 {
   public:
@@ -51,7 +54,7 @@ class EXPORT_IMPORT authenticate_context
     MOP root;
 
 
-    MOP authorizations_class;     /* db_root */
+    MOP root_class;     /* db_root */
 
 
     MOP authorization_class;     /* db_authorization */
@@ -188,6 +191,10 @@ class EXPORT_IMPORT authenticate_context
     int perform_login (const char *name, const char *password, bool ignore_dba_privilege);
 
     void reset (void);
+
+    int set_system_user (void);
+    int disable_login (MOP user);
+    int is_loginable_user (MOP user);
 };
 
 #endif // _AUTHENTICATE_CONTEXT_HPP_

@@ -2170,6 +2170,13 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
+  // for syncronizing created_time and updated_time
+  error = au_set_user_timestamps (user);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
 end:
   if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
     {
@@ -2386,6 +2393,19 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       comment = (char *) PT_VALUE_GET_BYTES (node);
       error = au_set_user_comment (user, comment);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+/*
+ * Timestamp already updated during add/drop members (member_name != NULL)
+ * in db_add_member() or db_drop_member(); update only for password or comment changes.
+ */
+  if (statement->info.alter_user.members == NULL)
+    {
+      error = au_update_user_timestamp (user);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -10932,7 +10952,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	}
     }
 
-  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in db_serial according to new
+  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in _db_serial according to new
    * type */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED)
       && is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))
@@ -15246,10 +15266,12 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
   if (node->node_type == PT_PARTITION)
     {
       partition->partition_type = node->info.partition.type;
+      partition->class_partition_type = DB_PARTITIONED_CLASS;
     }
   else
     {
       partition->partition_type = node->info.parts.type;
+      partition->class_partition_type = DB_PARTITION_CLASS;
     }
 
   if (node->node_type == PT_PARTITION)
