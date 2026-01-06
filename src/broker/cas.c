@@ -69,12 +69,6 @@ static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
 static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
-#if defined(WINDOWS)
-static int cas_req_count;	/* Request count for restart check (WINDOWS only) */
-#endif /* WINDOWS */
-
-static SOCKET srv_sock_fd;
-
 /* ========================================================================
  * Function Tables
  * ======================================================================== */
@@ -176,7 +170,7 @@ static const char *server_func_name[] = {
 static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
-static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
@@ -653,7 +647,7 @@ conn_retry:
 	    signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
 
-	    fn_ret = process_request (proxy_sock_fd, &net_buf, &req_info);
+	    fn_ret = process_request (proxy_sock_fd, &net_buf, &req_info, INVALID_SOCKET);
 	    cas_log_error_handler_clear ();
 #if !defined(WINDOWS)
 	    signal (SIGUSR1, SIG_IGN);
@@ -839,7 +833,7 @@ return_error:
 }
 
 static FN_RETURN
-process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd)
 {
   MSG_HEADER client_msg_header;
   MSG_HEADER cas_msg_header;
