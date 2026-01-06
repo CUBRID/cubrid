@@ -19678,7 +19678,7 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d += cumulative_days_per_month[days_idx][_m - 1];
 
       /* days_per_month for years */
-      int maxdays = (days_per_month[days_idx][2] == 29) ? 366 : 365;
+      int maxdays = cumulative_days_per_month[days_idx][12];
       while (_d >= maxdays)
 	{
 	  _d -= maxdays;
@@ -19692,7 +19692,7 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 
       /* days within a year */
       days_idx = LEAP (_y) ? 1 : 0;
-      for (_m = 1;; _m++)
+      for (_m = (_d < cumulative_days_per_month[days_idx][7]) ? 1 : 7; /* blank */ ; _m++)
 	{
 	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
@@ -19849,7 +19849,7 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 
       /* days within a year */
       days_idx = LEAP (_y) ? 1 : 0;
-      for (_m = 1;; _m++)
+      for (_m = (_d < cumulative_days_per_month[days_idx][7]) ? 1 : 7; /* blank */ ; _m++)
 	{
 	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
