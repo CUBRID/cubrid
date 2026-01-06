@@ -362,32 +362,6 @@ typedef int TRANID;		/* Transaction identifier */
 #define COMPOSITE_LOCK(scan_op_type)	(scan_op_type != S_SELECT)
 #define READONLY_SCAN(scan_op_type)	(scan_op_type == S_SELECT)
 
-typedef enum
-{
-  LOCK_COMPAT_NO = 0,
-  LOCK_COMPAT_YES,
-  LOCK_COMPAT_UNKNOWN,
-} LOCK_COMPATIBILITY;
-
-typedef enum
-{
-  /* Don't change the initialization since they reflect the elements of lock_Conv and lock_Comp */
-  NA_LOCK = 0,			/* N/A lock */
-  INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
-  NULL_LOCK = 2,		/* NULL LOCK */
-  SCH_S_LOCK = 3,		/* Schema Stability Lock */
-  IS_LOCK = 4,			/* Intention Shared lock */
-  S_LOCK = 5,			/* Shared lock */
-  IX_LOCK = 6,			/* Intention exclusive lock */
-  BU_LOCK = 7,			/* Bulk Update Lock */
-  SIX_LOCK = 8,			/* Shared and intention exclusive lock */
-  U_LOCK = 9,			/* Update lock */
-  X_LOCK = 10,			/* Exclusive lock */
-  SCH_M_LOCK = 11,		/* Schema Modification Lock */
-
-  LOCK_COUNT			/* number of lock modes */
-} LOCK;
-
 /* CLASSNAME TO OID RETURN VALUES */
 typedef enum
 {
@@ -423,8 +397,6 @@ typedef enum
   BTREE_KEY_BETWEEN		/* Key was not found and it's value is between the smallest and the biggest keys it was
 				 * compared to. */
 } BTREE_SEARCH;
-
-
 
 /* Magic default values */
 #define CUBRID_MAGIC_MAX_LENGTH                 25

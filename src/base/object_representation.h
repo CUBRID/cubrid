@@ -45,6 +45,7 @@
 #include "object_representation_constants.h"
 #include "porting_inline.hpp"
 #include "storage_common.h"
+#include "lock_table.h"		// LOCK
 
 // forward declarations
 struct log_lsa;

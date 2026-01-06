@@ -24,7 +24,33 @@
 #ifndef _LOCK_TABLE_H_
 #define _LOCK_TABLE_H_
 
-#include "storage_common.h"	// LOCK, LOCK_COMPATIBILITY
+#include <assert.h>
+
+typedef enum
+{
+  LOCK_COMPAT_NO = 0,
+  LOCK_COMPAT_YES,
+  LOCK_COMPAT_UNKNOWN,
+} LOCK_COMPATIBILITY;
+
+typedef enum
+{
+  /* Don't change the initialization since they reflect the elements of lock_Conv and lock_Comp */
+  NA_LOCK = 0,			/* N/A lock */
+  INCON_NON_TWO_PHASE_LOCK = 1,	/* Incompatible 2 phase lock. */
+  NULL_LOCK = 2,		/* NULL LOCK */
+  SCH_S_LOCK = 3,		/* Schema Stability Lock */
+  IS_LOCK = 4,			/* Intention Shared lock */
+  S_LOCK = 5,			/* Shared lock */
+  IX_LOCK = 6,			/* Intention exclusive lock */
+  BU_LOCK = 7,			/* Bulk Update Lock */
+  SIX_LOCK = 8,			/* Shared and intention exclusive lock */
+  U_LOCK = 9,			/* Update lock */
+  X_LOCK = 10,			/* Exclusive lock */
+  SCH_M_LOCK = 11,		/* Schema Modification Lock */
+
+  LOCK_COUNT			/* number of lock modes */
+} LOCK;
 
 extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT];
 extern const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT];
