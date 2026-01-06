@@ -1297,7 +1297,11 @@ namespace cubconn::master
 		    /* finalize */
 		    return true;
 		  }
-		if (!this->handle_master_reception (ctx))
+		if (ctx->has_data_to_send ())
+		  {
+		    /* don't read while there is pending data to send */
+		  }
+		else if (!this->handle_master_reception (ctx))
 		  {
 		    er_log_conn (__FILE__, __LINE__, "master::connector->execute: handle_master_reception failed: %d\n", 0);
 		    if (!this->disconnect (ctx))
