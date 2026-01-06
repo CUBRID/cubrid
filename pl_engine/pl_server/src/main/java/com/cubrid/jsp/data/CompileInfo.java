@@ -32,7 +32,6 @@
 package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.protocol.PackableObject;
-import java.util.Set;
 
 public class CompileInfo implements PackableObject {
     public int errCode = -1; // 0: no error, < 0: error
@@ -48,8 +47,6 @@ public class CompileInfo implements PackableObject {
     public int compiledType = -1;
     public byte[] compiledCode = null;
 
-    private Set<Dependency> dependencies = null;
-
     public CompileInfo(int code, int line, int column, String msg) {
         assert code < 0;
 
@@ -59,14 +56,12 @@ public class CompileInfo implements PackableObject {
         errMsg = msg;
     }
 
-    public CompileInfo(
-            String translated, String stmt, String name, String sig, Set<Dependency> dependencies) {
+    public CompileInfo(String translated, String stmt, String name, String sig) {
         errCode = 0;
         this.translated = translated;
         this.createStmt = stmt;
         this.className = name;
         this.signature = sig;
-        this.dependencies = dependencies;
     }
 
     @Override
@@ -85,11 +80,6 @@ public class CompileInfo implements PackableObject {
             packer.packInt(compiledType);
             if (compiledType >= 0) {
                 packer.packCString(compiledCode);
-            }
-
-            packer.packInt(dependencies.size());
-            for (Dependency d : dependencies) {
-                d.pack(packer);
             }
         }
     }

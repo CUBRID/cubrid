@@ -238,12 +238,7 @@ public class PlcsqlCompilerMain {
 
         Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
         TypeChecker typeChecker =
-                new TypeChecker(
-                        iStore,
-                        converter.symbolStack,
-                        converter.dependenciesOfStaticSql,
-                        owner,
-                        sqlUsesInRecursiveCalls);
+                new TypeChecker(iStore, converter.symbolStack, converter, sqlUsesInRecursiveCalls);
         typeChecker.visitUnit(unit);
 
         if (verbose) {
@@ -271,8 +266,7 @@ public class PlcsqlCompilerMain {
                         javaCode,
                         sqlTemplate[0] + String.format(" '%s';", javaSig),
                         unit.getClassName(),
-                        javaSig,
-                        typeChecker.dependencies);
+                        javaSig);
         return info;
     }
 

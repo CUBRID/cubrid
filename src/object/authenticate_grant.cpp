@@ -43,7 +43,7 @@
 #include "jsp_cl.h"
 
 #if defined(SA_MODE)
-#include "catalog_class.h"
+extern bool catcls_Enable;
 #endif /* SA_MODE */
 
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);

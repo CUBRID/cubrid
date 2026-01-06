@@ -36,7 +36,6 @@
 #include <atomic>
 #include <chrono>
 #include "dbtype.h"
-#include "fetch.h"
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
 
@@ -948,19 +947,8 @@ namespace parallel_heap_scan
 	      {
 		for (REGU_VARIABLE_LIST operand = agg_node->operands; operand != NULL; operand = operand->next)
 		  {
-		    DB_VALUE *db_value_p;
-		    if (operand->value.type == TYPE_CONSTANT)
-		      {
-			db_value_p = operand->value.value.dbvalptr;
-		      }
-		    else
-		      {
-			int err_code = fetch_peek_dbval (thread_p, &operand->value, tl_vd, NULL, NULL, tl_tpl_buf.tpl, &db_value_p);
-			if (err_code != NO_ERROR)
-			  {
-			    return false;
-			  }
-		      }
+		    assert (operand->value.type == TYPE_CONSTANT);
+		    DB_VALUE *db_value_p = operand->value.value.dbvalptr;
 		    if (DB_IS_NULL (db_value_p))
 		      {
 			continue;
@@ -983,21 +971,7 @@ namespace parallel_heap_scan
 	      }
 	    else
 	      {
-		DB_VALUE *db_value_p;
-		if (agg_node->operands->value.type == TYPE_CONSTANT)
-		  {
-		    db_value_p = agg_node->operands->value.value.dbvalptr;
-		  }
-		else
-		  {
-		    int err_code = fetch_peek_dbval (thread_p, &agg_node->operands->value, tl_vd, NULL, NULL, tl_tpl_buf.tpl, &db_value_p);
-		    if (err_code != NO_ERROR)
-		      {
-			return false;
-		      }
-		  }
-
-		if (DB_IS_NULL (db_value_p))
+		if (DB_IS_NULL (agg_node->operands->value.value.dbvalptr))
 		  {
 		    continue;
 		  }

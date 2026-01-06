@@ -29,7 +29,7 @@
 #include <windows.h>
 #endif
 
-#include "broker_cas_cci.h"
+#include "cas.h"
 #include "cas_schema_info.h"
 #include "cas_common.h"
 #include "cas_net_buf.h"

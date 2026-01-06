@@ -35,9 +35,8 @@
 #include <arpa/inet.h>
 #endif /* WINDOWS */
 
-#include "cas_common_vars.h"
-#include "cas_error.h"
-#include "broker_cas_cci.h"
+#include "cas.h"
+#include "cas_common.h"
 #include "cas_net_buf.h"
 #include "cas_util.h"
 #include "dbi.h"

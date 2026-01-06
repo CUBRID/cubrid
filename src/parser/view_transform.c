@@ -39,7 +39,6 @@
 #include "locator_cl.h"
 #include "virtual_object.h"
 #include "dbtype.h"
-#include "boot.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -1220,8 +1219,6 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	    {
 	      PT_NODE *from;
 	      int i = 0;
-	      bool is_reuse_oid_class;
-	      int client_type = db_get_client_type ();
 
 	      for (from = statement->info.query.q.select.from; from != NULL; from = from->next)
 		{
@@ -1231,15 +1228,12 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 
 	      for (i = 0; i < *num_classes; ++i)
 		{
-		  is_reuse_oid_class = sm_is_reuse_oid_class ((*classes)[i]);
-
-		  if (is_reuse_oid_class
-		      || (!BOOT_ADMIN_CSQL_CLIENT_TYPE (client_type) && (sm_is_system_class ((*classes)[i]) > 0)))
+		  if (sm_is_reuse_oid_class ((*classes)[i]) || sm_is_system_class ((*classes)[i]) > 0)
 		    {
 		      local = (PT_UPDATABILITY) (local & PT_NOT_UPDATABLE);
 		      if (parser->view_cache)
 			{
-			  parser->view_cache->has_reuse_oid_table = is_reuse_oid_class;
+			  parser->view_cache->has_reuse_oid_table = true;
 			}
 		      break;
 		    }

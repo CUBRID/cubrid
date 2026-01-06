@@ -93,8 +93,6 @@ typedef struct tr_trigger
    */
   int chn;
   const char *comment;
-  DB_DATETIME created_time;
-  DB_DATETIME updated_time;
 } TR_TRIGGER;
 
 
@@ -221,8 +219,6 @@ extern const char *TR_ATT_ACTION;
 extern const char *TR_ATT_ACTION_OLD;
 extern const char *TR_ATT_PROPERTIES;
 extern const char *TR_ATT_COMMENT;
-extern const char *TR_ATT_CREATED_TIME;
-extern const char *TR_ATT_UPDATED_TIME;
 
 extern int tr_Current_depth;
 extern int tr_Maximum_depth;
@@ -257,6 +253,7 @@ extern const char *EVAL_SUFFIX;
 extern void tr_init (void);
 extern void tr_final (void);
 extern void tr_dump (FILE * fpp);	/* debug status */
+extern int tr_install (void);
 
 /* Global trigger firing state : enable/disable functions */
 
@@ -288,7 +285,6 @@ extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool
 extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);
 extern int tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_api);
-extern int tr_update_trigger_timestamp (DB_OBJECT * trigger_object);
 
 /* Parameters */
 extern int tr_get_depth (void);
