@@ -2365,6 +2365,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
+  memset (&xasl->analytic_stats, 0, sizeof (xasl->analytic_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
   memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
   xasl->max_iterations = -1;
@@ -2942,6 +2943,21 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
       stx_build_list_proc->a_regu_list =
 	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (stx_build_list_proc->a_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      stx_build_list_proc->a_scan_regu_list = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->a_scan_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_build_list_proc->a_scan_regu_list == NULL)
 	{
 	  goto error;
 	}
@@ -6257,6 +6273,16 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  analytic->group_list_id = NULL;
+
+  ptr = or_unpack_int (ptr, &offset);
+  analytic->order_list_id = NULL;
+
+  ptr = or_unpack_int (ptr, &analytic->curr_group_tuple_count);
+  ptr = or_unpack_int (ptr, &analytic->curr_group_tuple_count_nn);
+  ptr = or_unpack_int (ptr, &analytic->curr_sort_key_tuple_count);
+
   /* sort_prefix_size */
   ptr = or_unpack_int (ptr, &analytic->sort_prefix_size);
 
@@ -6312,7 +6338,7 @@ error:
 static char *
 stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_TYPE * analytic_eval)
 {
-  int offset;
+  int offset, tmp_i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -6352,6 +6378,15 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
 	  goto error;
 	}
     }
+
+  ptr = or_unpack_int (ptr, &tmp_i);
+  analytic_eval->covered_size = tmp_i;
+
+//   ptr = or_unpack_int (ptr, &tmp_i);
+//   analytic_eval->curr_group_tuple_count = tmp_i;
+
+//   ptr = or_unpack_int (ptr, &tmp_i);
+//   analytic_eval->curr_sort_key_tuple_count = tmp_i;
 
   return ptr;
 

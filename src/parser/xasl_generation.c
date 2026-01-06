@@ -15845,7 +15845,7 @@ pt_generate_simple_analytic_eval_type (PARSER_CONTEXT * parser, ANALYTIC_INFO * 
  * that share the same window.
  */
 static ANALYTIC_EVAL_TYPE *
-pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool * no_optimization)
+pt_optimize_analytic_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_INFO * info, bool * no_optimization)
 {
   ANALYTIC_EVAL_TYPE *ret = NULL;
   ANALYTIC_TYPE *func_p;
@@ -16065,6 +16065,102 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
 	  return NULL;
 	}
 
+        newa->covered_size = 0;
+
+        if (qo_is_iscan (qo_plan))
+       {
+         QO_NODE_INDEX_ENTRY *ni_entry;
+         QO_INDEX_ENTRY *index_entry;
+         int col_idx, pos_no;
+         PT_NODE *sort_spec_list;
+         bool covered = false;
+        
+         ni_entry = qo_plan->plan_un.scan.index;
+         index_entry = ni_entry->head;
+  
+         sort_spec_list = NULL;
+         if (index_entry != NULL && index_entry->constraints != NULL)
+           {
+             PT_NODE *attr = NULL;
+
+             for (col_idx = 0; col_idx < index_entry->col_num; col_idx++)
+               {
+                 const char *column_name = db_attribute_name(index_entry->constraints->attributes[col_idx]);
+
+                 for (attr = info->select_list, pos_no = 0; attr != NULL; attr = attr->next, pos_no++)
+                   {
+                     if (PT_IS_NAME_NODE (attr))
+                       {
+                         if (strcmp (pt_get_name (attr), column_name) == 0)
+                           {
+                                newa->covered_size ++;
+
+                                PT_NODE *sort_spec_node = parser_new_node (parser, PT_SORT_SPEC);
+                                if (sort_spec_node == NULL)
+                                  {
+                                    return NULL;
+                                  }
+                              
+                                PT_NODE *sort_spec_num = pt_make_integer_value (parser, pos_no + 1);
+                                sort_spec_node->info.sort_spec.asc_or_desc = index_entry->constraints->asc_desc[col_idx] == 0 ? PT_ASC : PT_DESC;
+                                sort_spec_node->info.sort_spec.expr = sort_spec_num;
+                                sort_spec_node->info.sort_spec.pos_descr.pos_no = pos_no + 1;
+
+                                sort_spec_list = parser_append_node (sort_spec_node, sort_spec_list);
+				break;
+                           }
+                       }
+                   }
+  
+                 if (attr == NULL)
+                   {
+                     break;
+                   }
+               }
+             SORT_LIST *covered_list =
+               pt_to_sort_list (parser, sort_spec_list, info->select_list, SORT_LIST_ANALYTIC_WINDOW);
+  
+             covered = pt_is_sort_list_covered (parser, covered_list, newa->sort_list);
+  
+             if (covered)
+               {
+                 newa->covered_size = 1;
+                 if (ret == NULL)
+                   {
+                     ret = newa;
+                   }
+                 else
+                   {
+                     tail = ret;
+                     ret = newa;
+                     newa->next = tail;
+                   }
+               }
+             else
+               {
+                 if (ret == NULL)
+                   {
+                     ret = newa;
+                   }
+                 else
+                   {
+                     tail = ret;
+                     while (tail->next != NULL)
+                       {
+                         tail = tail->next;
+                       }
+  
+                     /* link */
+                     tail->next = newa;
+                   }
+               }
+           }
+         // else .. impossible case
+       }
+  
+        else
+       {
+
       /* attach to current list */
       if (ret == NULL)
 	{
@@ -16083,6 +16179,7 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, ANALYTIC_INFO * info, bool *
 	  /* link */
 	  tail->next = newa;
 	}
+      }
     }
 
   /*
@@ -16591,6 +16688,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
+	  int *attr_offsets;
+	  attr_offsets = pt_make_identity_offsets (select_list_ex);
+
+	  buildlist->a_scan_regu_list =
+	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);
+
+	  if (attr_offsets != NULL)
+	    {
+	      free_and_init (attr_offsets);
+	    }
+
 	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
 	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, NULL);
@@ -16634,7 +16742,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* optimize analytic function list */
-	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
+	  xasl->proc.buildlist.a_eval_list =
+	    pt_optimize_analytic_list (parser, qo_plan, &analytic_info, &no_optimization_done);
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
 	  if (no_optimization_done == true)
@@ -24425,6 +24534,11 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE ** e
       return NULL;
     }
 
+  if (PT_IS_VALUE_NODE (tree))
+    {
+      return tree;
+    }
+
   if (PT_IS_ANALYTIC_NODE (tree))
     {
       /* select ntile(select stddev(...)...)... from ... is allowed */
@@ -25044,6 +25158,11 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
   if (node == NULL)
     {
       /* nothing to do */
+      return node;
+    }
+
+  if (PT_IS_VALUE_NODE (node))
+    {
       return node;
     }
 

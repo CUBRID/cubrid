@@ -3609,6 +3609,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 {
   ORDERBY_STATS *ostats;
   GROUPBY_STATS *gstats;
+  ANALYTIC_STATS *astats;
   xasl_node *xptr;
 
   if (xasl_p == NULL)
@@ -3765,6 +3766,30 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	  fprintf (fp, "SUBQUERY_CACHE (hit: %d, miss: %d, size: %lu, status: disabled)\n",
 		   SQ_CACHE_HIT (xasl_p), SQ_CACHE_MISS (xasl_p), SQ_CACHE_SIZE (xasl_p));
 	}
+    }
+
+  astats = &xasl_p->analytic_stats;
+  if (astats->run_analytic)
+    {
+      fprintf (fp, "%*c", indent, ' ');
+      fprintf (fp, "ANALYTIC (time: %d", TO_MSEC (astats->analytic_time));
+
+      if (astats->analytic_unsorted_count == 0)
+	{
+	  fprintf (fp, ", sort: true, page: %lld, ioread: %lld",
+		   (long long int) astats->analytic_pages, (long long int) astats->analytic_ioreads);
+	}
+      else if (astats->analytic_unsorted_count == astats->analytic_total_count)
+	{
+	  fprintf (fp, ", sort: false");
+	}
+      else
+	{
+	  fprintf (fp, ", sort: partial, page: %lld, ioread: %lld",
+		   (long long int) astats->analytic_pages, (long long int) astats->analytic_ioreads);
+	}
+
+      fprintf (fp, ", rows: %d)\n", astats->rows);
     }
 
   gstats = &xasl_p->groupby_stats;
