@@ -238,33 +238,3 @@ const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
     /* U */ NA_LOCK, /* X */ SCH_M_LOCK, /* SCH-M */ SCH_M_LOCK}
 };
 /* *INDENT-ON* */
-
-/* 
-previous definition of LOCK_TO_LOCKMODE_STRING is:
-  #define LOCK_TO_LOCKMODE_STRING(lock) \
-    (((lock) == NULL_LOCK)  ? "  NULL_LOCK" : \
-    ((lock) == IS_LOCK)    ? "    IS_LOCK" : \
-    ((lock) == S_LOCK)     ? "     S_LOCK" : \
-    ((lock) == IX_LOCK)    ? "    IX_LOCK" : \
-    ((lock) == SIX_LOCK)   ? "   SIX_LOCK" : \
-    ((lock) == U_LOCK)     ? "     U_LOCK" : \
-    ((lock) == BU_LOCK)    ? "    BU_LOCK" : \
-    ((lock) == SCH_S_LOCK) ? " SCH_S_LOCK" : \
-    ((lock) == SCH_M_LOCK) ? " SCH_M_LOCK" : \
-    ((lock) == X_LOCK)     ? "     X_LOCK" : "UNKNOWN")
-*/
-
-const char *lock_mode_string[LOCK_COUNT] = {
-  "UNKNOWN",
-  "UNKNOWN",
-  "NULL_LOCK",
-  "SCH_S_LOCK",
-  "IS_LOCK",
-  "S_LOCK",
-  "IX_LOCK",
-  "BU_LOCK",
-  "SIX_LOCK",
-  "U_LOCK",
-  "X_LOCK",
-  "SCH_M_LOCK",
-};

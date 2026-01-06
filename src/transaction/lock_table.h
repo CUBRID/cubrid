@@ -28,7 +28,6 @@
 
 extern const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT];
 extern const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT];
-extern const char *lock_mode_string[LOCK_COUNT];
 
 inline LOCK
 lock_conv (LOCK requested, LOCK current)
@@ -45,10 +44,34 @@ lock_compat (LOCK requested, LOCK current)
 }
 
 inline const char *
-LOCK_TO_LOCKMODE_STRING (LOCK lock)
+lock_to_lockmode_string (LOCK lock)
 {
-  assert (lock >= 0 && lock < LOCK_COUNT);
-  return lock_mode_string[(int) lock];
+  assert (lock >= NULL_LOCK && lock < LOCK_COUNT);
+  switch (lock)
+    {
+    case NULL_LOCK:
+      return "NULL_LOCK";
+    case IS_LOCK:
+      return "IS_LOCK";
+    case S_LOCK:
+      return "S_LOCK";
+    case IX_LOCK:
+      return "IX_LOCK";
+    case SIX_LOCK:
+      return "SIX_LOCK";
+    case U_LOCK:
+      return "U_LOCK";
+    case BU_LOCK:
+      return "BU_LOCK";
+    case SCH_S_LOCK:
+      return "SCH_S_LOCK";
+    case SCH_M_LOCK:
+      return "SCH_M_LOCK";
+    case X_LOCK:
+      return "X_LOCK";
+    default:			// NA_LOCK, 
+      return "UNKNOWN";
+    }
 }
 
 #endif // _LOCK_TABLE_H_
