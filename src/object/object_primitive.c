@@ -8371,7 +8371,7 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 
 	  if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
-	      unsigned char header[NUMERIC_HEADER_SIZE];
+	      unsigned char header[NUMERIC_HEADER_SIZE] = { 0 };
 	      int header_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
 	      int header_scale = DB_VALUE_NUMERIC_HEADER_SCALE (value);
 	      bool is_negative_data = (src_num[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
@@ -8505,7 +8505,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
   int calc_size = 0;
   DB_C_NUMERIC num;
-  unsigned char header[NUMERIC_HEADER_SIZE];
+  unsigned char header[NUMERIC_HEADER_SIZE] = { 0 };
 
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
@@ -8690,7 +8690,7 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	  precision = db_value_precision (value);
 	  if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
-	      unsigned char header[NUMERIC_HEADER_SIZE];
+	      unsigned char header[NUMERIC_HEADER_SIZE] = { 0 };
 	      int header_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
 	      int header_scale = DB_VALUE_NUMERIC_HEADER_SCALE (value);
 	      bool is_negative_data = (numeric[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
@@ -8740,7 +8740,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 			 int copy_buf_len)
 {
   int rc = NO_ERROR;
-  unsigned char header[NUMERIC_HEADER_SIZE];
+  unsigned char header[NUMERIC_HEADER_SIZE] = { 0 };
   DB_C_NUMERIC num;
 
   if (domain == NULL)
