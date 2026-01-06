@@ -737,7 +737,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
    */
   if (max_key_len > 0)
     {
-      int page_count = indx_cov->list_id->tfile_vfid->membuf_npages;
+      int page_count = (int) indx_cov->list_id->tfile_vfid->membuf_helper->m_max_size;
       int value_count = indx_cov->output_val_list->valptr_cnt;
       int header_size = (bt_num_attrs > 1) ? or_multi_header_size (bt_num_attrs) : 0;
       int tuple_size, tuple_count;
@@ -4533,7 +4533,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (indx_cov_p->list_id != NULL)
 	    {
 	      static int temp_cache_max_pages = prm_get_integer_value (PRM_ID_MAX_PAGES_IN_TEMP_FILE_CACHE);
-	      if (indx_cov_p->list_id->page_cnt - indx_cov_p->list_id->tfile_vfid->membuf_npages > temp_cache_max_pages)
+	      if (indx_cov_p->list_id->page_cnt - (int) indx_cov_p->list_id->tfile_vfid->membuf_helper->m_max_size >
+		  temp_cache_max_pages)
 		{
 		  qfile_destroy_list (thread_p, indx_cov_p->list_id);
 
@@ -6131,8 +6132,8 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 			  qfile_close_scan (thread_p, indx_cov_p->lsid);
 
-			  if (indx_cov_p->list_id->page_cnt - indx_cov_p->list_id->tfile_vfid->membuf_npages >
-			      temp_cache_max_pages)
+			  if (indx_cov_p->list_id->page_cnt -
+			      (int) indx_cov_p->list_id->tfile_vfid->membuf_helper->m_max_size > temp_cache_max_pages)
 			    {
 			      /* close current list and start a new one */
 			      qfile_destroy_list (thread_p, indx_cov_p->list_id);

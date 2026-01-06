@@ -1725,8 +1725,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	}
 
       if (temp_part_list_id[part_id] != NULL &&
-	  (temp_part_list_id[part_id]->tfile_vfid->membuf_last ==
-	   temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1) &&
+	  (temp_part_list_id[part_id]->tfile_vfid->membuf_helper == NULL) &&
 	  (temp_part_list_id[part_id]->last_offset + QFILE_GET_TUPLE_LENGTH (tuple_record.tpl)) > DB_PAGESIZE)
 	{
 	  qfile_close_list (thread_p, temp_part_list_id[part_id]);	/* may be meaningless since only memory buffer is used */

@@ -417,7 +417,7 @@ namespace parallel_query
 		}
 
 	      if (temp_part_list_id[part_id] != nullptr
-		  && (temp_part_list_id[part_id]->tfile_vfid->membuf_last == temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1)
+		  && (temp_part_list_id[part_id]->tfile_vfid->membuf_helper == NULL)
 		  && (temp_part_list_id[part_id]->last_offset + QFILE_GET_TUPLE_LENGTH (tuple_record.tpl)) > DB_PAGESIZE)
 		{
 		  qfile_close_list (&thread_ref, temp_part_list_id[part_id]);	/* may be meaningless since only memory buffer is used */

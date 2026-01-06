@@ -225,6 +225,7 @@ namespace cubthread
     tran_entries[THREAD_TS_OBJ_LOCK_ENT] = lf_tran_request_entry (&obj_lock_ent_Ts);
     tran_entries[THREAD_TS_CATALOG] = lf_tran_request_entry (&catalog_Ts);
     tran_entries[THREAD_TS_SESSIONS] = lf_tran_request_entry (&sessions_Ts);
+    tran_entries[THREAD_TS_MEMORY_BUFFER] = lf_tran_request_entry (&memory_buffer_Ts);
     tran_entries[THREAD_TS_FREE_SORT_LIST] = lf_tran_request_entry (&free_sort_list_Ts);
     tran_entries[THREAD_TS_GLOBAL_UNIQUE_STATS] = lf_tran_request_entry (&global_unique_stats_Ts);
     tran_entries[THREAD_TS_HFID_TABLE] = lf_tran_request_entry (&hfid_table_Ts);

@@ -33,6 +33,7 @@
 #include "dbtype_def.h"
 #include "file_manager.h"
 #include "list_file.h"
+#include "query_memory_buffer.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
@@ -86,11 +87,9 @@ struct qmgr_temp_file
 {
   QMGR_TEMP_FILE *next;
   QMGR_TEMP_FILE *prev;
+  MEMORY_BUFFER_HELPER *membuf_helper;
   FILE_TYPE temp_file_type;
   VFID temp_vfid;
-  int membuf_last;
-  PAGE_PTR *membuf;
-  int membuf_npages;
   QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type;
   bool preserved;		/* if temp file is preserved */
   bool tde_encrypted;		/* whether the file of temp_vfid has to be encrypted when flushing (TDE) */

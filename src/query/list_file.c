@@ -1212,9 +1212,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 
   if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
     {
-      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-      list_id_p->tfile_vfid->membuf = NULL;
-      list_id_p->tfile_vfid->membuf_npages = 0;
+      list_id_p->tfile_vfid->membuf_helper = NULL;
       list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
     }
 
@@ -1354,12 +1352,11 @@ qfile_reopen_list_as_append_mode (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
 
   temp_file_p = list_id_p->tfile_vfid;
 
-  if (temp_file_p->membuf && list_id_p->last_vpid.volid == NULL_VOLID)
+  if (list_id_p->last_vpid.volid == NULL_VOLID)
     {
-      /* The last page is in the membuf */
-      assert_release (temp_file_p->membuf_last >= list_id_p->last_vpid.pageid);
       /* The page of last record in the membuf */
-      last_page_ptr = temp_file_p->membuf[list_id_p->last_vpid.pageid];
+      last_page_ptr = qmgr_get_memory_buffer_page (temp_file_p->membuf_helper, list_id_p->last_vpid.pageid);
+      assert (last_page_ptr != NULL);
     }
   else
     {
@@ -3043,7 +3040,7 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
 
   assert (append_list_id->tuple_cnt > 0);
   assert (!VPID_ISNULL (&append_list_id->first_vpid));
-  assert (append_list_id->tfile_vfid->membuf == NULL);
+  assert (append_list_id->tfile_vfid->membuf_helper  == NULL);
 
 #if !defined (NDEBUG)
   {
@@ -3133,7 +3130,8 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
     case TEMP_FILE_MEMBUF_KEY_BUFFER:
     case TEMP_FILE_MEMBUF_NORMAL:
       {
-	tfile_vfid_p->membuf_last = -1;
+	/* TODO: reset */
+	qmgr_free_memory_buffer_helper (thread_p, &tfile_vfid_p->membuf_helper);
       }
       break;
     default:
