@@ -226,6 +226,15 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
       goto end;
     }
 
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      is_abort = true;
+      goto end;
+    }
+
   serial_obj = dbt_finish_object (obj_tmpl);
   if (!serial_obj)
     {
@@ -446,7 +455,7 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
 	  if (owner == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
-	      return error;
+	      goto end;
 	    }
 
 	  table_name = sm_get_ch_name (sub_partitions[i]);
@@ -477,21 +486,21 @@ au_change_class_owner (MOP class_mop, MOP owner_mop)
   if (owner == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   table_name = sm_get_ch_name (class_mop);
   if (table_name == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   error = au_object_owner_change_privileges (DB_OBJECT_CLASS, class_mop, owner, owner_mop, table_name);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   /* change the owner of a class */
@@ -601,6 +610,12 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 	{
 	  goto end;
 	}
+    }
+
+  error = db_update_obj_timestamp (sp);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
 end:

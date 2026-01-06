@@ -56,7 +56,7 @@ namespace cubscan
     {
       public:
 
-	scanner ();
+	void constructor();
 
 	int init (cubthread::entry *thread_p, PL_SIGNATURE_ARRAY_TYPE *sig_array, qfile_list_id *list_id);
 	void clear (bool is_final);

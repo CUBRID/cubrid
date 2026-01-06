@@ -1561,46 +1561,6 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 
       }
       break;
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
-      {
-	int dummy, bytes_size, decomp_size;
-	bool need_decomp = false;
-	const char *str;
-	char *decomposed = NULL;
-
-	str = db_get_char (value, &dummy);
-	bytes_size = db_get_string_size (value);
-	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8)
-	  {
-	    need_decomp =
-	      unicode_string_need_decompose (str, bytes_size, &decomp_size, lang_get_generic_unicode_norm ());
-	  }
-
-	if (need_decomp)
-	  {
-	    decomposed = (char *) malloc (decomp_size * sizeof (char));
-	    if (decomposed != NULL)
-	      {
-		unicode_decompose_string (str, bytes_size, decomposed, &decomp_size, lang_get_generic_unicode_norm ());
-
-		str = decomposed;
-		bytes_size = decomp_size;
-	      }
-	    else
-	      {
-		return NULL;
-	      }
-	  }
-
-	result = string_to_string (str, string_delimiter, 'N', bytes_size, &len, plain_string, change_single_quote);
-
-	if (decomposed != NULL)
-	  {
-	    free_and_init (decomposed);
-	  }
-      }
-      break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
       result = bit_to_string (value, string_delimiter, plain_string);

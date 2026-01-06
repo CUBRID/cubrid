@@ -19,7 +19,7 @@
 #include "method_query_handler.hpp"
 
 #include "parser.h"
-#include "api_compat.h" /* DB_SESSION */
+#include "db_session.h"
 #include "authenticate.h"
 #include "db.h"
 #include "dbi.h"
@@ -839,7 +839,7 @@ namespace cubmethod
       }
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);
-    db_session_set_holdable (m_session, false);
+    db_session_set_holdable (m_session, true);
 
     /* prepare result set */
     m_num_markers = get_num_markers ();

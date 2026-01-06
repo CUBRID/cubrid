@@ -293,6 +293,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_METHSCANS, "Num_query_methscans"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_NLJOINS, "Num_query_nljoins"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_MJOINS, "Num_query_mjoins"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS, "Num_query_hashjoins"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS_PARTITIONED, "Num_query_hashjoins_partitioned"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS_PARALLEL, "Num_query_hashjoins_parallel"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_OBJFETCHES, "Num_query_objfetches"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_QM_NUM_HOLDABLE_CURSORS, "Num_query_holdable_cursors"),
 
@@ -1068,13 +1071,32 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  /* This routine is called from the query execute scan routine in TRACE ON state.
-   * Therefore, there is no need to call perfmon_get_peek_stats,
-   * which retrieves overall statistical information,
-   * because the server's overall statistical information is not needed,
-   * and only I/O fetch and time information are needed.
-   */
-  stats = pstat_Global.tran_stats[tran_index];
+  assert ((thread_p && thread_p->m_uses_px_stats && thread_p->m_px_orig_thread_entry) || (thread_p == NULL)
+	  || (!thread_p->m_uses_px_stats));
+
+  if (thread_p->m_px_orig_thread_entry && thread_p->m_uses_px_stats)
+    {
+      if (thread_p->m_px_stats != NULL)
+	{
+	  stats = thread_p->m_px_stats;
+	}
+      else
+	{
+	  /* impossible case */
+	  assert (false);
+	  return 0;
+	}
+    }
+  else
+    {
+      /* This routine is called from the query execute scan routine in TRACE ON state.
+       * Therefore, there is no need to call perfmon_get_peek_stats,
+       * which retrieves overall statistical information,
+       * because the server's overall statistical information is not needed,
+       * and only I/O fetch and time information are needed.
+       */
+      stats = pstat_Global.tran_stats[tran_index];
+    }
 
   if (stats != NULL)
     {
@@ -3307,6 +3329,44 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 
   pstat_Global.is_watching[tran_index] = false;
 }
+
+void
+perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
+{
+  assert (thread_is_on_trace (thread_p));
+
+  /*
+   * m_px_stats should be NULL.
+   * memset is a temporary safeguard.
+   * TODO: replace with assert().
+   */
+  if (thread_p->m_px_stats == NULL)
+    {
+      thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+      if (thread_p->m_px_stats == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+	  return;
+	}
+    }
+  else
+    {
+      memset (thread_p->m_px_stats, 0, PERFMON_VALUES_MEMSIZE);
+    }
+  thread_p->m_uses_px_stats = true;
+}
+
+void
+perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
+{
+  if (thread_p->m_px_stats != NULL)
+    {
+      free_and_init (thread_p->m_px_stats);
+      thread_p->m_uses_px_stats = false;
+    }
+  assert (thread_p->m_uses_px_stats == false);
+}
+
 #endif /* SERVER_MODE || SA_MODE */
 
 /*

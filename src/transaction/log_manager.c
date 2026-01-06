@@ -58,6 +58,7 @@
 #include "msgcat_set_log.hpp"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
+#include "catalog_class.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_append.hpp"
@@ -365,8 +366,6 @@ static cubthread::daemon *cdc_Loginfo_producer_daemon = NULL;
 static void log_daemons_init ();
 static void log_daemons_destroy ();
 
-// used by log_Check_ha_delay_info_daemon
-extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 #endif /* SERVER_MODE */
 
 /*
@@ -1793,7 +1792,7 @@ log_final (THREAD_ENTRY * thread_p)
   error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
   if (error_code == NO_ERROR)
     {
-      error_code = fileio_synchronize_all (thread_p, false);
+      error_code = fileio_synchronize_all (thread_p);
     }
 
   logpb_decache_archive_info (thread_p);
@@ -5863,8 +5862,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 		   * for only one the new or the old one.
 		   */
 
-		  // todo - this is completely unsafe.
-		  memcpy (new_tdes, tdes, sizeof (*tdes));
+		  (*tdes).copy_to (*new_tdes);
+
 		  new_tdes->tran_index = new_tran_index;
 		  new_tdes->isloose_end = true;
 		  /* new_tdes does not inherit topops fields */
@@ -8928,7 +8927,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
     }
 
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
   (void) log_commit (thread_p, NULL_TRAN_INDEX, false);
 
   return ret;
@@ -9177,7 +9176,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
   if (flush_data_pages)
     {
       (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-      (void) fileio_synchronize_all (thread_p, false);
+      (void) fileio_synchronize_all (thread_p);
     }
 
   /* Undefine log buffer pool and transaction table */
@@ -11110,10 +11109,14 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
 
-      if (LSA_GE (&cdc_Gl.producer.next_extraction_lsa, &nxio_lsa))
+      pthread_mutex_lock (&cdc_Gl.producer.lock);
+
+      if (LSA_ISNULL (&cdc_Gl.producer.next_extraction_lsa) || LSA_GE (&cdc_Gl.producer.next_extraction_lsa, &nxio_lsa))
 	{
 	  /* LOG_HA_DUMMY_SERVER_STATUS is appended every 1 seconds and flushed.
 	   * So it is expected to be woken up by looper within period of looper */
+
+	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
 	  cdc_log
 	    ("cdc_loginfo_producer_execute : next_extraction_lsa (%lld | %d)  is greater or equal than nxio_lsa (%lld | %d)",
@@ -11128,8 +11131,19 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
-      LSA_COPY (&cur_log_rec_lsa, &cdc_Gl.producer.next_extraction_lsa);
-      LSA_COPY (&process_lsa, &cur_log_rec_lsa);
+      if (LSA_ISNULL (&process_lsa))
+	{
+	  LSA_COPY (&process_lsa, &cdc_Gl.producer.next_extraction_lsa);
+	}
+      else
+	{
+	  LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
+	}
+
+      assert (!LSA_ISNULL (&process_lsa));
+      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
+
+      pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
       error = cdc_log_extract (thread_p, &process_lsa, &log_info_entry);
       if (!(error == NO_ERROR || error == ER_CDC_LOGINFO_ENTRY_GENERATED))
@@ -11185,8 +11199,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  cdc_log ("cdc_loginfo_producer_execute : log info is produced on LOG_LSA (%lld | %d)",
 		   LSA_AS_ARGS (&process_lsa));
 	}
-
-      LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
     }
 
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
@@ -12163,7 +12175,7 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 {
   LOG_REC_REDO *redo = NULL;
   LOG_REC_UNDO *undo = NULL;
-  int length;
+  int length = -2;
   char *data = NULL;
 
   LOG_ZIP *zip_ptr = NULL;
@@ -12705,12 +12717,6 @@ cdc_get_attribute_size (DB_VALUE * value)
     case DB_TYPE_VARCHAR:
       size = db_get_string_size (value);
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      /* size of string "N''" is 4
-       * e.g. N'string' */
-      size = db_get_string_size (value) + 3;
-      break;
     case DB_TYPE_TIME:
       /* precision in data types related to DATE/TIME means the size the string converted from the date/time data */
       size = DB_TIME_PRECISION;
@@ -12805,7 +12811,7 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
   /*this is for constructing dml data item */
   int has_pk = 0;
   int *pk_attr_index = NULL;	/*not attr_id, def_order array */
-  int num_pk_attr;
+  int num_pk_attr = 0;
 
   CDC_DATAITEM_TYPE dataitem_type = CDC_DML;
   char *ptr, *start_ptr;
@@ -13743,42 +13749,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (new_value));
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	int size = 0;
-	int length = 0;
-	char *result = NULL;
-	const char *temp_string = NULL;
-
-	temp_string = db_get_nchar (new_value, &length);
-	size = db_get_string_size (new_value);
-
-	if (temp_string != NULL)
-	  {
-	    result = (char *) malloc (size + 4);
-	    if (result == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size + 4);
-		return ER_OUT_OF_VIRTUAL_MEMORY;
-	      }
-
-	    snprintf (result, size + 3, "N'%s", temp_string);
-	    result[size + 2] = '\'';
-	    result[size + 3] = '\0';
-	  }
-
-	func_type = 7;
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, result);
-
-	if (result != NULL)
-	  {
-	    free_and_init (result);
-	  }
-
-	break;
-      }
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       db_make_char (&format, strlen (time_format), time_format,
@@ -14481,7 +14451,10 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 int
 cdc_set_extraction_lsa (LOG_LSA * lsa)
 {
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
   LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, lsa);
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
   LSA_COPY (&cdc_Gl.consumer.next_lsa, lsa);
 
   cdc_log ("cdc_set_extraction_lsa : set LOG_LSA (%lld | %d) to produce ", LSA_AS_ARGS (lsa));
@@ -14493,7 +14466,7 @@ void
 cdc_reinitialize_queue (LOG_LSA * start_lsa)
 {
   assert (cdc_Gl.loginfo_queue != NULL);
-  CDC_LOGINFO_ENTRY *consume;
+  CDC_LOGINFO_ENTRY *consume = NULL;
 
   if (cdc_Gl.producer.produced_queue_size == 0)
     {
@@ -14514,6 +14487,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       while (LSA_LT (&next_consume_lsa, start_lsa))
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
+	  // TODO: please check consume is NULL
 	  cdc_Gl.consumer.consumed_queue_size += consume->length;
 	  LSA_COPY (&next_consume_lsa, &consume->next_lsa);
 
@@ -14533,7 +14507,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       while (!cdc_Gl.loginfo_queue->is_empty ())
 	{
 	  cdc_Gl.loginfo_queue->consume (consume);
-
+	  // TODO: please check consume is NULL
 	  if (consume->log_info != NULL)
 	    {
 	      free_and_init (consume->log_info);
@@ -15047,7 +15021,7 @@ cdc_cleanup ()
 
   while (!cdc_Gl.loginfo_queue->is_empty ())
     {
-      CDC_LOGINFO_ENTRY *tmp;
+      CDC_LOGINFO_ENTRY *tmp = NULL;
       cdc_Gl.loginfo_queue->consume (tmp);
 
       if (tmp->log_info != NULL)
@@ -15067,7 +15041,9 @@ cdc_cleanup ()
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
 
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
   /*communication buffer from server to client initialization */
   cdc_cleanup_consumer ();
@@ -15117,16 +15093,15 @@ cdc_finalize ()
     {
       while (!cdc_Gl.loginfo_queue->is_empty ())
 	{
-	  CDC_LOGINFO_ENTRY *tmp;
+	  CDC_LOGINFO_ENTRY *tmp = NULL;
 	  cdc_Gl.loginfo_queue->consume (tmp);
-
-	  if (tmp->log_info != NULL)
-	    {
-	      free_and_init (tmp->log_info);
-	    }
 
 	  if (tmp != NULL)
 	    {
+	      if (tmp->log_info != NULL)
+		{
+		  free_and_init (tmp->log_info);
+		}
 	      free_and_init (tmp);
 	    }
 	}
@@ -15140,7 +15115,10 @@ cdc_finalize ()
   cdc_Gl.consumer.consumed_queue_size = 0;
   cdc_Gl.producer.produced_queue_size = 0;
 
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
 

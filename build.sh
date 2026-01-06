@@ -467,10 +467,10 @@ function build_package ()
       ;;
       jdbc)
         if [ "$without_jdbc" = "false" ]; then
-          jar_files=$(ls $source_dir/cubrid-jdbc/JDBC-*.jar)
+          jar_files=$(ls $source_dir/cubrid-jdbc/cubrid-jdbc-*.jar)
           jdbc_version=$(cat $source_dir/cubrid-jdbc/output/VERSION-DIST)
-          package_name="JDBC-$jdbc_version-$product_name_lower"
-          cp $source_dir/cubrid-jdbc/JDBC-*.jar $output_dir
+          package_name="cubrid-jdbc-$jdbc_version"
+          cp $source_dir/cubrid-jdbc/cubrid-jdbc-*.jar $output_dir
           [ $? -eq 0 ] && output_packages="$output_packages $jar_files"
         fi
       ;;

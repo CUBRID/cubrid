@@ -671,6 +671,7 @@ template <class Key, class T>
 void
 lf_hash_table_cpp<Key, T>::iterator::restart ()
 {
+  m_iter.bucket_index = -1;
   if (m_iter.tran_entry->transaction_id != LF_NULL_TRANSACTION_ID)
     {
       lf_tran_end_with_mb (m_iter.tran_entry);

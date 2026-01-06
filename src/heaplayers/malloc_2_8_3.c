@@ -614,7 +614,14 @@ DEFAULT_MMAP_THRESHOLD       default: 256K
   are used in this malloc, so setting them has no effect. But this
   malloc does support the following options.
 */
-
+// *INDENT-OFF*
+#ifdef M_TRIM_THRESHOLD
+#  undef M_TRIM_THRESHOLD
+#endif
+#ifdef M_MMAP_THRESHOLD
+#  undef M_MMAP_THRESHOLD
+#endif
+// *INDENT-ON*
 #define M_TRIM_THRESHOLD     (-1)
 #define M_GRANULARITY        (-2)
 #define M_MMAP_THRESHOLD     (-3)
@@ -1229,6 +1236,8 @@ extern void *sbrk (ptrdiff_t);
 #endif /* LACKS_UNISTD_H */
 #endif /* HAVE_MMAP */
 
+
+// *INDENT-OFF* 
 #ifndef WIN32
 #ifndef malloc_getpagesize
 #  ifdef _SC_PAGESIZE		/* some SVR4 systems omit an underscore */
@@ -1275,6 +1284,7 @@ extern size_t getpagesize ();
 #  endif
 #endif
 #endif
+// *INDENT-ON* 
 
 /* ------------------- size_t and alignment properties -------------------- */
 

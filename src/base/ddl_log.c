@@ -58,7 +58,8 @@
 #define DDL_LOG_CSQL_FILE_PATH      "log/ddl_audit/csql"
 #define FILE_BUFFER_SIZE            (1024)
 #define TIME_STRING_SIZE            (16)
-#define DDL_TIME_LEN                (32)
+#define DDL_TIME_LEN                (22)
+#define DDL_ELAPSED_TIME_LEN        (36)	// DDL_TIME_LEN + "elapsed time "
 
 #define SQL_TEXT_SIZE               (2048)
 #define SQL_TEXT_SIZE_MAX           (8192)
@@ -86,7 +87,7 @@ struct t_ddl_audit_handle
   int ddl_stmt_cnt_backup;
   char str_qry_exec_begin_time[DDL_TIME_LEN];
   struct timeval qry_exec_begin_time;
-  char elapsed_time[DDL_TIME_LEN];
+  char elapsed_time[DDL_ELAPSED_TIME_LEN];
   int file_line_number;
   int err_code;
   char msg[DDL_LOG_MSG];
@@ -430,7 +431,8 @@ logddl_set_load_filename (const char *load_filename)
 {
   if (ddl_logging_enabled && load_filename)
     {
-      strncpy (ddl_audit_handle.load_filename, load_filename, PATH_MAX);
+      strncpy (ddl_audit_handle.load_filename, load_filename, sizeof (ddl_audit_handle.load_filename) - 1);
+      ddl_audit_handle.load_filename[sizeof (ddl_audit_handle.load_filename) - 1] = '\0';
     }
 }
 
@@ -1201,7 +1203,11 @@ logddl_backup (const char *path)
   sigset_t new_mask, old_mask;
 #endif /* !WINDOWS */
 
-  snprintf (backup_file, sizeof (backup_file), "%s.bak", path);
+  if (snprintf (backup_file, PATH_MAX, "%s.bak", path) >= PATH_MAX)
+    {
+      assert_release (0);
+      backup_file[PATH_MAX - 1] = '\0';
+    }
 
 #if !defined(WINDOWS)
   sigfillset (&new_mask);
@@ -1335,6 +1341,11 @@ logddl_get_current_date_time_string (char *buf, size_t size)
   len =
     snprintf (buf, size, "%04d%02d%02d_%02d%02d%02d", at_tm.tm_year, at_tm.tm_mon, at_tm.tm_mday, at_tm.tm_hour,
 	      at_tm.tm_min, at_tm.tm_sec);
+  if (len >= (int) size)
+    {
+      assert_release (0);
+      buf[size - 1] = '\0';
+    }
 
   return len;
 }
@@ -1492,7 +1503,7 @@ logddl_timeval_diff (struct timeval *start, struct timeval *end)
       sec--;
     }
 
-  snprintf (ddl_audit_handle.elapsed_time, DDL_TIME_LEN, "elapsed time %ld.%03ld", sec, msec);
+  snprintf (ddl_audit_handle.elapsed_time, DDL_ELAPSED_TIME_LEN, "elapsed time %ld.%03ld", sec, msec);
 }
 
 static const char *

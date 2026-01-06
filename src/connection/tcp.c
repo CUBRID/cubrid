@@ -182,15 +182,18 @@ static void
 css_sockopt (SOCKET sd)
 {
   int bool_value = 1;
+  int prm_value;
 
-  if (prm_get_integer_value (PRM_ID_TCP_RCVBUF_SIZE) > 0)
+  prm_value = prm_get_integer_value (PRM_ID_TCP_RCVBUF_SIZE);
+  if (prm_value > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_RCVBUF, (int *) prm_get_value (PRM_ID_TCP_RCVBUF_SIZE), sizeof (int));
+      setsockopt (sd, SOL_SOCKET, SO_RCVBUF, &prm_value, sizeof (int));
     }
 
-  if (prm_get_integer_value (PRM_ID_TCP_SNDBUF_SIZE) > 0)
+  prm_value = prm_get_integer_value (PRM_ID_TCP_SNDBUF_SIZE);
+  if (prm_value > 0)
     {
-      setsockopt (sd, SOL_SOCKET, SO_SNDBUF, (int *) prm_get_value (PRM_ID_TCP_SNDBUF_SIZE), sizeof (int));
+      setsockopt (sd, SOL_SOCKET, SO_SNDBUF, &prm_value, sizeof (int));
     }
 
   if (prm_get_bool_value (PRM_ID_TCP_NODELAY))

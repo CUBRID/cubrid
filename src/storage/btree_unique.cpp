@@ -236,3 +236,9 @@ multi_index_unique_stats::operator+= (const multi_index_unique_stats &other)
       m_stats_map[it.first] += it.second;
     }
 }
+
+void
+multi_index_unique_stats::copy_to (multi_index_unique_stats &dest) const
+{
+  dest.m_stats_map = m_stats_map;
+}

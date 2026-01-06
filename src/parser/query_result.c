@@ -63,12 +63,11 @@ static void pt_fixup_select_columns_type (PT_NODE * columns);
 static int
 pt_find_size_from_dbtype (const DB_TYPE db_type)
 {
-  PRIM type;
   int size = 0;
 
   if (db_type != DB_TYPE_NULL)
     {
-      type = pr_type_from_id (db_type);
+      const PR_TYPE *type = pr_type_from_id (db_type);
       if (type && !(type->variable_p))
 	{
 	  size = pr_mem_size (type);

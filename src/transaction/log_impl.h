@@ -561,6 +561,8 @@ struct log_tdes
 
   bool has_supplemental_log;	/* Checks if supplemental log has been appended within the transaction */
 
+  char *ddl_sql_user_text;	/* SQL user text for the transaction */
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -584,6 +586,8 @@ struct log_tdes
   void unlock_global_oldest_visible_mvccid ();
 #endif
   // *INDENT-ON*
+
+  void copy_to (LOG_TDES & dest) const;
 };
 
 typedef struct log_addr_tdesarea LOG_ADDR_TDESAREA;

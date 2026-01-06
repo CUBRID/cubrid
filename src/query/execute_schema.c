@@ -734,8 +734,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
       for (;
 	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
-	       || path->type_enum == PT_TYPE_VARNCHAR); p = p->next)
+	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR); p = p->next)
 	{
 	  mthd_file = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_drop_method_file (ctemplate, mthd_file);
@@ -1730,10 +1729,7 @@ error_exit:
 
 #define IS_NAME(n)      ((n)->node_type == PT_NAME)
 #define IS_STRING(n)    ((n)->node_type == PT_VALUE &&          \
-                         ((n)->type_enum == PT_TYPE_VARCHAR  || \
-                          (n)->type_enum == PT_TYPE_CHAR     || \
-                          (n)->type_enum == PT_TYPE_VARNCHAR || \
-                          (n)->type_enum == PT_TYPE_NCHAR))
+                         ((n)->type_enum == PT_TYPE_VARCHAR  || (n)->type_enum == PT_TYPE_CHAR))
 #define GET_NAME(n)     ((char *) (n)->info.name.original)
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
@@ -2174,6 +2170,13 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 	}
     }
 
+  // for syncronizing created_time and updated_time
+  error = au_set_user_timestamps (user);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
 end:
   if (set_savepoint && error != NO_ERROR && !ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
     {
@@ -2390,6 +2393,19 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
       comment = (char *) PT_VALUE_GET_BYTES (node);
       error = au_set_user_comment (user, comment);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+/*
+ * Timestamp already updated during add/drop members (member_name != NULL)
+ * in db_add_member() or db_drop_member(); update only for password or comment changes.
+ */
+  if (statement->info.alter_user.members == NULL)
+    {
+      error = au_update_user_timestamp (user);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -4778,7 +4794,7 @@ do_rename_partition (MOP old_class, const char *newname)
   int newlen;
   int error;
   char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
-  char expr[DB_MAX_PARTITION_EXPR_LENGTH] = { '\0' };
+  char expr[DB_MAX_PARTITION_EXPR_LENGTH + 1] = { '\0' };
   char *expr_ptr = NULL;
 
   if (!old_class || !newname)
@@ -4796,6 +4812,7 @@ do_rename_partition (MOP old_class, const char *newname)
 
   /* The pexpr format is defined in the function pt_node_to_partition_info. */
   strncpy (expr, smclass->partition->expr, DB_MAX_PARTITION_EXPR_LENGTH);
+  expr[DB_MAX_PARTITION_EXPR_LENGTH] = '\0';
   expr_ptr = strchr (expr, ']');	// skip select list
   expr_ptr = strchr (expr_ptr + 1, '[');	// find table name
   sprintf (expr_ptr, "[%s]", newname);
@@ -5993,7 +6010,7 @@ do_alter_partitioning_post (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITI
 	{
 	  return error;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_ADD_HASHPARTITION:
       error = do_redistribute_partitions_data (entity_name, pinfo->keycol, NULL, 0, PT_ADD_HASHPARTITION, true, false);
       break;
@@ -7132,30 +7149,12 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		    }
 		  break;
 
-		case PT_TYPE_NCHAR:
-		  if (p != DB_DEFAULT_PRECISION
-		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_NCHAR_PRECISION))
-		    {
-		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NCHAR_PRECISION);
-		    }
-		  break;
-
 		case PT_TYPE_VARCHAR:
 		  if (p != DB_DEFAULT_PRECISION
 		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_VARCHAR_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
 				   DB_MAX_VARCHAR_PRECISION);
-		    }
-		  break;
-
-		case PT_TYPE_VARNCHAR:
-		  if (p != DB_DEFAULT_PRECISION
-		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_VARNCHAR_PRECISION))
-		    {
-		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_VARNCHAR_PRECISION);
 		    }
 		  break;
 
@@ -8337,8 +8336,7 @@ do_add_method_files (const PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   for (mf = method_files; mf && error == NO_ERROR; mf = mf->next)
     {
       if (mf->node_type == PT_FILE_PATH && (path = mf->info.file_path.string) != NULL && path->node_type == PT_VALUE
-	  && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR || path->type_enum == PT_TYPE_NCHAR
-	      || path->type_enum == PT_TYPE_VARNCHAR))
+	  && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR))
 	{
 	  method_file_name = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_add_method_file (ctemplate, method_file_name);
@@ -8911,25 +8909,12 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto error_exit;
 	    }
 
-	  switch (column->domain->type->id)
+	  if (column->domain->type->id == DB_TYPE_VARCHAR)
 	    {
-	    case DB_TYPE_VARCHAR:
 	      if (column->domain->precision == DB_DEFAULT_PRECISION)
 		{
 		  column->domain->precision = DB_MAX_VARCHAR_PRECISION;
 		}
-	      break;
-	    case DB_TYPE_VARNCHAR:
-	      if (column->domain->precision == DB_DEFAULT_PRECISION)
-		{
-		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-		}
-	      else if (column->domain->precision > DB_MAX_VARNCHAR_PRECISION)
-		{
-		  column->domain->precision = DB_MAX_VARNCHAR_PRECISION;
-		}
-	    default:
-	      break;
 	    }
 	}
     }
@@ -10786,7 +10771,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	    {
 	      break;
 	    }
-	  /* fall through */
+	  [[fallthrough]];
 
 	default:
 	  att = attribute->info.attr_def.attr_name;
@@ -10967,7 +10952,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	}
     }
 
-  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in db_serial according to new
+  /* attribute type changed, and auto_increment is set to use(unchanged), update max_val in _db_serial according to new
    * type */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED)
       && is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF))
@@ -11378,7 +11363,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	  break;
 	case PT_CONSTRAIN_NULL:
 	  attr_chg_properties->p[P_NOT_NULL] = ATT_CHG_PROPERTY_LOST;
-	  /* fall through */
+	  [[fallthrough]];
 	case PT_CONSTRAIN_NOT_NULL:
 	  constr_att_list = cnstr->info.constraint.un.not_null.attr;
 	  chg_prop_idx = P_NOT_NULL;
@@ -11688,22 +11673,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  assert (req_prec >= 0);
 	}
     }
-  else if (new_type == DB_TYPE_VARNCHAR)
-    {
-      if (req_prec == DB_MAX_VARNCHAR_PRECISION)
-	{
-	  is_req_max_prec = true;
-	}
-      else if (req_prec == TP_FLOATING_PRECISION_VALUE)
-	{
-	  req_prec = DB_MAX_VARNCHAR_PRECISION;
-	  is_req_max_prec = true;
-	}
-      else
-	{
-	  assert (req_prec >= 0);
-	}
-    }
   else
     {
       assert (is_req_max_prec == false);
@@ -11732,9 +11701,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	    }
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_DIGITS_FOR_SHORT + 1)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11777,9 +11744,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	    }
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_DIGITS_FOR_INTEGER + 1)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11817,9 +11782,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	    }
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_DIGITS_FOR_BIGINT + 1)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11875,9 +11838,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= cur_prec + 2)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11901,12 +11862,10 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_BIGINT:
 	case DB_TYPE_NUMERIC:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (is_req_max_prec)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11935,12 +11894,10 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_NUMERIC:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (is_req_max_prec)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11968,12 +11925,10 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	case DB_TYPE_NUMERIC:
 	case DB_TYPE_FLOAT:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_ENUMERATION:
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
 	  break;
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (is_req_max_prec)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -11996,9 +11951,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
       switch (new_type)
 	{
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIME)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12029,9 +11982,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATE)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12065,9 +12016,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATETIME)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12101,9 +12050,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATETIMETZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12137,9 +12084,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_DATETIMETZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12173,9 +12118,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMP)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12209,9 +12152,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12245,9 +12186,7 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  if (req_prec >= MIN_CHARS_FOR_TIMESTAMPTZ)
 	    {
 	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
@@ -12344,87 +12283,6 @@ build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain, SM_A
 	  break;
 	default:
 	  assert (new_type != DB_TYPE_VARCHAR);
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_NCHAR:
-      switch (new_type)
-	{
-	case DB_TYPE_SHORT:
-	case DB_TYPE_INTEGER:
-	case DB_TYPE_BIGINT:
-	case DB_TYPE_NUMERIC:
-	case DB_TYPE_FLOAT:
-	case DB_TYPE_DOUBLE:
-	case DB_TYPE_MONETARY:
-	case DB_TYPE_DATE:
-	case DB_TYPE_TIME:
-	case DB_TYPE_DATETIME:
-	case DB_TYPE_DATETIMETZ:
-	case DB_TYPE_DATETIMELTZ:
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPTZ:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	case DB_TYPE_VARNCHAR:
-	  if (req_prec >= cur_prec)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
-		{
-		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
-		}
-	      else
-		{
-		  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-		}
-	    }
-	  break;
-	default:
-	  assert (new_type != DB_TYPE_NCHAR);
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
-	  break;
-	}
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      switch (new_type)
-	{
-	case DB_TYPE_SHORT:
-	case DB_TYPE_INTEGER:
-	case DB_TYPE_BIGINT:
-	case DB_TYPE_NUMERIC:
-	case DB_TYPE_FLOAT:
-	case DB_TYPE_DOUBLE:
-	case DB_TYPE_MONETARY:
-	case DB_TYPE_DATE:
-	case DB_TYPE_TIME:
-	case DB_TYPE_DATETIME:
-	case DB_TYPE_DATETIMETZ:
-	case DB_TYPE_DATETIMELTZ:
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPTZ:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	  break;
-	case DB_TYPE_NCHAR:
-	  if (req_prec >= cur_prec)
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_UPGRADE;
-	    }
-	  else
-	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NEED_ROW_CHECK;
-	    }
-	  break;
-	default:
-	  assert (new_type != DB_TYPE_VARNCHAR);
 	  attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED;
 	  break;
 	}
@@ -13393,7 +13251,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
 {
   static const char *zero = "0";
   static const char *empty_str = "''";
-  static const char *empty_n_str = "N''";
   static const char *empty_bit = "b'0'";
   static const char *empty_date = "DATE '01/01/0001'";
   static const char *empty_time = "TIME '00:00'";
@@ -13442,10 +13299,6 @@ get_hard_default_for_type (PT_TYPE_ENUM type)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       return empty_str;
-
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
-      return empty_n_str;
 
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
@@ -15413,10 +15266,12 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
   if (node->node_type == PT_PARTITION)
     {
       partition->partition_type = node->info.partition.type;
+      partition->class_partition_type = DB_PARTITIONED_CLASS;
     }
   else
     {
       partition->partition_type = node->info.parts.type;
+      partition->class_partition_type = DB_PARTITION_CLASS;
     }
 
   if (node->node_type == PT_PARTITION)

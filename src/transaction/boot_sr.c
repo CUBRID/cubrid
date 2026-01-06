@@ -76,13 +76,14 @@
 #include "scan_manager.h"
 #include "slotted_page.h"
 #include "thread_manager.hpp"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "xasl_cache.h"
 #include "log_volids.hpp"
 #include "vacuum.h"
 #include "tde.h"
 #include "porting.h"
 #include "log_manager.h"
+#include "catalog_class.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -135,14 +136,6 @@ enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
 
-extern bool catcls_Enable;
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
-					  const int lang_buf_size, char *timezone_checksum);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
-extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
-
 #if defined(SA_MODE)
 extern void boot_client_all_finalize (int final_level);
 #endif /* SA_MODE */
@@ -182,7 +175,6 @@ static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID
 static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
-static int boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 static void boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid);
 static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols);
@@ -193,9 +185,7 @@ static int boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvo
 					     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel,
 							 void *args), void *args);
 
-static void boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-					 int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
-					 bool forward_dir, bool check_before_access);
+static void boot_remove_temp_volumes (THREAD_ENTRY * thread_p);
 static int boot_check_permanent_volumes (THREAD_ENTRY * thread_p);
 static int boot_mount (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel, void *ignore_arg);
 static char *boot_find_new_db_path (char *db_pathbuf, const char *fileof_vols_and_wherepaths);
@@ -922,7 +912,7 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  boot_find_rest_temp_volumes (thread_p, NULL_VOLID, boot_xremove_temp_volume, true, true);
+  boot_remove_temp_volumes (thread_p);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
     {
@@ -944,22 +934,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
     }
 
   return error_code;
-}
-
-/*
- * boot_xremove_temp_volume () - remove a temporary volume from the database
- *
- * return : NO_ERROR if all OK, ER_ status otherwise
- *
- *   volid(in): Volume identifier to remove
- *   vlabel(in): Volume label
- *
- * Note: Pass control to boot_remove_temp_volume to remove the temporary volume.
- */
-static int
-boot_xremove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel)
-{
-  return boot_remove_temp_volume (thread_p, volid, vlabel);
 }
 
 static void
@@ -1159,27 +1133,18 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 }
 
 /*
- * bo_find_rest_tempvols () - call function on the rest of temporary vols of the database
- *
- *   volid(in): Volume identifier
- *   fun(in): Function to call on volid, vlabel, and arguments
- *   forward_dir(in): direction of accessing the tempvols (forward/backward)
- *   check_before_access(in): if true, check the existence of volume before access
+ * boot_remove_temp_volumes () - Find temporary volumes and remove them
  *
  * Note: The given function is called for every single temporary volume which is different from the given one.
  */
 static void
-boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
-			     int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel),
-			     bool forward_dir, bool check_before_access)
+boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 {
   VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
   const char *temp_path;
   const char *temp_name;
   char *alloc_tempath = NULL;
-  int num_vols;
-  bool go_to_access;
 
   /*
    * Get the name of the extension: ext_path|dbname|"ext"|volid
@@ -1198,64 +1163,12 @@ boot_find_rest_temp_volumes (THREAD_ENTRY * thread_p, VOLID volid,
     }
   temp_name = fileio_get_base_file_name (boot_Db_full_name);
 
-  if (boot_Db_parm->temp_nvols > 0)
+  for (temp_volid = boot_Db_parm->temp_last_volid; temp_volid <= LOG_MAX_DBVOLID; temp_volid++)
     {
-      /* Cycle over all temporarily volumes, skip the given one */
-      if (forward_dir)
+      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
+      if (fileio_is_volume_exist (temp_vol_fullname) == true)
 	{
-	  for (num_vols = boot_Db_parm->temp_last_volid; num_vols <= LOG_MAX_DBVOLID; num_vols++)
-	    {
-	      temp_volid = (VOLID) num_vols;
-	      if (temp_volid != volid)
-		{
-		  /* Find the name of the volume */
-		  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-		  go_to_access = false;
-		  if (check_before_access)
-		    {
-		      if (fileio_is_volume_exist (temp_vol_fullname) == true)
-			{
-			  go_to_access = true;
-			}
-		    }
-		  else
-		    {
-		      go_to_access = true;
-		    }
-		  if (go_to_access)
-		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
-		    }
-		}
-	    }
-	}
-      else
-	{
-	  for (num_vols = LOG_MAX_DBVOLID; num_vols >= boot_Db_parm->temp_last_volid; num_vols--)
-	    {
-	      temp_volid = (VOLID) num_vols;
-	      if (temp_volid != volid)
-		{
-		  /* Find the name of the volume */
-		  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-		  go_to_access = false;
-		  if (check_before_access)
-		    {
-		      if (fileio_is_volume_exist (temp_vol_fullname) == true)
-			{
-			  go_to_access = true;
-			}
-		    }
-		  else
-		    {
-		      go_to_access = true;
-		    }
-		  if (go_to_access)
-		    {		/* Call the function */
-		      (void) (*fun) (thread_p, temp_volid, temp_vol_fullname);
-		    }
-		}
-	    }
+	  (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
 	}
     }
 
@@ -1488,7 +1401,7 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
   char format[BOOT_FORMAT_MAX_LENGTH];
 #endif
   int error_code;
-  void (*old_ctrl_c_handler) (int sig_no) = SIG_ERR;
+  void (*volatile old_ctrl_c_handler) (int sig_no) = SIG_ERR;
   struct stat stat_buf;
   bool is_exist_volume;
   const char *db_path, *log_path, *lob_path;
@@ -3126,7 +3039,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   boot_check_db_at_num_shutdowns (true);
 #endif /* CUBRID_DEBUG */
 
-  sysprm_set_force (prm_get_name (PRM_ID_SUPPRESS_FSYNC), "0");
+  sysprm_set_force (PRM_ID_SUPPRESS_FSYNC, "0");
 
   /* Shutdown the system with the system transaction */
   logtb_set_to_system_tran_index (thread_p);
@@ -5177,7 +5090,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   logpb_force_flush_pages (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
 
   (void) logpb_checkpoint (thread_p);
   boot_server_status (BOOT_SERVER_UP);
@@ -6116,10 +6029,27 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto exit;
+	  goto error;
 	}
       boot_Db_parm->last_volid = volid;
       boot_Db_parm->nvols++;
+
+      VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
+      log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm),
+			     &vpid_boot_bp_parm);
+
+      error_code = boot_db_parm_update_heap (thread_p);
+
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+
+      /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
+       * during restart. that may not be possible during media crash though. */
+      heap_flush (thread_p, boot_Db_parm_oid);
+      dwb_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
     }
   else
     {
@@ -6129,30 +6059,18 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 	  /* invalid volid */
 	  assert_release (false);
 	  error_code = ER_FAILED;
-	  goto exit;
+	  goto error;
 	}
       boot_Db_parm->temp_nvols++;
       boot_Db_parm->temp_last_volid = volid;
     }
 
-  /* todo: is flush needed? */
-  VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
-  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
+  return NO_ERROR;
 
-  error_code = boot_db_parm_update_heap (thread_p);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      *boot_Db_parm = save_boot_db_parm;
-      goto exit;
-    }
+error:
 
-  /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
-   * during restart. that may not be possible during media crash though. */
-  heap_flush (thread_p, boot_Db_parm_oid);
-  fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
+  *boot_Db_parm = save_boot_db_parm;
 
-exit:
   return error_code;
 }
 

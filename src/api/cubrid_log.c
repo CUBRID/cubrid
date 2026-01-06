@@ -147,6 +147,7 @@ data_item_type_to_string (int data_item_type)
       return "TIMER";
     default:
       assert (0);
+      return "";
     }
 }
 
@@ -206,10 +207,10 @@ cubrid_log_reset_tracelog ()
       g_trace_log = NULL;
     }
 
-  memset (g_trace_log_base, 0, PATH_MAX + 1);
-  memset (g_trace_log_path, 0, PATH_MAX + 1);
-  memset (g_trace_log_path_old, 0, PATH_MAX + 1);
-  memset (g_dbname, 0, CUBRID_LOG_MAX_DBNAME_LEN + 1);
+  memset (g_trace_log_base, 0, sizeof (g_trace_log_base));
+  memset (g_trace_log_path, 0, sizeof (g_trace_log_path));
+  memset (g_trace_log_path_old, 0, sizeof (g_trace_log_path_old));
+  memset (g_dbname, 0, sizeof (g_dbname));
 
   strcpy (g_trace_log_base, ".");
   g_num_trace_log = 0;
@@ -274,7 +275,12 @@ cubrid_log_make_new_tracelog ()
       return -1;
     }
 
-  snprintf (g_trace_log_path, len, "%s%c%s_cubridlog_%s.err", g_trace_log_base, PATH_SEPARATOR, g_dbname, curr_time);
+  if (snprintf (g_trace_log_path, sizeof (g_trace_log_path), "%s%c%s_cubridlog_%s.err",
+		g_trace_log_base, PATH_SEPARATOR, g_dbname, curr_time) >= (int) sizeof (g_trace_log_path))
+    {
+      assert_release (false);
+      g_trace_log_path[sizeof (g_trace_log_path) - 1] = '\0';
+    }
 
   g_trace_log = fopen (g_trace_log_path, "a+");
   if (g_trace_log == NULL)
@@ -437,7 +443,7 @@ cubrid_log_set_tracelog (char *path, int level, int filesize)
 	}
     }
 
-  snprintf (g_trace_log_base, PATH_MAX + 1, "%s", path);
+  snprintf (g_trace_log_base, sizeof (g_trace_log_base), "%s", path);
   g_trace_log_level = level;
   g_trace_log_filesize = filesize * 1024 * 1024;
 

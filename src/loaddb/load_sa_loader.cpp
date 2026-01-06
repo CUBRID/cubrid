@@ -567,8 +567,7 @@ static int ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_
 static int ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
-static int ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -854,7 +853,6 @@ error_exit:
 	  case LDR_DATETIMELTZ:
 	  case LDR_DATETIMETZ:
 	  case LDR_STR:
-	  case LDR_NSTR:
 	  {
 	    string_type *str = (string_type *) c->val;
 
@@ -1540,7 +1538,8 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   if (!DB_IS_NULL (&value))
     {
       assert (STATIC_CAST (int, strlen (db_get_string (&value))) < buf_size);
-      strncpy (buf, db_get_string (&value), buf_size);
+      strncpy (buf, db_get_string (&value), buf_size -1);
+      buf[buf_size -1] = '\0';
     }
   else
     {
@@ -2650,7 +2649,7 @@ error_exit:
  *
  *  These functions (ldr_str_db_*) are called when quoted strings are
  *  processed by the lexer.  They probably only make sense for char, varchar,
- *  nchar, varnchar, bit, and varbit domains.
+ *  bit, and varbit domains.
  *
  *  WARNING:  these functions cheat and assume a char-is-a-byte model, which
  *  won't work when dealing with non-ASCII (or non-Latin, at least) charsets.
@@ -2740,7 +2739,7 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_size = 0;
+  val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
@@ -2811,7 +2810,7 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_size = 0;
+  val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
@@ -3006,44 +3005,6 @@ ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
 
 error_exit:
   db_value_clear (&val);
-  return err;
-}
-
-/*
- * ldr_nstr_elem -
- *    return:
- *    context():
- *    str():
- *    len():
- *    val():
- */
-static int
-ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
-{
-
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, str, (int) len, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
-  return NO_ERROR;
-}
-
-/*
- * ldr_nstr_db_varnchar -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
-{
-  int err = NO_ERROR;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_nstr_elem (context, str, len, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
-
-error_exit:
   return err;
 }
 
@@ -4998,7 +4959,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	      ldr_abort ();
 	      goto error_exit;
 	    }
-	  strncpy (context->class_name, class_name, len);
+	  memcpy (context->class_name, class_name, len);
 	  context->class_name[len] = '\0';
 
 	  if (is_internal_class (context->cls))
@@ -5381,11 +5342,6 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
     case DB_TYPE_VARBIT:
       attdesc->setter[LDR_BSTR] = &ldr_bstr_db_varbit;
       attdesc->setter[LDR_XSTR] = &ldr_xstr_db_varbit;
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      attdesc->setter[LDR_NSTR] = &ldr_nstr_db_varnchar;
       break;
 
     case DB_TYPE_BLOB:
@@ -6172,7 +6128,6 @@ ldr_init_loader (LDR_CONTEXT *context)
   elem_converter[LDR_COLLECTION] = &ldr_collection_elem;
   elem_converter[LDR_BSTR] = &ldr_bstr_elem;
   elem_converter[LDR_XSTR] = &ldr_xstr_elem;
-  elem_converter[LDR_NSTR] = &ldr_nstr_elem;
   elem_converter[LDR_MONETARY] = &ldr_monetary_elem;
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;
@@ -6359,7 +6314,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int defaults = 0;
   int fails = 0;
   int64_t lastcommit = 0;
-  bool is_emptyfile = false;
+  volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
 
   std::ifstream object_file (args->object_file);

@@ -195,7 +195,11 @@ event_file_backup (FILE * fp, const char *path)
   assert (path != NULL);
 
   fclose (fp);
-  sprintf (backup_file, "%s.bak", path);
+  if (snprintf (backup_file, PATH_MAX, "%s.bak", path) >= PATH_MAX)
+    {
+      assert_release (false);
+      backup_file[PATH_MAX - 1] = '\0';
+    }
   (void) unlink (backup_file);
   (void) rename (path, backup_file);
 
@@ -224,8 +228,10 @@ FILE *
 event_log_start (THREAD_ENTRY * thread_p, const char *event_name)
 {
   time_t er_time;
+#if defined (SERVER_MODE) && !defined (WINDOWS)
   struct tm er_tm;
-  struct tm *er_tm_p = &er_tm;
+#endif
+  struct tm *er_tm_p = NULL;
   struct timeval tv;
   char time_array[256];
   const char *log_file_name = event_log_file_path;
@@ -346,6 +352,11 @@ event_log_print_client_info (int tran_index, int indent)
 
   logtb_find_client_name_host_pid (tran_index, &prog, &user, &host, &pid);
 
+  if (indent > 0)
+    {
+      fprintf (event_Fp, "%*c", indent, ' ');
+    }
+  fprintf (event_Fp, "tran index: %d\n", tran_index);
   if (indent > 0)
     {
       fprintf (event_Fp, "%*c", indent, ' ');

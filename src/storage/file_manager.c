@@ -67,6 +67,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+
 /************************************************************************/
 /* Define structures, globals, and macro's                              */
 /************************************************************************/
@@ -175,8 +176,9 @@ struct file_header
 #define FILE_IS_TEMPORARY(fh) (((fh)->file_flags & FILE_FLAG_TEMPORARY) != 0)
 #define FILE_IS_TDE_ENCRYPTED(fh) (((fh)->file_flags & FILE_FLAG_ENCRYPTED_MASK) != 0)
 
-#define FILE_CACHE_LAST_FIND_NTH(fh) \
-  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP)
+#define FILE_CACHE_LAST_FIND_NTH(fh, thread_p) \
+  (FILE_IS_NUMERABLE (fh) && FILE_IS_TEMPORARY (fh) && (fh)->type == FILE_TEMP \
+   && thread_p->m_px_orig_thread_entry == NULL /* not parallel thread */)
 
 /* Numerable file types. Currently, we used this property for extensible hashes and sort files. */
 #define FILE_TYPE_CAN_BE_NUMERABLE(ftype) ((ftype) == FILE_EXTENDIBLE_HASH \
@@ -476,6 +478,16 @@ struct file_tempcache_entry
   FILE_TEMPCACHE_ENTRY *next;
 };
 
+typedef struct file_tempcache_tran_entry FILE_TEMPCACHE_TRAN_ENTRY;
+struct file_tempcache_tran_entry
+{
+  pthread_mutex_t mutex;
+  FILE_TEMPCACHE_ENTRY *head;
+#if !defined (NDEBUG)
+  int owner_mutex;
+#endif
+};
+
 typedef struct file_tempcache FILE_TEMPCACHE;
 struct file_tempcache
 {
@@ -494,7 +506,7 @@ struct file_tempcache
   int owner_mutex;
 #endif				/* !NDEBUG */
 
-  FILE_TEMPCACHE_ENTRY **tran_files;	/* transaction temporary files */
+  FILE_TEMPCACHE_TRAN_ENTRY *tran_files;	/* transaction temporary files */
 
   /* space info */
   SPACEDB_FILES spacedb_temp;
@@ -744,6 +756,7 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
+static int file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
 static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
 static void file_set_tde_algorithm_internal (FILE_HEADER * fhead, TDE_ALGORITHM tde_algo);
@@ -798,6 +811,10 @@ STATIC_INLINE FILE_TEMPCACHE_ENTRY *file_tempcache_pop_tran_file (THREAD_ENTRY *
 STATIC_INLINE void file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void file_tempcache_dump (FILE * fp) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_tempcache_lock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void file_tempcache_unlock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+  __attribute__ ((ALWAYS_INLINE));
 
 /************************************************************************/
 /* File tracker section                                                 */
@@ -4033,6 +4050,70 @@ file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, b
 }
 
 /*
+ * file_sector_map_dealloc_temp () - FILE_EXTDATA_ITEM_FUNC to dealloc user pages of temp table
+ *
+ * return        : error code
+ * thread_p (in) : thread entry
+ * data (in)     : FILE_PARTIAL_SECTOR * or VSID *
+ * index (in)    : unused
+ * stop (in)     : unused
+ * args (in)     : is_partial
+ */
+static int
+file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
+{
+  bool is_partial = *(bool *) args;
+  FILE_PARTIAL_SECTOR partsect = FILE_PARTIAL_SECTOR_INITIALIZER;
+  int offset = 0;
+  VPID vpid;
+  PAGE_PTR page = NULL;
+  int error_code = NO_ERROR;
+
+  if (is_partial)
+    {
+      partsect = *(FILE_PARTIAL_SECTOR *) data;
+    }
+  else
+    {
+      partsect.vsid = *(VSID *) data;
+    }
+
+  vpid.volid = partsect.vsid.volid;
+  for (offset = 0, vpid.pageid = SECTOR_FIRST_PAGEID (partsect.vsid.sectid); offset < DISK_SECTOR_NPAGES;
+       offset++, vpid.pageid++)
+    {
+      if (is_partial && !file_partsect_is_bit_set (&partsect, offset))
+	{
+	  /* not allocated */
+	  continue;
+	}
+
+      page = pgbuf_simple_fix (thread_p, &vpid, false);
+      if (page == NULL)
+	{
+	  /* don't care about page which is not on page buffer. */
+	  continue;
+	}
+
+      if (pgbuf_get_page_ptype (thread_p, page) == PAGE_FTAB)
+	{
+	  /* table page, do not invalidate yet */
+	  pgbuf_simple_unfix (thread_p, page);
+	  page = NULL;
+	  continue;
+	}
+
+      if (pgbuf_dealloc_temp_page (thread_p, page, true) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      page = NULL;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * file_destroy () - Destroy file - unreserve all sectors used by file on disk.
  *
  * return	 : Error code
@@ -4052,6 +4133,12 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   DB_VOLPURPOSE volpurpose;
   bool save_check_interrupt = false;
   int error_code = NO_ERROR;
+  FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
+  bool is_partial;
+  int iter_sects;
+  int offset;
+  VPID vpid_ftab;
+  PAGE_PTR page_ftab = NULL;
 
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
@@ -4114,13 +4201,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   if (!FILE_IS_TEMPORARY (fhead))
     {
       /* we need to deallocate pages */
-      FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
-      bool is_partial;
-      int iter_sects;
-      int offset;
-      VPID vpid_ftab;
-      PAGE_PTR page_ftab = NULL;
-
       ftab_collector.npages = 0;
       ftab_collector.nsects = 0;
       ftab_collector.partsect_ftab =
@@ -4182,11 +4262,65 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
     }
   else
     {
-      /* todo: invalidate pages in page buffer. actually move them to the bottom of LRU lists. */
+      /* invalidate pages in page buffer. actually remove dirty flag. */
+      ftab_collector.npages = 0;
+      ftab_collector.nsects = 0;
+      ftab_collector.partsect_ftab =
+	(FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+      if (ftab_collector.partsect_ftab == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+
+      FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+      is_partial = true;
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
+				  file_sector_map_dealloc_temp, &is_partial, true, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+
+      /* deallocate table pages - other than header page */
+      for (iter_sects = 0; iter_sects < ftab_collector.nsects; iter_sects++)
+	{
+	  vpid_ftab.volid = ftab_collector.partsect_ftab[iter_sects].vsid.volid;
+	  for (offset = 0,
+	       vpid_ftab.pageid = SECTOR_FIRST_PAGEID (ftab_collector.partsect_ftab[iter_sects].vsid.sectid);
+	       offset < DISK_SECTOR_NPAGES; offset++, vpid_ftab.pageid++)
+	    {
+	      if (file_partsect_is_bit_set (&ftab_collector.partsect_ftab[iter_sects], offset))
+		{
+		  page_ftab = pgbuf_simple_fix (thread_p, &vpid_ftab, false);
+		  if (page_ftab == NULL)
+		    {
+		      /* don't care about page which is not on page buffer. */
+		      continue;
+		    }
+		  if (pgbuf_dealloc_temp_page (thread_p, page_ftab, true) != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      goto exit;
+		    }
+		  page_ftab = NULL;
+		}
+	    }
+	}
+
       ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.nfile, -1);
       ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_ftab, -fhead->n_page_ftab);
       ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_user, -fhead->n_page_user);
       ATOMIC_INC_32 (&file_Tempcache.spacedb_temp.npage_reserved, -fhead->n_page_free);
+      if (pgbuf_dealloc_temp_page (thread_p, page_fhead, false) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
       pgbuf_unfix_and_init (thread_p, page_fhead);
     }
 
@@ -4316,6 +4450,22 @@ int
 file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   return file_temp_retire_internal (thread_p, vfid, true);
+}
+
+int
+file_temp_truncate (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  int error_code = NO_ERROR;
+  if (vfid == NULL || VFID_ISNULL (vfid))
+    {
+      return NO_ERROR;
+    }
+  error_code = file_temp_reset_user_pages (thread_p, vfid);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+    }
+  return error_code;
 }
 
 /*
@@ -6126,7 +6276,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   file_log ("file_dealloc", "file %d|%d marked vpid %|%d as deleted", VFID_AS_ARGS (vfid), VPID_AS_ARGS (vpid));
 
-  if (FILE_CACHE_LAST_FIND_NTH (fhead))
+  if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p))
     {
       /* reset cached search location */
       VPID_SET_NULL (&fhead->vpid_find_nth_last);
@@ -7058,7 +7208,7 @@ file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_
       /* find in collected sectors */
       for (idx_sect = 0; idx_sect < collect->nsects; idx_sect++)
 	{
-	  if (disk_compare_vsids (&vsid_this, &collect->partsect_ftab->vsid) == 0)
+	  if (disk_compare_vsids (&vsid_this, &collect->partsect_ftab[idx_sect].vsid) == 0)
 	    {
 	      break;
 	    }
@@ -8124,7 +8274,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
     }
   else
     {
-      if (FILE_CACHE_LAST_FIND_NTH (fhead) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
+      if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p) && !VPID_ISNULL (&fhead->vpid_find_nth_last)
 	  && !VPID_EQ (&vpid_fhead, &fhead->vpid_find_nth_last) && nth >= fhead->first_index_find_nth_last)
 	{
 	  /* start searching from last search location */
@@ -8153,7 +8303,7 @@ file_numerable_find_nth (THREAD_ENTRY * thread_p, const VFID * vfid, int nth, bo
 	  goto exit;
 	}
 
-      if (FILE_CACHE_LAST_FIND_NTH (fhead))
+      if (FILE_CACHE_LAST_FIND_NTH (fhead, thread_p))
 	{
 	  /* note that we consider this file cannot be accessed concurrently. therefore we do not promote to write latch
 	   * and we do not set page dirty to update the cached search location. */
@@ -8524,8 +8674,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	pgbuf_fix (thread_p, &fhead->vpid_last_temp_alloc, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
@@ -8541,7 +8695,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
 	disk_reserve_sectors (thread_p, DB_TEMPORARY_DATA_PURPOSE, fhead->volid_last_expand, 1, &partsect_new.vsid);
       if (error_code != NO_ERROR)
 	{
-	  assert_release (false);
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
 
@@ -8646,8 +8805,12 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       page_ftab = pgbuf_fix (thread_p, &vpid_next, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
       if (page_ftab == NULL)
 	{
-	  assert_release (false);
-	  error_code = ER_FAILED;
+	  error_code = er_errid ();
+	  if (error_code != ER_INTERRUPTED)
+	    {
+	      assert_release (false);
+	    }
+
 	  goto exit;
 	}
       extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
@@ -8778,7 +8941,7 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   int nsect_full_new;
   int nsect_empty_new;
   FILE_EXTENSIBLE_DATA *extdata_user_page_ftab;
-  bool save_interrupt;
+  bool save_interrupt, is_partial;
   bool found = false;
   int error_code = NO_ERROR;
 
@@ -8818,6 +8981,18 @@ file_temp_reset_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid)
   if (error_code != NO_ERROR)
     {
       assert_release (false);
+      goto exit;
+    }
+
+  /* dealloc temp page */
+  FILE_HEADER_GET_PART_FTAB (fhead, extdata_part_ftab);
+  is_partial = true;
+  error_code =
+    file_extdata_apply_funcs (thread_p, extdata_part_ftab, NULL, NULL, file_sector_map_dealloc_temp, &is_partial, true,
+			      NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto exit;
     }
 
@@ -9004,8 +9179,8 @@ file_tempcache_init (void)
 #endif
 
   /* allocate transaction temporary files lists */
-  memsize = ntrans * sizeof (FILE_TEMPCACHE_ENTRY *);
-  file_Tempcache.tran_files = (FILE_TEMPCACHE_ENTRY **) malloc (memsize);
+  memsize = ntrans * sizeof (FILE_TEMPCACHE_TRAN_ENTRY);
+  file_Tempcache.tran_files = (FILE_TEMPCACHE_TRAN_ENTRY *) malloc (memsize);
   if (file_Tempcache.tran_files == NULL)
     {
       pthread_mutex_destroy (&file_Tempcache.mutex);
@@ -9013,6 +9188,15 @@ file_tempcache_init (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   memset (file_Tempcache.tran_files, 0, memsize);
+
+
+  for (int i = 0; i < ntrans; i++)
+    {
+      pthread_mutex_init (&file_Tempcache.tran_files[i].mutex, NULL);
+#if !defined (NDEBUG)
+      file_Tempcache.tran_files[i].owner_mutex = -1;
+#endif
+    }
 
   /* stats */
   memset (&file_Tempcache.spacedb_temp, 0, sizeof (file_Tempcache.spacedb_temp));
@@ -9049,11 +9233,14 @@ file_tempcache_final (void)
   /* free all transaction lists... they should be empty anyway, but be conservative */
   for (tran = 0; tran < ntrans; tran++)
     {
-      if (file_Tempcache.tran_files[tran] != NULL)
+      file_tempcache_lock_tran_entry (&file_Tempcache.tran_files[tran]);
+      if (file_Tempcache.tran_files[tran].head != NULL)
 	{
 	  /* should be empty */
-	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran]);
+	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran].head);
 	}
+      file_tempcache_unlock_tran_entry (&file_Tempcache.tran_files[tran]);
+      pthread_mutex_destroy (&file_Tempcache.tran_files[tran].mutex);
     }
   free_and_init (file_Tempcache.tran_files);
 
@@ -9437,13 +9624,13 @@ file_get_tempcache_entry_index (THREAD_ENTRY * thread_p)
 void
 file_tempcache_drop_tran_temp_files (THREAD_ENTRY * thread_p)
 {
-  if (file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)] != NULL)
+  int tran_index = file_get_tempcache_entry_index (thread_p);
+  file_tempcache_lock_tran_entry (&file_Tempcache.tran_files[tran_index]);
+  if (file_Tempcache.tran_files[tran_index].head != NULL)
     {
-      file_log ("file_tempcache_drop_tran_temp_files",
-		"drop %d transaction temporary files", file_get_tran_num_temp_files (thread_p));
-      file_tempcache_cache_or_drop_entries (thread_p,
-					    &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)]);
+      file_tempcache_cache_or_drop_entries (thread_p, &file_Tempcache.tran_files[tran_index].head);
     }
+  file_tempcache_unlock_tran_entry (&file_Tempcache.tran_files[tran_index]);
 }
 
 /*
@@ -9458,6 +9645,7 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 {
   FILE_TEMPCACHE_ENTRY *temp_file;
   FILE_TEMPCACHE_ENTRY *next = NULL;
+  int num = 0;
 
   for (temp_file = *entries; temp_file != NULL; temp_file = next)
     {
@@ -9477,7 +9665,9 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 	    }
 	  file_tempcache_retire_entry (temp_file);
 	}
+      num++;
     }
+  file_log ("file_tempcache_cache_or_drop_entries", "drop %d transaction temporary files", num);
   *entries = NULL;
 }
 
@@ -9491,10 +9681,12 @@ file_tempcache_cache_or_drop_entries (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_EN
 STATIC_INLINE FILE_TEMPCACHE_ENTRY *
 file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
+  int tran_index = file_get_tempcache_entry_index (thread_p);
+  FILE_TEMPCACHE_TRAN_ENTRY *tran_entry = &file_Tempcache.tran_files[tran_index];
   FILE_TEMPCACHE_ENTRY *entry = NULL, *prev_entry = NULL;
 
-  for (entry = *tran_files_p; entry != NULL; entry = entry->next)
+  file_tempcache_lock_tran_entry (tran_entry);
+  for (entry = tran_entry->head; entry != NULL; entry = entry->next)
     {
       if (VFID_EQ (&entry->vfid, vfid))
 	{
@@ -9505,18 +9697,18 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 	    }
 	  else
 	    {
-	      *tran_files_p = entry->next;
+	      tran_entry->head = entry->next;
 	    }
 	  entry->next = NULL;
 
 	  file_log ("file_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
 		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-
+	  file_tempcache_unlock_tran_entry (tran_entry);
 	  return entry;
 	}
       prev_entry = entry;
     }
-
+  file_tempcache_unlock_tran_entry (tran_entry);
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -9532,13 +9724,16 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 STATIC_INLINE void
 file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * entry)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
+  int tran_index = file_get_tempcache_entry_index (thread_p);
+  FILE_TEMPCACHE_TRAN_ENTRY *tran_entry = &file_Tempcache.tran_files[tran_index];
 
-  entry->next = *tran_files_p;
-  *tran_files_p = entry;
+  file_tempcache_lock_tran_entry (tran_entry);
+  entry->next = tran_entry->head;
+  tran_entry->head = entry;
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
+  file_tempcache_unlock_tran_entry (tran_entry);
 }
 
 /*
@@ -9550,14 +9745,15 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
 int
 file_get_tran_num_temp_files (THREAD_ENTRY * thread_p)
 {
-  FILE_TEMPCACHE_ENTRY **tran_files_p = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
+  FILE_TEMPCACHE_TRAN_ENTRY *tran_entry = &file_Tempcache.tran_files[file_get_tempcache_entry_index (thread_p)];
   FILE_TEMPCACHE_ENTRY *entry;
   int num = 0;
-
-  for (entry = *tran_files_p; entry != NULL; entry = entry->next)
+  file_tempcache_lock_tran_entry (tran_entry);
+  for (entry = tran_entry->head; entry != NULL; entry = entry->next)
     {
       num++;
     }
+  file_tempcache_unlock_tran_entry (tran_entry);
   return num;
 }
 
@@ -9605,6 +9801,30 @@ file_tempcache_dump (FILE * fp)
   /* todo: to print transaction temporary files we need some kind of synchronization... right now each transaction
    *       manages its own list freely. */
 }
+
+STATIC_INLINE void
+file_tempcache_lock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+{
+  assert (tran_entry->owner_mutex != thread_get_current_entry_index ());
+  pthread_mutex_lock (&tran_entry->mutex);
+  assert (tran_entry->owner_mutex == -1);
+#if !defined (NDEBUG)
+  tran_entry->owner_mutex = thread_get_current_entry_index ();
+#endif /* !NDEBUG */
+}
+
+STATIC_INLINE void
+file_tempcache_unlock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
+{
+  assert (tran_entry->owner_mutex == thread_get_current_entry_index ());
+#if !defined (NDEBUG)
+  tran_entry->owner_mutex = -1;
+#endif /* !NDEBUG */
+  pthread_mutex_unlock (&tran_entry->mutex);
+}
+
+
+
 
 /************************************************************************/
 /* File tracker section                                                 */

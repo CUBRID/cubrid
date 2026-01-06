@@ -555,11 +555,7 @@ cm_get_broker_file (T_UNICAS_FILE_ID uc_fid, char *buf)
     {
       if (uc_fid == unicas_file[i].fid)
 	{
-#if !defined (DO_NOT_USE_CUBRIDENV)
 	  sprintf (buf, "%s/%s/%s", getenv (CUBRID_ENV), unicas_file[i].dir_name, unicas_file[i].file_name);
-#else
-	  sprintf (buf, "%s/%s", unicas_file[i].dir_name, unicas_file[i].file_name);
-#endif
 	  break;
 	}
     }
