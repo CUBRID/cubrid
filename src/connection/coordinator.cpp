@@ -528,8 +528,6 @@ namespace cubconn::connection
 
 	for (auto &stats : contexts)
 	  {
-	    assert (m_statistics[index].m_contexts.find (stats.first) != m_statistics[index].m_contexts.end ());
-
 	    m_statistics[index].m_contexts[stats.first].first = stats.second;
 	    m_statistics[index].m_contexts[stats.first].second = stats.second;
 	  }
