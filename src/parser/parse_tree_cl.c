@@ -19380,16 +19380,8 @@ pt_print_remote_info (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pt, bool is_dml)
 		     pt->user->info.value.data_value.str->length);
   var = pt_append_nulstring (parser, var, ":");
 
-  if (pt->is_name || is_dml)
-    {
-      var = pt_append_nulstring (parser, var, "*");
-    }
-  else
-    {
-      var = pt_append_bytes (parser, var, (char *) pt->pwd->info.value.data_value.str->bytes,
-			     pt->pwd->info.value.data_value.str->length);
-    }
-
+  var = pt_append_bytes (parser, var, (char *) pt->pwd->info.value.data_value.str->bytes,
+			 pt->pwd->info.value.data_value.str->length);
   // properties
   if (!is_dml)
     {
