@@ -547,17 +547,17 @@ extern "C"
 #define DB_MAX_FIXED_NUMERIC_SCALE 127
 
 /* The maximum precision that can be specified for a numeric domain. */
-#define DB_MAX_NUMERIC_PRECISION 43
+#define DB_MAX_NUMERIC_PRECISION 40
 
 /* The minimum and maximum scale that can be specified for a numeric domain. */
-#define DB_MIN_NUMERIC_SCALE -211
+#define DB_MIN_NUMERIC_SCALE -214
 #define DB_MAX_NUMERIC_SCALE 252
 
 /* The upper limit for a number that can be represented by a numeric type */
 #define DB_NUMERIC_OVERFLOW_LIMIT 1e252
 
 /* The lower limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-211
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-214
 
 #define DB_MAX_CHAR_PRECISION 2048
 
@@ -602,10 +602,10 @@ extern "C"
  * DB_NUMERIC_BUF_SIZE
  * 
  * buffer size for numeric type's db_value->data.num
- * stores 18 bytes of data (for precision 43), excluding the 2-byte header.
- * Formula: ceil(DB_MAX_NUMERIC_PRECISION / log10(256)) = 18
+ * stores 17 bytes of data (for precision 40), excluding the 2-byte header.
+ * Formula: ceil(DB_MAX_NUMERIC_PRECISION / log10(256)) = 17
  */
-#define DB_NUMERIC_BUF_SIZE	18
+#define DB_NUMERIC_BUF_SIZE	17
 #define DB_SMALL_CHAR_BUF_SIZE	(2*sizeof(double) - 3*sizeof(unsigned char))
 
 /* This constant defines the default precision of DB_TYPE_BIGINT. */

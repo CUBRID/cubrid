@@ -48,10 +48,10 @@ public class NumericValue extends Value {
     public static final int DB_MIN_FIXED_NUMERIC_SCALE = -84;
     public static final int DB_MAX_FIXED_NUMERIC_SCALE = 127;
 
-    public static final int DB_MAX_NUMERIC_PRECISION = 43;
+    public static final int DB_MAX_NUMERIC_PRECISION = 40;
     public static final int DB_MIN_NUMERIC_PRECISION = 1;
     public static final int DB_MAX_NUMERIC_SCALE = 252;
-    public static final int DB_MIN_NUMERIC_SCALE = -211;
+    public static final int DB_MIN_NUMERIC_SCALE = -214;
 
     public static final int DB_DEFAULT_NUMERIC_PRECISION = DB_MAX_NUMERIC_PRECISION;
     public static final int DB_DEFAULT_NUMERIC_SCALE = 0;

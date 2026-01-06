@@ -619,9 +619,9 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	     *   - fixed numeric (orig_precision != DB_DEFAULT_NUMERIC_PRECISION), or
 	     *   - float numeric (orig_precision == DB_DEFAULT_NUMERIC_PRECISION) with:
 	     *     * scale is 0, or
-	     *     * precision is DB_MAX_NUMERIC_PRECISION(43) and scale is negative
+	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
 	     *   for float numeric with positive scale, trailing zero check is required
-	     *   even when precision is DB_MAX_NUMERIC_PRECISION(43), so normalization is needed.
+	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
 	     */
 	    if (orig_precision != DB_DEFAULT_NUMERIC_PRECISION
 		|| (orig_precision == DB_DEFAULT_NUMERIC_PRECISION
@@ -2474,9 +2474,9 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	     *   - fixed numeric (orig_precision != DB_DEFAULT_NUMERIC_PRECISION), or
 	     *   - float numeric (orig_precision == DB_DEFAULT_NUMERIC_PRECISION) with:
 	     *     * scale is 0, or
-	     *     * precision is DB_MAX_NUMERIC_PRECISION(43) and scale is negative
+	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
 	     *   for float numeric with positive scale, trailing zero check is required
-	     *   even when precision is DB_MAX_NUMERIC_PRECISION(43), so normalization is needed.
+	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
 	     */
 	    if (orig_precision != DB_DEFAULT_NUMERIC_PRECISION
 		|| (orig_precision == DB_DEFAULT_NUMERIC_PRECISION
@@ -2498,7 +2498,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		unsigned int tmp = 0;
 		unsigned int *buf = (unsigned int *) calc_buf;
 
-		memcpy (&tmp, (char *) calc_buf + 16, 2);
+		memcpy (&tmp, (char *) calc_buf + 16, 1);
 
 		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
 	      }

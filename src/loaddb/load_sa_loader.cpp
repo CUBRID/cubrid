@@ -2440,8 +2440,13 @@ ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
       numeric_coerce_dec_str_to_num (str, num.d.buf);
       if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
 	{
+	  int precision = (int) len - (str[0] == '+' || str[0] == '-');
+	  if (precision > DB_MAX_NUMERIC_PRECISION)
+	    {
+	      precision = DB_MAX_NUMERIC_PRECISION;
+	    }
 
-	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, (int) len, 0), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, 0), context, DB_TYPE_BIGINT, str);
 	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_BIGINT, str);
 	}
       else
@@ -3037,7 +3042,7 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
 
   if (precision > DB_MAX_NUMERIC_PRECISION)
     {
-      scale = DB_MAX_NUMERIC_PRECISION - precision;
+      scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
       precision = DB_MAX_NUMERIC_PRECISION;
     }
 

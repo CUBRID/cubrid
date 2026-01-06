@@ -930,8 +930,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 assert scale != 0 : "scale should not be 0";
 
                 /* adjust scale when precision exceeds maximum limit.
-                 * example: 0.999..5 (precision 44) -> 1.0000..0 (precision 45) after rounding
-                 *          -> 1.000..0 (precision 43) after setScale adjustment */
+                 * example: 0.999..5 (precision 41) -> 1.0000..0 (precision 42) after rounding
+                 *          -> 1.000..0 (precision 40) after setScale adjustment */
                 while (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
                     scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
 

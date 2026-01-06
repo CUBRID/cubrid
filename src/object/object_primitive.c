@@ -120,6 +120,25 @@ extern unsigned int db_on_server;
 #define OR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE
 #define MR_NUMERIC_SIZE(precision) DB_NUMERIC_BUF_SIZE
 
+/*
+ * NUMERIC_HEADER_SIZE
+ * The numeric header is 3 bytes in size.
+ * - header[0]: Total byte size of the numeric data (header + data).
+ *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
+ *              Bits 0-6: Total byte size value (4 ~ 20 bytes).
+ *                        Minimum: precision 1 -> data 1 byte + header 3 = 4 bytes (aligned to 4).
+ *                        Maximum: precision 40 -> data 17 bytes + header 3 = 20 bytes (aligned to 20).
+ * - header[1]: Precision and scale sign bit.
+ *              Bit 7 (0x80): Scale sign bit (1 = negative scale, 0 = positive scale).
+ *              Bits 0-6: Precision value (1 ~ 40).
+ * - header[2]: Scale value.
+ *              Bits 0-7: Scale absolute value (0 ~ 214).
+ *                        Positive scale: 0 ~ 252.
+ *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
+ */
+#define NUMERIC_HEADER_SIZE 3
+#define FLOAT_NUMERIC_SIZE (NUMERIC_HEADER_SIZE + DB_NUMERIC_BUF_SIZE)
+
 #define STR_SIZE(prec, codeset)                                             \
      (((codeset) == INTL_CODESET_RAW_BITS) ? ((prec+7)/8) :		    \
       INTL_CODESET_MULT (codeset) * (prec))
@@ -8288,18 +8307,17 @@ mr_cmpval_vobj (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 static void
 mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
 {
-  assert (!IS_FLOATING_PRECISION (domain->precision));
   int mem_length;
+
+  assert (!IS_FLOATING_PRECISION (domain->precision));
 
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      mem_length = OR_SHORT_SIZE;
-      mem_length += OR_NUMERIC_SIZE (domain->precision);
+      mem_length = FLOAT_NUMERIC_SIZE;
     }
   else
     {
-      mem_length = _gv_numeric_precision_bytes_lookup[domain->precision - 1];
-      mem_length = DB_ALIGN (mem_length, INT_ALIGNMENT);
+      mem_length = DB_ALIGN ((_gv_numeric_precision_to_bytes_lookup[domain->precision - 1]), INT_ALIGNMENT);
     }
 
   memset (memptr, 0, mem_length);
@@ -8349,33 +8367,44 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
       else
 	{
 	  num = (DB_C_NUMERIC) mem;
-	  if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION && domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
-	    {
-	      int header_size = 2;
-	      unsigned char header[header_size];
+	  DB_C_NUMERIC data_dest;
 
-	      if (value->data.num.header.scale < 0)
+	  if (orig_src_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      unsigned char header[NUMERIC_HEADER_SIZE];
+	      int header_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+	      int header_scale = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+	      bool is_negative_data = (src_num[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+
+	      byte_size =
+		DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[header_precision - 1]),
+			  INT_ALIGNMENT);
+	      assert ((byte_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
+
+	      if (header_scale < 0)
 		{
-		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
-		  header[1] = -(DB_VALUE_NUMERIC_HEADER_SCALE (value));
+		  header[0] = byte_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+		  header[1] = header_precision | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
+		  header[2] = -(header_scale);
 		}
 	      else
 		{
-		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
-		  header[1] = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+		  header[0] = byte_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+		  header[1] = header_precision;
+		  header[2] = header_scale;
 		}
-	      memcpy (num, header, header_size);
-
-	      byte_size = MR_NUMERIC_SIZE (src_precision);
-	      memcpy (num + header_size, src_num, byte_size);
+	      memcpy (num, header, NUMERIC_HEADER_SIZE);
+	      byte_size -= NUMERIC_HEADER_SIZE;
+	      data_dest = num + NUMERIC_HEADER_SIZE;
 	    }
 	  else
 	    {
-	      byte_size = _gv_numeric_precision_bytes_lookup[src_precision - 1];
+	      byte_size = _gv_numeric_precision_to_bytes_lookup[src_precision - 1];
 	      byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
-
-	      memcpy (num, src_num + (DB_NUMERIC_BUF_SIZE - byte_size), byte_size);
+	      data_dest = num;
 	    }
+
+	  memcpy (data_dest, src_num + (DB_NUMERIC_BUF_SIZE - byte_size), byte_size);
 	}
     }
   return error;
@@ -8385,7 +8414,11 @@ static int
 mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
+  int byte_size = 0;
   DB_C_NUMERIC num;
+  int precision, scale;
+  bool is_floating_point = false;
+  bool is_negative_data = false;
 
   if (value == NULL)
     {
@@ -8395,30 +8428,39 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
   num = (DB_C_NUMERIC) mem;
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      int header_size = 2;
-      int precision = num[0] & 0x7F;
-      bool is_negative_scale = (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
-      int scale = is_negative_scale ? -num[1] : num[1];
+      unsigned char header[NUMERIC_HEADER_SIZE] = { num[0], num[1], num[2] };
 
-      error = db_make_numeric (value, num + header_size, precision, scale, DB_NUMERIC_BUF_SIZE, true);
+      byte_size = ((header[0] & 0x7F) - NUMERIC_HEADER_SIZE);
+
+      precision = (header[1] & 0x7F);
+      bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+      scale = is_negative_scale ? -header[2] : header[2];
+      is_floating_point = true;
+      is_negative_data = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+
+      num = (DB_C_NUMERIC) ((char *) mem + NUMERIC_HEADER_SIZE);
     }
   else
     {
-      int byte_size;
-      byte_size = _gv_numeric_precision_bytes_lookup[domain->precision - 1];
+      precision = domain->precision;
+      scale = domain->scale;
+      is_floating_point = false;
+      is_negative_data = (num[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+
+      byte_size = _gv_numeric_precision_to_bytes_lookup[precision - 1];
       byte_size = DB_ALIGN (byte_size, INT_ALIGNMENT);
-
-      if (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK)
-	{
-	  memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - byte_size);
-	}
-      else
-	{
-	  memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - byte_size);
-	}
-
-      error = db_make_numeric (value, num, domain->precision, domain->scale, byte_size, false);
     }
+
+  if (is_negative_data)
+    {
+      memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - byte_size);
+    }
+  else
+    {
+      memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - byte_size);
+    }
+
+  error = db_make_numeric (value, num, precision, scale, byte_size, is_floating_point);
   value->need_clear = false;
 
   return error;
@@ -8428,17 +8470,33 @@ static void
 mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
   int disk_size;
+  DB_C_NUMERIC num = (DB_C_NUMERIC) mem;
 
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      disk_size = OR_SHORT_SIZE;
-      disk_size += OR_NUMERIC_SIZE (domain->precision);
+      unsigned char header[NUMERIC_HEADER_SIZE] = { num[0], num[1], num[2] };
+      disk_size = (header[0] & 0x7F);
+
+      int precision = (header[1] & 0x7F);
+      if (precision >= 1 && precision <= DB_MAX_NUMERIC_PRECISION)
+	{
+	  int calc_size =
+	    DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
+	  if (disk_size != calc_size)
+	    {
+	      disk_size = calc_size;
+	    }
+	}
+      else
+	{
+	  disk_size = FLOAT_NUMERIC_SIZE;
+	}
     }
   else
     {
-      disk_size = _gv_numeric_precision_bytes_lookup[domain->precision - 1];
-      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
+      disk_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
     }
+
   or_put_data (buf, (char *) mem, disk_size);
 }
 
@@ -8446,19 +8504,24 @@ static void
 mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
   int calc_size = 0;
+  DB_C_NUMERIC num;
+  unsigned char header[NUMERIC_HEADER_SIZE];
 
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
     {
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  size = OR_SHORT_SIZE;
-	  size += OR_NUMERIC_SIZE (domain->precision);
+	  num = (DB_C_NUMERIC) buf->ptr;
+	  header[0] = num[0];
+	  header[1] = num[1];
+	  header[2] = num[2];
+
+	  size = (header[0] & 0x7F);
 	}
       else
 	{
-	  size = _gv_numeric_precision_bytes_lookup[domain->precision - 1];
-	  size = DB_ALIGN (size, INT_ALIGNMENT);
+	  size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
 	}
     }
 
@@ -8474,13 +8537,13 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       /* calculate expected size and verify it matches the provided size */
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  calc_size = OR_SHORT_SIZE;
-	  calc_size += OR_NUMERIC_SIZE (domain->precision);
+	  int precision = (header[1] & 0x7F);
+	  calc_size =
+	    DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
 	}
       else
 	{
-	  calc_size = _gv_numeric_precision_bytes_lookup[domain->precision - 1];
-	  calc_size = DB_ALIGN (calc_size, INT_ALIGNMENT);
+	  calc_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
 	}
 
       if (size != calc_size)
@@ -8507,13 +8570,13 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
 
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      len = OR_SHORT_SIZE;
-      len += MR_NUMERIC_SIZE (domain->precision);
+      /* float numeric, the actual length is stored in header[0] (header[0] & 0x7F),
+       * but we return the maximum size (FLOAT_NUMERIC_SIZE) here. */
+      len = FLOAT_NUMERIC_SIZE;
     }
   else
     {
-      len = _gv_numeric_precision_bytes_lookup[domain->precision - 1];
-      len = DB_ALIGN (len, INT_ALIGNMENT);
+      len = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
     }
 
   return len;
@@ -8594,13 +8657,13 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       precision = db_value_precision (value);
       if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  len = OR_SHORT_SIZE;
-	  len += OR_NUMERIC_SIZE (precision);
+	  /* float numeric, the actual length is stored in header[0] (header[0] & 0x7F),
+	   * but we return the maximum size (FLOAT_NUMERIC_SIZE) here. */
+	  len = FLOAT_NUMERIC_SIZE;
 	}
       else
 	{
-	  len = _gv_numeric_precision_bytes_lookup[precision - 1];
-	  len = DB_ALIGN (len, INT_ALIGNMENT);
+	  len = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision - 1], INT_ALIGNMENT);
 	}
     }
   return len;
@@ -8627,32 +8690,39 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	  precision = db_value_precision (value);
 	  if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	    {
-	      int header_size = 2;
-	      unsigned char header[header_size];
+	      unsigned char header[NUMERIC_HEADER_SIZE];
+	      int header_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+	      int header_scale = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+	      bool is_negative_data = (numeric[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 
-	      if (DB_VALUE_NUMERIC_HEADER_SCALE (value) < 0)
+	      disk_size =
+		DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[header_precision - 1]),
+			  INT_ALIGNMENT);
+	      assert ((disk_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
+
+	      if (header_scale < 0)
 		{
-		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value) | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
-		  header[1] = -(DB_VALUE_NUMERIC_HEADER_SCALE (value));
+		  header[0] = disk_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+		  header[1] = header_precision | NUMERIC_HEADER_SCALE_SIGN_BIT_MASK;
+		  header[2] = -(header_scale);
 		}
 	      else
 		{
-		  header[0] = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
-		  header[1] = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+		  header[0] = disk_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
+		  header[1] = header_precision;
+		  header[2] = header_scale;
 		}
 
-	      or_put_data (buf, (char *) header, header_size);
-
-	      disk_size = OR_NUMERIC_SIZE (precision);
-	      rc = or_put_data (buf, (char *) numeric, disk_size);
+	      or_put_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
+	      disk_size -= NUMERIC_HEADER_SIZE;
 	    }
 	  else
 	    {
-	      disk_size = _gv_numeric_precision_bytes_lookup[precision - 1];
+	      disk_size = _gv_numeric_precision_to_bytes_lookup[precision - 1];
 	      disk_size = DB_ALIGN (disk_size, INT_ALIGNMENT);
-
-	      rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
 	    }
+
+	  rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
 	}
     }
   return rc;
@@ -8670,6 +8740,8 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 			 int copy_buf_len)
 {
   int rc = NO_ERROR;
+  unsigned char header[NUMERIC_HEADER_SIZE];
+  DB_C_NUMERIC num;
 
   if (domain == NULL)
     {
@@ -8684,13 +8756,11 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
     {
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  size = OR_SHORT_SIZE;
-	  size += OR_NUMERIC_SIZE (domain->precision);
+	  size = FLOAT_NUMERIC_SIZE;
 	}
       else
 	{
-	  size = _gv_numeric_precision_bytes_lookup[domain->precision - 1];
-	  size = DB_ALIGN (size, INT_ALIGNMENT);
+	  size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
 	}
     }
 
@@ -8707,35 +8777,43 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
        * the copy and no copy cases are identical because db_make_numeric
        * will copy the bits into its internal buffer.
        */
+      int precision, scale;
+      bool is_floating_point = false;
+      bool is_negative_data = false;
+
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  int header_size = 2;
-	  unsigned char header[header_size];
+	  or_get_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
+	  size = ((header[0] & 0x7F) - NUMERIC_HEADER_SIZE);
 
-	  or_get_data (buf, (char *) header, header_size);
-	  size -= header_size;
+	  num = (DB_C_NUMERIC) buf->ptr;
 
-	  int precision = header[0] & 0x7F;
-	  bool is_negative_scale = (header[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
-	  int scale = is_negative_scale ? -(header[1]) : header[1];
-
-	  (void) db_make_numeric (value, (DB_C_NUMERIC) buf->ptr, precision, scale, DB_NUMERIC_BUF_SIZE, true);
+	  precision = (header[1] & 0x7F);
+	  bool is_negative_scale = (header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0;
+	  scale = is_negative_scale ? -(header[2]) : header[2];
+	  is_floating_point = true;
+	  is_negative_data = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 	}
       else
 	{
-	  DB_C_NUMERIC num = (DB_C_NUMERIC) buf->ptr;
+	  num = (DB_C_NUMERIC) buf->ptr;
 
-	  if (num[0] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK)
-	    {
-	      memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - size);
-	    }
-	  else
-	    {
-	      memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - size);
-	    }
-
-	  (void) db_make_numeric (value, num, domain->precision, domain->scale, size, false);
+	  precision = domain->precision;
+	  scale = domain->scale;
+	  is_floating_point = false;
+	  is_negative_data = (num[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 	}
+
+      if (is_negative_data)
+	{
+	  memset (value->data.num.d.buf, 0xFF, DB_NUMERIC_BUF_SIZE - size);
+	}
+      else
+	{
+	  memset (value->data.num.d.buf, 0, DB_NUMERIC_BUF_SIZE - size);
+	}
+
+      (void) db_make_numeric (value, num, precision, scale, size, is_floating_point);
 
       value->need_clear = false;
       rc = or_advance (buf, size);

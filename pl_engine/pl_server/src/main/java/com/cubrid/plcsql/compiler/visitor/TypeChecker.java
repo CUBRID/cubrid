@@ -204,8 +204,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
                     if (actualPrecision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
                         /* adjust scale when precision exceeds maximum limit
-                         * examples: precision 50, scale 0 -> precision 43, scale -7
-                         *           precision 50, scale 3 -> precision 43, scale -4
+                         * examples: precision 50, scale 0 -> precision 40, scale -7
+                         *           precision 50, scale 3 -> precision 40, scale -4
                          */
                         actualScale -= (actualPrecision - NumericValue.DB_MAX_NUMERIC_PRECISION);
                         actualPrecision = NumericValue.DB_MAX_NUMERIC_PRECISION;

@@ -54,7 +54,7 @@ typedef enum
  * for a detailed explanation.
  *
  * Maximum string size for NUMERIC output: 256 * 2 = 512
- *   = (max digits (43 + 211) + 2 extra digits) * 2
+ *   = (max digits (40 + 214) + 2 extra digits) * 2
  */
 #define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 
@@ -85,11 +85,11 @@ typedef enum
 /*
  * Lookup table for converting precision value to byte count
  *
- * Precision range: Pre-calculated for 1 to 43 digits
+ * Precision range: Pre-calculated for 1 to 40 digits
  * Conversion formula: bytes = ceil(precision / log10(256))
  * Note: log10(256) = 2.40824
  */
-extern const int _gv_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION];
+extern const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION];
 
 #if defined(SERVER_MODE)
 extern void numeric_init_power_value_string (void);

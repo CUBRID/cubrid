@@ -1763,6 +1763,7 @@ db_init_db_json_pointers (DB_JSON * val)
 static int
 coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 {
+  int error = NO_ERROR;
   int status = C_TO_VALUE_NOERROR;
   DB_TYPE db_type = DB_VALUE_DOMAIN_TYPE (value);
 
@@ -1775,44 +1776,37 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	int orig_desired_precision = DB_VALUE_PRECISION (value);
 	int desired_precision, desired_scale;
 
+	error = numeric_coerce_string_to_num (buf, buflen, LANG_SYS_CODESET, &tmp_value);
+	if (error != NO_ERROR)
+	  {
+	    status = C_TO_VALUE_CONVERSION_ERROR;
+	    db_value_clear (&tmp_value);
+	    break;
+	  }
+
 	if (orig_desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
 	  {
-	    desired_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
-	    desired_scale = DB_VALUE_NUMERIC_HEADER_SCALE (value);
+	    db_make_numeric (value, db_locate_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
+			     DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), DB_NUMERIC_BUF_SIZE, true);
 	  }
 	else
 	  {
 	    desired_precision = orig_desired_precision;
 	    desired_scale = DB_VALUE_SCALE (value);
-	  }
 
-	/* string_to_num will coerce the string to a numeric, but will set the precision and scale based on the value
-	 * passed. Then we call num_to_num to coerce to the desired precision and scale. */
-
-	if (numeric_coerce_string_to_num (buf, buflen, LANG_SYS_CODESET, &tmp_value) != NO_ERROR)
-	  {
-	    status = C_TO_VALUE_CONVERSION_ERROR;
-	  }
-	else if (numeric_coerce_num_to_num
-		 (db_get_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
-		  DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
-	  {
-	    status = C_TO_VALUE_CONVERSION_ERROR;
-	  }
-	else
-	  {
-	    /* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
-	     * value. */
-	    if (orig_desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    if (numeric_coerce_num_to_num
+		(db_get_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
+		 DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
 	      {
-		db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, true);
+		status = C_TO_VALUE_CONVERSION_ERROR;
 	      }
 	    else
 	      {
+		/* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
+		 * value. */
 		db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
 	      }
 	  }
-
 	db_value_clear (&tmp_value);
       }
       break;

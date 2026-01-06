@@ -75,10 +75,10 @@
  *   1) Exponential form
  *        1.0 × 10^-252 <= |Value| < 1.0 × 10^254
  *   2) Precision/Scale form
- *        (prec, scale) in the range: (1,252) <= (prec,scale) <= (43,-211)
+ *        (prec, scale) in the range: (1,252) <= (prec,scale) <= (40,-214)
  *
  * TWICE_NUM_MAX_PREC: 256
- * = max digits (43 + 211) = 254 + 2 extra digit
+ * = max digits (40 + 214) = 254 + 2 extra digit
  * Must always be smaller than NUMERIC_MAX_STRING_SIZE.
  */
 #define TWICE_NUM_MAX_PREC      ((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2)
@@ -88,7 +88,7 @@
 
 /* 
  * (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + DB_MAX_NUMERIC_SCALE) + 6) 
- * = ((43 - (-211)) + 252) + 6 
+ * = ((40 - (-214)) + 252) + 6 
  * = 506 + 6 = 512
  */
 #define POW10_MAX_INDEX         (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + DB_MAX_NUMERIC_SCALE) + 6)
@@ -125,9 +125,9 @@ static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
-const int _gv_numeric_precision_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
+const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
   1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15,
-  15, 15, 16, 16, 17, 17, 18, 18, 18
+  15, 15, 16, 16, 17, 17
 };
 
 /* precomputed lookup table for 10^1 through 10^16 */
@@ -4072,7 +4072,7 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
     {
       /* multiply by 10
        * multiplication increases precision, but limited to
-       * DB_MAX_NUMERIC_PRECISION(43) digits maximum.
+       * DB_MAX_NUMERIC_PRECISION(40) digits maximum.
        */
       int max_multiply = DB_MAX_NUMERIC_PRECISION - precision;
       tmp_scale = (-(scale) > max_multiply) ? max_multiply : -(scale);
@@ -4994,7 +4994,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
       /* Case 1: Only integer part exists */
       if (int_len <= DB_MAX_NUMERIC_PRECISION)
 	{
-	  /* Case 1-A: When length is within 38 digits, use only the integer part */
+	  /* Case 1-A: When length is within 40 digits, use only the integer part */
 	  tmp_prec = int_len;
 	  tmp_scale = 0;
 	  tmp_int_digits = int_digits;
@@ -5003,16 +5003,11 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
       else
 	{
 	  /* Case 1-B: Apply negative scale based on trailing zero count */
-	  /*
-	   * Phase-2 will expand storage to 18 bytes (43 digits)
-	   * and support rounding at the 44th digit so that up to 43 digits
-	   * can be represented correctly.
-	   */
 	  tmp_prec = DB_MAX_NUMERIC_PRECISION;
 	  tmp_scale = DB_MAX_NUMERIC_PRECISION - int_len;
 	  tmp_int_digits = int_digits;
 	  tmp_int_len = DB_MAX_NUMERIC_PRECISION;
-	  /* Get the 44th digit for rounding decision (array index 43 since arrays start from 0) */
+	  /* Get the 41th digit for rounding decision (array index 40 since arrays start from 0) */
 	  next_digit = tmp_int_digits[DB_MAX_NUMERIC_PRECISION];
 	  need_round = true;
 	}
@@ -5058,7 +5053,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
       /* Case 3: Both integer and fractional parts exist */
       if (total <= DB_MAX_NUMERIC_PRECISION)
 	{
-	  /* Case 3-A: When total length is within 38 digits, use both integer and fractional parts */
+	  /* Case 3-A: When total length is within 40 digits, use both integer and fractional parts */
 	  tmp_prec = total;
 	  tmp_scale = frac_len;
 	  tmp_int_digits = int_digits;
@@ -5068,7 +5063,7 @@ determine_prec_scale (const char *int_digits, int int_len, const char *frac_digi
 	}
       else
 	{
-	  /* Case 3-B: When total length exceeds 38 digits, determine whether to round or apply negative scale 
+	  /* Case 3-B: When total length exceeds 40 digits, determine whether to round or apply negative scale 
 	     depending on which part (integer vs fractional) has more digits */
 	  int drop_total = total - DB_MAX_NUMERIC_PRECISION;
 	  if (drop_total <= frac_len)
@@ -5709,11 +5704,11 @@ float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * resu
       return;
     }
 
-  /* if more than 44 digits, truncate to 43 digits and round at the 44th digit */
+  /* if more than 41 digits, truncate to 40 digits and round at the 41st digit */
   *result_prec = DB_MAX_NUMERIC_PRECISION;
 
   /* 
-   * divide the value up to 43 digits and store the 44th digit in last_digit for rounding check.
+   * divide the value up to 40 digits and store the 41th digit in last_digit for rounding check.
    * reduces digits and returns the most significant digit of the truncated portion for rounding.
    */
   last_digit = float_numeric_div_normalize (calc_buf, calc_bytes, drop);
