@@ -3320,8 +3320,11 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
   bufptr->iopage_buffer = ioptr;
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-  pgbuf_lru_move_from_private_to_shared (thread_p, orig_bcb);
-  perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
+  if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (orig_bcb)))
+    {
+      pgbuf_lru_move_from_private_to_shared (thread_p, orig_bcb);
+      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
+    }
 
   pgbuf_unfix (thread_p, orig_pgptr);
 
