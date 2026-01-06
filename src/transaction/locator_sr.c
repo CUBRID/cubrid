@@ -13998,7 +13998,7 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
       return ret;
     }
 
-  log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+  log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), rv_path);
 
   return ret;
 }
