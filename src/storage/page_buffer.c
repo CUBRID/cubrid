@@ -1267,6 +1267,8 @@ static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
 
 static void pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
 
+static void pgbuf_unfix_and_move_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
+
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
 static cubthread::daemon *pgbuf_Page_maintenance_daemon = NULL;
@@ -3085,6 +3087,148 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 #endif /* CUBRID_DEBUG */
 }
 
+static void
+pgbuf_unfix_and_move_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
+{
+
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
+  PAGE_PTR pgptr;
+  bool is_perf_tracking;
+  PERF_PAGE_TYPE perf_page_type = PERF_PAGE_UNKNOWN;
+  PGBUF_HOLDER_STAT holder_perf_stat;
+  int holder_status;
+  PERF_HOLDER_LATCH perf_holder_latch;
+  int th_lru_idx;
+  PGBUF_ZONE zone;
+  int error_code = NO_ERROR;
+  PGBUF_ATOMIC_LATCH_IMPL impl_orig, impl_new;
+  bool blocked_reader_writer = false, is_zero_fcnt = false;
+
+  CAST_BFPTR_TO_PGPTR (pgptr, bcb);
+  holder = pgbuf_get_holder (thread_p, pgptr);
+
+  assert (holder != NULL);
+
+  watcher = holder->last_watcher;
+  while (watcher != NULL)
+    {
+      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+      watcher = watcher->prev;
+    }
+
+  is_perf_tracking = perfmon_is_perf_tracking ();
+  if (is_perf_tracking)
+    {
+      perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
+    }
+  INIT_HOLDER_STAT (&holder_perf_stat);
+  holder_status = pgbuf_unlatch_thrd_holder (thread_p, bcb, &holder_perf_stat);
+
+  assert (holder_perf_stat.hold_has_write_latch == 1 || holder_perf_stat.hold_has_read_latch == 1);
+
+  if (is_perf_tracking)
+    {
+      if (holder_perf_stat.hold_has_read_latch && holder_perf_stat.hold_has_write_latch)
+	{
+	  perf_holder_latch = PERF_HOLDER_LATCH_MIXED;
+	}
+      else if (holder_perf_stat.hold_has_read_latch)
+	{
+	  perf_holder_latch = PERF_HOLDER_LATCH_READ;
+	}
+      else
+	{
+	  assert (holder_perf_stat.hold_has_write_latch);
+	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
+	}
+      perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
+			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
+    }
+  /* if read latch exists,... */
+  if (pgbuf_lockfree_unfix_ro (thread_p, bcb))
+    {
+      return;
+    }
+  PGBUF_BCB_LOCK (bcb);
+
+  assert (holder_status == NO_ERROR);
+
+  /* the caller is holding bufptr->mutex */
+
+  assert (!VPID_ISNULL (&bcb->vpid));
+  assert (pgbuf_check_bcb_page_vpid (bcb, false) == true);
+
+  CAST_BFPTR_TO_PGPTR (pgptr, bcb);
+
+  /* decrement the fix count */
+  do
+    {
+      blocked_reader_writer = false;
+      is_zero_fcnt = false;
+      impl_orig = get_impl (&bcb->atomic_latch);
+      impl_new = impl_orig;
+      impl_new.impl.fcnt--;
+      blocked_reader_writer = impl_orig.impl.waiter_exists;
+      if (impl_new.impl.fcnt == 0)
+	{
+	  is_zero_fcnt = true;
+	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
+	}
+      if (impl_new.impl.fcnt < 0)
+	{
+	  /* This situation must not be occurred. */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bcb->vpid.pageid,
+		  fileio_get_volume_label (bcb->vpid.volid, PEEK));
+	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
+	  impl_new.impl.fcnt = 0;
+	  impl_new.impl.waiter_exists = false;
+	  is_zero_fcnt = true;
+	  break;
+	}
+    }
+  while (!bcb->atomic_latch.compare_exchange_weak (impl_orig.raw, impl_new.raw, std::memory_order_acq_rel,
+						   std::memory_order_acquire));
+
+  if (holder_status != NO_ERROR)
+    {
+      /* This situation must not be occurred. */
+      assert (false);
+      PGBUF_BCB_UNLOCK (bcb);
+      return;
+    }
+
+  if (is_zero_fcnt && PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bcb)))
+    {
+      pgbuf_lru_move_from_private_to_shared (thread_p, bcb);
+      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
+    }
+
+#if defined(SERVER_MODE)
+  pgbuf_wakeup_reader_writer (thread_p, bcb);
+#endif /* SERVER_MODE */
+
+  if (pgbuf_bcb_is_async_flush_request (bcb))
+    {
+      /* we need to flush bcb. we won't need the bcb mutex afterwards */
+      error_code = pgbuf_bcb_safe_flush_force_unlock (thread_p, bcb, false);
+      /* what to do with the error? we failed to flush it... */
+      if (error_code != NO_ERROR)
+	{
+	  er_clear ();
+	  error_code = NO_ERROR;
+	}
+    }
+  else
+    {
+      PGBUF_BCB_UNLOCK (bcb);
+    }
+
+  return;
+
+}
+
 extern void
 pgbuf_thread_local_cache_init (THREAD_ENTRY * thread_p)
 {
@@ -3320,15 +3464,8 @@ pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
   bufptr->iopage_buffer = ioptr;
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-  pthread_mutex_lock (&orig_bcb->mutex);
-  if (PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (orig_bcb)))
-    {
-      pgbuf_lru_move_from_private_to_shared (thread_p, orig_bcb);
-      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
-    }
-  pthread_mutex_unlock (&orig_bcb->mutex);
 
-  pgbuf_unfix (thread_p, orig_pgptr);
+  pgbuf_unfix_and_move_to_shared (thread_p, orig_bcb);
 
   return pgptr;
 }
