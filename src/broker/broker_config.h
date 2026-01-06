@@ -26,29 +26,18 @@
 
 #include "config.h"
 #include "cas_protocol.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "environment_variable.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 #include "porting.h"
 
 #define	APPL_SERVER_CAS           0
-#define	APPL_SERVER_CAS_ORACLE    1
-#define APPL_SERVER_CAS_MYSQL51   2
-#define APPL_SERVER_CAS_MYSQL     3
-#define APPL_SERVER_CAS_CGW       4
+#define APPL_SERVER_CAS_CGW       1
 
 #define IS_APPL_SERVER_TYPE_CAS(x)	\
-        ((x == APPL_SERVER_CAS) || (x == APPL_SERVER_CAS_ORACLE) || \
-            (x == APPL_SERVER_CAS_MYSQL51) || (x == APPL_SERVER_CAS_MYSQL) || \
-            (x == APPL_SERVER_CAS_CGW))
+        ((x == APPL_SERVER_CAS) || (x == APPL_SERVER_CAS_CGW))
 
 #define IS_NOT_APPL_SERVER_TYPE_CAS(x)	!IS_APPL_SERVER_TYPE_CAS(x)
 
 #define APPL_SERVER_CAS_TYPE_NAME               "CAS"
-#define APPL_SERVER_CAS_ORACLE_TYPE_NAME        "CAS_ORACLE"
-#define APPL_SERVER_CAS_MYSQL_TYPE_NAME         "CAS_MYSQL"
-#define APPL_SERVER_CAS_MYSQL51_TYPE_NAME       "CAS_MYSQL51"
-#define APPL_SERVER_CAS_MYSQL61_TYPE_NAME       "CAS_MYSQL61"
 #define APPL_SERVER_CAS_CGW_TYPE_NAME           "CAS_CGW"
 
 #define MAX_BROKER_NUM          50
@@ -88,7 +77,7 @@
 #define MAX_ACCESS_LOG_MAX_SIZE         2097152	/* 2G */
 #define DEFAULT_MAX_NUM_DELAYED_HOSTS_LOOKUP    -1
 
-#define BROKER_NAME_LEN		64
+#define BROKER_NAME_LEN		64	/* include '\0' character  */
 #define BROKER_LOG_MSG_SIZE	64
 
 #if !defined(BROKER_PATH_MAX)
@@ -218,8 +207,6 @@ struct t_broker_info
   int appl_server_hard_limit;
   int session_timeout;
   int query_timeout;
-  int mysql_read_timeout;
-  int mysql_keepalive_interval;
   int job_queue_size;
   int time_to_kill;
   int err_code;

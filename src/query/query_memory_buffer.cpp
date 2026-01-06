@@ -301,7 +301,7 @@ qmgr_new_memory_buffer_page (THREAD_ENTRY *thread_p, MEMORY_BUFFER_HELPER *helpe
 
   helper_p->m_last++;
 
-  if (helper_p->m_last < helper_p->m_entries.size ())
+  if (helper_p->m_last < (int) helper_p->m_entries.size ())
     {
       return qmgr_get_memory_buffer_entry_page (helper_p->m_entries[helper_p->m_last]);
     }
@@ -348,7 +348,7 @@ qmgr_new_memory_buffer_page (THREAD_ENTRY *thread_p, MEMORY_BUFFER_HELPER *helpe
 bool
 qmgr_is_valid_memory_buffer_index (MEMORY_BUFFER_HELPER *helper_p, size_t index)
 {
-  return (index >= 0 && helper_p != NULL && !helper_p->m_entries.empty ()
+  return (helper_p != NULL && !helper_p->m_entries.empty ()
 	  && index < helper_p->m_entries.size ()) ? true : false;
 }
 

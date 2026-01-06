@@ -171,7 +171,7 @@ vs_do_sprintf (varstring * vstr, const char *fmt, va_list args)
 		default:
 		  break;
 		}
-	      /* Fall through */
+	      [[fallthrough]];
 
 	    case '\0':
 	      *p = '\0';

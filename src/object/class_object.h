@@ -446,7 +446,7 @@ struct sm_attribute
 {
   SM_COMPONENT header;		/* next, name, header */
 
-  struct pr_type *type;		/* basic type */
+  const struct pr_type *type;	/* basic type */
   TP_DOMAIN *domain;		/* allowable types */
 
   MOP class_mop;		/* origin class */
@@ -468,7 +468,7 @@ struct sm_attribute
 
   struct tr_schema_cache *triggers;	/* trigger cache */
 
-  MOP auto_increment;		/* instance of db_serial */
+  MOP auto_increment;		/* instance of _db_serial */
   int storage_order;		/* storage order number */
   const char *comment;
 };
@@ -488,6 +488,8 @@ struct sm_foreign_key_info
   SM_FOREIGN_KEY_ACTION update_action;
   char *name;
   bool is_dropped;
+  MOP index_catalog_of_ref_class;
+  SM_FOREIGN_KEY_MATCH_OPTION ref_match_option;
 };
 
 typedef struct sm_predicate_info SM_PREDICATE_INFO;
@@ -529,6 +531,23 @@ typedef enum
   SM_LAST_INDEX_STATUS = 10
 } SM_INDEX_STATUS;
 
+typedef enum
+{
+  SM_BTREE_TYPE,
+} SM_INDEX_TYPE;
+
+/* Property list format: { property_name, constraint... }
+ * - property_name: SM_CONSTRAINT_TYPE (ex. "*U", "*I", ...)
+ * - constraint: { name, info }
+ *   - name: constraint name
+ *   - info: { BTID, [att_name|id, asc_desc]..., optional_info?, status, index_type, options, comment }
+ *     - BTID: volid|pageid|fileid
+ *     - [att_name|id, asc_desc] can repeat for multiple attributes
+ *     - optional_info appears only when applicable:
+ *       - fk_info: for foreign key constraints
+ *       - pk_info: only if the primary key is referenced by a foreign key
+ *       - prefix_length, filter_predicate, func_index_info: for special index properties
+ */
 typedef struct sm_class_constraint SM_CLASS_CONSTRAINT;
 
 struct sm_class_constraint
@@ -548,7 +567,19 @@ struct sm_class_constraint
   const char *comment;
   SM_CONSTRAINT_EXTRA_FLAG extra_status;
   SM_INDEX_STATUS index_status;
+  SM_INDEX_TYPE index_type;
+  int options;			/* bits 0-3: deduplicate level (0-14), rest reserved */
 };
+
+/* options macros */
+#define OPTION_DEDUPLICATE_MASK   0x0F
+#define OPTION_DEDUPLICATE_SHIFT  0
+#define SET_OPTION_DEDUPLICATE(opt, level) \
+  do { \
+    (opt) = ((opt) & ~OPTION_DEDUPLICATE_MASK) | ((level) & OPTION_DEDUPLICATE_MASK); \
+  } while (0)
+#define GET_OPTION_DEDUPLICATE(opt) \
+  (((opt) >> OPTION_DEDUPLICATE_SHIFT) & OPTION_DEDUPLICATE_MASK)
 
 /*
  *    Holds information about a method argument.  This will be used
@@ -561,7 +592,7 @@ struct sm_method_argument
 {
   struct sm_method_argument *next;
 
-  struct pr_type *type;		/* basic type */
+  const struct pr_type *type;	/* basic type */
   TP_DOMAIN *domain;		/* full domain */
   int index;			/* argument index (one based) */
 };
@@ -699,6 +730,7 @@ struct sm_partition
   struct sm_partition *next;	/* currently not used, always NULL */
   const char *pname;		/* partition name */
   int partition_type;		/* partition type (range, list, hash) */
+  DB_CLASS_PARTITION_TYPE class_partition_type;	/* class partition type (partitioned class, partition class) */
   DB_SEQ *values;		/* values for range and list partition types */
   const char *expr;		/* partition expression */
   const char *comment;
@@ -1000,7 +1032,7 @@ extern int classobj_populate_class_properties (DB_SET ** properties, SM_CLASS_CO
 extern bool classobj_class_has_indexes (SM_CLASS * class_);
 
 /* Attribute */
-extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, struct pr_type *type, SM_NAME_SPACE name_space);
+extern SM_ATTRIBUTE *classobj_make_attribute (const char *name, const struct pr_type *type, SM_NAME_SPACE name_space);
 extern SM_ATTRIBUTE *classobj_copy_attribute (SM_ATTRIBUTE * src, const char *alias);
 extern int classobj_copy_attlist (SM_ATTRIBUTE * attlist, MOP filter_class, int ordered, SM_ATTRIBUTE ** copy_ptr);
 

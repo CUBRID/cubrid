@@ -539,28 +539,6 @@ main (int argc, char *argv[])
   char env_buf[16];
   int util_name_pos = 0;
 
-#if defined (DO_NOT_USE_CUBRIDENV)
-  char *envval;
-  char path[PATH_MAX];
-
-  envval = getenv (envvar_prefix ());
-  if (envval != NULL)
-    {
-      fprintf (stderr,
-	       "CAUTION : " "The environment variable $%s is set to %s.\n"
-	       "          But, built-in prefix (%s) will be used.\n\n", envvar_prefix (), envval, envvar_root ());
-    }
-
-  envval = envvar_get ("DATABASES");
-  if (envval != NULL)
-    {
-      fprintf (stderr,
-	       "CAUTION : " "The environment variable $%s_%s is set to %s.\n"
-	       "          But, built-in prefix (%s) will be used.\n\n", envvar_prefix (), "DATABASES", envval,
-	       envvar_vardir_file (path, PATH_MAX, ""));
-    }
-#endif
-
   sprintf (env_buf, "%d", pid);
   envvar_set (UTIL_PID_ENVVAR_NAME, env_buf);
 

@@ -19,7 +19,7 @@ set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.
 set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
 set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.6.4.tar.gz")             # expat library sources URL
 set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
-set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.1.tar.gz")                  # editline library sources URL
+set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.2.tar.gz")                  # editline library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
 set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1w.tar.gz")       # openssl library sources URL
 set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
@@ -45,7 +45,7 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 # Below are the URL_HASH values for different libraries used in this project:
 set(WITH_LIBEXPAT_URL_HASH "SHA256=fd03b7172b3bd7427a3e7a812063f74754f24542429b634e0db6511b53fb2278")		# expat library 
 set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")         # jansson library 
-set(WITH_LIBEDIT_URL_HASH "SHA256=972c7d46844b7b56adde028bb2269546938272dd8d7a58978b7a18a6f6e44141")            # editline library 
+set(WITH_LIBEDIT_URL_HASH "SHA256=140312cd2dd22b4981d22448f02ef215fd7685ca57bb90b1427e496234d2d7da")            # editline libray
 set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")          # rapidjson library 
 set(WITH_LIBOPENSSL_URL_HASH "SHA256=cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8")         # openssl library 
 set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")        # unixODBC library 

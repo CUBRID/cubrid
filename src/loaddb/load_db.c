@@ -565,7 +565,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 
   if (!args.index_file.empty () && prm_get_integer_value (PRM_ID_SR_NBUFFERS) < LOAD_INDEX_MIN_SORT_BUFFER_PAGES)
     {
-      sysprm_set_force (prm_get_name (PRM_ID_SR_NBUFFERS), LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
+      sysprm_set_force (PRM_ID_SR_NBUFFERS, LOAD_INDEX_MIN_SORT_BUFFER_PAGES_STRING);
     }
 
   /* open loaddb log file */
@@ -1143,7 +1143,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
 
   args->volume = volume ? volume : empty;
   args->input_file = input_file ? input_file : empty;
-  args->user_name = user_name ? user_name : empty;
+  args->user_name = user_name ? user_name : AU_PUBLIC_USER_NAME;
   args->password = password ? password : empty;
   args->syntax_check = utility_get_option_bool_value (arg_map, LOAD_CHECK_ONLY_S);
   args->load_only = utility_get_option_bool_value (arg_map, LOAD_LOAD_ONLY_S);

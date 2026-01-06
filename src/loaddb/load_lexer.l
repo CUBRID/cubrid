@@ -50,6 +50,25 @@ using token = cubload::parser::token;
         YY_FATAL_ERROR (er_msg ());     \
       }                                 \
   } while (0)                           \
+
+/* TODO: 
+ * For now, I've set it to ignore warnings in the automatically generated code. 
+ * If possible, let's remove warnings normally instead of setting it to ignore. */
+#if defined(__GNUC__) || defined(__clang__)
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
+    _Pragma("GCC diagnostic push")                      \
+    _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")\
+    _Pragma("GCC diagnostic ignored \"-Wregister\"")    \
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+
+  #define END_SUPPRESS_WARNING_BISON_FLEX               \
+    _Pragma("GCC diagnostic pop")
+#else
+  #define BEGIN_SUPPRESS_WARNING_BISON_FLEX
+  #define END_SUPPRESS_WARNING_BISON_FLEX
+#endif
+
+BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %}
 
 /*** Flex Declarations and Options ***/
@@ -212,7 +231,7 @@ using token = cubload::parser::token;
     return token::END_PAREN;
 }
 
-[\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
+[\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[.fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
     PRINT ("REAL_LIT %s\n", yytext);
     yylval->string = m_semantic_helper.make_string_by_yytext (yytext, yyleng);
     return token::REAL_LIT;
@@ -606,3 +625,4 @@ using token = cubload::parser::token;
 %%
 
 /*** Additional Code ***/
+END_SUPPRESS_WARNING_BISON_FLEX

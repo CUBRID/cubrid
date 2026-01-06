@@ -77,8 +77,6 @@ stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_s
   XASL_UNPACK_INFO *unpack_info;
   int head_offset, body_offset;
 
-#define UNPACK_SCALE 3		/* TODO: assume */
-
   head_offset = sizeof (XASL_UNPACK_INFO);
   head_offset = xasl_stream_make_align (head_offset);
   body_offset = xasl_stream_size * UNPACK_SCALE;

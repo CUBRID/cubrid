@@ -77,10 +77,6 @@
 #include "host_lookup.h"
 #include "system_parameter.h"
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#define DB_EMPTY_SESSION        (0)
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
 #define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
 #define MAKE_VERSION(MAJOR, MINOR)	(((MAJOR) << 8) | (MINOR))
@@ -133,7 +129,7 @@ static int shard_shm_set_param_as_in_proxy (T_SHM_PROXY * proxy_p, const char *p
 					    int proxy_id, int shard_id, int as_number);
 static int shard_shm_check_max_file_open_limit (T_BROKER_INFO * br_info, T_SHM_PROXY * proxy_p);
 static void get_shard_db_password (T_BROKER_INFO * br_info_p);
-static void get_upper_str (char *upper_str, int len, char *value);
+static void get_upper_str (char *upper_str, int size, const char *value);
 
 static void rename_error_log_file_name (char *error_log_file, struct tm *ct);
 
@@ -1415,7 +1411,8 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
       switch (optchar)
 	{
 	case 'b':
-	  strncpy (broker_name, optarg, NAME_MAX);
+	  strncpy (broker_name, optarg, BROKER_NAME_LEN);
+	  broker_name[BROKER_NAME_LEN - 1] = '\0';
 	  break;
 	case 'f':
 	  full_info_flag = true;
@@ -2200,39 +2197,6 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
       br_info_p->query_timeout = val;
       shm_as_p->query_timeout = val;
     }
-  else if (strcasecmp (conf_name, "MYSQL_READ_TIMEOUT") == 0)
-    {
-      int val;
-
-      val = (int) ut_time_string_to_sec (conf_value, "sec");
-
-      if (val < 0)
-	{
-	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
-	  goto set_conf_error;
-	}
-      else if (val > MAX_QUERY_TIMEOUT_LIMIT)
-	{
-	  sprintf (admin_err_msg, "value is out of range : %s", conf_value);
-	  goto set_conf_error;
-	}
-      br_info_p->mysql_read_timeout = val;
-      shm_as_p->mysql_read_timeout = val;
-    }
-  else if (strcasecmp (conf_name, "MYSQL_KEEPALIVE_INTERVAL") == 0)
-    {
-      int val;
-
-      val = (int) ut_time_string_to_sec (conf_value, "sec");
-
-      if (val < MIN_MYSQL_KEEPALIVE_INTERVAL)
-	{
-	  sprintf (admin_err_msg, "invalid value: %s", conf_value);
-	  goto set_conf_error;
-	}
-      br_info_p->mysql_keepalive_interval = val;
-      shm_as_p->mysql_keepalive_interval = val;
-    }
   else if (strcasecmp (conf_name, "SHARD_PROXY_LOG") == 0)
     {
       char proxy_log_mode;
@@ -2688,7 +2652,7 @@ admin_acl_status_cmd (int master_shm_id, const char *broker_name)
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_appl;
   char line_buf[LINE_MAX];
-  char str[32];
+  char str[70];
   int len = 0;
 
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
@@ -3378,10 +3342,6 @@ as_activate (T_SHM_BROKER * shm_br, T_BROKER_INFO * br_info, T_SHM_APPL_SERVER *
 	{
 	  snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d_%d_%d", shm_appl->broker_name, appl_name,
 		    as_info->proxy_id + 1, as_info->shard_id, as_info->shard_cas_id + 1);
-	}
-      else if (br_info->appl_server == APPL_SERVER_CAS_ORACLE)
-	{
-	  snprintf (process_name, sizeof (process_name) - 1, "%s", appl_name);
 	}
       else
 	{
@@ -4177,15 +4137,15 @@ get_shard_db_password (T_BROKER_INFO * br_info_p)
 }
 
 static void
-get_upper_str (char *upper_str, int len, char *value)
+get_upper_str (char *upper_str, int size, const char *value)
 {
-  int i;
+  int i = 0;
 
-  for (i = 0; i < len - 1; i++)
+  while (value[i] && (i < (size - 1)))
     {
       upper_str[i] = (char) toupper (value[i]);
+      i++;
     }
-  upper_str[i] = '\0';
 
-  return;
+  upper_str[i] = '\0';
 }

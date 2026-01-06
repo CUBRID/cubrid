@@ -90,8 +90,14 @@ static int type_map[] = {
   0,
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
+
+  /* TODO:
+   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
+
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
   CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
   CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
@@ -217,18 +223,12 @@ dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int 
       error =
 	db_make_varchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
-    case CCI_U_TYPE_VARNCHAR:
-      error =
-	db_make_varnchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
-      break;
     case CCI_U_TYPE_CHAR:
       error = db_make_char (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
-    case CCI_U_TYPE_NCHAR:
-      error = db_make_nchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
-      break;
     default:
       assert (false);
+      error = ER_FAILED;
       break;
     }
 
@@ -385,12 +385,10 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
 static int
 dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
-  int i, n, ret;
-  T_CCI_PARAM_INFO *param;
+  int i, n, ret, num_size = 0;
   T_CCI_A_TYPE a_type;
   T_CCI_U_TYPE u_type;
   void *value;
-  double adouble;
   int month, day, year;
   int hh, mm, ss, ms;
   DB_TIMESTAMP *timestamp;
@@ -401,8 +399,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
   DB_TIME time;
   T_CCI_DATE cci_date;
   T_CCI_BIT cci_bit;
-  int num_size;
-  char num_str[40];
+  char num_str[NUMERIC_MAX_STRING_SIZE];
 
   unsigned char type;
 
@@ -414,15 +411,9 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
       switch (type)
 	{
 	case DB_TYPE_BIT:
-	  a_type = CCI_A_TYPE_BIT;
-	  u_type = CCI_U_TYPE_BIT;
-	  value = (void *) &cci_bit;
-	  cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
-	  cci_bit.size = QSTR_NUM_BYTES (num_size);
-	  break;
 	case DB_TYPE_VARBIT:
 	  a_type = CCI_A_TYPE_BIT;
-	  u_type = CCI_U_TYPE_VARBIT;
+	  u_type = (type == DB_TYPE_BIT) ? CCI_U_TYPE_BIT : CCI_U_TYPE_VARBIT;
 	  value = (void *) &cci_bit;
 	  cci_bit.buf = (char *) db_get_bit (&vd->dbval_ptr[i], &num_size);
 	  cci_bit.size = QSTR_NUM_BYTES (num_size);
@@ -455,9 +446,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  u_type = CCI_U_TYPE_DOUBLE;
 	  break;
 	case DB_TYPE_STRING:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	  a_type = CCI_A_TYPE_STR;
 	  u_type = CCI_U_TYPE_STRING;
 	  value = (void *) db_get_string (&vd->dbval_ptr[i]);
@@ -530,6 +519,7 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
 	  value = &cci_date;
 	  break;
 	case DB_TYPE_NULL:
+	  a_type = CCI_A_TYPE_LAST;	// for clear -Wmaybe-uninitialized
 	  value = NULL;
 	  u_type = CCI_U_TYPE_NULL;
 	  break;
@@ -927,9 +917,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  break;
 
 	case CCI_U_TYPE_STRING:
-	case CCI_U_TYPE_VARNCHAR:
 	case CCI_U_TYPE_CHAR:
-	case CCI_U_TYPE_NCHAR:
 	case CCI_U_TYPE_JSON:
 	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
 	    {

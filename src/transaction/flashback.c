@@ -354,7 +354,9 @@ flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT 
 	case LOG_COMMIT:
 	  {
 	    LOG_REC_DONETIME *donetime;
-	    FLASHBACK_SUMMARY_ENTRY tmp_summary_entry = { -1, "\0", 0, 0, 0, 0, 0, LSA_INITIALIZER, LSA_INITIALIZER, };
+	    FLASHBACK_SUMMARY_ENTRY tmp_summary_entry = {
+	      -1, "\0", 0, 0, 0, 0, 0, LSA_INITIALIZER, LSA_INITIALIZER, std::unordered_set < OID > {}
+	    };
 
 	    if (context->num_summary == FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY)
 	      {

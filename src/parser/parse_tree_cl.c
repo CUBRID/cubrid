@@ -525,8 +525,7 @@ pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void
       name = lambda_arg->name;
 
       /* check for variable string type */
-      if (tree->type_enum == PT_TYPE_VARCHAR || tree->type_enum == PT_TYPE_VARNCHAR
-	  || tree->type_enum == PT_TYPE_VARBIT)
+      if (tree->type_enum == PT_TYPE_VARCHAR || tree->type_enum == PT_TYPE_VARBIT)
 	{
 	  switch (tree_or_name->info.expr.op)
 	    {
@@ -2616,7 +2615,7 @@ pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value * val)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
       sb ("%s", pt_show_type_enum (pt_db_to_type_enum (DB_VALUE_TYPE (val))));
-      /* fall thru */
+      [[fallthrough]];
     case DB_TYPE_SEQUENCE:
       sb ("{");
 
@@ -3452,8 +3451,6 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "lock timeout";
     case PT_CHAR_STRING:
       return "";
-    case PT_NCHAR_STRING:
-      return "";
     case PT_BIT_STRING:
       return "";
     case PT_HEX_STRING:
@@ -4187,10 +4184,6 @@ pt_show_type_enum (PT_TYPE_ENUM t)
       return "char";
     case PT_TYPE_VARCHAR:
       return "varchar";
-    case PT_TYPE_NCHAR:
-      return "nchar";
-    case PT_TYPE_VARNCHAR:
-      return "nchar varying";
     case PT_TYPE_BIT:
       return "bit";
     case PT_TYPE_VARBIT:
@@ -6107,7 +6100,7 @@ pt_print_alter_one_clause (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.alter.alter_clause.rename.meta));
 	  q = pt_append_nulstring (parser, q, " ");
 	  q = pt_append_varchar (parser, q, r2);
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case PT_FILE_RENAME:
 	  r1 = pt_print_bytes (parser, p->info.alter.alter_clause.rename.old_name);
 	  q = pt_append_varchar (parser, q, r1);
@@ -6725,8 +6718,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 	}
       break;
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
     case PT_TYPE_BIT:
@@ -6742,7 +6733,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	  switch (p->type_enum)
 	    {
 	    case PT_TYPE_CHAR:
-	    case PT_TYPE_NCHAR:
 	    case PT_TYPE_BIT:
 	      /* fixed data type: always show parameter */
 	      show_precision = true;
@@ -6756,10 +6746,6 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	      else if (p->type_enum == PT_TYPE_VARCHAR)
 		{
 		  show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
-		}
-	      else if (p->type_enum == PT_TYPE_VARNCHAR)
-		{
-		  show_precision = (precision != DB_MAX_VARNCHAR_PRECISION);
 		}
 	      else if (p->type_enum == PT_TYPE_VARBIT)
 		{
@@ -8688,8 +8674,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       break;
 
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
       if (parser->flag.is_parsing_unload_schema)
@@ -8702,12 +8686,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	    case PT_TYPE_VARCHAR:
 	      q = pt_append_nulstring (parser, q, "character varying");
 	      break;
-	    case PT_TYPE_NCHAR:
-	      q = pt_append_nulstring (parser, q, "national character");
-	      break;
-	    case PT_TYPE_VARNCHAR:
-	      q = pt_append_nulstring (parser, q, "national character varying");
-	      break;
 	    default:
 	      assert (false);
 	    }
@@ -8715,7 +8693,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
 
       show_collation = true;
-      /* FALLTHRU */
+      [[fallthrough]];
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_FLOAT:
@@ -8729,7 +8707,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	switch (p->type_enum)
 	  {
 	  case PT_TYPE_CHAR:
-	  case PT_TYPE_NCHAR:
 	  case PT_TYPE_BIT:
 	    /* fixed data type: always show parameter */
 	    show_precision = true;
@@ -8743,10 +8720,6 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	    else if (p->type_enum == PT_TYPE_VARCHAR)
 	      {
 		show_precision = (precision != DB_MAX_VARCHAR_PRECISION);
-	      }
-	    else if (p->type_enum == PT_TYPE_VARNCHAR)
-	      {
-		show_precision = (precision != DB_MAX_VARNCHAR_PRECISION);
 	      }
 	    else if (p->type_enum == PT_TYPE_VARBIT)
 	      {
@@ -9041,6 +9014,11 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.delete_.hint & PT_HINT_NO_SUPPLEMENTAL_LOG)
 	{
 	  q = pt_append_nulstring (parser, q, " NO_SUPPLEMENTAL_LOG ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
 	}
 
       q = pt_append_nulstring (parser, q, " */");
@@ -12203,7 +12181,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  /* break case PT_RANGE */
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     default:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       r2 = pt_print_bytes (parser, p->info.expr.arg2);
@@ -13091,7 +13069,13 @@ static PT_NODE *
 pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
-  PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+
+  /* do not check attribute list for dblink */
+  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+    {
+      PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
+    }
+
   PT_APPLY_WALK (parser, p->info.insert.value_clauses, arg);
   PT_APPLY_WALK (parser, p->info.insert.into_var, arg);
   PT_APPLY_WALK (parser, p->info.insert.where, arg);
@@ -14729,6 +14713,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HEAP_SCAN ");
 	    }
 
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_SUBQUERY ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	    }
+
 	  if (p->info.query.q.select.hint & PT_HINT_PARALLEL)
 	    {
 	      q = pt_append_nulstring (parser, q, "PARALLEL");
@@ -14811,6 +14805,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		{
 		  assert (0);
 		}
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_INLINE_CTE)
+	    {
+	      q = pt_append_nulstring (parser, q, "INLINE ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_MATERIALIZE_CTE)
+	    {
+	      q = pt_append_nulstring (parser, q, "MATERIALIZE ");
 	    }
 
 	  q = pt_append_nulstring (parser, q, "*/ ");
@@ -15957,6 +15961,11 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 	  b = pt_append_nulstring (parser, b, " NO_SUPPLEMENTAL_LOG ");
 	}
 
+      if (p->info.update.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	{
+	  b = pt_append_nulstring (parser, b, "NO_PARALLEL_HASH_JOIN ");
+	}
+
       b = pt_append_nulstring (parser, b, " */ ");
     }
 
@@ -16089,7 +16098,7 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.update_stats.with_fullscan > 0)
     {
-      assert (p->info.update_stats.with_fullscan == 1);
+      assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
       b = pt_append_nulstring (parser, b, " with fullscan");
     }
 
@@ -16598,7 +16607,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TYPE_CHAR:
-    case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
       if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
@@ -16675,7 +16683,6 @@ pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_TYPE_VARCHAR:	/* have to check for embedded quotes */
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_VARBIT:
       if (!(parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK))
 	{
@@ -17310,6 +17317,38 @@ pt_print_merge (PARSER_CONTEXT * parser, PT_NODE * p)
 	  r1 = pt_print_bytes (parser, p->info.merge.insert.index_hint);
 	  q = pt_append_varchar (parser, q, r1);
 	  q = pt_append_nulstring (parser, q, ")");
+	}
+      if (p->info.merge.hint & PT_HINT_NO_USE_HASH)
+	{
+	  /* disable hash-join */
+	  q = pt_append_nulstring (parser, q, " NO_USE_HASH");
+	  if (p->info.merge.no_use_hash)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.merge.no_use_hash);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
+	}
+      if (p->info.merge.hint & PT_HINT_USE_HASH)
+	{
+	  /* force hash-join */
+	  q = pt_append_nulstring (parser, q, " USE_HASH");
+	  if (p->info.merge.use_hash)
+	    {
+	      r1 = pt_print_bytes_l (parser, p->info.merge.use_hash);
+	      q = pt_append_nulstring (parser, q, "(");
+	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, " ");
+	    }
 	}
       q = pt_append_nulstring (parser, q, " */");
     }
@@ -18061,6 +18100,17 @@ pt_is_const_expr_node (PT_NODE * node)
 }
 
 /*
+ * pt_is_ascii_string_value_node () -
+ *   return: whether the node is a non-national string value (CHAR or VARCHAR)
+ *   node(in):
+ */
+bool
+pt_is_ascii_string_value_node (const PT_NODE * const node)
+{
+  return (PT_IS_VALUE_NODE (node) && PT_IS_CHAR_STRING_TYPE (node->type_enum));
+}
+
+/*
  * pt_restore_assignment_links - restore assignments links after a call to
  *  get_assignments_lists.
  *   return:
@@ -18424,7 +18474,7 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 	{
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     case PT_MOD:
     case PT_LEFT:
     case PT_RIGHT:
@@ -18537,6 +18587,36 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_CRC32:
       return true;
     case PT_TZ_OFFSET:
+    default:
+      return false;
+    }
+  return false;
+}
+
+/*
+ *   pt_expr_keep_uniqueness () : checks if the given operator
+ *				  is keeping uniqueness
+ *   return:
+ *   expr(in): expression parse tree node
+ */
+bool
+pt_expr_keep_uniqueness (const PT_NODE * expr)
+{
+  switch (expr->info.expr.op)
+    {
+    case PT_REVERSE:
+    case PT_CONCAT:
+    case PT_STRCAT:
+    case PT_PLUS:
+    case PT_MINUS:
+    case PT_EQ:		/* for predicate */
+      return true;
+    case PT_CAST:
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_WRAP))	/* auto generated cast */
+	{
+	  return true;
+	}
+      return false;
     default:
       return false;
     }
@@ -19300,16 +19380,8 @@ pt_print_remote_info (PARSER_CONTEXT * parser, PT_DBLINK_INFO * pt, bool is_dml)
 		     pt->user->info.value.data_value.str->length);
   var = pt_append_nulstring (parser, var, ":");
 
-  if (pt->is_name || is_dml)
-    {
-      var = pt_append_nulstring (parser, var, "*");
-    }
-  else
-    {
-      var = pt_append_bytes (parser, var, (char *) pt->pwd->info.value.data_value.str->bytes,
-			     pt->pwd->info.value.data_value.str->length);
-    }
-
+  var = pt_append_bytes (parser, var, (char *) pt->pwd->info.value.data_value.str->bytes,
+			 pt->pwd->info.value.data_value.str->length);
   // properties
   if (!is_dml)
     {

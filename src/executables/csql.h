@@ -119,6 +119,7 @@ extern "C"
     CSQL_E_UNKNOWN_TEXT = 196,
     CSQL_E_CANT_EDIT_TEXT = 197,
     CSQL_E_FORMAT_TEXT = 198,
+    CSQL_E_LANG_TEXT = 199,
 
     CSQL_HELP_CLASS_HEAD_TEXT = 203,
     CSQL_HELP_SUPER_CLASS_HEAD_TEXT = 204,
@@ -298,6 +299,7 @@ extern "C"
     bool no_logging;
 #endif				/* CSQL_NO_LONGGING */
     bool midxkey_print;
+    bool noprint_entrymsg;
   } CSQL_ARGUMENT;
 
   typedef struct

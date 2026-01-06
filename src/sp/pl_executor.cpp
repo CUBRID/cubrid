@@ -41,9 +41,8 @@ namespace cubpl
 {
   using namespace cubmethod;
 
-  invoke_java::invoke_java (uint64_t id, int tid, pl_signature *sig, bool tc)
-    : g_id (id)
-    , tran_id (tid)
+  invoke_java::invoke_java (int tid, pl_signature *sig, bool tc)
+    : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
     auth.assign (sig->auth);
@@ -67,7 +66,6 @@ namespace cubpl
   void
   invoke_java::pack (cubpacking::packer &serializator) const
   {
-    serializator.pack_bigint (g_id);
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
     serializator.pack_string (auth);
@@ -94,8 +92,7 @@ namespace cubpl
   size_t
   invoke_java::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_bigint_size (start_offset); // group_id
-    size += serializator.get_packed_int_size (size); // tran_id
+    size_t size = serializator.get_packed_int_size (start_offset); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
     size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // lang
@@ -227,8 +224,6 @@ namespace cubpl
       case DB_TYPE_MONETARY:
       case DB_TYPE_NUMERIC:
       case DB_TYPE_CHAR:
-      case DB_TYPE_NCHAR:
-      case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       case DB_TYPE_DATE:
       case DB_TYPE_TIME:
@@ -369,7 +364,6 @@ exit:
   {
     int error = NO_ERROR;
 
-    SESSION_ID sid = get_session ()->get_id ();
     TRANID tid = m_stack->get_tran_id ();
 
     m_stack->set_java_command (SP_CODE_INVOKE);
@@ -384,7 +378,7 @@ exit:
     // handling 'else' is not required because send_data_to_java will handle the case when sess is not found
 
     prepare_args prepare_arg ((std::uint64_t) this, tid, METHOD_TYPE_PLCSQL, m_args);
-    invoke_java invoke_arg ((std::uint64_t) this, tid, &m_sig,
+    invoke_java invoke_arg (tid, &m_sig,
 			    (m_sig.type == PL_TYPE_PLCSQL) ? true : prm_get_bool_value (PRM_ID_PL_TRANSACTION_CONTROL));
 
     error = m_stack->send_data_to_java (session_params, prepare_arg, invoke_arg);
@@ -418,7 +412,6 @@ exit:
 	    break;
 	  }
 
-	cubpacking::unpacker unpacker (response_blk);
 	if (!response_blk.is_valid ())
 	  {
 	    error_code = ER_SP_NETWORK_ERROR;
@@ -426,6 +419,7 @@ exit:
 	    break;
 	  }
 
+	cubpacking::unpacker unpacker (response_blk);
 	unpacker.unpack_int (start_code);
 
 	(void) m_stack->read_payload_block (unpacker);
@@ -578,9 +572,6 @@ exit:
       case METHOD_CALLBACK_END_TRANSACTION:
 	error_code = callback_end_transaction (thread_ref, unpacker);
 	break;
-      case METHOD_CALLBACK_CHANGE_RIGHTS:
-	error_code = callback_change_auth_rights (thread_ref, unpacker);
-	break;
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
@@ -613,10 +604,16 @@ exit:
   int
   executor::callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
+
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_GET_DB_PARAMETER;
 
-    db_parameter_info *parameter_info = get_session()->get_db_parameter_info ();
+    db_parameter_info *parameter_info = pl_session->get_db_parameter_info ();
     if (parameter_info == nullptr)
       {
 	int tran_index = LOG_FIND_THREAD_TRAN_INDEX (m_stack->get_thread_entry());
@@ -626,7 +623,7 @@ exit:
 	parameter_info->wait_msec = logtb_find_wait_msecs (tran_index);
 	logtb_get_client_ids (tran_index, &parameter_info->client_ids);
 
-	get_session()->set_db_parameter_info (parameter_info);
+	pl_session->set_db_parameter_info (parameter_info);
       }
 
     cubmem::block blk;
@@ -636,7 +633,7 @@ exit:
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, std::string ("unknown error"),
 					  ARG_FILE_LINE));
       }
 
@@ -742,9 +739,8 @@ exit:
     query_cursor *cursor = m_stack->get_cursor (qid);
     if (cursor == nullptr)
       {
-	assert (false);
-	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
-				     ARG_FILE_LINE));
+	cubmem::block b = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+				     std::string ("cursor closed"), ARG_FILE_LINE));
 	error = m_stack->send_data_to_java (b);
 	return error;
       }
@@ -770,12 +766,12 @@ exit:
     while (s_code == S_SUCCESS)
       {
 	s_code = cursor->next_row ();
-	int tuple_index = cursor->get_current_index ();
-	if (s_code == S_END)
+	if (s_code == S_END || s_code == S_ERROR)
 	  {
 	    break;
 	  }
 
+	int tuple_index = cursor->get_current_index ();
 	std::vector<DB_VALUE> tuple_values = cursor->get_current_tuple ();
 
 	if (cursor->get_is_oid_included())
@@ -803,8 +799,8 @@ exit:
       }
     else
       {
-	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_FAILED, "unknown error",
-					  ARG_FILE_LINE));
+	blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
+					  std::string ("cursor closed"), ARG_FILE_LINE));
       }
 
     error = m_stack->send_data_to_java (blk);
@@ -954,9 +950,21 @@ exit:
   {
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_END_TRANSACTION;
-    int command; // commit or abort
+    int command; // commit=1 or abort=2
 
     unpacker.unpack_all (command);
+    if (command == 2)
+      {
+	cubpl::session *pl_session = cubpl::get_session ();
+	if (pl_session)
+	  {
+	    pl_session->destroy_all_cursors();
+	  }
+	else
+	  {
+	    return ER_SES_SESSION_EXPIRED;
+	  }
+      }
 
     auto java_lambda = [&] (const cubmem::block & b)
     {
@@ -964,26 +972,6 @@ exit:
     };
 
     error = m_stack->send_data_to_client_recv (java_lambda, code, command);
-    return error;
-  }
-
-  int
-  executor::callback_change_auth_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-    int code = METHOD_CALLBACK_CHANGE_RIGHTS;
-
-    int command;
-    std::string auth_name;
-
-    unpacker.unpack_all (command, auth_name);
-
-    auto java_lambda = [&] (const cubmem::block & b)
-    {
-      return m_stack->send_data_to_java (b);
-    };
-
-    error = m_stack->send_data_to_client_recv (java_lambda, code, command, auth_name);
     return error;
   }
 
@@ -1034,6 +1022,12 @@ exit:
   int
   executor::callback_set_pl_session_param (cubthread::entry &thread_ref, packing_unpacker &unpacker)
   {
+    cubpl::session *pl_session = cubpl::get_session ();
+    if (!pl_session)
+      {
+	return ER_SES_SESSION_EXPIRED;
+      }
+
     int error = NO_ERROR;
     int code = METHOD_CALLBACK_SET_PL_SESSION_PARAM;
 
@@ -1048,8 +1042,8 @@ exit:
 	  }
 	else
 	  {
-	    get_session ()->mark_session_param_changed (prm.prm_id);
-	    get_session ()->set_session_param (prm);
+	    pl_session->mark_session_param_changed (prm.prm_id);
+	    pl_session->set_session_param (prm);
 	  }
       }
 

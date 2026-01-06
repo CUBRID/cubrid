@@ -925,7 +925,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
 
   logpb_flush_header (thread_p);
 
@@ -1553,7 +1553,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 #endif /* !NDEBUG */
       /*
        * Reset the log active and stop the recovery process at this
-       * point. Before reseting the log, make sure that we are not
+       * point. Before resetting the log, make sure that we are not
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
@@ -6048,7 +6048,7 @@ log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv
   if (rcv_buf->ptr + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE > rcv_buf->endptr)
     {
       assert_release (false);
-      return or_overflow (rcv_buf);
+      return ER_TF_BUFFER_OVERFLOW;
     }
 
   /* Get offset_to_data. */

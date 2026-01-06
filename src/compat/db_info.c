@@ -770,7 +770,7 @@ DB_TYPE
 db_type_from_string (const char *name)
 {
   DB_TYPE typeid_ = DB_TYPE_UNKNOWN;
-  PR_TYPE *type;
+  const PR_TYPE *type;
   DB_DOMAIN *domain = (DB_DOMAIN *) 0;
 
   if (name != NULL)

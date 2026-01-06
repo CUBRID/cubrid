@@ -63,7 +63,6 @@ static OID oid_Trigger_class = { 0, 0, 0 };
 static OID oid_User_class = { 0, 0, 0 };
 static OID oid_Password_class = { 0, 0, 0 };
 static OID oid_Authorization_class = { 0, 0, 0 };
-static OID oid_Authorizations_class = { 0, 0, 0 };
 static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_DBServer_class = { 0, 0, 0 };
 static OID oid_Synonym_class = { 0, 0, 0 };
@@ -83,7 +82,7 @@ OID *oid_Partition_class_oid = &oid_Partition_class;
 OID *oid_User_class_oid = &oid_User_class;
 OID *oid_Sp_code_class_oid = &oid_Stored_proc_code_class;
 
-OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
+const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Root_class, NULL},	/* Root class is not identifiable by a name */
   {&oid_Class_class, CT_CLASS_NAME},
   {&oid_Attribute_class, CT_ATTRIBUTE_NAME},
@@ -108,9 +107,8 @@ OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_User_class, CT_USER_NAME},
   {&oid_Password_class, CT_PASSWORD_NAME},
   {&oid_Authorization_class, CT_AUTHORIZATION_NAME},
-  {&oid_Authorizations_class, CT_AUTHORIZATIONS_NAME},
   {&oid_DB_root_class, CT_ROOT_NAME},
-  {&oid_DBServer_class, CT_DB_SERVER_NAME},
+  {&oid_DBServer_class, CT_SERVER_NAME},
   {&oid_Synonym_class, CT_SYNONYM_NAME},
   {&oid_Stored_proc_code_class, CT_STORED_PROC_CODE_NAME},
 };

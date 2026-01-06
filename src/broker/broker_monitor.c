@@ -1742,12 +1742,8 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 
       if (mnt_type == MONITOR_T_BROKER)
 	{
-	  char broker_name[BROKER_NAME_LEN + 1];
-
-	  snprintf (broker_name, BROKER_NAME_LEN, "%s", br_info_p->name);
-	  broker_name[BROKER_NAME_LEN] = '\0';
 	  str_out ("*%c", FIELD_DELIMITER);
-	  print_value (FIELD_BROKER_NAME, broker_name, FIELD_T_STRING);
+	  print_value (FIELD_BROKER_NAME, br_info_p->name, FIELD_T_STRING);
 	}
       else if (mnt_type == MONITOR_T_SHARDDB || mnt_type == MONITOR_T_PROXY)
 	{

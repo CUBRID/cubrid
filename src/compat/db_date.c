@@ -39,6 +39,7 @@
 #include "numeric_opfunc.h"
 #include "object_representation.h"
 #include "dbtype.h"
+#include "string_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -2347,58 +2348,58 @@ parse_explicit_mtime_compact (char const *str, char const *strend, unsigned int 
 	    case 14:
 	      /* YYYY-MM-DD HH:MM:SS */
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 13:
 	      y *= 10;
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 12:
 	      /* YY-MM-DD HH:MM:SS */
 	      y *= 10;
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 11:
 	      y *= 10;
 	      y += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 10:
 	      /* MM-DD HH:MM:SS */
 	      mo += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 9:
 	      /* M-DD HH:MM:SS */
 	      mo *= 10;
 	      mo += DECODE (*p++);
 	      d += DECODE (*p++) * 10;
 	      d += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 6:
 	      /* HH:MM:SS */
 	      h += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 5:
 	      /* H:MM:SS */
 	      h *= 10;
 	      h += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 4:
 	      /* MM:SS */
 	      m += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 3:
 	      /* M:SS */
 	      m *= 10;
 	      m += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 2:
 	      /* SS */
 	      s += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 1:
 	      /* S */
 	      s *= 10;
 	      s += DECODE (*p++);
-	      /* FALLTHRU */
+	      [[fallthrough]];
 	    case 0:
 	      if (*p == '.')
 		{
@@ -2592,21 +2593,21 @@ parse_timestamp_compact (char const *str, char const *strend, DB_DATE * date, un
       /* YYY MM DD */
       y *= 10;
       y += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 6:
       /* YY MM DD */
       y *= 10;
       y += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 5:
       /* Y MM DD */
       y *= 10;
       y += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 4:
       /* MM DD */
       mo += DECODE (*p++);
-      /* FALLTHRU */
+      [[fallthrough]];
     case 3:
       /* M DD */
       mo *= 10;
@@ -4228,67 +4229,23 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
 {
   int mon, day, year;
   int hour, minute, second, millisecond;
-  bool pm;
+  const char *ampm;
   int cnt = 0;
-  const int len_out = 26;
 
-  if (buf == NULL || bufsize == 0)
-    {
-      return 0;
-    }
-  if (bufsize <= len_out)
+  if (buf == NULL || bufsize <= QSTR_DATETIME_LENGTH)
     {
       return 0;
     }
 
   db_datetime_decode (datetime, &mon, &day, &year, &hour, &minute, &second, &millisecond);
-  pm = (hour >= 12) ? true : false;
-  if (hour == 0)
-    {
-      hour = 12;
-    }
-  else if (hour > 12)
-    {
-      hour -= 12;
-    }
+  ampm = (hour >= 12) ? "PM" : "AM";
+  hour = (hour % 12 == 0) ? 12 : (hour % 12);
 
-  buf[cnt++] = hour / 10 + '0';
-  buf[cnt++] = hour % 10 + '0';
-  buf[cnt++] = ':';
-  buf[cnt++] = minute / 10 + '0';
-  buf[cnt++] = minute % 10 + '0';
-  buf[cnt++] = ':';
-  buf[cnt++] = second / 10 + '0';
-  buf[cnt++] = second % 10 + '0';
-  buf[cnt++] = '.';
-  buf[cnt++] = millisecond / 100 + '0';
-  buf[cnt++] = (millisecond / 10) % 10 + '0';
-  buf[cnt++] = millisecond % 10 + '0';
-  buf[cnt++] = ' ';
-  if (pm)
-    {
-      buf[cnt++] = 'P';
-      buf[cnt++] = 'M';
-    }
-  else
-    {
-      buf[cnt++] = 'A';
-      buf[cnt++] = 'M';
-    }
-  buf[cnt++] = ' ';
-  buf[cnt++] = mon / 10 + '0';
-  buf[cnt++] = mon % 10 + '0';
-  buf[cnt++] = '/';
-  buf[cnt++] = day / 10 + '0';
-  buf[cnt++] = day % 10 + '0';
-  buf[cnt++] = '/';
-  buf[cnt++] = year / 1000 + '0';
-  buf[cnt++] = (year / 100) % 10 + '0';
-  buf[cnt++] = (year / 10) % 10 + '0';
-  buf[cnt++] = year % 10 + '0';
-  buf[cnt] = '\0';
+  cnt =
+    snprintf (buf, bufsize, "%02d:%02d:%02d.%03d %s %02d/%02d/%04d", hour, minute, second, millisecond, ampm, mon, day,
+	      year);
 
-  return cnt;
+  return (cnt < 0 || cnt >= bufsize) ? 0 : cnt;
 }
 
 /*
