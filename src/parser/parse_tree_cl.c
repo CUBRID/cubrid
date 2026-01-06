@@ -11362,6 +11362,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
+	  if (parser->flag.is_parsing_trigger && p->info.expr.flag)
+	    {
+	      q = pt_append_varchar (parser, q, r1);
+	      break;
+	    }
+
 	  r2 = pt_print_bytes (parser, p->info.expr.cast_type);
 	  q = pt_append_nulstring (parser, q, " cast(");
 	  q = pt_append_varchar (parser, q, r1);
@@ -12706,8 +12712,17 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   PT_NODE *crt_list = NULL;
   bool is_first_list = true, multiple_values_insert = false;
 
+  unsigned int save_custom = parser->custom_print;
+  if (parser->flag.is_parsing_trigger)
+    {
+      parser->custom_print |= PT_SUPPRESS_RESOLVED;
+      parser->custom_print & ~PT_PRINT_ALIAS;
+    }
+
   r1 = pt_print_bytes (parser, p->info.insert.spec);
   r2 = pt_print_bytes_l (parser, p->info.insert.attr_list);
+
+  parser->custom_print = save_custom;
 
   if (p->info.insert.is_subinsert == PT_IS_SUBINSERT)
     {
@@ -13249,8 +13264,6 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
   unsigned int save_custom = parser->custom_print;
-
-  char *dot = NULL;
 
   parser->custom_print = parser->custom_print | p->info.name.custom_print;
 
