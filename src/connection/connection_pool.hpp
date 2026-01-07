@@ -105,7 +105,7 @@ namespace cubconn::connection
       void initialize_freelist (std::uint32_t max_connections);
       void finalize_freelist ();
 
-      void initialize_topology (std::uint32_t max_connection_workers);
+      std::uint32_t initialize_topology (std::uint32_t max_connection_workers);
       void finalize_topology ();
 
       void initialize_workers (std::uint32_t max_connection_workers, std::uint32_t min_connection_workers);

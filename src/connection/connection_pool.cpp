@@ -63,7 +63,11 @@ namespace cubconn::connection
     (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
     (void) os_set_signal_handler (SIGFPE, SIG_IGN);
 
-    this->initialize_topology (max_connection_workers);
+    max_connection_workers = this->initialize_topology (max_connection_workers);
+    if (min_connection_workers > max_connection_workers)
+      {
+	min_connection_workers = max_connection_workers;
+      }
 
     this->lock_resource ();
 
@@ -241,10 +245,15 @@ namespace cubconn::connection
     m_freelist.m_claim = 0;
   }
 
-  void pool::initialize_topology (std::uint32_t max_connection_workers)
+  std::uint32_t pool::initialize_topology (std::uint32_t max_connection_workers)
   {
+    std::vector<int> *cores;
+
     cubbase::topology.load_cpu (max_connection_workers);
     cubbase::topology.map_nic_to_core ();
+
+    cores = &cubbase::topology.get_cores ();
+    return cores->size ();
   }
 
   void pool::finalize_topology ()
