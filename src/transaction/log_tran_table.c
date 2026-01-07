@@ -4014,9 +4014,14 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
   if (thread_p->m_px_orig_thread_entry != NULL)
     {
       parent_thread_p = thread_p->m_px_orig_thread_entry;
-      while (parent_thread_p->m_px_orig_thread_entry != parent_thread_p)
+      while (parent_thread_p->m_px_orig_thread_entry != NULL)
 	{
+	  if (parent_thread_p->m_px_orig_thread_entry == parent_thread_p)
+	    {
+	      break;
+	    }
 	  parent_thread_p = parent_thread_p->m_px_orig_thread_entry;
+	  assert (parent_thread_p != thread_p);
 	}
       pthread_mutex_lock (&parent_thread_p->m_px_lock_mutex);
     }

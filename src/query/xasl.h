@@ -768,6 +768,10 @@ typedef enum
   ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
 } ACCESS_SPEC_FLAG;
 
+#define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
+#define ACCESS_SPEC_SET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) |= (int) (f))
+#define ACCESS_SPEC_UNSET_FLAG(spec, f)		(ACCESS_SPEC_FLAGS(spec) &= (int) ~(f))
+
 struct cls_spec_node
 {
   REGU_VARIABLE_LIST cls_regu_list_key;	/* regu list for the key filter */
@@ -942,6 +946,9 @@ union hybrid_node
 #define ACCESS_SPEC_DBLINK_LIST_ID(ptr) \
 	(ACCESS_SPEC_DBLINK_XASL_NODE(ptr)->list_id)
 
+#define ACCESS_SPEC_FLAGS(ptr) \
+	((ptr)->flags)
+
 #if defined (SERVER_MODE) || defined (SA_MODE)
 struct orderby_stat
 {
@@ -1027,7 +1034,7 @@ struct access_spec_node
   DB_VALUE *s_dbval;		/* single fetch mode db_value */
   ACCESS_SPEC_TYPE *next;	/* next access specification */
   int pruning_type;		/* how pruning should be performed on this access spec performed */
-  ACCESS_SPEC_FLAG flags;	/* flags from ACCESS_SPEC_FLAG enum */
+  int flags;			/* flags from ACCESS_SPEC_FLAG enum */
   int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
