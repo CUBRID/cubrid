@@ -41,6 +41,7 @@
 #include "cas_common_vars.h"
 #include "cas_net_buf.h"
 #include "cas_log.h"
+#include "cas.h"
 #include "cas_handle.h"
 #include "cas_util.h"
 #include "cas_common_function.h"
