@@ -78,7 +78,7 @@ union sq_regu_value
 {
   /* fields used by both XASL interpreter and regulator */
   DB_VALUE *dbvalptr;		/* for constant values */
-  QFILE_SORTED_LIST_ID *srlist_id;	/* sorted list identifier for subquery results */
+  bool exists;
 };
 
 struct sq_key
