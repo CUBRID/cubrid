@@ -35,6 +35,7 @@ import static com.cubrid.plcsql.compiler.antlrgen.StaticSqlWithRecordsParser.*;
 
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.data.Dependency;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.compiler.antlrgen.PlcParser.Create_routineContext;
@@ -56,6 +57,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -72,6 +74,7 @@ import org.antlr.v4.runtime.tree.*;
 public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     public final SymbolStack symbolStack = new SymbolStack();
+    public final Set<Dependency> dependenciesOfStaticSql = new HashSet<>();
 
     public ParseTreeConverter(InstanceStore iStore, String spOwner, String spRevision) {
         this.iStore = iStore;
@@ -3423,11 +3426,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         assert sqlSemantics.size() == 1;
 
         SqlSemantics ss = sqlSemantics.get(0);
-        if (ss.errCode == 0) {
-            return ss;
-        } else {
+        if (ss.errCode != 0) {
             throw new SemanticError(Misc.getLineColumnOf(ctx), ss.errMsg); // s435
         }
+
+        if (ss.dependencies != null) {
+            dependenciesOfStaticSql.addAll(ss.dependencies);
+        }
+
+        return ss;
     }
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {

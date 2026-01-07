@@ -2042,7 +2042,7 @@ heap_classrepr_lock_class (THREAD_ENTRY * thread_p, HEAP_CLASSREPR_HASH * hash_a
 
 	  thread_lock_entry (cur_thrd_entry);
 	  pthread_mutex_unlock (&hash_anchor->hash_mutex);
-	  thread_suspend_and_unlock_entry (cur_thrd_entry, THREAD_HEAP_CLSREPR_SUSPENDED);
+	  thread_suspend_wakeup_and_unlock_entry (cur_thrd_entry, THREAD_HEAP_CLSREPR_SUSPENDED);
 
 	  if (cur_thrd_entry->resume_status == THREAD_HEAP_CLSREPR_RESUMED)
 	    {

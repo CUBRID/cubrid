@@ -25,71 +25,22 @@
 
 #ident "$Id$"
 
-#include "cas.h"
-#include "cas_net_buf.h"
-#include "cas_handle.h"
-#include "cas_db_inc.h"
+#include "cas_common_execute.h"
 
-#define CAS_TYPE_SET(TYPE)		((TYPE) | CCI_CODE_SET)
-#define CAS_TYPE_MULTISET(TYPE)		((TYPE) | CCI_CODE_MULTISET)
-#define CAS_TYPE_SEQUENCE(TYPE)		((TYPE) | CCI_CODE_SEQUENCE)
-
-#define CAS_TYPE_COLLECTION(DB_TYPE, SET_TYPE)		\
-	(((DB_TYPE) == DB_TYPE_SET) ? (CAS_TYPE_SET(SET_TYPE)) : \
-	(((DB_TYPE) == DB_TYPE_MULTISET) ? (CAS_TYPE_MULTISET(SET_TYPE)) : \
-	(CAS_TYPE_SEQUENCE(SET_TYPE))))
-
-#define IS_ERROR_INFO_SET() is_error_info_set()
-#define ERROR_INFO_SET(ERR_CODE, ERR_INDICATOR)\
-	error_info_set(ERR_CODE, ERR_INDICATOR, __FILE__, __LINE__)
-#define ERROR_INFO_SET_FORCE(ERR_CODE, ERR_INDICATOR)\
-	error_info_set_force(ERR_CODE, ERR_INDICATOR, __FILE__, __LINE__)
-#define ERROR_INFO_SET_WITH_MSG(ERR_CODE, ERR_INDICATOR, ERR_MSG)\
-	error_info_set_with_msg(ERR_CODE, ERR_INDICATOR, ERR_MSG, false, __FILE__, __LINE__)
-#define NET_BUF_ERR_SET(NET_BUF)	\
-	err_msg_set(NET_BUF, __FILE__, __LINE__)
-
-typedef struct t_fk_info_result T_FK_INFO_RESULT;
-struct t_fk_info_result
-{
-  struct t_fk_info_result *prev;
-  struct t_fk_info_result *next;
-
-  char *pktable_name;
-  char *pkcolumn_name;
-  char *fktable_name;
-  char *fkcolumn_name;
-  short key_seq;
-  SM_FOREIGN_KEY_ACTION update_action;
-  SM_FOREIGN_KEY_ACTION delete_action;
-  char *fk_name;
-  char *pk_name;
-};
 
 extern int ux_check_connection (void);
 extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_err_msg);
 extern int ux_database_reconnect (void);
 extern int ux_is_database_connected (void);
-
-#if defined(CAS_FOR_CGW)
-extern int ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-			   unsigned int query_seq_num);
-#else
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
 		       unsigned int query_seq_num);
-#endif /* CAS_FOR_CGW */
 extern int ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
 extern int ux_end_session (void);
 extern int ux_get_row_count (T_NET_BUF * net_buf);
 extern int ux_get_last_insert_id (T_NET_BUF * net_buf);
 extern int ux_auto_commit (T_NET_BUF * CAS_FN_ARG_NET_BUF, T_REQ_INFO * CAS_FN_ARG_REQ_INFO);
-#if defined(CAS_FOR_CGW)
-extern int ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
-			   T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
-#else
 extern int ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 		       T_NET_BUF *, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time, int *clt_cache_reusable);
-#endif /* CAS_FOR_CGW */
 extern void ux_get_tran_setting (int *lock_wait, int *isol_level);
 extern int ux_set_isolation_level (int isol_level, T_NET_BUF * net_buf);
 extern void ux_set_lock_timeout (int lock_timeout);
@@ -99,7 +50,6 @@ extern int ux_fetch (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
 extern int ux_oid_get (int argc, void **argv, T_NET_BUF * net_buf);
 extern int ux_cursor (int srv_h_id, int offset, int origin, T_NET_BUF * net_buf);
 extern void ux_database_shutdown (bool request_server);
-extern int ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_get_class_num_objs (char *class_name, int flag, T_NET_BUF * net_buf);
 extern void ux_col_get (DB_COLLECTION * col, char col_type, char ele_type, DB_DOMAIN * ele_domain, T_NET_BUF * net_buf);
 extern void ux_col_size (DB_COLLECTION * col, T_NET_BUF * net_buf);
@@ -127,17 +77,8 @@ extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);
 extern void ux_get_default_setting (void);
 extern void ux_set_default_setting (void);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
-extern void ux_free_result (void *res);
-extern char ux_db_type_to_cas_type (int db_type);
-extern void ux_set_utype_for_enum (char u_type);
-extern void ux_set_utype_for_timestamptz (char u_type);
-extern void ux_set_utype_for_datetimetz (char u_type);
-extern void ux_set_utype_for_timestampltz (char u_type);
-extern void ux_set_utype_for_datetimeltz (char u_type);
-extern void ux_set_utype_for_json (char u_type);
 extern int ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * net_buf,
 			   T_REQ_INFO * req_info, unsigned int query_seq_num);
-extern void ux_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info);
 extern int ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 			    T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time,
 			    int *clt_cache_reusable);
@@ -148,43 +89,11 @@ extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * resu
 extern int ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 extern SESSION_ID ux_get_session_id (void);
 extern void ux_set_session_id (const SESSION_ID session_id);
-extern void release_all_fk_info_results (T_FK_INFO_RESULT * fk_res);
-
-/*****************************
-  cas_error.c function list
- *****************************/
-extern int is_error_info_set (void);
-extern void err_msg_set (T_NET_BUF * net_buf, const char *file, int line);
-extern int error_info_set (int err_number, int err_indicator, const char *file, int line);
-extern int error_info_set_force (int err_number, int err_indicator, const char *file, int line);
-extern int error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg, bool force,
-				    const char *file, int line);
-extern void error_info_clear (void);
-extern void set_server_aborted (bool is_aborted);
-extern bool is_server_aborted (void);
-
-/*****************************
-  move from cas_log.c
- *****************************/
-extern void cas_log_error_handler (unsigned int eid);
-extern void cas_log_error_handler_begin (void);
-extern void cas_log_error_handler_end (void);
-extern void cas_log_error_handler_clear (void);
-extern char *cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear);
-
-/*****************************
-  move from cas_sql_log2.c
- *****************************/
-extern void set_optimization_level (int level);
-extern void reset_optimization_level_as_saved (void);
 
 extern int ux_lob_new (int lob_type, T_NET_BUF * net_buf);
 extern int ux_lob_write (DB_VALUE * lob_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
 extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
-#if defined(CAS_FOR_CGW)
-extern void ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle);
-#endif
 
 #endif /* _CAS_EXECUTE_H_ */

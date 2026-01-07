@@ -955,7 +955,7 @@ is_protected_class (MOP classmop, SM_CLASS *sm_class, DB_AUTH auth)
 {
   int illegal = 0;
 
-  if (classmop == Au_authorizations_class || IS_CATALOG_CLASS (sm_ch_name ((MOBJ) sm_class)))
+  if (classmop == Au_root_class || IS_CATALOG_CLASS (sm_ch_name ((MOBJ) sm_class)))
     {
       illegal = auth & (AU_ALTER | AU_DELETE | AU_INSERT | AU_UPDATE | AU_INDEX);
     }

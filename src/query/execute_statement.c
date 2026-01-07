@@ -670,7 +670,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
  * Note:
  */
 static int
-do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * current_val, DB_VALUE * inc_val,
+do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * start_val, DB_VALUE * inc_val,
 			   DB_VALUE * min_val, DB_VALUE * max_val, const int cyclic, const int cached_num,
 			   const int started, const char *comment, const char *class_name, const char *att_name)
 {
@@ -684,7 +684,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   db_make_null (&value);
 
-  /* temporarily disable authorization to access db_serial class */
+  /* temporarily disable authorization to access _db_serial class */
   AU_DISABLE (au_save);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
@@ -740,7 +740,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* current_val */
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, current_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
@@ -762,6 +762,13 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   /* max_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, max_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* start_val */
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_START_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
@@ -828,6 +835,13 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 	{
 	  goto end;
 	}
+    }
+
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   ret_obj = dbt_finish_object (obj_tmpl);
@@ -953,6 +967,13 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   db_make_string (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
   pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto update_auto_increment_error;
+    }
+
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
   if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
@@ -1206,6 +1227,13 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
       goto error_exit;
     }
 
+  /* updated_time */
+  error_code = db_update_otmpl_timestamp (obj_tmpl);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   edit_serial_object = dbt_finish_object (obj_tmpl);
   if (edit_serial_object == NULL)
     {
@@ -1432,7 +1460,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
 
   /*
-   * find db_serial_class
+   * find _db_serial class
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -1867,7 +1895,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* now create serial object which is insert into db_serial */
+  /* now create serial object which is insert into _db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
@@ -1944,7 +1972,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
     }
 
   /*
-   * find db_serial
+   * find _db_serial
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -2218,7 +2246,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
 
   assert (serial_object != NULL);
 
-  /* find db_serial */
+  /* find _db_serial */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
@@ -2324,7 +2352,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       goto end;
     }
 
-  /* update serial object in db_serial */
+  /* update serial object in _db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
@@ -2432,7 +2460,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   int error = NO_ERROR;
   int save;
-  bool au_disable_flag = false;
 
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
@@ -2456,8 +2483,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
 
+  AU_DISABLE (save);
   /*
-   * find db_serial_class
+   * find _db_serial class
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -2909,9 +2937,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-  /* now update serial object in db_serial */
-  AU_DISABLE (save);
-  au_disable_flag = true;
 
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
@@ -3059,6 +3084,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   serial_object = dbt_finish_object (obj_tmpl);
   if (serial_object == NULL)
     {
@@ -3076,10 +3108,7 @@ end:
       (void) serial_decache ((OID *) (&serial_obj_id));
     }
 
-  if (au_disable_flag == true)
-    {
-      AU_ENABLE (save);
-    }
+  AU_ENABLE (save);
 
   if (obj_tmpl != NULL)
     {
@@ -3136,6 +3165,9 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
   error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
@@ -3162,9 +3194,6 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-
-  AU_DISABLE (save);
-  au_disable_flag = true;
 
   error = db_drop (serial_object);
   if (error < 0)
@@ -4569,9 +4598,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       // CLASS LISTS
-
       PT_NODE *cls = NULL;
       DB_OBJECT *class_mop;
+      int class_type;
 
       // fetch classes and check authorization
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
@@ -4601,9 +4630,12 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
 	  class_mop = cls->info.name.db_object;
+	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
 
-	  error = sm_update_statistics (class_mop, (statement->info.update_stats.with_fullscan
-						    ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+	  if (class_type == SM_CLASS_CT)
+	    {
+	      error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
+	    }
 	}
 
       return error;
@@ -7105,6 +7137,13 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      ASSERT_ERROR ();
 		      break;
 		    }
+		}
+
+	      error = tr_update_trigger_timestamp (t->op);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  break;
 		}
 
 	      error = locator_flush_instance (t->op);
@@ -18590,6 +18629,13 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
     }
 
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
     {
@@ -18885,6 +18931,12 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  ASSERT_ERROR ();
 	  goto end;
 	}
+    }
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   /* flush template */
@@ -19205,6 +19257,13 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
       goto end;
     }
 
@@ -20805,7 +20864,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
   /* temporarily disable authorization to access _db_server class */
   AU_DISABLE (au_save);
 
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  server_class = sm_find_class (CT_SERVER_NAME);
   if (server_class == NULL)
     {
       error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
@@ -20858,6 +20917,13 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
   db_make_object (&value, owner);
   error = dbt_put_internal (obj_tmpl, SERVER_ATTR_OWNER, &value);
   pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
   if (error != NO_ERROR)
     {
       goto end;
@@ -21171,6 +21237,14 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_ENABLE (save);
 
   pr_clear_value (&value);
+
+  if (error == NO_ERROR)
+    {
+      AU_DISABLE (save);
+      error = db_update_obj_timestamp (server_object);
+      AU_ENABLE (save);
+    }
+
   return error;
 }
 
@@ -21422,6 +21496,12 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+    }
+
+  error = db_update_obj_timestamp (server_object);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
 end:
