@@ -163,14 +163,14 @@ namespace cubhnsw
 	return level > 0 ? node_neighbors_bytes_ (level - 1) : 0;
       }
 
-      inline std::size_t node_bytes_ (level_t level) const noexcept
+      inline std::size_t node_bytes_ (level_t level, std::size_t dim, std::size_t neighbors_count) const noexcept
       {
-	return node_head_bytes_() + node_neighbors_bytes_ (level);
+	return node_head_bytes_ (dim, neighbors_count) + node_neighbors_bytes_ (level);
       }
 
-      inline std::size_t node_head_bytes_() const noexcept
+      inline std::size_t node_head_bytes_ (std::size_t dim, std::size_t neighbors_count) const noexcept
       {
-	return node_t<Traits>::get_size();
+	return node_t<Traits>::get_size (dim, neighbors_count);
       }
 
     protected:
