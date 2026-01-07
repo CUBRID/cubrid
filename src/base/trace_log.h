@@ -31,9 +31,6 @@
 
 #include <stdio.h>
 
-// forward declarations
-struct clientids;
-
 extern void trace_log_init (const char *db_name);
 extern void trace_log_final (void);
 extern FILE *trace_log_start (THREAD_ENTRY * thread_p, const char *trace_name);
