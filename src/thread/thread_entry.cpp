@@ -22,7 +22,6 @@
 
 #include "thread_entry.hpp"
 
-#include "adjustable_array.h"
 #include "critical_section.h"  // for INF_WAIT
 #include "critical_section_tracker.hpp"
 #include "error_manager.h"
@@ -90,9 +89,6 @@ namespace cubthread
     , th_entry_lock ()
     , wakeup_cond ()
     , private_heap_id (0)
-#if defined(ENABLE_USE_CNVLEX)
-    , cnv_adj_buffer ()
-#endif
     , conn_entry (NULL)
     , xasl_unpack_info_ptr (NULL)
     , xasl_errcode (0)
@@ -138,9 +134,12 @@ namespace cubthread
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.
     , m_loaddb_driver (NULL)
-    , m_px_lock ()
+    , m_px_lock_mutex ()
+    , m_px_stats_mutex ()
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
+    , m_uses_px_stats (false)
+    , m_skip_end_resource_tracks_in_recycle (false)
       // private:
     , m_id ()
     , m_error ()
@@ -168,19 +167,18 @@ namespace cubthread
 	// cannot recover from this
 	assert (false);
       }
-    if (pthread_mutex_init (&m_px_lock, NULL) != 0)
+    if (pthread_mutex_init (&m_px_lock_mutex, NULL) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_init (&m_px_stats_mutex, NULL) != 0)
       {
 	// cannot recover from this
 	assert (false);
       }
 
     private_heap_id = db_create_private_heap ();
-
-#if defined(ENABLE_USE_CNVLEX)
-    cnv_adj_buffer[0] = NULL;
-    cnv_adj_buffer[1] = NULL;
-    cnv_adj_buffer[2] = NULL;
-#endif
 
     struct timeval t;
     gettimeofday (&t, NULL);
@@ -242,15 +240,7 @@ namespace cubthread
       {
 	return;
       }
-#if defined(ENABLE_USE_CNVLEX)
-    for (int i = 0; i < 3; i++)
-      {
-	if (cnv_adj_buffer[i] != NULL)
-	  {
-	    adj_ar_free (cnv_adj_buffer[i]);
-	  }
-      }
-#endif
+
     if (pthread_mutex_destroy (&tran_index_lock) != 0)
       {
 	assert (false);
@@ -263,7 +253,12 @@ namespace cubthread
       {
 	assert (false);
       }
-    if (pthread_mutex_destroy (&m_px_lock) != 0)
+    if (pthread_mutex_destroy (&m_px_lock_mutex) != 0)
+      {
+	// cannot recover from this
+	assert (false);
+      }
+    if (pthread_mutex_destroy (&m_px_stats_mutex) != 0)
       {
 	// cannot recover from this
 	assert (false);
@@ -391,7 +386,6 @@ namespace cubthread
     m_pgbuf_tracker.clear_all ();
     m_csect_tracker.clear_all ();
     m_qlist_count = 0;
-    emulate_tid = thread_id_t ();
   }
 
   void
@@ -480,7 +474,7 @@ thread_timeval_add_usec (const std::chrono::microseconds &usec, struct timeval &
   // add all usecs to tv_usec
   tv.tv_usec += (long) usec.count ();
   // move seconds from tv_usec to tv_sec
-  tv.tv_sec = tv.tv_usec / ratio;
+  tv.tv_sec += tv.tv_usec / ratio;
   tv.tv_usec = tv.tv_usec % ratio;
 }
 
@@ -546,6 +540,8 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
 {
   int r;
   cubthread::entry::status old_status;
+  thread_clock_type::time_point start_time_pt;
+  std::chrono::microseconds usecs;
   int error = NO_ERROR;
 
   assert (thread_p->m_status == cubthread::entry::status::TS_RUN
@@ -555,7 +551,19 @@ thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *thread_p, stru
 
   thread_p->resume_status = suspended_reason;
 
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      start_time_pt = thread_clock_type::now ();
+    }
+
   r = pthread_cond_timedwait (&thread_p->wakeup_cond, &thread_p->th_entry_lock, time_p);
+
+  if (thread_p->event_stats.trace_slow_query == true && suspended_reason == THREAD_PGBUF_SUSPENDED)
+    {
+      usecs = std::chrono::duration_cast < std::chrono::microseconds > (thread_clock_type::now () - start_time_pt);
+
+      thread_timeval_add_usec (usecs, thread_p->event_stats.latch_waits);
+    }
 
   if (r != 0 && r != ETIMEDOUT)
     {

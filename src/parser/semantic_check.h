@@ -63,6 +63,7 @@ extern PT_NODE *pt_find_order_value_in_list (PARSER_CONTEXT * parser, const PT_N
 					     const PT_NODE * order_list);
 extern bool pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
 extern bool pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column);
+extern bool pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column);
 extern PT_NODE *pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert);
 extern int pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int default_cs, int default_coll);
 extern PT_NODE *pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,

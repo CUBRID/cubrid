@@ -99,9 +99,7 @@ public class CUBRIDServerSideDriver implements Driver {
             setProperties(prop, info);
         }
 
-        Thread t = Thread.currentThread();
-        Long ctxId = ContextManager.getContextIdByThreadId(t.getId());
-        return ContextManager.getContext(ctxId).getConnection(info);
+        return ContextManager.getContextofCurrentThread().getConnection(info);
     }
 
     @Override

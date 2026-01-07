@@ -23,10 +23,12 @@
 #ifndef _MEMORY_WRAPPER_HPP_
 #define _MEMORY_WRAPPER_HPP_
 
-template <typename T>
-inline T *placement_new (T *ptr)
+#include <utility>
+
+template <typename T, typename... Args>
+inline T *placement_new (T *ptr, Args &&... args)
 {
-  return new (ptr)  T();
+  return new (ptr) T (std::forward<Args> (args)...);
 }
 
 #if !defined(WINDOWS)

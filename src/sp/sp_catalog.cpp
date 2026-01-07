@@ -33,9 +33,11 @@
 #include "object_accessor.h"
 #include "set_object.h"
 #include "locator_cl.h"
+#include "sp_constants.hpp"
 #include "transaction_cl.h"
 #include "schema_manager.h"
 #include "dbtype.h"
+#include "schema_system_catalog_constants.h"    // for SP_ATTR_TARGET_METHOD_LEN
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -57,8 +59,11 @@ static const std::vector<std::string> sp_entry_names
   SP_ATTR_TARGET_CLASS,
   SP_ATTR_TARGET_METHOD,
   SP_ATTR_DIRECTIVE,
+  SP_ATTR_SQL_DATA_ACCESS,
   SP_ATTR_OWNER,
-  SP_ATTR_COMMENT
+  SP_ATTR_COMMENT,
+  SP_ATTR_CREATED_TIME,
+  SP_ATTR_UPDATED_TIME
 };
 
 static const std::vector<std::string> sp_args_entry_names
@@ -88,14 +93,20 @@ static int sp_builtin_init ()
 
   sp_info v;
   sp_arg_info a;
+  DB_VALUE current_datetime;
+
+  db_sys_datetime (&current_datetime);
 
   // common
-  v.is_system_generated = true;
   v.lang = SP_LANG_PLCSQL;
-  v.owner = Au_public_user;
-  v.comment = "";
+  v.is_system_generated = true;
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
+  v.owner = Au_public_user;
+  v.sql_data_access = SP_SQL_TYPE_UNKNOWN;
+  v.comment = "";
   v.target_class = "com.cubrid.plcsql.builtin.DBMS_OUTPUT";
+  v.created_time = *db_get_datetime (&current_datetime);
+  v.updated_time = *db_get_datetime (&current_datetime);
 
   a.is_system_generated = true;
 
@@ -545,11 +556,34 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    db_make_int (&value, info.sql_data_access);
+    err = dbt_put_internal (obt_p, SP_ATTR_SQL_DATA_ACCESS, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
     if (!info.comment.empty ())
       {
 	db_make_string (&value, info.comment.data ());
       }
     err = dbt_put_internal (obt_p, SP_ATTR_COMMENT, &value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_datetime (&value, &info.created_time);
+    err = dbt_put_internal (obt_p, SP_ATTR_CREATED_TIME, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
+    db_make_datetime (&value, &info.updated_time);
+    err = dbt_put_internal (obt_p, SP_ATTR_UPDATED_TIME, &value);
     pr_clear_value (&value);
     if (err != NO_ERROR)
       {
@@ -969,8 +1003,11 @@ void sp_normalize_name (std::string &s)
 void
 sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth)
 {
-  auto pos1 = s.find_last_of ('(');
-  if (pos1 == std::string::npos)
+  std::regex RE_SPACES ("\\s+");
+
+  auto pos_lparen = s.find_last_of ('(');
+  auto pos_rparen = s.find_last_of (')');
+  if (pos_lparen == std::string::npos || pos_rparen == std::string::npos)
     {
       // handle the case where '(' is not found, if necessary
       target_cls.clear();
@@ -978,12 +1015,11 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
       return;
     }
 
-  std::string tmp = s.substr (0, pos1);
-  tmp.erase (tmp.find_last_not_of (" ") + 1); // rtrim
-  tmp.erase (0, tmp.find_first_not_of (" ")); // ltrim
+  std::string class_and_mth = s.substr (0, pos_lparen);
+  class_and_mth = std::regex_replace (class_and_mth, RE_SPACES, ""); // remove spaces
 
-  auto pos2 = tmp.find_last_of ('.');
-  if (pos2 == std::string::npos)
+  auto pos_dot = class_and_mth.find_last_of ('.');
+  if (pos_dot == std::string::npos)
     {
       // handle the case where '.' is not found, if necessary
       target_cls.clear();
@@ -991,8 +1027,40 @@ sp_split_target_signature (const std::string &s, std::string &target_cls, std::s
       return;
     }
 
-  target_cls = tmp.substr (0, pos2);
-  target_mth = tmp.substr (pos2 + 1) + s.substr (pos1); // remove spaces between method and (
+  target_cls = class_and_mth.substr (0, pos_dot);
+  target_mth = class_and_mth.substr (pos_dot + 1) + s.substr (pos_lparen); // remove spaces between method and (
+
+  if (target_mth.length() > SP_ATTR_TARGET_METHOD_LEN)
+    {
+      // shorten target_mth by erasing package name prefixes in parameter types
+
+      std::regex RE_COMMA_PACKAGE (",(java\\.lang|java\\.math|java\\.sql|cubrid\\.sql)\\.");
+      std::regex RE_PAREN_PACKAGE ("\\((java\\.lang|java\\.math|java\\.sql|cubrid\\.sql)\\.");
+
+      // param types: from '(' to ')' : parameter types
+      std::string param_types = s.substr (pos_lparen, pos_rparen + 1 - pos_lparen);
+
+      // get shorter target_mth by erasing the package name at the start of type names
+      param_types = std::regex_replace (param_types, RE_SPACES, ""); // remove spaces
+      param_types = std::regex_replace (param_types, RE_COMMA_PACKAGE, ",");
+      param_types = std::regex_replace (param_types, RE_PAREN_PACKAGE, "(");
+
+      size_t pos_return = s.find ("return", pos_rparen);
+      if (pos_return == std::string::npos)
+	{
+	  target_mth = class_and_mth.substr (pos_dot + 1) + param_types;
+	}
+      else
+	{
+	  std::regex RE_PREFIX_PACKAGE ("^(java\\.lang|java\\.math|java\\.sql|cubrid\\.sql)\\.");
+
+	  std::string ret_type = s.substr (pos_return + 6);   // 6: length of "return"
+	  ret_type = std::regex_replace (ret_type, RE_SPACES, "");
+	  ret_type = std::regex_replace (ret_type, RE_PREFIX_PACKAGE, "");
+
+	  target_mth = class_and_mth.substr (pos_dot + 1) + param_types + ret_type;
+	}
+    }
 }
 
 std::string

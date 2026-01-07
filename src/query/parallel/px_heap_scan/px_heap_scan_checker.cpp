@@ -23,6 +23,7 @@
 #include "px_heap_scan_checker.hpp"
 
 #include "regu_var.hpp"
+#include "storage_common.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -430,14 +431,13 @@ namespace parallel_heap_scan
 	return result;
       }
     general_checker general_checker (map);
-    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
-      {
-	result = CHECK_RESULT::CANNOT_PARALLEL;
-	return result;
-      }
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_pred));
     result = merge_check_result (result, general_checker.check (spec->s.cls_node.cls_regu_list_rest));
     result = merge_check_result (result, general_checker.check (spec->where_pred));
+    if (!spec->s.cls_node.cls_regu_list_pred && !spec->s.cls_node.cls_regu_list_rest)
+      {
+	result = merge_check_result (result, CHECK_RESULT::PARALLEL_PAGE_BY_PAGE);
+      }
     return result;
   }
 
@@ -455,7 +455,7 @@ namespace parallel_heap_scan
 	    return;
 	  }
 	map->set_lm ((void *)spec);
-	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_MERGED_LIST );
+	ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
       }
     else if (result == CHECK_RESULT::PARALLEL_PAGE_BY_PAGE)
       {
@@ -465,10 +465,7 @@ namespace parallel_heap_scan
 	  }
 	map->set_pbp ((void *)spec);
 	map->set_lm ((void *)spec);
-	if (spec->flags & ACCESS_SPEC_FLAG_MERGED_LIST)
-	  {
-	    spec->flags = (ACCESS_SPEC_FLAG) (spec->flags & ~ACCESS_SPEC_FLAG_MERGED_LIST);
-	  }
+	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
       }
     else if (result == CHECK_RESULT::CANNOT_PARALLEL)
       {
@@ -479,7 +476,7 @@ namespace parallel_heap_scan
 	map->set_cannot_parallel ((void *)spec);
 	map->set_pbp ((void *)spec);
 	map->set_lm ((void *)spec);
-	spec->flags = (ACCESS_SPEC_FLAG) (spec->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
       }
   }
 
@@ -507,16 +504,6 @@ namespace parallel_heap_scan
 	if (xasl->proc.buildlist.a_eval_list)
 	  {
 	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
-	  }
-	if (xasl->proc.buildlist.g_agg_list)
-	  {
-	    for (AGGREGATE_TYPE *aggp = xasl->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
-	      {
-		if (QPROC_IS_INTERPOLATION_FUNC (aggp) || aggp->function == PT_CUME_DIST || aggp->function == PT_PERCENT_RANK)
-		  {
-		    result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
-		  }
-	      }
 	  }
 	break;
       case BUILDVALUE_PROC:
@@ -549,18 +536,34 @@ namespace parallel_heap_scan
 	    setter.set (xasl->proc.hashjoin.inner.xasl, subquery_result);
 	  }
 	break;
+      case MERGE_PROC:
+	if (xasl->proc.merge.insert_xasl)
+	  {
+	    for (XASL_NODE *xaslp = xasl->proc.merge.insert_xasl; xaslp; xaslp = xaslp->next)
+	      {
+		setter.set_cannot_parallel_recursive (xaslp);
+	      }
+	  }
+	if (xasl->proc.merge.update_xasl)
+	  {
+	    for (XASL_NODE *xaslp = xasl->proc.merge.update_xasl; xaslp; xaslp = xaslp->next)
+	      {
+		setter.set_cannot_parallel_recursive (xaslp);
+	      }
+	  }
+	result = CHECK_RESULT::CANNOT_PARALLEL;
+	break;
       case UNION_PROC:
       case DIFFERENCE_PROC:
       case INTERSECTION_PROC:
       case INSERT_PROC:
+      case MERGELIST_PROC:
 	break;
       case OBJFETCH_PROC:
-      case MERGELIST_PROC:
       case UPDATE_PROC:
       case DELETE_PROC:
       case CONNECTBY_PROC:
       case DO_PROC:
-      case MERGE_PROC:
       case BUILD_SCHEMA_PROC:
       case SCAN_PROC:
       default:
@@ -830,6 +833,96 @@ namespace parallel_heap_scan
     map->set_lm ((void *)xasl);
   }
 
+  struct count_distinct_check
+  {
+    bool operator() (xasl_node *xasl) const
+    {
+      if (xasl == nullptr)
+	{
+	  return false;
+	}
+
+      if (xasl->type != BUILDVALUE_PROC)
+	{
+	  return false;
+	}
+
+      if (xasl->scan_ptr || xasl->aptr_list || xasl->dptr_list || xasl->fptr_list || xasl->connect_by_ptr || xasl->bptr_list)
+	{
+	  return false;
+	}
+
+      if (!xasl->spec_list)
+	{
+	  return false;
+	}
+
+      for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+	{
+	  if (specp->type != TARGET_CLASS)
+	    {
+	      return false;
+	    }
+
+	  if (specp->access != ACCESS_METHOD_SEQUENTIAL)
+	    {
+	      return false;
+	    }
+	}
+
+      if (!xasl->proc.buildvalue.agg_list)
+	{
+	  return false;
+	}
+
+      int outptr_cnt = xasl->outptr_list->valptr_cnt;
+
+      REGU_VARIABLE_LIST outptr_it = xasl->outptr_list->valptrp;
+      for (; outptr_it != nullptr; outptr_it = outptr_it->next)
+	{
+	  if (outptr_it->value.type != TYPE_CONSTANT)
+	    {
+	      return false;
+	    }
+	}
+
+      check_and_set_map map;
+      general_checker general_checker (&map);
+      CHECK_RESULT res = CHECK_RESULT::NONE;
+
+      int agg_cnt = 0;
+
+      AGGREGATE_TYPE *agg_it = xasl->proc.buildvalue.agg_list;
+      for (; agg_it != nullptr; agg_it = agg_it->next)
+	{
+	  if (agg_it->function != PT_COUNT_STAR && agg_it->function != PT_COUNT)
+	    {
+	      return false;
+	    }
+
+	  res = general_checker.check (agg_it->operands, false);
+	  if (res == CHECK_RESULT::CANNOT_PARALLEL)
+	    {
+	      return false;
+	    }
+
+	  agg_cnt++;
+	}
+
+      if (agg_cnt != outptr_cnt)
+	{
+	  return false;
+	}
+
+      for (ACCESS_SPEC_TYPE *specp = xasl->spec_list; specp; specp = specp->next)
+	{
+	  ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_COUNT_DISTINCT);
+	}
+
+      return true;
+    }
+  } const count_distinct_check;
+
   int checker::check (XASL_NODE *xasl)
   {
     if (!xasl)
@@ -840,6 +933,10 @@ namespace parallel_heap_scan
     CHECK_RESULT result = checker.check (xasl);
     xasl_setter setter (&check_map);
     setter.set (xasl, result);
+    if (result != CHECK_RESULT::CANNOT_PARALLEL)
+      {
+	count_distinct_check (xasl);
+      }
     return 0;
   }
 }

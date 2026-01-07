@@ -165,7 +165,7 @@ static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE
 static PT_NODE *pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						 int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
-static PT_NODE *pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *pt_find_method_call (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC_TYPE class_type,
 				       const char *self, const bool reuse_oid, PT_NODE * stmt);
 static void pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE * attr_defs);
@@ -338,8 +338,6 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
     {
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
       is_compatible = true;
@@ -347,10 +345,6 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
       if (common_type == PT_TYPE_CHAR || common_type == PT_TYPE_VARCHAR)
 	{
 	  cinfo->type_enum = PT_TYPE_VARCHAR;
-	}
-      else if (common_type == PT_TYPE_NCHAR || common_type == PT_TYPE_VARNCHAR)
-	{
-	  cinfo->type_enum = PT_TYPE_VARNCHAR;
 	}
       else
 	{
@@ -877,6 +871,49 @@ end:
 }
 
 /*
+ * pt_check_compatible_node_for min(), max()
+ */
+bool
+pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column)
+{
+  PT_NODE *arg1;
+  PT_TYPE_ENUM type1;
+
+  /* only min(), max() is allowed */
+  if (order == NULL || column == NULL || order->node_type != PT_FUNCTION)
+    {
+      return false;
+    }
+
+  if (order->info.function.function_type != PT_MIN && order->info.function.function_type != PT_MAX)
+    {
+      return false;
+    }
+
+  arg1 = order->info.function.arg_list;
+  if (arg1->node_type != column->node_type || arg1->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  if (pt_check_path_eq (parser, arg1, column) != 0)
+    {
+      return false;
+    }
+
+  /* only numeric, string, date-time type is allowed
+   * Only string type : Do not consider 'CAST (enum_col as VARCHAR)' equal to 'enum_col' */
+  type1 = arg1->type_enum;
+
+  if (PT_IS_NUMERIC_TYPE (type1) || PT_IS_STRING_TYPE (type1) || PT_IS_DATE_TIME_TYPE (type1))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * pt_check_compatible_node_for_orderby ()
  */
 bool
@@ -1166,15 +1203,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
-      if ((PT_IS_NATIONAL_CHAR_STRING_TYPE (arg_type) && PT_IS_SIMPLE_CHAR_STRING_TYPE (cast_type))
-	  || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg_type) && PT_IS_NATIONAL_CHAR_STRING_TYPE (cast_type)))
-	{
-	  cast_is_valid = PT_CAST_INVALID;
-	  break;
-	}
-
       switch (cast_type)
 	{
 	case PT_TYPE_SET:
@@ -1257,8 +1285,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	  break;
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -1286,8 +1312,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	case PT_TYPE_CLOB:
 	case PT_TYPE_ENUMERATION:
 	  break;
@@ -2567,8 +2591,6 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       cinfo->prec = (att->data_type) ? att->data_type->info.data_type.precision : 0;
       cinfo->scale = 0;
       break;
@@ -4067,7 +4089,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	}
 
       node_ptr = NULL;
-      parser_walk_tree (parser, default_value, pt_find_stored_procedure, &node_ptr, NULL, NULL);
+      parser_walk_tree (parser, default_value, pt_find_method_call, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
 	{
 	  PT_ERRORmf (parser,
@@ -4198,7 +4220,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 }
 
 /*
- * pt_find_stored_procedure () - search for a stored procedure
+ * pt_find_method_call () - search for a method call
  *
  * result	  : parser tree node
  * parser(in)	  : parser
@@ -4207,7 +4229,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
  * continue_walk  : Continue walk.
  */
 static PT_NODE *
-pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_method_call (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   PT_NODE **sp = (PT_NODE **) arg;
 
@@ -6117,8 +6139,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_DATETIMELTZ:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  break;
 	default:
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_COLUMN_TYPE);
@@ -6174,8 +6194,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_DATETIMELTZ:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  break;
 	default:
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_COLUMN_TYPE);
@@ -7336,18 +7354,6 @@ pt_is_compatible_type (const PT_TYPE_ENUM arg1_type, const PT_TYPE_ENUM arg2_typ
 	  {
 	  case PT_TYPE_CHAR:
 	  case PT_TYPE_VARCHAR:
-	    is_compatible = true;
-	    break;
-	  default:
-	    break;
-	  }
-	break;
-      case PT_TYPE_NCHAR:
-      case PT_TYPE_VARNCHAR:
-	switch (arg2_type)
-	  {
-	  case PT_TYPE_NCHAR:
-	  case PT_TYPE_VARNCHAR:
 	    is_compatible = true;
 	    break;
 	  default:
@@ -10086,7 +10092,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
       /* check grant option */
       if (node->info.grant.grant_option == PT_GRANT_OPTION)
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_AU_GRANT_OPTION_NOT_ALLOWED,
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AU_GRANT_OPTION_NOT_ALLOWED,
 		      MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
 
@@ -10346,7 +10352,7 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert (node->node_type == PT_ALTER_SERIAL);
 
-  /* find db_serial_class */
+  /* find _db_serial class */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
@@ -11018,6 +11024,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
       else if (node->info.method_call.call_or_expr == PT_IS_CALL_STMT)
 	{
+	  if (node->info.method_call.method_type == PT_SP_PROCEDURE && node->info.method_call.to_return_var != NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_CALL_WITH_INTO_CLAUSE);
+	      break;
+	    }
+
 	  /* Expressions in method calls from a CALL statement need to be typed explicitly since they are not wrapped
 	   * in a query and are not explicitly type-checked via pt_check_method().  This is due to a bad decision which
 	   * allowed users to refrain from fully typing methods before the advent of methods in queries. */
@@ -11160,6 +11172,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
 	  (void) parser_append_node (hidden_list, select_list);
 	  node->info.query.q.select.with_increment = NULL;
+
+	  /* Click count functions (e.g., INCR, DECR) can be used only in a top-level SELECT statement.
+	   * Setting the is_click_counter flag on both top_node and node may seem redundant,
+	   * but it is necessary in UPDATE statements where top_node and node are not the same. */
+	  top_node->flag.is_click_counter = 1;
+	  node->flag.is_click_counter = 1;
 	}
 
       /* check the group by */
@@ -14439,7 +14457,7 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 
 	  /* check for after group by position */
-	  pt_to_pos_descr (parser, &pos, r, node, &referred_node);
+	  pt_to_pos_descr (parser, &pos, r, node, &referred_node, false);
 	  if (pos.pos_no > 0)
 	    {
 	      /* set after group by position num, domain info */

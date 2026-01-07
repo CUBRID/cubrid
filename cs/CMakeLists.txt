@@ -39,7 +39,6 @@ set(EXECUTABLE_HEADERS
   
 set(COMPAT_SOURCES
   ${COMPAT_DIR}/cnv.c
-  ${COMPAT_DIR}/cnvlex.c
   ${COMPAT_DIR}/db_admin.c
   ${COMPAT_DIR}/db_class.c
   ${COMPAT_DIR}/db_date.c
@@ -82,11 +81,9 @@ set (COMPAT_HEADERS
   )
 
 set(BASE_SOURCES
-  ${BASE_DIR}/adjustable_array.c
   ${BASE_DIR}/area_alloc.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/condition_handler.c
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c
@@ -140,6 +137,7 @@ set(BASE_SOURCES
   )
 
 set(BASE_HEADERS
+  ${BASE_DIR}/compressor.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
@@ -564,9 +562,6 @@ add_library(cubridcs SHARED
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
 target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
-if(NOT USE_CUBRID_ENV)
-  target_compile_definitions(cubridcs PRIVATE ${DIR_DEFS})
-endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   SET_SOURCE_FILES_PROPERTIES(

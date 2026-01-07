@@ -38,10 +38,7 @@
 #include <cassert>
 
 // forward definitions
-#if defined(ENABLE_USE_CNVLEX)
-// from adjustable_array.h
-struct adj_array;
-#endif
+
 // from connection_defs.h
 struct css_conn_entry;
 // from connection_defs.h
@@ -108,9 +105,9 @@ struct event_stat
   struct timeval lock_waits;
   struct timeval latch_waits;
 
-  /* temp volume expand stats */
-  struct timeval temp_expand_time;
-  int temp_expand_pages;
+  /* volume expand stats */
+  struct timeval extend_time;
+  int extend_pages;
 
   /* save PRM_ID_SQL_TRACE_SLOW_MSECS for performance */
   bool trace_slow_query;
@@ -229,9 +226,6 @@ namespace cubthread
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
       HL_HEAPID private_heap_id;	/* id of thread private memory allocator */
-#if defined(ENABLE_USE_CNVLEX)
-      adj_array *cnv_adj_buffer[3];	/* conversion buffer */
-#endif
 
       css_conn_entry *conn_entry;	/* conn entry ptr */
 
@@ -306,9 +300,13 @@ namespace cubthread
 
       cubload::driver *m_loaddb_driver;
 
-      pthread_mutex_t m_px_lock;
+      pthread_mutex_t m_px_lock_mutex;
+      pthread_mutex_t m_px_stats_mutex;
       UINT64 *m_px_stats;
       entry *m_px_orig_thread_entry;
+      bool m_uses_px_stats;
+
+      bool m_skip_end_resource_tracks_in_recycle;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();

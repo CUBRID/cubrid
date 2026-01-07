@@ -31,8 +31,10 @@
 /src/query/ @beyondykk9
 /src/query/query_executor.* @shparkcubrid
 /src/query/query_hash_scan.* @shparkcubrid
+/src/query/query_hash_join.* @shparkcubrid
 /src/query/scan_manager.* @shparkcubrid
 /src/query/subquery_cache.* @shparkcubrid
+/src/query/memoize.* @shparkcubrid
 /src/query/parallel/ @shparkcubrid
 /src/query/vacuum.* @hornetmj
 /src/storage/ @hornetmj

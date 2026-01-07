@@ -88,11 +88,27 @@ typedef enum
 
 typedef enum
 {
+  PLAN_PARALLEL_OPT_USE = 1,
+  PLAN_PARALLEL_OPT_NO = 0,
+  PLAN_PARALLEL_OPT_CANNOT_USE = -1,
+  PLAN_PARALLEL_OPT_CAN_USE = -2,
+} QO_PLAN_PARALLEL_OPT_USE;
+
+typedef enum
+{
   PLAN_MULTI_RANGE_OPT_USE = 1,
   PLAN_MULTI_RANGE_OPT_NO = 0,
   PLAN_MULTI_RANGE_OPT_CANNOT_USE = -1,
   PLAN_MULTI_RANGE_OPT_CAN_USE = -2
-} QO_PLAN_ULTI_RANGE_OPT_USE;
+} QO_PLAN_MULTI_RANGE_OPT_USE;
+
+typedef enum
+{
+  QO_PLAN_SKIP_ORDERBY_USE = 1,
+  QO_PLAN_SKIP_ORDERBY_NO = 0,
+  QO_PLAN_SKIP_ORDERBY_CANNOT_USE = -1,
+  QO_PLAN_SKIP_ORDERBY_CAN_USE = -2,
+} QO_PLAN_SKIP_ORDERBY_OPT;
 
 struct qo_plan
 {
@@ -195,12 +211,15 @@ struct qo_plan
 
   } plan_un;
 
-  QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
+  QO_PLAN_PARALLEL_OPT_USE parallel_opt_use;	/* used to determine if this plan uses parallel opt */
+  QO_PLAN_MULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
+  QO_PLAN_SKIP_ORDERBY_OPT skip_orderby_opt;	/* used to determine if this plan uses skip orderby opt */
   // *INDENT-OFF*
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
+  bool need_final_sort;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -280,7 +299,8 @@ struct qo_info
    * by plans at this node.
    */
   BITSET projected_segs;
-  double cardinality;
+  double cardinality;		/* Number of rows expected after scanning */
+  double scan_rows;		/* Number of rows required for scanning */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -402,4 +422,10 @@ extern bool qo_is_iscan_from_orderby (QO_PLAN *);
 extern bool qo_is_interesting_order_scan (QO_PLAN *);
 extern bool qo_is_all_unique_index_columns_are_equi_terms (QO_PLAN * plan);
 extern bool qo_has_sort_limit_subplan (QO_PLAN * plan);
+extern int qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg);
+extern PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix,
+						 bool for_min_max_optimize);
+
+extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
+
 #endif /* _QUERY_PLANNER_H_ */

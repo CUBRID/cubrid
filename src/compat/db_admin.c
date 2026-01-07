@@ -933,9 +933,6 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
-
-	  // Even if dblink_get_cipher_master_key() fails, it is executed normally.
-	  dblink_get_cipher_master_key ();
 	}
     }
 
@@ -2908,12 +2905,12 @@ db_set_system_parameters (const char *data)
     {
       if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
 	{
-	  int val = PRM_GET_INT (prm_get_value (PRM_ID_LK_TIMEOUT));
+	  int val = PRM_GET_INT_P (prm_get_value (PRM_ID_LK_TIMEOUT));
 	  (void) tran_reset_wait_times (((val > 0) ? (val * 1000) : val));
 	}
       else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
 	{
-	  int val = PRM_GET_INT (prm_get_value (PRM_ID_LOG_ISOLATION_LEVEL));
+	  int val = PRM_GET_INT_P (prm_get_value (PRM_ID_LOG_ISOLATION_LEVEL));
 #if defined(CS_MODE)
 	  error = tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
 	  if (error != NO_ERROR)

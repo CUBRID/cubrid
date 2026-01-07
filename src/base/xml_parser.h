@@ -85,15 +85,15 @@ struct xml_element_def
 {
   const char *full_name;	/* fullname of element with spaces between parents */
   const int depth;		/* first level has depth 1 */
-  ELEM_START_FUNC start_func;	/* element start function */
-  ELEM_END_FUNC end_func;	/* element end function */
-  ELEM_DATA_FUNC data_func;	/* element content handling function */
+  const ELEM_START_FUNC start_func;	/* element start function */
+  const ELEM_END_FUNC end_func;	/* element end function */
+  const ELEM_DATA_FUNC data_func;	/* element content handling function */
 };
 
 typedef struct xml_element XML_ELEMENT;
 struct xml_element
 {
-  XML_ELEMENT_DEF *def;
+  const XML_ELEMENT_DEF *def;
   const char *short_name;
   XML_ELEMENT *parent;		/* parent element */
   XML_ELEMENT *child;		/* first child element */
@@ -132,8 +132,8 @@ extern "C"
 {
 #endif
 
-  XML_Parser xml_init_parser (void *data, const char *xml_file, const char *encoding, XML_ELEMENT_DEF ** element_array,
-			      const int count);
+  XML_Parser xml_init_parser (void *data, const char *xml_file, const char *encoding,
+			      const XML_ELEMENT_DEF ** element_array, const int count);
   void xml_destroy_parser (void *data);
   void xml_destroy_parser_data (void *data);
   void xml_parser_exec (XML_PARSER_DATA * pd);
