@@ -2645,7 +2645,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       break;
 
     case PLAN_PARALLEL_OPT_CAN_USE:
-      parallelism = -1;		/* default */
+      parallelism = -1;		/* auto-compute */
       break;
 
     default:
