@@ -70,10 +70,6 @@
 
 static int query_sequence_num;
 
-#if defined(WINDOWS)
-static int cas_req_count;	/* Request count for restart check (WINDOWS only) */
-#endif /* WINDOWS */
-
 FN_RETURN cas_main_fn_ret = FN_KEEP_CONN;
 
 static cas_cleanup_callback_t cleanup_callback = NULL;
@@ -332,7 +328,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 		signal (SIGUSR1, query_cancel);
 #endif /* !WINDOWS */
 
-		fn_ret = ops->process_request (client_sock_fd, &net_buf, &req_info);
+		fn_ret = ops->process_request (client_sock_fd, &net_buf, &req_info, srv_sock_fd);
 		cas_main_fn_ret = fn_ret;
 		as_info->fn_status = FN_STATUS_DONE;
 
