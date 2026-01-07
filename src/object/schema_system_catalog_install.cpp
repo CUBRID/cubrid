@@ -61,7 +61,19 @@ make_numeric_value_fn (const char *str)
 {
   return [str] (DB_VALUE *val)
   {
+#if 1 // used in phase-2
     return numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
+#else // used in phase-3
+    int error_code = NO_ERROR;
+    error_code = numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    FLOAT_TO_FIXED_NUMERIC (val);
+    return error_code;
+#endif
   };
 }
 
@@ -1002,56 +1014,13 @@ namespace cubschema
       {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
-      {
-	"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
-	{
-#if 1 // used in phase-2
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-#else // used in phase-3
-	  int error_code = NO_ERROR;
-	  error_code = numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-	  if (error_code != NO_ERROR)
-	    {
-	      return error_code;
-	    }
-
-	  FLOAT_TO_FIXED_NUMERIC (val);
-	  return error_code;
-#endif
-	}
-      },
-      {
-	"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
-	{
-#if 1 // used in phase-2
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-#else // used in phase-3
-	  int error_code = NO_ERROR;
-	  error_code = numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-	  if (error_code != NO_ERROR)
-	    {
-	      return error_code;
-	    }
-
-	  FLOAT_TO_FIXED_NUMERIC (val);
-	  return error_code;
-#endif
-	}
-      },
+      {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
       {"max_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
       {"min_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
-      {
-	"cyclic", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
-      {
-	"started", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
+      {"start_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"cyclic", "integer", make_int_value_fn (0)},
+      {"started", "integer", make_int_value_fn (0)},
       {"class_name", "string"},
       {"attr_name", "string"},
       {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
@@ -1906,11 +1875,11 @@ namespace cubschema
     {
       {"name", format_varchar (255)},
       {"owner", format_varchar (255)},
-      {"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"start_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
+      {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"max_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"start_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
       {"cyclic", "integer"},
       {"started", "integer"},
       {"class_name", format_varchar (255)},
