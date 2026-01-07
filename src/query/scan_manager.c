@@ -4453,11 +4453,11 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       break;
 
-    case S_PARALLEL_HEAP_SCAN:
 #if SERVER_MODE && !WINDOWS
+    case S_PARALLEL_HEAP_SCAN:
       scan_reset_scan_block_parallel_heap_scan (thread_p, s_id);
-#endif /* SERVER_MODE && !WINDOWS */
       break;
+#endif /* SERVER_MODE && !WINDOWS */
 
     case S_INDX_SCAN:
       if (s_id->grouped)
@@ -5210,14 +5210,12 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_HEAP_SAMPLING_SCAN:
       status = scan_next_heap_scan (thread_p, scan_id);
       break;
-    case S_PARALLEL_HEAP_SCAN:
+
 #if SERVER_MODE && !WINDOWS
+    case S_PARALLEL_HEAP_SCAN:
       status = scan_next_parallel_heap_scan (thread_p, scan_id);
-#else
-      assert_release (0);
-      status = S_ERROR;
-#endif /* SERVER_MODE && !WINDOWS */
       break;
+#endif /* SERVER_MODE && !WINDOWS */
 
     case S_HEAP_PAGE_SCAN:
       status = scan_next_heap_page_scan (thread_p, scan_id);
