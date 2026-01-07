@@ -60,8 +60,51 @@ namespace cubhnsw
   }
 
   // =====================================================================
-  // graph
+  // graph layout
   // =====================================================================
+  /*
+   * Design note: span-based, extensible layouts
+   *
+   * All graph-related structures in this file are span-based views over a
+   * contiguous memory region ("tape_").
+   *
+   * - Each structure defines a fixed-size header.
+   * - Variable-sized data (vectors, neighbors, metadata) is stored after
+   *   the header and accessed via explicit offsets.
+   *
+   * This design intentionally allows:
+   * - Appending additional fields after the existing layout
+   * - Extending layouts via inheritance without breaking compatibility
+   * - Safe reuse of the same underlying buffer across derived views
+   *
+   * In other words:
+   *   base_layout | extension_1 | extension_2 | ...
+   *
+   * As long as the base header remains unchanged, derived layouts can
+   * safely interpret and extend the memory span.
+   */
+
+  // =====================================================================
+
+  /*
+   * Root node layout (serialized on tape_)
+   *
+   * | hnsw_build_params | max_level | entry_point |
+   *
+   * - hnsw_build_params:
+   *   Global build-time parameters for the HNSW index (M, efConstruction, etc).
+   *
+   * - max_level (level_t):
+   *   The highest level currently present in the graph.
+   *
+   * - entry_point (slot_id_t):
+   *   Slot identifier of the entry node at max_level.
+   *   - storage_kind::disk   -> OID
+   *   - storage_kind::memory -> std::size_t
+   *
+   * This structure represents the minimal persistent metadata required
+   * to bootstrap traversal of the HNSW graph.
+   */
   template <typename ID_TRAITS>
   class root_t
   {
@@ -143,6 +186,34 @@ namespace cubhnsw
       }
   };
 
+  /*
+  * Graph node layout (serialized on tape_)
+  *
+  * | key | level | neighbors_offset | vector | neighbors... |
+  *
+  * - key (OID):
+  *   Logical identifier of the indexed object.
+  *   This is the primary reference used to map graph nodes back to
+  *   database tuples.
+  *
+  * - level (level_t):
+  *   Maximum HNSW level of this node.
+  *
+  * - neighbors_offset (std::size_t):
+  *   Byte offset from tape_ to the beginning of the neighbors array.
+  *   Allows variable-sized vectors without fixing the header layout.
+  *
+  * - vector (float[dim]):
+  *   Stored embedding vector (raw, already normalized if required).
+  *
+  * - neighbors:
+  *   Adjacency lists for each level, stored separately and accessed
+  *   via neighbors_ref_t.
+  *
+  * Notes:
+  * - The header is fixed-size; vector and neighbors are variable-size.
+  * - neighbors_offset decouples vector dimension from graph topology.
+  */
   template <class ID_TRAITS>
   class node_t
   {
@@ -217,6 +288,13 @@ namespace cubhnsw
 	std::memcpy (vector_tape(), v, dim * sizeof (float));
       }
 
+      /*
+      * neighbors_offset:
+      *
+      * - Enables variable-length vectors without duplicating node headers.
+      * - Allows future extension (e.g., quantized vectors, metadata blocks).
+      * - Keeps neighbor lists naturally aligned after vector storage.
+      */
       std::size_t get_neighbors_offset () const noexcept
       {
 	return misaligned_load<std::size_t> (tape_ + offset_neighbors_offset);
@@ -246,6 +324,25 @@ namespace cubhnsw
       }
   };
 
+  /*
+  * Neighbor list layout (serialized on tape_)
+  *
+  * | count | slot_0 | slot_1 | ... | slot_(count-1) |
+  *
+  * - count (neighbors_count_t):
+  *   Number of valid neighbor entries.
+  *
+  * - slot_i (slot_id_t):
+  *   Slot identifiers of adjacent nodes.
+  *   Interpretation depends on storage backend:
+  *     - disk   -> OID
+  *     - memory -> std::size_t
+  *
+  * Notes:
+  * - Compact, contiguous memory layout for cache efficiency.
+  * - No pointers: fully relocatable and disk-friendly.
+  * - Erase and push_back operate in-place.
+  */
   template <class ID_TRAITS>
   class neighbors_ref_t
   {
