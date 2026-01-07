@@ -4452,6 +4452,22 @@ file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid)
   return file_temp_retire_internal (thread_p, vfid, true);
 }
 
+int
+file_temp_truncate (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  int error_code = NO_ERROR;
+  if (vfid == NULL || VFID_ISNULL (vfid))
+    {
+      return NO_ERROR;
+    }
+  error_code = file_temp_reset_user_pages (thread_p, vfid);
+  if (error_code != NO_ERROR)
+    {
+      assert (false);
+    }
+  return error_code;
+}
+
 /*
  * file_temp_retire_internal () - retire temporary file. put it in cache is possible or destroy the file.
  *

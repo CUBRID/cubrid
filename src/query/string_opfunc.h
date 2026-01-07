@@ -87,6 +87,11 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 #define TIMESTAMPTZ_BUF_SIZE	(TIMESTAMP_BUF_SIZE + TIMEZONE_BUF_SIZE)
 #define DATETIMETZ_BUF_SIZE	(DATETIME_BUF_SIZE + TIMEZONE_BUF_SIZE)
 
+#define QSTR_DATETIME_LENGTH 26
+#define DATETIME_NULL_VALUE { UINT_MAX, UINT_MAX }
+#define DATETIME_IS_NULL(dt) \
+  ((dt)->date == UINT_MAX && (dt)->time == UINT_MAX)
+
 /*
  *  For the trim operation, db_string_trim(), this operand specifies
  *  that the trim character should be removed from the front, back
@@ -265,6 +270,7 @@ extern int db_time_format (const DB_VALUE * src_time, const DB_VALUE * src_forma
 extern int db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VALUE * result_datetime);
 extern int db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp);
 extern int db_datetime_to_timestamp (const DB_VALUE * src_datetime, DB_VALUE * result_timestamp);
+extern int db_timestamp_to_datetime (const DB_VALUE * src_timestamp, DB_VALUE * result_datetime);
 extern int db_months_between (const DB_VALUE * start_mon, const DB_VALUE * end_mon, DB_VALUE * result_mon);
 extern int db_sys_date (DB_VALUE * result_date);
 extern int db_sys_time (DB_VALUE * result_time);
