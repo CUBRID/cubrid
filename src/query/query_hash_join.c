@@ -1852,6 +1852,15 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       context->list_id = NULL;
       return NO_ERROR;
     }
+  else if (single_context->list_id->tuple_cnt == 0)
+    {
+      qfile_destroy_list (thread_p, single_context->list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
+
+      single_context->list_id = context->list_id;
+      context->list_id = NULL;
+      return NO_ERROR;
+    }
   else if (context->list_id->tuple_cnt == 0)
     {
       qfile_destroy_list (thread_p, context->list_id);
