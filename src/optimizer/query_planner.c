@@ -12445,7 +12445,12 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
   if (PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_MERGE_QUERY))
     {
-      /* TODO: xtran_server_start_topop does not support concurrency. */
+      /* MERGE queries cannot use parallel execution because they use
+       * xtran_server_start_topop() to ensure statement atomicity, as each row may
+       * require both UPDATE and INSERT operations to be performed atomically.
+       * xtran_server_start_topop() internally calls log_sysop_start().
+       * log_sysop_start() uses a transaction-level mutex (rmutex_topop) that does not
+       * support concurrent access from multiple worker threads sharing the same transaction. */
       return PLAN_PARALLEL_OPT_CANNOT_USE;
     }
 
@@ -12482,13 +12487,16 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
   if (tree->info.query.q.select.hint & PT_HINT_PARALLEL)
     {
-      if (tree->info.query.q.select.num_parallel_threads == PT_MIN_PARALLEL_THREADS)
+      assert (tree->info.query.q.select.num_parallel_threads >= 0);
+
+      if (tree->info.query.q.select.num_parallel_threads > 1)
 	{
-	  return PLAN_PARALLEL_OPT_NO;
+	  return PLAN_PARALLEL_OPT_USE;
 	}
       else
 	{
-	  return PLAN_PARALLEL_OPT_USE;
+	  /* hint 0 or 1 disables parallel execution */
+	  return PLAN_PARALLEL_OPT_NO;
 	}
     }
 
