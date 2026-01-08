@@ -4061,7 +4061,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, "%*cSPLIT (time: %d, fetch: %ld, ioread: %ld, partitions: %d)\n", indent, ' ',
 	       TO_MSEC (stats->split.elapsed_time), stats->split.fetches, stats->split.ioreads, part_cnt);
 
-      if (stats->max_parallel_workers > 0)
+      if (stats->num_parallel_threads > 1)
 	{
 	  fprintf (fp, "%*cPARALLEL (time: %d, fetch: %ld, ioread: %ld)\n", indent, ' ',
 		   TO_MSEC (stats->parallel.elapsed_time), stats->parallel.fetches, stats->parallel.ioreads);
@@ -4117,7 +4117,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       indent -= 2;
 #endif /* HASHJOIN_DUMP_PARTITION */
 
-      if (stats->max_parallel_workers > 0)
+      if (stats->num_parallel_threads > 1)
 	{
 	  fprintf (fp,
 		   "%*cPROBE (time: %d..%d, fetch: %ld, ioread: %ld, readrows: %ld, readkeys: %ld, rows: %ld)\n",
@@ -4161,7 +4161,7 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       indent -= 2;
 #endif /* HASHJOIN_DUMP_PARTITION */
 
-      if (stats->max_parallel_workers > 0)
+      if (stats->num_parallel_threads > 1)
 	{
 	  indent -= 2;
 	}
@@ -4364,7 +4364,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (parent, "split", split);
 
       build = json_object ();
-      if (stats->max_parallel_workers > 0)
+      if (stats->num_parallel_threads > 1)
 	{
 	  len =
 	    sprintf (time_str, "%d..%d", TO_MSEC (stats->build.range_time.min), TO_MSEC (stats->build.range_time.max));
@@ -4421,7 +4421,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
 #endif /* HASHJOIN_DUMP_PARTITION */
 
       probe = json_object ();
-      if (stats->max_parallel_workers > 0)
+      if (stats->num_parallel_threads > 1)
 	{
 	  len =
 	    sprintf (time_str, "%d..%d", TO_MSEC (stats->probe.range_time.min), TO_MSEC (stats->probe.range_time.max));
@@ -4471,7 +4471,7 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, json_t * parent)
       json_object_set_new (probe, "partition_list", part_array);
 #endif /* HASHJOIN_DUMP_PARTITION */
 
-      if (stats->max_parallel_workers > 0)
+      if (stats->num_parallel_threads > 1)
 	{
 	  parallel = json_object ();
 	  json_object_set_new (parallel, "time", json_integer (TO_MSEC (stats->parallel.elapsed_time)));

@@ -97,7 +97,6 @@ namespace cubthread
     context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
-    context.m_px_orig_thread_entry = NULL;
     context.shutdown = false;
     context.m_px_orig_thread_entry = NULL;
     perfmon_destroy_parallel_stats (&context);
