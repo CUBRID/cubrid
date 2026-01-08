@@ -502,6 +502,9 @@ enum param_id
 
   PRM_ID_PARALLELISM,
   PRM_ID_MAX_PARALLEL_WORKERS,
+  PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+  PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+  PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD,
 
   PRM_ID_PAGE_LATCH_TIMEOUT,
 
@@ -670,6 +673,11 @@ extern "C"
  */
 #define PRM_PRECISION	1
 #define PRM_SCALE	2
+
+/*
+ * for PRM_ID_PARALLELISM
+ */
+#define PRM_MAX_PARALLELISM	32	/* Limit set to 32 for flexibility; efficiency is low beyond 16. */
 
   typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 

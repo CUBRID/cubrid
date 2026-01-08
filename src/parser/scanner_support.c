@@ -777,13 +777,13 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		    {
 		      node->info.query.q.select.hint =
 			(PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+		      if (num_parallel_threads < 0)
 			{
-			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			  num_parallel_threads = 0;
 			}
-		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+		      else if (num_parallel_threads > PRM_MAX_PARALLELISM)
 			{
-			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			  num_parallel_threads = PRM_MAX_PARALLELISM;
 			}
 		      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
 		      hint_table[i].arg_list = NULL;
@@ -799,13 +799,13 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  if (*p == '\0')
 		    {
 		      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
-		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+		      if (num_parallel_threads < 0)
 			{
-			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			  num_parallel_threads = 0;
 			}
-		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+		      else if (num_parallel_threads > PRM_MAX_PARALLELISM)
 			{
-			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			  num_parallel_threads = PRM_MAX_PARALLELISM;
 			}
 		      node->info.delete_.num_parallel_threads = num_parallel_threads;
 		      hint_table[i].arg_list = NULL;
@@ -821,13 +821,13 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		  if (*p == '\0')
 		    {
 		      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
-		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+		      if (num_parallel_threads < 0)
 			{
-			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			  num_parallel_threads = 0;
 			}
-		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+		      else if (num_parallel_threads > PRM_MAX_PARALLELISM)
 			{
-			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			  num_parallel_threads = PRM_MAX_PARALLELISM;
 			}
 		      node->info.update.num_parallel_threads = num_parallel_threads;
 		      hint_table[i].arg_list = NULL;
