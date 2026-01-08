@@ -4682,6 +4682,11 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  /* single process */
 	  return 1;
 	}
+      /* check tuple_cnt */
+      if (sort_info_p->input_file->tuple_cnt <= parallel_num)
+	{
+	  return 1;
+	}
 
       /* check worker */
       sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
