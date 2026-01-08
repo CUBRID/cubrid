@@ -2812,15 +2812,15 @@ heap_classrepr_dump (THREAD_ENTRY * thread_p, FILE * fp, const OID * class_oid, 
 	      /* find index_name */
 	      for (j = 0; j < repr->n_indexes; ++j)
 		{
-		  if (BTID_IS_EQUAL (&(repr->indexes[j].btid), &(attrepr->btids[k])))
+		  if (BTID_IS_EQUAL (&(repr->indexes[j].btid), &(attrepr->btids[k].btid)))
 		    {
 		      index_name = repr->indexes[j].btname;
 		      break;
 		    }
 		}
 
-	      fprintf (fp, " BTID: VFID %d|%d, Root_PGID %d, %s\n", (int) attrepr->btids[k].vfid.volid,
-		       attrepr->btids[k].vfid.fileid, attrepr->btids[k].root_pageid,
+	      fprintf (fp, " BTID: VFID %d|%d, Root_PGID %d, %s\n", (int) attrepr->btids[k].btid.vfid.volid,
+		       attrepr->btids[k].btid.vfid.fileid, attrepr->btids[k].btid.root_pageid,
 		       (index_name == NULL) ? "unknown" : index_name);
 	    }
 	}
@@ -7041,7 +7041,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	  for (i = 0; i < scan_cache->num_btids; i++)
 	    {
 	      // TODO (CUBVEC): refactor this code
-	      if (!BTID_IS_VECTOR_INDEX (&classrepr->indexes[i].btid))
+	      if (classrepr->indexes[i].type != HNSW_VECTOR_INDEX)
 		{
 		  scan_cache->m_index_stats->add_empty (classrepr->indexes[i].btid);
 		}
@@ -12958,6 +12958,8 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
     {
       value = &idx_attrinfo->values[value_index];
       *n_btids = value->last_attrepr->n_btids;
+      // TODO (CUBVEC) : OR_ATTRIBUTE structure has been changed due to CUBVEC-142 issue.
+      // Currently, btids contains index type, we need to collect BTID from array.
       *btids = value->last_attrepr->btids;
       *attrid = value->attrid;
       return &value->dbvalue;

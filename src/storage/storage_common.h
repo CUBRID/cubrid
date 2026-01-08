@@ -317,6 +317,11 @@ struct lorecdes
   (((b1)->vfid.fileid == (b2)->vfid.fileid) && \
    ((b1)->vfid.volid == (b2)->vfid.volid))
 
+   /* TODO (CUBVEC) : This function is used to check if the index is a vector index.
+    * Since all vector indexes are now stored in disk storage,
+    * we cannot check if the index is a vector index by checking the volume ID.
+    * We need to check the index type by lookup page header of the index page.
+    */
 #define BTID_IS_VECTOR_INDEX(btid)  ((btid)->vfid.volid == NULL_VOLID)
 
 // TODO (CUBVEC): the following should be removed after CUBVEC-135 is resolved.
@@ -672,7 +677,7 @@ typedef enum
   BTREE_REVERSE_INDEX,
   BTREE_PRIMARY_KEY,
   BTREE_FOREIGN_KEY,
-  VECTOR_INDEX
+  HNSW_VECTOR_INDEX
 } BTREE_TYPE;
 
 /************************************************************************/

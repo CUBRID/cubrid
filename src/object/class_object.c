@@ -590,6 +590,7 @@ classobj_copy_props (DB_SEQ * properties, MOP filter_class, DB_SEQ ** new_proper
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_REVERSE_INDEX);
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_PRIMARY_KEY);
       (void) classobj_drop_prop (*new_properties, SM_PROPERTY_FOREIGN_KEY);
+      (void) classobj_drop_prop (*new_properties, SM_PROPERTY_VECTOR_INDEX);
 
       error = classobj_make_class_constraints (properties, class_->attributes, &constraints);
       if (error != NO_ERROR)

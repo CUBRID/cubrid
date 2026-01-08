@@ -12177,6 +12177,7 @@ transfer_disk_structures (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
       classobj_drop_prop (flat->properties, SM_PROPERTY_REVERSE_INDEX);
       classobj_drop_prop (flat->properties, SM_PROPERTY_PRIMARY_KEY);
       classobj_drop_prop (flat->properties, SM_PROPERTY_FOREIGN_KEY);
+      classobj_drop_prop (flat->properties, SM_PROPERTY_VECTOR_INDEX);
 
       num_pk = 0;
       for (con = flat_constraints; ((con != NULL) && (error == NO_ERROR)); con = con->next)

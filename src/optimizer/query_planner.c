@@ -984,6 +984,11 @@ qo_top_plan_new (QO_PLAN * plan)
       return plan;
     }
 
+  if (qo_is_viscan (plan))
+    {
+      return plan;
+    }
+
   all_distinct = tree->info.query.all_distinct;
   group_by = tree->info.query.q.select.group_by;
   order_by = tree->info.query.order_by;
