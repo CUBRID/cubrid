@@ -3781,7 +3781,8 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
       else if (astats->analytic_unsorted_count == astats->analytic_total_count)
 	{
-	  fprintf (fp, ", sort: false");
+	  fprintf (fp, ", sort: false, page: %lld, ioread: %lld",
+		   (long long int) astats->analytic_pages, (long long int) astats->analytic_ioreads);
 	}
       else
 	{

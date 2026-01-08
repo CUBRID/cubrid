@@ -108,6 +108,7 @@ namespace cubxasl
     analytic_eval_type *next;	/* next eval group */
     analytic_list_node *head;		/* analytic type list */
     SORT_LIST *sort_list;		/* partition sort */
+    int sort_list_size;		/* the total size of the sort list */
     int covered_size;		/* covered size */
     DB_VALUE *current_values;	/* current values */
     DB_VALUE *temp_values;	/* temp values */

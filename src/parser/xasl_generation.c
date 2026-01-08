@@ -16065,101 +16065,39 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_
 	  return NULL;
 	}
 
-        newa->covered_size = 0;
+      newa->covered_size = 0;
+      newa->sort_list_size = af_meta[i].key_size;
 
-        if (qo_is_iscan (qo_plan))
-       {
-         QO_NODE_INDEX_ENTRY *ni_entry;
-         QO_INDEX_ENTRY *index_entry;
-         int col_idx, pos_no;
-         PT_NODE *sort_spec_list;
-         bool covered = false;
-        
-         ni_entry = qo_plan->plan_un.scan.index;
-         index_entry = ni_entry->head;
-  
-         sort_spec_list = NULL;
-         if (index_entry != NULL && index_entry->constraints != NULL)
-           {
-             PT_NODE *attr = NULL;
+      if (qo_is_iscan (qo_plan))
+	{
+	  QO_INDEX_ENTRY *index_entry;
+	  PT_NODE *attr;
 
-             for (col_idx = 0; col_idx < index_entry->col_num; col_idx++)
-               {
-                 const char *column_name = db_attribute_name(index_entry->constraints->attributes[col_idx]);
+	  assert (qo_plan->plan_un.scan.index->head);
 
-                 for (attr = info->select_list, pos_no = 0; attr != NULL; attr = attr->next, pos_no++)
-                   {
-                     if (PT_IS_NAME_NODE (attr))
-                       {
-                         if (strcmp (pt_get_name (attr), column_name) == 0)
-                           {
-                                newa->covered_size ++;
+	  index_entry = qo_plan->plan_un.scan.index->head;
 
-                                PT_NODE *sort_spec_node = parser_new_node (parser, PT_SORT_SPEC);
-                                if (sort_spec_node == NULL)
-                                  {
-                                    return NULL;
-                                  }
-                              
-                                PT_NODE *sort_spec_num = pt_make_integer_value (parser, pos_no + 1);
-                                sort_spec_node->info.sort_spec.asc_or_desc = index_entry->constraints->asc_desc[col_idx] == 0 ? PT_ASC : PT_DESC;
-                                sort_spec_node->info.sort_spec.expr = sort_spec_num;
-                                sort_spec_node->info.sort_spec.pos_descr.pos_no = pos_no + 1;
+	  int col_idx = 0;
+	  SORT_LIST *sort_list = newa->sort_list;
+	  while (sort_list != NULL && col_idx < index_entry->col_num)
+	    {
+	      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
 
-                                sort_spec_list = parser_append_node (sort_spec_node, sort_spec_list);
-				break;
-                           }
-                       }
-                   }
-  
-                 if (attr == NULL)
-                   {
-                     break;
-                   }
-               }
-             SORT_LIST *covered_list =
-               pt_to_sort_list (parser, sort_spec_list, info->select_list, SORT_LIST_ANALYTIC_WINDOW);
-  
-             covered = pt_is_sort_list_covered (parser, covered_list, newa->sort_list);
-  
-             if (covered)
-               {
-                 newa->covered_size = 1;
-                 if (ret == NULL)
-                   {
-                     ret = newa;
-                   }
-                 else
-                   {
-                     tail = ret;
-                     ret = newa;
-                     newa->next = tail;
-                   }
-               }
-             else
-               {
-                 if (ret == NULL)
-                   {
-                     ret = newa;
-                   }
-                 else
-                   {
-                     tail = ret;
-                     while (tail->next != NULL)
-                       {
-                         tail = tail->next;
-                       }
-  
-                     /* link */
-                     tail->next = newa;
-                   }
-               }
-           }
-         // else .. impossible case
-       }
-  
-        else
-       {
+	      const char *column_name = db_attribute_name (index_entry->constraints->attributes[col_idx]);
+
+	      if (!pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
+		{
+		  newa->covered_size++;
+		}
+	      else
+		{
+		  break;
+		}
+
+	      sort_list = sort_list->next;
+	      col_idx++;
+	    }
+	}
 
       /* attach to current list */
       if (ret == NULL)
@@ -16169,17 +16107,25 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_
 	}
       else
 	{
-	  /* locate list tail */
-	  tail = ret;
-	  while (tail->next != NULL)
+	  if (newa->covered_size > 0)
 	    {
-	      tail = tail->next;
+	      tail = ret;
+	      ret = newa;
+	      newa->next = tail;
 	    }
+	  else
+	    {
+	      /* locate list tail */
+	      tail = ret;
+	      while (tail->next != NULL)
+		{
+		  tail = tail->next;
+		}
 
-	  /* link */
-	  tail->next = newa;
+	      /* link */
+	      tail->next = newa;
+	    }
 	}
-      }
     }
 
   /*
@@ -16761,6 +16707,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      /* register the eval list in the plan for printing purposes */
 	      qo_plan->analytic_eval_list = xasl->proc.buildlist.a_eval_list;
+	    }
+	  if (xasl->proc.buildlist.a_eval_list->covered_size == xasl->proc.buildlist.a_eval_list->sort_list_size
+	      && xasl->proc.buildlist.a_eval_list->covered_size != 0)
+	    {
+	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_NO_SORT_OPT);
 	    }
 
 	  /* substitute references of analytic arguments */

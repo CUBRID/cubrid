@@ -6380,13 +6380,16 @@ stx_build_analytic_eval_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_EVAL_
     }
 
   ptr = or_unpack_int (ptr, &tmp_i);
+  analytic_eval->sort_list_size = tmp_i;
+
+  ptr = or_unpack_int (ptr, &tmp_i);
   analytic_eval->covered_size = tmp_i;
 
-//   ptr = or_unpack_int (ptr, &tmp_i);
-//   analytic_eval->curr_group_tuple_count = tmp_i;
+  ptr = or_unpack_int (ptr, &offset);
+  analytic_eval->current_values = NULL;
 
-//   ptr = or_unpack_int (ptr, &tmp_i);
-//   analytic_eval->curr_sort_key_tuple_count = tmp_i;
+  ptr = or_unpack_int (ptr, &offset);
+  analytic_eval->temp_values = NULL;
 
   return ptr;
 

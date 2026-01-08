@@ -1189,14 +1189,16 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (fetch_val_list (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, NULL, PEEK) != NO_ERROR)
+      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
 	{
-	  return ER_FAILED;
-	}
+	  a_eval_list = buildlist->a_eval_list;
 
-      for (a_eval_list = buildlist->a_eval_list; a_eval_list && a_eval_list->covered_size > 0;
-	   a_eval_list = a_eval_list->next)
-	{
+	  if (fetch_val_list (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, NULL, PEEK) !=
+	      NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
 	  if (xasl->list_id->tuple_cnt == 0)
 	    {
 	      int key_idx = 0;
@@ -1313,6 +1315,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  for (int i = 0; i < key_idx; i++)
 		    {
+		      pr_clear_value (&a_eval_list->current_values[i]);
 		      pr_clone_value (&a_eval_list->temp_values[i], &a_eval_list->current_values[i]);
 		    }
 		}
@@ -2361,6 +2364,21 @@ qexec_clear_analytic_function_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p,
 	}
       for (p = e->head; p; p = p->next)
 	{
+	  if (p->group_list_id != NULL)
+	    {
+	      qfile_close_list (thread_p, p->group_list_id);
+	      qfile_destroy_list (thread_p, p->group_list_id);
+	      qfile_free_list_id (p->group_list_id);
+	      p->group_list_id = NULL;
+	    }
+	  if (p->order_list_id != NULL)
+	    {
+	      qfile_close_list (thread_p, p->order_list_id);
+	      qfile_destroy_list (thread_p, p->order_list_id);
+	      qfile_free_list_id (p->order_list_id);
+	      p->order_list_id = NULL;
+	    }
+
 	  (void) pr_clear_value (p->value);
 	  (void) pr_clear_value (p->value2);
 	  (void) pr_clear_value (&p->part_value);
@@ -15341,7 +15359,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
 
-	  if (xasl->proc.buildlist.a_eval_list)
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
 	    {
 	      int length = 0;
 
@@ -15366,7 +15384,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			{
 			  GOTO_EXIT_ON_ERROR;
 			}
-
 
 		      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 			{
@@ -15421,20 +15438,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  else
 		    {
 		      a_eval_list->current_values = NULL;
+		      a_eval_list->temp_values = NULL;
 		    }
-
-
-		  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-		    {
-		      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
-			{
-			  if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
-			    {
-			      GOTO_EXIT_ON_ERROR;
-			    }
-			}
-		    }
-
 		}
 	    }
 	}
@@ -16116,6 +16121,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+
+	      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_NO_SORT_OPT);
 	      xasl->analytic_stats.analytic_total_count++;
 	    }
 
@@ -21071,7 +21078,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (analytic_eval->covered_size != 0)
+    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
       {
 	analytic_state.interm_file = list_id;
       }
@@ -21161,8 +21168,17 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (analytic_eval->covered_size != 0)
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
     {
+      for (i = 0; i < analytic_state.func_count; i++)
+	{
+	  if (qexec_analytic_finalize_group (thread_p, analytic_state.xasl_state, &analytic_state.func_state_list[i],
+					     false) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -21175,7 +21191,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   if (thread_is_on_trace (thread_p))
     {
       is_sorted = true;
-//     xasl->analytic_stats.analytic_sort = true;
       old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
       old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
     }
@@ -21393,6 +21408,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 
   if (func_p->order_list_id != NULL)
     {
+      // ??
       func_state->value_list_id = func_p->order_list_id;
       func_p->order_list_id = NULL;
     }
