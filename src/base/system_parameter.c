@@ -772,8 +772,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
 
 #define PRM_NAME_PARALLELISM "parallelism"
-
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
+#define PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD "parallel_heap_scan_page_threshold"
+#define PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD "parallel_hash_join_page_threshold"
+#define PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD "parallel_sort_page_threshold"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -5085,9 +5087,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2}},
-   {false, {.i = 0}},
-   {false, {.i = 32}},
+   {false, {.i = 4}},
+   {false, {.i = 4}},
+   {false, {.i = PRM_MAX_PARALLELISM}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5097,9 +5099,45 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 32}},
+   {false, {.i = 100}},
+   {false, {.i = 100}},
+   {false, {.i = 1000}},
    {false, {.i = 0}},
-   {false, {.i = 128}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2048}},
+   {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2048}},
+   {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2048}},
+   {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -9687,6 +9725,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *thread_core_count_prm;
+  SYSPRM_PARAM *max_parallel_workers_prm;
+  SYSPRM_PARAM *parallelism_prm;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -9744,6 +9784,49 @@ prm_tune_parameters (void)
 	{
 	  sprintf (newval, "%d", core_upper_limit);
 	  (void) prm_set (thread_core_count_prm, newval, false);
+	}
+
+      /* set parallelism to system_cpu_count if it is greater than cubthread::system_core_count () */
+      parallelism_prm = GET_PRM (PRM_ID_PARALLELISM);
+      if (PRM_GET_INT (parallelism_prm->value) > system_cpu_count)
+	{
+	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (parallelism_prm, newval, false);
+	}
+
+      /* set parallelism to max_parallel_workers if it is greater than max_parallel_workers */
+      max_parallel_workers_prm = GET_PRM (PRM_ID_MAX_PARALLEL_WORKERS);
+      if (PRM_GET_INT (parallelism_prm->value) > PRM_GET_INT (max_parallel_workers_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_parallel_workers_prm->value));
+	  (void) prm_set (parallelism_prm, newval, false);
+	}
+
+      if (PRM_GET_BOOL (test_mode_prm->value) == true)
+	{
+	  SYSPRM_PARAM *heap_scan_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
+	  SYSPRM_PARAM *hash_join_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
+	  SYSPRM_PARAM *sort_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
+
+	  if (PRM_GET_INT (heap_scan_page_threshold_prm->value) ==
+	      PRM_GET_INT (heap_scan_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 32);	/* TODO: 0 ? */
+	      (void) prm_set (heap_scan_page_threshold_prm, newval, false);
+	    }
+
+	  if (PRM_GET_INT (hash_join_page_threshold_prm->value) ==
+	      PRM_GET_INT (hash_join_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 0);
+	      (void) prm_set (hash_join_page_threshold_prm, newval, false);
+	    }
+
+	  if (PRM_GET_INT (sort_page_threshold_prm->value) == PRM_GET_INT (sort_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 0);
+	      (void) prm_set (sort_page_threshold_prm, newval, false);
+	    }
 	}
 #endif
     }
