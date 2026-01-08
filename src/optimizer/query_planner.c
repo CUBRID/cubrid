@@ -11649,40 +11649,6 @@ qo_has_sort_limit_subplan (QO_PLAN * plan)
   return false;
 }
 
-// static int
-// qo_check_(QO_PLAN *plan, void *arg)
-// {
-//         ANALYTIC_EVAL_TYPE *eval_type = (ANALYTIC_EVAL_TYPE *) arg;
-
-// 	  QO_INDEX_ENTRY *index_entry;
-// 	  PT_NODE *attr;
-
-// 	  assert (plan->plan_un.scan.index->head);
-
-// 	  index_entry = plan->plan_un.scan.index->head;
-
-// 	  int col_idx = 0;
-// 	  SORT_LIST *sort_list = eval_type->sort_list;
-// 	  while (sort_list != NULL && col_idx < index_entry->col_num)
-// 	    {
-// 	      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
-
-// 	      const char *column_name = db_attribute_name (index_entry->constraints->attributes[col_idx]);
-
-// 	      if (!pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
-// 		{
-// 		  eval_type->covered_size++;
-// 		}
-// 	      else
-// 		{
-// 		  break;
-// 		}
-
-// 	      sort_list = sort_list->next;
-// 	      col_idx++;
-// 	    }
-// }
-
 /*
  * qo_check_like_recompile_candidate () - check if the plan is a LIKE recompile candidate
  * return : true if the plan is a LIKE recompile candidate, false otherwise
