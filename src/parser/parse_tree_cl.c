@@ -1367,6 +1367,11 @@ pt_point_l (PARSER_CONTEXT * parser, const PT_NODE * in_tree)
   list = NULL;
   for (node = tree; node; node = node->next)
     {
+      if (node->flag.is_hidden_column)
+	{
+	  continue;
+	}
+
       pointer = pt_point (parser, node);
       if (!pointer)
 	{

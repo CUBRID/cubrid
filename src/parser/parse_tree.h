@@ -1240,10 +1240,6 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
 
-/* Parallel query execution threads limits */
-#define  PT_MAX_PARALLEL_THREADS  64
-#define  PT_MIN_PARALLEL_THREADS  0
-
 /* Codes for error messages */
 typedef enum
 {

@@ -51,6 +51,7 @@ namespace parallel_heap_scan
       void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, UINT64 read_rows, UINT64 qualified_rows,
 		      struct timeval elapsed_time);
       void merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats);
+      void clear();
       std::vector<child_stats> m_stats;
       std::mutex m_stats_mutex;
   };
