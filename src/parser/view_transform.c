@@ -425,7 +425,6 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -5292,7 +5291,7 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *cte;
   PT_HINT_ENUM hint;
-  bool is_inlinable = true;
+  bool has_click_counter = false;
 
   assert (node->node_type == PT_WITH_CLAUSE);
 
@@ -5311,14 +5310,14 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 	  continue;
 	}
 
-      is_inlinable = true;
+      has_click_counter = false;
       /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
        * since it may change the query results. Handle it same as CTE with materialize hint. */
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
-			       mq_check_inline_cte, &is_inlinable, NULL, NULL);
+			       mq_has_click_counter, &has_click_counter, NULL, NULL);
 
       /* false subquery cannot be rewritten as inline view */
-      if (is_inlinable && pt_is_query (cte->info.cte.non_recursive_part))
+      if (!has_click_counter && pt_is_query (cte->info.cte.non_recursive_part))
 	{
 	  hint = pt_get_hint_from_query (parser, cte->info.cte.non_recursive_part);
 
@@ -5398,16 +5397,16 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
- * mq_check_inline_cte () -
+ * mq_has_click_counter () -
  *   return:
  *   parser(in):
  *   node(in):
  *   arg(in):
  */
-static PT_NODE *
-mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+PT_NODE *
+mq_has_click_counter (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  bool *can_inlining = (bool *) arg;
+  bool *has_click_counter = (bool *) arg;
 
   if (node == NULL)
     {
@@ -5416,11 +5415,10 @@ mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   switch (node->node_type)
     {
-      /* CTE cannot contain WITH clause inside, so we don't need to handle this case */
     case PT_EXPR:
       if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR)
 	{
-	  *can_inlining = false;
+	  *has_click_counter = true;
 	  *continue_walk = PT_STOP_WALK;
 	}
       break;
