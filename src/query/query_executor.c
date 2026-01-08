@@ -730,6 +730,7 @@ static int qexec_build_agg_hkey (THREAD_ENTRY * thread_p, XASL_STATE * xasl_stat
 static int qexec_locate_agg_hentry_in_list (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
 					    AGGREGATE_HASH_KEY * key, bool * found);
 static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE * default_val);
+static int qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 
 /*
  * Utility routines
@@ -1184,6 +1185,11 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	{
 	  ret = ER_QPROC_INVALID_QRY_SINGLE_TUPLE;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) != NO_ERROR)
+	{
 	  GOTO_EXIT_ON_ERROR;
 	}
 
@@ -2571,6 +2577,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    /* analytic functions */
 	    pg_cnt += qexec_clear_analytic_function_list (thread_p, xasl, buildlist->a_eval_list, is_final);
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_regu_list, is_final, false);
+	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_scan_regu_list, is_final, true);
 
 	    /* group by regu list */
 	    if (buildlist->g_scan_regu_list)
@@ -3076,6 +3083,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	    /* analytic functions */
 	    pg_cnt += qexec_clear_analytic_function_list (thread_p, xasl, buildlist->a_eval_list, is_final);
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_regu_list, is_final, true);
+	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_scan_regu_list, is_final, true);
 
 	    /* group by regu list */
 	    if (buildlist->g_scan_regu_list)
@@ -9242,6 +9250,19 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      return S_SUCCESS;
 				    }
+
+				  /* Evaluate analytic functions for tuples that don't satisfy instnum_pred yet.
+				   * For instnum_pred like "inst_num() > 10 AND inst_num() < 100", when inst_num() <= 10,
+				   * XASL_INSTNUM_FLAG_SCAN_CHECK flag is not set, but analytic functions must still be evaluated
+				   * to get correct results. Since analytic functions are evaluable in processing, we don't read all tuples,
+				   * so analytic functions must be evaluated at this point. */
+				  if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK))
+				    {
+				      if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) != NO_ERROR)
+					{
+					  return S_ERROR;
+					}
+				    }
 				}
 
 			      qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
@@ -15170,6 +15191,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       if (xasl->type == BUILDLIST_PROC)
 	{
 	  AGGREGATE_TYPE *agg_p;
+	  ANALYTIC_EVAL_TYPE *a_eval_list;
+	  ANALYTIC_TYPE *a_func_list;
 
 	  /* prepare hash table for aggregate evaluation */
 	  if (xasl->proc.buildlist.g_hash_eligible)
@@ -15194,6 +15217,20 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
+
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+		{
+		  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+		    {
+		      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		}
+	    }
 	}
       else if (xasl->type == BUILDVALUE_PROC)
 	{
@@ -15845,7 +15882,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 
       /* process analytic functions */
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list)
+      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.a_eval_list
+	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
 	  for (eval_list = xasl->proc.buildlist.a_eval_list; eval_list; eval_list = eval_list->next)
@@ -22901,6 +22939,54 @@ cleanup:
 
   /* all ok */
   return rc;
+}
+
+/*
+ * qexec_analytic_eval_in_processing () - evaluate analytic functions in processing
+ *   return: NO_ERROR, or ER_code
+ *   thread_p (in) : thread pointer
+ *   xasl (in) : xasl tree
+ *   xasl_state (in) : xasl state
+ */
+static int
+qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  BUILDLIST_PROC_NODE *buildlist;
+  ANALYTIC_EVAL_TYPE *a_eval_list;
+  ANALYTIC_TYPE *a_func_list;
+
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      assert (xasl->type == BUILDLIST_PROC);
+      assert (xasl->proc.buildlist.a_eval_list);
+      assert (xasl->proc.buildlist.a_eval_list->next == NULL);
+
+      buildlist = &xasl->proc.buildlist;
+      for (a_eval_list = buildlist->a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
+	{
+	  if (fetch_val_list
+	      (thread_p, buildlist->a_scan_regu_list, &xasl_state->vd, NULL, NULL, NULL, PEEK) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+	    {
+	      ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
+	      if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+
+	      if (a_func_list->function != PT_ROW_NUMBER)
+		{
+		  pr_clone_value (a_func_list->value, a_func_list->out_value);
+		}
+	    }
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
