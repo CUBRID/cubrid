@@ -36,6 +36,7 @@ namespace parallel_query
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
+    static std::size_t system_core_count;
     static int parallelism;
 
     static int heap_scan_page_threshold;
@@ -45,7 +46,9 @@ namespace parallel_query
     // *INDENT-OFF*
     std::call_once(once, [] {
       parallelism = prm_get_integer_value (PRM_ID_PARALLELISM);
-      assert ((std::size_t) parallelism <= cubthread::system_core_count ());
+      system_core_count = cubthread::system_core_count ();
+      assert (parallelism >= 0);
+      assert ((std::size_t) parallelism <= system_core_count);
 
       heap_scan_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
       hash_join_page_threshold = prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
@@ -56,6 +59,11 @@ namespace parallel_query
     UINT32 page_threshold;
     UINT32 auto_degree;
     const UINT32 start_degree = 2;
+
+    if (system_core_count <= start_degree)
+      {
+	return 0;	/* disable */
+      }
 
     assert (hint_degree == -1 /* auto-compute */ || (hint_degree >= 0 && hint_degree <= PRM_MAX_PARALLELISM));
 
@@ -120,21 +128,21 @@ namespace parallel_query
       }
     else if ((UINT32) hint_degree >= start_degree)
       {
-	/* hint first, ignore the parallelism parameter */
-	assert ((std::size_t) hint_degree <= cubthread::system_core_count ());
+	hint_degree = MIN (hint_degree, system_core_count);
 
-	if (num_pages >= (UINT64) hint_degree)
+	/* hint first, ignore the parallelism parameter */
+	if (num_pages < (UINT64) hint_degree)
 	  {
-	    return hint_degree;
+	    return num_pages;
 	  }
 	else
 	  {
-	    return MIN (num_pages, PRM_MAX_PARALLELISM);
+	    return hint_degree;
 	  }
       }
     else
       {
-	/* hint > 0 and < start_degree disables parallel execution */
+	/* hint >= 0 and < start_degree disables parallel execution */
 	return 0;
       }
 
