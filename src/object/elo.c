@@ -406,6 +406,7 @@ elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
       ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
       if (ret != NO_ERROR)
 	{
+	  es_delete_file (out_uri);
 	  goto error_return;
 	}
     }
