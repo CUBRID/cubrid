@@ -750,9 +750,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
       p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
       for (;
-	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
-	   && path->node_type == PT_VALUE && (path->type_enum == PT_TYPE_VARCHAR
-					      || path->type_enum == PT_TYPE_CHAR); p = p->next)
+	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
+	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR); p = p->next)
 	{
 	  mthd_file = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_drop_method_file (ctemplate, mthd_file);
@@ -763,45 +762,11 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	}
 
-      SM_CLASS *class_ = ctemplate->current;
-
-      for (int i = 0; i < class_->att_count; i++)
+      error = lob_process_dir_drop_attr_if_needed (ctemplate->current, (char *) attr_mthd_name);
+      if (error != NO_ERROR)
 	{
-	  SM_ATTRIBUTE attr = class_->attributes[i];
-
-	  if (strcmp (attr.header.name, attr_mthd_name) == 0)
-	    {
-	      if (TP_IS_LOB_TYPE (attr.type->id))
-		{
-		  HFID lob_hfid = class_->header.ch_heap;
-		  int lob_attrid_arr[1];
-
-		  p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
-		  for (;
-		       p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
-		       && path->node_type == PT_VALUE && (path->type_enum == PT_TYPE_VARCHAR
-							  || path->type_enum == PT_TYPE_CHAR); p = p->next)
-		    {
-		      mthd_file = (char *) path->info.value.data_value.str->bytes;
-		      error = dbt_drop_method_file (ctemplate, mthd_file);
-		      if (error != NO_ERROR)
-			{
-			  dbt_abort_class (ctemplate);
-			  return error;
-			}
-		    }
-
-		  lob_attrid_arr[0] = attr.id;
-		  error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
-		  if (error != NO_ERROR)
-		    {
-		      dbt_abort_class (ctemplate);
-		      return error;
-		    }
-
-		  break;
-		}
-	    }
+	  dbt_abort_class (ctemplate);
+	  return error;
 	}
 
       break;
@@ -1452,9 +1417,8 @@ alter_partition_fail:
 }
 
 /*
- * lob_process_dir_add_attr() - Collect newly added LOB attributes, build/manage
- *                              their attribute id array, and trigger LOB
- *                              directory creation for those attributes.
+ * lob_process_dir_add_attr() - Handle LOB directory creation for newly added
+ *                              LOB attributes.
  *   return: Error code
  *   class_(in): Class information
  *   old_att_count(in): Number of attributes before adding new attributes
