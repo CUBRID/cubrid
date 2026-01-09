@@ -2,11 +2,13 @@
 
 #include <cmath>
 #include <omp.h>
+#include <algorithm>
+
+#include "porting_inline.hpp"
 
 namespace cubhnsw
 {
-
-  distance_t
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
   cubvec_cosine_distance (const float *vec1, const float *vec2, std::size_t dim)
   {
     float dot = 0.0f;
@@ -23,22 +25,31 @@ namespace cubhnsw
 	norm2_sq += b * b;
       }
 
-    if (norm1_sq == 0.0f && norm2_sq == 0.0f)
-      {
-	return 0.0f;
-      }
-    if (norm1_sq == 0.0f || norm2_sq == 0.0f)
+    constexpr float eps = 1e-12f;
+    if (norm1_sq < eps || norm2_sq < eps)
       {
 	return 1.0f;
       }
 
-    const float inv_norm =
-	    1.0f / (std::sqrt (norm1_sq) * std::sqrt (norm2_sq));
-
-    return 1.0f - dot * inv_norm;
+    float cosine = dot / std::sqrt (norm1_sq * norm2_sq);
+    cosine = std::clamp (cosine, -1.0f, 1.0f);
+    return 1.0f - cosine;
   }
 
-  distance_t
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
+  cubvec_inner_product_distance (const float *vec1, const float *vec2, std::size_t dim)
+  {
+    float sum = 0.0f;
+
+    #pragma omp simd reduction(+ : sum)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	sum += vec1[i] * vec2[i];
+      }
+    return sum;
+  };
+
+  STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
   cubvec_l2_distance (const float *vec1, const float *vec2, std::size_t dim)
   {
     float sum = 0.0f;
@@ -56,7 +67,8 @@ namespace cubhnsw
 	metric_table =
   {
     cubvec_cosine_distance,
-    cubvec_l2_distance
+    cubvec_l2_distance,
+    cubvec_inner_product_distance
   };
 
 } // namespace cubhnsw

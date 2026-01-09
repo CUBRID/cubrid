@@ -269,6 +269,9 @@ namespace cubhnsw
       case METRIC_EUCLIDEAN:
 	m_metric = vector_distance_metric_t::EUCLIDEAN;
 	break;
+      case METRIC_DOT:
+	m_metric = vector_distance_metric_t::DOT;
+	break;
       default:
 	assert (false);
       }
