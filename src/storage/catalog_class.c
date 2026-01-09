@@ -2803,6 +2803,7 @@ catcls_get_property_set (THREAD_ENTRY * thread_p, OR_BUF * buf_p, int expected_s
     {SM_PROPERTY_INDEX, NULL, 0, false, false, false, false},
     {SM_PROPERTY_REVERSE_INDEX, NULL, 0, false, true, false, false},
     {SM_PROPERTY_FOREIGN_KEY, NULL, 0, false, false, false, true},
+    {SM_PROPERTY_VECTOR_INDEX, NULL, 0, false, false, false, false},
   };
 
   DB_VALUE vals[SM_PROPERTY_NUM_INDEX_FAMILY];
