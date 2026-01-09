@@ -120,6 +120,7 @@ jobs:
                           if [ ! -s tc.list ]; then
                             echo "[debug] No tests assigned to this node"
                             circleci-agent step halt
+                            exit 0
                           fi
                           cat tc.list | xargs -n1 dirname > tc_dirs.list
                           echo "[debug] total testcases: \$(wc -l tc_dirs.list)"
@@ -134,6 +135,7 @@ jobs:
                           if [ ! -s tc.list ]; then
                             echo "[debug] No tests assigned to this node"
                             circleci-agent step halt
+                            exit 0
                           fi
                           echo "[debug] total testcases: \$(wc -l tc.list)"
                           echo "[debug] Remove tests that are not in the list"
@@ -194,7 +196,7 @@ jobs:
                 docker:
                   - image: cubridci/cubridci:test_shell
                 # self-hosted runner
-                resource_class: cubrid/xlarge
+                resource_class: cubrid/ramdisk
                 working_directory: /home
                 
             # --------------------------------------------------
