@@ -503,7 +503,14 @@ namespace parallel_heap_scan
 	  }
 	if (xasl->proc.buildlist.a_eval_list)
 	  {
-	    result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	      {
+		result = CHECK_RESULT::PARALLEL_PAGE_BY_PAGE;
+	      }
+	    else
+	      {
+		result = CHECK_RESULT::PARALLEL_LIST_MERGE;
+	      }
 	  }
 	break;
       case BUILDVALUE_PROC:
