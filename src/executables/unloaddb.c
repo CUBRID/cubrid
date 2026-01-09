@@ -24,6 +24,8 @@
 
 #include "config.h"
 
+#include <depthlog/depthlog.hpp>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -125,6 +127,8 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   int au_save;
   EMIT_STORAGE_ORDER order;
   extract_context unload_context;
+
+  depthlog::init ("unloaddb");
 
   bool do_objects = false;
   bool do_schema = false;

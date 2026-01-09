@@ -24,6 +24,8 @@
 
 #include "config.h"
 
+#include <depthlog/depthlog.hpp>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11399,6 +11401,8 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 static int
 allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_TEMPLATE * template_)
 {
+  DEPTHLOG_SCOPE ();
+  SPDLOG_INFO ("allocate_disk_structures: class {}", sm_ch_name ((MOBJ) class_));
   SM_CLASS_CONSTRAINT *con;
   int num_indexes = 0;
   int err;
@@ -13104,6 +13108,7 @@ lockhint_subclasses (SM_TEMPLATE * temp, SM_CLASS * class_)
 static int
 update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH auth, bool needs_hierarchy_lock)
 {
+  DEPTHLOG_SCOPE ();
   int error = NO_ERROR;
   int num_indexes;
   SM_CLASS *class_;
@@ -13307,6 +13312,8 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
    * created before we update the subclasses. We also have to disable updating statistics for now because we haven't
    * finshed modifying the all the classes yet and the code which updates statistics on partitioned classes does not
    * work if partitions and the partitioned class have different schema. */
+
+  SPDLOG_INFO ("Updating disk structures for class '{}'", sm_ch_name ((MOBJ) class_));
 
   num_indexes = allocate_disk_structures (template_->op, class_, newsubs, template_);
   if (num_indexes < 0)

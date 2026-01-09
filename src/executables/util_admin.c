@@ -24,6 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <depthlog/depthlog.hpp>
+
 #include "cubrid_getopt.h"
 #include "utility.h"
 #include "error_code.h"
@@ -1070,6 +1072,8 @@ main (int argc, char *argv[])
   int utility_index;
   const char *library_name;
   bool is_valid_arg = true;
+
+  depthlog::init ("util_admin");
 
   if (argc > 1 && strcmp (argv[1], "--version") == 0)
     {
