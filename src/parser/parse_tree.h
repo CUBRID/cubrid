@@ -1916,6 +1916,7 @@ struct pt_attr_def_info
   PT_MISC_TYPE attr_type;	/* PT_NORMAL or PT_META */
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
+  bool attr_invisible;
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */

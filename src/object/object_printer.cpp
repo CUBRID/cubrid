@@ -603,6 +603,13 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
       m_buf (" NOT NULL");
     }
 
+  // If the hidden column flag - 'system added invisible column' - is added to attribute.flags, the hidden column flag must be checked first.
+  if (attribute.flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      m_buf (" INVISIBLE ");
+    }
+
+
   if (attribute.class_mop != NULL && attribute.class_mop != &cls)
     {
       m_buf (" /* from ");

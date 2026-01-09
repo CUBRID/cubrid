@@ -5036,6 +5036,10 @@ opt_invisible
  			$$ = false;
 
 		DBG_PRINT}}
+	| VISIBLE
+		{{ DBG_TRACE_GRAMMAR(opt_invisible, | VISIBLE);
+			$$ = false;
+		DBG_PRINT}}
 	| INVISIBLE
 		{{ DBG_TRACE_GRAMMAR(opt_invisible, | INVISIBLE);
 
@@ -10929,7 +10933,8 @@ attr_index_def
 attr_def_one
 	: identifier
 	  data_type
-		{{ DBG_TRACE_GRAMMAR(attr_def_one, : identifier data_type);
+	  opt_invisible
+		{{ DBG_TRACE_GRAMMAR(attr_def_one, : identifier data_type opt_invisible);
 
 			PT_NODE *dt;
 			PT_TYPE_ENUM typ;
@@ -10948,6 +10953,8 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
+			    node->info.attr_def.attr_invisible = $3;
+
                             CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
@@ -10965,7 +10972,7 @@ attr_def_one
 			  }
 			if (node != NULL)
 			  {
-			    node->info.attr_def.ordering_info = $5;
+			    node->info.attr_def.ordering_info = $6;
 			  }
 
 			$$ = node;

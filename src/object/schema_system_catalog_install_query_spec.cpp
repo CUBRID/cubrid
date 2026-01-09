@@ -279,7 +279,7 @@ sm_define_view_vclass_spec (void)
 const char *
 sm_define_view_attribute_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -311,6 +311,7 @@ sm_define_view_attribute_spec (void)
 	  "CAST ([d].[class_of].[owner].[name] AS VARCHAR(255)) AS [domain_owner_name], " /* string -> varchar(255) */
 	  "[a].[default_value] AS [default_value], "
 	  "CASE WHEN [a].[is_nullable] = 1 THEN 'YES' ELSE 'NO' END AS [is_nullable], "
+	  "CASE WHEN ([a].[flags] & %d) = %d THEN 'YES' ELSE 'NO' END AS [is_invisible], "
 	  "[a].[comment] AS [comment] "
 	"FROM "
 	  /* CT_CLASS_NAME */
@@ -365,6 +366,8 @@ sm_define_view_attribute_spec (void)
 	    ")",
 	CT_CHARSET_NAME,
 	CT_COLLATION_NAME,
+	DB_ATTOPT_INVISIBLE_COLUMN,
+	DB_ATTOPT_INVISIBLE_COLUMN,
 	CT_CLASS_NAME,
 	CT_ATTRIBUTE_NAME,
 	CT_DOMAIN_NAME,
