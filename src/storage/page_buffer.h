@@ -248,8 +248,6 @@ struct pgbuf_watcher
 #endif
 };
 
-typedef uint16_t PGBUF_THREAD_LOCAL_CACHE_CHN;
-
 // *INDENT-OFF*
 using pgbuf_aligned_buffer = cubmem::stack_block<(size_t) IO_MAX_PAGE_SIZE>;
 using pgbuf_resizable_buffer = cubmem::extensible_stack_block<(size_t) IO_MAX_PAGE_SIZE>;
@@ -272,14 +270,8 @@ PAGE_PTR pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need
 void pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 int pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free);
 
-extern void pgbuf_thread_local_cache_init (THREAD_ENTRY * thread_p);
-extern void pgbuf_thread_local_cache_destroy (THREAD_ENTRY * thread_p);
-extern PGBUF_THREAD_LOCAL_CACHE_CHN pgbuf_get_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-extern PAGE_PTR pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
-				  PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE requestmode,
-				  PGBUF_LATCH_CONDITION condition);
-extern bool pgbuf_is_chn_valid (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 #if !defined(NDEBUG)
+
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
         pgbuf_fix_debug(thread_p, vpid, fetch_mode, requestmode, condition, ARG_FILE_LINE_FUNC)
 extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,

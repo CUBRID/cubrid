@@ -322,8 +322,6 @@ typedef enum
 /* default pages to flush in each interval during log checkpoint */
 #define PGBUF_CHKPT_BURST_PAGES 16
 
-#define PGBUF_THREAD_LOCAL_CACHE_MAX_PAGES 128
-
 #define INIT_HOLDER_STAT(perf_stat) \
   do \
     { \
@@ -388,15 +386,6 @@ typedef struct pgbuf_holder_info PGBUF_HOLDER_INFO;
 typedef struct pgbuf_status PGBUF_STATUS;
 typedef struct pgbuf_status_snapshot PGBUF_STATUS_SNAPSHOT;
 typedef struct pgbuf_status_old PGBUF_STATUS_OLD;
-
-typedef struct pgbuf_thread_local_cache PGBUF_THREAD_LOCAL_CACHE;
-struct pgbuf_thread_local_cache
-{
-  PGBUF_BCB *bcb_array;
-  PGBUF_IOPAGE_BUFFER *memory;
-  uint32_t num_pages_used;
-  uint32_t max_pages;
-};
 
 struct pgbuf_status
 {
@@ -506,8 +495,7 @@ union pgbuf_atomic_latch_impl
   {
     PGBUF_LATCH_MODE latch_mode;
     uint16_t waiter_exists;
-    uint16_t chn;
-    int16_t fcnt;
+    int32_t fcnt;
   } impl;
 };
 
@@ -521,7 +509,6 @@ struct pgbuf_bcb
   VPID vpid;			/* Volume and page identifier of resident page */
   PGBUF_ATOMIC_LATCH atomic_latch;	/* atomic latch */
   volatile int flags;
-  PGBUF_BCB *orig_bcb;		/* for cached fix original bcb */
 #if defined(SERVER_MODE)
   THREAD_ENTRY *next_wait_thrd;	/* BCB waiting queue */
 #endif				/* SERVER_MODE */
@@ -1267,8 +1254,6 @@ static void pgbuf_init_temp_page_lsa (FILEIO_PAGE * io_page, PGLENGTH page_size)
 
 static void pgbuf_scan_bcb_table (THREAD_ENTRY * thread_p);
 
-static void pgbuf_unfix_and_move_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
-
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
 static cubthread::daemon *pgbuf_Page_maintenance_daemon = NULL;
@@ -1302,7 +1287,6 @@ copy_bcb (PGBUF_BCB * dest_bcb, PGBUF_BCB * src_bcb)
   dest_bcb->vpid = src_bcb->vpid;
   dest_bcb->atomic_latch.store (src_bcb->atomic_latch.load ());
   dest_bcb->flags = src_bcb->flags;
-  dest_bcb->orig_bcb = src_bcb->orig_bcb;
 #if defined(SERVER_MODE)
   dest_bcb->next_wait_thrd = src_bcb->next_wait_thrd;
 #endif /* SERVER_MODE */
@@ -1422,16 +1406,6 @@ get_impl (PGBUF_ATOMIC_LATCH * latch)
   PGBUF_ATOMIC_LATCH_IMPL impl;
   impl.raw = latch->load (std::memory_order_acquire);
   return impl;
-}
-
-uint16_t
-pgbuf_get_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
-{
-  PGBUF_BCB *bufptr;
-  PGBUF_ATOMIC_LATCH_IMPL impl;
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  impl.raw = bufptr->atomic_latch.load (std::memory_order_acquire);
-  return impl.impl.chn;
 }
 
 void
@@ -2689,16 +2663,6 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
 
   /* fetch BCB from page pointer */
   CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
-  if (bufptr->orig_bcb != NULL)
-    {
-      *pgptr_p = pgbuf_fix (thread_p, &bufptr->vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (*pgptr_p == NULL)
-	{
-	  return ER_FAILED;
-	}
-      CAST_PGPTR_TO_BFPTR (bufptr, *pgptr_p);
-    }
-  assert (!VPID_ISNULL (&bufptr->vpid));
 
 #if defined(SERVER_MODE)	/* SERVER_MODE */
   vpid.pageid = bufptr->vpid.pageid;
@@ -2718,7 +2682,6 @@ pgbuf_promote_read_latch_release (THREAD_ENTRY * thread_p, PAGE_PTR * pgptr_p, P
       need_block = false;
       impl = get_impl (&bufptr->atomic_latch);
       impl_new = impl;
-      impl_new.impl.chn = (impl_new.impl.chn + 1) % UINT16MAX;
 
       if (holder->fix_count == impl.impl.fcnt)
 	{
@@ -2901,11 +2864,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
   assert (!VPID_ISNULL (&bufptr->vpid));
 
-  if (bufptr->orig_bcb != NULL)
-    {
-      return;
-    }
-
 #if !defined (NDEBUG)
   assert (pgptr != NULL);
 
@@ -3085,422 +3043,6 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
       PGBUF_BCB_UNLOCK (bufptr);
     }
 #endif /* CUBRID_DEBUG */
-}
-
-static void
-pgbuf_unfix_and_move_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
-{
-
-  PGBUF_HOLDER *holder;
-  PGBUF_WATCHER *watcher;
-  PAGE_PTR pgptr;
-  bool is_perf_tracking;
-  PERF_PAGE_TYPE perf_page_type = PERF_PAGE_UNKNOWN;
-  PGBUF_HOLDER_STAT holder_perf_stat;
-  int holder_status;
-  PERF_HOLDER_LATCH perf_holder_latch;
-  int th_lru_idx;
-  PGBUF_ZONE zone;
-  int error_code = NO_ERROR;
-  PGBUF_ATOMIC_LATCH_IMPL impl_orig, impl_new;
-  bool blocked_reader_writer = false, is_zero_fcnt = false;
-
-  CAST_BFPTR_TO_PGPTR (pgptr, bcb);
-  holder = pgbuf_get_holder (thread_p, pgptr);
-
-  assert (holder != NULL);
-
-  watcher = holder->last_watcher;
-  while (watcher != NULL)
-    {
-      assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
-      watcher = watcher->prev;
-    }
-
-  is_perf_tracking = perfmon_is_perf_tracking ();
-  if (is_perf_tracking)
-    {
-      perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
-    }
-  INIT_HOLDER_STAT (&holder_perf_stat);
-  holder_status = pgbuf_unlatch_thrd_holder (thread_p, bcb, &holder_perf_stat);
-
-  assert (holder_perf_stat.hold_has_write_latch == 1 || holder_perf_stat.hold_has_read_latch == 1);
-
-  if (is_perf_tracking)
-    {
-      if (holder_perf_stat.hold_has_read_latch && holder_perf_stat.hold_has_write_latch)
-	{
-	  perf_holder_latch = PERF_HOLDER_LATCH_MIXED;
-	}
-      else if (holder_perf_stat.hold_has_read_latch)
-	{
-	  perf_holder_latch = PERF_HOLDER_LATCH_READ;
-	}
-      else
-	{
-	  assert (holder_perf_stat.hold_has_write_latch);
-	  perf_holder_latch = PERF_HOLDER_LATCH_WRITE;
-	}
-      perfmon_pbx_unfix (thread_p, perf_page_type, holder_perf_stat.dirty_before_hold,
-			 holder_perf_stat.dirtied_by_holder, perf_holder_latch);
-    }
-  /* if read latch exists,... */
-  if (pgbuf_lockfree_unfix_ro (thread_p, bcb))
-    {
-      return;
-    }
-  PGBUF_BCB_LOCK (bcb);
-
-  assert (holder_status == NO_ERROR);
-
-  /* the caller is holding bufptr->mutex */
-
-  assert (!VPID_ISNULL (&bcb->vpid));
-  assert (pgbuf_check_bcb_page_vpid (bcb, false) == true);
-
-  CAST_BFPTR_TO_PGPTR (pgptr, bcb);
-
-  /* decrement the fix count */
-  do
-    {
-      blocked_reader_writer = false;
-      is_zero_fcnt = false;
-      impl_orig = get_impl (&bcb->atomic_latch);
-      impl_new = impl_orig;
-      impl_new.impl.fcnt--;
-      blocked_reader_writer = impl_orig.impl.waiter_exists;
-      if (impl_new.impl.fcnt == 0)
-	{
-	  is_zero_fcnt = true;
-	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
-	}
-      if (impl_new.impl.fcnt < 0)
-	{
-	  /* This situation must not be occurred. */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_UNFIXED_PAGEPTR, 3, pgptr, bcb->vpid.pageid,
-		  fileio_get_volume_label (bcb->vpid.volid, PEEK));
-	  impl_new.impl.latch_mode = PGBUF_NO_LATCH;
-	  impl_new.impl.fcnt = 0;
-	  impl_new.impl.waiter_exists = false;
-	  is_zero_fcnt = true;
-	  break;
-	}
-    }
-  while (!bcb->atomic_latch.compare_exchange_weak (impl_orig.raw, impl_new.raw, std::memory_order_acq_rel,
-						   std::memory_order_acquire));
-
-  if (holder_status != NO_ERROR)
-    {
-      /* This situation must not be occurred. */
-      assert (false);
-      PGBUF_BCB_UNLOCK (bcb);
-      return;
-    }
-
-  if (is_zero_fcnt && PGBUF_IS_PRIVATE_LRU_INDEX (pgbuf_bcb_get_lru_index (bcb)))
-    {
-      pgbuf_lru_move_from_private_to_shared (thread_p, bcb);
-      perfmon_inc_stat (thread_p, PSTAT_PB_UNFIX_LRU_ONE_PRV_TO_SHR_MID);
-    }
-
-#if defined(SERVER_MODE)
-  pgbuf_wakeup_reader_writer (thread_p, bcb);
-#endif /* SERVER_MODE */
-
-  if (pgbuf_bcb_is_async_flush_request (bcb))
-    {
-      /* we need to flush bcb. we won't need the bcb mutex afterwards */
-      error_code = pgbuf_bcb_safe_flush_force_unlock (thread_p, bcb, false);
-      /* what to do with the error? we failed to flush it... */
-      if (error_code != NO_ERROR)
-	{
-	  er_clear ();
-	  error_code = NO_ERROR;
-	}
-    }
-  else
-    {
-      PGBUF_BCB_UNLOCK (bcb);
-    }
-
-  return;
-
-}
-
-extern void
-pgbuf_thread_local_cache_init (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      assert (thread_p != NULL);
-    }
-
-  if (thread_p->m_pgbuf_thread_local_cache != NULL)
-    {
-      return;
-    }
-  PGBUF_BCB *bufptr;
-  PGBUF_IOPAGE_BUFFER *ioptr;
-  PGBUF_ATOMIC_LATCH_IMPL impl;
-  PGBUF_THREAD_LOCAL_CACHE *cache;
-  uint64_t alloc_sz;
-  impl.impl.latch_mode = PGBUF_LATCH_INVALID;
-  impl.impl.waiter_exists = false;
-  impl.impl.fcnt = 0;
-
-  alloc_sz = sizeof (PGBUF_THREAD_LOCAL_CACHE);
-  cache = (PGBUF_THREAD_LOCAL_CACHE *) db_private_alloc (thread_p, alloc_sz);
-
-  alloc_sz = sizeof (PGBUF_BCB) * PGBUF_THREAD_LOCAL_CACHE_MAX_PAGES;
-  cache->bcb_array = (PGBUF_BCB *) db_private_alloc (thread_p, alloc_sz);
-
-  alloc_sz = PGBUF_IOPAGE_BUFFER_SIZE * PGBUF_THREAD_LOCAL_CACHE_MAX_PAGES;
-  cache->memory = (PGBUF_IOPAGE_BUFFER *) db_private_alloc (thread_p, alloc_sz);
-
-  cache->num_pages_used = 0;
-  cache->max_pages = PGBUF_THREAD_LOCAL_CACHE_MAX_PAGES;
-
-  for (int i = 0; i < PGBUF_THREAD_LOCAL_CACHE_MAX_PAGES; i++)
-    {
-      bufptr = &cache->bcb_array[i];
-      pthread_mutex_init (&bufptr->mutex, NULL);
-#if defined (SERVER_MODE)
-      bufptr->owner_mutex = -1;
-#endif /* SERVER_MODE */
-      VPID_SET_NULL (&bufptr->vpid);
-      placement_new (&bufptr->atomic_latch, 0);
-      bufptr->atomic_latch.store (impl.raw);
-      bufptr->orig_bcb = NULL;
-
-#if defined(SERVER_MODE)
-      bufptr->next_wait_thrd = NULL;
-#endif /* SERVER_MODE */
-#if defined(SERVER_MODE)
-      bufptr->latch_last_thread = NULL;
-#endif /* SERVER_MODE */
-
-      bufptr->hash_next = NULL;
-      bufptr->prev_BCB = NULL;
-
-      if (i == (pgbuf_Pool.num_buffers - 1))
-	{
-	  bufptr->next_BCB = NULL;
-	}
-      else
-	{
-	  bufptr->next_BCB = PGBUF_FIND_BCB_PTR (i + 1);
-	}
-
-      bufptr->flags = PGBUF_BCB_INIT_FLAGS;
-      bufptr->count_fix_and_avoid_dealloc = 0;
-      bufptr->hit_age = 0;
-      LSA_SET_NULL (&bufptr->oldest_unflush_lsa);
-
-      bufptr->tick_lru3 = 0;
-      bufptr->tick_lru_list = 0;
-
-      /* link BCB and iopage buffer */
-      ioptr = PGBUF_FIND_IOPAGE_PTR_FROM_EXTERNAL_ALLOCATE (cache->memory, i);
-
-      fileio_init_lsa_of_page (&ioptr->iopage, IO_PAGESIZE);
-
-      /* Init Page identifier */
-      ioptr->iopage.prv.pageid = -1;
-      ioptr->iopage.prv.volid = -1;
-
-      ioptr->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
-      ioptr->iopage.prv.pflag = '\0';
-      ioptr->iopage.prv.p_reserve_1 = 0;
-      ioptr->iopage.prv.p_reserve_2 = 0;
-      ioptr->iopage.prv.tde_nonce = 0;
-
-      bufptr->iopage_buffer = ioptr;
-      ioptr->bcb = bufptr;
-    }
-  thread_p->m_pgbuf_thread_local_cache = cache;
-}
-
-void
-pgbuf_thread_local_cache_destroy (THREAD_ENTRY * thread_p)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      assert (thread_p != NULL);
-    }
-
-  if (thread_p->m_pgbuf_thread_local_cache)
-    {
-      db_private_free (thread_p, thread_p->m_pgbuf_thread_local_cache->bcb_array);
-      db_private_free (thread_p, thread_p->m_pgbuf_thread_local_cache->memory);
-      db_private_free (thread_p, thread_p->m_pgbuf_thread_local_cache);
-      thread_p->m_pgbuf_thread_local_cache = NULL;
-    }
-}
-
-PAGE_PTR
-pgbuf_cached_fix (THREAD_ENTRY * thread_p, const VPID * vpid,
-		  PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE requestmode, PGBUF_LATCH_CONDITION condition)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      assert (thread_p != NULL);
-    }
-
-  if (thread_p->m_pgbuf_thread_local_cache == NULL
-      || (fetch_mode != OLD_PAGE_PREVENT_DEALLOC && fetch_mode != OLD_PAGE && fetch_mode != OLD_PAGE_MAYBE_DEALLOCATED)
-      || requestmode != PGBUF_LATCH_READ || condition != PGBUF_UNCONDITIONAL_LATCH)
-    {
-      return pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
-    }
-  PGBUF_BCB *bufptr, *orig_bcb;
-  PAGE_PTR pgptr;
-  PGBUF_ATOMIC_LATCH_IMPL impl;
-  bool found = false;
-  PGBUF_THREAD_LOCAL_CACHE *cache = thread_p->m_pgbuf_thread_local_cache;
-  uint32_t cache_index = 0;
-  /* find cached page */
-  for (uint32_t i = 0; i < cache->num_pages_used; i++)
-    {
-      bufptr = &cache->bcb_array[i];
-      if (bufptr->vpid.volid == vpid->volid && bufptr->vpid.pageid == vpid->pageid)
-	{
-	  found = true;
-	  cache_index = i;
-	  break;
-	}
-    }
-
-  if (found)
-    {
-      uint16_t cached_chn, orig_bcb_chn;
-      if (bufptr->orig_bcb == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
-	  return NULL;
-	}
-      orig_bcb = bufptr->orig_bcb;
-      /* page validation check */
-      if (orig_bcb->vpid.volid == vpid->volid && orig_bcb->vpid.pageid == vpid->pageid)
-	{
-	  if (LSA_EQ (&bufptr->orig_bcb->iopage_buffer->iopage.prv.lsa, &bufptr->iopage_buffer->iopage.prv.lsa))
-	    {
-	      impl.raw = orig_bcb->atomic_latch.load ();
-	      if (impl.impl.latch_mode == PGBUF_LATCH_READ || impl.impl.latch_mode == PGBUF_NO_LATCH)
-		{
-		  orig_bcb_chn = impl.impl.chn;
-		  /* chn check */
-		  impl.raw = bufptr->atomic_latch.load ();
-		  cached_chn = impl.impl.chn;
-		  if (cached_chn == orig_bcb_chn)
-		    {
-		      /* page is valid */
-		      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-		      return pgptr;
-		    }
-		}
-	    }
-	}
-
-      /* goto recache page, bufptr is found so no need to find empty space */
-    }
-  else
-    {
-      /* find empty space */
-      for (uint32_t i = cache->num_pages_used; i < PGBUF_THREAD_LOCAL_CACHE_MAX_PAGES; i++)
-	{
-	  if (cache->bcb_array[i].vpid.pageid == NULL_PAGEID)
-	    {
-	      bufptr = &cache->bcb_array[i];
-	      cache_index = i;
-	      found = true;
-	      cache->num_pages_used++;
-	      break;
-	    }
-	}
-      if (!found)
-	{
-	  /* cache is full */
-	  return pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
-	}
-    }
-
-  /* cache or recache page */
-  PAGE_PTR orig_pgptr = pgbuf_fix (thread_p, vpid, fetch_mode, requestmode, condition);
-  PGBUF_IOPAGE_BUFFER *ioptr;
-  if (orig_pgptr == NULL)
-    {
-      return NULL;
-    }
-  CAST_PGPTR_TO_BFPTR (orig_bcb, orig_pgptr);
-
-  if (orig_bcb->iopage_buffer->iopage.prv.ptype == PAGE_BTREE)
-    {
-      BTREE_NODE_HEADER *node_header;
-      node_header = btree_get_node_header (thread_p, orig_pgptr);
-      if (node_header == NULL)
-	{
-	  pgbuf_unfix (thread_p, orig_pgptr);
-	  return NULL;
-	}
-      if (node_header->node_level <= 1)
-	{
-	  /* leaf page, not caching and return real page */
-	  return orig_pgptr;
-	}
-    }
-
-  ioptr = PGBUF_FIND_IOPAGE_PTR_FROM_EXTERNAL_ALLOCATE (thread_p->m_pgbuf_thread_local_cache->memory, cache_index);
-  memcpy (ioptr, orig_bcb->iopage_buffer, PGBUF_IOPAGE_BUFFER_SIZE);
-
-  copy_bcb (bufptr, orig_bcb);
-  bufptr->orig_bcb = orig_bcb;
-
-  ioptr->bcb = bufptr;
-  bufptr->iopage_buffer = ioptr;
-
-  CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
-
-  pgbuf_unfix_and_move_to_shared (thread_p, orig_bcb);
-
-  return pgptr;
-}
-
-bool
-pgbuf_is_chn_valid (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
-{
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-      assert (thread_p != NULL);
-    }
-
-  if (thread_p->m_pgbuf_thread_local_cache == NULL)
-    {
-      return true;		/* always valid page */
-    }
-  PGBUF_BCB *bufptr;
-  PGBUF_ATOMIC_LATCH_IMPL impl_real, impl_cached;
-  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
-  if (bufptr->orig_bcb == NULL)
-    {
-      return true;		/* always valid page */
-    }
-  if (bufptr->orig_bcb->vpid.volid != bufptr->vpid.volid || bufptr->orig_bcb->vpid.pageid != bufptr->vpid.pageid)
-    {
-      return false;
-    }
-  if (!LSA_EQ (&bufptr->orig_bcb->iopage_buffer->iopage.prv.lsa, &bufptr->iopage_buffer->iopage.prv.lsa))
-    {
-      return false;
-    }
-  impl_real.raw = bufptr->orig_bcb->atomic_latch.load ();
-  impl_cached.raw = bufptr->atomic_latch.load ();
-  return impl_real.impl.chn == impl_cached.impl.chn;
 }
 
 /*
@@ -5796,7 +5338,6 @@ pgbuf_initialize_bcb_table (void)
   impl.impl.latch_mode = PGBUF_LATCH_INVALID;
   impl.impl.waiter_exists = false;
   impl.impl.fcnt = 0;
-  impl.impl.chn = 0;
   /* allocate space for page buffer BCB table */
   alloc_size = (long long unsigned) pgbuf_Pool.num_buffers * PGBUF_BCB_SIZEOF;
   if (!MEM_SIZE_IS_VALID (alloc_size))
@@ -5844,7 +5385,6 @@ pgbuf_initialize_bcb_table (void)
       VPID_SET_NULL (&bufptr->vpid);
       placement_new (&bufptr->atomic_latch, 0);
       bufptr->atomic_latch.store (impl.raw);
-      bufptr->orig_bcb = NULL;
 
 #if defined(SERVER_MODE)
       bufptr->next_wait_thrd = NULL;
@@ -6667,10 +6207,6 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 		}
 	    }
 	}
-	if (request_mode == PGBUF_LATCH_WRITE)
-	{
-	  new_impl.impl.chn = (new_impl.impl.chn + 1) % UINT16MAX;
-	}
     }
   while (!bufptr->atomic_latch.
 	 compare_exchange_strong (old_impl.raw, new_impl.raw, std::memory_order::memory_order_acq_rel,
@@ -7435,11 +6971,6 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 	    {
 	      can_grant = true;
 	      impl_new.impl.fcnt += curr_thrd_entry->request_fix_count;
-	    }
-	  if (curr_thrd_entry->request_latch_mode == PGBUF_LATCH_WRITE
-	      || curr_thrd_entry->request_latch_mode == PGBUF_LATCH_FLUSH)
-	    {
-	      impl_new.impl.chn = (impl_new.impl.chn + 1) % UINT16MAX;
 	    }
 	}
       while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, impl_new.raw, std::memory_order_acq_rel,
@@ -8686,7 +8217,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   impl.impl.latch_mode = PGBUF_NO_LATCH;
   impl.impl.waiter_exists = false;
   impl.impl.fcnt = 0;
-  impl.impl.chn = (impl.impl.chn + 1) % UINT16MAX;
   bufptr->atomic_latch.store (impl.raw);
   pgbuf_bcb_update_flags (thread_p, bufptr, 0, PGBUF_BCB_ASYNC_FLUSH_REQ);	/* todo: why this?? */
   pgbuf_bcb_check_and_reset_fix_and_avoid_dealloc (bufptr, ARG_FILE_LINE);
@@ -8876,7 +8406,6 @@ pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   impl.impl.latch_mode = PGBUF_LATCH_INVALID;
   impl.impl.waiter_exists = false;
   impl.impl.fcnt = 0;
-  impl.impl.chn = (impl.impl.chn + 1) % UINT16MAX;
   bufptr->atomic_latch.store (impl.raw);
   /* If above function returns success, the caller is still holding bufptr->mutex.
    * Otherwise, the caller does not hold bufptr->mutex.
@@ -9070,7 +8599,6 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
 	      impl_new.impl.waiter_exists = true;
 	    }
 	}
-      impl_new.impl.chn = (impl_new.impl.chn + 1) % UINT16MAX;
     }
   while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
 							std::memory_order_acquire));

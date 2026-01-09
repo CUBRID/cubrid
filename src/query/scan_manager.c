@@ -3084,8 +3084,6 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   int func_index_col_id;
   static bool oracle_style_empty_string = prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING);
 
-  pgbuf_thread_local_cache_init (thread_p);
-
   /* scan type is INDEX SCAN */
   scan_id->type = S_INDX_SCAN;
 

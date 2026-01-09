@@ -2027,7 +2027,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		}
 	      db_private_free_and_init (thread_p, isidp->prebuilt_midxkey_domains);
 	    }
-	  pgbuf_thread_local_cache_destroy (thread_p);
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
 	  isidp = &p->s_id.s.isid;

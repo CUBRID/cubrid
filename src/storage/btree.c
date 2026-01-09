@@ -1866,7 +1866,7 @@ btree_fix_root_with_info (THREAD_ENTRY * thread_p, BTID * btid, PGBUF_LATCH_MODE
   root_vpid_p->volid = btid->vfid.volid;
 
   /* Fix root page. */
-  root_page = pgbuf_cached_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  root_page = pgbuf_fix (thread_p, root_vpid_p, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
   if (root_page == NULL)
     {
       /* Failed fixing root page. */
@@ -23296,16 +23296,6 @@ start_btree_traversal:
 	  goto start_btree_traversal;
 	}
 
-      if (crt_page && !pgbuf_is_chn_valid (thread_p, crt_page))
-	{
-	  pgbuf_unfix_and_init (thread_p, crt_page);
-	  if (advance_page != NULL)
-	    {
-	      pgbuf_unfix_and_init (thread_p, advance_page);
-	    }
-	  goto start_btree_traversal;
-	}
-
       /* Advance if not leaf. */
       if (!is_leaf)
 	{
@@ -23321,16 +23311,6 @@ start_btree_traversal:
     }
 
   /* Leaf page is reached. */
-
-  if (crt_page && !pgbuf_is_chn_valid (thread_p, crt_page))
-    {
-      pgbuf_unfix_and_init (thread_p, crt_page);
-      if (advance_page != NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, advance_page);
-	}
-      goto start_btree_traversal;
-    }
 
   assert (is_leaf && !stop && !restart);
   assert (crt_page != NULL);
@@ -23451,10 +23431,6 @@ btree_get_root_with_key (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid_i
 	  return error_code;
 	}
     }
-  if (!pgbuf_is_chn_valid (thread_p, *root_page))
-    {
-      *restart = true;
-    }
   /* Success. */
   return NO_ERROR;
 }
@@ -23529,34 +23505,14 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
 	  return error_code;
 	}
 
-      if (node_header->node_level > 2)
-	{
-	  *advance_to_page =
-	    pgbuf_cached_fix (thread_p, &child_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
-			      PGBUF_UNCONDITIONAL_LATCH);
-	}
-      else
-	{
-	  *advance_to_page =
-	    pgbuf_fix (thread_p, &child_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	}
-
       /* Advance to child. */
       assert (!VPID_ISNULL (&child_vpid));
-
+      *advance_to_page = pgbuf_fix (thread_p, &child_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (*advance_to_page == NULL)
 	{
-	  error_code = er_errid ();
-	  if (error_code != NO_ERROR)
-	    {
-	      /* handle interrupt, internal error, ...etc */
-	      return error_code;
-	    }
-	  else
-	    {
-	      /* child page not present - cached page deprecated */
-	      *restart = true;
-	    }
+	  /* Error fixing child. */
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
 	}
     }
 
@@ -27035,7 +26991,7 @@ btree_insert_internal (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID
   assert (oid != NULL);
   /* Assert class OID is valid or not required; not required for undo delete */
   assert (purpose == BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE || (class_oid != NULL && !OID_ISNULL (class_oid)));
-  pgbuf_thread_local_cache_destroy (thread_p);
+
   PERF_UTIME_TRACKER_START (thread_p, &insert_helper.time_track);
 
   /* Save OID, class OID and MVCC info in insert helper. */
@@ -30585,7 +30541,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
   assert (oid != NULL);
   assert (op_type == SINGLE_ROW_DELETE || op_type == MULTI_ROW_DELETE || op_type == SINGLE_ROW_UPDATE
 	  || op_type == MULTI_ROW_UPDATE || op_type == SINGLE_ROW_MODIFY);
-  pgbuf_thread_local_cache_destroy (thread_p);
+
   PERF_UTIME_TRACKER_START (thread_p, &delete_helper.time_track);
 
   /* Choose internal function based on purpose. */
@@ -34275,8 +34231,6 @@ btree_online_index_list_dispatcher (THREAD_ENTRY * thread_p, BTID * btid, OID * 
   assert (purpose == BTREE_OP_ONLINE_INDEX_IB_INSERT || purpose == BTREE_OP_ONLINE_INDEX_TRAN_INSERT
 	  || purpose == BTREE_OP_ONLINE_INDEX_TRAN_DELETE || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_DELETE
 	  || purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT);
-
-  pgbuf_thread_local_cache_destroy (thread_p);
 
   /* Check for null keys. */
   if (DB_IS_NULL (key) || btree_multicol_key_is_null (key))
