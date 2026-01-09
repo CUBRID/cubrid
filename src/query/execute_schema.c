@@ -230,6 +230,8 @@ struct db_value_slist
 static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
+static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
+static int lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -552,14 +554,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	}
 #endif
       {
-	SM_CLASS *class_ = ctemplate->current;
-	SM_ATTRIBUTE *attr;
-	int new_att_count = 0;
-	int old_att_count = class_->att_count;
-	int type_id = 0;
-	int lob_attrid_arr_length = 0;
-	int *lob_alloc_attrid_arr = NULL;
-	int lob_local_attrid_arr[2];
+	int old_att_count = ctemplate->current->att_count;
 
 	error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	if (error == NO_ERROR)
@@ -635,65 +630,12 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    assert (alter->info.alter.create_index == NULL);
 
-	    new_att_count = class_->att_count;
-	    for (int i = old_att_count; i < new_att_count; i++)
+	    error = lob_process_dir_add_attr (ctemplate->current, old_att_count);
+	    if (error != NO_ERROR)
 	      {
-		attr = &class_->attributes[i];
-		type_id = attr->type->id;
-
-		if (TP_IS_LOB_TYPE (type_id))
-		  {
-		    if (lob_attrid_arr_length >= 2)
-		      {
-			lob_attrid_arr_length++;
-		      }
-		    else
-		      {
-			lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
-		      }
-		  }
-	      }
-
-	    if (lob_attrid_arr_length > 2)
-	      {
-		int index = 0;
-
-		lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
-		if (lob_alloc_attrid_arr == NULL)
-		  {
-		    dbt_abort_class (ctemplate);
-		    tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-		    error = ER_OUT_OF_VIRTUAL_MEMORY;
-		    return error;
-		  }
-
-		for (int i = old_att_count; i < new_att_count; i++)
-		  {
-		    attr = &class_->attributes[i];
-		    type_id = attr->type->id;
-
-		    if (TP_IS_LOB_TYPE (type_id))
-		      {
-			lob_alloc_attrid_arr[index++] = attr->id;
-		      }
-		  }
-	      }
-
-	    if (lob_attrid_arr_length)
-	      {
-		HFID lob_hfid = class_->header.ch_heap;
-		error =
-		  locator_lob_create_or_remove_dir (NULL, &lob_hfid,
-						    lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
-						    lob_attrid_arr_length);
-		free (lob_alloc_attrid_arr);
-
-		if (error != NO_ERROR)
-		  {
-		    dbt_abort_class (ctemplate);
-		    tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-		    return error;
-		  }
+		dbt_abort_class (ctemplate);
+		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+		return error;
 	      }
 	  }
 
@@ -808,9 +750,8 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
       p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
       for (;
-	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
-	   && path->node_type == PT_VALUE && (path->type_enum == PT_TYPE_VARCHAR
-					      || path->type_enum == PT_TYPE_CHAR); p = p->next)
+	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
+	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR); p = p->next)
 	{
 	  mthd_file = (char *) path->info.value.data_value.str->bytes;
 	  error = dbt_drop_method_file (ctemplate, mthd_file);
@@ -821,45 +762,11 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	}
 
-      SM_CLASS *class_ = ctemplate->current;
-
-      for (int i = 0; i < class_->att_count; i++)
+      error = lob_process_dir_drop_attr_if_needed (ctemplate->current, (char *) attr_mthd_name);
+      if (error != NO_ERROR)
 	{
-	  SM_ATTRIBUTE attr = class_->attributes[i];
-
-	  if (strcmp (attr.header.name, attr_mthd_name) == 0)
-	    {
-	      if (TP_IS_LOB_TYPE (attr.type->id))
-		{
-		  HFID lob_hfid = class_->header.ch_heap;
-		  int lob_attrid_arr[1];
-
-		  p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
-		  for (;
-		       p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
-		       && path->node_type == PT_VALUE && (path->type_enum == PT_TYPE_VARCHAR
-							  || path->type_enum == PT_TYPE_CHAR); p = p->next)
-		    {
-		      mthd_file = (char *) path->info.value.data_value.str->bytes;
-		      error = dbt_drop_method_file (ctemplate, mthd_file);
-		      if (error != NO_ERROR)
-			{
-			  dbt_abort_class (ctemplate);
-			  return error;
-			}
-		    }
-
-		  lob_attrid_arr[0] = attr.id;
-		  error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
-		  if (error != NO_ERROR)
-		    {
-		      dbt_abort_class (ctemplate);
-		      return error;
-		    }
-
-		  break;
-		}
-	    }
+	  dbt_abort_class (ctemplate);
+	  return error;
 	}
 
       break;
@@ -1506,6 +1413,130 @@ alter_partition_fail:
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_ALTER);
     }
+  return error;
+}
+
+/*
+ * lob_process_dir_add_attr() - Handle LOB directory creation for newly added
+ *                              LOB attributes.
+ *   return: Error code
+ *   class_(in): Class information
+ *   old_att_count(in): Number of attributes before adding new attributes
+ */
+static int
+lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
+{
+  SM_ATTRIBUTE *attr;
+  int lob_attrid_arr_length = 0;
+  int *lob_alloc_attrid_arr = NULL;
+  int lob_local_attrid_arr[2];
+  int *lob_attrid_arr = NULL;
+  int error = NO_ERROR;
+
+  for (int i = old_att_count; i < class_->att_count; i++)
+    {
+      attr = &class_->attributes[i];
+
+      if (TP_IS_LOB_TYPE (attr->type->id))
+	{
+	  lob_attrid_arr_length++;
+	}
+    }
+
+  if (lob_attrid_arr_length == 0)
+    {
+      goto end;
+    }
+  else if (lob_attrid_arr_length > 2)
+    {
+      int index = 0;
+
+      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+      if (lob_alloc_attrid_arr == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      for (int i = old_att_count; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_alloc_attrid_arr[index++] = attr->id;
+	    }
+	}
+      lob_attrid_arr = lob_alloc_attrid_arr;
+    }
+  else
+    {
+      int index = 0;
+
+      for (int i = old_att_count; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_local_attrid_arr[index++] = attr->id;
+	    }
+	}
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
+
+  if (lob_attrid_arr_length)
+    {
+      HFID lob_hfid = class_->header.ch_heap;
+      error = locator_lob_create_or_remove_dir (NULL, &lob_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+end:
+  free (lob_alloc_attrid_arr);
+
+  return error;
+}
+
+/*
+ * lob_process_dir_drop_attr_if_needed() - Handle LOB directory removal when a LOB attribute is dropped.
+ *
+ *   return: Error code
+ *   class_(in): Class information
+ *   attr_mthd_name(in): Name of the attribute to be dropped
+ */
+static int
+lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name)
+{
+  SM_ATTRIBUTE attr;
+  int error = NO_ERROR;
+
+  for (int i = 0; i < class_->att_count; i++)
+    {
+      attr = class_->attributes[i];
+
+      if (strcmp (attr.header.name, attr_mthd_name) == 0)
+	{
+	  if (TP_IS_LOB_TYPE (attr.type->id))
+	    {
+	      HFID lob_hfid = class_->header.ch_heap;
+	      int lob_attrid_arr[1];
+
+	      lob_attrid_arr[0] = attr.id;
+	      error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+
+	  break;
+	}
+    }
+
   return error;
 }
 

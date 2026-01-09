@@ -6982,8 +6982,6 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 {
   int error = NO_ERROR;
 
-  assert (prev_hfid != NULL || new_hfid != NULL);
-
   if (prev_hfid != NULL)
     {
       error = lob_remove_dir (prev_hfid, lob_attrid_arr[0]);
@@ -7021,7 +7019,7 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
   int lob_attrid_arr_length = 0;
   int lob_local_attrid_arr[2];
   int *lob_alloc_attrid_arr = NULL;
-  int *lob_attrid_arr;
+  int *lob_attrid_arr = NULL;
   int error = NO_ERROR;
 
 
