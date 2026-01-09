@@ -6859,6 +6859,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 		      break;
 		    }
 		  target_thread_p = target_thread_p->m_px_orig_thread_entry;
+		  assert (target_thread_p != thread_p);
 		}
 	      assert (target_thread_p != NULL);
 	      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);

@@ -35,6 +35,7 @@
 #include "fetch.h"
 #include "px_heap_scan_task.hpp"
 #include "px_heap_scan_input_handler_single_table.hpp"
+#include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -44,70 +45,159 @@ extern "C"
   SCAN_CODE
   scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
-    using namespace parallel_heap_scan;
-    RESULT_TYPE result_type = scan_id->s.phsid.result_type;
-    switch (result_type)
+    switch (scan_id->s.phsid.result_type)
       {
-      case RESULT_TYPE::MERGEABLE_LIST:
+      case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	manager<RESULT_TYPE::MERGEABLE_LIST> *manager_p =
-		(manager<RESULT_TYPE::MERGEABLE_LIST> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	return manager_p->next();
       }
-      case RESULT_TYPE::XASL_SNAPSHOT:
+
+      case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	manager<RESULT_TYPE::XASL_SNAPSHOT> *manager_p =
-		(manager<RESULT_TYPE::XASL_SNAPSHOT> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	return manager_p->next();
       }
-      case RESULT_TYPE::COUNT_DISTINCT:
+
+      case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
       {
-	manager<RESULT_TYPE::COUNT_DISTINCT> *manager_p =
-		(manager<RESULT_TYPE::COUNT_DISTINCT> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	return manager_p->next();
       }
+
       default:
+	/* impossible case */
+	assert_release_error (false);
 	return S_ERROR;
       }
   }
+
   int
   scan_reset_scan_block_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
-    using namespace parallel_heap_scan;
+    /* TODO: cleared by scan_reset_scan_block; redundant? */
     scan_id->single_fetched = false;
     scan_id->null_fetched = false;
+
+    /* TODO: cleared by scan_next_scan_block; redundant? */
     scan_id->qualified_block = false;
+
+    /* reset for S_HEAP_SCAN in scan_reset_scan_block */
     scan_id->position = (scan_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
     OID_SET_NULL (&scan_id->s.phsid.curr_oid);
-    RESULT_TYPE result_type = scan_id->s.phsid.result_type;
-    switch (result_type)
+
+    using accumulative_trace_storage = parallel_heap_scan::accumulative_trace_storage;
+
+    switch (scan_id->s.phsid.result_type)
       {
-      case  RESULT_TYPE::MERGEABLE_LIST:
+      case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	manager< RESULT_TYPE::MERGEABLE_LIST> *manager_p =
-		( manager< RESULT_TYPE::MERGEABLE_LIST> *) scan_id->s.phsid.manager;
-	return manager_p->reset();
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
+
+	manager_p->end();
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.phsid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.phsid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->reset ();
+		    break;
+		  }
+
+		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.phsid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	return manager_p->reset ();
       }
-      case RESULT_TYPE::XASL_SNAPSHOT:
+
+      case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	manager<RESULT_TYPE::XASL_SNAPSHOT> *manager_p =
-		(manager<RESULT_TYPE::XASL_SNAPSHOT> *) scan_id->s.phsid.manager;
-	return manager_p->reset();
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
+
+	manager_p->end();
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.phsid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.phsid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->reset ();
+		    break;
+		  }
+
+		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.phsid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	return manager_p->reset ();
       }
-      case RESULT_TYPE::COUNT_DISTINCT:
+
+      case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
       {
-	manager<RESULT_TYPE::COUNT_DISTINCT> *manager_p =
-		(manager<RESULT_TYPE::COUNT_DISTINCT> *) scan_id->s.phsid.manager;
-	return manager_p->reset();
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
+
+	manager_p->end();
+
+	if (thread_p->on_trace)
+	  {
+	    if (scan_id->s.phsid.trace_storage == nullptr)
+	      {
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.phsid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->reset ();
+		    break;
+		  }
+
+		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.phsid.trace_storage != nullptr);
+	      }
+
+	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
+	  }
+
+	return manager_p->reset ();
       }
+
       default:
-	return ER_FAILED;
+	/* impossible case */
+	assert_release_error (false);
+	return er_errid ();
       }
+
+    return er_errid ();
   }
+
   void
   scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
-    using namespace parallel_heap_scan;
     if (scan_id->direction == S_FORWARD)
       {
 	scan_id->direction = S_BACKWARD;
@@ -116,241 +206,378 @@ extern "C"
       {
 	scan_id->direction = S_FORWARD;
       }
-    RESULT_TYPE result_type = scan_id->s.phsid.result_type;
-    switch (result_type)
+
+    switch (scan_id->s.phsid.result_type)
       {
-      case  RESULT_TYPE::MERGEABLE_LIST:
+      case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	manager< RESULT_TYPE::MERGEABLE_LIST> *manager_p =
-		( manager< RESULT_TYPE::MERGEABLE_LIST> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	manager_p->end();
 	break;
       }
-      case  RESULT_TYPE::XASL_SNAPSHOT:
+
+      case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	manager< RESULT_TYPE::XASL_SNAPSHOT> *manager_p =
-		( manager< RESULT_TYPE::XASL_SNAPSHOT> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	manager_p->end();
 	break;
       }
-      case  RESULT_TYPE::COUNT_DISTINCT:
+
+      case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
       {
-	manager< RESULT_TYPE::COUNT_DISTINCT> *manager_p =
-		( manager< RESULT_TYPE::COUNT_DISTINCT> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >;
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 	manager_p->end();
 	break;
       }
+
       default:
+	/* impossible case */
+	assert_release_error (false);
 	break;
       }
   }
+
   void
   scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
-    using namespace parallel_heap_scan;
-    RESULT_TYPE result_type = scan_id->s.phsid.result_type;
-    switch (result_type)
+    using accumulative_trace_storage = parallel_heap_scan::accumulative_trace_storage;
+
+    switch (scan_id->s.phsid.result_type)
       {
-      case  RESULT_TYPE::MERGEABLE_LIST:
+      case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
       {
-	manager< RESULT_TYPE::MERGEABLE_LIST> *manager_p =
-		( manager< RESULT_TYPE::MERGEABLE_LIST> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >;
+
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
+
 	if (thread_p->on_trace)
 	  {
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (sizeof (
-		    accumulative_trace_storage));
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)scan_id->s.phsid.trace_storage,
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.phsid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.phsid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->close();
+		    break;
+		  }
+
+		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
 						 manager_p->get_result_type());
+		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
+
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
+
 	manager_p->close();
 	break;
       }
-      case  RESULT_TYPE::XASL_SNAPSHOT:
+
+      case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
       {
-	manager< RESULT_TYPE::XASL_SNAPSHOT> *manager_p =
-		( manager< RESULT_TYPE::XASL_SNAPSHOT> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >;
+
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
+
 	if (thread_p->on_trace)
 	  {
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (sizeof (
-		    accumulative_trace_storage));
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)scan_id->s.phsid.trace_storage,
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.phsid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->close();
+		    break;
+		  }
+
+		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
 						 manager_p->get_result_type());
+		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
+
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
+
 	manager_p->close();
 	break;
       }
-      case  RESULT_TYPE::COUNT_DISTINCT:
+
+      case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
       {
-	manager< RESULT_TYPE::COUNT_DISTINCT> *manager_p =
-		( manager< RESULT_TYPE::COUNT_DISTINCT> *) scan_id->s.phsid.manager;
+	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >;
+
+	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
+
 	if (thread_p->on_trace)
 	  {
 	    if (scan_id->s.phsid.trace_storage == nullptr)
 	      {
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (sizeof (
-		    accumulative_trace_storage));
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *)
-						 scan_id->s.phsid.trace_storage, manager_p->get_result_type());
+		size_t alloc_size = sizeof (accumulative_trace_storage);
+		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
+		if (scan_id->s.phsid.trace_storage == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+		    manager_p->close();
+		    break;
+		  }
+
+		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
+						 manager_p->get_result_type());
+		assert (scan_id->s.phsid.trace_storage != nullptr);
 	      }
+
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
+
 	manager_p->close();
 	break;
       }
+
       default:
+	/* impossible case */
+	assert_release_error (false);
 	break;
       }
   }
-  int
-  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id,
-				/* fields of SCAN_ID */
-				bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
-				int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE *join_dbval,
-				val_list_node *val_list, VAL_DESCR *vd,
-				/* fields of HEAP_SCAN_ID */
-				OID *cls_oid, HFID *hfid, regu_variable_list_node *regu_list_pred,
-				PRED_EXPR *pr, regu_variable_list_node *regu_list_rest, int num_attrs_pred,
-				ATTR_ID *attrids_pred, HEAP_CACHE_ATTRINFO *cache_pred, int num_attrs_rest,
-				ATTR_ID *attrids_rest, HEAP_CACHE_ATTRINFO *cache_rest, SCAN_TYPE scan_type,
-				DB_VALUE **cache_recordinfo, regu_variable_list_node *regu_list_recordinfo,
-				bool is_partition_table, QUERY_ID query_id, int num_parallel_threads, parallel_heap_scan::RESULT_TYPE result_type,
-				XASL_NODE *xasl)
-  {
-    using namespace parallel_heap_scan;
-    int ret = NO_ERROR, n_user_pages = -1;
-    int parallelism = num_parallel_threads;
-    assert (scan_type == S_PARALLEL_HEAP_SCAN);
 
-    if (!HFID_IS_NULL (hfid))
+  int
+  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed, int fixed_scan,
+				int grouped_scan, VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid, XASL_NODE *xasl,
+				QUERY_ID query_id)
+  {
+    int num_user_pages = -1;
+    parallel_query::worker_manager *worker_manager_p = nullptr;
+    int num_parallel_threads;
+    int error = NO_ERROR;
+
+    assert (thread_p != nullptr);
+    assert (scan_id != nullptr);
+    assert (spec != nullptr);
+    assert (spec->type == TARGET_CLASS);
+    assert (spec->access == ACCESS_METHOD_SEQUENTIAL);
+    assert (xasl != nullptr);
+    assert (query_id != NULL_QUERY_ID);
+    assert (vd != nullptr);
+
+    scan_id->type = S_HEAP_SCAN;
+
+    if (spec->curent == nullptr)
       {
-	ret = file_get_num_user_pages (thread_p, &hfid->vfid, &n_user_pages);
-	if (ret != NO_ERROR)
+	/* DB_PARTITION_CLASS will be parallel-heap-scanned, not DB_PARTITIONED_CLASS */
+	if (spec->pruning_type == DB_PARTITIONED_CLASS)
 	  {
-	    return S_ERROR;
+	    /* try single-thread heap scan */
+	    return NO_ERROR;
+	  }
+
+	if (oid_is_system_class (class_oid)
+	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed
+	    /* Why thread_p->private_heap_id != 0 ?
+	     * Because, if it is 0, it means that the scan is not executed in main thread.
+	     * So, we can't use parallel heap scan. */
+	    || thread_p->private_heap_id == 0)
+	  {
+	    /* parallel-thread heap scan not supported */
+	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
 	  }
       }
-    if (n_user_pages > PARALLEL_HEAP_SCAN_MIN_USER_PAGES)
+
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN) || HFID_IS_NULL (class_hfid))
       {
-	using worker_manager = parallel_query::worker_manager;
-	worker_manager *worker_manager_p = nullptr;
-	worker_manager_p = worker_manager::try_reserve_workers (parallelism);
-	if (worker_manager_p == nullptr)
-	  {
-	    goto try_single_heap;
-	  }
-	scan_id->type = S_PARALLEL_HEAP_SCAN;
-	scan_id->s.phsid.result_type = result_type;
-	er_log_debug (ARG_FILE_LINE, "parallel heap scan started.");
-	if (result_type ==  RESULT_TYPE::MERGEABLE_LIST)
-	  {
-	    scan_id->s.phsid.manager = (void *) db_private_alloc (thread_p,
-				       sizeof ( manager< RESULT_TYPE::MERGEABLE_LIST>));
-	    if (scan_id->s.phsid.manager == nullptr)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-		return ER_FAILED;
-	      }
-	    scan_id->s.phsid.manager = placement_new (( manager< RESULT_TYPE::MERGEABLE_LIST>
-				       *) scan_id->s.phsid.manager, thread_p, query_id,
-				       scan_id, xasl, parallelism, *hfid, *cls_oid, vd, (bool)fixed, (bool)grouped, worker_manager_p);
-	  }
-	else if (result_type ==  RESULT_TYPE::XASL_SNAPSHOT)
-	  {
-	    scan_id->s.phsid.manager = (void *) db_private_alloc (thread_p,
-				       sizeof ( manager< RESULT_TYPE::XASL_SNAPSHOT>));
-	    if (scan_id->s.phsid.manager == nullptr)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-		return ER_FAILED;
-	      }
-	    scan_id->s.phsid.manager = placement_new (( manager< RESULT_TYPE::XASL_SNAPSHOT>
-				       *) scan_id->s.phsid.manager, thread_p, query_id,
-				       scan_id, xasl, parallelism, *hfid, *cls_oid, vd, (bool)fixed, (bool)grouped, worker_manager_p);
-	  }
-	else if (result_type ==  RESULT_TYPE::COUNT_DISTINCT)
-	  {
-	    scan_id->s.phsid.manager = (void *) db_private_alloc (thread_p,
-				       sizeof ( manager< RESULT_TYPE::COUNT_DISTINCT>));
-	    if (scan_id->s.phsid.manager == nullptr)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-		return ER_FAILED;
-	      }
-	    scan_id->s.phsid.manager = placement_new (( manager< RESULT_TYPE::COUNT_DISTINCT>
-				       *) scan_id->s.phsid.manager, thread_p, query_id,
-				       scan_id, xasl, parallelism, *hfid, *cls_oid, vd, (bool)fixed, (bool)grouped, worker_manager_p);
-	  }
-	if (result_type ==  RESULT_TYPE::MERGEABLE_LIST)
-	  {
-	    manager< RESULT_TYPE::MERGEABLE_LIST> *phs_manager =
-		    ( manager< RESULT_TYPE::MERGEABLE_LIST> *) scan_id->s.phsid.manager;
-	    ret = phs_manager->open();
-	    if (ret != NO_ERROR)
-	      {
-		phs_manager->~manager();
-		db_private_free (thread_p, phs_manager);
-		scan_id->s.phsid.manager = nullptr;
-		worker_manager_p->release_workers (parallelism);
-		worker_manager_p = nullptr;
-		goto try_single_heap;
-	      }
-	  }
-	else if (result_type ==  RESULT_TYPE::XASL_SNAPSHOT)
-	  {
-	    manager< RESULT_TYPE::XASL_SNAPSHOT> *phs_manager =
-		    ( manager< RESULT_TYPE::XASL_SNAPSHOT> *) scan_id->s.phsid.manager;
-	    ret = phs_manager->open();
-	    if (ret != NO_ERROR)
-	      {
-		phs_manager->~manager();
-		db_private_free (thread_p, phs_manager);
-		scan_id->s.phsid.manager = nullptr;
-		worker_manager_p->release_workers (parallelism);
-		worker_manager_p = nullptr;
-		goto try_single_heap;
-	      }
-	  }
-	else if (result_type ==  RESULT_TYPE::COUNT_DISTINCT)
-	  {
-	    manager< RESULT_TYPE::COUNT_DISTINCT> *phs_manager =
-		    ( manager< RESULT_TYPE::COUNT_DISTINCT> *) scan_id->s.phsid.manager;
-	    ret = phs_manager->open();
-	    if (ret != NO_ERROR)
-	      {
-		phs_manager->~manager();
-		db_private_free (thread_p, phs_manager);
-		scan_id->s.phsid.manager = nullptr;
-		worker_manager_p->release_workers (parallelism);
-		worker_manager_p = nullptr;
-		goto try_single_heap;
-	      }
-	  }
+	/* try single-thread heap scan */
+	return NO_ERROR;
+      }
+
+    /*
+     * try parallel-thread heap scan
+     */
+
+    /* check if pages are enough for parallel-thread heap scan */
+    error = file_get_num_user_pages (thread_p, &class_hfid->vfid, &num_user_pages);
+    if (error != NO_ERROR)
+      {
+	assert_release_error (error != NO_ERROR);
+	return er_errid ();
+      }
+
+    assert (spec->num_parallel_threads == -1 /* auto-compute */
+	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
+
+    num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HEAP_SCAN,
+			   num_user_pages, spec->num_parallel_threads /* hint */);
+    if (num_parallel_threads < 2)
+      {
+	/* try single-thread heap scan */
+	assert (scan_id->type == S_HEAP_SCAN);
+	return NO_ERROR;
+      }
+
+    worker_manager_p = parallel_query::worker_manager::try_reserve_workers (num_parallel_threads);
+    if (worker_manager_p == nullptr)
+      {
+	/* try single-thread heap scan */
+	assert (scan_id->type == S_HEAP_SCAN);
+	return NO_ERROR;
+      }
+
+    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+      {
+	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
+      }
+
+    /* should check LIST_MERGE in checker */
+    if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
+      {
+	scan_id->s.phsid.result_type = parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST;
+      }
+    else if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_COUNT_DISTINCT))
+      {
+	scan_id->s.phsid.result_type = parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT;
       }
     else
       {
-	if (xasl->list_id->tfile_vfid != NULL
-	    && !VPID_ISNULL (&xasl->list_id->first_vpid))
-	  {
-	    qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
-	  }
-	goto try_single_heap;
+	scan_id->s.phsid.result_type = parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT;
       }
-    return ret;
-try_single_heap:
-    ret = scan_open_heap_scan (thread_p, scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch,
-			       join_dbval,
-			       val_list, vd, cls_oid, hfid, regu_list_pred, pr, regu_list_rest, num_attrs_pred, attrids_pred, cache_pred,
-			       num_attrs_rest, attrids_rest, cache_rest, S_HEAP_SCAN, cache_recordinfo, regu_list_recordinfo, is_partition_table);
-    return ret;
+
+    scan_id->s.phsid.manager = nullptr;	/* init */
+
+    switch (scan_id->s.phsid.result_type)
+      {
+      case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
+      {
+	using manager_type =
+		parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >;
+
+	scan_id->s.phsid.manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (scan_id->s.phsid.manager == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    break;
+	  }
+
+	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
+	assert (scan_id->s.phsid.manager != nullptr);
+
+	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
+	if (error != NO_ERROR)
+	  {
+	    /* cleanup */
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	  }
+
+	break;
+      }
+
+      case parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT:
+      {
+	using manager_type =
+		parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >;
+
+	scan_id->s.phsid.manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (scan_id->s.phsid.manager == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    break;
+	  }
+
+	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
+	assert (scan_id->s.phsid.manager != nullptr);
+
+	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
+	if (error != NO_ERROR)
+	  {
+	    /* cleanup */
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	  }
+
+	break;
+      }
+
+      case parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT:
+      {
+	using manager_type =
+		parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >;
+
+	scan_id->s.phsid.manager = (void *) db_private_alloc (thread_p, sizeof (manager_type));
+	if (scan_id->s.phsid.manager == nullptr)
+	  {
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    break;
+	  }
+
+	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
+	assert (scan_id->s.phsid.manager != nullptr);
+
+	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
+	if (error != NO_ERROR)
+	  {
+	    /* cleanup */
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+
+	    assert_release_error (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	  }
+
+	break;
+      }
+
+      default:
+	/* impossible case */
+	assert_release_error (false);
+	error = er_errid ();
+	break;
+      }	/* switch (s_id->s.phsid.result_type) */
+
+    if (error != NO_ERROR)
+      {
+	/* cleanup */
+	if (worker_manager_p != nullptr)
+	  {
+	    worker_manager_p->release_workers (num_parallel_threads);
+	    worker_manager_p = nullptr;
+	  }
+
+	if (error == ER_INTERRUPTED || er_errid () == ER_INTERRUPTED)
+	  {
+	    ASSERT_ERROR ();
+	    return error;
+	  }
+
+	/* fallback to single-thread heap scan */
+	er_clear ();
+	assert (scan_id->type == S_HEAP_SCAN);
+	return NO_ERROR;
+      }
+
+    er_log_debug (ARG_FILE_LINE, "parallel heap scan started.");
+    scan_id->type = S_PARALLEL_HEAP_SCAN;
+
+    ASSERT_NO_ERROR_OR_INTERRUPTED ();
+    return NO_ERROR;
   }
+
   int
   scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
@@ -414,7 +641,19 @@ namespace parallel_heap_scan
     if (h == 0)
       {
 	m_uses_xasl_clone = false;
-	if (m_thread_p->xasl_unpack_info_ptr)
+
+	THREAD_ENTRY *main_thread_p = m_thread_p;
+	while (main_thread_p->m_px_orig_thread_entry != nullptr)
+	  {
+	    if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
+	      {
+		break;
+	      }
+	    main_thread_p = main_thread_p->m_px_orig_thread_entry;
+	    assert (main_thread_p != m_thread_p);
+	  }
+
+	if (main_thread_p->xasl_unpack_info_ptr)
 	  {
 	    /* use unpack info ptr for execute. */
 	  }
@@ -434,18 +673,18 @@ namespace parallel_heap_scan
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	return ER_FAILED;
       }
-    memcpy (new_vd, m_vd, sizeof (VAL_DESCR));
-    if (m_vd->dbval_cnt > 0)
+    memcpy (new_vd, m_orig_vd, sizeof (VAL_DESCR));
+    if (m_orig_vd->dbval_cnt > 0)
       {
-	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_vd->dbval_cnt);
+	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
 	if (new_vd->dbval_ptr == nullptr)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	    return ER_FAILED;
 	  }
-	for (int i = 0; i < m_vd->dbval_cnt; i++)
+	for (int i = 0; i < m_orig_vd->dbval_cnt; i++)
 	  {
-	    pr_clone_value (&m_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
+	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
 	  }
       }
     m_vd = new_vd;
@@ -545,6 +784,7 @@ namespace parallel_heap_scan
       }
     m_result_handler_read_initialized = false;
     m_task_started = false;
+    m_interrupt.clear();
     return NO_ERROR;
   }
 
@@ -592,6 +832,18 @@ namespace parallel_heap_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	scan_code = m_result_handler->read (m_thread_p, m_xasl->list_id);
+	if (scan_code == S_ERROR)
+	  {
+	    if (m_interrupt.get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	      {
+		m_interrupt.set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD);
+	      }
+	    if (m_worker_manager != nullptr)
+	      {
+		m_worker_manager->release_workers (m_parallelism);
+		m_worker_manager = nullptr;
+	      }
+	  }
 	if (m_g_agg_domain_resolve_need)
 	  {
 	    std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
@@ -644,6 +896,11 @@ namespace parallel_heap_scan
 	  {
 	    m_interrupt.set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD);
 	  }
+	if (m_worker_manager != nullptr)
+	  {
+	    m_worker_manager->release_workers (m_parallelism);
+	    m_worker_manager = nullptr;
+	  }
       }
 
     if (unlikely (m_interrupt.get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT))
@@ -681,8 +938,72 @@ namespace parallel_heap_scan
   }
 
   template <RESULT_TYPE result_type>
-  int manager<result_type>::reset()
+  int manager<result_type>::reset ()
   {
+    /* Save current parallelism and prepare for reset */
+    int parallelism = m_parallelism;
+    int err_code = NO_ERROR;
+    using worker_manager = parallel_query::worker_manager;
+    worker_manager *worker_manager_p = nullptr;
+
+    /* Clean up input handler */
+    if (m_input_handler != nullptr)
+      {
+	m_input_handler->~input_handler ();
+	db_private_free (m_thread_p, m_input_handler);
+	m_input_handler = nullptr;
+      }
+
+    /* Clean up result handler */
+    if (m_result_handler != nullptr)
+      {
+	m_result_handler->~result_handler ();
+	db_private_free (m_thread_p, m_result_handler);
+	m_result_handler = nullptr;
+      }
+
+    /* Release worker manager */
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->release_workers (m_parallelism);
+	m_worker_manager = nullptr;
+      }
+
+    /* Clean up previous value descriptor */
+    if (m_vd != nullptr)
+      {
+	if (m_vd->dbval_cnt > 0)
+	  {
+	    for (int i = 0; i < m_vd->dbval_cnt; i++)
+	      {
+		pr_clear_value (&m_vd->dbval_ptr[i]);
+	      }
+	    db_private_free (m_thread_p, m_vd->dbval_ptr);
+	  }
+	db_private_free (m_thread_p, m_vd);
+	m_vd = nullptr;
+      }
+
+    /* Reserve workers for parallel execution */
+    worker_manager_p = worker_manager::try_reserve_workers (parallelism);
+    if (worker_manager_p == nullptr)
+      {
+	return ER_FAILED;
+      }
+
+    m_trace_handler.clear();
+
+    /* Open and initialize */
+    err_code = open ();
+    if (err_code != NO_ERROR)
+      {
+	worker_manager_p->release_workers (parallelism);
+	return err_code;
+      }
+
+    /* Finalize setup */
+    m_worker_manager = worker_manager_p;
+    m_scan_id->s.phsid.manager = this;
     return NO_ERROR;
   }
 
@@ -690,9 +1011,15 @@ namespace parallel_heap_scan
   int manager<result_type>::end()
   {
     int err_code = NO_ERROR;
-    m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
-    m_worker_manager->release_workers (m_parallelism);
-    m_worker_manager = nullptr;
+    if (m_interrupt.get_code() != parallel_query::interrupt::interrupt_code::JOB_ENDED)
+      {
+	m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
+      }
+    if (m_worker_manager != nullptr)
+      {
+	m_worker_manager->release_workers (m_parallelism);
+	m_worker_manager = nullptr;
+      }
     if (m_on_trace)
       {
 	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
