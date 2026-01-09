@@ -11596,21 +11596,18 @@ slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &attrid);
   if (ptr == NULL)
     {
-      goto error_end;
+      goto end;
     }
 
   error = xlob_remove_dir (thread_p, &hfid, attrid);
   if (error != NO_ERROR)
     {
-      goto error_end;
+      goto end;
     }
 
+end:
   ptr = or_pack_errcode (reply, error);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  return;
-
-error_end:
-  (void) return_error_to_client (thread_p, rid);
   return;
 }
