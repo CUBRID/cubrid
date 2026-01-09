@@ -3351,7 +3351,11 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
        * If the transaction is active only abort it.
        * Don't abort transactions in LOG_ISTRAN_2PC_PREPARE arbitrarily.
        */
+#ifdef CCI_XA
       if (LOG_ISTRAN_ACTIVE (tdes))
+#else
+      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
+#endif
 	{
 	  (void) xtran_server_abort (thread_p);
 	}

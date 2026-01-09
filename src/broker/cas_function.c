@@ -99,6 +99,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
+#ifdef CCI_XA
   if (is_xa_prepared ())
     {
       /*
@@ -110,6 +111,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       ;
     }
   else
+#endif
     {
       err_code = ux_end_tran ((char) tran_type, false, false);
     }

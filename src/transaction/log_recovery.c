@@ -4926,6 +4926,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			}
 		      else
 			{
+#ifdef CCI_XA
 			  if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
 			    {
 			      /*
@@ -4935,6 +4936,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			      ;
 			    }
 			  else
+#endif
 			    {
 			      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
 						   LOG_NEED_TO_WRITE_EOT_LOG);

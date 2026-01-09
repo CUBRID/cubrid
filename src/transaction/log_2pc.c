@@ -1051,11 +1051,20 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   if (LOG_ISTRAN_2PC (client_tdes))
     {
+#ifdef CCI_XA
       /*
        * The current transaction is in the middle of the 2PC protocol, we
        * don't need to attach it.
        */
       return tran_index;
+#else
+      /*
+       * The current transaction is in the middle of the 2PC protocol, we
+       * cannot attach at this moment
+       */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, client_tdes->trid, gtrid);
+      return NULL_TRAN_INDEX;
+#endif
     }
 
   TR_TABLE_CS_ENTER (thread_p);
