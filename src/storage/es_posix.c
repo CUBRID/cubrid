@@ -734,7 +734,7 @@ retry:
     {
       if (errno == ENOENT)
 	{
-	  p = strrchr (new_path, '/');
+	  p = strrchr (new_path, PATH_SEPARATOR);
 	  new_dir_len = p - new_path;
 
 	  memcpy (new_dir, new_path, new_dir_len);
