@@ -167,8 +167,17 @@ namespace cubhnsw
   }
 
   disk_storage::pinned_t
-  disk_storage::get_root (lock_mode mode)
+  disk_storage::get_root (cubthread::entry *thread_ref, lock_mode mode)
   {
+    if (thread_ref != nullptr)
+      {
+	m_thread_p = thread_ref;
+      }
+    else
+      {
+	set_thread_entry (thread_get_thread_entry_info());
+      }
+
     VPID root_vpid = m_root_vpid;
 
     PGBUF_LATCH_MODE pgbuf_mode = PGBUF_LATCH_READ;

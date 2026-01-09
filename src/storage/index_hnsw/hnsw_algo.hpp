@@ -30,6 +30,7 @@
 #include "hnsw_utils.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_storage.hpp" // storage_t
+#include "thread_entry.hpp"
 
 #include "faiss/utils/distances.h" // faiss
 
@@ -241,7 +242,8 @@ namespace cubhnsw
       algo (const hnsw_build_params &build_params);
 
       // high-level APIs
-      add_result_t<Traits> add (const key_id_t &oid, const float *vector, const std::size_t expansion);
+      add_result_t<Traits> add (cubthread::entry &thread_ref, const key_id_t &oid, const float *vector,
+				const std::size_t expansion);
       search_result_t<Traits> search (const float *query, const std::size_t k, const std::size_t expansion);
 
       void set_storage (storage_t *storage) noexcept
@@ -348,11 +350,11 @@ namespace cubhnsw
 
   template <typename Traits>
   add_result_t<Traits>
-  algo<Traits>::add (const key_id_t &key, const float *vector, const std::size_t expansion)
+  algo<Traits>::add (cubthread::entry &thread_ref, const key_id_t &key, const float *vector, const std::size_t expansion)
   {
     add_result_t<Traits> result;
 
-    m_storage->set_thread_entry (thread_get_thread_entry_info());
+    m_storage->set_thread_entry (&thread_ref);
 
     m_context.clear_candidates();
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
@@ -375,7 +377,7 @@ namespace cubhnsw
     level_t curr_max_level, new_target_level;
     slot_id_t entry_slot, new_slot;
 
-    pinned_t root_block = m_storage->get_root (lock_mode::exclusive);
+    pinned_t root_block = m_storage->get_root (&thread_ref, lock_mode::exclusive);
     root_type root_node = root_type (root_block->data);
     {
       curr_max_level = root_node.get_level(); // get max_level from root page
@@ -493,7 +495,7 @@ namespace cubhnsw
     slot_id_t entry_slot;
     level_t root_level;
     {
-      pinned_t root_block = m_storage->get_root (lock_mode::shared);
+      pinned_t root_block = m_storage->get_root (nullptr, lock_mode::shared);
       root_type root_node = root_type (root_block->data);
       entry_slot = root_node.get_entry();
       root_level = root_node.get_level();

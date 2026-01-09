@@ -235,7 +235,7 @@ hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const 
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;
     }
-  m_algo->add (oid, vector, m_build_params.ef_construction);
+  m_algo->add (thread_ref, oid, vector, m_build_params.ef_construction);
   return NO_ERROR;
 }
 

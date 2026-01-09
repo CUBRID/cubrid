@@ -86,7 +86,7 @@ namespace cubhnsw
 
       virtual slot_id_t add_node (const OID &key, const float *vector, const level_t &level) override;
 
-      virtual pinned_t get_root (lock_mode mode) override;
+      virtual pinned_t get_root (cubthread::entry *thread_ref, lock_mode mode) override;
       virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) override;
       virtual pinned_t get_vector_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) override;
 

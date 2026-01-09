@@ -60,7 +60,7 @@ namespace cubhnsw
   }
 
   memory_storage::root_type
-  memory_storage::get_root ()
+  memory_storage::get_root (cubthread::entry *thread_ref, lock_mode mode)
   {
     return root_type { reinterpret_cast<byte_t *> (m_root_block) };
   }
