@@ -4874,6 +4874,11 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE
       att = (DB_ATTRIBUTE *) db_get_attributes_force (object);
     }
 
+      /* invisible columns will not be shown */
+      while(att != NULL && db_attribute_is_invisible_column (att)){
+	att = db_attribute_next(att);
+      }
+      
   if (att != NULL)
     {
       /* make result anchor the list */
@@ -4905,6 +4910,13 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE
       /* for the rest of the attributes do */
       while (att != NULL)
 	{
+	  /* column is invisible. skip it */
+	  if (db_attribute_is_invisible_column (att))
+	    {
+	      att = db_attribute_next (att);
+	      continue;
+	    }
+
 	  /* make new node & copy attribute name into it */
 	  node = pt_name (parser, db_attribute_name (att));
 	  if (node == NULL)
