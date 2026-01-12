@@ -19763,7 +19763,7 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
 
   /* just years and/or months case */
-  if (composite_values[COMPOSITE_MILLISECOND] > 0 || composite_values[COMPOSITE_YEAR] > 0)
+  if (composite_values[COMPOSITE_MONTH] > 0 || composite_values[COMPOSITE_YEAR] > 0)
     {
       assert (composite_values[COMPOSITE_DAY] == 0 && composite_values[COMPOSITE_HOUR] == 0 &&
 	      composite_values[COMPOSITE_MINUTE] == 0 && composite_values[COMPOSITE_SECOND] == 0 &&
