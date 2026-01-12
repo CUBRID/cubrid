@@ -7856,6 +7856,7 @@ SCAN_CODE
 heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   HEAP_SCANCACHE *scan_cache_p = context->scan_cache;
+  SCAN_CODE sc;
 
   /* We have everything set up to get record data. */
   assert (context != NULL);
@@ -7870,48 +7871,43 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   switch (context->record_type)
     {
     case REC_RELOCATION:
-      {
+      /* Don't peek REC_RELOCATION. */
+      if (scan_cache_p != NULL && (context->ispeeking != 0 || context->recdes_p->data == NULL)
+	  && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
+						   DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return S_ERROR;
+	}
+      sc = spage_get_record (thread_p, context->fwd_page_watcher.pgptr, context->forward_oid.slotid,
+			     context->recdes_p, COPY);
+      if (sc != S_SUCCESS)
+	{
+	  return sc;
+	}
 
-	/* Don't peek REC_RELOCATION. */
-	if (scan_cache_p != NULL && (context->ispeeking != 0 || context->recdes_p->data == NULL)
-	    && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
-						     DB_PAGESIZE * 2) != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return S_ERROR;
-	  }
-	SCAN_CODE sc = spage_get_record (thread_p, context->fwd_page_watcher.pgptr, context->forward_oid.slotid,
-					 context->recdes_p, COPY);
-	if (sc != S_SUCCESS)
-	  {
-	    return sc;
-	  }
-
-	return heap_get_record_data_with_oos_values (thread_p, context);
-      }
+      return heap_get_record_data_with_oos_values (thread_p, context);
     case REC_BIGONE:
       return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
 				      context->recdes_p);
     case REC_HOME:
-      {
-	if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL
-	    && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
-						     DB_PAGESIZE * 2) != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return S_ERROR;
-	  }
+      if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL
+	  && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
+						   DB_PAGESIZE * 2) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return S_ERROR;
+	}
 
-	SCAN_CODE sc =
-	  spage_get_record (thread_p, context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
-			    context->ispeeking);
-	if (sc != S_SUCCESS)
-	  {
-	    return sc;
-	  }
+      sc =
+	spage_get_record (thread_p, context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
+			  context->ispeeking);
+      if (sc != S_SUCCESS)
+	{
+	  return sc;
+	}
 
-	return heap_get_record_data_with_oos_values (thread_p, context);
-      }
+      return heap_get_record_data_with_oos_values (thread_p, context);
     default:
       break;
     }
@@ -7950,9 +7946,10 @@ heap_get_record_data_with_oos_values (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       // *INDENT-ON*
 
       SCAN_CODE sc = heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
-      if (sc != S_SUCCESS) {
+      if (sc != S_SUCCESS)
+	{
 	  return sc;
-      }
+	}
 
       context->recdes_p->length = build_record.get_size ();
 
