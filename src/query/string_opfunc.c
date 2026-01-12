@@ -19770,7 +19770,7 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	      composite_values[COMPOSITE_MILLISECOND] == 0);
 
       _y = *year - composite_values[COMPOSITE_YEAR];
-      _m = *month - composite_values[COMPOSITE_MILLISECOND];
+      _m = *month - composite_values[COMPOSITE_MONTH];
 
       if (_m <= 0)
 	{
