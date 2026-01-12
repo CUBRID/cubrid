@@ -7981,8 +7981,8 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
  */
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction,
-		    DB_VALUE ** cache_recordinfo, sampling_info * sampling)
+		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo,
+		    sampling_info * sampling)
 {
   VPID vpid;
   VPID *vpidptr_incache;
