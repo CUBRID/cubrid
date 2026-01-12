@@ -329,6 +329,7 @@ struct buildlist_proc_node
   REGU_VARIABLE_LIST g_scan_regu_list;	/* group_by regulist during scan */
   ANALYTIC_EVAL_TYPE *a_eval_list;	/* analytic functions evaluation groups */
   REGU_VARIABLE_LIST a_regu_list;	/* analytic regu list */
+  REGU_VARIABLE_LIST a_scan_regu_list;	/* analytic regulist during scan */
   OUTPTR_LIST *a_outptr_list;	/* analytic output ptr list */
   OUTPTR_LIST *a_outptr_list_ex;	/* ext output ptr list */
   OUTPTR_LIST *a_outptr_list_interm;	/* intermediate output list */
@@ -515,6 +516,7 @@ struct cte_proc_node
 #define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
+#define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
