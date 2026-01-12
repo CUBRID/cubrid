@@ -144,6 +144,6 @@ extern LC_FIND_CLASSNAME locator_reserve_class_name (const char *class_name, OID
 
 extern int locator_lob_create_or_remove_dir (HFID * old_hfid, HFID * new_hfid, int *lob_attrid_arr,
 					     int lob_attrid_arr_length);
-extern int locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid);
+extern int locator_lob_process_create_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid);
 
 #endif /* _LOCATOR_CL_H_ */
