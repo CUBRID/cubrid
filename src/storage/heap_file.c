@@ -759,7 +759,7 @@ static SCAN_CODE heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread
 							   int lob_create_flag);
 static SCAN_CODE heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							 OR_BUF * buf, int offset_size, bool is_mvcc_class,
-							 bool is_update);
+							 bool is_update, bool has_oos);
 
 // *INDENT-OFF*
 static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf, 
@@ -7910,45 +7910,40 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  {
 	    return sc;
 	  }
-	return sc;
 
-	// if (!recdes_contains_oos (context->recdes_p))
-	//   {
-	//     return sc;
-	//   }
-
-	HEAP_CACHE_ATTRINFO attr_info;
-	int err;
-	err = heap_attrinfo_start (thread_p, context->class_oid_p, -1, nullptr, &attr_info);
-	if (err != NO_ERROR)
+	if (mvcc_is_mvcc_disabled_class (context->class_oid_p))
 	  {
-	    return S_ERROR;
-	  }
-	err = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, context->recdes_p, &attr_info);
-	if (err != NO_ERROR)
-	  {
-	    return S_ERROR;
-	  }
-	RECDES old_recdes;
-
-	// *INDENT-OFF*
-	record_descriptor build_record (cubmem::CSTYLE_BLOCK_ALLOCATOR);
-	// *INDENT-ON*
-
-	if (scan_cache_p != NULL && context->ispeeking == COPY && context->recdes_p->data == NULL
-	    && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache_p, context->recdes_p,
-						     DB_PAGESIZE * 2) != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    return S_ERROR;
+	    // TODO: OOS not implemented for mvcc disabled class
+	    return S_SUCCESS;
 	  }
 
-	build_record.set_external_buffer (context->recdes_p->data, context->recdes_p->area_size);
-	heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, &old_recdes, &build_record);
-	heap_attrinfo_end (thread_p, &attr_info);
+	if (heap_recdes_contains_oos (context->recdes_p))
+	  {
+	    HEAP_CACHE_ATTRINFO attr_info;
+	    int err;
 
-	// handle oos
-	// assert (false);
+	    err = heap_attrinfo_start (thread_p, context->class_oid_p, -1, nullptr, &attr_info);
+	    if (err != NO_ERROR)
+	      {
+		return S_ERROR;
+	      }
+
+	    err = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, context->recdes_p, &attr_info);
+	    if (err != NO_ERROR)
+	      {
+		return S_ERROR;
+	      }
+
+	    // *INDENT-OFF*
+	    record_descriptor build_record (cubmem::STANDARD_BLOCK_ALLOCATOR);
+	    // *INDENT-ON*
+	    heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
+	    context->recdes_p->length = build_record.get_size ();
+
+	    // return OOS value-expanded record to caller
+	    std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
+	    heap_attrinfo_end (thread_p, &attr_info);
+	  }
 	return sc;
       }
     default:
@@ -12322,7 +12317,7 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
  */
 static SCAN_CODE
 heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, OR_BUF * buf,
-					int offset_size, bool is_mvcc_class, bool is_update)
+					int offset_size, bool is_mvcc_class, bool is_update, bool has_oos)
 {
   unsigned int repid_bits;
 
@@ -12344,6 +12339,11 @@ heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTR
   /* can detect the change in object. That is, clients will need to */
   /* refetch the object.                                            */
   attr_info->inst_chn++;
+
+  if (has_oos)
+    {
+      repid_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);	// 0b00000100 -> 0b00000100 + (24 zero bits)
+    }
 
   if (is_mvcc_class)
     {
@@ -12802,7 +12802,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
       /* build header */
       status =
-	heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, is_update);
+	heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, is_update,
+						has_oos);
       if (status == S_DOESNT_FIT)
 	{
 	  expected_size += DB_PAGESIZE;
@@ -13042,6 +13043,81 @@ heap_attrinfo_determine_disksize_develop_ver (HEAP_CACHE_ATTRINFO * attr_info, b
 }
 
 static SCAN_CODE
+heap_attrinfo_transform_header_to_disk_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+						    OR_BUF * buf, int offset_size, bool is_mvcc_class, bool is_update)
+{
+  unsigned int repid_bits;
+
+  /* store the representation of the class along with bound bit */
+  /* flag information                                           */
+
+  repid_bits = attr_info->last_classrepr->id;
+
+  /* Do we have fixed value attributes ? */
+  if ((attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable) != 0)
+    {
+      repid_bits |= OR_BOUND_BIT_FLAG;
+    }
+
+  /* offset size */
+  OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
+
+  /* We must increase the current value by one so that clients      */
+  /* can detect the change in object. That is, clients will need to */
+  /* refetch the object.                                            */
+  attr_info->inst_chn++;
+
+  if (is_mvcc_class)
+    {
+      if (!is_update)
+	{
+	  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE) > buf->endptr)
+	    {
+	      return S_DOESNT_FIT;
+	    }
+	  else
+	    {
+	      or_put_int (buf, repid_bits);
+	      or_put_int (buf, 0);	/* CHN */
+	      or_put_bigint (buf, 0);	/* MVCC insert id */
+	    }
+	}
+      else
+	{
+	  LOG_LSA null_lsa = LSA_INITIALIZER;
+	  repid_bits |= ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
+	    {
+	      return S_DOESNT_FIT;
+	    }
+	  else
+	    {
+	      or_put_int (buf, repid_bits);
+	      or_put_int (buf, 0);	/* CHN */
+	      or_put_bigint (buf, 0);	/* MVCC insert id */
+	      assert ((buf->ptr + OR_MVCC_PREV_VERSION_LSA_SIZE) <= buf->endptr);
+	      or_put_data (buf, (char *) &null_lsa, OR_MVCC_PREV_VERSION_LSA_SIZE);	/* prev version lsa */
+	    }
+	}
+    }
+  else
+    {
+      if ((buf->ptr + OR_NON_MVCC_HEADER_SIZE) > buf->endptr)
+	{
+	  return S_DOESNT_FIT;
+	}
+      else
+	{
+	  or_put_int (buf, repid_bits);
+	  or_put_int (buf, attr_info->inst_chn);
+	}
+    }
+
+  return S_SUCCESS;
+}
+
+static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal_develop_ver (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						      RECDES * old_recdes, record_descriptor * new_recdes,
 						      int lob_create_flag)
@@ -13103,7 +13179,8 @@ heap_attrinfo_transform_to_disk_internal_develop_ver (THREAD_ENTRY * thread_p, H
 
       /* build header */
       status =
-	heap_attrinfo_transform_header_to_disk (thread_p, attr_info, &buf, offset_size, is_mvcc_class, is_update);
+	heap_attrinfo_transform_header_to_disk_develop_ver (thread_p, attr_info, &buf, offset_size, is_mvcc_class,
+							    is_update);
       if (status == S_DOESNT_FIT)
 	{
 	  expected_size += DB_PAGESIZE;
@@ -27492,12 +27569,10 @@ heap_recdes_contains_oos (const RECDES * record)
 
   OR_BUF buf;
   int rc = NO_ERROR;
-  bool has_oos = false;
   or_init (&buf, record->data, record->length);
 
   int repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
-  or_mvcc_get_flag_from_data_for_debug (record->data, record->length);
 
-  has_oos = ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_HAS_OOS) ? true : false;
+  bool has_oos = ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_HAS_OOS) != 0;
   return has_oos;
 };

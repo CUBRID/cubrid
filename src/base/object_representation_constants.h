@@ -170,6 +170,8 @@
 /* The record have an LSA with the location of the previous version */
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
+#define OR_MVCC_FLAG_HAS_OOS                       0x08	// 0b00001000
+
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
 /* MIDXKEY HEADER LAYOUT */
