@@ -15707,6 +15707,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   DB_OBJLIST *subs;
   bool reuse_oid = false;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
+  int attrid_arr[1];
   int error = NO_ERROR;
 
   oid = ws_oid (class_mop);
@@ -15770,7 +15771,14 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     }
 
   /* Destroy and Create the lob dir if need */
-  error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
+  attrid_arr[0] = -1;
+  error = locator_lob_create_or_remove_dir (&prev_hfid, NULL, attrid_arr, 1);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = locator_lob_process_create_dir (class_, &prev_hfid, insts_hfid);
   if (error != NO_ERROR)
     {
       goto end;
