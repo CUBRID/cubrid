@@ -4410,7 +4410,10 @@ sm_update_all_catalog_statistics (bool with_fullscan)
     CT_PARTITION_NAME, CT_SERIAL_NAME, CT_HA_APPLY_INFO_NAME,
     CT_COLLATION_NAME, CT_USER_NAME, CT_TRIGGER_NAME,
     CT_AUTHORIZATION_NAME, CT_CHARSET_NAME, CT_DUAL_NAME,
-    CT_SERVER_NAME, CT_SYNONYM_NAME, NULL
+    CT_SERVER_NAME, CT_SYNONYM_NAME, CT_PACKAGE_NAME,
+    CT_PACKAGE_CODE_NAME, CT_PACKAGE_VAR_NAME, CT_PACKAGE_EXCEPTION_NAME,
+    CT_PACKAGE_CURSOR_NAME, CT_PACKAGE_PROCEDURE_NAME, CT_PACKAGE_RECORD_TYPE_NAME,
+    NULL
   };
 
   for (i = 0; classes[i] != NULL && error == NO_ERROR; i++)
@@ -10608,7 +10611,7 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
  *   class(in): class structure
  *   subclasses(in): List of subclasses
  *   con(in): SM_CLASS_CONSTRAINT
- *          con->index(out): The BTID of the returned index. 
+ *          con->index(out): The BTID of the returned index.
  */
 
 static int
