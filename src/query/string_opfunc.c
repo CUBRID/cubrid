@@ -20598,9 +20598,12 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	case PT_MONTH:
 	case PT_QUARTER:
 	case PT_YEAR:
-	  // No error checking to make it behave like MySQL.
-	  sscanf (expr_s, "%" SCNd64, &unit_int_val);
-	  expr_s = NULL;
+	  {
+	    // No error checking to make it behave like MySQL.
+	    char *endptr;
+	    unit_int_val = strtoll (expr_s, &endptr, 10);
+	    expr_s = NULL;
+	  }
 	  break;
 
 	  /*  composite units  */
