@@ -10500,11 +10500,9 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 
       assert (!OID_ISNULL (&oos_oid));
 
-      /* remove it */
-      VFID oos_vfid;
       THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
       assert (thread_p);
-      if (oos_read (thread_p, oos_vfid, oos_oid, *raw) != NO_ERROR)
+      if (oos_read (thread_p, oos_oid, *raw) != NO_ERROR)
 	{
 	  assert_release (false);
 	}
@@ -12034,7 +12032,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	{
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
-	  if (oos_create (thread_p, *oos_vfid) != NO_ERROR)
+	  if (oos_file_create (thread_p, *oos_vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
