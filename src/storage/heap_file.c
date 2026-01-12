@@ -10660,9 +10660,7 @@ static int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
   OR_ATTRIBUTE *attrepr;
-  RECDES raw = {
-    -1, -1, REC_UNKNOWN, NULL
-  };
+  RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool is_oos = false;
   int error;
 
@@ -16266,7 +16264,8 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	case REC_HOME:
 	  if (chk->verify_not_vacuumed)
 	    {
-	      DISK_ISVALID tmp_valid = vacuum_check_not_vacuumed_recdes (thread_p, &oid, &class_oid, &recdes, -1);
+	      DISK_ISVALID tmp_valid = vacuum_check_not_vacuumed_recdes (thread_p, &oid, &class_oid,
+									 &recdes, -1);
 	      switch (tmp_valid)
 		{
 		case DISK_VALID:
@@ -16286,7 +16285,8 @@ heap_chkreloc_next (THREAD_ENTRY * thread_p, HEAP_CHKALL_RELOCOIDS * chk, PAGE_P
 	case REC_NEWHOME:
 	  if (chk->verify_not_vacuumed)
 	    {
-	      DISK_ISVALID tmp_valid = vacuum_check_not_vacuumed_recdes (thread_p, &oid, &class_oid, &recdes, -1);
+	      DISK_ISVALID tmp_valid = vacuum_check_not_vacuumed_recdes (thread_p, &oid, &class_oid,
+									 &recdes, -1);
 	      switch (tmp_valid)
 		{
 		case DISK_VALID:
@@ -18227,12 +18227,8 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 			}
 
 		      assert (!OID_ISNULL (&serial_oid));
-		      or_aligned_oid null_aligned_oid = {
-			oid_Null_oid
-		      };
-		      or_aligned_oid serial_aligned_oid = {
-			serial_oid
-		      };
+		      or_aligned_oid null_aligned_oid = { oid_Null_oid };
+		      or_aligned_oid serial_aligned_oid = { serial_oid };
 		      att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
 		    }
 		  else
