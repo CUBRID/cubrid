@@ -933,7 +933,9 @@ static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, con
 static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid,
 				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
 				       const VPID new_next_vpid, const VPID new_last_vpid, const int new_num_pages);
+
 static bool heap_recdes_contains_oos (const RECDES * record);
+static SCAN_CODE heap_get_record_data_with_oos_values (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -7884,9 +7886,8 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  {
 	    return sc;
 	  }
-	// handle oos
-	// assert (false);
-	return sc;
+
+	return heap_get_record_data_with_oos_values (thread_p, context);
       }
     case REC_BIGONE:
       return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
@@ -7909,46 +7910,57 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	    return sc;
 	  }
 
-	if (mvcc_is_mvcc_disabled_class (context->class_oid_p))
-	  {
-	    // TODO: OOS not implemented for mvcc disabled class
-	    return S_SUCCESS;
-	  }
-
-	if (heap_recdes_contains_oos (context->recdes_p))
-	  {
-	    HEAP_CACHE_ATTRINFO attr_info;
-	    int err;
-
-	    err = heap_attrinfo_start (thread_p, context->class_oid_p, -1, nullptr, &attr_info);
-	    if (err != NO_ERROR)
-	      {
-		return S_ERROR;
-	      }
-
-	    err = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, context->recdes_p, &attr_info);
-	    if (err != NO_ERROR)
-	      {
-		return S_ERROR;
-	      }
-
-	    // *INDENT-OFF*
-	    record_descriptor build_record (cubmem::STANDARD_BLOCK_ALLOCATOR);
-	    // *INDENT-ON*
-	    heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
-	    context->recdes_p->length = build_record.get_size ();
-
-	    // return OOS value-expanded record to caller
-	    std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
-	    heap_attrinfo_end (thread_p, &attr_info);
-	  }
-	return sc;
+	return heap_get_record_data_with_oos_values (thread_p, context);
       }
     default:
       break;
     }
   /* Shouldn't be here. */
   return S_ERROR;
+}
+
+static SCAN_CODE
+heap_get_record_data_with_oos_values (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  // TODO: OOS does not support MVCC disabled classes yet.
+  if (mvcc_is_mvcc_disabled_class (context->class_oid_p))
+    {
+      return S_SUCCESS;
+    }
+
+  if (heap_recdes_contains_oos (context->recdes_p))
+    {
+      HEAP_CACHE_ATTRINFO attr_info;
+      int err;
+
+      err = heap_attrinfo_start (thread_p, context->class_oid_p, -1, nullptr, &attr_info);
+      if (err != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      err = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, context->recdes_p, &attr_info);
+      if (err != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      // *INDENT-OFF*
+      record_descriptor build_record (cubmem::STANDARD_BLOCK_ALLOCATOR);
+      // *INDENT-ON*
+
+      SCAN_CODE sc = heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
+      if (sc != S_SUCCESS) {
+	  return sc;
+      }
+
+      context->recdes_p->length = build_record.get_size ();
+
+      // return OOS value-expanded record to caller
+      std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  return S_SUCCESS;
 }
 
 /*
