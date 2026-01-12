@@ -493,13 +493,6 @@ list(APPEND EP_TARGETS ${RE2_TARGET})
 list(APPEND EP_LIBS ${RE2_LIBS})
 list(APPEND EP_INCLUDES ${RE2_INCLUDES})
 
-include(FetchContent)
-FetchContent_Declare(depthlog GIT_REPOSITORY https://github.com/vimkim/depthlog-cpp.git GIT_TAG main)
-FetchContent_MakeAvailable(depthlog)
-list(APPEND EP_TARGETS depthlog::depthlog)
-list(APPEND EP_LIBS depthlog::depthlog)
-list(APPEND EP_INCLUDES ${depthlog_SOURCE_DIR}/include)
-
 # libTBB
 set(LIBTBB_TARGET libtbb)
 if(WITH_LIBTBB STREQUAL "EXTERNAL")

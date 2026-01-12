@@ -24,8 +24,6 @@
 
 #include "config.h"
 
-#include <depthlog/depthlog.hpp>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -347,8 +345,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
   int status;
   FILE *output_file = NULL;
   FILE *user_define_file = NULL;
-
-  depthlog::init ("createdb");
 
   const char *output_file_name;
   const char *program_name;

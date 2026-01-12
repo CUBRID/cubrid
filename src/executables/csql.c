@@ -22,8 +22,6 @@
 
 #ident "$Id$"
 
-#include <depthlog/depthlog.hpp>
-
 #include "config.h"
 
 #include <stdio.h>
@@ -667,8 +665,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   bool is_first_read_line = true;
   bool read_whole_line;
   char *prompt;
-
-  depthlog::init ("start_csql");
 
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;

@@ -23,7 +23,6 @@
 #ident "$Id$"
 
 #include "config.h"
-#include <depthlog/depthlog.hpp>
 
 #include <stdio.h>
 #include <assert.h>
@@ -4078,7 +4077,6 @@ locator_repl_mflush_check_error (LC_COPYAREA * reply_copyarea)
 static int
 locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 {
-  DEPTHLOG_SCOPE ();
   LOCATOR_MFLUSH_TEMP_OID *mop_toid;
   LOCATOR_MFLUSH_TEMP_OID *next_mop_toid;
   LC_COPYAREA_ONEOBJ *obj;	/* Describe one object in copy area */
@@ -4119,7 +4117,6 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 
       /* Force the flushing area */
       content_size = CAST_BUFLEN (mflush->recdes.data - mflush->copy_area->mem);
-      SPDLOG_INFO ("content_size={}", content_size);
       assert (content_size >= 0);
       error_code = locator_force (mflush->copy_area, ws_Error_ignore_count, ws_Error_ignore_list, content_size);
 
@@ -5086,7 +5083,6 @@ locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 int
 locator_flush_class (MOP class_mop)
 {
-  DEPTHLOG_SCOPE ();
   LOCATOR_MFLUSH_CACHE mflush;	/* Structure which describes objects to flush */
   MOBJ class_obj;
   int error_code = NO_ERROR;
@@ -5105,7 +5101,6 @@ locator_flush_class (MOP class_mop)
        * Flush class and preflush other dirty objects to the flushing area
        */
       error_code = locator_mflush_initialize (&mflush, NULL, NULL, NULL, DONT_DECACHE, ONE_MFLUSH);
-      SPDLOG_INFO ("class mop {}", (void *) &class_mop);
       if (error_code == NO_ERROR)
 	{
 	  /* current class mop flush */

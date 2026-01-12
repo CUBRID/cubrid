@@ -21,7 +21,6 @@
  */
 
 #include "config.h"
-#include <depthlog/depthlog.hpp>
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -569,9 +568,6 @@ static void
 get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
 		  bool is_unloaddb)
 {
-  DEPTHLOG_SCOPE ();
-  SPDLOG_INFO ("get_desc_current: class={}, offset_size={}, bound_bit_flag={}, is_unloaddb={}",
-	       sm_ch_name ((MOBJ) class_), offset_size, bound_bit_flag, is_unloaddb);
   SM_ATTRIBUTE *att;
   int *vars = NULL;
   int i, j, offset, offset2, pad;
@@ -615,9 +611,6 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 
   att = class_->attributes;
   start = buf->ptr;
-
-  SPDLOG_INFO ("reading fixed attributes total={}", class_->fixed_count);
-
   for (i = 0; i < class_->fixed_count; i++, att = (SM_ATTRIBUTE *) att->header.next)
     {
       if (bits != NULL && !OR_GET_BOUND_BIT (bits, i))
@@ -646,8 +639,6 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       or_advance (buf, OR_BOUND_BIT_BYTES (obj->class_->fixed_count));
     }
 
-  SPDLOG_INFO ("reading variable attributes total={}", class_->variable_count);
-
   /* variable */
   if (vars != NULL)
     {
@@ -655,11 +646,6 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
-	  // log about loops
-	  //
-	  SPDLOG_INFO ("reading attribute {} of total {}", i, class_->att_count);
-	  SPDLOG_INFO ("reading attribute of type {}", att->type->get_name ());
-
 	  if (is_unloaddb && obj->dbvalue_buf_ptr && att->type->get_id () == DB_TYPE_VARCHAR)
 	    {
 	      data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbvalue_buf_ptr[i].buf,

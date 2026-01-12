@@ -33,8 +33,6 @@
 #include <string.h>
 #include <errno.h>
 
-#include <depthlog/depthlog.hpp>
-
 #include "heap_file.h"
 #include "oos_file.hpp"
 
@@ -10699,7 +10697,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw);
   if (is_oos)
     {
-      SPDLOG_INFO ("OOS attribute read: attr_id={}, type={}", attrepr->id, pr_type_name (attrepr->type));
       recdes_free_data_area (&raw);
     }
 
@@ -23847,7 +23844,6 @@ exit:
 static int
 heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
 {
-  DEPTHLOG_SCOPE ();
   int error_code = NO_ERROR;
   RECDES forwarding_recdes;
   RECDES *home_page_updated_recdes_p = NULL;
@@ -23902,7 +23898,6 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
   if (heap_is_big_length (context->recdes_p->length))
     {
-      SPDLOG_INFO ("debug heap_update_home: updating HOME to BIGONE size {}", context->recdes_p->length);
       /* fix header page */
       error_code = heap_fix_header_page (thread_p, context);
       if (error_code != NO_ERROR)
@@ -24690,7 +24685,6 @@ error:
 extern int
 heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
-  DEPTHLOG_SCOPE ();
   bool is_mvcc_op;
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
@@ -24851,7 +24845,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       break;
 
     case REC_BIGONE:
-      SPDLOG_INFO ("warning! rec bigone update");
       rc = heap_update_bigone (thread_p, context, is_mvcc_op);
       break;
 
@@ -27565,8 +27558,6 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 static bool
 heap_recdes_contains_oos (const RECDES * record)
 {
-  DEPTHLOG_SCOPE ();
-
   OR_BUF buf;
   int rc = NO_ERROR;
   or_init (&buf, record->data, record->length);
