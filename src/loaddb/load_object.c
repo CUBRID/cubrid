@@ -21,7 +21,7 @@
  */
 
 #include "config.h"
-#include "depthlog/depthlog.hpp"
+#include <depthlog/depthlog.hpp>
 
 #include <stdio.h>
 #include <fcntl.h>
