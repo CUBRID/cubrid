@@ -259,6 +259,7 @@ namespace parallel_heap_scan
     bool stop = false;
     bool is_interrupt;
     bool dummy = false;
+    DB_LOGICAL ev_res;
     while (!stop)
       {
 	if (m_interrupt->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
@@ -314,6 +315,25 @@ namespace parallel_heap_scan
 		break;
 	      }
 
+	    if (m_xasl->if_pred)
+	      {
+		ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
+		if (ev_res != V_TRUE)
+		  {
+		    if (ev_res == V_FALSE)
+		      {
+			continue;
+		      }
+		    else
+		      {
+			m_err_messages->move_top_error_message_to_this();
+			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			stop = true;
+			break;
+		      }
+		  }
+	      }
+
 	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
 	      {
 		result_handler_p->write (&thread_ref, m_xasl->outptr_list);
@@ -325,6 +345,42 @@ namespace parallel_heap_scan
 	    else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
 	      {
 		result_handler_p->write (&thread_ref);
+	      }
+	    if (m_xasl->dptr_list)
+	      {
+		for (XASL_NODE *xaslp = m_xasl->dptr_list; xaslp; xaslp = xaslp->next)
+		  {
+		    if (xcache_uses_clones ())
+		      {
+			if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
+			  {
+			    xaslp->status = XASL_CLEARED;
+			  }
+			else
+			  {
+			    /* The values allocated during execution will be cleared and the xasl is reused. */
+			    xaslp->status = XASL_INITIALIZED;
+			  }
+		      }
+		    else
+		      {
+			xaslp->status = XASL_CLEARED;
+		      }
+		    if (xaslp->list_id->tuple_cnt > 0)
+		      {
+			qfile_truncate_list (&thread_ref, xaslp->list_id);
+		      }
+		    if (xaslp->single_tuple)
+		      {
+			QPROC_DB_VALUE_LIST value_list;
+			int i;
+			for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
+			     value_list = value_list->next, i++)
+			  {
+			    pr_clear_value (value_list->val);
+			  }
+		      }
+		  }
 	      }
 	  }
       }

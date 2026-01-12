@@ -111,6 +111,16 @@ namespace parallel_heap_scan
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
 
+  inline bool is_pred_exists (PRED_EXPR *pred_expr)
+  {
+    if (!pred_expr || pred_expr->type != T_EVAL_TERM || pred_expr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM
+	|| pred_expr->pe.m_eval_term.et.et_comp.rel_op != R_EXISTS)
+      {
+	return false;
+      }
+    return true;
+  }
+
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
   {
@@ -122,14 +132,6 @@ namespace parallel_heap_scan
 
     if (arg->xasl)
       {
-	/* subquery in expr (may or may not correlated) */
-	if constexpr (!is_outptr_list)
-	  {
-	    /* in data filter, parallel heap scan is not possible */
-	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
-	  }
-	/* in select-list, parallel heap scan is possible, but list merge is not possible */
-	set_flag (result, CANNOT_LIST_MERGE);
 	temp = check<is_outptr_list> (arg->xasl);
 	// TODO: set result to arg->xasl
       }
@@ -378,7 +380,7 @@ namespace parallel_heap_scan
     // Mark as being visited (with temporary result 0) to prevent infinite recursion
     xasl_check_cache[arg] = 0;
 
-    possible_flags result = 0;
+    possible_flags result = 0, temp = 0;
     bool count_opt = false;
     switch (arg->type)
       {
@@ -399,7 +401,7 @@ namespace parallel_heap_scan
 	    count_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
 	    int agg_cnt = 0;
-	    possible_flags temp = 0;
+	    temp = 0;
 	    for (; agg_it; agg_it = agg_it->next)
 	      {
 		agg_cnt++;
@@ -459,9 +461,18 @@ namespace parallel_heap_scan
 	result |= check<is_outptr_list> (xaslp);
       }
 
-    if (arg->bptr_list || arg->dptr_list || arg->fptr_list || arg->connect_by_ptr)
+    if (arg->bptr_list || arg->fptr_list || arg->connect_by_ptr)
       {
 	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+      }
+
+    for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
+      {
+	temp = check<false> (xaslp);
+	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	  }
       }
 
     if (arg->scan_ptr)
@@ -472,8 +483,12 @@ namespace parallel_heap_scan
 
     if (arg->if_pred)
       {
-	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	if (!is_pred_exists (arg->if_pred))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	  }
       }
+
     if (arg->instnum_pred || arg->instnum_val)
       {
 	set_flag (result, CANNOT_LIST_MERGE);
