@@ -6994,6 +6994,7 @@ qfile_update_qlist_count (THREAD_ENTRY * thread_p, const QFILE_LIST_ID * list_p,
 	  break;
 	}
       target_thread_p = target_thread_p->m_px_orig_thread_entry;
+      assert (target_thread_p != thread_p);
     }
 
   target_thread_p->m_qlist_count.fetch_add (inc);
