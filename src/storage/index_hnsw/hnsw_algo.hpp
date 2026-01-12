@@ -56,19 +56,12 @@ namespace cubhnsw
 			  std::size_t dim)
   {
     float dot = 0.0f;
-
     #pragma omp simd reduction(+ : dot)
-    for (std::size_t i = 0; i < dim; ++i)
+    for (std::size_t i = 0; i != dim; ++i)
       {
 	dot += vec1[i] * vec2[i];
       }
-
-    // Numerical safety (optional but recommended with fast-math/SIMD)
-    dot = std::min (1.0f, std::max (-1.0f, dot));
-
-    // HNSW expects "smaller is better"
-    // cosine similarity maximize <=> minimize (-dot)
-    return -dot;
+    return 1.0f - dot;
   }
 
   inline float
@@ -358,7 +351,7 @@ namespace cubhnsw
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.m));
 
     // pre-reserve top_for_refine
-    m_context.m_top_for_refine.reserve (m_connectivity + 1);
+    m_context.m_top_for_refine.reserve (m_connectivity * 2 + 1);
   }
 
   template <typename Traits>
@@ -375,7 +368,7 @@ namespace cubhnsw
 
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
-    std::size_t top_limit = std::max (m_connectivity + 1, expansion);
+    std::size_t top_limit = std::max (m_connectivity * 2 + 1, expansion);
     if (!top.reserve (top_limit))
       {
 	assert (false);
@@ -660,7 +653,7 @@ namespace cubhnsw
 					candidates_view_t<Traits> &top_view)
   {
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
-    refine_ (m_connectivity,top, top_view);
+    refine_ (m_connectivity * 2 + 1,top, top_view);
 
     // outgoing links from new node
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
@@ -676,6 +669,7 @@ namespace cubhnsw
 				     candidates_view_t<Traits> &new_neighbors,
 				     level_t level)
   {
+    std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
     for (auto n : new_neighbors)
       {
 	slot_id_t close_slot = n.slot;
@@ -690,7 +684,7 @@ namespace cubhnsw
 	  // TODO: exclusive??
 	  pinned_t close_node_blk = m_storage->get_node_by_slot_id (close_slot, lock_mode::exclusive);
 	  close_header = get_neighbors (close_node_blk, level);
-	  if (close_header.size () < m_connectivity)
+	  if (close_header.size () < layer_connectivity)
 	    {
 	      close_header.push_back (new_slot);
 	      continue;
@@ -714,7 +708,7 @@ namespace cubhnsw
 	// remove all neighbors from close_header
 	close_header.clear();
 	candidates_view_t<Traits> top_view;
-	(void) refine_ (m_connectivity, top_for_refine, top_view);
+	(void) refine_ (layer_connectivity, top_for_refine, top_view);
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
 	    close_header.push_back (top_view[i].slot);
