@@ -24,8 +24,45 @@
 #ifndef _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_
 #define _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_
 
+#include "schema_information_schema_definition.hpp"
+
 namespace cubschema
 {
+  class information_schema_initializer
+  {
+    public:
+      static information_schema_definition get_view_columns ();
+      static information_schema_definition get_view_key_column_usage ();
+      static information_schema_definition get_view_referential_constraints ();
+      static information_schema_definition get_view_routines ();
+      static information_schema_definition get_view_schemata ();
+      static information_schema_definition get_view_table_constraints ();
+      static information_schema_definition get_view_table_privileges ();
+      static information_schema_definition get_view_tables ();
+      static information_schema_definition get_view_triggers ();
+      static information_schema_definition get_view_views ();
+      static information_schema_definition get_view_domains ();
+      static information_schema_definition get_view_parameters ();
+      static information_schema_definition get_view_partitions ();
+      static information_schema_definition get_view_sequences ();
+      static information_schema_definition get_view_synonyms ();
+  };
 }
+
+const char *sm_define_view_columns_spec (void);
+const char *sm_define_view_key_column_usage_spec (void);
+const char *sm_define_view_referential_constraints_spec (void);
+const char *sm_define_view_routines_spec (void);
+const char *sm_define_view_schemata_spec (void);
+const char *sm_define_view_table_constraints_spec (void);
+const char *sm_define_view_table_privileges_spec (void);
+const char *sm_define_view_tables_spec (void);
+const char *sm_define_view_triggers_spec (void);
+const char *sm_define_view_views_spec (void);
+const char *sm_define_view_domains_spec (void);
+const char *sm_define_view_parameters_spec (void);
+const char *sm_define_view_partitions_spec (void);
+const char *sm_define_view_sequences_spec (void);
+const char *sm_define_view_synonyms_spec (void);
 
 #endif /* _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_ */

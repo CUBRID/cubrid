@@ -17,3 +17,38 @@
  */
 
 #include "schema_information_schema.hpp"
+
+#include "schema_information_schema_constants.h"
+#include "identifier_store.hpp"
+
+#include <string>
+#include <vector>
+
+namespace cubschema
+{
+  static const std::vector<std::string> sm_information_schema_names =
+  {
+    INFO_SCHEMA_COLUMNS_NAME,
+    INFO_SCHEMA_KEY_COLUMN_USAGE_NAME,
+    INFO_SCHEMA_REFERENTIAL_CONS_NAME,
+    INFO_SCHEMA_ROUTINES_NAME,
+    INFO_SCHEMA_SCHEMATA_NAME,
+    INFO_SCHEMA_TABLE_CONSTRAINTS_NAME,
+    INFO_SCHEMA_TABLE_PRIVILEGES_NAME,
+    INFO_SCHEMA_TABLES_NAME,
+    INFO_SCHEMA_TRIGGERS_NAME,
+    INFO_SCHEMA_VIEWS_NAME,
+    INFO_SCHEMA_DOMAINS_NAME,
+    INFO_SCHEMA_PARAMETERS_NAME,
+    INFO_SCHEMA_PARTITIONS_NAME,
+    INFO_SCHEMA_SEQUENCES_NAME,
+    INFO_SCHEMA_SYNONYMS_NAME
+  };
+
+  static const cubbase::identifier_store sm_info_schema_view_names (sm_information_schema_names, false);
+}
+
+bool sm_is_information_schema_views (const std::string_view name)
+{
+  return cubschema::sm_info_schema_view_names.is_exists (name);
+}

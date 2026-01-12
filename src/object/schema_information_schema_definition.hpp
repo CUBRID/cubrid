@@ -24,8 +24,29 @@
 #ifndef _SCHEMA_INFORMATION_SCHEMA_DEFINITION_HPP_
 #define _SCHEMA_INFORMATION_SCHEMA_DEFINITION_HPP_
 
+#include "schema_system_catalog_definition.hpp"
+
+#include <vector>
+
 namespace cubschema
 {
+  struct information_schema_definition
+  {
+    using attr_vec_type = std::vector <attribute>;
+    using cstr_vec_type = std::vector <constraint>;
+    using row_init_type = std::function<int (struct db_object *)>;
+
+    const std::string name;
+    const attr_vec_type attributes;
+    const cstr_vec_type constraints;
+    const authorization auth;
+    const row_init_type row_initializer;
+
+    information_schema_definition (const std::string &n, const attr_vec_type &attrs,
+				   const cstr_vec_type &cts,
+				   const authorization &au,
+				   row_init_type ri);
+  };
 }
 
 #endif /* _SCHEMA_INFORMATION_SCHEMA_DEFINITION_HPP_ */

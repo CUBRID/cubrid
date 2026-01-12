@@ -24,8 +24,42 @@
 #ifndef _SCHEMA_INFORMATION_SCHEMA_BUILDER_HPP_
 #define _SCHEMA_INFORMATION_SCHEMA_BUILDER_HPP_
 
+#include "schema_information_schema_definition.hpp"
+
+#include <string>
+
 namespace cubschema
 {
+  struct info_schema_function
+  {
+    const std::string name;
+    const information_schema_definition definition;
+
+    info_schema_function (const std::string &n, const information_schema_definition &def)
+      : name {n}, definition {def}
+    {}
+
+    // copy
+    info_schema_function (const info_schema_function &src) = delete;
+    info_schema_function &operator= (const info_schema_function &x) = delete;
+
+    // move constructor
+    info_schema_function (info_schema_function &&src)
+      : name {std::move (src.name)}
+      , definition {std::move (src.definition)}
+    {}
+  };
+
+  class information_schema_builder
+  {
+    private:
+      information_schema_builder () = default;
+      ~information_schema_builder () = default;
+
+    public:
+      static MOP create_and_mark_system_class (const std::string_view name);
+      static int build_vclass (const MOP class_mop, const information_schema_definition &def);
+  };
 }
 
 #endif /* _SCHEMA_INFORMATION_SCHEMA_BUILDER_HPP_ */

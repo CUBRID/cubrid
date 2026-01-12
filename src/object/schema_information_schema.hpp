@@ -24,8 +24,10 @@
 #ifndef _SCHEMA_INFORMATION_SCHEMA_HPP_
 #define _SCHEMA_INFORMATION_SCHEMA_HPP_
 
-namespace cubschema
-{
-}
+#include <string_view>
+
+void info_schema_init (void);
+int info_schema_install (void);
+bool sm_is_information_schema_views (const std::string_view name);
 
 #endif /* _SCHEMA_INFORMATION_SCHEMA_HPP_ */
