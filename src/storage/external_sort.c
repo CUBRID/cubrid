@@ -1426,12 +1426,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   /* The size of a sort buffer is limited to PRM_SR_NBUFFERS. */
   sort_param->tot_buffers = MIN (prm_get_integer_value (PRM_ID_SR_NBUFFERS), input_pages);
-  sort_param->tot_buffers = MAX (4, sort_param->tot_buffers);
+  sort_param->tot_buffers = MAX (16, sort_param->tot_buffers);
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
     {
-      sort_param->tot_buffers = 4;
+      sort_param->tot_buffers = 16;
 
       sort_param->internal_memory = (char *) malloc (sort_param->tot_buffers * DB_PAGESIZE);
       if (sort_param->internal_memory == NULL)
