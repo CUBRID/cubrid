@@ -21298,6 +21298,8 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 		      && !heap_is_big_length (record_size + OR_MVCCID_SIZE) && !insert_context->is_bulk_op);
 #endif
 
+  bool has_oos = (mvcc_flags & OR_MVCC_FLAG_HAS_OOS) != 0;
+
   if (use_optimization)
     {
       /*
@@ -21384,6 +21386,11 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   if (or_mvcc_set_header (insert_context->recdes_p, &mvcc_rec_header) != NO_ERROR)
     {
       return ER_FAILED;
+    }
+
+  if (has_oos)
+    {
+      insert_context->recdes_p->data[0] |= OR_MVCC_FLAG_HAS_OOS;
     }
 
   /* all ok */
