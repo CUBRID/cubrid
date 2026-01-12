@@ -18631,9 +18631,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
   int i = 0, error = NO_ERROR;
   HEAP_ATTRVALUE *value = NULL;
   int force_count = 0, updated_n_attrs_id = 0;
-  ATTR_ID atts_id[1] = {
-    0
-  };
+  ATTR_ID atts_id[1] = { 0 };
   DB_VALUE orig_value;
   TP_DOMAIN_STATUS status;
 
@@ -19399,12 +19397,8 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   HFID *hfid_p;
   char *class_name = NULL;
   int avg_length = 0;
-  char buf[512] = {
-    0
-  };
-  char temp[64] = {
-    0
-  };
+  char buf[512] = { 0 };
+  char temp[64] = { 0 };
   char *buf_p, *end;
 
   ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
@@ -19632,9 +19626,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   HEAP_CACHE_ATTRINFO attr_info;
   OR_CLASSREP *repr = NULL;
   char *classname = NULL;
-  char class_oid_str[64] = {
-    0
-  };
+  char class_oid_str[64] = { 0 };
   bool is_heap_attrinfo_started = false;
   INT64 num_recs = 0;
   INT64 num_relocated_recs = 0;
