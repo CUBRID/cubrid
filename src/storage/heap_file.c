@@ -12346,7 +12346,7 @@ heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTR
 
   if (has_oos)
     {
-      repid_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);	// 0b00000100 -> 0b00000100 + (24 zero bits)
+      repid_bits |= (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS);
     }
 
   if (is_mvcc_class)
