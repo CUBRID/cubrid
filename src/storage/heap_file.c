@@ -935,6 +935,7 @@ static int heap_add_chain_links (THREAD_ENTRY * thread_p, const HFID * hfid, con
 static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfid,
 				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
 				       const VPID new_next_vpid, const VPID new_last_vpid, const int new_num_pages);
+static bool heap_recdes_contains_oos (const RECDES * record);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -27476,3 +27477,20 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 }
 
 // *INDENT-ON*
+
+static bool
+heap_recdes_contains_oos (const RECDES * record)
+{
+  DEPTHLOG_SCOPE ();
+
+  OR_BUF buf;
+  int rc = NO_ERROR;
+  bool has_oos = false;
+  or_init (&buf, record->data, record->length);
+
+  int repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
+  or_mvcc_get_flag_from_data_for_debug (record->data, record->length);
+
+  has_oos = ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_HAS_OOS) ? true : false;
+  return has_oos;
+};
