@@ -654,7 +654,8 @@ namespace cubhnsw
 					candidates_view_t<Traits> &top_view)
   {
     top_candidates_t<Traits> &top = m_context.m_top_candidates;
-    refine_ (m_connectivity * 2 + 1,top, top_view);
+    std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
+    refine_ (layer_connectivity,top, top_view);
 
     // outgoing links from new node
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
