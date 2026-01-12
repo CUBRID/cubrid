@@ -644,7 +644,19 @@ namespace parallel_heap_scan
     if (h == 0)
       {
 	m_uses_xasl_clone = false;
-	if (m_thread_p->xasl_unpack_info_ptr)
+
+	THREAD_ENTRY *main_thread_p = m_thread_p;
+	while (main_thread_p->m_px_orig_thread_entry != nullptr)
+	  {
+	    if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
+	      {
+		break;
+	      }
+	    main_thread_p = main_thread_p->m_px_orig_thread_entry;
+	    assert (main_thread_p != m_thread_p);
+	  }
+
+	if (main_thread_p->xasl_unpack_info_ptr)
 	  {
 	    /* use unpack info ptr for execute. */
 	  }
