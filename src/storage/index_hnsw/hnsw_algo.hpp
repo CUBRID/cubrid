@@ -56,8 +56,9 @@ namespace cubhnsw
 			  std::size_t dim)
   {
     float dot = 0.0f;
+
     #pragma omp simd reduction(+ : dot)
-    for (std::size_t i = 0; i != dim; ++i)
+    for (std::size_t i = 0; i < dim; ++i)
       {
 	dot += vec1[i] * vec2[i];
       }
