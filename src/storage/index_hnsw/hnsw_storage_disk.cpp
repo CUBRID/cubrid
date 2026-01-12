@@ -34,9 +34,6 @@ namespace cubhnsw
     m_vfid = giid.vfid;
     m_root_vpid = VPID { giid.root_pageid, giid.vfid.volid };
     m_last_node_vpid = m_root_vpid;
-
-    m_vec_pool_vfid = VFID_INITIALIZER;
-    m_last_vec_vpid = VPID_INITIALIZER;
   }
 
   disk_storage::~disk_storage ()
@@ -56,9 +53,6 @@ namespace cubhnsw
   disk_storage::init_root (std::byte *root_block, std::size_t &root_size)
   {
     root_disk_t<disk_traits_t> root { reinterpret_cast<byte_t *> (root_block) };
-
-    (void) create_continous_file (m_thread_p, m_vec_pool_vfid, m_last_vec_vpid);
-    root.set_vec_pool_vfid (m_vec_pool_vfid);
 
     root_size = root.get_size();
   }
@@ -141,18 +135,8 @@ namespace cubhnsw
   disk_storage::slot_id_t
   disk_storage::add_node (const OID &key, const float *vector, const level_t &level)
   {
-    // insert vector first
-    slot_id_t vec_slot = add_vector (key, vector);
-#if 0
-    if (vec_slot.pageid == -1)
-      {
-	assert (false);
-	return slot_id_t { -1, -1, -1 };
-      }
-#endif
-
     // insert node
-    std::size_t bytes = this->node_bytes_ (level);
+    std::size_t bytes = this->node_bytes_ (level, get_dimension(), get_connectivity());
     page_handle page_ptr = get_page_to_insert (m_vfid, m_last_node_vpid, bytes);
 
     RECDES recdes;
@@ -167,8 +151,8 @@ namespace cubhnsw
 
     node_t<disk_traits_t> node { reinterpret_cast<byte_t *> (rec_buf) };
     node.set_key (key);
-    node.set_vec_slot (vec_slot);
     node.set_level (level);
+    node.set_vector (vector, get_dimension());
 
     PGSLOTID slot_id;
 
@@ -258,32 +242,7 @@ namespace cubhnsw
   disk_storage::get_vector_by_slot_id (const slot_id_t &slot, const lock_mode &mode)
   {
     // get node by slot id
-    pinned_t node_blk = get_node_by_slot_id (slot, lock_mode::shared);
-    node_t<disk_traits_t> node = node_t<disk_traits_t> (node_blk.get().data);
-    slot_id_t vec_slot = node.get_vec_slot();
-
-    // =====================================================================
-
-    VPID vpid = { vec_slot.pageid, vec_slot.volid };
-
-    // updating vectors is not allowed
-    assert (mode == lock_mode::shared);
-
-    PAGE_PTR vec_page_ptr = pgbuf_fix (m_thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-    assert (vec_page_ptr != nullptr);
-
-    SPAGE_SLOT *slotp = spage_get_slot (vec_page_ptr, vec_slot.slotid);
-    assert (slotp != nullptr);
-
-    return make_pinned_block<disk_traits_t> (vec_slot, (std::byte *) vec_page_ptr + slotp->offset_to_record,
-	   slotp->record_length, mode,
-	   [this, vec_page_ptr] (auto& blk) noexcept
-    {
-      assert (blk.mode == lock_mode::shared);
-      pgbuf_unfix (m_thread_p, reinterpret_cast<PAGE_PTR> (vec_page_ptr));
-    }
-
-					    );
+    return get_node_by_slot_id (slot, lock_mode::shared);
   }
 
   // promote lockmode from shared to exclusive
