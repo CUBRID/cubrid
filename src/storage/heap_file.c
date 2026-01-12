@@ -21359,9 +21359,9 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  int curr_header_size, new_header_size;
 
 	  /* strip MVCC information */
-	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
+	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & 0x7];
 	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
-	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
+	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag & 0x7];
 
 	  /* compute new record size */
 	  record_size -= (curr_header_size - new_header_size);
