@@ -935,7 +935,8 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
 				       const VPID new_next_vpid, const VPID new_last_vpid, const int new_num_pages);
 
 static bool heap_recdes_contains_oos (const RECDES * record);
-static SCAN_CODE heap_get_record_data_with_oos_values (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+static SCAN_CODE heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p,
+								     HEAP_GET_CONTEXT * context);
 
 /*
  * heap_hash_vpid () - Hash a page identifier
@@ -7886,7 +7887,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  return sc;
 	}
 
-      return heap_get_record_data_with_oos_values (thread_p, context);
+      return heap_record_replace_oos_oids_with_values_if_exists (thread_p, context);
     case REC_BIGONE:
       return heap_get_bigone_content (thread_p, scan_cache_p, context->ispeeking, &context->forward_oid,
 				      context->recdes_p);
@@ -7907,7 +7908,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  return sc;
 	}
 
-      return heap_get_record_data_with_oos_values (thread_p, context);
+      return heap_record_replace_oos_oids_with_values_if_exists (thread_p, context);
     default:
       break;
     }
@@ -7916,13 +7917,8 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 }
 
 static SCAN_CODE
-heap_get_record_data_with_oos_values (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
-  // TODO: OOS does not support MVCC disabled classes yet.
-  if (mvcc_is_mvcc_disabled_class (context->class_oid_p))
-    {
-      return S_SUCCESS;
-    }
 
   if (heap_recdes_contains_oos (context->recdes_p))
     {
@@ -7957,6 +7953,7 @@ heap_get_record_data_with_oos_values (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
       heap_attrinfo_end (thread_p, &attr_info);
     }
+
   return S_SUCCESS;
 }
 
