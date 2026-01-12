@@ -111,6 +111,14 @@ class EXPORT_IMPORT authenticate_context
     MOP dba_user;
 
     /*
+     * Au_information_schema_user
+     *
+     * This is the system user that owns all INFORMATION_SCHEMA views.
+     * This user cannot login and has read access to all system classes.
+     */
+    MOP information_schema_user;
+
+    /*
     * Au_user
     *
     * This points to the MOP of the user object of the currently
@@ -191,6 +199,9 @@ class EXPORT_IMPORT authenticate_context
     int perform_login (const char *name, const char *password, bool ignore_dba_privilege);
 
     void reset (void);
+
+    int create_public_user (MOP root_cls, MOP user_cls, MOP auth_cls);
+    int create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls);
 
     int set_system_user (void);
     int disable_login (MOP user);
