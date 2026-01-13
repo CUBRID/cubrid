@@ -481,6 +481,12 @@ namespace parallel_heap_scan
 	count_opt = false;
       }
 
+    if (arg->connect_by_ptr)
+      {
+	set_flag (result, CANNOT_LIST_MERGE);
+	count_opt = false;
+      }
+
     if (arg->if_pred)
       {
 	if (!is_pred_exists (arg->if_pred))

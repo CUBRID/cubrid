@@ -293,16 +293,6 @@ namespace parallel_heap_scan
       {
 	qfile_close_list (thread_p, tl.writer_result_p);
 
-#if !defined(NDEBUG)
-	if (tl.writer_result_p != nullptr && tl.writer_result_p->tuple_cnt > 0)
-	  {
-	    for (auto &dbval : tl.dbvals_for_domain_resolve)
-	      {
-		assert (!dbval.domain.general_info.is_null);
-	      }
-	  }
-#endif
-
 	assert (tl.writer_result_p->last_pgptr == nullptr);
 	if (tl.writer_result_p != nullptr && tl.writer_result_p->tpl_descr.f_valp != nullptr)
 	  {
