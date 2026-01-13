@@ -2950,6 +2950,21 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
+      stx_build_list_proc->a_scan_regu_list = NULL;
+    }
+  else
+    {
+      stx_build_list_proc->a_scan_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (stx_build_list_proc->a_scan_regu_list == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
       stx_build_list_proc->a_outptr_list = NULL;
     }
   else
@@ -4684,7 +4699,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
     }
 
   ptr = or_unpack_int (ptr, &val);
-  access_spec->flags = (ACCESS_SPEC_FLAG) val;
+  access_spec->flags = val;
 
   ptr = or_unpack_int (ptr, &val);
   access_spec->num_parallel_threads = val;
