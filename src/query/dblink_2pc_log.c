@@ -1,4 +1,22 @@
 /*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
  * transaction_2pc_log.c - 2PC Coordinator Catalog Interface
  * 
  * This module provides interface functions to read/write _db_coordinator log table
@@ -21,6 +39,9 @@
 #include "locator_sr.h"
 #include "thread_manager.hpp"
 #include "dblink_2pc_log.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* _db_coordinator log class name */
 #define GTRAN_2PC_CATALOG_CLASS_NAME "_db_global_tran"
@@ -54,18 +75,18 @@ dblink_2pc_encode_password (const char *plain_password, char **encoded_password,
   int plain_len;
   int encoded_len;
   int error;
-  
+
   if (plain_password == NULL || encoded_password == NULL || encoded_size == NULL)
     {
       return ER_FAILED;
     }
-  
+
   plain_len = strlen (plain_password);
-  
+
   /* Simple base64 encoding - in production, use proper encryption */
   error = base64_encode ((const unsigned char *) plain_password, plain_len,
-                                (unsigned char **)encoded_password, encoded_size);
-  
+			 (unsigned char **) encoded_password, encoded_size);
+
   return error;
 }
 
@@ -81,16 +102,16 @@ dblink_2pc_decode_password (const char *encoded_password, char **plain_password,
 {
   int decoded_len;
   int error;
-  
+
   if (encoded_password == NULL || plain_password == NULL || plain_size == NULL)
     {
       return ER_FAILED;
     }
-  
+
   /* Simple base64 decoding - in production, use proper decryption */
-  error = base64_decode ((unsigned char *)encoded_password, strlen (encoded_password),
-                                (unsigned char **) plain_password, plain_size);
-  
+  error = base64_decode ((unsigned char *) encoded_password, strlen (encoded_password),
+			 (unsigned char **) plain_password, plain_size);
+
   return error;
 }
 
@@ -114,8 +135,7 @@ dblink_2pc_log_get_class_oid (THREAD_ENTRY * thread_p, OID * class_oid)
   error = xlocator_find_class_oid (thread_p, GTRAN_2PC_CATALOG_CLASS_NAME, class_oid, NULL_LOCK);
   if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1,
-              GTRAN_2PC_CATALOG_CLASS_NAME);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, GTRAN_2PC_CATALOG_CLASS_NAME);
       return error;
     }
 
@@ -162,8 +182,7 @@ dblink_2pc_log_insert (THREAD_ENTRY * thread_p, int gtrid, const PARTICIPANT_INF
     }
 
   /* Encode password */
-  error = dblink_2pc_encode_password (participant->password, &encoded_password, 
-                                &encoded_size);
+  error = dblink_2pc_encode_password (participant->password, &encoded_password, &encoded_size);
   if (error != NO_ERROR)
     {
       return error;
@@ -231,19 +250,18 @@ dblink_2pc_log_insert (THREAD_ENTRY * thread_p, int gtrid, const PARTICIPANT_INF
     {
       error = heap_attrinfo_set (&new_oid, attr_ids[i], &values[i], &attr_info);
       if (error != NO_ERROR)
-        {
-          goto error_exit;
-        }
+	{
+	  goto error_exit;
+	}
     }
 
   /* Insert record using locator_attribute_info_force */
   OID_SET_NULL (&new_oid);
   error = locator_attribute_info_force (thread_p, &hfid, &new_oid, &attr_info,
-                                         attr_ids, 8, LC_FLUSH_INSERT, 
-                                         SINGLE_ROW_INSERT, &scan_cache,
-                                         &force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
-                                         DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-                                         UPDATE_INPLACE_NONE, NULL, true);
+					attr_ids, 8, LC_FLUSH_INSERT,
+					SINGLE_ROW_INSERT, &scan_cache,
+					&force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
+					DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL, UPDATE_INPLACE_NONE, NULL, true);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -341,46 +359,45 @@ dblink_2pc_log_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, char
   /* Find the record with matching GTRID and BQUAL */
   OID scan_oid;
   RECDES scan_recdes;
-  
+
   OID_SET_NULL (&scan_oid);
-  
+
   while ((error = heap_next (thread_p, &hfid, &class_oid, &scan_oid, &scan_recdes, &scan_cache, PEEK)) == S_SUCCESS)
     {
       OR_BUF read_buf;
       DB_VALUE gtrid_value, bqual_value;
-      
+
       or_init (&read_buf, scan_recdes.data, scan_recdes.length);
-      
+
       /* Read GTRID attribute */
       error = or_get_value (&read_buf, &gtrid_value, NULL, -1, true);
       if (error != NO_ERROR)
-        {
-          db_value_clear (&gtrid_value);
-          continue;
-        }
-      
+	{
+	  db_value_clear (&gtrid_value);
+	  continue;
+	}
+
       /* Read BQUAL attribute */
       error = or_get_value (&read_buf, &bqual_value, NULL, -1, true);
       if (error != NO_ERROR)
-        {
-          db_value_clear (&gtrid_value);
-          db_value_clear (&bqual_value);
-          continue;
-        }
-      
+	{
+	  db_value_clear (&gtrid_value);
+	  db_value_clear (&bqual_value);
+	  continue;
+	}
+
       /* Check if GTRID and BQUAL match */
       if (DB_VALUE_TYPE (&gtrid_value) == DB_TYPE_INTEGER &&
-          DB_VALUE_TYPE (&bqual_value) == DB_TYPE_INTEGER &&
-          db_get_int (&gtrid_value) == gtrid &&
-          db_get_int (&bqual_value) == bqual)
-        {
-          COPY_OID (&target_oid, &scan_oid);
-          found = true;
-          db_value_clear (&gtrid_value);
-          db_value_clear (&bqual_value);
-          break;
-        }
-      
+	  DB_VALUE_TYPE (&bqual_value) == DB_TYPE_INTEGER &&
+	  db_get_int (&gtrid_value) == gtrid && db_get_int (&bqual_value) == bqual)
+	{
+	  COPY_OID (&target_oid, &scan_oid);
+	  found = true;
+	  db_value_clear (&gtrid_value);
+	  db_value_clear (&bqual_value);
+	  break;
+	}
+
       db_value_clear (&gtrid_value);
       db_value_clear (&bqual_value);
     }
@@ -416,18 +433,17 @@ dblink_2pc_log_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, char
     {
       error = heap_attrinfo_set (&target_oid, attr_ids[i], &values[i], &attr_info);
       if (error != NO_ERROR)
-        {
-          goto error_exit;
-        }
+	{
+	  goto error_exit;
+	}
     }
 
   /* Update record using locator_attribute_info_force */
   error = locator_attribute_info_force (thread_p, &hfid, &target_oid, &attr_info,
-                                         attr_ids, 2, LC_FLUSH_UPDATE,
-                                         SINGLE_ROW_UPDATE, &scan_cache,
-                                         &force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
-                                         DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-                                         UPDATE_INPLACE_NONE, NULL, true);
+					attr_ids, 2, LC_FLUSH_UPDATE,
+					SINGLE_ROW_UPDATE, &scan_cache,
+					&force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
+					DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL, UPDATE_INPLACE_NONE, NULL, true);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -519,102 +535,102 @@ dblink_2pc_log_read (THREAD_ENTRY * thread_p, int gtrid, int bqual, GTRAN_2PC_LO
   /* Scan for matching GTRID and BQUAL */
   OID scan_oid;
   RECDES scan_recdes;
-  
+
   OID_SET_NULL (&scan_oid);
-  
+
   while ((error = heap_next (thread_p, &hfid, &class_oid, &scan_oid, &scan_recdes, &scan_cache, PEEK)) == S_SUCCESS)
     {
       OR_BUF read_buf;
       DB_VALUE value;
-      
+
       or_init (&read_buf, scan_recdes.data, scan_recdes.length);
-      
+
       /* Read GTRID */
       error = or_get_value (&read_buf, &value, NULL, -1, true);
       if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_INTEGER)
-        {
-          db_value_clear (&value);
-          continue;
-        }
-      
+	{
+	  db_value_clear (&value);
+	  continue;
+	}
+
       int read_gtrid = db_get_int (&value);
       db_value_clear (&value);
-      
+
       /* Read BQUAL */
       error = or_get_value (&read_buf, &value, NULL, -1, true);
       if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_INTEGER)
-        {
-          db_value_clear (&value);
-          continue;
-        }
-      
+	{
+	  db_value_clear (&value);
+	  continue;
+	}
+
       int read_bqual = db_get_int (&value);
       db_value_clear (&value);
-      
+
       if (read_gtrid == gtrid && read_bqual == bqual)
-        {
-          /* Found matching record - read all attributes */
-          log_entry->gtrid = gtrid;
-          log_entry->bqual = bqual;
-          
-          /* Read CONN_URL */
-          if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
-            {
-              const char *conn_url = db_get_string (&value);
-              if (conn_url != NULL)
-                {
-                  strncpy (log_entry->conn_url, conn_url, sizeof (log_entry->conn_url) - 1);
-                }
-              db_value_clear (&value);
-            }
-          
-          /* Read USER */
-          if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
-            {
-              const char *user = db_get_string (&value);
-              if (user != NULL)
-                {
-                  strncpy (log_entry->user, user, sizeof (log_entry->user) - 1);
-                }
-              db_value_clear (&value);
-            }
-          
-          /* Read PASSWORD (encoded) */
-          if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
-            {
-              const char *password = db_get_string (&value);
-              if (password != NULL)
-                {
-                  strncpy (log_entry->password, password, sizeof (log_entry->password) - 1);
-                }
-              db_value_clear (&value);
-            }
-          
-          /* Read STATE */
-          if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
-            {
-              const char *state_str = db_get_string (&value);
-              log_entry->state = (state_str != NULL) ? state_str[0] : 0;
-              db_value_clear (&value);
-            }
-          
-          /* Read CREATED_TIME */
-          if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
-            {
-              log_entry->created_time = (time_t) *db_get_timestamp (&value);
-              db_value_clear (&value);
-            }
-          
-          /* Read UPDATED_TIME */
-          if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
-            {
-              log_entry->updated_time = (time_t) *db_get_timestamp (&value);
-              db_value_clear (&value);
-            }
-          
-          found = true;
-          break;
-        }
+	{
+	  /* Found matching record - read all attributes */
+	  log_entry->gtrid = gtrid;
+	  log_entry->bqual = bqual;
+
+	  /* Read CONN_URL */
+	  if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
+	    {
+	      const char *conn_url = db_get_string (&value);
+	      if (conn_url != NULL)
+		{
+		  strncpy (log_entry->conn_url, conn_url, sizeof (log_entry->conn_url) - 1);
+		}
+	      db_value_clear (&value);
+	    }
+
+	  /* Read USER */
+	  if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
+	    {
+	      const char *user = db_get_string (&value);
+	      if (user != NULL)
+		{
+		  strncpy (log_entry->user, user, sizeof (log_entry->user) - 1);
+		}
+	      db_value_clear (&value);
+	    }
+
+	  /* Read PASSWORD (encoded) */
+	  if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
+	    {
+	      const char *password = db_get_string (&value);
+	      if (password != NULL)
+		{
+		  strncpy (log_entry->password, password, sizeof (log_entry->password) - 1);
+		}
+	      db_value_clear (&value);
+	    }
+
+	  /* Read STATE */
+	  if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
+	    {
+	      const char *state_str = db_get_string (&value);
+	      log_entry->state = (state_str != NULL) ? state_str[0] : 0;
+	      db_value_clear (&value);
+	    }
+
+	  /* Read CREATED_TIME */
+	  if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
+	    {
+	      log_entry->created_time = (time_t) * db_get_timestamp (&value);
+	      db_value_clear (&value);
+	    }
+
+	  /* Read UPDATED_TIME */
+	  if (or_get_value (&read_buf, &value, NULL, -1, true) == NO_ERROR)
+	    {
+	      log_entry->updated_time = (time_t) * db_get_timestamp (&value);
+	      db_value_clear (&value);
+	    }
+
+	  found = true;
+	  break;
+	}
     }
 
   if (!found)
@@ -685,46 +701,45 @@ dblink_2pc_log_delete (THREAD_ENTRY * thread_p, int gtrid, int bqual)
   /* Find the record with matching GTRID and BQUAL */
   OID scan_oid;
   RECDES scan_recdes;
-  
+
   OID_SET_NULL (&scan_oid);
-  
+
   while ((error = heap_next (thread_p, &hfid, &class_oid, &scan_oid, &scan_recdes, &scan_cache, PEEK)) == S_SUCCESS)
     {
       OR_BUF read_buf;
       DB_VALUE gtrid_value, bqual_value;
-      
+
       or_init (&read_buf, scan_recdes.data, scan_recdes.length);
-      
+
       /* Read GTRID attribute */
       error = or_get_value (&read_buf, &gtrid_value, NULL, -1, true);
       if (error != NO_ERROR)
-        {
-          db_value_clear (&gtrid_value);
-          continue;
-        }
-      
+	{
+	  db_value_clear (&gtrid_value);
+	  continue;
+	}
+
       /* Read BQUAL attribute */
       error = or_get_value (&read_buf, &bqual_value, NULL, -1, true);
       if (error != NO_ERROR)
-        {
-          db_value_clear (&gtrid_value);
-          db_value_clear (&bqual_value);
-          continue;
-        }
-      
+	{
+	  db_value_clear (&gtrid_value);
+	  db_value_clear (&bqual_value);
+	  continue;
+	}
+
       /* Check if GTRID and BQUAL match */
       if (DB_VALUE_TYPE (&gtrid_value) == DB_TYPE_INTEGER &&
-          DB_VALUE_TYPE (&bqual_value) == DB_TYPE_INTEGER &&
-          db_get_int (&gtrid_value) == gtrid &&
-          db_get_int (&bqual_value) == bqual)
-        {
-          COPY_OID (&target_oid, &scan_oid);
-          found = true;
-          db_value_clear (&gtrid_value);
-          db_value_clear (&bqual_value);
-          break;
-        }
-      
+	  DB_VALUE_TYPE (&bqual_value) == DB_TYPE_INTEGER &&
+	  db_get_int (&gtrid_value) == gtrid && db_get_int (&bqual_value) == bqual)
+	{
+	  COPY_OID (&target_oid, &scan_oid);
+	  found = true;
+	  db_value_clear (&gtrid_value);
+	  db_value_clear (&bqual_value);
+	  break;
+	}
+
       db_value_clear (&gtrid_value);
       db_value_clear (&bqual_value);
     }
@@ -746,11 +761,10 @@ dblink_2pc_log_delete (THREAD_ENTRY * thread_p, int gtrid, int bqual)
 
   /* Delete record using locator_attribute_info_force */
   error = locator_attribute_info_force (thread_p, &hfid, &target_oid, &attr_info,
-                                         NULL, 0, LC_FLUSH_DELETE,
-                                         SINGLE_ROW_DELETE, &scan_cache,
-                                         &force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
-                                         DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-                                         UPDATE_INPLACE_NONE, NULL, true);
+					NULL, 0, LC_FLUSH_DELETE,
+					SINGLE_ROW_DELETE, &scan_cache,
+					&force_count, false, REPL_INFO_TYPE_RBR_NORMAL,
+					DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL, UPDATE_INPLACE_NONE, NULL, true);
   if (error != NO_ERROR)
     {
       goto error_exit;
