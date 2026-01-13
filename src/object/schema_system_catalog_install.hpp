@@ -63,7 +63,6 @@ namespace cubschema
       static system_catalog_definition get_package_var ();
       static system_catalog_definition get_package_exception ();
       static system_catalog_definition get_package_cursor ();
-      static system_catalog_definition get_package_procedure ();
       static system_catalog_definition get_package_record_type ();
 
       // views

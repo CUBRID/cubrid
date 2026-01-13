@@ -71,7 +71,6 @@ static OID oid_Package_code_class = { 0, 0, 0 };
 static OID oid_Package_var_class = { 0, 0, 0 };
 static OID oid_Package_exception_class = { 0, 0, 0 };
 static OID oid_Package_cursor_class = { 0, 0, 0 };
-static OID oid_Package_procedure_class = { 0, 0, 0 };
 static OID oid_Package_record_type_class = { 0, 0, 0 };
 
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
@@ -123,7 +122,6 @@ const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Package_var_class, CT_PACKAGE_VAR_NAME},
   {&oid_Package_exception_class, CT_PACKAGE_EXCEPTION_NAME},
   {&oid_Package_cursor_class, CT_PACKAGE_CURSOR_NAME},
-  {&oid_Package_procedure_class, CT_PACKAGE_PROCEDURE_NAME},
   {&oid_Package_record_type_class, CT_PACKAGE_RECORD_TYPE_NAME},
 };
 

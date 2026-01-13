@@ -291,7 +291,6 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_PACKAGE_VAR_NAME, system_catalog_initializer::get_package_var ());
   ADD_TABLE_DEFINITION (CT_PACKAGE_EXCEPTION_NAME, system_catalog_initializer::get_package_exception ());
   ADD_TABLE_DEFINITION (CT_PACKAGE_CURSOR_NAME, system_catalog_initializer::get_package_cursor ());
-  ADD_TABLE_DEFINITION (CT_PACKAGE_PROCEDURE_NAME, system_catalog_initializer::get_package_procedure ());
   ADD_TABLE_DEFINITION (CT_PACKAGE_RECORD_TYPE_NAME, system_catalog_initializer::get_package_record_type ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
@@ -1264,12 +1263,12 @@ namespace cubschema
       {"unique_name", format_varchar (255)},
       {"pkg_name", format_varchar (255)},
       {"code_name", "string"},
-      {"is_system_pkg", "integer"},
+      {"flags", "integer"}, // bit0: system pkg or not, bit1~: reserved
       {"owner", AU_USER_CLASS_NAME},
       {"variables", format_sequence (CT_PACKAGE_VAR_NAME)},
       {"exceptions", format_sequence (CT_PACKAGE_EXCEPTION_NAME)},
       {"cursors", format_sequence (CT_PACKAGE_CURSOR_NAME)},
-      {"procedures", format_sequence (CT_PACKAGE_PROCEDURE_NAME)},
+      {"procedures", format_sequence (CT_STORED_PROC_NAME)},
       {"record_types", format_sequence (CT_PACKAGE_RECORD_TYPE_NAME)},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
@@ -1330,7 +1329,7 @@ namespace cubschema
       {"var_name", format_varchar (255)},
       {"var_type", "integer"},
       {"init_value", "string"},
-      {"flags", "integer"},     // bit0: constant or not, bit1: not null or nullable
+      {"flags", "integer"},     // bit0: constant or not, bit1: not null or nullable, bit2~: reserved
       {"comment", format_varchar (1024)}
     },
 // constraints
@@ -1390,31 +1389,6 @@ namespace cubschema
 // constraints
     {
       {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "cursor_name", nullptr}, false}
-    },
-// authorization
-    {
-      // owner, grants
-      Au_dba_user, {}
-    },
-// initializer
-    nullptr
-	   );
-  }
-
-  system_catalog_definition
-  system_catalog_initializer::get_package_procedure ()
-  {
-    return system_catalog_definition (
-		   // name
-		   CT_PACKAGE_PROCEDURE_NAME,
-		   // columns
-    {
-      {"pkg_of", CT_PACKAGE_NAME},
-      {"sp", CT_STORED_PROC_NAME}
-    },
-// constraints
-    {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "sp", nullptr}, false}
     },
 // authorization
     {

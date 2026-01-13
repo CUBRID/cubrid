@@ -144,7 +144,6 @@ static const char *prohibited_classes[] = {
   CT_PACKAGE_VAR_NAME,
   CT_PACKAGE_EXCEPTION_NAME,
   CT_PACKAGE_CURSOR_NAME,
-  CT_PACKAGE_PROCEDURE_NAME,
   CT_PACKAGE_RECORD_TYPE_NAME,
 
   /* catalog vclasses */

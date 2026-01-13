@@ -59,7 +59,6 @@
 #define CT_PACKAGE_VAR_NAME             "_db_package_var"
 #define CT_PACKAGE_EXCEPTION_NAME       "_db_package_exception"
 #define CT_PACKAGE_CURSOR_NAME          "_db_package_cursor"
-#define CT_PACKAGE_PROCEDURE_NAME       "_db_package_procedure"
 #define CT_PACKAGE_RECORD_TYPE_NAME     "_db_package_record_type"
 
 /* catalog vclasses */
