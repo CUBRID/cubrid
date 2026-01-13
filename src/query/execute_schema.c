@@ -1417,8 +1417,9 @@ alter_partition_fail:
 }
 
 /*
- * lob_process_dir_add_attr() - Handle LOB directory creation for newly added
- *                              LOB attributes.
+ * lob_process_dir_add_attr() - Collect newly added LOB attributes, build/manage
+ *                              their attribute id array, and trigger LOB
+ *                              directory creation for those attributes.
  *   return: Error code
  *   class_(in): Class information
  *   old_att_count(in): Number of attributes before adding new attributes
