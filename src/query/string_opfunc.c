@@ -20534,7 +20534,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
   DB_TYPE res_type, expr_type;
   const char *expr_s = NULL, *date_s = NULL;
-  char res_s[64];
+  char res_s[64], tmp_expr[256];
   int error_status = NO_ERROR;
   DB_DATETIME db_datetime, *dt_p = NULL;
   DB_DATETIMETZ dt_tz;
@@ -20544,6 +20544,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
   DB_BIGINT unit_int_val = 0;
   DB_BIGINT composite_values[COMPOSITE_MAX];	// { years, month, days, hours, minutes, seconds, millisec }
+  bool is_composite_unit = false;
 
   int y, m, d, h, mi, s, ms;
   int ret;
@@ -20562,6 +20563,41 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     {
       db_make_null (result);
       return NO_ERROR;
+    }
+
+  switch (unit)
+    {
+      /*  composite units  */
+    case PT_SECOND_MILLISECOND:
+    case PT_MINUTE_SECOND:
+    case PT_HOUR_MINUTE:
+    case PT_DAY_HOUR:
+    case PT_YEAR_MONTH:
+    case PT_MINUTE_MILLISECOND:
+    case PT_HOUR_SECOND:
+    case PT_DAY_MINUTE:
+    case PT_HOUR_MILLISECOND:
+    case PT_DAY_SECOND:
+    case PT_DAY_MILLISECOND:
+      is_composite_unit = true;
+      break;
+
+      /*  single units  */
+    case PT_MILLISECOND:
+    case PT_SECOND:
+    case PT_MINUTE:
+    case PT_HOUR:
+    case PT_DAY:
+    case PT_WEEK:
+    case PT_MONTH:
+    case PT_QUARTER:
+    case PT_YEAR:
+      break;
+
+    default:
+      db_make_null (result);
+      error_status = ER_OBJ_INVALID_ARGUMENTS;
+      goto error;
     }
 
   /* 1. Prepare the input: convert expr to char */
@@ -20586,56 +20622,12 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  goto error;
 	}
 
-      switch (unit)
+      if (!is_composite_unit)
 	{
-	  /*  single units  */
-	case PT_MILLISECOND:
-	case PT_SECOND:
-	case PT_MINUTE:
-	case PT_HOUR:
-	case PT_DAY:
-	case PT_WEEK:
-	case PT_MONTH:
-	case PT_QUARTER:
-	case PT_YEAR:
-	  {
-	    // No error checking to make it behave like MySQL.
-	    char *endptr;
-	    unit_int_val = strtoll (expr_s, &endptr, 10);
-	    expr_s = NULL;
-	  }
-	  break;
-
-	  /*  composite units  */
-	case PT_SECOND_MILLISECOND:
-	case PT_MINUTE_SECOND:
-	case PT_HOUR_MINUTE:
-	case PT_DAY_HOUR:
-	case PT_YEAR_MONTH:
-	case PT_MINUTE_MILLISECOND:
-	case PT_HOUR_SECOND:
-	case PT_DAY_MINUTE:
-	case PT_HOUR_MILLISECOND:
-	case PT_DAY_SECOND:
-	case PT_DAY_MILLISECOND:
-	  error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &sign);
-	  if (error_status == ER_FAILED)
-	    {
-	      db_make_null (result);
-	      return NO_ERROR;
-	    }
-	  break;
-
-	default:
-	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  break;
-	}
-
-      if (error_status != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
-	  goto error;
-
+	  // No error checking to make it behave like MySQL.
+	  char *endptr;
+	  unit_int_val = strtoll (expr_s, &endptr, 10);
+	  expr_s = NULL;
 	}
       break;
 
@@ -20652,18 +20644,42 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       break;
 
     case DB_TYPE_FLOAT:
-      unit_int_val = (DB_BIGINT) round (db_get_float (expr));
+      if (is_composite_unit)
+	{
+	  sprintf (tmp_expr, "%f", db_get_float (expr));
+	  expr_s = tmp_expr;
+	}
+      else
+	{
+	  unit_int_val = (DB_BIGINT) round (db_get_float (expr));
+	}
       break;
 
     case DB_TYPE_DOUBLE:
-      unit_int_val = (DB_BIGINT) round (db_get_double (expr));
+      if (is_composite_unit)
+	{
+	  sprintf (tmp_expr, "%f", db_get_double (expr));
+	  expr_s = tmp_expr;
+	}
+      else
+	{
+	  unit_int_val = (DB_BIGINT) round (db_get_double (expr));
+	}
       break;
 
     case DB_TYPE_NUMERIC:
       {
 	double dbl;
 	numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (expr), DB_VALUE_SCALE (expr), &dbl);
-	unit_int_val = (DB_BIGINT) round (dbl);
+	if (is_composite_unit)
+	  {
+	    sprintf (tmp_expr, "%f", dbl);
+	    expr_s = tmp_expr;
+	  }
+	else
+	  {
+	    unit_int_val = (DB_BIGINT) round (dbl);
+	  }
       }
       break;
 
@@ -20679,6 +20695,21 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       sign = (unit_int_val >= 0) ? 1 : 0;
       unit_int_val = abs (unit_int_val);
     }
+  else
+    {
+      assert (is_composite_unit == true);
+      error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &sign);
+      if (error_status != NO_ERROR)
+	{
+	  db_make_null (result);
+	  if (error_status == ER_FAILED)
+	    {
+	      return NO_ERROR;
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+    }
 
   switch (unit)
     {
@@ -20691,6 +20722,17 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     case PT_DAY_MILLISECOND:
       if (!expr_s)
 	{
+	  if (unit != PT_MILLISECOND)
+	    {
+	      if (unit_int_val < 10)
+		{
+		  unit_int_val *= 100;
+		}
+	      else if (unit_int_val < 100)
+		{
+		  unit_int_val *= 10;
+		}
+	    }
 	  composite_values[COMPOSITE_MILLISECOND] = unit_int_val;
 	}
       type = (unit == PT_DAY_MILLISECOND) ? 3 : 1;
@@ -23580,8 +23622,8 @@ error:
 }
 
 int
-db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
-		  const TP_DOMAIN * domain)
+db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VALUE * date_lang,
+		  DB_VALUE * result, const TP_DOMAIN * domain)
 {
   time_t unix_timestamp;
   DB_TYPE format_type;
@@ -24899,9 +24941,10 @@ is_safe_last_char_for_like_optimization (const char *chr, const bool is_escaped,
  * execution than the alternatives.
  */
 int
-db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool has_escape_char, const char *escape_str,
-				   int *const num_logical_chars, int *const last_safe_logical_pos,
-				   int *const num_match_many, int *const num_match_one)
+db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool has_escape_char,
+				   const char *escape_str, int *const num_logical_chars,
+				   int *const last_safe_logical_pos, int *const num_match_many,
+				   int *const num_match_one)
 {
   int i = 0;
   int error_code = NO_ERROR;
@@ -24938,8 +24981,8 @@ db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool ha
       bool is_escaped = false;
 
       error_code =
-	db_get_next_like_pattern_character (pattern_str, pattern_size, db_get_string_codeset (pattern), has_escape_char,
-					    escape_str, &i, &crt_char_p, &is_escaped);
+	db_get_next_like_pattern_character (pattern_str, pattern_size, db_get_string_codeset (pattern),
+					    has_escape_char, escape_str, &i, &crt_char_p, &is_escaped);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -25674,8 +25717,8 @@ get_string_date_token_id (const STRING_DATE_TOKEN token_type, const INTL_LANG in
  *   token_size(out): size in bytes of token printed
  */
 static int
-print_string_date_token (const STRING_DATE_TOKEN token_type, const INTL_LANG intl_lang_id, const INTL_CODESET codeset,
-			 int token_id, int case_mode, char *buffer, int *token_size)
+print_string_date_token (const STRING_DATE_TOKEN token_type, const INTL_LANG intl_lang_id,
+			 const INTL_CODESET codeset, int token_id, int case_mode, char *buffer, int *token_size)
 {
   const char *p;
   int error_status = NO_ERROR;
