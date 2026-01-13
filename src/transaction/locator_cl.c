@@ -5750,7 +5750,10 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      locator_lob_process_create_dir (class_, NULL, hfid);
+      if (locator_lob_process_create_dir (class_, NULL, hfid) != NO_ERROR)
+        {
+          return NULL;
+        }
 
       ws_dirty (class_mop);
 
@@ -7017,7 +7020,6 @@ locator_lob_process_create_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_
   int *lob_alloc_attrid_arr = NULL;
   int *lob_attrid_arr = NULL;
   int error = NO_ERROR;
-
 
   for (int i = 0; i < class_->att_count; i++)
     {
