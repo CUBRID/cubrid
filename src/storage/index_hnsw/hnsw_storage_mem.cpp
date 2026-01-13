@@ -82,7 +82,7 @@ namespace cubhnsw
   // VECTOR STORAGE
   // -------------------------------------------------------------------
   memory_storage::slot_id_t
-  memory_storage::add_vector (const OID &oid, const float *vector)
+  memory_storage::add_vector (cubthread::entry *thread_ref, const OID &oid, const float *vector)
   {
     slot_id_t new_id;
 
@@ -119,7 +119,7 @@ namespace cubhnsw
   // -------------------------------------------------------------------
   // NODE STORAGE
   // -------------------------------------------------------------------
-  memory_storage::slot_id_t memory_storage::add_node (const OID &key, const level_t &level)
+  memory_storage::slot_id_t memory_storage::add_node (cubthread::entry *thread_ref, const OID &key, const level_t &level)
   {
     std::size_t bytes = this->node_bytes_ (level);
 

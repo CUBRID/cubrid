@@ -81,13 +81,13 @@ class hnsw_usearch_ng final:public hnsw_index
 		     const std::string &name,
 		     const hnsw_build_params &build_params,
 		     PAGE_PTR page_ptr, RECDES &rec);
-    ~hnsw_usearch_ng () = default;
+    ~hnsw_usearch_ng () override;
 
     virtual int prepare_to_add (int n_vectors, const OID *oid,
 				const float *vector) override;
     virtual int add (int n_vectors, const OID *oid,
 		     const float *vector) override;
-    int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector);
+    int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
     virtual int search (const float *query, const int k, const int ef_search,
 			OID *rec_oids, float *distances) override;
     virtual int remove (const OID *oid) override;
@@ -107,7 +107,7 @@ class hnsw_usearch_ng final:public hnsw_index
 
     std::unique_ptr < algo_type > m_algo;
     std::unique_ptr < storage_type > m_storage;
-    std::unique_ptr<cubthread::entry_workpool> m_worker_pool;
+    cubthread::entry_workpool *m_worker_pool;
     size_t m_worker_pool_size;
 };
 
@@ -178,7 +178,6 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
   this->m_thread_p = thread_get_thread_entry_info ();
 
   m_storage = std::make_unique < storage_type > (btid, build_params);
-  m_storage->set_thread_entry (thread_get_thread_entry_info ());
 
   std::size_t root_size;
   m_storage->init_root (reinterpret_cast < std::byte * > (rec.data),
@@ -197,9 +196,13 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
   m_algo->set_storage (m_storage.get ());
 
   m_worker_pool_size = std::thread::hardware_concurrency ();
-  m_worker_pool = std::unique_ptr<cubthread::entry_workpool> (cubthread::get_manager()->create_worker_pool (
-			  m_worker_pool_size, m_worker_pool_size, "hnsw insertion worker pool", NULL, 1, false));
-  assert (m_worker_pool != nullptr);
+  m_worker_pool = cubthread::get_manager ()->create_worker_pool (
+			  m_worker_pool_size, m_worker_pool_size, "hnsw insertion worker pool", NULL, 1, false);
+}
+
+hnsw_usearch_ng::~hnsw_usearch_ng ()
+{
+  cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
 }
 
 int
@@ -219,23 +222,26 @@ hnsw_usearch_ng::add (int n_vectors, const OID *oid, const float *vector)
   for (int i = 0; i < n_vectors; ++i)
     {
       auto exec_f = std::bind (&hnsw_usearch_ng::add_vector, std::ref (*this), std::placeholders::_1, oid[i],
-			       vector + i * m_build_params.dimension);
+			       vector + i * m_build_params.dimension, m_thread_p->tran_index);
       cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
-      cubthread::get_manager()->push_task (m_worker_pool.get(), task);
+      cubthread::get_manager()->push_task (m_worker_pool, task);
     }
   return NO_ERROR;
 }
 
 int
-hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector)
+hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index)
 {
+  thread_ref.tran_index = tran_index;
+
   if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
       && db_vector_is_all_zeros (vector, m_build_params.dimension))
     {
       er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
       return NO_ERROR;
     }
-  m_algo->add (thread_ref, oid, vector, m_build_params.ef_construction);
+
+  m_algo->add (&thread_ref, oid, vector, m_build_params.ef_construction);
   return NO_ERROR;
 }
 
