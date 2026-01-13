@@ -167,21 +167,21 @@ class hnsw_index
     virtual const hnsw_index_backend &get_backend() const;
 
     // operations
-    virtual int prepare_to_add (int n_vectors, const OID *oid, const float *vector)=0;
-    virtual int add (int n_vectors, const OID *oid, const float *vector)=0;
+    virtual int prepare_to_add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const float *vector)=0;
+    virtual int add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const float *vector)=0;
 
-    virtual int search (const float *query, const int k, const int ef_search, OID *rec_oids, float *distances)=0;
-    virtual int remove (const OID *oid)=0;
-    virtual int update (const OID *oid, const float *vector)=0;
+    virtual int search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search, OID *rec_oids, float *distances)=0;
+    virtual int remove (cubthread::entry *thread_p, const OID *oid)=0;
+    virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector)=0;
 
     // SCAN_PRED from query_evaluator.h
-    virtual int filtered_search (const float *query, const int k, const SCAN_PRED &filter, OID *rec_oids,
+    virtual int filtered_search (cubthread::entry *thread_p, const float *query, const int k, const SCAN_PRED &filter, OID *rec_oids,
 				 float *distances)=0;
-    virtual int dump (FILE *fp)=0;
+    virtual int dump (cubthread::entry *thread_p, FILE *fp) { return NO_ERROR; }
 
     // serialize
-    virtual int save (const std::string &path)=0;
-    virtual int load (const std::string &path)=0;
+    virtual int save (cubthread::entry *thread_p, const std::string &path) { return NO_ERROR; }
+    virtual int load (cubthread::entry *thread_p, const std::string &path) { return NO_ERROR; }
 
   protected:
     hnsw_index (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
