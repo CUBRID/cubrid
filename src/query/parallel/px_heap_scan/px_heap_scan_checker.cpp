@@ -133,7 +133,10 @@ namespace parallel_heap_scan
     if (arg->xasl)
       {
 	temp = check<is_outptr_list> (arg->xasl);
-	// TODO: set result to arg->xasl
+	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	  }
       }
 
     switch (arg->type)
