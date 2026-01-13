@@ -8688,6 +8688,9 @@ generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN
 
   for (db_attr_cur = db_attrs; db_attr_cur != NULL; db_attr_cur = db_attribute_next (db_attr_cur))
     {
+      if(db_attribute_is_invisible_column(db_attr_cur)){
+	continue;
+      }
       attr_cur = (NATURAL_JOIN_ATTR_INFO *) malloc (sizeof (NATURAL_JOIN_ATTR_INFO));
       if (attr_cur == NULL)
 	{
