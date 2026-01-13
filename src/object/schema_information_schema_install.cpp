@@ -421,6 +421,7 @@ namespace cubschema
       {"create_time", "datetime"},
       {"update_time", "datetime"},
       {"table_collation", format_varchar (32)},
+      {"create_options", format_varchar (255)},
       {"table_comment", format_varchar (2048)},
       {attribute_kind::QUERY_SPEC, sm_define_view_tables_spec ()}
     },

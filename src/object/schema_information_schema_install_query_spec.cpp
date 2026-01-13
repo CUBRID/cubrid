@@ -50,6 +50,7 @@
 #include "deduplicate_key.h"
 #include "sp_catalog.hpp"
 #include "sp_constants.hpp"
+#include "tde.h"
 #include "trigger_manager.h"
 
 #include <cstdio>
@@ -504,6 +505,11 @@ const char *sm_define_view_tables_spec (void)
       "[cls].[created_time] AS [create_time], "
       "[cls].[updated_time] AS [update_time], "
       "[coll].[coll_name] AS [table_collation], "
+      /* SM_CLASSFLAG_REUSE_OID */
+      "IF (([cls].[flags] & %d) <> 0, 'REUSE_OID', 'DONT_REUSE_OID') || "
+      /* TDE_ALGORITHM_NONE, TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA */
+      "' ENCRYPT=' || DECODE ([cls].[tde_algorithm], %d, 'NONE', %d, 'AES', %d, 'ARIA')"
+      "AS [create_options], "
       "[cls].[comment] AS [table_comment] "
     "FROM "
       /* CT_CLASS_NAME */
@@ -513,6 +519,10 @@ const char *sm_define_view_tables_spec (void)
     "WHERE "
       AUTH_CHECK_CLASS("[cls].[owner].[name]", "[cls].[class_of]"),
     SM_CLASS_CT,
+    SM_CLASSFLAG_REUSE_OID,
+    TDE_ALGORITHM_NONE,
+    TDE_ALGORITHM_AES,
+    TDE_ALGORITHM_ARIA,
     CT_CLASS_NAME,
     CT_COLLATION_NAME);
   // *INDENT-ON*
