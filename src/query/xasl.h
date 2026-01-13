@@ -986,10 +986,11 @@ struct analytic_stat
   struct timeval analytic_time;
   UINT64 analytic_pages;
   UINT64 analytic_ioreads;
+  UINT64 analytic_fetches;
   int rows;
   bool run_analytic;
-  int analytic_unsorted_count;
-  int analytic_total_count;
+  bool analytic_sort;
+  struct analytic_stat *next;
 };
 
 struct xasl_stat
@@ -1174,7 +1175,7 @@ struct xasl_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   ORDERBY_STATS orderby_stats;
   GROUPBY_STATS groupby_stats;
-  ANALYTIC_STATS analytic_stats;
+  ANALYTIC_STATS *analytic_stats;
   XASL_STATS xasl_stats;
   FUNC_STATS func_stats;
 

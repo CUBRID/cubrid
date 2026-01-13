@@ -2365,9 +2365,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   memset (&xasl->orderby_stats, 0, sizeof (xasl->orderby_stats));
   memset (&xasl->groupby_stats, 0, sizeof (xasl->groupby_stats));
-  memset (&xasl->analytic_stats, 0, sizeof (xasl->analytic_stats));
   memset (&xasl->xasl_stats, 0, sizeof (xasl->xasl_stats));
   memset (&xasl->func_stats, 0, sizeof (xasl->func_stats));
+  xasl->analytic_stats = NULL;
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;

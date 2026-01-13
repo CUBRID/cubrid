@@ -3768,29 +3768,28 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
     }
 
-  astats = &xasl_p->analytic_stats;
-  if (astats->run_analytic)
+  astats = xasl_p->analytic_stats;
+  if (astats != NULL)
     {
-      fprintf (fp, "%*c", indent, ' ');
-      fprintf (fp, "ANALYTIC (time: %d", TO_MSEC (astats->analytic_time));
+      int analytic_num = 0;
+      for (ANALYTIC_STATS * curr = astats; curr != NULL; curr = curr->next)
+	{
+	  fprintf (fp, "%*c", indent, ' ');
+	  fprintf (fp, "ANALYTIC #%d (time: %d", ++analytic_num, TO_MSEC (curr->analytic_time));
 
-      if (astats->analytic_unsorted_count == 0)
-	{
-	  fprintf (fp, ", sort: true, page: %lld, ioread: %lld",
-		   (long long int) astats->analytic_pages, (long long int) astats->analytic_ioreads);
-	}
-      else if (astats->analytic_unsorted_count == astats->analytic_total_count)
-	{
-	  fprintf (fp, ", sort: false, page: %lld, ioread: %lld",
-		   (long long int) astats->analytic_pages, (long long int) astats->analytic_ioreads);
-	}
-      else
-	{
-	  fprintf (fp, ", sort: partial, page: %lld, ioread: %lld",
-		   (long long int) astats->analytic_pages, (long long int) astats->analytic_ioreads);
-	}
+	  if (curr->analytic_sort)
+	    {
+	      fprintf (fp, ", sort: true, page: %lld, ioread: %lld",
+		       (long long int) curr->analytic_pages, (long long int) curr->analytic_ioreads);
+	    }
+	  else
+	    {
+	      fprintf (fp, ", sort: skip, fetch: %lld, ioread: %lld",
+		       (long long int) curr->analytic_fetches, (long long int) curr->analytic_ioreads);
+	    }
 
-      fprintf (fp, ", rows: %d)\n", astats->rows);
+	  fprintf (fp, ", rows: %d)\n", curr->rows);
+	}
     }
 
   gstats = &xasl_p->groupby_stats;
