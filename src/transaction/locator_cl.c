@@ -5724,10 +5724,6 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
     {
       OID *oid;
       SM_CLASS *class_;
-      SM_ATTRIBUTE *attr;
-      int *lob_alloc_attrid_arr = NULL;
-      int lob_local_attrid_arr[2];
-      int lob_attrid_arr_length = 0;
 
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5754,7 +5750,10 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      locator_lob_process_create_dir (class_, NULL, hfid);
+      if (locator_lob_process_create_dir (class_, NULL, hfid) != NO_ERROR)
+        {
+          return NULL;
+        }
 
       ws_dirty (class_mop);
 
@@ -7021,7 +7020,6 @@ locator_lob_process_create_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_
   int *lob_alloc_attrid_arr = NULL;
   int *lob_attrid_arr = NULL;
   int error = NO_ERROR;
-
 
   for (int i = 0; i < class_->att_count; i++)
     {
