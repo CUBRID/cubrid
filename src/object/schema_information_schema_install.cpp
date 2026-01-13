@@ -121,6 +121,7 @@ namespace cubschema
       {"datetime_precision", "integer"},
       {"character_set_name", format_varchar (32)},
       {"collation_name", format_varchar (32)},
+      {"extra", format_varchar (255)},
       {"privileges", format_varchar (512)},
       {"column_comment", format_varchar (2048)},
       {"is_generated", format_varchar (3)},

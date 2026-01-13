@@ -176,6 +176,7 @@ const char *sm_define_view_columns_spec (void)
       "IF ([attr].[data_type] IN (4, 25), [charset].[charset_name], NULL) AS [character_set_name], "
       /* STRING/VARCHAR(4), CHAR(25) */
       "IF ([attr].[data_type] IN (4, 25), [coll].[coll_name], NULL) AS [collation_name], "
+      "NULL AS [extra], "
       "NULL AS [privileges], "
       "[attr].[comment] AS [column_comment], "
       "'NO' AS [is_generated], "
