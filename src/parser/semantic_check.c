@@ -4901,12 +4901,12 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (attr->info.attr_def.auto_increment != NULL)
 		{
 		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
-      return;
+		  return;
 		}
 	      if (attr->info.attr_def.attr_invisible)
 		{
 		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_INVISIBLE);
-      return;
+		  return;
 		}
 	    }
 	}
@@ -8754,11 +8754,11 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
 	      return;
 	    }
-    if (attr->info.attr_def.attr_invisible)
-		  {
-		    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_INVISIBLE);
-        return;
-		  }
+	  if (attr->info.attr_def.attr_invisible)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_INVISIBLE);
+	      return;
+	    }
 	}
     }
 
