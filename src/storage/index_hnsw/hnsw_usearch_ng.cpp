@@ -176,7 +176,7 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
   {
     btid.root_pageid, btid.vfid.volid
   };
-  
+
   m_storage = std::make_unique < storage_type > (btid, build_params);
   m_algo = std::make_unique < algo_type > (build_params);
 }
