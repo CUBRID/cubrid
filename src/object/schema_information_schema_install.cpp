@@ -37,6 +37,8 @@ info_schema_init (void)
 {
   using namespace cubschema;
 
+  info_schema_list.emplace_back (INFO_SCHEMA_COLUMN_PRIVILEGES,
+				 information_schema_initializer::get_view_column_privileges ());
   info_schema_list.emplace_back (INFO_SCHEMA_COLUMNS_NAME, information_schema_initializer::get_view_columns ());
   info_schema_list.emplace_back (INFO_SCHEMA_KEY_COLUMN_USAGE_NAME,
 				 information_schema_initializer::get_view_key_column_usage ());
@@ -98,6 +100,40 @@ end:
 
 namespace cubschema
 {
+  information_schema_definition
+  information_schema_initializer::get_view_column_privileges ()
+  {
+    return information_schema_definition (
+		   // name
+		   INFO_SCHEMA_COLUMN_PRIVILEGES,
+		   // columns
+    {
+      {"grantor", format_varchar (255)},
+      {"grantee", format_varchar (255)},
+      {"table_catalog", format_varchar (255)},
+      {"table_schema", format_varchar (255)},
+      {"table_name", format_varchar (255)},
+      {"column_name", format_varchar (255)},
+      {"privilege_type", format_varchar (7)},
+      {"is_grantable", format_varchar (3)},
+      {attribute_kind::QUERY_SPEC, sm_define_view_column_privileges_spec ()}
+    },
+    // constraint
+    {},
+    // authorization
+    {
+      // owner
+      Au_information_schema_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+    // initializer
+    nullptr
+	   );
+  }
+
   information_schema_definition
   information_schema_initializer::get_view_columns ()
   {

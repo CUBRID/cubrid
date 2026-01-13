@@ -147,6 +147,31 @@
     "OR " AUTH_CHECK_ANY_GRANT(class_of_expr) \
   ")"
 
+const char *sm_define_view_column_privileges_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+    "SELECT "
+      "NULL AS [grantor], "
+      "NULL AS [grantee], "
+      "NULL AS [table_catalog], "
+      "NULL AS [table_schema], "
+      "NULL AS [table_name], "
+      "NULL AS [column_name], "
+      "NULL AS [privilege_type], "
+      "NULL AS [is_grantable] "
+    "FROM "
+      "[%s] "
+    "WHERE "
+      "FALSE",
+    CT_DUAL_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
 const char *sm_define_view_columns_spec (void)
 {
   static char stmt [4096];

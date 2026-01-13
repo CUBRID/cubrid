@@ -31,6 +31,7 @@ namespace cubschema
   class information_schema_initializer
   {
     public:
+      static information_schema_definition get_view_column_privileges ();
       static information_schema_definition get_view_columns ();
       static information_schema_definition get_view_key_column_usage ();
       static information_schema_definition get_view_referential_constraints ();
@@ -49,6 +50,7 @@ namespace cubschema
   };
 }
 
+const char *sm_define_view_column_privileges_spec (void);
 const char *sm_define_view_columns_spec (void);
 const char *sm_define_view_key_column_usage_spec (void);
 const char *sm_define_view_referential_constraints_spec (void);

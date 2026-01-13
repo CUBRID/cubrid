@@ -25,6 +25,7 @@
 #define _SCHEMA_INFORMATION_SCHEMA_CONSTANTS_H_
 
 /* information_schema views (vclasses) */
+#define INFO_SCHEMA_COLUMN_PRIVILEGES        "column_privileges"
 #define INFO_SCHEMA_COLUMNS_NAME             "columns"
 #define INFO_SCHEMA_KEY_COLUMN_USAGE_NAME    "key_column_usage"
 #define INFO_SCHEMA_REFERENTIAL_CONS_NAME    "referential_constraints"
