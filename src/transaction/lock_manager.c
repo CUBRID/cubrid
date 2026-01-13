@@ -2933,6 +2933,11 @@ lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LO
 {
   LK_ENTRY *superclass_entry = NULL;
 
+  if (class_entry == NULL)
+    {
+      return false;
+    }
+
   if (class_entry->granted_mode == BU_LOCK)
     {
       // disallow lock escalation for bulk updates
