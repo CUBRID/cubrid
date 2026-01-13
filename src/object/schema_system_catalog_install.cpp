@@ -1258,24 +1258,26 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_PACKAGE_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
+      {"unique_name", format_varchar (255)},
+      {"pkg_name", format_varchar (255)},
+      {"code_name", "string"},
+      {"is_system_pkg", "integer"},
       {"owner", AU_USER_CLASS_NAME},
+      {"variables", format_sequence (CT_PACKAGE_VAR_NAME)},
+      {"exceptions", format_sequence (CT_PACKAGE_EXCEPTION_NAME)},
+      {"cursors", format_sequence (CT_PACKAGE_CURSOR_NAME)},
+      {"procedures", format_sequence (CT_PACKAGE_PROCEDURE_NAME)},
+      {"record_types", format_sequence (CT_PACKAGE_RECORD_TYPE_NAME)},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false}
     },
 // authorization
     {
@@ -1292,24 +1294,19 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_PACKAGE_CODE_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"code_name", "string"},
+      {"stype", "integer"},
+      {"scode_spec", "string"},
+      {"scode_body", "string"},
+      {"otype", "integer"},
+      {"ocode", "string"}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"code_name", nullptr}, false}
     },
 // authorization
     {
@@ -1326,24 +1323,19 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_PACKAGE_VAR_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"var_name", format_varchar (255)},
+      {"var_type", "integer"},
+      {"init_value", "string"},
+      {"flags", "integer"},     // bit0: constant or not, bit1: not null or nullable
+      {"comment", format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "var_name", nullptr}, false}
     },
 // authorization
     {
@@ -1360,24 +1352,16 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_PACKAGE_EXCEPTION_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"exception_name", format_varchar (255)},
+      {"comment", format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "exception_name", nullptr}, false}
     },
 // authorization
     {
@@ -1394,24 +1378,18 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_PACKAGE_CURSOR_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"cursor_name", format_varchar (255)},
+      {"record_type", "string"},
+      {"parameters", format_sequence ("string")}, // sequence of 'name:type' strings
+      {"comment", format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "cursor_name", nullptr}, false}
     },
 // authorization
     {
@@ -1428,24 +1406,15 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_PACKAGE_PROCEDURE_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"sp", CT_STORED_PROC_NAME}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "sp", nullptr}, false}
     },
 // authorization
     {
@@ -1462,24 +1431,17 @@ namespace cubschema
   {
     return system_catalog_definition (
 		   // name
-		   CT_SERVER_NAME,
+		   CT_PACKAGE_RECORD_TYPE_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)},
-      {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"record_type_name", format_varchar (255)},
+      {"fields", format_sequence ("string")}, // sequence of 'name:type:not-null-or-nullable:init-expr' strings
+      {"comment", format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "record_type_name", nullptr}, false}
     },
 // authorization
     {
