@@ -693,11 +693,11 @@ retry:
  * return: error code
  * src_path(in): path of the original source file
  * metaname(in) : meta name combined with in_uri
- * prefix(in): prefix that will be added to the destination path when copying
  * new_path(out): new path of the copied file
+ * prefix(in): prefix that will be added to the destination path when copying
  */
 int
-xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const char *prefix, char *new_path)
+xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, char *new_path, const char *prefix)
 {
   int rd_fd, wr_fd, n = 0;
   ssize_t ret;
