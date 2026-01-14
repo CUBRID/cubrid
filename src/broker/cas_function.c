@@ -41,6 +41,7 @@
 #include "cas_common_vars.h"
 #include "cas_net_buf.h"
 #include "cas_log.h"
+#include "cas.h"
 #include "cas_handle.h"
 #include "cas_util.h"
 #include "cas_common_function.h"
@@ -74,7 +75,7 @@ FN_RETURN
 fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int tran_type;
-  int err_code;
+  int err_code = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval end_tran_begin, end_tran_end;
   int timeout;
@@ -98,7 +99,22 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-  err_code = ux_end_tran ((char) tran_type, false, false);
+#ifdef CCI_XA
+  if (is_xa_prepared ())
+    {
+      /*
+       * In the 2PC Prepare state, end_tran (commit or rollback) must not be processed.
+       * In this state, commit and rollback must be processed
+       * through the commit decision or abort decision from the coordinator.
+       * In other words, it must be processed with fn_xa_end_tran.
+       */
+      ;
+    }
+  else
+#endif
+    {
+      err_code = ux_end_tran ((char) tran_type, false, false);
+    }
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
