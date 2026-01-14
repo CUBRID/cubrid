@@ -6992,7 +6992,22 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 {
   int error = NO_ERROR;
 
-  if (prev_hfid != NULL)
+  assert (prev_hfid != NULL || new_hfid != NULL);
+
+  if (prev_hfid != NULL && new_hfid != NULL)	/* truncate case */
+    {
+      error = lob_remove_dir (prev_hfid, -1);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (prev_hfid != NULL)
     {
       error = lob_remove_dir (prev_hfid, lob_attrid_arr[0]);
       if (error != NO_ERROR)
@@ -7000,8 +7015,7 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 	  return error;
 	}
     }
-
-  if (new_hfid != NULL)
+  else if (new_hfid != NULL)
     {
       error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
       if (error != NO_ERROR)
