@@ -20516,7 +20516,7 @@ get_double_string (double d, char *buf, int sz)
 {
   int len;
 
-  len = snprintf (buf, sz, "%f", d);
+  len = snprintf (buf, sz, "%.20f", d);
   len--;
   while (len >= 0)
     {
