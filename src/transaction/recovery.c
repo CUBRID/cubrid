@@ -835,6 +835,12 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
+  {RVHF_LOB_REMOVE_DIR,
+   "RVHF_LOB_REMOVE_DIR",
+   heap_lob_rv_remove_dir,
+   heap_lob_rv_remove_dir,
+   NULL,
+   NULL},
 };
 
 /*
