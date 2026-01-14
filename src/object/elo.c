@@ -351,6 +351,85 @@ error_return:
 }
 
 /*
+ * elo_copy_with_suffix () - Similar to the LOB_PERMANENT_CREATED case in elo_copy(),
+                             but called when adding a suffix to the destination path during copy.
+ * return: error code
+ * elo(in): DB_ELO structure that represents the original source file
+ * dest(out): DB_ELO structure that represents the copied file
+ * suffix(in): suffix that will be added to the destination path when copying
+ */
+int
+elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
+{
+  int ret = NO_ERROR;
+  ES_URI out_uri, real_locator;
+  char *locator = NULL;
+  char *meta_data = NULL;
+
+  assert (elo != NULL);
+  assert (dest != NULL);
+  assert (elo->type == ELO_FBO);
+  assert (elo->locator != NULL);
+
+  /* create elo instance and copy file */
+  if (elo->meta_data != NULL)
+    {
+      meta_data = db_private_strdup (NULL, elo->meta_data);
+      if (meta_data == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+    }
+
+  /* if it uses external storage, do transaction work */
+  elo->es_type = es_get_type (elo->locator);
+  if (elo->es_type == ES_POSIX)
+    {
+      strcpy (real_locator, elo->locator);
+
+      ret = es_copy_file_with_suffix (real_locator, elo->meta_data, out_uri, suffix);
+      if (ret != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      locator = db_private_strdup (NULL, out_uri);
+      if (locator == NULL)
+	{
+	  es_delete_file (out_uri);
+	  goto error_return;
+	}
+      ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
+      if (ret != NO_ERROR)
+	{
+	  goto error_return;
+	}
+    }
+  else
+    {
+      goto error_return;
+    }
+
+  *dest = *elo;
+  dest->locator = locator;
+  dest->meta_data = meta_data;
+
+  return NO_ERROR;
+
+error_return:
+  if (locator != NULL)
+    {
+      db_private_free_and_init (NULL, locator);
+    }
+
+  if (meta_data != NULL)
+    {
+      db_private_free_and_init (NULL, meta_data);
+    }
+  return ret;
+}
+
+/*
  * elo_delete () - delete the file located by elo and the structure itself.
  * return: NO_ERROR if successful, error code otherwise
  * elo(in):
