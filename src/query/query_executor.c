@@ -20815,14 +20815,15 @@ query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 static void
 qexec_clear_analytic_stats_list (THREAD_ENTRY * thread_p, ANALYTIC_STATS ** stats_list)
 {
-  ANALYTIC_STATS *curr = *stats_list;
-  ANALYTIC_STATS *next;
+  ANALYTIC_STATS *curr_stats, *next_stats;
 
-  while (curr != NULL)
+  curr_stats = *stats_list;
+
+  while (curr_stats != NULL)
     {
-      next = curr->next;
-      db_private_free_and_init (thread_p, curr);
-      curr = next;
+      next_stats = curr_stats->next;
+      db_private_free_and_init (thread_p, curr_stats);
+      curr_stats = next_stats;
     }
 
   *stats_list = NULL;
@@ -21053,6 +21054,7 @@ wrapup:
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 
+      ANALYTIC_STATS *curr_stats = NULL;
       ANALYTIC_STATS *new_stat = (ANALYTIC_STATS *) db_private_alloc (thread_p, sizeof (ANALYTIC_STATS));
       if (new_stat != NULL)
 	{
@@ -21083,8 +21085,19 @@ wrapup:
 	      new_stat->rows = 0;
 	    }
 
-	  new_stat->next = xasl->analytic_stats;
-	  xasl->analytic_stats = new_stat;
+	  curr_stats = xasl->analytic_stats;
+	  if (curr_stats == NULL)
+	    {
+	      xasl->analytic_stats = new_stat;
+	    }
+	  else
+	    {
+	      while (curr_stats->next)
+		{
+		  curr_stats = curr_stats->next;
+		}
+	      curr_stats->next = new_stat;
+	    }
 	}
     }
 

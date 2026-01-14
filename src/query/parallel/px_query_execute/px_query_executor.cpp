@@ -329,7 +329,8 @@ extern "C" {
 	    {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  if (!XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE))
+		  if (!XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE) && ! (aptr->type == BUILDLIST_PROC
+		      && aptr->proc.buildlist.a_eval_list))
 		    {
 		      aptr_cnts++;
 		      if (aptr_cnts > 1)
