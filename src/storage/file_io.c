@@ -11984,13 +11984,13 @@ fileio_lob_remove_dir (char *path_key)
     }
   closedir (dir_p);
 
-  pos = strrchr (path_key, PATH_SEPARATOR);
+  pos = strrchr (path_key, '/');
   if (pos != NULL)
     {
       keyword = NULL;
       snprintf (base_dir, (strlen (es_base_dir) + 1 + strlen (path_key) + 1), "%s/%s", es_base_dir, path_key);
 
-      if (base_dir[strlen (base_dir)] == PATH_SEPARATOR)
+      if (base_dir[strlen (base_dir)] == '/')
 	{
 	  base_dir[strlen (base_dir)] = '\0';
 	}
@@ -12029,7 +12029,7 @@ fileio_lob_remove_dir (char *path_key)
 
 	      if (S_ISDIR (statbuf.st_mode))
 		{
-		  snprintf (re_path, (strlen (dir_entry->d_name) + 2), "%s%c", dir_entry->d_name, PATH_SEPARATOR);
+		  snprintf (re_path, (strlen (dir_entry->d_name) + 2), "%s/", dir_entry->d_name);
 		  sub_result = fileio_lob_remove_dir (re_path);
 
 		  rmdir (full_path);
@@ -12049,8 +12049,8 @@ fileio_lob_remove_dir (char *path_key)
 
 	  if (S_ISDIR (statbuf.st_mode))
 	    {
-	      snprintf (re_path, (strlen (path_key) + 1 + strlen (dir_entry->d_name) + 1), "%s%c%s%c", path_key, PATH_SEPARATOR,
-			dir_entry->d_name, PATH_SEPARATOR);
+	      snprintf (re_path, (strlen (path_key) + 1 + strlen (dir_entry->d_name) + 1), "%s/%s/", path_key,
+			dir_entry->d_name);
 
 	      sub_result = fileio_lob_remove_dir (re_path);
 
@@ -12073,7 +12073,6 @@ fileio_lob_remove_dir (char *path_key)
   closedir (dir_p);
 
   return error;
-#else /* SERVER_MODE || SA_MODE */
-  return ER_FAILED; /* Not supported in CS_MODE because it handles server-side external storage. */
 #endif /* SERVER_MODE || SA_MODE */
+  return NO_ERROR;
 }
