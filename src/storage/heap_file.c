@@ -12216,7 +12216,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  free_and_init (elo_p->meta_data);
 	  if (ret != NO_ERROR)
 	    {
-	      return S_ERROR;
+	      return (SCAN_CODE) ret;
 	    }
 
 	  elo_p->meta_data = save_meta_data;
