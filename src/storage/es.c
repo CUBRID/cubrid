@@ -420,7 +420,6 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
 int
 es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *prefix, char *out_uri)
 {
-#if defined (SERVER_MODE) || defined (SA_MODE)
   ES_TYPE es_type;
   int ret = NO_ERROR;
 
@@ -446,10 +445,12 @@ es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *
   if (es_type == ES_POSIX)
     {
       memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
+#if defined (SERVER_MODE) || defined (SA_MODE)
       ret =
 	xes_posix_copy_file_with_prefix (ES_POSIX_PATH_POS (in_uri), (char *) metaname, ES_POSIX_PATH_POS (out_uri),
 					 prefix);
       es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
+#endif /* SERVER_MODE || SA_MODE */
     }
   else
     {
@@ -458,9 +459,6 @@ es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *
     }
 
   return ret;
-#else /* SERVER_MODE || SA_MODE */
-  return ER_FAILED; /* Not supported in CS_MODE because it handles server-side external storage. */
-#endif
 }
 
 /*
