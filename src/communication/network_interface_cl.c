@@ -11390,9 +11390,6 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
   char *ptr;
   char *request, *request_alloc, *reply;
   char request_local[OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * 2)];
-
-  assert (!HFID_IS_NULL (hfid) && hfid != NULL);
-
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -11458,9 +11455,6 @@ lob_remove_dir (HFID * hfid, int attrid)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
   char *ptr, *request, *reply;
-
-  assert (!HFID_IS_NULL (hfid) && hfid != NULL);
-
   OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
