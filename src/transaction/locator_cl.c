@@ -5912,23 +5912,23 @@ locator_remove_class (MOP class_mop)
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
       for (attr = class_->attributes; attr; attr = attr->order_link)
-	for (int i = 0; i < class_->att_count; i++)
-	  {
-	    attr = &class_->attributes[i];
-	    if (TP_IS_LOB_TYPE (attr->type->id))
-	      {
-		int attrid_arr[1];
+      for (int i = 0; i < class_->att_count; i++)
+	{
+          attr = &class_->attributes[i];
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      int attrid_arr[1];
 
-		attrid_arr[0] = -1;
-		error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
-		if (error_code != NO_ERROR)
-		  {
-		    goto error;
-		  }
+	      attrid_arr[0] = -1;
+	      error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
 
-		break;
-	      }
-	  }
+	      break;
+	    }
+	}
     }
 
   /* Delete the class name */
