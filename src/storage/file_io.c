@@ -11971,6 +11971,11 @@ fileio_lob_remove_dir (char *path_key)
   result = sub_result = 0;
   int error = NO_ERROR;
 
+  if (stat (es_base_dir, &statbuf) != 0 || !S_ISDIR (statbuf.st_mode))
+    {
+      error = ER_ES_NO_LOB_PATH;
+      return error;
+    }
   dir_p = opendir (es_base_dir);
   if (dir_p == NULL)
     {
