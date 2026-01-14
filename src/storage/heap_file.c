@@ -12185,7 +12185,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  int32_t fileid;
 	  short volid;
 	  char *save_meta_data, *new_meta_data;
-	  char lob_path_prefix[PATH_MAX];
+	  char lob_path_suffix[PATH_MAX];
 	  int ret;
 
 	  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
@@ -12209,11 +12209,11 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  fileid = hfid.vfid.fileid;
 	  volid = hfid.vfid.volid;
 
-	  snprintf (lob_path_prefix, PATH_MAX - 1, "%d_%d_%d_id%d", volid, fileid, hpgid, attrid);
+	  snprintf (lob_path_suffix, PATH_MAX - 1, "%d_%d_%d_id%d", volid, fileid, hpgid, attrid);
 
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
-	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), &dest_elo, lob_path_prefix);
+	  ret = db_elo_copy_with_suffix (db_get_elo (dbvalue), &dest_elo, lob_path_suffix);
 
 	  free_and_init (elo_p->meta_data);
           if (ret != NO_ERROR)
