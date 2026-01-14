@@ -358,8 +358,6 @@ error_return:
  * elo(in): DB_ELO structure that represents the original source file
  * prefix(in): prefix that will be added to the destination path when copying
  * dest(out): DB_ELO structure that represents the copied file
- *
- * Note: CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
  */
 int
 elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
@@ -386,7 +384,6 @@ elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
 	  goto error_return;
 	}
     }
-  /* CUBRID supports only the ES_POSIX type, so the ELO_NEEDS_TRANSACTION() check is not performed. */
 
   /* if it uses external storage, do transaction work */
   elo->es_type = es_get_type (elo->locator);
