@@ -13955,10 +13955,6 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
   for (int i = 0; i < attrid_arr_length; i++)
     {
       ret = locator_lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
-      if (ret != NO_ERROR)
-        {
-          return ret;
-        }
 
       log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
@@ -14015,7 +14011,7 @@ locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
     }
   else
     {
-      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d_%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
+      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
     }
 
   if (ret < 0 || ret >= PATH_MAX)
