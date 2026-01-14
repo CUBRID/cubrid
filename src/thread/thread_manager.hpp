@@ -222,6 +222,13 @@ namespace cubthread
       // claim/retire entries
       entry *claim_entry (void);
       void retire_entry (entry &entry_p);
+      void clear_all_holder_anchor (void)
+      {
+	for (std::size_t it = 0; it < m_max_threads; it++)
+	  {
+	    m_all_entries[it].m_holder_anchor = NULL;
+	  }
+      }
 
     private:
 
@@ -443,6 +450,13 @@ thread_sleep (double millisec)
   // try to avoid this and use thread_sleep_for instead
   std::chrono::duration<double, std::milli> duration_millis (millisec);
   thread_sleep_for (duration_millis);
+}
+
+inline void
+thread_clear_all_holder_anchor (void)
+{
+  cubthread::get_entry ().m_holder_anchor = NULL;
+  return cubthread::get_manager ()->clear_all_holder_anchor ();
 }
 
 #endif  // _THREAD_MANAGER_HPP_
