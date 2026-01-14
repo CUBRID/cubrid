@@ -11528,7 +11528,7 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 
 /*
  * slob_create_dir - Called when a request is sent from the client to the server.
- *                   Invokes xlob_create_dir() to create the LOB directory
+                     Invokes xlob_create_dir() to create the LOB directory
  *
  *   thread_p(in): the thread pointer
  *   rid(in): the request id
