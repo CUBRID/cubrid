@@ -338,15 +338,9 @@ elo_copy (DB_ELO * elo, DB_ELO * dest)
   return NO_ERROR;
 
 error_return:
-  if (locator != NULL)
-    {
-      db_private_free_and_init (NULL, locator);
-    }
+  db_private_free_and_init (NULL, locator);
 
-  if (meta_data != NULL)
-    {
-      db_private_free_and_init (NULL, meta_data);
-    }
+  db_private_free_and_init (NULL, meta_data);
 
   return ret;
 }
@@ -420,6 +414,7 @@ elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix)
 
 error_return:
   db_private_free_and_init (NULL, locator);
+
   db_private_free_and_init (NULL, meta_data);
 
   return ret;
