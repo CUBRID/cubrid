@@ -586,7 +586,7 @@ configure_file(cmake/version.h.cmake version.h)
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
-  add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
+  add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86 -DSUPPORT_XA)
   if(SUPPORT_XA)
     add_definitions(-DCCI_XA)
   endif(SUPPORT_XA)
