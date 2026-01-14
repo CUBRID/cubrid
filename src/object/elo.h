@@ -50,6 +50,7 @@ extern int elo_copy_structure (const DB_ELO * elo, DB_ELO * dest);
 extern void elo_free_structure (DB_ELO * elo);
 
 extern int elo_copy (DB_ELO * elo, DB_ELO * dest);
+extern int elo_copy_with_suffix (DB_ELO * elo, DB_ELO * dest, const char *suffix);
 extern int elo_delete (DB_ELO * elo, bool force_delete);
 
 extern off_t elo_size (DB_ELO * elo);

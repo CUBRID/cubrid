@@ -109,6 +109,21 @@ db_elo_copy (DB_ELO * src, DB_ELO * dest)
 }
 
 /*
+ * db_elo_copy_with_suffix () - Similar to db_elo_copy (), but called when adding a suffix to the destination path.
+ * return: elo_copy_with_suffix ()
+ * src(in): DB_ELO structure that represents the original source file
+ * dest(out): DB_ELO structure that represents the copied file
+ * suffix(in): suffix that will be added to the destination path when copying
+ */
+int
+db_elo_copy_with_suffix (DB_ELO * src, DB_ELO * dest, const char *suffix)
+{
+  CHECK_3ARGS_ERROR (src, dest, suffix);
+
+  return elo_copy_with_suffix (src, dest, suffix);
+}
+
+/*
  * db_elo_delete () -
  * return:
  * elo(in):
