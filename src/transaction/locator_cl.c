@@ -5750,10 +5750,56 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      if (locator_lob_process_create_dir (class_, NULL, hfid) != NO_ERROR)
-        {
-          return NULL;
-        }
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      if (lob_attrid_arr_length >= 2)
+		{
+		  lob_attrid_arr_length++;
+		}
+	      else
+		{
+		  lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
+		}
+	    }
+	}
+
+      if (lob_attrid_arr_length > 2)
+	{
+	  int index = 0;
+
+	  lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+	  if (lob_alloc_attrid_arr == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  for (int i = 0; i < class_->att_count; i++)
+	    {
+	      attr = &class_->attributes[i];
+
+	      if (TP_IS_LOB_TYPE (attr->type->id))
+		{
+		  lob_alloc_attrid_arr[index++] = attr->id;
+		}
+	    }
+	}
+
+      if (lob_attrid_arr_length)
+	{
+	  HFID lob_hfid = *hfid;
+	  if (locator_lob_create_or_remove_dir
+	      (NULL, &lob_hfid, lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
+	       lob_attrid_arr_length) != NO_ERROR)
+	    {
+	      free (lob_alloc_attrid_arr);
+	      return NULL;
+	    }
+	}
+      free (lob_alloc_attrid_arr);
 
       ws_dirty (class_mop);
 
@@ -5911,10 +5957,8 @@ locator_remove_class (MOP class_mop)
 
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      for (attr = class_->attributes; attr; attr = attr->order_link)
-      for (int i = 0; i < class_->att_count; i++)
+      for (attr = class_->ordered_attributes; attr; attr = attr->order_link)
 	{
-          attr = &class_->attributes[i];
 	  if (TP_IS_LOB_TYPE (attr->type->id))
 	    {
 	      int attrid_arr[1];
@@ -6978,25 +7022,25 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_VERSION_TYPE 
 
 /*
  * locator_lob_create_or_remove_dir() - Unified interface for creating or removing LOB directories.
- * return: error code
- * prev_hfid(in): HFID of an existing LOB directory to remove.
- * new_hfid(in): HFID for the new LOB directory to create.
- * lob_attrid_arr(in): Array of LOB attribute IDs used for create/remove operations.
- * lob_attrid_arr_length(in): Number of elements in lob_attrid_arr.
+ *   return: error code
+ *   old_hfid(in): HFID of an existing LOB directory to remove.
+ *   new_hfid(in): HFID for the new LOB directory to create.
+ *   lob_attrid_arr(in): Array of LOB attribute IDs used for create/remove operations.
+ *   lob_attrid_arr_length(in): Number of elements in lob_attrid_arr.
  *
  * NOTE: This function abstracts the logic of calling lob_create_dir() and lob_remove_dir(),
  *       allowing the caller to handle both operations through a single interface.
  */
 int
-locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
+locator_lob_create_or_remove_dir (HFID * old_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
 {
   int error = NO_ERROR;
 
-  assert (prev_hfid != NULL || new_hfid != NULL);
+  assert (old_hfid != NULL || new_hfid != NULL);
 
-  if (prev_hfid != NULL && new_hfid != NULL)	/* truncate case */
+  if (old_hfid != NULL && new_hfid != NULL)	/* truncate case */
     {
-      error = lob_remove_dir (prev_hfid, -1);
+      error = lob_remove_dir (old_hfid, -1);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -7007,9 +7051,9 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 	  return error;
 	}
     }
-  else if (prev_hfid != NULL)
+  else if (old_hfid != NULL)
     {
-      error = lob_remove_dir (prev_hfid, lob_attrid_arr[0]);
+      error = lob_remove_dir (old_hfid, lob_attrid_arr[0]);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -7023,93 +7067,6 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 	  return error;
 	}
     }
-
-  return error;
-}
-
-/*
- * locator_lob_process_create_dir() - Prepare an array of LOB attrid to create or remove LOB directories.
- * return: error code
- * class_(in): Class structure that contains LOB information.
- * prev_hfid(in): HFID of an existing LOB directory to remove.
- * new_hfid(in): HFID for the new LOB directory to create.
- *
- * NOTE: Call locator_lob_create_or_remove_dir() to handle LOB directories.
- */
-int
-locator_lob_process_create_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
-{
-  SM_ATTRIBUTE *attr;
-  int lob_attrid_arr_length = 0;
-  int lob_local_attrid_arr[2];
-  int *lob_alloc_attrid_arr = NULL;
-  int *lob_attrid_arr = NULL;
-  int error = NO_ERROR;
-
-  for (int i = 0; i < class_->att_count; i++)
-    {
-      attr = &class_->attributes[i];
-
-      if (TP_IS_LOB_TYPE (attr->type->id))
-	{
-	  lob_attrid_arr_length++;
-	}
-    }
-
-  if (lob_attrid_arr_length == 0)
-    {
-      goto end;
-    }
-  else if (lob_attrid_arr_length > 2)
-    {
-      int index = 0;
-
-      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
-      if (lob_alloc_attrid_arr == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      for (int i = 0; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_alloc_attrid_arr[index++] = attr->id;
-	    }
-	}
-      lob_attrid_arr = lob_alloc_attrid_arr;
-    }
-  else
-    {
-      int index = 0;
-
-      for (int i = 0; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_local_attrid_arr[index++] = attr->id;
-	    }
-	}
-      lob_attrid_arr = lob_local_attrid_arr;
-    }
-
-  /* Destroy and Create the lob dir if need */
-  if (lob_attrid_arr_length)
-    {
-      error = locator_lob_create_or_remove_dir (NULL, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
-    }
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-end:
-  free (lob_alloc_attrid_arr);
 
   return error;
 }
