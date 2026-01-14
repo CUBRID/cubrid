@@ -26767,5 +26767,13 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 int
 heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  return fileio_lob_remove_keyword_dir (rcv->data);
+  const char *path = rcv->data;
+  char lob_path[PATH_MAX];
+  int error = NO_ERROR;
+
+  snprintf (lob_path, (strlen (path) + 1), "%s", path);
+
+  error = fileio_lob_remove_keyword_dir (lob_path);
+
+  return error;
 }
