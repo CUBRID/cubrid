@@ -13958,9 +13958,9 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
     {
       ret = locator_lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
       if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
+        {
+          return ret;
+        }
 
       log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
