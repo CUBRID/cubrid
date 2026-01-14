@@ -19690,7 +19690,7 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       /* rewind to 1st january */
       _d += cumulative_days_per_month[days_idx][_m - 1];
 
-      /* days_per_month for years */
+      /* days for years */
       int maxdays = cumulative_days_per_month[days_idx][12];
       while (_d >= maxdays)
 	{
@@ -20512,11 +20512,11 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
 }
 
 static char *
-get_double_string (double d, char *buf)
+get_double_string (double d, char *buf, int sz)
 {
   int len;
 
-  len = sprintf (buf, "%f", d);
+  len = snprintf (buf, sz, "%f", d);
   len--;
   while (len >= 0)
     {
@@ -20666,7 +20666,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     case DB_TYPE_FLOAT:
       if (is_composite_unit)
 	{
-	  expr_s = get_double_string ((double) db_get_float (expr), tmp_expr);
+	  expr_s = get_double_string ((double) db_get_float (expr), tmp_expr, sizeof (tmp_expr));
 	}
       else
 	{
@@ -20677,7 +20677,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     case DB_TYPE_DOUBLE:
       if (is_composite_unit)
 	{
-	  expr_s = get_double_string (db_get_double (expr), tmp_expr);
+	  expr_s = get_double_string (db_get_double (expr), tmp_expr, sizeof (tmp_expr));
 	}
       else
 	{
@@ -20691,7 +20691,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (expr), DB_VALUE_SCALE (expr), &dbl);
 	if (is_composite_unit)
 	  {
-	    expr_s = get_double_string (dbl, tmp_expr);
+	    expr_s = get_double_string (dbl, tmp_expr, sizeof (tmp_expr));
 	  }
 	else
 	  {
@@ -20709,8 +20709,15 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   /* 2. the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
   if (expr_s == NULL)
     {
-      sign = (unit_int_val >= 0) ? 1 : 0;
-      unit_int_val = abs (unit_int_val);
+      if (unit_int_val >= 0)
+	{
+	  sign = 1;
+	}
+      else
+	{
+	  sign = 0;
+	  unit_int_val = -unit_int_val;
+	}
     }
   else
     {
