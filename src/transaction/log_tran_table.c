@@ -1395,17 +1395,21 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2
       for (i = 0; i < coord->num_particps; i++)
 	{
 	  particp_id = ((char *) coord->block_particps_ids + i * coord->particp_id_length);
+	  DBLINK_CONN_INFO *dblink = (DBLINK_CONN_INFO *) particp_id;
+
 	  if (i == 0)
 	    {
-	      fprintf (out_fp, " %s", log_2pc_sprintf_particp (particp_id));
+	      fprintf (out_fp, " [handle = %d, url = %s, user = %s]", dblink->conn_handle, dblink->conn_url,
+		       dblink->user_name);
 	    }
 	  else
 	    {
-	      fprintf (out_fp, ", %s", log_2pc_sprintf_particp (particp_id));
+	      fprintf (out_fp, ", [handle = %d, url = %s, user = %s]", dblink->conn_handle, dblink->conn_url,
+		       dblink->user_name);
 	    }
 	}
       fprintf (out_fp, "\n");
-
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
       if (coord->ack_received)
 	{
 	  fprintf (out_fp, "    Acknowledgement vector =");
@@ -1421,6 +1425,7 @@ logtb_dump_tdes_distribute_transaction (FILE * out_fp, int global_tran_id, LOG_2
 		}
 	    }
 	}
+#endif
       fprintf (out_fp, "\n");
     }
 }

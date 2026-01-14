@@ -422,7 +422,7 @@ static CT_ATTR ct_indexkey_atts[] = {
 };
 
 static CT_ATTR ct_partition_atts[] = {
-  {"index_of", NULL_ATTRID, DB_TYPE_OBJECT},
+  {"class_of", NULL_ATTRID, DB_TYPE_OBJECT},
   {"ptype", NULL_ATTRID, DB_TYPE_INTEGER},
   {"class_partition_type", NULL_ATTRID, DB_TYPE_INTEGER},
   {"pname", NULL_ATTRID, DB_TYPE_VARCHAR},
