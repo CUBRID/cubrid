@@ -395,6 +395,8 @@ static int sm_load_online_index (MOP classmop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
+static int sm_lob_handling_attr_in_truncate (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid);
+
 #if defined (WINDOWS)
 static void sm_method_final (void);
 #endif
@@ -15771,14 +15773,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     }
 
   /* Destroy and Create the lob dir if need */
-  attrid_arr[0] = -1;
-  error = locator_lob_create_or_remove_dir (&prev_hfid, NULL, attrid_arr, 1);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  error = locator_lob_process_create_dir (class_, &prev_hfid, insts_hfid);
+  error = sm_lob_handling_attr_in_truncate (class_, &prev_hfid, insts_hfid);
   if (error != NO_ERROR)
     {
       goto end;
@@ -15786,6 +15781,83 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
+
+end:
+  return error;
+}
+
+static int
+sm_lob_handling_attr_in_truncate (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
+{
+  SM_ATTRIBUTE *attr;
+  int lob_attrid_arr_length = 0;
+  int lob_local_attrid_arr[2];
+  int *lob_alloc_attrid_arr = NULL;
+  int *lob_attrid_arr;
+  int error = NO_ERROR;
+
+
+  for (int i = 0; i < class_->att_count; i++)
+    {
+      attr = &class_->attributes[i];
+
+      if (TP_IS_LOB_TYPE (attr->type->id))
+	{
+	  lob_attrid_arr_length++;
+	}
+    }
+
+  if (lob_attrid_arr_length == 0)
+    {
+      goto end;
+    }
+  else if (lob_attrid_arr_length > 2)
+    {
+      int index = 0;
+
+      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+      if (lob_alloc_attrid_arr == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_alloc_attrid_arr[index++] = attr->id;
+	    }
+	}
+      lob_attrid_arr = lob_alloc_attrid_arr;
+    }
+  else
+    {
+      int index = 0;
+
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_local_attrid_arr[index++] = attr->id;
+	    }
+	}
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
+
+  /* Destroy and Create the lob dir if need */
+  if (lob_attrid_arr_length)
+    {
+      error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
 end:
   return error;
