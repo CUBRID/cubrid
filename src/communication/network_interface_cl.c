@@ -11388,28 +11388,17 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error, request_size;
   char *ptr;
-  char *request, *request_alloc, *reply;
-  char request_local[OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * 2)];
+  char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (lob_attrid_arr_length > 2)
+  request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * lob_attrid_arr_length);
+  request = (char *) malloc (request_size);
+  if (request == NULL)
     {
-      request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * lob_attrid_arr_length);
-      request_alloc = (char *) malloc (request_size);
-      if (request_alloc == NULL)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
-          return ER_OUT_OF_VIRTUAL_MEMORY;
-        }
-
-      request = request_alloc;
-    }
-  else
-    {
-      request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * 2);
-      request = request_local;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   ptr = or_pack_hfid (request, hfid);
@@ -11423,10 +11412,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
       ptr = or_unpack_errcode (reply, &error);
     }
 
-  if (request == request_alloc)
-    {
-      free_and_init (request);
-    }
+  free_and_init (request);
 
   return error;
 #else /* CS_MODE */
