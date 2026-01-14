@@ -706,47 +706,47 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       attr_mthd_name = "";
       p = alter->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
       for (; p && p->node_type == PT_NAME; p = p->next)
-	{
-	  attr_mthd_name = p->info.name.original;
-	  if (p->info.name.meta_class == PT_META_ATTR)
-	    {
-	      found_attr = db_get_class_attribute (vclass, attr_mthd_name);
-	      if (found_attr)
-		{
-		  error = dbt_drop_class_attribute (ctemplate, attr_mthd_name);
-		}
-	      else
-		{
-		  found_mthd = db_get_class_method (vclass, attr_mthd_name);
-		  if (found_mthd)
-		    {
-		      error = dbt_drop_class_method (ctemplate, attr_mthd_name);
-		    }
-		}
-	    }
-	  else
-	    {
-	      found_attr = db_get_attribute (vclass, attr_mthd_name);
-	      if (found_attr)
-		{
-		  error = dbt_drop_attribute (ctemplate, attr_mthd_name);
-		}
-	      else
-		{
-		  found_mthd = db_get_method (vclass, attr_mthd_name);
-		  if (found_mthd)
-		    {
-		      error = dbt_drop_method (ctemplate, attr_mthd_name);
-		    }
-		}
-	    }
+        {
+          attr_mthd_name = p->info.name.original;
+          if (p->info.name.meta_class == PT_META_ATTR)
+            {
+              found_attr = db_get_class_attribute (vclass, attr_mthd_name);
+              if (found_attr)
+                {
+                  error = dbt_drop_class_attribute (ctemplate, attr_mthd_name);
+                }
+              else
+                {
+                  found_mthd = db_get_class_method (vclass, attr_mthd_name);
+                  if (found_mthd)
+                    {
+                      error = dbt_drop_class_method (ctemplate, attr_mthd_name);
+                    }
+                }
+            }
+          else
+            {
+              found_attr = db_get_attribute (vclass, attr_mthd_name);
+              if (found_attr)
+                {
+                  error = dbt_drop_attribute (ctemplate, attr_mthd_name);
+                }
+              else
+                {
+                  found_mthd = db_get_method (vclass, attr_mthd_name);
+                  if (found_mthd)
+                    {
+                      error = dbt_drop_method (ctemplate, attr_mthd_name);
+                    }
+                }
+            }
 
-	  if (error != NO_ERROR)
-	    {
-	      dbt_abort_class (ctemplate);
-	      return error;
-	    }
-	}
+          if (error != NO_ERROR)
+            {
+              dbt_abort_class (ctemplate);
+              return error;
+            }
+        }
 
       p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
       for (;
