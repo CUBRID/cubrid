@@ -413,7 +413,7 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
  *
  * return: error code
  * in_uri(in): path of the original source file
- * metaname(in) : mataname was used as a keyword to identify tables
+ * metaname(in) : mataname was used as a keyword to identify tables, but it is no longer used. TODO: remove mataname
  * out_uri(out): new path of the copied file
  * suffix(in): suffix that will be added to the destination path when copying
  */
