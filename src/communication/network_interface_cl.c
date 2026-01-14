@@ -11440,8 +11440,9 @@ lob_remove_dir (HFID * hfid, int attrid)
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  char *ptr, *request, *reply;
+  char *ptr;
   OR_ALIGNED_BUF (OR_HFID_SIZE + OR_INT_SIZE) a_request;
+  char *request, *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
   request = OR_ALIGNED_BUF_START (a_request);
