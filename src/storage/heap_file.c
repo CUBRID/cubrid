@@ -26752,7 +26752,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 // *INDENT-ON*
 
 /*
- * heap_rv_lob_remove_dir () - Recovery function for LOB directories.
+ * heap_lob_rv_remove_dir () - Recovery function for LOB directories.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -26765,7 +26765,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
  *       committed, this function will be called to actually remove the directory.
  */
 int
-heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   const char *path = rcv->data;
   char lob_path[PATH_MAX];
