@@ -392,10 +392,6 @@ namespace parallel_heap_scan
 	  {
 	    set_flag (result, CANNOT_LIST_MERGE);
 	  }
-	if (arg->proc.buildlist.a_eval_list)
-	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
-	  }
 	break;
       case BUILDVALUE_PROC:
 	if (arg->proc.buildvalue.agg_list)
