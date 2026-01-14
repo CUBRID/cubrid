@@ -5751,9 +5751,9 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
       if (locator_lob_process_create_dir (class_, NULL, hfid) != NO_ERROR)
-        {
-          return NULL;
-        }
+	{
+	  return NULL;
+	}
 
       ws_dirty (class_mop);
 
