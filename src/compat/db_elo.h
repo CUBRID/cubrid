@@ -35,7 +35,7 @@ extern int db_elo_copy_structure (const DB_ELO * src, DB_ELO * dest);
 extern void db_elo_free_structure (DB_ELO * elo);
 
 extern int db_elo_copy (DB_ELO * src, DB_ELO * dest);
-extern int db_elo_copy_with_prefix (DB_ELO * src, DB_ELO * dest, const char *prefix);
+extern int db_elo_copy_with_suffix (DB_ELO * src, DB_ELO * dest, const char *suffix);
 extern int db_elo_delete (DB_ELO * elo);
 
 extern DB_BIGINT db_elo_size (DB_ELO * elo);
