@@ -395,7 +395,7 @@ static int sm_load_online_index (MOP classmop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
-static int sm_lob_handling_attr_in_truncate (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid);
+static int sm_lob_handling_attr_in_truncate (SM_CLASS *class_, HFID *prev_hfid, HFID *new_hfid);
 
 #if defined (WINDOWS)
 static void sm_method_final (void);
@@ -15707,10 +15707,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
+  // SM_ATTRIBUTE *attr;
   bool reuse_oid = false;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
-  int attrid_arr[1];
   int error = NO_ERROR;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  // int *lob_alloc_attrid_arr = NULL;
+  // int lob_local_attrid_arr[2];
+  // int lob_attrid_arr_length = 0;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15787,13 +15790,12 @@ end:
 }
 
 static int
-sm_lob_handling_attr_in_truncate (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
+sm_lob_handling_attr_in_truncate (SM_CLASS *class_, HFID *prev_hfid, HFID *new_hfid)
 {
   SM_ATTRIBUTE *attr;
   int lob_attrid_arr_length = 0;
   int lob_local_attrid_arr[2];
   int *lob_alloc_attrid_arr = NULL;
-  int *lob_attrid_arr;
   int error = NO_ERROR;
 
 
@@ -15803,15 +15805,18 @@ sm_lob_handling_attr_in_truncate (SM_CLASS * class_, HFID * prev_hfid, HFID * ne
 
       if (TP_IS_LOB_TYPE (attr->type->id))
 	{
-	  lob_attrid_arr_length++;
+	  if (lob_attrid_arr_length >= 2)
+	    {
+	      lob_attrid_arr_length++;
+	    }
+	  else
+	    {
+	      lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
+	    }
 	}
     }
 
-  if (lob_attrid_arr_length == 0)
-    {
-      goto end;
-    }
-  else if (lob_attrid_arr_length > 2)
+  if (lob_attrid_arr_length > 2)
     {
       int index = 0;
 
@@ -15831,28 +15836,15 @@ sm_lob_handling_attr_in_truncate (SM_CLASS * class_, HFID * prev_hfid, HFID * ne
 	      lob_alloc_attrid_arr[index++] = attr->id;
 	    }
 	}
-      lob_attrid_arr = lob_alloc_attrid_arr;
-    }
-  else
-    {
-      int index = 0;
-
-      for (int i = 0; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_local_attrid_arr[index++] = attr->id;
-	    }
-	}
-      lob_attrid_arr = lob_local_attrid_arr;
     }
 
   /* Destroy and Create the lob dir if need */
   if (lob_attrid_arr_length)
     {
-      error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      error =
+	locator_lob_create_or_remove_dir (prev_hfid, new_hfid,
+					  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
+					  lob_attrid_arr_length);
     }
   if (error != NO_ERROR)
     {
