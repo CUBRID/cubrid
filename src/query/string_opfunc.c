@@ -20511,6 +20511,26 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
 
 }
 
+static char *
+get_double_string (double d, char *buf)
+{
+  int len;
+
+  len = sprintf (buf, "%f", d);
+  len--;
+  while (len >= 0)
+    {
+      if (buf[len] != '0')
+	{
+	  buf[len + ((buf[len] == '.') ? 0 : 1)] = '\0';
+	  break;
+	}
+      len--;
+    }
+
+  return buf;
+}
+
 /*
  * db_date_add_sub_interval_expr () -
  *
@@ -20646,8 +20666,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     case DB_TYPE_FLOAT:
       if (is_composite_unit)
 	{
-	  sprintf (tmp_expr, "%f", db_get_float (expr));
-	  expr_s = tmp_expr;
+	  expr_s = get_double_string ((double) db_get_float (expr), tmp_expr);
 	}
       else
 	{
@@ -20658,8 +20677,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     case DB_TYPE_DOUBLE:
       if (is_composite_unit)
 	{
-	  sprintf (tmp_expr, "%f", db_get_double (expr));
-	  expr_s = tmp_expr;
+	  expr_s = get_double_string (db_get_double (expr), tmp_expr);
 	}
       else
 	{
@@ -20673,8 +20691,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (expr), DB_VALUE_SCALE (expr), &dbl);
 	if (is_composite_unit)
 	  {
-	    sprintf (tmp_expr, "%f", dbl);
-	    expr_s = tmp_expr;
+	    expr_s = get_double_string (dbl, tmp_expr);
 	  }
 	else
 	  {
