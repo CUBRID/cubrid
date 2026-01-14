@@ -12216,17 +12216,17 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  ret = db_elo_copy_with_suffix (db_get_elo (dbvalue), &dest_elo, lob_path_suffix);
 
 	  free_and_init (elo_p->meta_data);
-          if (ret != NO_ERROR)
-            {
-              return (SCAN_CODE) ret;
-            }
-
 	  elo_p->meta_data = save_meta_data;
 
 	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
 	   * elo again. Otherwize it will generate 2 copies. */
 	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
+
+	  if (ret != NO_ERROR)
+	    {
+	      return (SCAN_CODE) ret;
+	    }
 
 	  pr_clear_value (dbvalue);
 	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
