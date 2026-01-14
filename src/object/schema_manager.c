@@ -395,8 +395,6 @@ static int sm_load_online_index (MOP classmop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
 
-static int sm_lob_handling_attr_in_truncate (SM_CLASS *class_, HFID *prev_hfid, HFID *new_hfid);
-
 #if defined (WINDOWS)
 static void sm_method_final (void);
 #endif
@@ -15707,13 +15705,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
-  // SM_ATTRIBUTE *attr;
+  SM_ATTRIBUTE *attr;
   bool reuse_oid = false;
   int error = NO_ERROR;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
-  // int *lob_alloc_attrid_arr = NULL;
-  // int lob_local_attrid_arr[2];
-  // int lob_attrid_arr_length = 0;
+  int *lob_alloc_attrid_arr = NULL;
+  int lob_local_attrid_arr[2];
+  int lob_attrid_arr_length = 0;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15751,53 +15749,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   assert (!HFID_IS_NULL (insts_hfid));
 
   prev_hfid = *insts_hfid;
-
-  /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid, oid, true);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  HFID_SET_NULL (insts_hfid);
-  ws_dirty (class_mop);
-
-  error = locator_flush_class (class_mop);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* Create a new heap */
-  error = heap_create (insts_hfid, oid, reuse_oid);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* Destroy and Create the lob dir if need */
-  error = sm_lob_handling_attr_in_truncate (class_, &prev_hfid, insts_hfid);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  ws_dirty (class_mop);
-  error = locator_flush_class (class_mop);
-
-end:
-  return error;
-}
-
-static int
-sm_lob_handling_attr_in_truncate (SM_CLASS *class_, HFID *prev_hfid, HFID *new_hfid)
-{
-  SM_ATTRIBUTE *attr;
-  int lob_attrid_arr_length = 0;
-  int lob_local_attrid_arr[2];
-  int *lob_alloc_attrid_arr = NULL;
-  int error = NO_ERROR;
-
 
   for (int i = 0; i < class_->att_count; i++)
     {
@@ -15838,20 +15789,49 @@ sm_lob_handling_attr_in_truncate (SM_CLASS *class_, HFID *prev_hfid, HFID *new_h
 	}
     }
 
-  /* Destroy and Create the lob dir if need */
-  if (lob_attrid_arr_length)
-    {
-      error =
-	locator_lob_create_or_remove_dir (prev_hfid, new_hfid,
-					  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
-					  lob_attrid_arr_length);
-    }
+  /* Destroy the heap */
+  error = heap_destroy_newly_created (insts_hfid, oid, true);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
+  HFID_SET_NULL (insts_hfid);
+  ws_dirty (class_mop);
+
+  error = locator_flush_class (class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* Create a new heap */
+  error = heap_create (insts_hfid, oid, reuse_oid);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* Destroy and Create the lob dir if need */
+  if (lob_attrid_arr_length)
+    {
+      error =
+	locator_lob_create_or_remove_dir (&prev_hfid, insts_hfid,
+					  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
+					  lob_attrid_arr_length);
+    }
+
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  ws_dirty (class_mop);
+  error = locator_flush_class (class_mop);
+
 end:
+  free (lob_alloc_attrid_arr);
+
   return error;
 }
 
