@@ -22918,9 +22918,15 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
   QFILE_LIST_SCAN_ID interm_scan_id;
   XASL_STATE *xasl_state = analytic_state->xasl_state;
   SCAN_CODE sc = S_SUCCESS;
+  ANALYTIC_STAGE stage = ANALYTIC_GROUP_PROC;
   int i, rc = NO_ERROR;
 
   assert (analytic_state != NULL);
+
+  if (XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_NO_SORT_OPT))
+    {
+      stage = ANALYTIC_INTERM_PROC;
+    }
 
   /* open scans on all result files */
   for (i = 0; i < analytic_state->func_count; i++)
@@ -23010,7 +23016,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 	}
 
       /* evaluate inst_num() predicate */
-      rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC);
+      rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, stage);
       if (rc != NO_ERROR)
 	{
 	  goto cleanup;
