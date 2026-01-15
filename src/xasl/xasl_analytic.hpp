@@ -88,11 +88,11 @@ namespace cubxasl
     /* runtime values */
     analytic_function_info info;	/* custom function runtime values */
     qfile_list_id *list_id;	/* used for distinct handling */
-    qfile_list_id *group_list_id;	/* used for group handling */
-    qfile_list_id *order_list_id;	/* used for order handling */
-    int curr_group_tuple_count;
-    int curr_group_tuple_count_nn;
-    int curr_sort_key_tuple_count;
+    qfile_list_id *group_list_id;	/* file containing group headers */
+    qfile_list_id *order_list_id;	/* file containing group values */
+    int curr_group_tuple_count;		/* tuples in current group */
+    int curr_group_tuple_count_nn;	/* tuples in current group with non-NULL values */
+    int curr_sort_key_tuple_count;	/* tuples sharing current sort key */
     db_value *value;		/* value of the aggregate */
     db_value *value2;		/* for STTDEV and VARIANCE */
     db_value *out_value;		/* DB_VALUE used for output */

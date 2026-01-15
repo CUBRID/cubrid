@@ -21151,6 +21151,20 @@ exit_on_error:
   goto wrapup;
 }
 
+/*
+ * qdata_initialize_analytic_func_nosort () - initialize analytic functions for no sort optimization
+ *
+ *   returns: error code or NO_ERROR
+ *   thread_p(in): thread entry
+ *   xasl(in): XASL tree
+ *   xasl_state(in): XASL tree state information
+ *
+ *   NOTE: When xasl has XASL_ANALYTIC_NO_SORT_OPT flag,
+ *         - group header listfile, 
+ *         - group value listfile, 
+ *         - current_values and temp_values for storing and comparing sort key values
+ *         are being initialized here.
+ */
 static int
 qdata_initialize_analytic_func_nosort (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
@@ -21193,6 +21207,7 @@ qdata_initialize_analytic_func_nosort (THREAD_ENTRY * thread_p, XASL_NODE * xasl
 
 	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
 	    {
+	      /* initialize group header listfile */
 	      group_type_list.type_cnt = 2;
 	      group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
 	      if (group_type_list.domp == NULL)
@@ -21213,6 +21228,7 @@ qdata_initialize_analytic_func_nosort (THREAD_ENTRY * thread_p, XASL_NODE * xasl
 
 	      db_private_free_and_init (thread_p, group_type_list.domp);
 
+	      /* initialize group value listfile */
 	      value_type_list.type_cnt = 2;
 	      value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
 	      if (value_type_list.domp == NULL)
@@ -23275,6 +23291,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 		    {
 		      need_key_change = true;
 
+		      /* this means the partition by values match, but the order by values do not. */
 		      if (sort_list_idx >= a_func_list->sort_prefix_size)
 			{
 			  /* finalize, but do not insert into group_value_list */
