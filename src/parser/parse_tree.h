@@ -1031,6 +1031,10 @@ enum pt_node_type
   PT_DROP_SYNONYM = CUBRID_STMT_DROP_SYNONYM,
   PT_RENAME_SYNONYM = CUBRID_STMT_RENAME_SYNONYM,
 
+  PT_CREATE_PACKAGE = CUBRID_STMT_CREATE_PACKAGE,
+  PT_DROP_PACKAGE = CUBRID_STMT_DROP_PACKAGE,
+  PT_ALTER_PACKAGE = CUBRID_STMT_ALTER_PACKAGE,
+
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
   PT_UNION,
@@ -1731,6 +1735,8 @@ typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
 typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
 
 typedef struct pt_synonym_info PT_SYNONYM_INFO;
+
+typedef struct pt_package_info PT_PACKAGE_INFO;
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
 
@@ -3460,6 +3466,19 @@ struct pt_synonym_info
   unsigned is_dblinked:1;	/* server name specified */
 };
 
+struct pt_package_info
+{
+  unsigned or_replace:1;	/* OR REPLACE clause */
+  unsigned for_body:1;		/* 1 package body, 0 package spec */
+  PT_NODE *name;
+  PT_NODE *block;		/* pl/csql code block after AS/IS */
+  PT_NODE *comment;
+
+  PT_NODE *owner;		/* for ALTER PACKAGE name OWNER TO new_owner */
+  unsigned recompile:1;		/* for ALTER PACKAGE name COMPILE */
+};
+
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3571,6 +3590,7 @@ union pt_statement_info
   PT_KILLSTMT_INFO killstmt;
   PT_WITH_CLAUSE_INFO with_clause;
   PT_SP_BODY_INFO sp_body;
+  PT_PACKAGE_INFO pkg;
 };
 
 /*
