@@ -20822,7 +20822,7 @@ qexec_clear_analytic_stats_list (THREAD_ENTRY * thread_p, ANALYTIC_STATS ** stat
   while (curr_stats != NULL)
     {
       next_stats = curr_stats->next;
-      db_private_free_and_init (thread_p, curr_stats);
+      free_and_init (curr_stats);
       curr_stats = next_stats;
     }
 
@@ -21055,7 +21055,7 @@ wrapup:
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 
       ANALYTIC_STATS *curr_stats = NULL;
-      ANALYTIC_STATS *new_stat = (ANALYTIC_STATS *) db_private_alloc (thread_p, sizeof (ANALYTIC_STATS));
+      ANALYTIC_STATS *new_stat = (ANALYTIC_STATS *) malloc (sizeof (ANALYTIC_STATS));
       if (new_stat != NULL)
 	{
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
