@@ -165,7 +165,7 @@ namespace parallel_heap_scan
 	result |= temp;
 	break;
       case TYPE_SP:
-	temp = check<is_outptr_list> (arg->value.sp_ptr->args);
+	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
 	/* cannot execute sp in child threads */
 	if (is_outptr_list)
 	  {
