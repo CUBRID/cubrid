@@ -40,6 +40,7 @@ namespace parallel_heap_scan
 
   void trace_handler::merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats)
   {
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
     for (auto &stat : m_stats)
       {
 	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
@@ -54,13 +55,20 @@ namespace parallel_heap_scan
 	scan_stats->num_fetches += stat.fetches;
       }
   }
+
+  void trace_handler::clear()
+  {
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
+    m_stats.clear();
+  }
+
   void accumulative_trace_storage::add_stats (trace_handler &trace_handler)
   {
     if (!m_is_initialized)
       {
 	m_stats.resize (trace_handler.m_stats.size());
 	m_stats_last = {0,0,0,0,0,{0,0}};
-	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
+	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
 	    m_stats[i] = trace_handler.m_stats[i];
 	    m_stats_last.fetches+=trace_handler.m_stats[i].fetches;
@@ -72,8 +80,18 @@ namespace parallel_heap_scan
       }
     else
       {
+	if (m_stats.size() < trace_handler.m_stats.size())
+	  {
+	    size_t old_size = m_stats.size();
+	    m_stats.resize (trace_handler.m_stats.size());
+	    for (size_t i = old_size; i < m_stats.size(); i++)
+	      {
+		m_stats[i] = {0,0,0,0,0,{0,0}};
+	      }
+	  }
+
 	m_stats_last = {0,0,0,0,0,{0,0}};
-	for (size_t i = 0; i < trace_handler.m_stats.size(); i++)
+	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
 	    m_stats[i].fetches += trace_handler.m_stats[i].fetches;
 	    m_stats[i].ioreads += trace_handler.m_stats[i].ioreads;

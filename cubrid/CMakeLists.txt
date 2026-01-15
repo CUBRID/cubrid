@@ -227,6 +227,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/dblink_scan.c
+  ${QUERY_DIR}/dblink_2pc.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -337,22 +338,22 @@ set(PARALLEL_HEAP_SCAN_HEADERS
   )
 
 set(PARALLEL_QUERY_SOURCES
-  ${PARALLEL_QUERY_DIR}/px_list_merger.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.cpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
+  ${PARALLEL_QUERY_DIR}/px_parallel.cpp
   )
 
 set(PARALLEL_QUERY_HEADERS
-  ${PARALLEL_QUERY_DIR}/px_list_merger.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager_global.hpp
   ${PARALLEL_QUERY_DIR}/px_worker_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
+  ${PARALLEL_QUERY_DIR}/px_parallel.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES

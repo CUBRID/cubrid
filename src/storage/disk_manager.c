@@ -1651,6 +1651,7 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 	      break; \
 	    } \
 	  target_thread_p = target_thread_p->m_px_orig_thread_entry; \
+	  assert (target_thread_p != thread_p); \
 	} \
         assert (target_thread_p != NULL); \
         target_thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
