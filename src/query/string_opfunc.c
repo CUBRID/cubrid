@@ -20,6 +20,7 @@
  * string_opfunc.c - Routines that manipulate arbitrary strings
  */
 
+#include "mprec.h"
 #ident "$Id$"
 
 /* This includes bit strings, character strings, and national character strings
@@ -20511,26 +20512,6 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
 
 }
 
-static char *
-get_string_from_double (double dbl, char *buf, int sz)
-{
-  int len;
-
-  len = snprintf (buf, sz, "%.16f", dbl);
-  len--;
-  while (len >= 0)
-    {
-      if (buf[len] != '0')
-	{
-	  buf[len + ((buf[len] == '.') ? 0 : 1)] = '\0';
-	  break;
-	}
-      len--;
-    }
-
-  return buf;
-}
-
 /*
  * db_date_add_sub_interval_expr () -
  *
@@ -20564,7 +20545,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
   DB_BIGINT unit_int_val = 0;
   DB_BIGINT composite_values[COMPOSITE_MAX];	// { years, month, days, hours, minutes, seconds, millisec }
-  bool is_composite_unit = false;
 
   int y, m, d, h, mi, s, ms;
   int ret;
@@ -20585,51 +20565,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       return NO_ERROR;
     }
 
-  switch (unit)
-    {
-      /*  composite units  */
-    case PT_SECOND_MILLISECOND:
-    case PT_MINUTE_SECOND:
-    case PT_HOUR_MINUTE:
-    case PT_DAY_HOUR:
-    case PT_YEAR_MONTH:
-    case PT_MINUTE_MILLISECOND:
-    case PT_HOUR_SECOND:
-    case PT_DAY_MINUTE:
-    case PT_HOUR_MILLISECOND:
-    case PT_DAY_SECOND:
-    case PT_DAY_MILLISECOND:
-      is_composite_unit = true;
-      break;
-
-      /*  single units  */
-    case PT_MILLISECOND:
-    case PT_SECOND:
-    case PT_MINUTE:
-    case PT_HOUR:
-    case PT_DAY:
-    case PT_WEEK:
-    case PT_MONTH:
-    case PT_QUARTER:
-    case PT_YEAR:
-      break;
-
-    default:
-      db_make_null (result);
-      error_status = ER_OBJ_INVALID_ARGUMENTS;
-      goto error;
-    }
-
-  /* 1. Prepare the input: convert expr to char */
-
-  /*
-   * expr is converted to char because it may contain a more complicated form
-   * for the multiple unit formats, for example:
-   * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
-   * For the simple unit tags, expr is integer
-   */
-
-  memset (composite_values, 0x00, sizeof (composite_values));
   switch (expr_type)
     {
     case DB_TYPE_CHAR:
@@ -20641,74 +20576,30 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 	  goto error;
 	}
-
-      if (!is_composite_unit)
-	{
-	  // No error checking to make it behave like MySQL.
-	  char *endptr;
-	  unit_int_val = strtoll (expr_s, &endptr, 10);
-	  expr_s = NULL;
-	}
       break;
 
-    case DB_TYPE_SHORT:
+    case DB_TYPE_SMALLINT:
       unit_int_val = db_get_short (expr);
-      break;
-
     case DB_TYPE_INTEGER:
       unit_int_val = db_get_int (expr);
       break;
-
     case DB_TYPE_BIGINT:
       unit_int_val = db_get_bigint (expr);
       break;
 
-    case DB_TYPE_FLOAT:
-      if (is_composite_unit)
-	{
-	  expr_s = get_string_from_double ((double) db_get_float (expr), tmp_expr, sizeof (tmp_expr));
-	}
-      else
-	{
-	  unit_int_val = (DB_BIGINT) round (db_get_float (expr));
-	}
-      break;
-
-    case DB_TYPE_DOUBLE:
-      if (is_composite_unit)
-	{
-	  expr_s = get_string_from_double (db_get_double (expr), tmp_expr, sizeof (tmp_expr));
-	}
-      else
-	{
-	  unit_int_val = (DB_BIGINT) round (db_get_double (expr));
-	}
-      break;
-
-    case DB_TYPE_NUMERIC:
-      {
-	double dbl;
-	numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (expr), DB_VALUE_SCALE (expr), &dbl);
-	if (is_composite_unit)
-	  {
-	    expr_s = get_string_from_double (dbl, tmp_expr, sizeof (tmp_expr));
-	  }
-	else
-	  {
-	    unit_int_val = (DB_BIGINT) round (dbl);
-	  }
-      }
-      break;
-
     default:
+      assert (false);
       error_status = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
     }
 
-  /* 2. the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
+  memset (composite_values, 0x00, sizeof (composite_values));
   if (expr_s == NULL)
     {
+      assert (unit == PT_MILLISECOND || unit == PT_SECOND || unit == PT_MINUTE || unit == PT_HOUR ||
+	      unit == PT_DAY || unit == PT_WEEK || unit == PT_MONTH || unit == PT_QUARTER || unit == PT_YEAR);
+
       if (unit_int_val >= 0)
 	{
 	  sign = 1;
@@ -20721,7 +20612,14 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     }
   else
     {
-      assert (is_composite_unit == true);
+      /* the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
+      /*
+       * expr is converted to char because it may contain a more complicated form
+       * for the multiple unit formats, for example:
+       * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
+       * For the simple unit tags, expr is integer
+       */
+
       error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &sign);
       if (error_status != NO_ERROR)
 	{
@@ -20738,88 +20636,68 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   switch (unit)
     {
     case PT_MILLISECOND:
-      assert (expr_s == NULL);
-      [[fallthrough]];		/* fallthrough */
-    case PT_SECOND_MILLISECOND:
-    case PT_MINUTE_MILLISECOND:
-    case PT_HOUR_MILLISECOND:
-    case PT_DAY_MILLISECOND:
-      if (!expr_s)
-	{
-	  if (unit != PT_MILLISECOND)
-	    {
-	      if (unit_int_val < 10)
-		{
-		  unit_int_val *= 100;
-		}
-	      else if (unit_int_val < 100)
-		{
-		  unit_int_val *= 10;
-		}
-	    }
-	  composite_values[COMPOSITE_MILLISECOND] = unit_int_val;
-	}
-      type = (unit == PT_DAY_MILLISECOND) ? 3 : 1;
+      composite_values[COMPOSITE_MILLISECOND] = unit_int_val;
+      type = 1;
       break;
 
     case PT_SECOND:
-      assert (expr_s == NULL);
-      [[fallthrough]];		/* fallthrough */
-    case PT_MINUTE_SECOND:
-    case PT_HOUR_SECOND:
-    case PT_DAY_SECOND:
-      if (!expr_s)
-	{
-	  composite_values[COMPOSITE_SECOND] = unit_int_val;
-	}
-      type = (unit == PT_DAY_SECOND) ? 3 : 1;
+      composite_values[COMPOSITE_SECOND] = unit_int_val;
+      type = 1;
       break;
 
     case PT_MINUTE:
-      assert (expr_s == NULL);
-      [[fallthrough]];		/* fallthrough */
-    case PT_HOUR_MINUTE:
-    case PT_DAY_MINUTE:
-      if (!expr_s)
-	{
-	  composite_values[COMPOSITE_MINUTE] = unit_int_val;
-	}
-      type = (unit == PT_DAY_MINUTE) ? 3 : 1;
+      composite_values[COMPOSITE_MINUTE] = unit_int_val;
+      type = 1;
       break;
 
     case PT_HOUR:
-      assert (expr_s == NULL);
-      [[fallthrough]];		/* fallthrough */
-    case PT_DAY_HOUR:
-      if (!expr_s)
-	{
-	  composite_values[COMPOSITE_HOUR] = unit_int_val;
-	}
-      type = (unit == PT_DAY_HOUR) ? 3 : 1;
+      composite_values[COMPOSITE_HOUR] = unit_int_val;
+      type = 1;
       break;
 
     case PT_DAY:
+      composite_values[COMPOSITE_DAY] = unit_int_val;
+      type = 2;
+      break;
     case PT_WEEK:
-      assert (expr_s == NULL);
-      composite_values[COMPOSITE_DAY] = unit_int_val * (unit == PT_WEEK ? 7 : 1);
+      composite_values[COMPOSITE_DAY] = unit_int_val * 7;
       type = 2;
       break;
 
     case PT_MONTH:
+      composite_values[COMPOSITE_MONTH] = unit_int_val;
+      type = 2;
+      break;
     case PT_QUARTER:
-      assert (expr_s == NULL);
-      [[fallthrough]];		/* fallthrough */
-    case PT_YEAR_MONTH:
-      if (!expr_s)
-	{
-	  composite_values[COMPOSITE_MONTH] = unit_int_val * (unit == PT_QUARTER ? 3 : 1);
-	}
+      composite_values[COMPOSITE_MONTH] = unit_int_val * 3;
       type = 2;
       break;
 
     case PT_YEAR:
-      assert (expr_s == NULL);
       composite_values[COMPOSITE_YEAR] = unit_int_val;
+      type = 2;
+      break;
+
+    case PT_SECOND_MILLISECOND:
+    case PT_MINUTE_MILLISECOND:
+    case PT_HOUR_MILLISECOND:
+    case PT_MINUTE_SECOND:
+    case PT_HOUR_SECOND:
+    case PT_HOUR_MINUTE:
+      assert (expr_s);
+      type = 1;
+      break;
+
+    case PT_DAY_MILLISECOND:
+    case PT_DAY_SECOND:
+    case PT_DAY_MINUTE:
+    case PT_DAY_HOUR:
+      assert (expr_s);
+      type = 3;
+      break;
+
+    case PT_YEAR_MONTH:
+      assert (expr_s);
       type = 2;
       break;
 
@@ -20829,7 +20707,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       goto error;
     }
 
-  /* 3. Convert string with date to DateTime or Time */
+  /* Convert string with date to DateTime or Time */
 
   switch (res_type)
     {
