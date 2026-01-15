@@ -20,7 +20,6 @@
  * type_checking.c - auxiliary functions for parse tree translation
  */
 
-#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"

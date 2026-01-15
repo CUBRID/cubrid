@@ -20,7 +20,6 @@
  * string_opfunc.c - Routines that manipulate arbitrary strings
  */
 
-#include "mprec.h"
 #ident "$Id$"
 
 /* This includes bit strings, character strings, and national character strings
