@@ -78,6 +78,7 @@ namespace cubschema
     CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_TRIGGER_NAME,		// "_db_trigger"
+    CT_GLOBAL_TRAN_NAME,	// "_db_global_tran"
 
     /* currently, not implemented */
     CT_RESOLUTION_NAME		// "_db_resolution"
