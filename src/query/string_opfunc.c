@@ -272,8 +272,6 @@ static long calc_unix_timestamp (struct tm *time_argument);
 static int parse_for_next_int (char **ch, char *output);
 #endif
 
-static int db_date_add_sub_interval_composite_value2 (const char *expr_s, int max_composite, DB_BIGINT zvalues[5],
-						      int *sign);
 static int db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values, int *sign);
 static int db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr,
 					  const int unit, int is_add);
@@ -20534,7 +20532,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
   int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
   DB_TYPE res_type, expr_type;
   const char *expr_s = NULL, *date_s = NULL;
-  char res_s[64], tmp_expr[TP_DOUBLE_AS_CHAR_LENGTH * 2];
+  char res_s[64];
   int error_status = NO_ERROR;
   DB_DATETIME db_datetime, *dt_p = NULL;
   DB_DATETIMETZ dt_tz;
