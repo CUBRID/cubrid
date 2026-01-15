@@ -4266,13 +4266,22 @@ tr_find_trigger (const char *name)
       if (object == NULL)
 	{
 	  /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 	    {
 	      char other_trigger_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
 	      do_find_trigger_by_query (realname, other_trigger_name, DB_MAX_IDENTIFIER_LENGTH);
 	      if (other_trigger_name[0] != '\0')
 		{
+		  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_TRIGGER)
+		    {
+		      /* maybe unloaded from version 11.2+ or later */
+		      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_TRIGGER_NOT_FOUND, 1, realname);
+		      goto end;
+		    }
+
 		  if (trigger_table_find (other_trigger_name, &object) != NO_ERROR)
 		    {
 		      goto end;
