@@ -195,7 +195,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       er_clear ();
 
       /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb_compat () /*latest compat client type */ )
 	{
 	  err = jsp_find_sp_of_another_owner (checked_name, &mop);
 	}
@@ -278,6 +278,17 @@ jsp_find_sp_of_another_owner (const char *name, MOP *return_mop)
   error = do_find_stored_procedure_by_query (name, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
   if (other_class_name[0] != '\0')
     {
+      if (db_get_client_statement_type () == CUBRID_STMT_CREATE_STORED_PROCEDURE)
+	{
+	  /* maybe unloaded from version 11.4+ or later */
+	  db_set_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY);
+
+	  error = ER_SP_NOT_EXIST;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, name);
+
+	  return error;
+	}
+
       db_make_string (&value, other_class_name);
       *return_mop = db_find_unique (db_find_class (SP_CLASS_NAME), SP_ATTR_UNIQUE_NAME, &value);
       if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)

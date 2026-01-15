@@ -10190,6 +10190,7 @@ sloaddb_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
   args.unpack (unpacker);
 
   load_session *session = new load_session (args);
+  session->set_client_type (thread_p->conn_entry->client_type);
 
   int error_code = session_set_load_session (thread_p, session);
   if (error_code != NO_ERROR)
