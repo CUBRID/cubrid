@@ -8477,27 +8477,10 @@ static void
 mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 {
   int disk_size;
-  DB_C_NUMERIC num = (DB_C_NUMERIC) mem;
 
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      unsigned char header[NUMERIC_HEADER_SIZE] = { num[0], num[1], num[2] };
-      disk_size = (header[0] & 0x7F);
-
-      int precision = (header[1] & 0x7F);
-      if (precision >= 1 && precision <= DB_MAX_NUMERIC_PRECISION)
-	{
-	  int calc_size =
-	    DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
-	  if (disk_size != calc_size)
-	    {
-	      disk_size = calc_size;
-	    }
-	}
-      else
-	{
-	  disk_size = FLOAT_NUMERIC_SIZE;
-	}
+      disk_size = OR_GET_BYTE (mem) & 0x7F;
     }
   else
     {
@@ -8512,19 +8495,13 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
   int calc_size = 0;
   DB_C_NUMERIC num;
-  unsigned char header[NUMERIC_HEADER_SIZE] = { 0 };
 
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
     {
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  num = (DB_C_NUMERIC) buf->ptr;
-	  header[0] = num[0];
-	  header[1] = num[1];
-	  header[2] = num[2];
-
-	  size = (header[0] & 0x7F);
+	  size = OR_GET_BYTE (mem) & 0x7F;
 	}
       else
 	{
@@ -8544,6 +8521,8 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       /* calculate expected size and verify it matches the provided size */
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
+	  num = (DB_C_NUMERIC) buf->ptr;
+	  unsigned char header[NUMERIC_HEADER_SIZE] = { num[0], num[1], num[2] };
 	  int precision = (header[1] & 0x7F);
 	  calc_size =
 	    DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
@@ -8567,7 +8546,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 static int
 mr_index_lengthmem_numeric (void *mem, TP_DOMAIN * domain)
 {
-  return mr_data_lengthmem_numeric (mem, domain, 1);
+  return mr_data_lengthmem_numeric (mem, domain, -1);
 }
 
 static int
@@ -8577,9 +8556,20 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
 
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      /* float numeric, the actual length is stored in header[0] (header[0] & 0x7F),
-       * but we return the maximum size (FLOAT_NUMERIC_SIZE) here. */
-      len = FLOAT_NUMERIC_SIZE;
+      if (mem != NULL && disk < 0)
+	{
+	  /* the 'disk' argument was originally used to distinguish between disk(1) and memory(0).
+	   * to accurately compute the index-key length for float numeric,
+	   * mr_index_lengthmem_numeric calls this function with 'disk < 0' (-1) to mark that path.
+	   * when 'disk < 0', the length is computed using the precision stored in the value header.
+	   */
+	  len = OR_GET_BYTE (mem) & 0x7F;
+	}
+      else
+	{
+	  /* the actual length is stored in the header and is not available here, so return the maximum size (FLOAT_NUMERIC_SIZE) */
+	  len = FLOAT_NUMERIC_SIZE;
+	}
     }
   else
     {
@@ -8649,7 +8639,7 @@ mr_setval_numeric (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 static int
 mr_index_lengthval_numeric (DB_VALUE * value)
 {
-  return mr_data_lengthval_numeric (value, 1);
+  return mr_data_lengthval_numeric (value, -1);
 }
 
 static int
@@ -8664,9 +8654,23 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       precision = db_value_precision (value);
       if (precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  /* float numeric, the actual length is stored in header[0] (header[0] & 0x7F),
-	   * but we return the maximum size (FLOAT_NUMERIC_SIZE) here. */
-	  len = FLOAT_NUMERIC_SIZE;
+	  if (disk < 0)
+	    {
+	      /* the 'disk' argument was originally used to distinguish between disk(1) and memory(0).
+	       * to accurately compute the index-key length for float numeric,
+	       * mr_index_lengthval_numeric calls this function with 'disk < 0' (-1) to mark that path.
+	       * when 'disk < 0', the length is computed using the precision stored in the value header.
+	       */
+	      int header_precision = DB_VALUE_NUMERIC_HEADER_PRECISION (value);
+	      len =
+		DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[header_precision - 1]),
+			  INT_ALIGNMENT);
+	    }
+	  else
+	    {
+	      /* the actual length is stored in the header and is not available here, so return the maximum size (FLOAT_NUMERIC_SIZE) */
+	      len = FLOAT_NUMERIC_SIZE;
+	    }
 	}
       else
 	{
@@ -8763,7 +8767,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
     {
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  size = FLOAT_NUMERIC_SIZE;
+	  size = OR_GET_BYTE (buf->ptr) & 0x7F;
 	}
       else
 	{

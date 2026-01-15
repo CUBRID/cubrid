@@ -251,10 +251,12 @@ static uint64_t float_numeric_div_pow10 (uint8_t * dbv_buf, int calc_bytes, uint
 static int float_numeric_div_normalize (uint8_t * dbv_buf, int calc_bytes, int exponent);
 static void float_numeric_increment (uint8_t * calc_buf, int calc_bytes, uint8_t val);
 static int float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_buf, int calc_bytes);
+static int float_numeric_check_overflow_and_adjust_scale (int *result_prec, int *result_scale, DB_VALUE * answer);
 static void float_numeric_round_and_pack (uint8_t * calc_buf, int calc_bytes, uint8_t * result_buf, int *result_prec,
 					  int *result_scale);
 static int compare_mantissa_same_exponent (const uint8_t * u_src, const uint8_t * v_src, int buf_bytes, int prec1,
 					   int prec2);
+static int float_numeric_compare_rem_round_up (const uint8_t * rem, const uint8_t * div, int calc_bytes);
 
 /*
  * numeric_is_negative () -
@@ -2648,9 +2650,10 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 
   /* 7) check and recalculate precision/scale of the addition result */
   result_prec = float_numeric_get_decimal_digit (calc_buf, calc_bytes);
-  if (result_prec > DB_MAX_NUMERIC_PRECISION)
+  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
+  if (ret != NO_ERROR)
     {
-      result_scale = result_scale - (result_prec - DB_MAX_NUMERIC_PRECISION);
+      return ret;
     }
 
   /* 8) round and pack to DB_NUMERIC_BUF_SIZE bytes */
@@ -2903,9 +2906,10 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 
   /* 7) check and recalculate precision/scale of the subtraction result */
   result_prec = float_numeric_get_decimal_digit (calc_buf, calc_bytes);
-  if (result_prec > DB_MAX_NUMERIC_PRECISION)
+  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
+  if (ret != NO_ERROR)
     {
-      result_scale = result_scale - (result_prec - DB_MAX_NUMERIC_PRECISION);
+      return ret;
     }
 
   /* 8) round and pack to DB_NUMERIC_BUF_SIZE bytes */
@@ -3118,10 +3122,21 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   float_numeric_mul (dbv1_buf, dbv2_buf, calc_buf, calc_bytes);
 
   /* 6) check and recalculate precision/scale of the multiplication result */
-  result_prec = float_numeric_get_decimal_digit (calc_buf, calc_bytes);
-  if (result_prec > DB_MAX_NUMERIC_PRECISION)
+  if (result_scale > DB_MAX_NUMERIC_SCALE)
     {
-      result_scale = result_scale - (result_prec - DB_MAX_NUMERIC_PRECISION);
+      int scale_overflow = result_scale - DB_MAX_NUMERIC_SCALE;
+      result_scale = DB_MAX_NUMERIC_SCALE;
+
+      if (float_numeric_div_normalize (calc_buf, calc_bytes, scale_overflow) >= 5)
+	{
+	  (void) float_numeric_increment (calc_buf, calc_bytes, 1);
+	}
+    }
+  result_prec = float_numeric_get_decimal_digit (calc_buf, calc_bytes);
+  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
+  if (ret != NO_ERROR)
+    {
+      return ret;
     }
 
   /* 7) round and pack to DB_NUMERIC_BUF_SIZE bytes */
@@ -3342,7 +3357,6 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int scale1, scale2;
   int calc_bytes;
   int exponent10;
-  int last_digit;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
   /* Check for bad inputs */
@@ -3432,8 +3446,21 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int result_digits = (mantissa_compare >= 0) ? (exponent_diff + 1) : exponent_diff;
 
   /* 5) mantissa calculations */
-  result_scale = DB_MAX_NUMERIC_PRECISION - result_digits;
-  exponent10 = (result_scale + 1) + (scale2 - scale1);
+  result_prec = DB_MAX_NUMERIC_PRECISION;
+  result_scale = result_prec - result_digits;
+  exponent10 = (result_scale) + (scale2 - scale1);
+  if (result_scale > DB_MAX_NUMERIC_SCALE)
+    {
+      int scale_overflow = DB_MAX_NUMERIC_SCALE + result_digits;
+      exponent10 -= (DB_MAX_NUMERIC_PRECISION - scale_overflow);
+      result_scale = DB_MAX_NUMERIC_SCALE;
+    }
+
+  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
   /* 6) initialize new calculation buffers and pad absolute values */
   int extra_bytes = float_numeric_precision_to_bytes (exponent10 > 0 ? exponent10 : 0);
@@ -3477,53 +3504,29 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   float_numeric_knuth_div (dividend_work, divisor_work, quotient_work, remainder_work, calc_bytes);
 #endif
 
-  /* reduces digits and returns the most significant digit of the truncated portion for rounding */
-  last_digit = float_numeric_div_normalize (quotient_work, calc_bytes, 1);
-  if (last_digit >= 5)
+  /* 9) round up if necessary */
+  if (float_numeric_compare_rem_round_up (remainder_work, divisor_work, calc_bytes) >= 0)
     {
       (void) float_numeric_increment (quotient_work, calc_bytes, 1);
     }
 
-  /* 9) check and recalculate precision/scale of the addition result */
+  /* 10) check and recalculate precision/scale of the division result */
   result_prec = float_numeric_get_decimal_digit (quotient_work, calc_bytes);
-
   /* 
-   * In steps 4) and 5), the DIV operation determines the precision/scale of the result in advance as follows
-   * 
-   * 1) The integer digit count (result_digits) of the division result is computed 
-   *    using dividend_exponent, divisor_exponent, and the mantissa comparison.
-   *    - Depending on the mantissa_compare result, result_digits becomes either "exponent_diff" or "exponent_diff + 1".
-   *    - This effectively predicts how many integer digits the final result will have before the actual division takes place.
-   *
-   * 2) Based on result_digits, the result_scale is calculated as "result_scale = DB_MAX_NUMERIC_PRECISION - result_digits;"
-   *    - This constrains the overall result precision (integer + fractional digits)
-   *      so that it cannot exceed the maximum precision (43). As result_digits grows, result_scale naturally decreases.
-   *      (This is not a hard enforcement that integer+fractional must equal 43,
-   *      but the design ensures that precision overflow does not occur.)
-   *
-   * Due to this design, the actual integer digit count (result_prec) obtained after
-   * the division mantissa is finalized must never exceed DB_MAX_NUMERIC_PRECISION(43) in any valid DIV execution path.
-   *
-   * If result_prec > 43 ever occurs, it indicates that exponent10 adjustment or
-   * normalization (mul/div pow10) failed to properly enforce the expected precision
-   * constraints, meaning the DIV logic’s design assumptions have been violated.
-   * In such cases, the assert will detect the issue.
+   * step 5) mantissa calculation (result_scale = 40 - result_digits) constrains
+   * precision to 40 or less. result_prec must not exceed 40 after division.
    */
   assert (result_prec <= DB_MAX_NUMERIC_PRECISION);
-
-  if (result_scale > DB_MAX_NUMERIC_SCALE)
+  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, answer);
+  if (ret != NO_ERROR)
     {
-      result_scale = DB_MAX_NUMERIC_SCALE;
-    }
-  else if (result_scale < DB_MIN_NUMERIC_SCALE)
-    {
-      result_scale = DB_MIN_NUMERIC_SCALE;
+      return ret;
     }
 
-  /* 10) round and pack to DB_NUMERIC_BUF_SIZE bytes */
+  /* 11) round and pack to DB_NUMERIC_BUF_SIZE bytes */
   (void) float_numeric_round_and_pack (quotient_work, calc_bytes, result_buf, &result_prec, &result_scale);
 
-  /* 11) store result */
+  /* 12) store result */
   if (result_sign)
     {
       numeric_negate ((unsigned char *) result_buf);
@@ -4357,7 +4360,7 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
 {
   int ret = NO_ERROR;
   int orig_prec1, orig_prec2;
-  int scale1 = 0, scale2 = 0, prec1 = 0, prec2 = 0;
+  int scale1 = 0, scale2 = 0;
   int calc_bytes;
   int result_prec, result_scale;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
@@ -4400,8 +4403,6 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
     {
       scale2 = DB_VALUE_SCALE (value2);
     }
-  prec1 = float_numeric_get_precision_digits (dbv1_copy, DB_NUMERIC_BUF_SIZE);
-  prec2 = float_numeric_get_precision_digits (dbv2_copy, DB_NUMERIC_BUF_SIZE);
 
   /* 2) determine common sign of the result */
   bool arg1_sign = false, arg2_sign = false, result_sign = false;
@@ -4422,14 +4423,6 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
 
   /* 5) determine exact scale for the result (MOD is independent of the quotient scale) */
   result_scale = (scale1 > scale2) ? scale1 : scale2;
-  if (result_scale > DB_MAX_NUMERIC_SCALE)
-    {
-      result_scale = DB_MAX_NUMERIC_SCALE;
-    }
-  else if (result_scale < DB_MIN_NUMERIC_SCALE)
-    {
-      result_scale = DB_MIN_NUMERIC_SCALE;
-    }
 
   /* 6) initialize new calculation buffers and pad absolute values */
   int extra_bytes =
@@ -4475,9 +4468,10 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
 
   /* 9) check and recalculate precision/scale of the remainder result */
   result_prec = float_numeric_get_decimal_digit (remainder_work, calc_bytes);
-  if (result_prec > DB_MAX_NUMERIC_PRECISION)
+  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, result);
+  if (ret != NO_ERROR)
     {
-      result_scale = result_scale - (result_prec - DB_MAX_NUMERIC_PRECISION);
+      return ret;
     }
 
   /* 10) round and pack to DB_NUMERIC_BUF_SIZE bytes */
@@ -4641,37 +4635,37 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 
 	      if (decpt <= 0)
 		{
-		  char *dst = MIN (numeric_str + 1 + ndigits - decpt,
-				   numeric_str + sizeof numeric_str / sizeof numeric_str[0] - 1), *src = dst + decpt;
+		  /*
+		   * ex) 1.234e-10  (= 0.0000000001234)
+		   *   - digits="1234", ndigits=4, decpt=-9
+		   *   - scale = -decpt + ndigits = 9 + 4 = 13
+		   *
+		   * legacy:
+		   *   - materialize leading fractional zeros by shifting digits and prepending '0'
+		   *     -> "0000000001234" (then truncation by DB_MAX_NUMERIC_PRECISION may drop significant digits)
+		   *
+		   * new:
+		   *   - keep only significant digits and derive domain from (decpt, ndigits)
+		   *     -> "1234" with (prec=4, scale=13)
+		   */
+		  *scale = -decpt + ndigits;
+		  *prec = ndigits;
 
-		  *prec = MIN (DB_MAX_NUMERIC_PRECISION, -decpt + ndigits);
-		  *scale = *prec;
-
-		  /* actually rounding should also be performed if value gets truncated. */
-		  *dst = '\0';
-		  dst--;
-		  src--;
-
-		  /* shift all digits in the string */
-		  while (src >= numeric_str + 1)
+		  if (*prec > DB_MAX_NUMERIC_PRECISION)
 		    {
-		      *dst = *src;
-		      dst--;
-		      src--;
+		      *scale -= (*prec - DB_MAX_NUMERIC_PRECISION);
+		      *prec = DB_MAX_NUMERIC_PRECISION;
 		    }
 
-		  /* prepend 0s from right to left until the decimal point position is reached */
-		  while (dst > numeric_str)
-		    {
-		      *dst-- = '0';
-		    }
+		  /* keep only significant digits */
+		  numeric_str[1 + *prec] = '\0';
 		}
 	      else
 		{
 		  /* the numer is greater than 1, either insert the decimal point at the correct position in the digits
 		   * sequence, or append 0s to the digits from left to right until the decimal point is reached. */
 
-		  if (decpt > DB_MAX_NUMERIC_PRECISION)
+		  if (decpt > (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE))
 		    {
 		      /* should not happen since overflow has been checked for previously */
 		      return ER_IT_DATA_OVERFLOW;
@@ -4698,6 +4692,14 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
 
 			  *prec = decpt;
 			  *scale = 0;
+			}
+
+		      if (*prec > DB_MAX_NUMERIC_PRECISION)
+			{
+			  /* this path is taken only for inputs with a positive exponent (e.g., 1.0e+?).
+			   * in this case, the scale may be adjusted to a negative value. */
+			  *scale += (DB_MAX_NUMERIC_PRECISION - *prec);
+			  *prec = DB_MAX_NUMERIC_PRECISION;
 			}
 		    }
 		}
@@ -5677,6 +5679,48 @@ float_numeric_operation_compare (const uint8_t * dbv1_buf, const uint8_t * dbv2_
 }
 
 /*
+ * float_numeric_check_overflow_and_adjust_scale() - Check precision overflow and adjust scale
+ *
+ * calc_buf(in)      : working buffer for calculation
+ * calc_bytes(in)    : size of the working buffer
+ * result_prec(in/out): result precision (calculated from calc_buf, may be adjusted)
+ * result_scale(in/out): result scale (may be reduced if precision overflows)
+ * answer(out)       : DB_VALUE to initialize on overflow error
+ *
+ * return: NO_ERROR on success, ER_IT_DATA_OVERFLOW on overflow
+ *
+ * Note:
+ *   - Calculates the decimal digit count from calc_buf
+ *   - If precision exceeds DB_MAX_NUMERIC_PRECISION, adjusts result_scale
+ *   - If adjusted scale is below DB_MIN_NUMERIC_SCALE, returns overflow error
+ */
+static int
+float_numeric_check_overflow_and_adjust_scale (int *result_prec, int *result_scale, DB_VALUE * answer)
+{
+  int error = NO_ERROR;
+  int precision = *result_prec;
+  int scale = *result_scale;
+
+  assert (precision > 0);
+
+  if (precision > DB_MAX_NUMERIC_PRECISION)
+    {
+      scale -= (precision - DB_MAX_NUMERIC_PRECISION);
+      *result_scale = scale;
+    }
+
+  if (scale < DB_MIN_NUMERIC_SCALE)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (answer, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      error = ER_IT_DATA_OVERFLOW;
+    }
+
+  return error;
+}
+
+/*
  * float_numeric_round_and_pack() - Round and pack intermediate NUMERIC buffer
  *
  * calc_buf(in/out): working buffer for calculation
@@ -5766,6 +5810,46 @@ compare_mantissa_same_exponent (const uint8_t * dividend_buf, const uint8_t * di
     }
 
   return float_numeric_operation_compare (p1, p2, work_bytes);
+}
+
+/*
+ * float_numeric_compare_rem_round_up() - compare remainder with divisor to determine rounding
+ *   return: >= 0: round up (2 * remainder >= divisor)
+ *          < 0:  do not round up (2 * remainder < divisor)
+ *   rem(in): remainder buffer from division
+ *   div(in): divisor buffer
+ *   calc_bytes(in): size of the buffers
+ *
+ * Note:
+ *   - checks if (R * 10) / divisor >= 5 to determine rounding
+ *   - equivalent to: 2 * R >= divisor
+ *   - compares byte by byte from MSB to LSB
+ */
+static int
+float_numeric_compare_rem_round_up (const uint8_t * rem, const uint8_t * div, int calc_bytes)
+{
+  int i = 0;
+  uint32_t rem_val = 0;
+  uint32_t rem_tmp = 0;
+  uint32_t div_val = 0;
+  for (i = 0; i < calc_bytes; i++)	// MSB -> LSB
+    {
+      rem_val = rem[i];
+      rem_tmp = (rem_val << 1) & 0xFFu;	// 2 * rem
+
+      if (i + 1 < calc_bytes)
+	{
+	  rem_tmp |= (uint32_t) (rem[i + 1] >> 7);	// add carry
+	}
+
+      div_val = div[i];
+      if (rem_tmp != div_val)	// compare 2 * rem with divisor
+	{
+	  return (rem_tmp > div_val) ? 1 : -1;
+	}
+    }
+
+  return 0;
 }
 
 /*

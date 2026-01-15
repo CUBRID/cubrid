@@ -554,10 +554,10 @@ extern "C"
 #define DB_MAX_NUMERIC_SCALE 252
 
 /* The upper limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_OVERFLOW_LIMIT 1e252
+#define DB_NUMERIC_OVERFLOW_LIMIT 1e254
 
 /* The lower limit for a number that can be represented by a numeric type */
-#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-214
+#define DB_NUMERIC_UNDERFLOW_LIMIT 1e-252
 
 #define DB_MAX_CHAR_PRECISION 2048
 
