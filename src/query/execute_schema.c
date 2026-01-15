@@ -8900,7 +8900,7 @@ check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
 }
 
 int
-log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
+log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp, bool do_print)
 {
   DB_CONSTRAINT *tmp_c;
   int ret = 0;
@@ -8916,8 +8916,11 @@ log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
 
       if (!sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
 	{
-	  fprintf (fp, "%s -> %s\n", sm_get_ch_name (class_obj),
-		   sm_get_ch_name (ws_mop (&tmp_c->fk_info->ref_class_oid, NULL)));
+	  if (do_print)
+	    {
+	      fprintf (fp, "%s -> %s\n", sm_get_ch_name (class_obj),
+		       sm_get_ch_name (ws_mop (&tmp_c->fk_info->ref_class_oid, NULL)));
+	    }
 	  ret++;
 	}
     }

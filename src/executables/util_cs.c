@@ -73,6 +73,9 @@
 #define MAX_KILLTRAN_INDEX_LIST_NUM  64
 #define MAX_DELVOL_ID_LIST_NUM       64
 
+#define PRINT_RK        0x01
+#define PRINT_FK        0x02
+
 #define VOL_PURPOSE_STRING(VOL_PURPOSE)		\
 	    ((VOL_PURPOSE == DB_PERMANENT_DATA_PURPOSE) ? "PERMANENT DATA"	\
 	    : (VOL_PURPOSE == DB_TEMPORARY_DATA_PURPOSE) ? "TEMPORARY DATA"     \
@@ -89,16 +92,34 @@
     }                                                                         \
   while (0)
 
-#define PRINT_SECTION_BLACK(stream)                                           \
+#define PRINT_BLANK_LINE(stream)                                           \
   do                                                                          \
     {                                                                         \
       fprintf((stream), "\n\n");                                              \
     }                                                                         \
   while (0)
 
-
 #define RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "Replication Key(PRIMARY KEY or NOT NULL UNIQUE KEY) Constraint Violations"
 #define FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "Foreign Key Constraint Violations"
+
+#define CONSTRAINT_VIOLATIONS_HOW_TO_FIX_TITLE                        "< HOW TO FIX >"
+
+#define REPLICATION_KEY_VIOLATIONS_HOW_TO_FIX \
+  "1) Replication Key violations\n" \
+  "- Run in single mode and add a PRIMARY KEY or a NOT NULL UNIQUE constraint to the table.\n" \
+  "- Alternatively, set the table's replication option to OFF (data in the table will not be replicated).\n"
+
+#define FOREIGN_KEY_VIOLATIONS_HOW_TO_FIX \
+  "2) Foreign Key violations\n" \
+  "- Run in single mode and remove the foreign key, OR\n" \
+  "- Change the replication option of the referenced table to ON.\n"
+
+#define PRINT_CONSTRAINT_VIOLATIONS_HOW_TO_FIX(stream) \
+  do { \
+    fprintf ((stream), REPLICATION_KEY_VIOLATIONS_HOW_TO_FIX); \
+    PRINT_BLANK_LINE (stream); \
+    fprintf ((stream), FOREIGN_KEY_VIOLATIONS_HOW_TO_FIX); \
+  } while (0)
 
 typedef enum
 {
@@ -2746,98 +2767,209 @@ error_exit:
 #endif /* !WINDOWS */
 }
 
+static char *
+generate_violation_list_file_name (char *out, char *database_name, const char *util_name)
+{
+  time_t log_time;
+  struct tm log_tm, *log_tm_p = &log_tm;
+
+  log_time = time (NULL);
+  log_tm_p = localtime_r (&log_time, &log_tm);
+  if (log_tm_p != NULL)
+    {
+      snprintf (out, PATH_MAX - 1, "%s_%s_%04d%02d%02d_%02d%02d.list",
+		database_name, util_name, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday,
+		log_tm_p->tm_hour, log_tm_p->tm_min);
+    }
+  return out;
+}
+
+static FILE *
+open_violation_list_file (const char *database_name, const char *util_name, char *file_path, size_t file_path_size)
+{
+  char violation_list_file[PATH_MAX];
+  envvar_logdir_file (file_path, file_path_size,
+		      generate_violation_list_file_name (violation_list_file, (char *) database_name, util_name));
+  file_path[file_path_size - 1] = '\0';
+
+  return fopen (file_path, "w");
+}
+
+static int
+get_print_flags (UTIL_ARG_MAP * arg_map)
+{
+  bool print_rk = false, print_fk = false;
+  int print_flags = 0;
+
+  print_rk = utility_get_option_bool_value (arg_map, RKCHECK_PRINT_RK_RESULT_S);
+  print_fk = utility_get_option_bool_value (arg_map, RKCHECK_PRINT_FK_RESULT_S);
+
+  if (print_rk)
+    {
+      print_flags |= PRINT_RK;
+    }
+
+  if (print_fk)
+    {
+      print_flags |= PRINT_FK;
+    }
+
+  if (print_flags == 0)
+    {
+      print_flags = PRINT_RK | PRINT_FK;
+    }
+
+  return print_flags;
+}
+
+typedef int (*REPL_CONSTRAINT_CHECK_FUNC) (MOP classop, FILE * fp, bool do_print);
+
+static int
+check_rk_constraint (MOP classop, FILE * fp, bool do_print)
+{
+  if (!classobj_has_class_repl_key_constraint (db_get_constraints (classop)))
+    {
+      if (do_print)
+	{
+	  fprintf (fp, "%s\n", sm_get_ch_name (classop));
+	}
+      return 1;
+    }
+
+  return 0;
+}
+
+static int
+check_fk_constraint (MOP classop, FILE * fp, bool do_print)
+{
+  return log_ha_repl_fk_ref_all_replicated (classop, fp, do_print);
+}
+
+static int
+check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print, REPL_CONSTRAINT_CHECK_FUNC check_func)
+{
+  DB_OBJLIST *c;
+  int ret = 0;
+
+  for (c = classes; c != NULL; c = c->next)
+    {
+      if (db_is_system_class (c->op) || !sm_is_replication_class (c->op))
+	{
+	  continue;
+	}
+      ret += check_func (c->op, fp, do_print);
+    }
+
+  return ret;
+}
+
 int
 rkcheck (UTIL_FUNCTION_ARG * arg)
 {
-  int error;
-  DB_OBJLIST *classes, *c;
+  int err = NO_ERROR;
+  DB_OBJLIST *classes;
   UTIL_ARG_MAP *arg_map = arg->arg_map;
-  char *database_name, *user, *password = NULL;
-  int violation_count = 0;
-  char **dbs;
+  char *database_name = NULL;
+  int rk_violation_count = 0, fk_violation_count = 0;
   char er_msg_file[PATH_MAX];
   char violation_list_file[PATH_MAX];
-  char violation_list_file_path[PATH_MAX];
   FILE *fp;
-  int ret;
+  int print_flags = 0;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
-  user = utility_get_option_string_value (arg_map, UNLOAD_USER_S, 0);
-  password = utility_get_option_string_value (arg_map, UNLOAD_PASSWORD_S, 0);
+  if (database_name == NULL)
+    {
+      err = EXIT_FAILURE;
+      goto print_rkcheck_usage;
+    }
+
+  print_flags = get_print_flags (arg_map);
 
   /* error message log file */
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-  er_set_print_property (ER_PRINT_TO_CONSOLE);
 
-  snprintf (violation_list_file, sizeof (violation_list_file) - 1, "%s_%s.list", database_name, arg->command_name);
-  envvar_logdir_file (violation_list_file_path, PATH_MAX, violation_list_file);
-  violation_list_file_path[PATH_MAX - 1] = '\0';
-  fp = fopen (violation_list_file_path, "w");
+  generate_violation_list_file_name (violation_list_file, database_name, arg->command_name);
+  fp = open_violation_list_file (database_name, arg->command_name, violation_list_file, PATH_MAX);
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login ("DBA", NULL);
+
   if (db_restart (arg->command_name, TRUE, database_name))
     {
-      fclose (fp);
-      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
-      return ER_FAILED;
+      err = ER_FAILED;
+      goto error;
     }
 
   classes = db_get_all_classes ();
   if (classes == NULL)
     {
-      fclose (fp);
-      PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
-      return ER_FAILED;
+      err = ER_FAILED;
+      goto error;
     }
 
   PRINT_SECTION_TITLE (fp, RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
-  for (c = classes; c != NULL; c = c->next)
+  rk_violation_count =
+    check_repl_constraint_violations (classes, fp, (print_flags & PRINT_RK) != 0, check_rk_constraint);
+  if (rk_violation_count == 0)
     {
-      if (db_is_system_class (c->op) || !sm_is_replication_class (c->op))
-	{
-	  continue;
-	}
-
-      if (!classobj_has_class_repl_key_constraint (db_get_constraints (c->op)))
-	{
-	  fprintf (fp, "%s\n", sm_get_ch_name (c->op));
-	  violation_count++;
-	}
+      fprintf (fp, "All replicated tables comply with the replication key constraints.\n");
     }
 
-  PRINT_SECTION_BLACK (fp);
+  PRINT_BLANK_LINE (fp);
+
   PRINT_SECTION_TITLE (fp, FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
-  for (c = classes; c != NULL; c = c->next)
+  fk_violation_count =
+    check_repl_constraint_violations (classes, fp, (print_flags & PRINT_FK) != 0, check_fk_constraint);
+  if (fk_violation_count == 0)
     {
-      if (db_is_system_class (c->op) || !sm_is_replication_class (c->op))
-	{
-	  continue;
-	}
-      ret = log_ha_repl_fk_ref_all_replicated (c->op, fp);
-      if (ret > 0)
-	{
-	  violation_count += ret;
-	}
+      fprintf (fp, "All replicated tables comply with the foreign key constraints.\n");
     }
 
+  PRINT_BLANK_LINE (fp);
+
+  if (rk_violation_count > 0 || fk_violation_count > 0)
+    {
+      // Print terminal
+      fprintf (stdout, " - check ha constraints: failed.\n");
+      fprintf (stdout, " - Replication Key violations: %d\n", rk_violation_count);
+      fprintf (stdout, " - Foreign Key violations: %d\n", fk_violation_count);
+
+      //Print .list file
+      PRINT_SECTION_TITLE (fp, CONSTRAINT_VIOLATIONS_HOW_TO_FIX_TITLE);
+      PRINT_CONSTRAINT_VIOLATIONS_HOW_TO_FIX (fp);
+
+      // Print .err file
+      err = ER_HA_REPLICATION_CONSTRAINT_VIOLATION;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, rk_violation_count + fk_violation_count, violation_list_file);
+
+      goto end;
+    }
+
+  fprintf (stdout, "\nConstraint checks completed for all replication-enabled tables.\n\n");
+
+end:
   if (classes)
     {
       db_objlist_free (classes);
     }
-
   fclose (fp);
 
-  if (violation_count > 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION, 2, violation_count,
-	      violation_list_file);
-      return ER_HA_REPLICATION_CONSTRAINT_VIOLATION;
-    }
+  return err;
 
-  return NO_ERROR;
+print_rkcheck_usage:
+  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RKCHECK, RKCHECK_MSG_USAGE),
+	   basename (arg->argv0));
+  util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+
+  return EXIT_FAILURE;
+
+error:
+  fclose (fp);
+  PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
+
+  return err;
 }
 
 /*

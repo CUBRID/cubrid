@@ -938,9 +938,15 @@ static GETOPT_LONG ua_Memmon_Option[] = {
 
 static UTIL_ARG_MAP ua_Rkcheck_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
+  {RKCHECK_PRINT_RK_RESULT_S, {ARG_BOOLEAN}, {0}},
+  {RKCHECK_PRINT_FK_RESULT_S, {ARG_BOOLEAN}, {0}},
+  {0, {0}, {0}}
 };
 
 static GETOPT_LONG ua_Rkcheck_Option[] = {
+  {RKCHECK_PRINT_RK_RESULT_L, 0, 0, RKCHECK_PRINT_RK_RESULT_S},
+  {RKCHECK_PRINT_FK_RESULT_L, 0, 0, RKCHECK_PRINT_FK_RESULT_S},
+  {0, 0, 0, 0}
 };
 
 static UTIL_MAP ua_Utility_Map[] = {

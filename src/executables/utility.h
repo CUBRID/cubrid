@@ -90,7 +90,8 @@ typedef enum
   MSGCAT_UTIL_SET_CHECKSUMDB = 56,
   MSGCAT_UTIL_SET_TDE = 57,
   MSGCAT_UTIL_SET_FLASHBACK = 58,
-  MSGCAT_UTIL_SET_MEMMON = 59
+  MSGCAT_UTIL_SET_MEMMON = 59,
+  MSGCAT_UTIL_SET_RKCHECK = 60
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -756,6 +757,11 @@ typedef enum
   MEMMON_MSG_NOT_SUPPORTED_OS = 7,
   MEMMON_MSG_USAGE = 60
 } MSGCAT_MEMMON_MSG;
+
+typedef enum
+{
+  RKCHECK_MSG_USAGE = 60
+} MSGCAT_RKCHECK_MSG;
 
 typedef void *DSO_HANDLE;
 
@@ -1759,6 +1765,11 @@ typedef struct _ha_config
 #define MEMMON_OUTPUT_L             "output-file"
 #define MEMMON_DISABLE_FORCE_S      14103
 #define MEMMON_DISABLE_FORCE_L      "disable-force"
+
+#define RKCHECK_PRINT_RK_RESULT_S 'r'
+#define RKCHECK_PRINT_RK_RESULT_L "rk-result"
+#define RKCHECK_PRINT_FK_RESULT_S 'f'
+#define RKCHECK_PRINT_FK_RESULT_L "fk-result"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"

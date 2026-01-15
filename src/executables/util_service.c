@@ -3218,6 +3218,8 @@ us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
   char **dbs;
   int i;
 
+  print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_RKCHECK, PRINT_CMD_START);
+
   dbs = ha_conf->db_names;
 
   for (i = 0; dbs[i] != NULL; i++)
@@ -3240,7 +3242,7 @@ us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
 	  break;
 	}
     }
-
+  print_result (UTIL_RKCHECK, status, START);
   return status;
 }
 
