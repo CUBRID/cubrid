@@ -20580,6 +20580,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
     case DB_TYPE_SMALLINT:
       unit_int_val = db_get_short (expr);
+      break;
     case DB_TYPE_INTEGER:
       unit_int_val = db_get_int (expr);
       break;
