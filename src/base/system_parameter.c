@@ -9828,6 +9828,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
+  SYSPRM_PARAM *task_worker_prm;
   SYSPRM_PARAM *task_group_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
@@ -9881,6 +9882,7 @@ prm_tune_parameters (void)
 	}
 
 #if defined (SERVER_MODE)
+      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
       task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
       min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
@@ -9889,6 +9891,11 @@ prm_tune_parameters (void)
       if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (task_group_prm, newval, false);
+	}
+      if (PRM_GET_INT (task_group_prm->value) > PRM_GET_INT (task_worker_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
 	  (void) prm_set (task_group_prm, newval, false);
 	}
       if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
