@@ -3941,6 +3941,7 @@ struct parser_context
     unsigned return_generated_keys:1;
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
+    unsigned is_parsing_trigger:1;
   } flag;
 };
 
