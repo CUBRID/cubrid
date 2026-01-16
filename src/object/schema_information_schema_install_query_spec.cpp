@@ -368,11 +368,14 @@ const char *sm_define_view_routines_spec (void)
       /* CT_DATATYPE_NAME */
       "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type] "
       /* CT_STORED_PROC_CODE_NAME */
-      "INNER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class] "
-      /* CT_CHARSET_NAME, CT_ROOT_NAME */
-      "INNER JOIN [%s] AS [ch] ON [ch].[charset_id] = (SELECT [charset] FROM [%s]) "
+      "INNER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class], "
+      /* CT_ROOT_NAME */
+      "[%s] AS [root], "
+      /* CT_CHARSET_NAME */
+      "[%s] AS [ch] "
     "WHERE "
-      AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]", "[sp].[directive]") " "
+      "[ch].[charset_id] = [root].[charset] "
+      "AND " AUTH_CHECK_STORED_PROC("[sp].[owner].[name]", "[sp]", "[sp].[directive]") " "
       "AND [sp].[is_system_generated] = 0",
     SP_TYPE_PROCEDURE,
     SP_TYPE_FUNCTION,
@@ -389,8 +392,8 @@ const char *sm_define_view_routines_spec (void)
     CT_STORED_PROC_NAME,
     CT_DATATYPE_NAME,
     CT_STORED_PROC_CODE_NAME,
-    CT_CHARSET_NAME,
-    CT_ROOT_NAME);
+    CT_ROOT_NAME,
+    CT_CHARSET_NAME);
   // *INDENT-ON*
 
   return stmt;
@@ -412,14 +415,17 @@ const char *sm_define_view_schemata_spec (void)
       "NULL AS [sql_path] "
     "FROM "
       /* AU_USER_CLASS_NAME */
-      "[%s] AS [usr] "
-      /* CT_CHARSET_NAME, CT_ROOT_NAME - join with default charset */
-      "INNER JOIN [%s] AS [ch] ON [ch].[charset_id] = (SELECT [charset] FROM [%s]) "
+      "[%s] AS [usr], "
+      /* CT_ROOT_NAME */
+      "[%s] AS [root], "
+      /* CT_CHARSET_NAME */
+      "[%s] AS [ch] "
     "WHERE "
-      AUTH_CHECK_SCHEMA("[usr].[name]", "[usr]"),
+      "[ch].[charset_id] = [root].[charset] "
+      "AND " AUTH_CHECK_SCHEMA("[usr].[name]", "[usr]"),
     AU_USER_CLASS_NAME,
-    CT_CHARSET_NAME,
-    CT_ROOT_NAME);
+    CT_ROOT_NAME,
+    CT_CHARSET_NAME);
   // *INDENT-ON*
 
   return stmt;
@@ -709,11 +715,14 @@ const char *sm_define_view_parameters_spec (void)
       /* CT_STORED_PROC_ARGS_NAME */
       "[%s] AS [sp_args] "
       /* CT_DATATYPE_NAME */
-      "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type] "
-      /* CT_CHARSET_NAME, CT_ROOT_NAME */
-      "INNER JOIN [%s] AS [ch] ON [ch].[charset_id] = (SELECT [charset] FROM [%s]) "
+      "INNER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp_args].[data_type], "
+      /* CT_ROOT_NAME */
+      "[%s] AS [root], "
+      /* CT_CHARSET_NAME */
+      "[%s] AS [ch] "
     "WHERE "
-      AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "[sp_args].[sp_of].[directive]"),
+      "[ch].[charset_id] = [root].[charset] "
+      "AND " AUTH_CHECK_STORED_PROC("[sp_args].[sp_of].[owner].[name]", "[sp_args].[sp_of]", "[sp_args].[sp_of].[directive]"),
     SP_MODE_IN,
     SP_MODE_OUT,
     SP_MODE_INOUT,
@@ -721,8 +730,8 @@ const char *sm_define_view_parameters_spec (void)
     SP_TYPE_FUNCTION,
     CT_STORED_PROC_ARGS_NAME,
     CT_DATATYPE_NAME,
-    CT_CHARSET_NAME,
-    CT_ROOT_NAME);
+    CT_ROOT_NAME,
+    CT_CHARSET_NAME);
   // *INDENT-ON*
 
   return stmt;
