@@ -39,6 +39,7 @@
 #include "thread_manager.hpp"
 #include "xasl_unpack_info.hpp"
 #include "list_file.h"
+#include "lock_table.h"		// lock_conv
 
 #include <algorithm>
 #include <assert.h>
@@ -272,7 +273,7 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
   XCACHE_LOG_OBJECT_TEXT
 #define XCACHE_LOG_ENTRY_OBJECT_ARGS(xent, oidx)							  \
   OID_AS_ARGS (&(xent)->related_objects[oidx].oid),							  \
-  LOCK_TO_LOCKMODE_STRING ((xent)->related_objects[oidx].lock),						  \
+  lock_to_lockmode_string ((xent)->related_objects[oidx].lock),						  \
   (xent)->related_objects[oidx].tcard
 
 static bool xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
@@ -2177,7 +2178,7 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	{
 	  fprintf (fp, "    OID = %d|%d|%d, LOCK = %s, TCARD = %8d \n",
 		   OID_AS_ARGS (&xcache_entry->related_objects[oid_index].oid),
-		   LOCK_TO_LOCKMODE_STRING (xcache_entry->related_objects[oid_index].lock),
+		   lock_to_lockmode_string (xcache_entry->related_objects[oid_index].lock),
 		   xcache_entry->related_objects[oid_index].tcard);
 	}
       fprintf (fp, "------------------------------------------------------------\n");
