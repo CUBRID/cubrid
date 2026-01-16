@@ -30,6 +30,7 @@
 #include "object_representation_constants.h"
 #include "oid.h"
 #include "storage_common.h"
+#include "lock_table.h"		// lock_conv
 #include "thread_compat.hpp"
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
