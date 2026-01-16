@@ -26509,6 +26509,7 @@ parser_main (PARSER_CONTEXT * parser)
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -26617,6 +26618,7 @@ parse_one_statement (int state)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
