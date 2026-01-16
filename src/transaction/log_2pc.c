@@ -137,7 +137,7 @@ log_2pc_get_num_participants (int *partid_len, void **block_particps_ids)
   if (log_2pc_Userfun.get_participants == NULL)
     {
       partid_len = 0;
-      block_particps_ids = NULL;
+      *block_particps_ids = NULL;
       return 0;
     }
 
@@ -436,8 +436,6 @@ log_2pc_check_duplicate_global_tran_id (int gtrid)
 static int
 log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
-  int i;
-
   /* Start the first phase of 2PC. Prepare to commit or voting phase */
   if (tdes->state == TRAN_ACTIVE)
     {
@@ -466,7 +464,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  lock_unlock_all_shared_get_all_exclusive (thread_p, NULL);
 	}
 #ifdef LOG_2PC_ACK_RECV_REQUIRED
-      tdes->coord->ack_received = (bool *) calloc (i);
+      tdes->coord->ack_received = (bool *) calloc (tdes->coord->num_particps, sizeof (bool));
       if (tdes->coord->ack_received == NULL)
 	{
 	  /* Out of memory */
@@ -1766,8 +1764,7 @@ log_2pc_recovery_start (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * log_
   /* Initialize the Acknowledgement vector to false since we do not know what acknowledgments have already been
    * received. we need to continue reading the log */
 #ifdef LOG_2PC_ACK_RECV_REQUIRED
-  i = sizeof (bool) * tdes->coord->num_particps;
-  tdes->coord->ack_received = (bool *) calloc (i);
+  tdes->coord->ack_received = (bool *) calloc (tdes->coord->num_particps, sizeof (bool));
   if (tdes->coord->ack_received == NULL)
     {
       log_2pc_free_coord_info (tdes);
