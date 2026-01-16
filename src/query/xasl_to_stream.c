@@ -5674,17 +5674,6 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
       ptr = or_pack_int (ptr, offset);
     }
 
-
-  ptr = or_pack_int (ptr, 0);	// group_list_id
-
-  ptr = or_pack_int (ptr, 0);	// order_list_id
-
-  ptr = or_pack_int (ptr, analytic->curr_group_tuple_count);
-
-  ptr = or_pack_int (ptr, analytic->curr_group_tuple_count_nn);
-
-  ptr = or_pack_int (ptr, analytic->curr_sort_key_tuple_count);
-
   ptr = or_pack_int (ptr, analytic->sort_prefix_size);
 
   ptr = or_pack_int (ptr, analytic->sort_list_size);
@@ -5769,10 +5758,6 @@ xts_process_analytic_eval_type (char *ptr, const ANALYTIC_EVAL_TYPE * analytic_e
   ptr = or_pack_int (ptr, analytic_eval->sort_list_size);
 
   ptr = or_pack_int (ptr, analytic_eval->covered_size);
-
-  ptr = or_pack_int (ptr, 0);	// current_values
-
-  ptr = or_pack_int (ptr, 0);	// temp_values
 
   return ptr;
 }
@@ -7498,12 +7483,7 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
 	   + OR_INT_SIZE	/* flag */
 	   + OR_INT_SIZE	/* from_last */
 	   + OR_INT_SIZE	/* ignore_nulls */
-	   + OR_INT_SIZE	/* is_const_opr */
-	   + PTR_SIZE		/* group_list_id */
-	   + PTR_SIZE		/* order_list_id */
-	   + OR_INT_SIZE	/* curr_group_tuple_count */
-	   + OR_INT_SIZE	/* curr_group_tuple_count_nn */
-	   + OR_INT_SIZE);	/* curr_sort_key_tuple_count */
+	   + OR_INT_SIZE);	/* is_const_opr */
 
   tmp_size = xts_sizeof_regu_variable (&analytic->operand);
   if (tmp_size == ER_FAILED)
@@ -7545,9 +7525,7 @@ xts_sizeof_analytic_eval_type (const ANALYTIC_EVAL_TYPE * analytic_eval)
 	  + PTR_SIZE		/* head */
 	  + PTR_SIZE		/* sort_list */
 	  + OR_INT_SIZE		/* sort_list_size */
-	  + OR_INT_SIZE		/* covered_size */
-	  + PTR_SIZE		/* current_values */
-	  + PTR_SIZE);		/* temp_values */
+	  + OR_INT_SIZE);	/* covered_size */
   return size;
 }
 

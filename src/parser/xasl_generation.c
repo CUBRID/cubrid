@@ -16768,7 +16768,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	       * of the index sort order (including the full index key).
 	       *
 	       * For example, index (c1, c2, c3) can satisfy sort_list (c1), (c1, c2), (c1, c2, c3), but not (c1, c3). */
-	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_NO_SORT_OPT);
+	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
 	    }
 
 	  /* substitute references of analytic arguments */

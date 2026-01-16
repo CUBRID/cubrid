@@ -486,7 +486,7 @@ static int qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			  QFILE_TUPLE_RECORD * tplrec);
 static int qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				QFILE_TUPLE_RECORD * tplrec);
-static int qdata_initialize_analytic_func_nosort (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qdata_initialize_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
 						     ANALYTIC_TYPE * func_p, XASL_STATE * xasl_state,
 						     bool is_skip_sort);
@@ -1194,7 +1194,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT) || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
+      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT) || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
 	  if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) != NO_ERROR)
 	    {
@@ -15249,9 +15249,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  /* domains not resolved */
 	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT | XASL_ANALYTIC_USES_LIMIT_OPT))
+	  if (xasl->proc.buildlist.a_eval_list)
 	    {
-	      if (qdata_initialize_analytic_func_nosort (thread_p, xasl, xasl_state) != NO_ERROR)
+	      if (qdata_initialize_analytic_eval_list (thread_p, xasl, xasl_state) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -15920,7 +15920,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_NO_SORT_OPT);
+	      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
 	    }
 	}
 
@@ -20887,7 +20887,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
+    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
       {
 	analytic_state.interm_file = list_id;
       }
@@ -20987,7 +20987,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
     {
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
@@ -21061,9 +21061,9 @@ wrapup:
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
 	  new_stat->run_analytic = true;
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
-	  new_stat->analytic_sort = !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT);
+	  new_stat->analytic_sort = !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	    {
 	      new_stat->analytic_fetches = (perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches);
 
@@ -21152,21 +21152,21 @@ exit_on_error:
 }
 
 /*
- * qdata_initialize_analytic_func_nosort () - initialize analytic functions for no sort optimization
+ * qdata_initialize_analytic_eval_list () - initialize analytic_eval_list and analytic_type
  *
  *   returns: error code or NO_ERROR
  *   thread_p(in): thread entry
  *   xasl(in): XASL tree
  *   xasl_state(in): XASL tree state information
  *
- *   NOTE: When xasl has XASL_ANALYTIC_NO_SORT_OPT flag,
+ *   NOTE: When xasl has XASL_ANALYTIC_SKIP_SORT flag,
  *         - group header listfile, 
  *         - group value listfile, 
  *         - current_values and temp_values for storing and comparing sort key values
  *         are being initialized here.
  */
 static int
-qdata_initialize_analytic_func_nosort (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+qdata_initialize_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
   ANALYTIC_EVAL_TYPE *a_eval_list;
   ANALYTIC_TYPE *a_func_list;
@@ -21174,7 +21174,7 @@ qdata_initialize_analytic_func_nosort (THREAD_ENTRY * thread_p, XASL_NODE * xasl
 
   for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
+      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
 	  length = a_eval_list->sort_list_size;
 
@@ -21200,53 +21200,59 @@ qdata_initialize_analytic_func_nosort (THREAD_ENTRY * thread_p, XASL_NODE * xasl
 	{
 	  QFILE_TUPLE_VALUE_TYPE_LIST group_type_list, value_type_list;
 
-	  if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+	  a_func_list->group_list_id = NULL;
+	  a_func_list->order_list_id = NULL;
+	  a_func_list->curr_group_tuple_count = 0;
+	  a_func_list->curr_group_tuple_count_nn = 0;
+	  a_func_list->curr_sort_key_tuple_count = 0;
+
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT | XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
+	  /* initialize group header listfile */
+	  group_type_list.type_cnt = 2;
+	  group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+	  if (group_type_list.domp == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	      return ER_FAILED;
+	    }
+	  group_type_list.domp[0] = &tp_Integer_domain;
+	  group_type_list.domp[1] = &tp_Integer_domain;
+
+	  a_func_list->group_list_id =
+	    qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (a_func_list->group_list_id == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	      return ER_FAILED;
+	    }
+
+	  db_private_free_and_init (thread_p, group_type_list.domp);
+
+	  /* initialize group value listfile */
+	  value_type_list.type_cnt = 2;
+	  value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+	  if (value_type_list.domp == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  value_type_list.domp[0] = &tp_Integer_domain;
+	  value_type_list.domp[1] = a_func_list->domain;
+
+	  a_func_list->order_list_id =
+	    qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
+	  if (a_func_list->order_list_id == NULL)
 	    {
 	      return ER_FAILED;
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
-	    {
-	      /* initialize group header listfile */
-	      group_type_list.type_cnt = 2;
-	      group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-	      if (group_type_list.domp == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-		  return ER_FAILED;
-		}
-	      group_type_list.domp[0] = &tp_Integer_domain;
-	      group_type_list.domp[1] = &tp_Integer_domain;
-
-	      a_func_list->group_list_id =
-		qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
-	      if (a_func_list->group_list_id == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-		  return ER_FAILED;
-		}
-
-	      db_private_free_and_init (thread_p, group_type_list.domp);
-
-	      /* initialize group value listfile */
-	      value_type_list.type_cnt = 2;
-	      value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-	      if (value_type_list.domp == NULL)
-		{
-		  return ER_FAILED;
-		}
-	      value_type_list.domp[0] = &tp_Integer_domain;
-	      value_type_list.domp[1] = a_func_list->domain;
-
-	      a_func_list->order_list_id =
-		qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
-	      if (a_func_list->order_list_id == NULL)
-		{
-		  return ER_FAILED;
-		}
-
-	      db_private_free_and_init (thread_p, value_type_list.domp);
-	    }
+	  db_private_free_and_init (thread_p, value_type_list.domp);
 	}
     }
 
@@ -21327,38 +21333,12 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
       func_state->value_list_id = func_p->order_list_id;
       func_p->order_list_id = NULL;
     }
-  else
-    {
-      /* initialize group header listfile */
-      group_type_list.type_cnt = 2;
-      group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-      if (group_type_list.domp == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-	  return ER_FAILED;
-	}
-      group_type_list.domp[0] = &tp_Integer_domain;
-      group_type_list.domp[1] = &tp_Integer_domain;
 
-      func_state->group_list_id = qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
+  func_state->group_list_id = func_p->group_list_id;
+  func_p->group_list_id = NULL;
 
-      db_private_free_and_init (thread_p, group_type_list.domp);
-
-      /* initialize group value listfile */
-      value_type_list.type_cnt = 2;
-      value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-      if (value_type_list.domp == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-	  return ER_FAILED;
-	}
-      value_type_list.domp[0] = &tp_Integer_domain;
-      value_type_list.domp[1] = func_state->func_p->domain;
-
-      func_state->value_list_id = qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
-
-      db_private_free_and_init (thread_p, value_type_list.domp);
-    }
+  func_state->value_list_id = func_p->order_list_id;
+  func_p->order_list_id = NULL;
 
   func_state->group_list_id->tpl_descr.f_cnt = 2;
   func_state->group_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * 2);
@@ -21440,7 +21420,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->curr_sort_page.page_p = NULL;
   analytic_state->output_tplrec = tplrec;
 
-  is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT);
+  is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
 
   if (sort_list)
     {
@@ -22939,7 +22919,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 
   assert (analytic_state != NULL);
 
-  if (XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_NO_SORT_OPT))
+  if (XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
     {
       stage = ANALYTIC_INTERM_PROC;
     }
@@ -23240,7 +23220,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       return ER_FAILED;
     }
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
+  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
     {
       if (xasl->list_id->tuple_cnt == 0)
 	{
@@ -23378,7 +23358,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	  pr_clone_value (a_func_list->out_value, a_func_list->value);
 	}
 
-      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_NO_SORT_OPT))
+      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
 	  a_func_list->curr_group_tuple_count++;
 	  a_func_list->curr_sort_key_tuple_count++;

@@ -518,7 +518,7 @@ struct cte_proc_node
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
-#define XASL_ANALYTIC_NO_SORT_OPT (0x1 << 21)	/* analytic no sort optimization */
+#define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
