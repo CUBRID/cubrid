@@ -77,8 +77,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-extern LOCK_COMPATIBILITY lock_Comp[12][12];
-
 #if defined (SERVER_MODE)
 /* object lock hash function */
 #define LK_OBJ_LOCK_HASH(oid,htsize)    \
@@ -100,7 +98,7 @@ extern LOCK_COMPATIBILITY lock_Comp[12][12];
 #define LK_MSG_LOCK_HELPER(entry, msgnum) \
   fprintf(stdout, \
       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, msgnum)), \
-      (entry)->tran_index, LOCK_TO_LOCKMODE_STRING((entry)->granted_mode), \
+      (entry)->tran_index, lock_to_lockmode_string((entry)->granted_mode), \
       (entry)->res_head->oid->volid, (entry)->res_head->oid->pageid, \
       (entry)->oid->slotid)
 
@@ -1393,7 +1391,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       if (entry_ptr != tran_lock->root_class_hold)
 	{			/* does not exist */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_NOTFOUND_IN_TRAN_HOLD_LIST, 7,
-		  LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), "ROOT CLASS", entry_ptr->res_head->key.oid.volid,
+		  lock_to_lockmode_string (entry_ptr->granted_mode), "ROOT CLASS", entry_ptr->res_head->key.oid.volid,
 		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, entry_ptr->tran_index,
 		  (tran_lock->root_class_hold == NULL ? 0 : 1));
 	  error_code = ER_LK_NOTFOUND_IN_TRAN_HOLD_LIST;
@@ -1546,7 +1544,7 @@ lock_delete_from_tran_non2pl_list (LK_ENTRY * non2pl, int owner_tran_index)
   if (curr == NULL)
     {				/* not found */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_NOTFOUND_IN_TRAN_NON2PL_LIST, 5,
-	      LOCK_TO_LOCKMODE_STRING (non2pl->granted_mode),
+	      lock_to_lockmode_string (non2pl->granted_mode),
 	      (non2pl->res_head != NULL ? non2pl->res_head->key.oid.volid : -2),
 	      (non2pl->res_head != NULL ? non2pl->res_head->key.oid.pageid : -2),
 	      (non2pl->res_head != NULL ? non2pl->res_head->key.oid.slotid : -2), non2pl->tran_index);
@@ -1686,9 +1684,7 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index,
 	  else
 	    {
 	      assert (lock >= NULL_LOCK && non2pl->granted_mode >= NULL_LOCK);
-	      compat = lock_Comp[lock][non2pl->granted_mode];
-	      assert (compat != LOCK_COMPAT_UNKNOWN);
-
+	      compat = lock_compat (lock, non2pl->granted_mode);
 	      if (compat == LOCK_COMPAT_NO)
 		{
 		  non2pl->granted_mode = INCON_NON_TWO_PHASE_LOCK;
@@ -1696,8 +1692,7 @@ lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index,
 		}
 	      else
 		{
-		  non2pl->granted_mode = lock_Conv[lock][non2pl->granted_mode];
-		  assert (non2pl->granted_mode != NA_LOCK);
+		  non2pl->granted_mode = lock_conv (lock, non2pl->granted_mode);
 		}
 	    }
 	}
@@ -1783,21 +1778,15 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 	      assert (entry_ptr->blocked_mode >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
 	      assert (i->blocked_mode >= NULL_LOCK && i->granted_mode >= NULL_LOCK);
 
-	      compat1 = lock_Comp[entry_ptr->blocked_mode][i->blocked_mode];
-	      assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+	      compat1 = lock_compat (entry_ptr->blocked_mode, i->blocked_mode);
 	      if (ta == NULL && compat1 == LOCK_COMPAT_YES)
 		{
 		  ta = i;
 		  tap = prev;
 		}
 
-	      compat1 = lock_Comp[entry_ptr->blocked_mode][i->granted_mode];
-	      assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
-	      compat2 = lock_Comp[i->blocked_mode][entry_ptr->granted_mode];
-	      assert (compat2 != LOCK_COMPAT_UNKNOWN);
-
+	      compat1 = lock_compat (entry_ptr->blocked_mode, i->granted_mode);
+	      compat2 = lock_compat (i->blocked_mode, entry_ptr->granted_mode);
 	      if (ta == NULL && tb == NULL && compat1 == LOCK_COMPAT_YES && compat2 == LOCK_COMPAT_NO)
 		{
 		  tb = i;
@@ -1908,10 +1897,8 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	}
 
       assert (entry->granted_mode >= NULL_LOCK && entry->blocked_mode >= NULL_LOCK);
-      compat1 = lock_Comp[entry->granted_mode][entry_ptr->blocked_mode];
-      compat2 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
-      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
-
+      compat1 = lock_compat (entry->granted_mode, entry_ptr->blocked_mode);
+      compat2 = lock_compat (entry->blocked_mode, entry_ptr->blocked_mode);
       if (compat1 == LOCK_COMPAT_NO || compat2 == LOCK_COMPAT_NO)
 	{
 	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
@@ -1927,9 +1914,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
 	}
 
       assert (entry->granted_mode >= NULL_LOCK && entry->blocked_mode >= NULL_LOCK);
-      compat1 = lock_Comp[entry->blocked_mode][entry_ptr->blocked_mode];
-      assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+      compat1 = lock_compat (entry->blocked_mode, entry_ptr->blocked_mode);
       if (compat1 == LOCK_COMPAT_NO)
 	{
 	  EXPAND_WAIT_FOR_ARRAY_IF_NEEDED ();
@@ -2023,7 +2008,7 @@ set_error:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG : ER_LK_OBJECT_TIMEOUT_CLASS_MSG), 7,
 		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), classname, waitfor_client_users);
+		  lock_to_lockmode_string (entry_ptr->blocked_mode), classname, waitfor_client_users);
 	  if (is_classname_alloced)
 	    {
 	      free_and_init (classname);
@@ -2034,7 +2019,7 @@ set_error:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
 		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
+		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
 		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
 	}
       break;
@@ -2067,7 +2052,7 @@ set_error:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG : ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG), 10,
 		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
+		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
 		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, classname,
 		  waitfor_client_users);
 	  free_and_init (classname);
@@ -2077,7 +2062,7 @@ set_error:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
 		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
 		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
+		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
 		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
 	}
       break;
@@ -2540,13 +2525,11 @@ lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       for (h = holder->next; h != NULL; h = h->next)
 	{
 	  assert (h->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[h->granted_mode][mode];
-	  assert (mode != NA_LOCK);
+	  mode = lock_conv (h->granted_mode, mode);
 	}
 
       assert (holder->blocked_mode >= NULL_LOCK);
-      compat = lock_Comp[holder->blocked_mode][mode];
-      assert (compat != LOCK_COMPAT_UNKNOWN);
+      compat = lock_compat (holder->blocked_mode, mode);
 
       if (compat == LOCK_COMPAT_NO)
 	{
@@ -2657,8 +2640,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
   while (waiter != NULL)
     {
       assert (waiter->blocked_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-      compat = lock_Comp[waiter->blocked_mode][res_ptr->total_holders_mode];
-      assert (compat != LOCK_COMPAT_UNKNOWN);
+      compat = lock_compat (waiter->blocked_mode, res_ptr->total_holders_mode);
 
       if (compat == LOCK_COMPAT_NO)
 	{
@@ -2696,8 +2678,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
 
 	  /* change total_holders_mode */
 	  assert (waiter->granted_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-	  res_ptr->total_holders_mode = lock_Conv[waiter->granted_mode][res_ptr->total_holders_mode];
-	  assert (res_ptr->total_holders_mode != NA_LOCK);
+	  res_ptr->total_holders_mode = lock_conv (waiter->granted_mode, res_ptr->total_holders_mode);
 
 	  /* insert the lock entry into transaction hold list. */
 	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (waiter->thrd_entry);
@@ -2748,8 +2729,7 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       for (w = res_ptr->waiter; w != NULL; w = w->next)
 	{
 	  assert (w->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[w->blocked_mode][mode];
-	  assert (mode != NA_LOCK);
+	  mode = lock_conv (w->blocked_mode, mode);
 	}
       res_ptr->total_waiters_mode = mode;
     }
@@ -2788,8 +2768,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
   while (check != from_whom)
     {
       assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[check->blocked_mode][mode];
-      assert (mode != NA_LOCK);
+      mode = lock_conv (check->blocked_mode, mode);
 
       prev_check = check;
       check = check->next;
@@ -2799,8 +2778,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
   while (check != NULL)
     {
       assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      compat = lock_Comp[check->blocked_mode][mode];
-      assert (compat != LOCK_COMPAT_UNKNOWN);
+      compat = lock_compat (check->blocked_mode, mode);
 
       if (compat != LOCK_COMPAT_YES)
 	{
@@ -2808,14 +2786,12 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 	}
 
       assert (check->blocked_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-      compat = lock_Comp[check->blocked_mode][res_ptr->total_holders_mode];
-      assert (compat != LOCK_COMPAT_UNKNOWN);
+      compat = lock_compat (check->blocked_mode, res_ptr->total_holders_mode);
 
       if (compat == LOCK_COMPAT_NO)
 	{
 	  assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[check->blocked_mode][mode];
-	  assert (mode != NA_LOCK);
+	  mode = lock_conv (check->blocked_mode, mode);
 
 	  prev_check = check;
 	  check = check->next;
@@ -2848,8 +2824,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 
 	  /* change total_holders_mode */
 	  assert (check->granted_mode >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-	  res_ptr->total_holders_mode = lock_Conv[check->granted_mode][res_ptr->total_holders_mode];
-	  assert (res_ptr->total_holders_mode != NA_LOCK);
+	  res_ptr->total_holders_mode = lock_conv (check->granted_mode, res_ptr->total_holders_mode);
 
 	  /* insert into transaction lock hold list */
 	  owner_tran_index = LOG_FIND_THREAD_TRAN_INDEX (check->thrd_entry);
@@ -2883,8 +2858,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
 
 	  /* change prev_check */
 	  assert (check->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[check->blocked_mode][mode];
-	  assert (mode != NA_LOCK);
+	  mode = lock_conv (check->blocked_mode, mode);
 
 	  prev_check = check;
 	}
@@ -2909,8 +2883,7 @@ lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK
       for (i = res_ptr->waiter; i != NULL; i = i->next)
 	{
 	  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-	  mode = lock_Conv[i->blocked_mode][mode];
-	  assert (mode != NA_LOCK);
+	  mode = lock_conv (i->blocked_mode, mode);
 	}
       res_ptr->total_waiters_mode = mode;
     }
@@ -3126,7 +3099,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
 	       "LK_DUMP::lk_internal_lock_object_instant()\n"
 	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", tran_index, oid->volid,
 	       oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1, class_oid ? class_oid->pageid : -1,
-	       class_oid ? class_oid->slotid : -1, LOCK_TO_LOCKMODE_STRING (lock));
+	       class_oid ? class_oid->slotid : -1, lock_to_lockmode_string (lock));
     }
 #endif /* LK_DUMP */
 
@@ -3167,10 +3140,8 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
 	      && res_ptr->total_holders_mode >= NULL_LOCK);
 
-      compat1 = lock_Comp[lock][res_ptr->total_waiters_mode];
-      compat2 = lock_Comp[lock][res_ptr->total_holders_mode];
-      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
-
+      compat1 = lock_compat (lock, res_ptr->total_waiters_mode);
+      compat2 = lock_compat (lock, res_ptr->total_holders_mode);
       if (compat1 == LOCK_COMPAT_YES && compat2 == LOCK_COMPAT_YES)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -3185,8 +3156,7 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
 
   /* I am a lock holder of the lockable object. */
   assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
-  new_mode = lock_Conv[lock][entry_ptr->granted_mode];
-  assert (new_mode != NA_LOCK);
+  new_mode = lock_conv (lock, entry_ptr->granted_mode);
 
   if (new_mode == entry_ptr->granted_mode)
     {
@@ -3203,15 +3173,12 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
 	  if (i != entry_ptr)
 	    {
 	      assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
-	      group_mode = lock_Conv[i->granted_mode][group_mode];
-	      assert (group_mode != NA_LOCK);
+	      group_mode = lock_conv (i->granted_mode, group_mode);
 	    }
 	}
 
       assert (new_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
-      compat1 = lock_Comp[new_mode][group_mode];
-      assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+      compat1 = lock_compat (new_mode, group_mode);
       if (compat1 == LOCK_COMPAT_YES)
 	{
 	  pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -3319,7 +3286,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 	       "LK_DUMP::lk_internal_lock_object()\n"
 	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s) wait_msecs(%d)\n", tran_index,
 	       oid->volid, oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1,
-	       class_oid ? class_oid->pageid : -1, class_oid ? class_oid->slotid : -1, LOCK_TO_LOCKMODE_STRING (lock),
+	       class_oid ? class_oid->pageid : -1, class_oid ? class_oid->slotid : -1, lock_to_lockmode_string (lock),
 	       wait_msecs);
     }
 #endif /* LK_DUMP */
@@ -3454,10 +3421,8 @@ start:
       /* 1. I am not a holder & my request can be granted. */
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK
 	      && res_ptr->total_holders_mode >= NULL_LOCK);
-      compat1 = lock_Comp[lock][res_ptr->total_waiters_mode];
-      compat2 = lock_Comp[lock][res_ptr->total_holders_mode];
-      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
-
+      compat1 = lock_compat (lock, res_ptr->total_waiters_mode);
+      compat2 = lock_compat (lock, res_ptr->total_holders_mode);
       if (compat1 == LOCK_COMPAT_YES && compat2 == LOCK_COMPAT_YES)
 	{
 	  entry_ptr = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
@@ -3487,7 +3452,7 @@ start:
 
 	  /* change total_holders_mode (total mode of holder list) */
 	  assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-	  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
+	  res_ptr->total_holders_mode = lock_conv (lock, res_ptr->total_holders_mode);
 	  assert (res_ptr->total_holders_mode != NA_LOCK);
 
 	  /* add the lock entry into the transaction hold list */
@@ -3527,7 +3492,7 @@ start:
 		    }
 		  lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index, res_ptr, lock);
 		  if (is_instant_duration
-		      /* && lock_Comp[lock][NULL_LOCK] == true */ )
+		      /* && lock_compat (lock, NULL_LOCK) == true */ )
 		    {
 		      entry_ptr->instant_lock_count++;
 		      assert (entry_ptr->instant_lock_count > 0);
@@ -3644,7 +3609,7 @@ start:
 
       /* change total_waiters_mode (total mode of waiting waiter) */
       assert (lock >= NULL_LOCK && res_ptr->total_waiters_mode >= NULL_LOCK);
-      res_ptr->total_waiters_mode = lock_Conv[lock][res_ptr->total_waiters_mode];
+      res_ptr->total_waiters_mode = lock_conv (lock, res_ptr->total_waiters_mode);
       assert (res_ptr->total_waiters_mode != NA_LOCK);
 
       goto blocked;
@@ -3655,8 +3620,7 @@ lock_tran_lk_entry:
   lock_conversion = true;
   old_mode = entry_ptr->granted_mode;
   assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
-  new_mode = lock_Conv[lock][entry_ptr->granted_mode];
-  assert (new_mode != NA_LOCK);
+  new_mode = lock_conv (lock, entry_ptr->granted_mode);
 
   if (new_mode == entry_ptr->granted_mode)
     {
@@ -3664,9 +3628,7 @@ lock_tran_lk_entry:
       entry_ptr->count += 1;
       if (is_instant_duration)
 	{
-	  compat1 = lock_Comp[lock][entry_ptr->granted_mode];
-	  assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+	  compat1 = lock_compat (lock, entry_ptr->granted_mode);
 	  if ((lock >= IX_LOCK && (entry_ptr->instant_lock_count == 0 && entry_ptr->granted_mode >= IX_LOCK))
 	      && compat1 != LOCK_COMPAT_YES)
 	    {
@@ -3706,15 +3668,12 @@ lock_tran_lk_entry:
       if (i != entry_ptr)
 	{
 	  assert (i->granted_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
-	  group_mode = lock_Conv[i->granted_mode][group_mode];
-	  assert (group_mode != NA_LOCK);
+	  group_mode = lock_conv (i->granted_mode, group_mode);
 	}
     }
 
   assert (new_mode >= NULL_LOCK && group_mode >= NULL_LOCK);
-  compat1 = lock_Comp[new_mode][group_mode];
-  assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+  compat1 = lock_compat (new_mode, group_mode);
   if (compat1 == LOCK_COMPAT_YES)
     {
       entry_ptr->granted_mode = new_mode;
@@ -3726,7 +3685,7 @@ lock_tran_lk_entry:
 	}
 
       assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-      res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
+      res_ptr->total_holders_mode = lock_conv (lock, res_ptr->total_holders_mode);
       assert (res_ptr->total_holders_mode != NA_LOCK);
 
       lock_update_non2pl_list (thread_p, res_ptr, tran_index, lock);
@@ -3824,7 +3783,7 @@ lock_tran_lk_entry:
   entry_ptr->thrd_entry = thread_p;
 
   assert (lock >= NULL_LOCK && res_ptr->total_holders_mode >= NULL_LOCK);
-  res_ptr->total_holders_mode = lock_Conv[lock][res_ptr->total_holders_mode];
+  res_ptr->total_holders_mode = lock_conv (lock, res_ptr->total_holders_mode);
   assert (res_ptr->total_holders_mode != NA_LOCK);
 
   /* remove the lock entry from the holder list */
@@ -4001,7 +3960,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s)\n", entry_ptr->tran_index,
 	       entry_ptr->res_head->oid.volid, entry_ptr->res_head->oid.pageid, entry_ptr->res_head->oid.slotid,
 	       entry_ptr->res_head->class_oid.volid, entry_ptr->res_head->class_oid.pageid,
-	       entry_ptr->res_head->class_oid.slotid, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode));
+	       entry_ptr->res_head->class_oid.slotid, lock_to_lockmode_string (entry_ptr->granted_mode));
     }
 #endif /* LK_DUMP */
 
@@ -4096,8 +4055,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	      for (i = res_ptr->waiter; i != NULL; i = i->next)
 		{
 		  assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-		  mode = lock_Conv[i->blocked_mode][mode];
-		  assert (mode != NA_LOCK);
+		  mode = lock_conv (i->blocked_mode, mode);
 		}
 	      res_ptr->total_waiters_mode = mode;
 	    }
@@ -4155,12 +4113,10 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
   for (i = res_ptr->holder; i != NULL; i = i->next)
     {
       assert (i->granted_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[i->granted_mode][mode];
-      assert (mode != NA_LOCK);
+      mode = lock_conv (i->granted_mode, mode);
 
       assert (i->blocked_mode >= NULL_LOCK && mode >= NULL_LOCK);
-      mode = lock_Conv[i->blocked_mode][mode];
-      assert (mode != NA_LOCK);
+      mode = lock_conv (i->blocked_mode, mode);
     }
   res_ptr->total_holders_mode = mode;
 
@@ -4268,7 +4224,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
       assert (holder != NULL);
       pthread_mutex_unlock (&res_ptr->res_mutex);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_NOTFOUND_IN_LOCK_HOLDER_LIST, 5,
-	      LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->tran_index,
+	      lock_to_lockmode_string (entry_ptr->granted_mode), entry_ptr->tran_index,
 	      OID_AS_ARGS (&res_ptr->key.oid));
       return ER_LK_NOTFOUND_IN_LOCK_HOLDER_LIST;
     }
@@ -4282,7 +4238,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
       fprintf (stderr, "LK_DUMP::lk_demote_class_lock ()\n"
 	       "  tran(%2d) : oid(%d|%d|%d), class_oid(%d|%d|%d), LOCK(%7s -> %7s)\n", entry_ptr->tran_index,
 	       OID_AS_ARGS (&entry_ptr->res_head->key.oid), OID_AS_ARGS (&entry_ptr->res_head->key.class_oid),
-	       LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), LOCK_TO_LOCKMODE_STRING (to_be_lock));
+	       lock_to_lockmode_string (entry_ptr->granted_mode), lock_to_lockmode_string (to_be_lock));
     }
 #endif /* LK_DUMP */
 
@@ -4296,12 +4252,10 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
   for (h = res_ptr->holder; h != NULL; h = h->next)
     {
       assert (h->granted_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
-      total_mode = lock_Conv[h->granted_mode][total_mode];
-      assert (total_mode != NA_LOCK);
+      total_mode = lock_conv (h->granted_mode, total_mode);
 
       assert (h->blocked_mode >= NULL_LOCK && total_mode >= NULL_LOCK);
-      total_mode = lock_Conv[h->blocked_mode][total_mode];
-      assert (total_mode != NA_LOCK);
+      total_mode = lock_conv (h->blocked_mode, total_mode);
     }
   res_ptr->total_holders_mode = total_mode;
 
@@ -4671,8 +4625,7 @@ lock_update_non2pl_list (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_ind
 	       * been acquired. This implies that the transaction with the released lock may not be serializable
 	       * (repeatable read consistent) any longer. */
 	      assert (lock >= NULL_LOCK && curr->granted_mode >= NULL_LOCK);
-	      compat = lock_Comp[lock][curr->granted_mode];
-	      assert (compat != LOCK_COMPAT_UNKNOWN);
+	      compat = lock_compat (lock, curr->granted_mode);
 
 	      if (compat == LOCK_COMPAT_NO)
 		{
@@ -5512,8 +5465,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 
   /* dump total modes of holders and waiters */
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_TOTAL_MODE),
-	   LOCK_TO_LOCKMODE_STRING (res_ptr->total_holders_mode),
-	   LOCK_TO_LOCKMODE_STRING (res_ptr->total_waiters_mode));
+	   lock_to_lockmode_string (res_ptr->total_holders_mode),
+	   lock_to_lockmode_string (res_ptr->total_waiters_mode));
 
   num_holders = num_blocked_holders = 0;
   if (res_ptr->holder != NULL)
@@ -5561,14 +5514,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		  fprintf (outfp,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
 					   MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY), "", entry_ptr->tran_index,
-			   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count);
+			   lock_to_lockmode_string (entry_ptr->granted_mode), entry_ptr->count);
 		}
 	      else
 		{
 		  fprintf (outfp,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
 					   MSGCAT_LK_RES_NON_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "",
-			   entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count,
+			   entry_ptr->tran_index, lock_to_lockmode_string (entry_ptr->granted_mode), entry_ptr->count,
 			   entry_ptr->ngranules);
 		}
 	    }
@@ -5600,8 +5553,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		{
 		  fprintf (outfp,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY),
-			   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode),
-			   entry_ptr->count, "", LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
+			   "", entry_ptr->tran_index, lock_to_lockmode_string (entry_ptr->granted_mode),
+			   entry_ptr->count, "", lock_to_lockmode_string (entry_ptr->blocked_mode), "", time_val, "",
 			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 		}
 	      else
@@ -5609,8 +5562,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 		  fprintf (outfp,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK,
 					   MSGCAT_LK_RES_BLOCKED_HOLDER_ENTRY_WITH_GRANULE), "", entry_ptr->tran_index,
-			   LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode), entry_ptr->count, entry_ptr->ngranules,
-			   "", LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
+			   lock_to_lockmode_string (entry_ptr->granted_mode), entry_ptr->count, entry_ptr->ngranules,
+			   "", lock_to_lockmode_string (entry_ptr->blocked_mode), "", time_val, "",
 			   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 		}
 	    }
@@ -5634,7 +5587,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	      time_val[time_str_len - 1] = 0;
 	    }
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_ENTRY),
-		   "", entry_ptr->tran_index, LOCK_TO_LOCKMODE_STRING (entry_ptr->blocked_mode), "", time_val, "",
+		   "", entry_ptr->tran_index, lock_to_lockmode_string (entry_ptr->blocked_mode), "", time_val, "",
 		   lock_wait_msecs_to_secs (entry_ptr->thrd_entry->lockwait_msecs));
 	  entry_ptr = entry_ptr->next;
 	}
@@ -5650,7 +5603,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_ENTRY),
 		   "", entry_ptr->tran_index,
 		   ((entry_ptr->granted_mode == INCON_NON_TWO_PHASE_LOCK) ? "INCON_NON_TWO_PHASE_LOCK"
-		    : LOCK_TO_LOCKMODE_STRING (entry_ptr->granted_mode)));
+		    : lock_to_lockmode_string (entry_ptr->granted_mode)));
 	  entry_ptr = entry_ptr->next;
 	}
     }
@@ -7184,7 +7137,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 	  granted_lock_mode = tran_lock->root_class_hold->granted_mode;
 	}
       pthread_mutex_unlock (&tran_lock->hold_mutex);
-      return (lock_Conv[lock][granted_lock_mode] == granted_lock_mode);
+      return (lock_conv (lock, granted_lock_mode) == granted_lock_mode);
     }
 
   /*
@@ -7198,14 +7151,14 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 	{
 	  granted_lock_mode = entry_ptr->granted_mode;
 	}
-      return (lock_Conv[lock][granted_lock_mode] == granted_lock_mode);
+      return (lock_conv (lock, granted_lock_mode) == granted_lock_mode);
     }
 
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, class_oid, true);
   if (entry_ptr != NULL)
     {
       granted_lock_mode = entry_ptr->granted_mode;
-      if (lock_Conv[lock][granted_lock_mode] == granted_lock_mode)
+      if (lock_conv (lock, granted_lock_mode) == granted_lock_mode)
 	{
 	  return 1;
 	}
@@ -7836,19 +7789,15 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	      assert (hi->granted_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
 	      assert (hj->granted_mode >= NULL_LOCK && hj->blocked_mode >= NULL_LOCK);
 
-	      compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
-	      compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
-	      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
-
+	      compat1 = lock_compat (hj->blocked_mode, hi->granted_mode);
+	      compat2 = lock_compat (hj->blocked_mode, hi->blocked_mode);
 	      if (compat1 == LOCK_COMPAT_NO || compat2 == LOCK_COMPAT_NO)
 		{
 		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, true, hj->thrd_entry->lockwait_stime, hi,
 					    hj);
 		}
 
-	      compat1 = lock_Comp[hi->blocked_mode][hj->granted_mode];
-	      assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+	      compat1 = lock_compat (hi->blocked_mode, hj->granted_mode);
 	      if (compat1 == LOCK_COMPAT_NO)
 		{
 		  (void) lock_add_WFG_edge (hi->tran_index, hj->tran_index, true, hi->thrd_entry->lockwait_stime, hj,
@@ -7865,10 +7814,8 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	      assert (hi->granted_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
 	      assert (hj->granted_mode >= NULL_LOCK && hj->blocked_mode >= NULL_LOCK);
 
-	      compat1 = lock_Comp[hj->blocked_mode][hi->granted_mode];
-	      compat2 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
-	      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
-
+	      compat1 = lock_compat (hj->blocked_mode, hi->granted_mode);
+	      compat2 = lock_compat (hj->blocked_mode, hi->blocked_mode);
 	      if (compat1 == LOCK_COMPAT_NO || compat2 == LOCK_COMPAT_NO)
 		{
 		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, true, hj->thrd_entry->lockwait_stime, hi,
@@ -7884,9 +7831,7 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
 	    {
 	      assert (hj->blocked_mode >= NULL_LOCK && hi->blocked_mode >= NULL_LOCK);
 
-	      compat1 = lock_Comp[hj->blocked_mode][hi->blocked_mode];
-	      assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+	      compat1 = lock_compat (hj->blocked_mode, hi->blocked_mode);
 	      if (compat1 == LOCK_COMPAT_NO)
 		{
 		  (void) lock_add_WFG_edge (hj->tran_index, hi->tran_index, false, hj->thrd_entry->lockwait_stime, hi,
@@ -8462,7 +8407,7 @@ lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks)
       for (i = 0; i < acqlocks->nobj_locks; i++)
 	{
 	  fprintf (fp, "   |%d|%d|%d| %s\n", acqlocks->obj[i].oid.volid, acqlocks->obj[i].oid.pageid,
-		   acqlocks->obj[i].oid.slotid, LOCK_TO_LOCKMODE_STRING (acqlocks->obj[i].lock));
+		   acqlocks->obj[i].oid.slotid, lock_to_lockmode_string (acqlocks->obj[i].lock));
 	}
     }
 #endif /* !SERVER_MODE */
@@ -9357,7 +9302,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
     {
       assert (tran_index == entry->tran_index);
 
-      fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+      fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->granted_mode));
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
       lock_event_log_lock_info (thread_p, log_fp, entry);
@@ -9379,7 +9324,7 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
   if (entry != NULL)
     {
       fprintf (log_fp, "wait:\n");
-      fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
+      fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->blocked_mode));
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
@@ -9442,12 +9387,12 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
       fprintf (log_fp, "\n");
 
       for (lock_name =
-	   i % 2 ? LOCK_TO_LOCKMODE_STRING (entry->blocked_mode) : LOCK_TO_LOCKMODE_STRING (entry->granted_mode);
+	   i % 2 ? lock_to_lockmode_string (entry->blocked_mode) : lock_to_lockmode_string (entry->granted_mode);
 	   *lock_name == ' '; lock_name++);
       fprintf (log_fp, "%*clock: %s", indent, ' ', lock_name);
       if (!(i % 2) && entry->blocked_mode != NULL_LOCK)
 	{
-	  for (lock_name = LOCK_TO_LOCKMODE_STRING (entry->blocked_mode); *lock_name == ' '; lock_name++);
+	  for (lock_name = lock_to_lockmode_string (entry->blocked_mode); *lock_name == ' '; lock_name++);
 	  fprintf (log_fp, "|waiting for lock conversion to %s", lock_name);
 	}
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
@@ -9490,7 +9435,7 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * 
   fprintf (log_fp, "waiter:\n");
   event_log_print_client_info (entry->tran_index, indent);
 
-  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
+  fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->blocked_mode));
   lock_event_log_lock_info (thread_p, log_fp, entry);
 
   event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
@@ -9533,15 +9478,13 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 	  continue;
 	}
 
-      compat1 = lock_Comp[entry->granted_mode][wait_entry->blocked_mode];
-      compat2 = lock_Comp[entry->blocked_mode][wait_entry->blocked_mode];
-      assert (compat1 != LOCK_COMPAT_UNKNOWN && compat2 != LOCK_COMPAT_UNKNOWN);
-
+      compat1 = lock_compat (entry->granted_mode, wait_entry->blocked_mode);
+      compat2 = lock_compat (entry->blocked_mode, wait_entry->blocked_mode);
       if (compat1 == LOCK_COMPAT_NO || compat2 == LOCK_COMPAT_NO)
 	{
 	  event_log_print_client_info (entry->tran_index, indent);
 
-	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->granted_mode));
+	  fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->granted_mode));
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
@@ -9564,9 +9507,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 	  continue;
 	}
 
-      compat1 = lock_Comp[entry->blocked_mode][wait_entry->blocked_mode];
-      assert (compat1 != LOCK_COMPAT_UNKNOWN);
-
+      compat1 = lock_compat (entry->blocked_mode, wait_entry->blocked_mode);
       if (compat1 == LOCK_COMPAT_NO)
 	{
 	  if (is_other_waiter)
@@ -9578,7 +9519,7 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
 	  event_log_print_client_info (entry->tran_index, indent);
 
-	  fprintf (log_fp, "%*clock: %s", indent, ' ', LOCK_TO_LOCKMODE_STRING (entry->blocked_mode));
+	  fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->blocked_mode));
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
