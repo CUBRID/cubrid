@@ -419,7 +419,6 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_entry_task.cpp
   ${THREAD_DIR}/thread_lockfree_hash_map.cpp
   ${THREAD_DIR}/thread_manager.cpp
-  ${THREAD_DIR}/thread_worker_pool.cpp
   )
 set(THREAD_HEADERS
   ${THREAD_DIR}/critical_section_tracker.hpp
@@ -427,7 +426,6 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_entry.hpp
   ${THREAD_DIR}/thread_lockfree_hash_map.hpp
   ${THREAD_DIR}/thread_manager.hpp
-  ${THREAD_DIR}/thread_worker_pool.hpp
   )
 
 set(TRANSACTION_SOURCES
