@@ -321,7 +321,7 @@ const char *sm_define_view_routines_spec (void)
   // *INDENT-OFF*
   sprintf (stmt,
     "SELECT "
-      "[sp].[unique_name] AS [specific_name], "
+      "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [routine_catalog], " /* string -> varchar(255) */
       "CAST ([sp].[owner].[name] AS VARCHAR(255)) AS [routine_schema], " /* string -> varchar(255) */
       "[sp].[sp_name] AS [routine_name], "
@@ -688,7 +688,7 @@ const char *sm_define_view_parameters_spec (void)
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [specific_catalog], " /* string -> varchar(255) */
       "CAST ([sp_args].[sp_of].[owner].[name] AS VARCHAR(255)) AS [specific_schema], " /* string -> varchar(255) */
-      "[sp_args].[sp_of].[unique_name] AS [specific_name], "
+      "IF ([sp_args].[sp_of].[pkg_name] IS NOT NULL, CONCAT ([sp_args].[sp_of].[pkg_name], '.', [sp_args].[sp_of].[sp_name]), [sp_args].[sp_of].[sp_name]) AS [specific_name], "
       "([sp_args].[index_of] + 1) AS [ordinal_position], "
       /* SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT */
       "DECODE ([sp_args].[mode], %d, 'IN', %d, 'OUT', %d, 'INOUT') AS [parameter_mode], "
