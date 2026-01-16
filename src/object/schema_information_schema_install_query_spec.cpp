@@ -514,8 +514,7 @@ const char *sm_define_view_tables_spec (void)
       /* SM_CLASSFLAG_REUSE_OID */
       "IF (([cls].[flags] & %d) <> 0, 'REUSE_OID', 'DONT_REUSE_OID') || "
       /* TDE_ALGORITHM_NONE, TDE_ALGORITHM_AES, TDE_ALGORITHM_ARIA */
-      "' ENCRYPT=' || DECODE ([cls].[tde_algorithm], %d, 'NONE', %d, 'AES', %d, 'ARIA')"
-      "AS [create_options], "
+      "' ENCRYPT=' || DECODE ([cls].[tde_algorithm], %d, 'NONE', %d, 'AES', %d, 'ARIA') AS [create_options], "
       "[cls].[comment] AS [table_comment] "
     "FROM "
       /* CT_CLASS_NAME */
