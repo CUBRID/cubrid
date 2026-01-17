@@ -600,32 +600,21 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
+	    bool is_float_numeric = false;
 	    int precision = 0, scale = 0;
-	    int orig_precision = DB_VALUE_PRECISION (val);
-
-	    if (orig_precision == DB_DEFAULT_NUMERIC_PRECISION)
-	      {
-		precision = DB_VALUE_NUMERIC_HEADER_PRECISION (val);
-		scale = DB_VALUE_NUMERIC_HEADER_SCALE (val);
-	      }
-	    else
-	      {
-		precision = orig_precision;
-		scale = DB_VALUE_SCALE (val);
-	      }
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
 
 	    /*
 	     * calculate hash without normalization if:
-	     *   - fixed numeric (orig_precision != DB_DEFAULT_NUMERIC_PRECISION), or
-	     *   - float numeric (orig_precision == DB_DEFAULT_NUMERIC_PRECISION) with:
+	     *   - fixed numeric (is_float_numeric == false), or
+	     *   - float numeric (is_float_numeric == true) with:
 	     *     * scale is 0, or
 	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
 	     *   for float numeric with positive scale, trailing zero check is required
 	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
 	     */
-	    if (orig_precision != DB_DEFAULT_NUMERIC_PRECISION
-		|| (orig_precision == DB_DEFAULT_NUMERIC_PRECISION
-		    && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
+	    if (!is_float_numeric
+		|| (is_float_numeric && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
 	      {
 		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
 	      }
@@ -2455,32 +2444,21 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
+	    bool is_float_numeric = false;
 	    int precision = 0, scale = 0;
-	    int orig_precision = DB_VALUE_PRECISION (val);
-
-	    if (orig_precision == DB_DEFAULT_NUMERIC_PRECISION)
-	      {
-		precision = DB_VALUE_NUMERIC_HEADER_PRECISION (val);
-		scale = DB_VALUE_NUMERIC_HEADER_SCALE (val);
-	      }
-	    else
-	      {
-		precision = orig_precision;
-		scale = DB_VALUE_SCALE (val);
-	      }
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
 
 	    /*
 	     * calculate hash without normalization if:
-	     *   - fixed numeric (orig_precision != DB_DEFAULT_NUMERIC_PRECISION), or
-	     *   - float numeric (orig_precision == DB_DEFAULT_NUMERIC_PRECISION) with:
+	     *   - fixed numeric (is_float_numeric == false), or
+	     *   - float numeric (is_float_numeric == true) with:
 	     *     * scale is 0, or
 	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
 	     *   for float numeric with positive scale, trailing zero check is required
 	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
 	     */
-	    if (orig_precision != DB_DEFAULT_NUMERIC_PRECISION
-		|| (orig_precision == DB_DEFAULT_NUMERIC_PRECISION
-		    && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
+	    if (!is_float_numeric
+		|| (is_float_numeric && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
 	      {
 		unsigned int tmp = 0;
 		unsigned int *buf = (unsigned int *) db_locate_numeric (val);

@@ -12905,22 +12905,19 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  if (numeric_db_value_negate (arg1) != NO_ERROR)
-	    {
-	      PT_ERRORc (parser, o1, er_msg ());
-	      return 0;
-	    }
+	  {
+	    if (numeric_db_value_negate (arg1) != NO_ERROR)
+	      {
+		PT_ERRORc (parser, o1, er_msg ());
+		return 0;
+	      }
 
-	  if (DB_VALUE_PRECISION (arg1) == DB_DEFAULT_NUMERIC_PRECISION)
-	    {
-	      db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_NUMERIC_HEADER_PRECISION (arg1),
-			       DB_VALUE_NUMERIC_HEADER_SCALE (arg1), DB_NUMERIC_BUF_SIZE, true);
-	    }
-	  else
-	    {
-	      db_make_numeric (result, db_get_numeric (arg1), DB_VALUE_PRECISION (arg1), DB_VALUE_SCALE (arg1),
-			       DB_NUMERIC_BUF_SIZE, false);
-	    }
+	    bool is_float_numeric = false;
+	    int precision = 0, scale = 0;
+	    db_get_numeric_precision_and_scale (arg1, &precision, &scale, &is_float_numeric);
+
+	    db_make_numeric (result, db_get_numeric (arg1), precision, scale, DB_NUMERIC_BUF_SIZE, is_float_numeric);
+	  }
 	  break;
 
 	case DB_TYPE_MONETARY:
@@ -19616,6 +19613,8 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
   bool always_true = false;
   PT_NODE *result = expr;
   double dtmp;
+  bool is_float_numeric = false;
+  int scale = 0;
 
   /* we can't determine anything if the types are the same */
   if (lhs_type == rhs_type)
@@ -19674,7 +19673,8 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), DB_VALUE_SCALE (rhs_val), &dtmp);
+	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
 	  if (dtmp > DB_INT16_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_INT16_MIN)
@@ -19718,7 +19718,8 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), DB_VALUE_SCALE (rhs_val), &dtmp);
+	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
 	  if (dtmp > DB_INT32_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_INT32_MIN)
@@ -19753,7 +19754,8 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), DB_VALUE_SCALE (rhs_val), &dtmp);
+	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
 	  if (dtmp > DB_BIGINT_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_BIGINT_MIN)
@@ -19782,7 +19784,8 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), DB_VALUE_SCALE (rhs_val), &dtmp);
+	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
 	  if (dtmp > FLT_MAX)
 	    lhs_less = true;
 	  else if (dtmp < -(FLT_MAX))

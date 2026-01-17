@@ -2530,7 +2530,7 @@ int
 float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  int orig_prec1, orig_prec2;
+  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec, calc_prec1, calc_prec2;
   int calc_bytes;
@@ -2559,29 +2559,8 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  orig_prec1 = DB_VALUE_PRECISION (dbv1);
-  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
-      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
-    }
-  else
-    {
-      prec1 = orig_prec1;
-      scale1 = DB_VALUE_SCALE (dbv1);
-    }
-
-  orig_prec2 = DB_VALUE_PRECISION (dbv2);
-  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
-      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
-    }
-  else
-    {
-      prec2 = orig_prec2;
-      scale2 = DB_VALUE_SCALE (dbv2);
-    }
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -2786,7 +2765,7 @@ int
 float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  int orig_prec1, orig_prec2;
+  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec, calc_prec1, calc_prec2;
   int calc_bytes;
@@ -2815,29 +2794,8 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  orig_prec1 = DB_VALUE_PRECISION (dbv1);
-  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
-      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
-    }
-  else
-    {
-      prec1 = orig_prec1;
-      scale1 = DB_VALUE_SCALE (dbv1);
-    }
-
-  orig_prec2 = DB_VALUE_PRECISION (dbv2);
-  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
-      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
-    }
-  else
-    {
-      prec2 = orig_prec2;
-      scale2 = DB_VALUE_SCALE (dbv2);
-    }
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -3020,7 +2978,7 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 {
   int ret = NO_ERROR;
   int calc_bytes;
-  int orig_prec1, orig_prec2;
+  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
@@ -3066,29 +3024,8 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  orig_prec1 = DB_VALUE_PRECISION (dbv1);
-  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
-      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
-    }
-  else
-    {
-      prec1 = orig_prec1;
-      scale1 = DB_VALUE_SCALE (dbv1);
-    }
-
-  orig_prec2 = DB_VALUE_PRECISION (dbv2);
-  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
-      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
-    }
-  else
-    {
-      prec2 = orig_prec2;
-      scale2 = DB_VALUE_SCALE (dbv2);
-    }
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
   result_scale = scale1 + scale2;
   result_prec = prec1 + prec2;
 
@@ -3352,7 +3289,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int ret = NO_ERROR;
   int result_prec;
   int result_scale;
-  int orig_prec1, orig_prec2;
+  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int prec1, prec2;
   int scale1, scale2;
   int calc_bytes;
@@ -3400,26 +3337,8 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 1) compute exact precision values for mantissa calculations */
-  orig_prec1 = DB_VALUE_PRECISION (dbv1);
-  orig_prec2 = DB_VALUE_PRECISION (dbv2);
-
-  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      scale1 = dbv1->data.num.header.scale;
-    }
-  else
-    {
-      scale1 = DB_VALUE_SCALE (dbv1);
-    }
-
-  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      scale2 = dbv2->data.num.header.scale;
-    }
-  else
-    {
-      scale2 = DB_VALUE_SCALE (dbv2);
-    }
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
   prec1 = float_numeric_get_precision_digits (dbv1_copy, DB_NUMERIC_BUF_SIZE);
   prec2 = float_numeric_get_precision_digits (dbv2_copy, DB_NUMERIC_BUF_SIZE);
 
@@ -3626,7 +3545,7 @@ int
 numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  int orig_prec1, orig_prec2;
+  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
   bool arg1_sign = false, arg2_sign = false;
   int cmp_rez = 0;
@@ -3655,29 +3574,8 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       return NO_ERROR;
     }
 
-  orig_prec1 = DB_VALUE_PRECISION (dbv1);
-  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec1 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv1);
-      scale1 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv1);
-    }
-  else
-    {
-      prec1 = orig_prec1;
-      scale1 = DB_VALUE_SCALE (dbv1);
-    }
-
-  orig_prec2 = DB_VALUE_PRECISION (dbv2);
-  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      prec2 = DB_VALUE_NUMERIC_HEADER_PRECISION (dbv2);
-      scale2 = DB_VALUE_NUMERIC_HEADER_SCALE (dbv2);
-    }
-  else
-    {
-      prec2 = orig_prec2;
-      scale2 = DB_VALUE_SCALE (dbv2);
-    }
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
 
   dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
   dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
@@ -4359,8 +4257,8 @@ int
 float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result)
 {
   int ret = NO_ERROR;
-  int orig_prec1, orig_prec2;
-  int scale1 = 0, scale2 = 0;
+  bool is_float_numeric1 = false, is_float_numeric2 = false;
+  int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
   int calc_bytes;
   int result_prec, result_scale;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
@@ -4383,26 +4281,8 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
     }
 
   /* 1) compute exact precision values for mantissa calculations */
-  orig_prec1 = DB_VALUE_PRECISION (value1);
-  orig_prec2 = DB_VALUE_PRECISION (value2);
-
-  if (orig_prec1 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      scale1 = value1->data.num.header.scale;
-    }
-  else
-    {
-      scale1 = DB_VALUE_SCALE (value1);
-    }
-
-  if (orig_prec2 == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      scale2 = value2->data.num.header.scale;
-    }
-  else
-    {
-      scale2 = DB_VALUE_SCALE (value2);
-    }
+  db_get_numeric_precision_and_scale (value1, &prec1, &scale1, &is_float_numeric1);
+  db_get_numeric_precision_and_scale (value2, &prec2, &scale2, &is_float_numeric2);
 
   /* 2) determine common sign of the result */
   bool arg1_sign = false, arg2_sign = false, result_sign = false;
@@ -5935,21 +5815,14 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 
     case DB_TYPE_NUMERIC:
       {
-	precision = DB_VALUE_PRECISION (src);
-	if (precision == DB_DEFAULT_NUMERIC_PRECISION)
-	  {
-	    precision = DB_VALUE_NUMERIC_HEADER_PRECISION (src);
-	    scale = DB_VALUE_NUMERIC_HEADER_SCALE (src);
-	  }
-	else if (precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED)
+	bool src_is_float_numeric = false;
+	db_get_numeric_precision_and_scale (src, &precision, &scale, &src_is_float_numeric);
+
+	if (!src_is_float_numeric && precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED)
 	  {
 	    precision = float_numeric_get_precision_digits (db_locate_numeric (src), DB_NUMERIC_BUF_SIZE);
-	    scale = DB_VALUE_SCALE (src);
 	  }
-	else
-	  {
-	    scale = DB_VALUE_SCALE (src);
-	  }
+
 	numeric_copy (num, db_locate_numeric (src));
 	break;
       }
@@ -5971,6 +5844,12 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
   /* Make the destination value */
   if (ret == NO_ERROR)
     {
+      if (desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  db_make_numeric (dest, num, precision, scale, DB_NUMERIC_BUF_SIZE, true);
+	  return ret;
+	}
+
       /* Make the intermediate value */
       db_make_numeric (dest, num, precision, scale, DB_NUMERIC_BUF_SIZE, false);
       ret =
@@ -5981,14 +5860,7 @@ numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS 
 	  goto exit_on_error;
 	}
 
-      if (desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
-	{
-	  db_make_numeric (dest, num, precision, scale, DB_NUMERIC_BUF_SIZE, true);
-	}
-      else
-	{
-	  db_make_numeric (dest, num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
-	}
+      db_make_numeric (dest, num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
     }
 
   if (ret == ER_IT_DATA_OVERFLOW)
@@ -6022,14 +5894,9 @@ int
 numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
 {
   int ret = NO_ERROR;
-  int precision = DB_VALUE_PRECISION (src);
-  int scale = DB_VALUE_SCALE (src);
   bool is_float_numeric = false;
+  int scale = db_get_numeric_scale (src, &is_float_numeric);
 
-  if (precision == DB_DEFAULT_NUMERIC_PRECISION && scale == DB_DEFAULT_NUMERIC_SCALE)
-    {
-      is_float_numeric = true;
-    }
 
   *data_status = DATA_STATUS_OK;
   /* Check for a DB_TYPE_NUMERIC src and a non NULL numerical dest */
@@ -6039,14 +5906,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_DOUBLE:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	if (OR_CHECK_DOUBLE_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -6059,14 +5919,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_FLOAT:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -6079,14 +5932,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_MONETARY:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	db_make_monetary (dest, DB_CURRENCY_DEFAULT, adouble);
 	break;
       }
@@ -6094,14 +5940,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_INTEGER:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	if (OR_CHECK_INT_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -6114,14 +5953,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_BIGINT:
       {
 	DB_BIGINT bint;
-	if (is_float_numeric)
-	  {
-	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &bint);
-	  }
-	else
-	  {
-	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bint);
-	  }
+	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bint);
 	if (ret != NO_ERROR)
 	  {
 	    goto exit_on_error;
@@ -6134,14 +5966,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_SMALLINT:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	if (OR_CHECK_SHORT_OVERFLOW (adouble))
 	  {
 	    ret = ER_IT_DATA_OVERFLOW;
@@ -6194,14 +6019,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	DB_TIME v_time;
 	int hour, minute, second;
 
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	v_time = (int) (adouble + 0.5) % SECONDS_IN_A_DAY;
 	db_time_decode (&v_time, &hour, &minute, &second);
 	db_make_time (dest, hour, minute, second);
@@ -6214,14 +6032,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	DB_DATE v_date;
 	int year, month, day;
 
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	v_date = (DB_DATE) (adouble);
 	db_date_decode (&v_date, &month, &day, &year);
 	db_make_date (dest, month, day, year);
@@ -6233,14 +6044,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	double adouble;
 	DB_TIMESTAMP v_timestamp;
 
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	v_timestamp = (DB_TIMESTAMP) (adouble);
 	db_make_timestamp (dest, v_timestamp);
 	break;
@@ -6251,14 +6055,7 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
 	DB_BIGINT bi, tmp_bi;
 	DB_DATETIME v_datetime;
 
-	if (is_float_numeric)
-	  {
-	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &bi);
-	  }
-	else
-	  {
-	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bi);
-	  }
+	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bi);
 	if (ret == NO_ERROR)
 	  {
 	    /* make datetime value from interval value */
@@ -6300,28 +6097,15 @@ int
 numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
-  int precision = DB_VALUE_PRECISION (src);
-  int scale = DB_VALUE_SCALE (src);
   bool is_float_numeric = false;
-
-  if (precision == DB_DEFAULT_NUMERIC_PRECISION && scale == DB_DEFAULT_NUMERIC_SCALE)
-    {
-      is_float_numeric = true;
-    }
+  int scale = db_get_numeric_scale (src, &is_float_numeric);
 
   switch (DB_VALUE_DOMAIN_TYPE (dest))
     {
     case DB_TYPE_DOUBLE:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	if (OR_CHECK_DOUBLE_OVERFLOW (adouble))
 	  {
 	    return ER_FAILED;
@@ -6333,14 +6117,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_FLOAT:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
 	  {
 	    return ER_FAILED;
@@ -6352,14 +6129,7 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_MONETARY:
       {
 	double adouble;
-	if (is_float_numeric)
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	  }
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
 	if (OR_CHECK_FLOAT_OVERFLOW (adouble))
 	  {
 	    return ER_FAILED;
@@ -6371,22 +6141,10 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_INTEGER:
       {
 	double adouble;
-	if (is_float_numeric)
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	if (OR_CHECK_INT_OVERFLOW (adouble) || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
 	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	    if (OR_CHECK_INT_OVERFLOW (adouble)
-		|| !numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src)))
-	      {
-		return ER_FAILED;
-	      }
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	    if (OR_CHECK_INT_OVERFLOW (adouble) || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
-	      {
-		return ER_FAILED;
-	      }
+	    return ER_FAILED;
 	  }
 	db_make_int (dest, (int) (adouble));
 	break;
@@ -6396,22 +6154,10 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
       {
 	DB_BIGINT bint;
 
-	if (is_float_numeric)
+	ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bint);
+	if (ret != NO_ERROR || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
 	  {
-	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &bint);
-	    if (ret != NO_ERROR
-		|| !numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src)))
-	      {
-		return ER_FAILED;
-	      }
-	  }
-	else
-	  {
-	    ret = numeric_coerce_num_to_bigint (db_locate_numeric (src), scale, &bint);
-	    if (ret != NO_ERROR || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
-	      {
-		return ER_FAILED;
-	      }
+	    return ER_FAILED;
 	  }
 	db_make_bigint (dest, bint);
 	break;
@@ -6420,22 +6166,10 @@ numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
     case DB_TYPE_SMALLINT:
       {
 	double adouble;
-	if (is_float_numeric)
+	numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
+	if (OR_CHECK_SHORT_OVERFLOW (adouble) || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
 	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src), &adouble);
-	    if (OR_CHECK_SHORT_OVERFLOW (adouble)
-		|| !numeric_is_fraction_part_zero (db_locate_numeric (src), DB_VALUE_NUMERIC_HEADER_SCALE (src)))
-	      {
-		return ER_FAILED;
-	      }
-	  }
-	else
-	  {
-	    numeric_coerce_num_to_double (db_locate_numeric (src), scale, &adouble);
-	    if (OR_CHECK_SHORT_OVERFLOW (adouble) || !numeric_is_fraction_part_zero (db_locate_numeric (src), scale))
-	      {
-		return ER_FAILED;
-	      }
+	    return ER_FAILED;
 	  }
 	db_make_short (dest, (DB_C_SHORT) ROUND (adouble));
 	break;
@@ -6472,18 +6206,8 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   int temp_size;
   int i;
   bool found_first_non_zero = false;
-  int orig_prec;
-  int scale;
-
-  orig_prec = DB_VALUE_PRECISION (val);
-  if (orig_prec == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      scale = DB_VALUE_NUMERIC_HEADER_SCALE (val);
-    }
-  else
-    {
-      scale = DB_VALUE_SCALE (val);
-    }
+  bool is_float_numeric = false;
+  int scale = db_get_numeric_scale (val, &is_float_numeric);
 
   /* it should not be static because the parameter could be changed without broker restart */
   bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);

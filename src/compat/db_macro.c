@@ -1772,9 +1772,10 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
     case DB_TYPE_NUMERIC:
       {
 	DB_VALUE tmp_value;
-	unsigned char new_num[DB_NUMERIC_BUF_SIZE];
-	int orig_desired_precision = DB_VALUE_PRECISION (value);
-	int desired_precision, desired_scale;
+
+	bool is_float_numeric = false;
+	int precision = 0, scale = 0;
+	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
 
 	error = numeric_coerce_string_to_num (buf, buflen, LANG_SYS_CODESET, &tmp_value);
 	if (error != NO_ERROR)
@@ -1784,19 +1785,18 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	    break;
 	  }
 
-	if (orig_desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
+	if (is_float_numeric)
 	  {
 	    db_make_numeric (value, db_locate_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
 			     DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), DB_NUMERIC_BUF_SIZE, true);
 	  }
 	else
 	  {
-	    desired_precision = orig_desired_precision;
-	    desired_scale = DB_VALUE_SCALE (value);
+	    unsigned char new_num[DB_NUMERIC_BUF_SIZE];
 
 	    if (numeric_coerce_num_to_num
 		(db_get_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
-		 DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
+		 DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), precision, scale, new_num) != NO_ERROR)
 	      {
 		status = C_TO_VALUE_CONVERSION_ERROR;
 	      }
@@ -1804,7 +1804,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	      {
 		/* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
 		 * value. */
-		db_make_numeric (value, new_num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, false);
+		db_make_numeric (value, new_num, precision, scale, DB_NUMERIC_BUF_SIZE, false);
 	      }
 	  }
 	db_value_clear (&tmp_value);
