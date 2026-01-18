@@ -250,7 +250,7 @@ namespace cubhnsw
       algo (const hnsw_build_params &build_params);
 
       // high-level APIs
-      add_result_t<Traits> add (const key_id_t &oid, const float *vector, const std::size_t expansion);
+      add_result_t<Traits> add (const key_id_t &oid, const float *vector);
       search_result_t<Traits> search (const float *query, const std::size_t k, const std::size_t expansion);
 
       void set_storage (storage_t *storage) noexcept
@@ -357,7 +357,7 @@ namespace cubhnsw
 
   template <typename Traits>
   add_result_t<Traits>
-  algo<Traits>::add (const key_id_t &key, const float *vector, const std::size_t expansion)
+  algo<Traits>::add (const key_id_t &key, const float *vector)
   {
     add_result_t<Traits> result;
 
@@ -369,13 +369,13 @@ namespace cubhnsw
 
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
-    std::size_t top_limit = std::max (m_connectivity * 2 + 1, expansion);
+    std::size_t top_limit = std::max (m_connectivity * 2 + 1, m_expansion);
     if (!top.reserve (top_limit))
       {
 	assert (false);
 	return {ER_FAILED, OID_INITIALIZER};
       }
-    if (!next.reserve (expansion))
+    if (!next.reserve (m_expansion))
       {
 	assert (false);
 	return {ER_FAILED, OID_INITIALIZER};

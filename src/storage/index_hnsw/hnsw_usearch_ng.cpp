@@ -217,8 +217,7 @@ hnsw_usearch_ng::add (int n_vectors, const OID *oid, const float *vector)
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	  continue;
 	}
-      m_algo->add (oid[i], vector + i * m_build_params.dimension,
-		   m_build_params.ef_construction);
+      m_algo->add (oid[i], vector + i * m_build_params.dimension);
     }
   return NO_ERROR;
 }
