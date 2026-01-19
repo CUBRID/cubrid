@@ -52,8 +52,6 @@ namespace parallel_query
 
       /* friends */
       friend class worker_manager;
-      friend class worker_manager_with_dedicated_pool;
-      friend class worker_manager_reserver;
 
       /* member variables (ordered by size for alignment) */
       cubthread::entry_workpool *m_worker_pool;

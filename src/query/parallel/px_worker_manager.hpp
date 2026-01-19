@@ -60,56 +60,6 @@ namespace parallel_query
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
   };
-
-  class worker_manager_with_dedicated_pool
-  {
-    public:
-      static worker_manager_with_dedicated_pool &get_manager()
-      {
-	thread_local static worker_manager_with_dedicated_pool instance;
-	return instance;
-      }
-
-      int try_reserve_workers (int num_workers, int task_max_count);
-      void release_workers ();
-      void wait_workers ();
-      void push_task (cubthread::entry_task *task);
-      void pop_task ()
-      {
-	m_active_tasks.fetch_sub (1, std::memory_order_release);
-      }
-
-    private:
-      cubthread::entry_workpool *m_worker_pool;
-      std::atomic<int> m_active_tasks;
-      int m_reserved_workers;
-
-      worker_manager_with_dedicated_pool();
-      ~worker_manager_with_dedicated_pool();
-      worker_manager_with_dedicated_pool (const worker_manager_with_dedicated_pool &) = delete;
-      worker_manager_with_dedicated_pool &operator= (const worker_manager_with_dedicated_pool &) = delete;
-  };
-
-  class worker_manager_reserver
-  {
-    public:
-      static worker_manager_reserver &get_manager()
-      {
-	thread_local static worker_manager_reserver instance;
-	return instance;
-      }
-
-      int try_reserve_workers (int num_workers);
-      void release_workers ();
-
-    private:
-      int m_reserved_workers;
-
-      worker_manager_reserver();
-      ~worker_manager_reserver();
-      worker_manager_reserver (const worker_manager_reserver &) = delete;
-      worker_manager_reserver &operator= (const worker_manager_reserver &) = delete;
-  };
 }
 
 #endif /*_PX_WORKER_MANAGER_HPP_ */
