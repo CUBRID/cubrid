@@ -9386,13 +9386,12 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
 	}
       fprintf (log_fp, "\n");
 
-      for (lock_name =
-	   i % 2 ? lock_to_lockmode_string (entry->blocked_mode) : lock_to_lockmode_string (entry->granted_mode);
-	   *lock_name == ' '; lock_name++);
+      lock_name =
+	(i % 2) ? lock_to_lockmode_string (entry->blocked_mode) : lock_to_lockmode_string (entry->granted_mode);
       fprintf (log_fp, "%*clock: %s", indent, ' ', lock_name);
       if (!(i % 2) && entry->blocked_mode != NULL_LOCK)
 	{
-	  for (lock_name = lock_to_lockmode_string (entry->blocked_mode); *lock_name == ' '; lock_name++);
+	  lock_name = lock_to_lockmode_string (entry->blocked_mode);
 	  fprintf (log_fp, "|waiting for lock conversion to %s", lock_name);
 	}
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
