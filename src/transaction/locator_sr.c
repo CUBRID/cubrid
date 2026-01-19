@@ -10970,8 +10970,8 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       */
 
 		      /* May be lock change */
-		      lockhint->classes[j].lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lockhint->classes[j].lock != NA_LOCK);
+		      lockhint->classes[j].lock =
+			lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      /* Make sure that subclasses are obtained */
 		      lockhint->classes[j].need_subclasses = 1;
@@ -10983,8 +10983,7 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       * revisit if a lock conversion is needed as a result of
 		       * several super classes
 		       */
-		      lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lock != NA_LOCK);
+		      lock = lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      if (lockhint->classes[j].lock != lock)
 			{
@@ -11289,8 +11288,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	    {
 	      /* Duplicate class, merge the lock and the subclass entry */
 	      assert ((*hlock)->classes[i].lock >= NULL_LOCK && (*hlock)->classes[j].lock >= NULL_LOCK);
-	      (*hlock)->classes[i].lock = lock_Conv[(*hlock)->classes[i].lock][(*hlock)->classes[j].lock];
-	      assert ((*hlock)->classes[i].lock != NA_LOCK);
+	      (*hlock)->classes[i].lock = lock_conv ((*hlock)->classes[i].lock, (*hlock)->classes[j].lock);
 
 	      if ((*hlock)->classes[i].need_subclasses == 0)
 		{
