@@ -486,7 +486,7 @@ static int qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			  QFILE_TUPLE_RECORD * tplrec);
 static int qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				QFILE_TUPLE_RECORD * tplrec);
-static int qdata_initialize_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
 						     ANALYTIC_TYPE * func_p, XASL_STATE * xasl_state,
 						     bool is_skip_sort);
@@ -15251,7 +15251,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (xasl->proc.buildlist.a_eval_list)
 	    {
-	      if (qdata_initialize_analytic_eval_list (thread_p, xasl, xasl_state) != NO_ERROR)
+	      if (qdata_setup_analytic_eval_list (thread_p, xasl, xasl_state) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -21152,7 +21152,7 @@ exit_on_error:
 }
 
 /*
- * qdata_initialize_analytic_eval_list () - initialize analytic_eval_list and analytic_type
+ * qdata_setup_analytic_eval_list () - setup analytic_eval_list and analytic_type
  *
  *   returns: error code or NO_ERROR
  *   thread_p(in): thread entry
@@ -21166,7 +21166,7 @@ exit_on_error:
  *         are being initialized here.
  */
 static int
-qdata_initialize_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
   ANALYTIC_EVAL_TYPE *a_eval_list;
   ANALYTIC_TYPE *a_func_list;
@@ -21214,45 +21214,48 @@ qdata_initialize_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, 
 		}
 	    }
 
-	  /* initialize group header listfile */
-	  group_type_list.type_cnt = 2;
-	  group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-	  if (group_type_list.domp == NULL)
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-	      return ER_FAILED;
+	      /* initialize group header listfile */
+	      group_type_list.type_cnt = 2;
+	      group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+	      if (group_type_list.domp == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+		  return ER_FAILED;
+		}
+	      group_type_list.domp[0] = &tp_Integer_domain;
+	      group_type_list.domp[1] = &tp_Integer_domain;
+
+	      a_func_list->group_list_id =
+		qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
+	      if (a_func_list->group_list_id == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+		  return ER_FAILED;
+		}
+
+	      db_private_free_and_init (thread_p, group_type_list.domp);
+
+	      /* initialize group value listfile */
+	      value_type_list.type_cnt = 2;
+	      value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+	      if (value_type_list.domp == NULL)
+		{
+		  return ER_FAILED;
+		}
+	      value_type_list.domp[0] = &tp_Integer_domain;
+	      value_type_list.domp[1] = a_func_list->domain;
+
+	      a_func_list->order_list_id =
+		qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
+	      if (a_func_list->order_list_id == NULL)
+		{
+		  return ER_FAILED;
+		}
+
+	      db_private_free_and_init (thread_p, value_type_list.domp);
 	    }
-	  group_type_list.domp[0] = &tp_Integer_domain;
-	  group_type_list.domp[1] = &tp_Integer_domain;
-
-	  a_func_list->group_list_id =
-	    qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
-	  if (a_func_list->group_list_id == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-	      return ER_FAILED;
-	    }
-
-	  db_private_free_and_init (thread_p, group_type_list.domp);
-
-	  /* initialize group value listfile */
-	  value_type_list.type_cnt = 2;
-	  value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
-	  if (value_type_list.domp == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-	  value_type_list.domp[0] = &tp_Integer_domain;
-	  value_type_list.domp[1] = a_func_list->domain;
-
-	  a_func_list->order_list_id =
-	    qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
-	  if (a_func_list->order_list_id == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  db_private_free_and_init (thread_p, value_type_list.domp);
 	}
     }
 
@@ -21333,32 +21336,58 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
       func_state->value_list_id = func_p->order_list_id;
       func_p->order_list_id = NULL;
     }
-
-  func_state->group_list_id = func_p->group_list_id;
-  func_p->group_list_id = NULL;
-
-  func_state->value_list_id = func_p->order_list_id;
-  func_p->order_list_id = NULL;
-
-  func_state->group_list_id->tpl_descr.f_cnt = 2;
-  func_state->group_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * 2);
-  if (func_state->group_list_id->tpl_descr.f_valp == NULL)
+  else
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-      return ER_FAILED;
-    }
-  func_state->group_list_id->tpl_descr.f_valp[0] = &func_state->cgtc_dbval;
-  func_state->group_list_id->tpl_descr.f_valp[1] = &func_state->cgtc_nn_dbval;
+      /* initialize group header listfile */
+      group_type_list.type_cnt = 2;
+      group_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+      if (group_type_list.domp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	  return ER_FAILED;
+	}
+      group_type_list.domp[0] = &tp_Integer_domain;
+      group_type_list.domp[1] = &tp_Integer_domain;
 
-  func_state->value_list_id->tpl_descr.f_cnt = 2;
-  func_state->value_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * 2);
-  if (func_state->value_list_id->tpl_descr.f_valp == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-      return ER_FAILED;
+      func_state->group_list_id = qfile_open_list (thread_p, &group_type_list, NULL, xasl_state->query_id, 0, NULL);
+
+      db_private_free_and_init (thread_p, group_type_list.domp);
+
+      /* initialize group value listfile */
+      value_type_list.type_cnt = 2;
+      value_type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * 2);
+      if (value_type_list.domp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	  return ER_FAILED;
+	}
+      value_type_list.domp[0] = &tp_Integer_domain;
+      value_type_list.domp[1] = func_state->func_p->domain;
+
+      func_state->value_list_id = qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
+
+      db_private_free_and_init (thread_p, value_type_list.domp);
+
+      func_state->group_list_id->tpl_descr.f_cnt = 2;
+      func_state->group_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * 2);
+      if (func_state->group_list_id->tpl_descr.f_valp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	  return ER_FAILED;
+	}
+      func_state->group_list_id->tpl_descr.f_valp[0] = &func_state->cgtc_dbval;
+      func_state->group_list_id->tpl_descr.f_valp[1] = &func_state->cgtc_nn_dbval;
+
+      func_state->value_list_id->tpl_descr.f_cnt = 2;
+      func_state->value_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (sizeof (DB_VALUE *) * 2);
+      if (func_state->value_list_id->tpl_descr.f_valp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	  return ER_FAILED;
+	}
+      func_state->value_list_id->tpl_descr.f_valp[0] = &func_state->csktc_dbval;
+      func_state->value_list_id->tpl_descr.f_valp[1] = func_p->value;
     }
-  func_state->value_list_id->tpl_descr.f_valp[0] = &func_state->csktc_dbval;
-  func_state->value_list_id->tpl_descr.f_valp[1] = func_p->value;
 
   return NO_ERROR;
 }
