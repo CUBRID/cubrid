@@ -9868,6 +9868,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
   SYSPRM_PARAM *task_group_prm;
+  SYSPRM_PARAM *task_worker_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
@@ -9921,6 +9922,7 @@ prm_tune_parameters (void)
 
 #if defined (SERVER_MODE)
       task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
+      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
       system_cpu_count = cubthread::system_core_count ();
       int safe_core_count = (css_get_max_workers () / 3);
       int core_upper_limit = MIN (safe_core_count, system_cpu_count);
@@ -9979,6 +9981,11 @@ prm_tune_parameters (void)
       if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (task_group_prm, newval, false);
+	}
+      if (PRM_GET_INT (task_group_prm->value) > PRM_GET_INT (task_worker_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
 	  (void) prm_set (task_group_prm, newval, false);
 	}
       if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
