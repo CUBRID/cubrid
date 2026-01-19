@@ -7857,7 +7857,7 @@ SCAN_CODE
 heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   HEAP_SCANCACHE *scan_cache_p = context->scan_cache;
-  SCAN_CODE sc;
+  SCAN_CODE scan;
 
   /* We have everything set up to get record data. */
   assert (context != NULL);
@@ -7880,11 +7880,11 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  ASSERT_ERROR ();
 	  return S_ERROR;
 	}
-      sc = spage_get_record (thread_p, context->fwd_page_watcher.pgptr, context->forward_oid.slotid,
-			     context->recdes_p, COPY);
-      if (sc != S_SUCCESS)
+      scan = spage_get_record (thread_p, context->fwd_page_watcher.pgptr, context->forward_oid.slotid,
+			       context->recdes_p, COPY);
+      if (scan != S_SUCCESS)
 	{
-	  return sc;
+	  return scan;
 	}
 
       return heap_record_replace_oos_oids_with_values_if_exists (thread_p, context);
@@ -7900,12 +7900,12 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 	  return S_ERROR;
 	}
 
-      sc =
+      scan =
 	spage_get_record (thread_p, context->home_page_watcher.pgptr, context->oid_p->slotid, context->recdes_p,
 			  context->ispeeking);
-      if (sc != S_SUCCESS)
+      if (scan != S_SUCCESS)
 	{
-	  return sc;
+	  return scan;
 	}
 
       return heap_record_replace_oos_oids_with_values_if_exists (thread_p, context);
