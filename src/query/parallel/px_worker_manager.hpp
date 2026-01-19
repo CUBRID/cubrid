@@ -23,10 +23,11 @@
 #ifndef _PX_WORKER_MANAGER_HPP_
 #define _PX_WORKER_MANAGER_HPP_
 
-#include <atomic>
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include <atomic>
 
 #include "thread_manager.hpp"
 
@@ -35,21 +36,27 @@ namespace parallel_query
   class worker_manager
   {
     public:
-      static worker_manager *try_reserve_workers (int n_workers);
-      void release_workers (int n_workers);
-      void wait_workers ();
-      void push_task (cubthread::entry_task *task);
-      void pop_task ()
-      {
-	m_working_workers.fetch_sub (1, std::memory_order_release);
-      }
+      static worker_manager *try_reserve_workers (int num_workers);
 
       worker_manager();
       ~worker_manager();
 
+      void release_workers ();
+      void wait_workers ();
+      void push_task (cubthread::entry_task *task);
+      void pop_task ()
+      {
+	m_active_tasks.fetch_sub (1, std::memory_order_release);
+      }
+      int get_reserved_workers () const
+      {
+	return m_reserved_workers;
+      }
+
     private:
+      std::atomic<int> m_active_tasks;
       int m_reserved_workers;
-      std::atomic<int> m_working_workers;
+
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
   };
@@ -63,17 +70,20 @@ namespace parallel_query
 	return instance;
       }
 
-      bool try_reserve_workers (int parallelism, int task_queue_size);
+      int try_reserve_workers (int num_workers, int task_max_count);
       void release_workers ();
+      void wait_workers ();
       void push_task (cubthread::entry_task *task);
       void pop_task ()
       {
-	m_active_tasks--;
+	m_active_tasks.fetch_sub (1, std::memory_order_release);
       }
+
     private:
-      int m_reserved_workers;
-      std::atomic<int> m_active_tasks;
       cubthread::entry_workpool *m_worker_pool;
+      std::atomic<int> m_active_tasks;
+      int m_reserved_workers;
+
       worker_manager_with_dedicated_pool();
       ~worker_manager_with_dedicated_pool();
       worker_manager_with_dedicated_pool (const worker_manager_with_dedicated_pool &) = delete;
@@ -89,7 +99,7 @@ namespace parallel_query
 	return instance;
       }
 
-      bool try_reserve_workers (int parallelism);
+      int try_reserve_workers (int num_workers);
       void release_workers ();
 
     private:

@@ -22,8 +22,6 @@
 
 #include "px_heap_scan.hpp"
 
-
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "error_code.h"
 #include "object_primitive.h"
 #include "perf_monitor.h"
@@ -42,6 +40,30 @@
 
 extern "C"
 {
+  static bool
+  allocate_trace_storage (SCAN_ID *scan_id, parallel_heap_scan::RESULT_TYPE result_type)
+  {
+    using accumulative_trace_storage = parallel_heap_scan::accumulative_trace_storage;
+
+    if (scan_id->s.phsid.trace_storage != nullptr)
+      {
+	return true;
+      }
+
+    size_t alloc_size = sizeof (accumulative_trace_storage);
+    scan_id->s.phsid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
+    if (scan_id->s.phsid.trace_storage == nullptr)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+	return false;
+      }
+
+    scan_id->s.phsid.trace_storage = placement_new (scan_id->s.phsid.trace_storage, result_type);
+    assert (scan_id->s.phsid.trace_storage != nullptr);
+
+    return true;
+  }
+
   SCAN_CODE
   scan_next_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
@@ -89,8 +111,6 @@ extern "C"
     scan_id->position = (scan_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
     OID_SET_NULL (&scan_id->s.phsid.curr_oid);
 
-    using accumulative_trace_storage = parallel_heap_scan::accumulative_trace_storage;
-
     switch (scan_id->s.phsid.result_type)
       {
       case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
@@ -102,22 +122,11 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
-	    if (scan_id->s.phsid.trace_storage == nullptr)
+	    if (!allocate_trace_storage (scan_id, manager_p->get_result_type()))
 	      {
-		size_t alloc_size = sizeof (accumulative_trace_storage);
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
-		if (scan_id->s.phsid.trace_storage == nullptr)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
-		  }
-
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
-		assert (scan_id->s.phsid.trace_storage != nullptr);
+		manager_p->reset ();
+		break;
 	      }
-
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
@@ -133,22 +142,11 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
-	    if (scan_id->s.phsid.trace_storage == nullptr)
+	    if (!allocate_trace_storage (scan_id, manager_p->get_result_type()))
 	      {
-		size_t alloc_size = sizeof (accumulative_trace_storage);
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
-		if (scan_id->s.phsid.trace_storage == nullptr)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
-		  }
-
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
-		assert (scan_id->s.phsid.trace_storage != nullptr);
+		manager_p->reset ();
+		break;
 	      }
-
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
@@ -164,22 +162,11 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
-	    if (scan_id->s.phsid.trace_storage == nullptr)
+	    if (!allocate_trace_storage (scan_id, manager_p->get_result_type()))
 	      {
-		size_t alloc_size = sizeof (accumulative_trace_storage);
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
-		if (scan_id->s.phsid.trace_storage == nullptr)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->reset ();
-		    break;
-		  }
-
-		scan_id->s.phsid.trace_storage = placement_new (( accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
-		assert (scan_id->s.phsid.trace_storage != nullptr);
+		manager_p->reset ();
+		break;
 	      }
-
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
@@ -243,8 +230,6 @@ extern "C"
   void
   scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id)
   {
-    using accumulative_trace_storage = parallel_heap_scan::accumulative_trace_storage;
-
     switch (scan_id->s.phsid.result_type)
       {
       case parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST:
@@ -255,22 +240,11 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
-	    if (scan_id->s.phsid.trace_storage == nullptr)
+	    if (!allocate_trace_storage (scan_id, manager_p->get_result_type()))
 	      {
-		size_t alloc_size = sizeof (accumulative_trace_storage);
-		scan_id->s.phsid.trace_storage = (accumulative_trace_storage *) malloc (alloc_size);
-		if (scan_id->s.phsid.trace_storage == nullptr)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->close();
-		    break;
-		  }
-
-		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
-		assert (scan_id->s.phsid.trace_storage != nullptr);
+		manager_p->close();
+		break;
 	      }
-
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
@@ -286,22 +260,11 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
-	    if (scan_id->s.phsid.trace_storage == nullptr)
+	    if (!allocate_trace_storage (scan_id, manager_p->get_result_type()))
 	      {
-		size_t alloc_size = sizeof (accumulative_trace_storage);
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
-		if (scan_id->s.phsid.trace_storage == nullptr)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->close();
-		    break;
-		  }
-
-		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
-		assert (scan_id->s.phsid.trace_storage != nullptr);
+		manager_p->close();
+		break;
 	      }
-
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
@@ -317,22 +280,11 @@ extern "C"
 
 	if (thread_p->on_trace)
 	  {
-	    if (scan_id->s.phsid.trace_storage == nullptr)
+	    if (!allocate_trace_storage (scan_id, manager_p->get_result_type()))
 	      {
-		size_t alloc_size = sizeof (accumulative_trace_storage);
-		scan_id->s.phsid.trace_storage = ( accumulative_trace_storage *) malloc (alloc_size);
-		if (scan_id->s.phsid.trace_storage == nullptr)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-		    manager_p->close();
-		    break;
-		  }
-
-		scan_id->s.phsid.trace_storage = placement_new ((accumulative_trace_storage *) scan_id->s.phsid.trace_storage,
-						 manager_p->get_result_type());
-		assert (scan_id->s.phsid.trace_storage != nullptr);
+		manager_p->close();
+		break;
 	      }
-
 	    scan_id->s.phsid.trace_storage->add_stats (manager_p->get_trace_handler());
 	  }
 
@@ -403,7 +355,7 @@ extern "C"
     error = file_get_num_user_pages (thread_p, &class_hfid->vfid, &num_user_pages);
     if (error != NO_ERROR)
       {
-	assert_release_error (error != NO_ERROR);
+	assert_release_error (er_errid () != NO_ERROR);
 	return er_errid ();
       }
 
@@ -426,6 +378,9 @@ extern "C"
 	assert (scan_id->type == S_HEAP_SCAN);
 	return NO_ERROR;
       }
+
+    /* update to actual reserved workers */
+    num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
     if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
@@ -472,6 +427,7 @@ extern "C"
 	  {
 	    /* cleanup */
 	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    worker_manager_p = nullptr;	/* prevent dangling pointer (freed by ~manager) */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
 
 	    assert_release_error (er_errid () != NO_ERROR);
@@ -503,6 +459,7 @@ extern "C"
 	  {
 	    /* cleanup */
 	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    worker_manager_p = nullptr;	/* prevent dangling pointer (freed by ~manager) */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
 
 	    assert_release_error (er_errid () != NO_ERROR);
@@ -534,6 +491,7 @@ extern "C"
 	  {
 	    /* cleanup */
 	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    worker_manager_p = nullptr;	/* prevent dangling pointer (freed by ~manager) */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
 
 	    assert_release_error (er_errid () != NO_ERROR);
@@ -555,7 +513,7 @@ extern "C"
 	/* cleanup */
 	if (worker_manager_p != nullptr)
 	  {
-	    worker_manager_p->release_workers (num_parallel_threads);
+	    worker_manager_p->release_workers ();
 	    worker_manager_p = nullptr;
 	  }
 
@@ -605,7 +563,7 @@ namespace parallel_heap_scan
       }
     if (m_worker_manager != nullptr)
       {
-	m_worker_manager->release_workers (m_parallelism);
+	m_worker_manager->release_workers ();
 	m_worker_manager = nullptr;
       }
     if (m_vd != nullptr)
@@ -627,8 +585,6 @@ namespace parallel_heap_scan
   int manager<result_type>::open()
   {
     int h;
-    bool should_check_instnum = false;
-    INPUT_TYPE input_type = INPUT_TYPE::SINGLE_TABLE; /* partition table specification need? */
     VAL_DESCR *new_vd;
     /* TODO: should check instnum, parse instnum, result type */
 
@@ -840,7 +796,7 @@ namespace parallel_heap_scan
 	      }
 	    if (m_worker_manager != nullptr)
 	      {
-		m_worker_manager->release_workers (m_parallelism);
+		m_worker_manager->release_workers ();
 		m_worker_manager = nullptr;
 	      }
 	  }
@@ -898,7 +854,7 @@ namespace parallel_heap_scan
 	  }
 	if (m_worker_manager != nullptr)
 	  {
-	    m_worker_manager->release_workers (m_parallelism);
+	    m_worker_manager->release_workers ();
 	    m_worker_manager = nullptr;
 	  }
       }
@@ -940,8 +896,6 @@ namespace parallel_heap_scan
   template <RESULT_TYPE result_type>
   int manager<result_type>::reset ()
   {
-    /* Save current parallelism and prepare for reset */
-    int parallelism = m_parallelism;
     int err_code = NO_ERROR;
     using worker_manager = parallel_query::worker_manager;
     worker_manager *worker_manager_p = nullptr;
@@ -965,8 +919,7 @@ namespace parallel_heap_scan
     /* Release worker manager */
     if (m_worker_manager != nullptr)
       {
-	m_worker_manager->release_workers (m_parallelism);
-	m_worker_manager = nullptr;
+	m_worker_manager->wait_workers ();
       }
 
     /* Clean up previous value descriptor */
@@ -984,20 +937,13 @@ namespace parallel_heap_scan
 	m_vd = nullptr;
       }
 
-    /* Reserve workers for parallel execution */
-    worker_manager_p = worker_manager::try_reserve_workers (parallelism);
-    if (worker_manager_p == nullptr)
-      {
-	return ER_FAILED;
-      }
-
     m_trace_handler.clear();
 
     /* Open and initialize */
     err_code = open ();
     if (err_code != NO_ERROR)
       {
-	worker_manager_p->release_workers (parallelism);
+	worker_manager_p->release_workers ();
 	return err_code;
       }
 
@@ -1017,7 +963,7 @@ namespace parallel_heap_scan
       }
     if (m_worker_manager != nullptr)
       {
-	m_worker_manager->release_workers (m_parallelism);
+	m_worker_manager->release_workers ();
 	m_worker_manager = nullptr;
       }
     if (m_on_trace)

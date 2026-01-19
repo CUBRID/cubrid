@@ -63,12 +63,7 @@ namespace parallel_query
 
 	  try
 	    {
-	      /* placement new */
-#undef new
-	      new (raw_memory) spawn_manager (thread_ref);
-#define new new(__FILE__, __LINE__)
-
-	      tls_spawn_manager = (spawn_manager *) raw_memory;
+	      tls_spawn_manager = placement_new<spawn_manager> ((spawn_manager *) raw_memory, thread_ref);
 	    }
 	  catch ( ...)
 	    {
@@ -138,12 +133,7 @@ namespace parallel_query
 
 	  try
 	    {
-	      /* placement new */
-#undef new
-	      new (raw_memory) cubxasl::spawner (m_thread_ref);
-#define new new(__FILE__, __LINE__)
-
-	      m_spawner = (cubxasl::spawner *) raw_memory;
+	      m_spawner = placement_new<cubxasl::spawner> ((cubxasl::spawner *) raw_memory, m_thread_ref);
 	    }
 	  catch ( ...)
 	    {

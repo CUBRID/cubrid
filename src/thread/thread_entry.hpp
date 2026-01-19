@@ -306,8 +306,6 @@ namespace cubthread
       entry *m_px_orig_thread_entry;
       bool m_uses_px_stats;
 
-      bool m_skip_end_resource_tracks_in_recycle;
-
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();

@@ -37,15 +37,16 @@ namespace parallel_query
      * task_manager
      */
 
-    task_manager::task_manager (cubthread::entry_workpool *worker_pool, cuberr::context &main_error_context)
-      : m_worker_pool (worker_pool)
+    task_manager::task_manager (worker_manager *worker_manager, cubthread::entry &main_thread_ref)
+      : m_worker_manager (worker_manager)
+      , m_main_thread_ref (main_thread_ref)
+      , m_main_error_context (main_thread_ref.get_error_context())
       , m_all_tasks_done_cv ()
       , m_active_tasks_mutex ()
       , m_active_tasks (0)
       , m_has_error (false)
-      , m_main_error_context (main_error_context)
     {
-      assert (m_worker_pool != nullptr);
+      assert (m_worker_manager != nullptr);
     }
 
     void
@@ -56,7 +57,7 @@ namespace parallel_query
 	std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
 	++m_active_tasks;
       }
-      cubthread::get_manager()->push_task (m_worker_pool, task);
+      m_worker_manager->push_task (task);
     }
 
     void
@@ -64,6 +65,7 @@ namespace parallel_query
     {
       std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
       --m_active_tasks;
+      m_worker_manager->pop_task ();
       if (m_active_tasks == 0)
 	{
 	  m_all_tasks_done_cv.notify_all ();
@@ -75,12 +77,25 @@ namespace parallel_query
     {
       std::unique_lock<std::mutex> lock (m_active_tasks_mutex);
       m_all_tasks_done_cv.wait (lock, [this] { return m_active_tasks == 0; });
+      m_worker_manager->wait_workers ();
     }
 
-    bool
-    task_manager::has_error () const noexcept
+    void
+    task_manager::handle_error (cubthread::entry &thread_ref)
     {
-      return m_has_error.load();
+      if (!m_has_error.exchange (true, std::memory_order_acq_rel))
+	{
+	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+	  notify_stop ();
+	}
+      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
+    }
+
+    void
+    task_manager::notify_stop ()
+    {
+      std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
+      m_all_tasks_done_cv.notify_all ();
     }
 
     bool
@@ -111,30 +126,6 @@ namespace parallel_query
 	{
 	  (void) logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
 	}
-    }
-
-    void
-    task_manager::handle_error (cubthread::entry &thread_ref)
-    {
-      if (!m_has_error.exchange (true))
-	{
-	  m_main_error_context.get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-	  notify_stop ();
-	}
-      logtb_set_tran_index_interrupt (&thread_ref, thread_ref.tran_index, true);
-    }
-
-    void
-    task_manager::notify_stop ()
-    {
-      std::lock_guard<std::mutex> lock (m_active_tasks_mutex);
-      m_all_tasks_done_cv.notify_all ();
-    }
-
-    void
-    task_manager::stop_execution ()
-    {
-      m_worker_pool->stop_execution ();
     }
 
     /*
@@ -177,6 +168,8 @@ namespace parallel_query
     void
     split_task::execute (cubthread::entry &thread_ref)
     {
+      task_execution_guard guard (thread_ref, m_task_manager);
+
       QFILE_LIST_ID *list_id;
       QFILE_LIST_ID **part_list_id;
       QFILE_LIST_ID **temp_part_list_id = nullptr;
@@ -230,7 +223,7 @@ namespace parallel_query
 
       if (thread_is_on_trace (&thread_ref))
 	{
-	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager,m_index);
+	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
 	}
       else
@@ -652,6 +645,8 @@ namespace parallel_query
     void
     join_task::execute (cubthread::entry &thread_ref)
     {
+      task_execution_guard guard (thread_ref, m_task_manager);
+
       spawn_manager *spawn_manager = nullptr;
       HASHJOIN_CONTEXT *context = nullptr;
       int error = NO_ERROR;
@@ -669,7 +664,7 @@ namespace parallel_query
 
       if (thread_is_on_trace (&thread_ref))
 	{
-	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager,m_index);
+	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
 	}
       else
