@@ -1643,8 +1643,8 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
       if (thread_p->m_px_orig_thread_entry) \
       { \
-	THREAD_ENTRY *target_thread_p = thread_get_main_thread (thread_p); \
-        target_thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
+	THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p); \
+        main_thread_p->event_stats.extend_pages += DISK_SECTS_NPAGES (nsect_extended); \
       } \
     } \
   while (0)

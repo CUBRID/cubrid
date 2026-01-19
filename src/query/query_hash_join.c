@@ -938,10 +938,10 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       db_private_free_and_init (thread_p, manager->px_worker_stats);
     }
 
-  THREAD_ENTRY *parent_thread_p = thread_get_main_thread (thread_p);
+  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
 
   /* only top-level parent */
-  if (parent_thread_p == thread_p)
+  if (main_thread_p == thread_p)
     {
       if (thread_p->m_px_stats != NULL && !thread_p->m_uses_px_stats)
 	{

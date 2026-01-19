@@ -476,26 +476,35 @@ thread_get_main_thread (cubthread::entry *thread_p)
 {
   assert (thread_p != nullptr);
 
-  /* fast path */
-  cubthread::entry *main_thread_p = thread_p->m_px_orig_thread_entry;
-  if (main_thread_p == nullptr || main_thread_p == thread_p)
-    {
-      return thread_p;
-    }
+  cubthread::entry *current = thread_p;
 
-  while (main_thread_p->m_px_orig_thread_entry != nullptr)
-    {
-      main_thread_p = main_thread_p->m_px_orig_thread_entry;
+  // Safety limit to prevent infinite traversal in case of corrupted hierarchy
+  constexpr int MAX_DEPTH = 8;
 
-      /*cycle detection */
-      if (main_thread_p == thread_p)
+  for (int i = 0; i < MAX_DEPTH; ++i)
+    {
+      cubthread::entry *parent = current->m_px_orig_thread_entry;
+
+      // Found root (nullptr) or a self-referencing main thread
+      if (parent == nullptr || parent == current)
 	{
-	  break;
+
+	  return current;
 	}
+
+      // Detect logical cycles (looping back to the starting thread)
+      if ( unlikely (parent == thread_p))
+	{
+	  assert (false && "Cycle detected in thread hierarchy");
+	  return thread_p;
+	}
+
+      current = parent;
     }
 
-  assert (main_thread_p != nullptr);
-  return main_thread_p;
+  // Fallback for unexpectedly deep chains or undetected complex cycles
+  assert (false && "Thread hierarchy depth exceeded limit");
+  return thread_p;
 }
 
 inline void
