@@ -1128,7 +1128,8 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_SEEN_OR;
 		  continue;
 		}
-	      else if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p) || match_word_ci ("package", &p))
+	      else if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p)
+		       || match_word_ci ("package", &p))
 		{
 		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
 		  continue;
