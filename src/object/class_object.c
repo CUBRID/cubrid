@@ -90,12 +90,10 @@ static const char *Constraint_properties[] = {
   ((int)(sizeof(Constraint_types)/sizeof(Constraint_types[0])))
 #define NUM_CONSTRAINT_PROPERTIES       \
   ((int)(sizeof(Constraint_properties)/sizeof(Constraint_properties[0])))
-/* NOTE: SM_IS_CONSTRAINT_UNIQUE_FAMILY includes both PRIMARY KEY and UNIQUE constraints;
- * therefore, PRIMARY KEY is not checked separately to avoid redundant comparisons.
- */
 #define IS_HA_REPLICATION_KEY_CONSTRAINT(c) \
+  ((c)->type == SM_CONSTRAINT_PRIMARY_KEY || \
     (SM_IS_CONSTRAINT_UNIQUE_FAMILY((c)->type) && \
-     sm_has_non_null_attribute((c)->attributes))
+     sm_has_non_null_attribute((c)->attributes)))
 
 static AREA *Template_area = NULL;
 

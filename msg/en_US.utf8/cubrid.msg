@@ -1462,7 +1462,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1367 DBLINK Transaction ABORTED: %1$s
 
 1368 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
-1369 HA constraint violation: Replication option change is not allowed in HA mode.
+1369 HA constraint violation: Changing replication option is not allowed in HA mode.
 1370 HA constraint violation: A table with a foreign key must have the same replication option as its referenced table.
 
 1371 Last Error
