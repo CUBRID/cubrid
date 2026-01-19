@@ -42,6 +42,8 @@ namespace parallel_heap_scan
     err_code = initialize (thread_ref);
     if (err_code != NO_ERROR)
       {
+	m_err_messages->move_top_error_message_to_this();
+	m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	return;
       }
     loop (thread_ref);
@@ -149,9 +151,14 @@ namespace parallel_heap_scan
     db_private_free (&thread_ref, m_vd);
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
-    while (main_thread_p->m_px_orig_thread_entry != main_thread_p)
+    while (main_thread_p->m_px_orig_thread_entry != nullptr)
       {
+	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
+	  {
+	    break;
+	  }
 	main_thread_p = main_thread_p->m_px_orig_thread_entry;
+	assert (main_thread_p != m_parent_thread_p);
       }
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
@@ -179,9 +186,15 @@ namespace parallel_heap_scan
     THREAD_ENTRY *main_thread_p = m_parent_thread_p;
     int err_code = NO_ERROR;
     int i;
-    while (main_thread_p->m_px_orig_thread_entry != main_thread_p)
+
+    while (main_thread_p->m_px_orig_thread_entry != nullptr)
       {
+	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
+	  {
+	    break;
+	  }
 	main_thread_p = main_thread_p->m_px_orig_thread_entry;
+	assert (main_thread_p != m_parent_thread_p);
       }
 
     if (m_uses_xasl_clone)

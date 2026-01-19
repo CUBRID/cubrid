@@ -87,7 +87,6 @@ static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 /* ========================================================================
  * Static Variable Definitions
  * ======================================================================== */
-static SOCKET srv_sock_fd;
 static CGW_CONTEXT *cgw_current_ctx = NULL;	/* Global CGW context for db_connect callback */
 
 /* ========================================================================
@@ -201,7 +200,7 @@ static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, 
 static void cgw_cleanup_session (void);
 
 static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
-static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
 
 
 #if defined(WINDOWS)
@@ -474,7 +473,7 @@ cgw_cleanup_session (void)
 }
 
 static FN_RETURN
-process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd)
 {
   MSG_HEADER client_msg_header;
   MSG_HEADER cas_msg_header;
