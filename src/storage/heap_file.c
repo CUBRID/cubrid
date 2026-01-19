@@ -21456,6 +21456,12 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
 
+  if (has_oos)
+    {
+      // preserve HAS_OOS flag in SA mode
+      mvcc_rec_header.mvcc_flag |= OR_MVCC_FLAG_HAS_OOS;
+    }
+
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
       /* for multipage records, set MVCC header size to maximum size */
@@ -21466,11 +21472,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   if (or_mvcc_set_header (insert_context->recdes_p, &mvcc_rec_header) != NO_ERROR)
     {
       return ER_FAILED;
-    }
-
-  if (has_oos)
-    {
-      insert_context->recdes_p->data[0] |= OR_MVCC_FLAG_HAS_OOS;
     }
 
   /* all ok */
