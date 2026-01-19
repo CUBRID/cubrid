@@ -7951,10 +7951,15 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 	  return sc;
 	}
 
-      context->recdes_p->length = build_record.get_size ();
-
       // return OOS value-expanded record to caller
       // TODO: what if OOS-expanded record doesn't fit in original area (2 * DB_PAGESIZE)?
+      if (context->recdes_p->area_size < (int) build_record.get_size ())
+	{
+	  heap_attrinfo_end (thread_p, &attr_info);
+	  return S_DOESNT_FIT;
+	}
+
+      context->recdes_p->length = build_record.get_size ();
       assert (context->recdes_p->area_size >= context->recdes_p->length);
       std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
 
