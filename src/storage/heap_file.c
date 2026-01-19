@@ -27563,12 +27563,6 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 static bool
 heap_recdes_contains_oos (const RECDES * record)
 {
-  OR_BUF buf;
-  int rc = NO_ERROR;
-  or_init (&buf, record->data, record->length);
-
-  int repid_and_flag_bits = or_mvcc_get_repid_and_flags (&buf, &rc);
-
-  bool has_oos = ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_HAS_OOS) != 0;
-  return has_oos;
+  int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
+  return flag & OR_MVCC_FLAG_HAS_OOS;
 };
