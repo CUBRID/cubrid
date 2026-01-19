@@ -96,14 +96,20 @@ namespace parallel_query
 
 	  m_thread_ref.m_px_orig_thread_entry = &main_thread_ref;
 	  m_thread_ref.conn_entry = main_thread_ref.conn_entry;
-	  m_thread_ref.tran_index = LOG_FIND_THREAD_TRAN_INDEX (&main_thread_ref);
+	  m_thread_ref.tran_index = main_thread_ref.tran_index;
 	  m_thread_ref.on_trace = main_thread_ref.on_trace;
+
+	  assert (m_thread_ref.conn_entry != nullptr);
+	  assert (m_thread_ref.tran_index != NULL_TRAN_INDEX);
 
 	  m_thread_ref.push_resource_tracks ();
 	}
 
 	inline ~task_execution_guard ()
 	{
+	  m_thread_ref.conn_entry = nullptr;
+	  m_thread_ref.on_trace = false;
+
 	  m_thread_ref.pop_resource_tracks ();
 	}
 
