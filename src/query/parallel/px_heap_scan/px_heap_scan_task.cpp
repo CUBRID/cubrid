@@ -346,6 +346,18 @@ namespace parallel_heap_scan
 	      {
 		result_handler_p->write (&thread_ref);
 	      }
+
+	    /* clear dptr lists
+	     * There are mainly 4 types of dptr:
+	     * 1. scalar correlated subquery - In this case, xasl is evaluated in fetch_peek_dbval during write (end_one_iteration).
+	     * 2. exists - In this case, it is evaluated in eval_pred (line 320).
+	     * 3. other if_pred such as IN clause - In this case, the checker restricts the mergeable list.
+	     * 4. correlated subquery in FROM clause - In this case, it does not work as a mergeable list because there is a join.
+	     *
+	     * Therefore, dptr that reaches here are only those that need to be re-executed per row during parallel heap scan.
+	     * Thus, it is correct to clear all dptr.
+	     */
+
 	    if (m_xasl->dptr_list)
 	      {
 		for (XASL_NODE *xaslp = m_xasl->dptr_list; xaslp; xaslp = xaslp->next)
