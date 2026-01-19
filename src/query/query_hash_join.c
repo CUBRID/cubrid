@@ -23,6 +23,7 @@
 #include "query_hash_join.h"
 
 #include "dbtype.h"		/* db_make_null */
+#include "error_manager.h"	/* er_errid, NO_ERROR, assert_release_error */
 #include "fetch.h"		/* fetch_val_list */
 #include "list_file.h"		/* qfile_open_list, qfile_close_list */
 #include "memory_alloc.h"	/* CEIL_PTVDIV */
@@ -34,6 +35,7 @@
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
+#include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -936,10 +938,10 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       db_private_free_and_init (thread_p, manager->px_worker_stats);
     }
 
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *parent_thread_p = thread_get_main_thread (thread_p);
 
   /* only top-level parent */
-  if (parent_thread_p == NULL || parent_thread_p == thread_p)
+  if (parent_thread_p == thread_p)
     {
       if (thread_p->m_px_stats != NULL && !thread_p->m_uses_px_stats)
 	{

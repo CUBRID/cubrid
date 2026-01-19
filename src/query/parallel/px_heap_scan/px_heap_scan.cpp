@@ -40,7 +40,7 @@
 
 extern "C"
 {
-  static bool
+  static inline bool
   allocate_trace_storage (SCAN_ID *scan_id, parallel_heap_scan::RESULT_TYPE result_type)
   {
     using accumulative_trace_storage = parallel_heap_scan::accumulative_trace_storage;
@@ -598,17 +598,7 @@ namespace parallel_heap_scan
       {
 	m_uses_xasl_clone = false;
 
-	THREAD_ENTRY *main_thread_p = m_thread_p;
-	while (main_thread_p->m_px_orig_thread_entry != nullptr)
-	  {
-	    if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
-	      {
-		break;
-	      }
-	    main_thread_p = main_thread_p->m_px_orig_thread_entry;
-	    assert (main_thread_p != m_thread_p);
-	  }
-
+	THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_thread_p);
 	if (main_thread_p->xasl_unpack_info_ptr)
 	  {
 	    /* use unpack info ptr for execute. */

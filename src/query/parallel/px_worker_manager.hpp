@@ -29,7 +29,7 @@
 
 #include <atomic>
 
-#include "thread_manager.hpp"
+#include "thread_entry_task.hpp"	/* cubthread::entry_task */
 
 namespace parallel_query
 {

@@ -23,7 +23,9 @@
 #include "px_hash_join.hpp"
 #include "px_hash_join_task_manager.hpp"
 
-#include "list_file.h"	/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID */
+#include "error_manager.h"		/* er_errid, NO_ERROR, assert_release_error, ASSERT_NO_ERROR_OR_INTERRUPTED */
+#include "list_file.h"		/* qfile_destroy_list, QFILE_FREE_AND_INIT_LIST_ID */
+#include "storage_common.h"		/* S_BEFORE, VPID_SET_NULL */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -61,17 +63,7 @@ namespace parallel_query
 	  return er_errid ();
 	}
 
-      THREAD_ENTRY *main_thread_p = &thread_ref;
-      while (main_thread_p->m_px_orig_thread_entry != nullptr)
-	{
-	  if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
-	    {
-	      break;
-	    }
-	  main_thread_p = main_thread_p->m_px_orig_thread_entry;
-	  assert (main_thread_p != &thread_ref);
-	}
-
+      THREAD_ENTRY *main_thread_p = thread_get_main_thread (&thread_ref);
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       split_task *task = nullptr;
 
@@ -166,17 +158,7 @@ namespace parallel_query
 
       task_cnt = manager->num_parallel_threads;
 
-      THREAD_ENTRY *main_thread_p = &thread_ref;
-      while (main_thread_p->m_px_orig_thread_entry != nullptr)
-	{
-	  if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
-	    {
-	      break;
-	    }
-	  main_thread_p = main_thread_p->m_px_orig_thread_entry;
-	  assert (main_thread_p != &thread_ref);
-	}
-
+      THREAD_ENTRY *main_thread_p = thread_get_main_thread (&thread_ref);
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       join_task *task = nullptr;
 

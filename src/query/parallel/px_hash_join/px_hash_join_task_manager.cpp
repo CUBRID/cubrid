@@ -23,8 +23,12 @@
 #include "px_hash_join_spawn_manager.hpp"
 #include "px_hash_join_task_manager.hpp"
 
+#include "error_manager.h"		/* er_errid, er_set, NO_ERROR, assert_release_error */
+#include "log_impl.h"			/* logtb_set_tran_index_interrupt, logtb_get_check_interrupt, logtb_is_interrupted_tran */
+#include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
 #include "object_representation.h"	/* QFILE_GET_TUPLE_COUNT, QFILE_GET_NEXT_VPID */
-#include "query_manager.h"	/* qmgr_get_old_page, qfile_has_next_page, qmgr_set_dirty_page, ... */
+#include "perf_monitor.h"		/* perfmon_update_min_timeval, perfmon_update_max_timeval */
+#include "query_manager.h"		/* qmgr_get_old_page, qfile_has_next_page, qmgr_set_dirty_page, ... */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

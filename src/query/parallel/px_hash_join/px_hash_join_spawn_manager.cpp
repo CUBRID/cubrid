@@ -22,6 +22,9 @@
 
 #include "px_hash_join_spawn_manager.hpp"
 
+#include "error_manager.h"		/* er_errid, NO_ERROR, assert_release_error */
+#include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 

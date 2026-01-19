@@ -1196,9 +1196,9 @@ perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
       return;
     }
 
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *parent_thread_p = thread_get_main_thread (thread_p);
 
-  if (parent_thread_p == NULL || parent_thread_p == thread_p)
+  if (parent_thread_p == thread_p)
     {
       return;
     }
@@ -1256,10 +1256,10 @@ perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
       return;
     }
 
-  THREAD_ENTRY *parent_thread_p = thread_p->m_px_orig_thread_entry;
+  THREAD_ENTRY *parent_thread_p = thread_get_main_thread (thread_p);
 
   /* Skip if not the top-level parent. */
-  if (parent_thread_p != NULL && parent_thread_p != thread_p)
+  if (parent_thread_p != thread_p)
     {
       return;
     }

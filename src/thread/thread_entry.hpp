@@ -471,6 +471,33 @@ thread_set_sort_stats_active (cubthread::entry *thread_p, bool new_flag)
   return old_flag;
 }
 
+inline cubthread::entry *
+thread_get_main_thread (cubthread::entry *thread_p)
+{
+  assert (thread_p != nullptr);
+
+  /* fast path */
+  cubthread::entry *main_thread_p = thread_p->m_px_orig_thread_entry;
+  if (main_thread_p == nullptr || main_thread_p == thread_p)
+    {
+      return thread_p;
+    }
+
+  while (main_thread_p->m_px_orig_thread_entry != nullptr)
+    {
+      main_thread_p = main_thread_p->m_px_orig_thread_entry;
+
+      /*cycle detection */
+      if (main_thread_p == thread_p)
+	{
+	  break;
+	}
+    }
+
+  assert (main_thread_p != nullptr);
+  return main_thread_p;
+}
+
 inline void
 thread_lock_entry (cubthread::entry *thread_p)
 {

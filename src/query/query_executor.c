@@ -8535,17 +8535,7 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
   THREAD_ENTRY *target_thread_p = NULL;
   if (thread_p->m_px_orig_thread_entry != NULL)
     {
-      target_thread_p = thread_p;
-      while (target_thread_p->m_px_orig_thread_entry != NULL)
-	{
-	  if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
-	    {
-	      break;
-	    }
-	  target_thread_p = target_thread_p->m_px_orig_thread_entry;
-	  assert (target_thread_p != thread_p);
-	}
-      assert (target_thread_p != NULL);
+      target_thread_p = thread_get_main_thread (thread_p);
       pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);
     }
 #endif

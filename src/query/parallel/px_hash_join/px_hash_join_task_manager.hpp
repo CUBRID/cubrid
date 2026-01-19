@@ -30,6 +30,7 @@
 
 #include "error_context.hpp"		/* cuberr::context */
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
+#include "storage_common.h"		/* NULL_TRAN_INDEX */
 #include "thread_entry.hpp"		/* cubthread::entry */
 #include "thread_entry_task.hpp"	/* cubthread::entry_task */
 
