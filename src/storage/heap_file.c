@@ -7931,7 +7931,7 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 	  return S_ERROR;
 	}
 
-      err = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, context->recdes_p, &attr_info);
+      err = heap_attrinfo_read_dbvalues (thread_p, context->oid_p, context->recdes_p, &attr_info);
       if (err != NO_ERROR)
 	{
 	  return S_ERROR;
