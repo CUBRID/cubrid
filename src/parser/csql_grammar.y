@@ -6108,7 +6108,7 @@ synonym_name
 
 package_name_without_dot
 	: user_specified_name_without_dot
-		{ DBG_TRACE_GRAMMAR(procedure_or_function_name_without_dot, : user_specified_name_without_dot);
+		{ DBG_TRACE_GRAMMAR(package_name_without_dot, : user_specified_name_without_dot);
 			$$ = $1;
 		}
 	;

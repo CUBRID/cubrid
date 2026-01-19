@@ -20063,7 +20063,7 @@ pt_print_create_package (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.pkg.comment)
     {
-      r1 = pt_print_bytes (parser, p->info.sp.comment);
+      r1 = pt_print_bytes (parser, p->info.pkg.comment);
       q = pt_append_nulstring (parser, q, " comment ");
       q = pt_append_varchar (parser, q, r1);
     }

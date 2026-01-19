@@ -12444,7 +12444,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
     case PT_DROP_PACKAGE:
     case PT_ALTER_PACKAGE:
       PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_PT_SEMANTIC),
-		   "pacakge related statements are not implemented yet -", parser_print_tree (parser, node));
+		   "package related statements are not implemented yet -", parser_print_tree (parser, node));
       break;
 
     default:
