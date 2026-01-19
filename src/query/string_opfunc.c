@@ -272,7 +272,8 @@ static long calc_unix_timestamp (struct tm *time_argument);
 static int parse_for_next_int (char **ch, char *output);
 #endif
 
-static int db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values, int *sign);
+static int db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values,
+						     int *is_positive_value);
 static int db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr,
 					  const int unit, int is_add);
 static int db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * db_days,
@@ -20378,7 +20379,7 @@ db_date_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VA
 }
 
 static int
-db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values, int *sign)
+db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values, int *is_positive_value)
 {
   int cnt = 0, base;
   int max_composite;
@@ -20457,12 +20458,12 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
   // Like MySQL, it only accepts the first sign character, excluding spaces.
   if (*expr_s == '-')
     {
-      *sign = 0;
+      *is_positive_value = 0;
       expr_s++;
     }
   else
     {
-      *sign = 1;
+      *is_positive_value = 1;
     }
 
   while (*expr_s)
@@ -20528,8 +20529,8 @@ static int
 db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit,
 			       int is_add)
 {
-  int sign = 0;
-  int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
+  int is_positive_value = 0;
+  bool date_only = false;
   DB_TYPE res_type, expr_type;
   const char *expr_s = NULL, *date_s = NULL;
   char res_s[64];
@@ -20600,11 +20601,11 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (unit_int_val >= 0)
 	{
-	  sign = 1;
+	  is_positive_value = 1;
 	}
       else
 	{
-	  sign = 0;
+	  is_positive_value = 0;
 	  unit_int_val = -unit_int_val;
 	}
     }
@@ -20618,7 +20619,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
        * For the simple unit tags, expr is integer
        */
 
-      error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &sign);
+      error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &is_positive_value);
       if (error_status != NO_ERROR)
 	{
 	  db_make_null (result);
@@ -20635,45 +20636,41 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     {
     case PT_MILLISECOND:
       composite_values[COMPOSITE_MILLISECOND] = unit_int_val;
-      type = 1;
       break;
 
     case PT_SECOND:
       composite_values[COMPOSITE_SECOND] = unit_int_val;
-      type = 1;
       break;
 
     case PT_MINUTE:
       composite_values[COMPOSITE_MINUTE] = unit_int_val;
-      type = 1;
       break;
 
     case PT_HOUR:
       composite_values[COMPOSITE_HOUR] = unit_int_val;
-      type = 1;
       break;
 
     case PT_DAY:
       composite_values[COMPOSITE_DAY] = unit_int_val;
-      type = 2;
+      date_only = true;
       break;
     case PT_WEEK:
       composite_values[COMPOSITE_DAY] = unit_int_val * 7;
-      type = 2;
+      date_only = true;
       break;
 
     case PT_MONTH:
       composite_values[COMPOSITE_MONTH] = unit_int_val;
-      type = 2;
+      date_only = true;
       break;
     case PT_QUARTER:
       composite_values[COMPOSITE_MONTH] = unit_int_val * 3;
-      type = 2;
+      date_only = true;
       break;
 
     case PT_YEAR:
       composite_values[COMPOSITE_YEAR] = unit_int_val;
-      type = 2;
+      date_only = true;
       break;
 
     case PT_SECOND_MILLISECOND:
@@ -20683,7 +20680,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     case PT_HOUR_SECOND:
     case PT_HOUR_MINUTE:
       assert (expr_s);
-      type = 1;
       break;
 
     case PT_DAY_MILLISECOND:
@@ -20691,12 +20687,11 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     case PT_DAY_MINUTE:
     case PT_DAY_HOUR:
       assert (expr_s);
-      type = 3;
       break;
 
     case PT_YEAR_MONTH:
       assert (expr_s);
-      type = 2;
+      date_only = true;
       break;
 
     default:
@@ -20853,7 +20848,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  return ER_DATE_CONVERSION;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
 	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
@@ -20870,7 +20865,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  goto error;
 	}
 
-      if (type == 2)
+      if (date_only)
 	{
 	  db_date_encode (&db_date, m, d, y);
 
@@ -20905,7 +20900,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	      db_make_date (result, m, d, y);
 	    }
 	}
-      else if (type & 1)
+      else
 	{
 	  db_datetime.date = db_datetime.time = 0;
 	  db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
@@ -20985,7 +20980,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  return ER_DATE_CONVERSION;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
 	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
@@ -21076,7 +21071,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  return ER_TIMESTAMP_CONVERSION;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
 	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
