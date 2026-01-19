@@ -7938,8 +7938,12 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 	}
 
       // *INDENT-OFF*
-      record_descriptor build_record (cubmem::STANDARD_BLOCK_ALLOCATOR);
+      RECDES recdes;
+      recdes_allocate_data_area(&recdes, context->recdes_p->length);
+      record_descriptor build_record (cubmem::CSTYLE_BLOCK_ALLOCATOR);
       // *INDENT-ON*
+
+      build_record.set_external_buffer (recdes.data, recdes.area_size);
 
       SCAN_CODE sc = heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
       if (sc != S_SUCCESS)
