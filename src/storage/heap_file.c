@@ -35,6 +35,7 @@
 
 #include "heap_file.h"
 #include "oos_file.hpp"
+#include "scope_exit.hpp"
 
 #include "deduplicate_key.h"
 #include "porting.h"
@@ -7931,6 +7932,13 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 	  return S_ERROR;
 	}
 
+      // *INDENT-OFF*
+      auto attr_info_guard = make_scope_exit ([&](){
+					      heap_attrinfo_end (thread_p, &attr_info);
+					      }
+      );
+      // *INDENT-ON*
+
       err = heap_attrinfo_read_dbvalues (thread_p, context->oid_p, context->recdes_p, &attr_info);
       if (err != NO_ERROR)
 	{
@@ -7939,7 +7947,11 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 
       // *INDENT-OFF*
       RECDES recdes;
-      recdes_allocate_data_area(&recdes, context->recdes_p->length);
+      err = recdes_allocate_data_area(&recdes, context->recdes_p->length);
+      if (err != NO_ERROR) {
+	  return S_ERROR;
+      }
+
       record_descriptor build_record (cubmem::CSTYLE_BLOCK_ALLOCATOR);
       // *INDENT-ON*
 
@@ -7955,15 +7967,12 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
       // TODO: what if OOS-expanded record doesn't fit in original area (2 * DB_PAGESIZE)?
       if (context->recdes_p->area_size < (int) build_record.get_size ())
 	{
-	  heap_attrinfo_end (thread_p, &attr_info);
 	  return S_DOESNT_FIT;
 	}
 
       context->recdes_p->length = build_record.get_size ();
       assert (context->recdes_p->area_size >= context->recdes_p->length);
       std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
-
-      heap_attrinfo_end (thread_p, &attr_info);
     }
 
   return S_SUCCESS;
