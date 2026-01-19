@@ -835,6 +835,18 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
+  {RVOOS_INSERT,
+   "RVOOS_INSERT",
+   oos_rv_redo_delete,
+   oos_rv_redo_insert,
+   NULL,
+   NULL},
+  {RVOOS_DELETE,
+   "RVOOS_DELETE",
+   heap_rv_redo_insert,
+   heap_rv_redo_delete,
+   NULL,
+   NULL}
 };
 
 /*

@@ -134,7 +134,9 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVREPL_DATA_UPDATE_START \
    || (rcvindex) == RVREPL_DATA_UPDATE_END \
    || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_INSERT \
-   || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE)
+   || (rcvindex) == RVBT_ONLINE_INDEX_UNDO_TRAN_DELETE \
+   || (rcvindex) == RVOOS_INSERT \
+   || (rcvindex) == RVOOS_DELETE)
 
 #define tde_er_log(...) if (prm_get_bool_value (PRM_ID_ER_LOG_TDE)) _er_log_debug (ARG_FILE_LINE, "TDE: " __VA_ARGS__)
 

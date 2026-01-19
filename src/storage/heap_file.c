@@ -16951,6 +16951,60 @@ heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return NO_ERROR;
 }
 
+int
+oos_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  INT16 slotid;
+
+  slotid = rcv->offset;
+  (void) spage_delete (thread_p, rcv->pgptr, slotid);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+int
+oos_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  INT16 slotid;
+  RECDES recdes;
+  int sp_success;
+
+  slotid = rcv->offset;
+  recdes.type = *(INT16 *) (rcv->data);
+  recdes.data = (char *) (rcv->data) + sizeof (recdes.type);
+  recdes.area_size = recdes.length = rcv->length - sizeof (recdes.type);
+
+  if (recdes.type == REC_ASSIGN_ADDRESS)
+    {
+      /*
+       * The data here isn't really the data to be inserted (because there
+       * wasn't any); instead it's the number of bytes that were reserved
+       * for future insertion.  Change recdes.length to reflect the number
+       * of bytes to reserve, but there's no need for a valid recdes.data:
+       * spage_insert_for_recovery knows to ignore it in this case.
+       */
+      recdes.area_size = recdes.length = *(INT16 *) recdes.data;
+      recdes.data = NULL;
+    }
+
+  sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid, &recdes);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  if (sp_success != SP_SUCCESS)
+    {
+      /* Unable to redo insertion */
+      if (sp_success != SP_ERROR)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * heap_mvcc_log_delete () - Log normal MVCC heap delete operation (just
  *			     append delete MVCCID and next version OID).

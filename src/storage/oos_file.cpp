@@ -25,6 +25,7 @@
 #include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "page_buffer_util.hpp"
+#include "heap_file.h"
 
 #include "oos_file.hpp"
 #include "oos_log.hpp"
@@ -61,6 +62,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 		       OOS_RECORD_HEADER &out_header);
+static void
+oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -313,6 +316,8 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &re
     oid.pageid = vpid.pageid;
     oid.slotid = slotid;
     oid.volid = vpid.volid;
+
+    oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_rec);
   }
   assert (oos_rec.data == nullptr); // should be freed by scope_exit
 
@@ -504,15 +509,19 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
   int err = NO_ERROR;
   PAGE_TYPE page_type = PAGE_OOS;
 
+  log_sysop_start (thread_p);
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, nullptr);
   if (err)
     {
       oos_error ("file_alloc failed");
+      log_sysop_abort (thread_p);
       return nullptr;
     }
 
   oos_trace ("allocated new page {volid=%d, pageid=%d}",
 	     vpid_out.volid, vpid_out.pageid);
+
+  log_sysop_commit (thread_p);
 
   return pgbuf_fix_auto_unfix (thread_p, &vpid_out, OLD_PAGE,
 			       PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -573,18 +582,43 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
 {
+  PAGE_TYPE ptype = * (PAGE_TYPE *) args;
   int err = NO_ERROR;
 
-  err = file_init_page_type (thread_p, page, args);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
+  pgbuf_set_page_ptype (thread_p, page, ptype);
 
   spage_initialize (thread_p, page, ANCHORED, OOS_ALIGNMENT, false);
+
+  // (PGLENGTH)ptype is used in pgbuf_rv_new_page_redo to set page type during redo
+  log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) ptype, 0, SPAGE_HEADER_SIZE, NULL,
+			     (SPAGE_HEADER *) page);
+
+  pgbuf_set_dirty (thread_p, page, DONT_FREE);
   return err;
 }
 
+/*
+ * oos_log_insert_physical () - add logging information for physical insertion
+ *   thread_p(in): thread entry
+ *   page_p(in): page where insert was performed
+ *   vfid_p(in): virtual file id
+ *   oid_p(in): newly inserted object id
+ *   recdes_p(in): record descriptor of inserted record
+ */
+static void
+oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p)
+{
+  LOG_DATA_ADDR log_addr;
+  INT16 bytes_reserved;
+  RECDES temp_recdes;
+
+  /* populate address field */
+  log_addr.vfid = vfid_p;
+  log_addr.offset = oid_p->slotid;
+  log_addr.pgptr = page_p;
+
+  log_append_undoredo_recdes (thread_p, RVOOS_INSERT, &log_addr, NULL, recdes_p);
+}
 
 // TODO: since this value never changes, we can make it a constant or static variable,
 // and make it initialized only once in something like oos_boot().
