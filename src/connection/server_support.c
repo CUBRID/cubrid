@@ -2765,6 +2765,7 @@ css_server_task::execute (context_type &thread_ref)
   if (session_p != NULL)
     {
       thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
+      pgbuf_thread_variables_init (&thread_ref);
     }
   else
     {
