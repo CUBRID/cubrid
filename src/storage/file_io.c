@@ -133,6 +133,19 @@
 /* TODO: why is this in client module?                                  */
 /************************************************************************/
 
+/* Suppress GCC -Wformat-truncation warnings for PATH_MAX-based snprintf usage */
+#if defined (__GNUC__)
+#define DISABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic push") \
+  _Pragma("GCC diagnostic ignored \"-Wformat-truncation\"")
+
+#define ENABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic pop")
+#else
+#define DISABLE_FMT_TRUNC_WARNING
+#define ENABLE_FMT_TRUNC_WARNING
+#endif
+
 /*
  * Message id in the set MSGCAT_SET_IO
  * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
@@ -11973,10 +11986,15 @@ fileio_lob_remove_dir (char *path)
 	  continue;
 	}
 
-      snprintf (sub_path, (strlen (path) + 1 + strlen (dir_entry->d_name) + 1), "%s%c%s", path, PATH_SEPARATOR,
-		dir_entry->d_name);
+#if defined (__GNUC__)
+      DISABLE_FMT_TRUNC_WARNING
+#endif
+      snprintf (sub_path, PATH_MAX, "%s%c%s", path, PATH_SEPARATOR, dir_entry->d_name);
 
-      if (stat (sub_path, &statbuf) != 0)
+#if defined (__GNUC__)
+      ENABLE_FMT_TRUNC_WARNING
+#endif
+	if (stat (sub_path, &statbuf) != 0)
 	{
 	  continue;
 	}
@@ -12045,10 +12063,15 @@ fileio_lob_remove_keyword_dir (const char *keyword)
 
       if (strncmp (dir_entry->d_name, keyword, strlen (keyword)) == 0)
 	{
-	  snprintf (sub_path, (strlen (es_base_dir) + 1 + strlen (dir_entry->d_name) + 1), "%s%c%s", es_base_dir,
-		    PATH_SEPARATOR, dir_entry->d_name);
+#if defined (__GNUC__)
+	  DISABLE_FMT_TRUNC_WARNING
+#endif
+	  snprintf (sub_path, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dir_entry->d_name);
 
-	  if (stat (sub_path, &statbuf) != 0)
+#if defined (__GNUC__)
+	  ENABLE_FMT_TRUNC_WARNING
+#endif
+	    if (stat (sub_path, &statbuf) != 0)
 	    {
 	      continue;
 	    }
