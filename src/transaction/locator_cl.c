@@ -5884,6 +5884,7 @@ locator_remove_class (MOP class_mop)
   HFID *insts_hfid;		/* Heap of instances of the class */
   SM_CLASS *class_;		/* class info for checking LOB attributes */
   SM_ATTRIBUTE *attr;		/* attribute info for checking LOB attributes */
+  bool lob_attr_exist = false;
   const char *classname;	/* The classname */
   int attrid_arr[1];
   int error_code = NO_ERROR;
@@ -5912,11 +5913,25 @@ locator_remove_class (MOP class_mop)
 
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      attrid_arr[0] = -1;
-      error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
-      if (error_code != NO_ERROR)
+      for (int i = 0; i < class_->att_count; i++)
 	{
-	  goto error;
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_attr_exist = true;
+	      break;
+	    }
+	}
+
+      if (lob_attr_exist)
+	{
+	  attrid_arr[0] = -1;
+	  error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
     }
 
