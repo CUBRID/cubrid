@@ -8453,15 +8453,23 @@ qo_seg_width (QO_SEGMENT * seg)
       return sizeof (int);
     }
 
-  size = tp_domain_disk_size (domain);
   switch (TP_DOMAIN_TYPE (domain))
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
       /* do guessing for variable character type */
-      size = size * (2 / 3);
+      if (domain->precision < 4000)
+	{
+	  size = domain->precision * 2 / 3;
+	}
+      else
+	{
+	  /* to avoid the issue of the variable character type precision being too large. */
+	  size = 4000;
+	}
       break;
     default:
+      size = tp_domain_disk_size (domain);
       break;
     }
 

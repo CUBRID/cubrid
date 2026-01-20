@@ -77,10 +77,11 @@
 
 #define TEMP_SETUP_COST 5.0
 #define QO_CPU_WEIGHT 0.0025
-#define ISCAN_OID_ACCESS_OVERHEAD 20
+#define ISCAN_OID_ACCESS_OVERHEAD 1
 #define MJ_CPU_OVERHEAD_FACTOR 20
-#define HJ_BUILD_CPU_OVERHEAD_FACTOR 30
+#define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
+#define HJ_MEM_ALLOC_CONSTANT 1000
 #define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
 #define ISCAN_IO_HIT_RATIO 0.5
 #define SSCAN_DEFAULT_CARD 100
@@ -3290,6 +3291,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 {
   QO_PLAN *inner_plan_p, *outer_plan_p;
   double inner_cardinality, outer_cardinality;
+  double inner_pages, outer_pages;
   double inner_build_cpu_cost, outer_build_cpu_cost;
   double inner_build_io_cost, outer_build_io_cost;
 
@@ -3316,6 +3318,11 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_cardinality = inner_plan_p->info->cardinality;
   outer_cardinality = outer_plan_p->info->cardinality;
 
+  inner_pages = inner_cardinality * (double) inner_plan_p->info->projected_size / (double) IO_PAGESIZE;
+  outer_pages = outer_cardinality * (double) outer_plan_p->info->projected_size / (double) IO_PAGESIZE;
+  inner_pages = MAX (1.0, inner_pages);
+  outer_pages = MAX (1.0, outer_pages);
+
   /**
    * STEP 1: Sum up the fixed and variable costs from both the outer and inner.
    */
@@ -3330,14 +3337,16 @@ qo_hjoin_cost (QO_PLAN * plan_p)
    */
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-  inner_build_io_cost = 0.0;
+  inner_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
+  inner_build_io_cost = inner_pages;
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
    */
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-  outer_build_io_cost = 0.0;
+  outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
+  outer_build_io_cost = outer_pages;
 
 #if 0
   /* No need to increase weight since partitioned hash join is used even when mem_limit is exceeded. */
@@ -6358,12 +6367,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
     }
   else
     {
-      /* default: disable hash-join */
-#if TEST_HASH_JOIN_ENABLE
       /* fall through */
-#else /* TEST_HASH_JOIN_ENABLE */
-      goto exit;
-#endif /* TEST_HASH_JOIN_ENABLE */
     }
 
   /* Check if a click counter is set. */
@@ -7510,7 +7514,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      else
 		{
 		  selectivity *= QO_TERM_SELECTIVITY (term);
-		  selectivity = MAX (1.0 / cardinality, selectivity);
+		  selectivity = MAX (1.0 / MAX (head_info->cardinality, tail_info->cardinality), selectivity);
 		}
 	    }
 	  cardinality *= selectivity;
