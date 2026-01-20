@@ -37,6 +37,22 @@ public class TypeNumeric extends Type {
 
     public final int precision;
     public final short scale;
+    /*
+     * unique key formula: precision * KEY_MULTIPLIER + scale
+     *
+     * scale range: MIN(-214) ~ MAX(252), total span = 466
+     * for two different (p1,s1) and (p2,s2) to collide: (p1-p2) * M = s2-s1
+     *
+     * since |s2-s1| <= 466 and |p1-p2| >= 1,
+     * if M > 466, then |p1-p2| * M > 466 >= |s2-s1|
+     * -> collision impossible
+     *
+     * using 500 for safety margin.
+     *
+     * Note: simple integer arithmetic is chosen over alternatives
+     *       (string key, composite object) for better performance.
+     */
+    private static final int KEY_MULTIPLIER = 500;
 
     public static TypeNumeric getInstance(InstanceStore iStore, int precision, short scale) {
 
@@ -45,7 +61,7 @@ public class TypeNumeric extends Type {
         assert scale <= NumericValue.DB_MAX_NUMERIC_SCALE
                 && scale >= NumericValue.DB_MIN_NUMERIC_SCALE;
 
-        int key = precision * 100 + scale;
+        int key = precision * KEY_MULTIPLIER + scale;
         TypeNumeric ret = iStore.typeNumeric.get(key);
         if (ret == null) {
             ret = new TypeNumeric(precision, scale);

@@ -35,6 +35,7 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 
 public class NumericValue extends Value {
@@ -65,28 +66,45 @@ public class NumericValue extends Value {
     public NumericValue(BigDecimal value) throws TypeMismatchException {
         super();
         if (value != null) {
-            int precision = value.precision();
-            int scale = value.scale();
-            if (precision > DB_MAX_NUMERIC_PRECISION) {
-                scale -= (precision - DB_MAX_NUMERIC_PRECISION);
-                precision = DB_MAX_NUMERIC_PRECISION;
-            }
-
-            if (precision > DB_MAX_NUMERIC_PRECISION) {
-                throw new TypeMismatchException(
-                        "precision exceeds " + DB_MAX_NUMERIC_PRECISION + ": " + value);
-            }
-
-            if (scale < DB_MIN_NUMERIC_SCALE) {
-                throw new TypeMismatchException(
-                        "scale lower than " + DB_MIN_NUMERIC_SCALE + ": " + value);
-            } else if (scale > DB_MAX_NUMERIC_SCALE) {
-                throw new TypeMismatchException(
-                        "scale exceeds " + DB_MAX_NUMERIC_SCALE + ": " + value);
+            value = adjustPrecisionScale(value);
+            if (value == null) {
+                throw new TypeMismatchException("Data overflow on data type numeric");
             }
         }
         this.value = value;
         this.dbType = DBType.DB_NUMERIC;
+    }
+
+    public static BigDecimal adjustPrecisionScale(BigDecimal bd) {
+        if (bd == null) {
+            assert (bd == null);
+            return null;
+        }
+
+        int precision = bd.precision();
+        int scale = bd.scale();
+
+        while (precision > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_SCALE) {
+
+            if (scale > DB_MAX_NUMERIC_SCALE) {
+                bd = bd.setScale(DB_MAX_NUMERIC_SCALE, RoundingMode.HALF_UP);
+            } else {
+                scale -= (precision - DB_MAX_NUMERIC_PRECISION);
+                if (scale < DB_MIN_NUMERIC_SCALE) {
+                    break;
+                }
+                bd = bd.setScale(scale, RoundingMode.HALF_UP);
+            }
+
+            precision = bd.precision();
+            scale = bd.scale();
+        }
+
+        if (scale < DB_MIN_NUMERIC_SCALE) {
+            return null; // overflow
+        }
+
+        return bd;
     }
 
     @Override

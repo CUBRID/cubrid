@@ -49,7 +49,6 @@ import com.cubrid.plcsql.compiler.serverapi.*;
 import com.cubrid.plcsql.compiler.type.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -855,38 +854,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         try {
             Type ty;
-            BigDecimal normalizedBd = null;
+            BigDecimal bd = null;
 
             BigInteger bi = new BigInteger(ctx.UNSIGNED_INTEGER().getText());
             if (bi.compareTo(BIGINT_MAX) > 0 || bi.compareTo(BIGINT_MIN) < 0) {
-                BigDecimal bd = new BigDecimal(ctx.UNSIGNED_INTEGER().getText());
-                normalizedBd = bd;
+                bd = new BigDecimal(ctx.UNSIGNED_INTEGER().getText());
                 assert bd.scale() == 0;
-                int precision = bd.precision();
-                int scale = bd.scale();
 
-                if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
-                    scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
-                    normalizedBd = bd.setScale(scale, RoundingMode.HALF_UP);
-
-                    precision = normalizedBd.precision();
-                    scale = normalizedBd.scale();
-                    if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
-                        precision = NumericValue.DB_MAX_NUMERIC_PRECISION;
-                        scale--;
-                    }
-                }
-
-                if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION
-                        || scale < NumericValue.DB_MIN_NUMERIC_SCALE) {
+                bd = NumericValue.adjustPrecisionScale(bd);
+                if (bd == null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s006
-                            "number of digits of an integer literal exceeds the maximum allowed "
-                                    + "(precision "
-                                    + NumericValue.DB_MAX_NUMERIC_PRECISION
-                                    + ", minimum scale "
-                                    + NumericValue.DB_MIN_NUMERIC_SCALE
-                                    + ")");
+                            "Invalid NUMERIC literal: data overflow on data type numeric");
                 }
                 ty = Type.NUMERIC_ANY;
             } else if (bi.compareTo(INT_MAX) > 0 || bi.compareTo(INT_MIN) < 0) {
@@ -896,7 +875,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
 
             if (ty == Type.NUMERIC_ANY) {
-                return new ExprUint(ctx, normalizedBd.toPlainString(), ty);
+                return new ExprUint(ctx, bd.toPlainString(), ty);
             } else {
                 return new ExprUint(ctx, bi.toString(), ty);
             }
@@ -926,39 +905,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     text = text + "0";
                 }
                 BigDecimal bd = new BigDecimal(text);
-                BigDecimal normalizedBd = bd;
-                int precision = bd.precision();
-                int scale = bd.scale();
-
-                assert scale != 0 : "scale should not be 0";
-
-                /* adjust scale when precision exceeds maximum limit.
-                 * example: 0.999..5 (precision 41) -> 1.0000..0 (precision 42) after rounding
-                 *          -> 1.000..0 (precision 40) after setScale adjustment */
-                while (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
-                    scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
-
-                    if (scale < NumericValue.DB_MIN_NUMERIC_SCALE) {
-                        scale = NumericValue.DB_MIN_NUMERIC_SCALE;
-                    }
-
-                    normalizedBd = normalizedBd.setScale(scale, RoundingMode.HALF_UP);
-                    precision = normalizedBd.precision();
-                    scale = normalizedBd.scale();
-                }
-
-                if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION
-                        || scale > NumericValue.DB_MAX_NUMERIC_SCALE) {
+                bd = NumericValue.adjustPrecisionScale(bd);
+                if (bd == null) {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s057
-                            "number of digits of a floating point number literal exceeds the maximum allowed "
-                                    + "(precision "
-                                    + NumericValue.DB_MAX_NUMERIC_PRECISION
-                                    + ", maximum scale "
-                                    + NumericValue.DB_MAX_NUMERIC_SCALE
-                                    + ")");
+                            "Invalid NUMERIC literal: data overflow on data type numeric");
                 }
-                return new ExprFloat(ctx, normalizedBd.toPlainString(), Type.NUMERIC_ANY);
+                return new ExprFloat(ctx, bd.toPlainString(), Type.NUMERIC_ANY);
             }
 
         } catch (NumberFormatException e) {

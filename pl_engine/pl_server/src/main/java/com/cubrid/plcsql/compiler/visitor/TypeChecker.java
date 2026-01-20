@@ -211,31 +211,18 @@ public class TypeChecker extends AstVisitor<Type> {
                     }
 
                     BigDecimal bd = new BigDecimal(valStr);
-                    int actualPrecision = bd.precision();
-                    int actualScale = bd.scale();
-
-                    if (actualPrecision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
-                        /* adjust scale when precision exceeds maximum limit
-                         * examples: precision 50, scale 0 -> precision 40, scale -7
-                         *           precision 50, scale 3 -> precision 40, scale -4
-                         */
-                        actualScale -= (actualPrecision - NumericValue.DB_MAX_NUMERIC_PRECISION);
-                        actualPrecision = NumericValue.DB_MAX_NUMERIC_PRECISION;
-                    }
-
-                    if (actualPrecision >= NumericValue.DB_MIN_NUMERIC_PRECISION
-                            && actualPrecision <= NumericValue.DB_MAX_NUMERIC_PRECISION
-                            && actualScale >= NumericValue.DB_MIN_NUMERIC_SCALE
-                            && actualScale <= NumericValue.DB_MAX_NUMERIC_SCALE) {
-                        TypeNumeric newType =
-                                TypeNumeric.getInstance(
-                                        iStore, actualPrecision, (short) actualScale);
-                        node.typeSpec.type = newType;
-                    } else {
+                    bd = NumericValue.adjustPrecisionScale(bd);
+                    if (bd == null) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(node.val.ctx),
                                 "data overflow on data type NUMERIC: " + valStr);
                     }
+                    int actualPrecision = bd.precision();
+                    int actualScale = bd.scale();
+
+                    TypeNumeric newType =
+                            TypeNumeric.getInstance(iStore, actualPrecision, (short) actualScale);
+                    node.typeSpec.type = newType;
                 }
             }
 
