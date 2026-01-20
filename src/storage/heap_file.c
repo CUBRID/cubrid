@@ -7958,6 +7958,9 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 
       build_record.set_external_buffer (recdes.data, recdes.area_size);
 
+      // TODO: https://github.com/CUBRID/cubrid/pull/6766#discussion_r2688868239
+      // This function uses `repid_bits = attr_info->last_classrepr->id;`
+      // Potential risk when schema changes (insert -> alter -> insert -> select). Need validation.
       SCAN_CODE sc = heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
       if (sc != S_SUCCESS)
 	{
