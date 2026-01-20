@@ -29,6 +29,9 @@
 
 #include "config.h"
 
+#include "stack_dump.h"
+#include "oos_log.hpp"
+
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
@@ -7921,17 +7924,31 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
 static SCAN_CODE
 heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
+  using namespace oos_log;
 
-  if (heap_recdes_contains_oos (context->recdes_p))
+  if (!heap_recdes_contains_oos (context->recdes_p))
     {
-      HEAP_CACHE_ATTRINFO attr_info;
-      int err;
+      return S_SUCCESS;
+    }
 
-      err = heap_attrinfo_start (thread_p, context->class_oid_p, -1, nullptr, &attr_info);
-      if (err != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
+  HEAP_CACHE_ATTRINFO attr_info;
+  int err;
+
+  if (context->ispeeking == PEEK)
+    {
+      // TODO: https://github.com/CUBRID/cubrid/pull/6766/changes/BASE..b3d964ce1c83ef31c1da2e556cc539bf1b28ad7a#r2689175730
+      // this function currently assume context->ispeeking == COPY.
+      // handle PEEK case properly or prevent it at higher level.
+      oos_error ("heap_record_replace_oos_oids_with_values_if_exists: PEEK not supported yet");
+      er_dump_call_stack (stderr);
+      assert (false);
+    }
+
+  err = heap_attrinfo_start (thread_p, context->class_oid_p, -1, nullptr, &attr_info);
+  if (err != NO_ERROR)
+    {
+      return S_ERROR;
+    }
 
       // *INDENT-OFF*
       auto attr_info_guard = make_scope_exit ([&](){
@@ -7940,42 +7957,48 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
       );
       // *INDENT-ON*
 
-      err = heap_attrinfo_read_dbvalues (thread_p, context->oid_p, context->recdes_p, &attr_info);
-      if (err != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
+  err = heap_attrinfo_read_dbvalues (thread_p, context->oid_p, context->recdes_p, &attr_info);
+  if (err != NO_ERROR)
+    {
+      return S_ERROR;
+    }
 
-      // *INDENT-OFF*
-      RECDES recdes;
-      err = recdes_allocate_data_area(&recdes, context->recdes_p->length);
-      if (err != NO_ERROR) {
-	  return S_ERROR;
-      }
+#if defined (false)		// TODO: set_external_buffer is buggy. Figure out why.
+  // RECDES recdes = RECDES_INITIALIZER;
+  // record_descriptor build_record;
+  // build_record.set_external_buffer (recdes.data, recdes.area_size);
+#else
+  record_descriptor build_record (cubmem::STANDARD_BLOCK_ALLOCATOR);
+#endif
 
-      record_descriptor build_record (cubmem::CSTYLE_BLOCK_ALLOCATOR);
-      // *INDENT-ON*
+  // TODO: https://github.com/CUBRID/cubrid/pull/6766#discussion_r2688868239
+  // This function uses `repid_bits = attr_info->last_classrepr->id;`
+  // Potential risk when schema changes (insert -> alter -> insert -> select). Need validation.
+  SCAN_CODE sc = heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
+  if (sc != S_SUCCESS)
+    {
+      return sc;
+    }
 
-      build_record.set_external_buffer (recdes.data, recdes.area_size);
+  // return OOS value-expanded record to caller
+  // TODO: what if OOS-expanded record doesn't fit in original area (2 * DB_PAGESIZE)?
+  if (context->recdes_p->area_size < (int) build_record.get_size ())
+    {
+      return S_DOESNT_FIT;
+    }
 
-      // TODO: https://github.com/CUBRID/cubrid/pull/6766#discussion_r2688868239
-      // This function uses `repid_bits = attr_info->last_classrepr->id;`
-      // Potential risk when schema changes (insert -> alter -> insert -> select). Need validation.
-      SCAN_CODE sc = heap_attrinfo_transform_to_disk_develop_ver (thread_p, &attr_info, nullptr, &build_record);
-      if (sc != S_SUCCESS)
-	{
-	  return sc;
-	}
+  if (context->ispeeking == PEEK)
+    {
+      oos_error ("heap_record_replace_oos_oids_with_values_if_exists: PEEK not supported yet");
+      abort ();
 
-      // return OOS value-expanded record to caller
-      // TODO: what if OOS-expanded record doesn't fit in original area (2 * DB_PAGESIZE)?
-      if (context->recdes_p->area_size < (int) build_record.get_size ())
-	{
-	  return S_DOESNT_FIT;
-	}
-
+      // *context->recdes_p = recdes;
+      // // TODO: check if this ensures context->recdes_p to be freed eventually
+      // context->ispeeking = COPY;
+    }
+  else				// COPY
+    {
       context->recdes_p->length = build_record.get_size ();
-      assert (context->recdes_p->area_size >= context->recdes_p->length);
       std::memcpy (context->recdes_p->data, build_record.get_data (), context->recdes_p->length);
     }
 
