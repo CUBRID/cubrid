@@ -120,6 +120,17 @@ namespace parallel_heap_scan
   int task<result_type>::finalize (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = m_parent_thread_p;
+    while (main_thread_p->m_px_orig_thread_entry != nullptr)
+      {
+	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
+	  {
+	    break;
+	  }
+	main_thread_p = main_thread_p->m_px_orig_thread_entry;
+	assert (main_thread_p != m_parent_thread_p);
+      }
+
+
     if (thread_ref.on_trace)
       {
 	TSC_TICKS end_tick;
@@ -128,6 +139,17 @@ namespace parallel_heap_scan
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
 	TSC_ADD_TIMEVAL (elapsed_time, tv_diff);
+
+	if (m_xasl->dptr_list)
+	  {
+	    pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	    for (XASL_NODE *xaslp = m_xasl->dptr_list; xaslp; xaslp = xaslp->next)
+	      {
+		xasl_merge_stats (xaslp, m_orig_xasl);
+	      }
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	  }
+
 	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
@@ -150,16 +172,6 @@ namespace parallel_heap_scan
     db_private_free (&thread_ref, m_vd->dbval_ptr);
     db_private_free (&thread_ref, m_vd);
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
-
-    while (main_thread_p->m_px_orig_thread_entry != nullptr)
-      {
-	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
-	  {
-	    break;
-	  }
-	main_thread_p = main_thread_p->m_px_orig_thread_entry;
-	assert (main_thread_p != m_parent_thread_p);
-      }
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     if (m_uses_xasl_clone)

@@ -806,7 +806,7 @@ namespace parallel_heap_scan
 	task_p = placement_new ((task<result_type> *) task_p, m_thread_p, m_query_entry, m_result_handler,
 				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_hfid,
 				m_cls_oid, m_is_fixed,
-				m_is_grouped, m_uses_xasl_clone);
+				m_is_grouped, m_uses_xasl_clone, m_xasl);
 	m_worker_manager->push_task (task_p);
       }
     m_task_started = true;
