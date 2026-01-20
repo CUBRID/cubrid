@@ -180,6 +180,46 @@ namespace parallel_heap_scan
     return NO_ERROR;
   }
 
+  inline void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
+  {
+    if (xasl->dptr_list)
+      {
+	for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
+	  {
+	    if (uses_clones)
+	      {
+		if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
+		  {
+		    xaslp->status = XASL_CLEARED;
+		  }
+		else
+		  {
+		    /* The values allocated during execution will be cleared and the xasl is reused. */
+		    xaslp->status = XASL_INITIALIZED;
+		  }
+	      }
+	    else
+	      {
+		xaslp->status = XASL_CLEARED;
+	      }
+	    if (xaslp->list_id->tuple_cnt > 0)
+	      {
+		qfile_truncate_list (thread_p, xaslp->list_id);
+	      }
+	    if (xaslp->single_tuple)
+	      {
+		QPROC_DB_VALUE_LIST value_list;
+		int i;
+		for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
+		     value_list = value_list->next, i++)
+		  {
+		    pr_clear_value (value_list->val);
+		  }
+	      }
+	  }
+      }
+  }
+
   template <RESULT_TYPE result_type>
   int task<result_type>::clone_xasl (cubthread::entry &thread_ref)
   {
@@ -260,6 +300,8 @@ namespace parallel_heap_scan
     bool is_interrupt;
     bool dummy = false;
     DB_LOGICAL ev_res;
+    bool uses_clones = xcache_uses_clones ();
+
     while (!stop)
       {
 	if (m_interrupt->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
@@ -320,6 +362,7 @@ namespace parallel_heap_scan
 		ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
 		if (ev_res != V_TRUE)
 		  {
+		    clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
 		    if (ev_res == V_FALSE)
 		      {
 			continue;
@@ -358,42 +401,7 @@ namespace parallel_heap_scan
 	     * Thus, it is correct to clear all dptr.
 	     */
 
-	    if (m_xasl->dptr_list)
-	      {
-		for (XASL_NODE *xaslp = m_xasl->dptr_list; xaslp; xaslp = xaslp->next)
-		  {
-		    if (xcache_uses_clones ())
-		      {
-			if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
-			  {
-			    xaslp->status = XASL_CLEARED;
-			  }
-			else
-			  {
-			    /* The values allocated during execution will be cleared and the xasl is reused. */
-			    xaslp->status = XASL_INITIALIZED;
-			  }
-		      }
-		    else
-		      {
-			xaslp->status = XASL_CLEARED;
-		      }
-		    if (xaslp->list_id->tuple_cnt > 0)
-		      {
-			qfile_truncate_list (&thread_ref, xaslp->list_id);
-		      }
-		    if (xaslp->single_tuple)
-		      {
-			QPROC_DB_VALUE_LIST value_list;
-			int i;
-			for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
-			     value_list = value_list->next, i++)
-			  {
-			    pr_clear_value (value_list->val);
-			  }
-		      }
-		  }
-	      }
+	    clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
 	  }
       }
   }
