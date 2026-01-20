@@ -11374,7 +11374,7 @@ tdes_reset_query_start_info (PT_NODE * node)
 
 /* lob_create_dir - create external lob directory
  *
- * return:
+ * return: error code
  *
  *   hfid(in): When creating the LOB directory, use each table's HFID as the directory name to distinguish them
  *   attrid_arr (in): An array that stores LOB attribute ids of the table.
@@ -11385,34 +11385,32 @@ int
 lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
 {
 #if defined(CS_MODE)
-  int error = ER_NET_CLIENT_DATA_RECEIVE;
-  int req_error, request_size;
   char *ptr;
-  char *request, *request_alloc, *reply;
+  char *reply;
+  char *request = NULL;
   char request_local[OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * 2)];
+  int req_error, request_size;
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
 
   assert (!HFID_IS_NULL (hfid) && hfid != NULL);
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-
   reply = OR_ALIGNED_BUF_START (a_reply);
+  request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * lob_attrid_arr_length);
 
-  if (lob_attrid_arr_length > 2)
+  if (lob_attrid_arr_length <= 2)
     {
-      request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * lob_attrid_arr_length);
-      request_alloc = (char *) malloc (request_size);
-      if (request_alloc == NULL)
+      request = request_local;
+    }
+  else
+    {
+      request = request_local;
+      request = (char *) malloc (request_size);
+      if (request == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-
-      request = request_alloc;
-    }
-  else
-    {
-      request_size = OR_HFID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * 2);
-      request = request_local;
     }
 
   ptr = or_pack_hfid (request, hfid);
@@ -11426,7 +11424,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
       ptr = or_unpack_errcode (reply, &error);
     }
 
-  if (request == request_alloc)
+  if (request != request_local)
     {
       free_and_init (request);
     }
