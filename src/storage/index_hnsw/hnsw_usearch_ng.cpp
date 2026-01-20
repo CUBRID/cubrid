@@ -37,7 +37,9 @@
 #include "slotted_page.h"
 
 #include "db_vector.hpp"	// db_vector_is_all_zeros
+#if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
