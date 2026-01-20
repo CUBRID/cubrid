@@ -20,10 +20,10 @@
 #include <iostream>
 #include <sstream>
 #include "error_manager.h"
+#include "tsc_timer.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-#include "tsc_timer.h"
 
 extern "C" {
   XASL_NODE *xasl_find_by_id (XASL_NODE *xasl, int target_id)
