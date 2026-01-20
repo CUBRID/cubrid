@@ -702,8 +702,8 @@ xes_posix_copy_file_with_prefix (const char *src_path, char *metaname, const cha
   int rd_fd, wr_fd, new_dir_len, n = 0;
   ssize_t ret;
   char dirname1[NAME_MAX], filename[NAME_MAX], dirname2[NAME_MAX];
-  char buf[ES_POSIX_COPY_BUFSIZE], new_dir[PATH_MAX];
-  const char *p;
+  char buf[ES_POSIX_COPY_BUFSIZE];
+  char *p;
 
   /* Check the existence of the source file by trying to open it */
   rd_fd = es_abs_open (src_path, O_RDONLY | O_LARGEFILE);
@@ -735,17 +735,24 @@ retry:
       if (errno == ENOENT)
 	{
 	  p = strrchr (new_path, PATH_SEPARATOR);
-	  new_dir_len = p - new_path;
+	  if (p != NULL)
+	    {
+	      *p = '\0';	/* Temporarily truncate the path to extract the directory portion */
+	    }
+	  else
+	    {
+	      close (rd_fd);
+	      return ER_ES_GENERAL;
+	    }
 
-	  memcpy (new_dir, new_path, new_dir_len);
-	  new_dir[new_dir_len] = '\0';
-
-	  ret = es_make_dirs (new_dir, dirname2);
+	  ret = es_make_dirs (new_path, dirname2);
 	  if (ret != NO_ERROR)
 	    {
 	      close (rd_fd);
 	      return ER_ES_GENERAL;
 	    }
+
+	  *p = PATH_SEPARATOR;
 	  wr_fd =
 	    es_abs_open (new_path, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH | O_LARGEFILE);
 	}
