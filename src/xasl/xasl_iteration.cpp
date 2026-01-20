@@ -93,7 +93,7 @@ extern "C" {
 	  return true;
 	}
 
-      if (timercmp (&dst_node->xasl_stats.elapsed_time, &src_node->xasl_stats.elapsed_time, >))
+      if (timercmp (&src_node->xasl_stats.elapsed_time, &dst_node->xasl_stats.elapsed_time, >))
 	{
 	  dst_node->xasl_stats.elapsed_time = src_node->xasl_stats.elapsed_time;
 	}
@@ -102,8 +102,8 @@ extern "C" {
       dst_node->xasl_stats.fetches += src_node->xasl_stats.fetches;
 
       dst_node->groupby_stats.groupby_hash = (src_node->groupby_stats.groupby_hash != HS_NONE) ? src_node->groupby_stats.groupby_hash : dst_node->groupby_stats.groupby_hash;
-      dst_node->groupby_stats.groupby_sort = src_node->groupby_stats.groupby_sort ? true : dst_node->groupby_stats.groupby_sort;
-      dst_node->groupby_stats.run_groupby = src_node->groupby_stats.run_groupby ? true : dst_node->groupby_stats.run_groupby;
+      dst_node->groupby_stats.groupby_sort = dst_node->groupby_stats.groupby_sort ? true : src_node->groupby_stats.groupby_sort;
+      dst_node->groupby_stats.run_groupby = dst_node->groupby_stats.run_groupby ? true : src_node->groupby_stats.run_groupby;
       dst_node->groupby_stats.groupby_pages += src_node->groupby_stats.groupby_pages;
       dst_node->groupby_stats.groupby_ioreads += src_node->groupby_stats.groupby_ioreads;
       dst_node->groupby_stats.rows += src_node->groupby_stats.rows;
@@ -120,6 +120,7 @@ extern "C" {
       dst_node->spec_list->s_id.scan_stats.num_ioreads += src_node->spec_list->s_id.scan_stats.num_ioreads;
       dst_node->spec_list->s_id.scan_stats.read_rows += src_node->spec_list->s_id.scan_stats.read_rows;
       dst_node->spec_list->s_id.scan_stats.qualified_rows += src_node->spec_list->s_id.scan_stats.qualified_rows;
+      dst_node->spec_list->s_id.type = dst_node->spec_list->s_id.type == 0 ? src_node->spec_list->s_id.type : dst_node->spec_list->s_id.type;
       if (timercmp (&src_node->spec_list->s_id.scan_stats.elapsed_lookup, &dst_node->spec_list->s_id.scan_stats.elapsed_lookup, >))
 	{
 	  dst_node->spec_list->s_id.scan_stats.elapsed_lookup = src_node->spec_list->s_id.scan_stats.elapsed_lookup;
@@ -128,13 +129,19 @@ extern "C" {
       dst_node->spec_list->s_id.scan_stats.qualified_keys += src_node->spec_list->s_id.scan_stats.qualified_keys;
       dst_node->spec_list->s_id.scan_stats.key_qualified_rows += src_node->spec_list->s_id.scan_stats.key_qualified_rows;
       dst_node->spec_list->s_id.scan_stats.data_qualified_rows += src_node->spec_list->s_id.scan_stats.data_qualified_rows;
-      dst_node->spec_list->s_id.scan_stats.index_skip_scan = src_node->spec_list->s_id.scan_stats.index_skip_scan ? true : dst_node->spec_list->s_id.scan_stats.index_skip_scan;
-      dst_node->spec_list->s_id.scan_stats.loose_index_scan = src_node->spec_list->s_id.scan_stats.loose_index_scan ? true : dst_node->spec_list->s_id.scan_stats.loose_index_scan;
-      dst_node->spec_list->s_id.scan_stats.noscan = src_node->spec_list->s_id.scan_stats.noscan ? true : dst_node->spec_list->s_id.scan_stats.noscan;
-      dst_node->spec_list->s_id.scan_stats.min_max_only_scan = src_node->spec_list->s_id.scan_stats.min_max_only_scan ? true : dst_node->spec_list->s_id.scan_stats.min_max_only_scan;
-      dst_node->spec_list->s_id.scan_stats.covered_index = src_node->spec_list->s_id.scan_stats.covered_index ? true : dst_node->spec_list->s_id.scan_stats.covered_index;
-      dst_node->spec_list->s_id.scan_stats.multi_range_opt = src_node->spec_list->s_id.scan_stats.multi_range_opt ? true : dst_node->spec_list->s_id.scan_stats.multi_range_opt;
+      dst_node->spec_list->s_id.scan_stats.index_skip_scan = dst_node->spec_list->s_id.scan_stats.index_skip_scan ? true : src_node->spec_list->s_id.scan_stats.index_skip_scan;
+      dst_node->spec_list->s_id.scan_stats.loose_index_scan = dst_node->spec_list->s_id.scan_stats.loose_index_scan ? true : src_node->spec_list->s_id.scan_stats.loose_index_scan;
+      dst_node->spec_list->s_id.scan_stats.noscan = dst_node->spec_list->s_id.scan_stats.noscan ? true : src_node->spec_list->s_id.scan_stats.noscan;
+      dst_node->spec_list->s_id.scan_stats.min_max_only_scan = dst_node->spec_list->s_id.scan_stats.min_max_only_scan ? true : src_node->spec_list->s_id.scan_stats.min_max_only_scan;
+      dst_node->spec_list->s_id.scan_stats.covered_index = dst_node->spec_list->s_id.scan_stats.covered_index ? true : src_node->spec_list->s_id.scan_stats.covered_index;
+      dst_node->spec_list->s_id.scan_stats.multi_range_opt = dst_node->spec_list->s_id.scan_stats.multi_range_opt ? true : src_node->spec_list->s_id.scan_stats.multi_range_opt;
       /* agl copy needed..? */
+
+      dst_node->sq_cache->stats.hit += src_node->sq_cache->stats.hit;
+      dst_node->sq_cache->stats.miss += src_node->sq_cache->stats.miss;
+      dst_node->sq_cache->size += src_node->sq_cache->size;
+      dst_node->sq_cache->size_max += src_node->sq_cache->size_max;
+      dst_node->sq_cache->enabled = dst_node->sq_cache->enabled ? true : src_node->sq_cache->enabled;
 
       return true;
     };
