@@ -26221,25 +26221,20 @@ parser_remove_dummy_select (PT_NODE ** ent_inout)
       /* remove dummy select from FROM clause
        *
        * for example:
-       * (nested spec):
+       * case 1 (simple spec):
+       *              FROM (SELECT * FROM x) AS s
+       * -> FROM x AS s
+       * case 2 (nested spec):
        *              FROM (SELECT * FROM (SELECT a, b FROM bas) y(p, q)) x
        * -> FROM (SELECT a, b FROM bas) x(p, q)
        *
-       * Notes: 
-       *     1 : Subqueries with CTEs are not removed
-       *     2 : nested spec will only have one subquery left
-       *
-       * Reason of Note 2: last subquery should not resolved due to filtering invisible columns
+       * Note: Subqueries with CTEs are not removed
        */
-       subq = ent->info.spec.derived_table;
-      if (subq
+      if ((subq = ent->info.spec.derived_table)
 	        && subq->node_type == PT_SELECT
 	        && PT_SELECT_INFO_IS_FLAGED (subq, PT_SELECT_INFO_DUMMY))
         {
-	new_ent = subq->info.query.q.select.from;
-          if (new_ent 
-	  && subq->info.query.with == NULL 
-	  && new_ent->info.spec.derived_table_type == PT_IS_SUBQUERY)
+          if (subq->info.query.q.select.from && subq->info.query.with == NULL)
       	   {
           	  if (PT_SELECT_INFO_IS_FLAGED (subq, PT_SELECT_INFO_FOR_UPDATE))
             	    {
@@ -26249,6 +26244,7 @@ parser_remove_dummy_select (PT_NODE ** ent_inout)
           	      }
           	  else
           	      {
+          	        new_ent = subq->info.query.q.select.from;
           	        subq->info.query.q.select.from = NULL;
 
           	        /* free, reset new_spec's range_var, as_attr_list */
