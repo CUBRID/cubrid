@@ -11444,7 +11444,7 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
 
 /* lob_remove_dir - remove lob directory
  *
- * return:
+ * return: error code
  *
  *   hfid(in): Used to identify the table when removing the LOB directory
  *   attrid(in): Used to identify the table's LOB attribute when removing the LOB directory
@@ -11453,9 +11453,9 @@ int
 lob_remove_dir (HFID * hfid, int attrid)
 {
 #if defined(CS_MODE)
-  int error = ER_NET_CLIENT_DATA_RECEIVE;
-  int req_error;
   char *ptr, *request, *reply;
+  int req_error;
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
 
   assert (!HFID_IS_NULL (hfid) && hfid != NULL);
 
