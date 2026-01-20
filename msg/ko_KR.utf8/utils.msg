@@ -1323,11 +1323,12 @@ memmon: 데이터베이스 서버의 메모리 사용량 정보를 제공합니�
     -o, --output-file=FILE    결과를 FILE에 출력합니다\n\
     --disable-force           서버의 메모리 모니터링을 강제로 비활성화합니다.\n
 
-$set 60 MSGCAT_UTIL_SET_MEMMON
+$set 60 MSGCAT_UTIL_SET_RKCHECK
 60 \
-rkcheck: HA 복제 키 제약 조건 준수 여부를 점검합니다.\n\
+rkcheck: HA 복제 키 제약 조건 준수 여부를 검사합니다.\n\
 사용법: %1$s rkcheck [OPTION] database-name\n\
 \n\
 valid option:\n\
-    -r, --rk-result           rk 제약사항 확인 결과를 출력합니다\n\
-    -f, --fk-result           fk 제약사항 확인 결과를 출력합니다\n
+    -r, --rk-results           rk 제약사항 확인 결과를 출력합니다\n\
+    -f, --fk-results           fk 제약사항 확인 결과를 출력합니다\n
+    

@@ -392,8 +392,8 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 
-static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
 static int check_ha_repl_constraint (DB_OBJECT * class_obj);
+static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
 
 int ib_thread_count = 0;
 
@@ -8899,11 +8899,24 @@ check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
   return true;
 }
 
+/*
+ * log_ha_repl_fk_ref_all_replicated() - Check foreign key replication constraints in HA mode.
+ *
+ * return        : Number of foreign key replication constraint violations
+ * class_obj(in): The class object to be checked
+ * fp(in)       : File pointer for printing violation information
+ * do_print(in) : Whether to print violation details
+ *
+ * NOTE:
+ *   If a foreign key references a non-replicated class, it is counted
+ *   as a replication constraint violation.
+ */
 int
 log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp, bool do_print)
 {
   DB_CONSTRAINT *tmp_c;
   int ret = 0;
+  MOP ref_class_mop;
 
   assert (class_obj != NULL);
 
@@ -8914,12 +8927,12 @@ log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp, bool do_pri
 	  continue;
 	}
 
-      if (!sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
+      ref_class_mop = ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL);
+      if (!sm_is_replication_class (ref_class_mop))
 	{
 	  if (do_print)
 	    {
-	      fprintf (fp, "%s -> %s\n", sm_get_ch_name (class_obj),
-		       sm_get_ch_name (ws_mop (&tmp_c->fk_info->ref_class_oid, NULL)));
+	      fprintf (fp, "%s -> %s\n", sm_get_ch_name (class_obj), sm_get_ch_name (ref_class_mop));
 	    }
 	  ret++;
 	}

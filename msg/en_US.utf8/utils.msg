@@ -1337,11 +1337,12 @@ valid option:\n\
     -o, --output-file=FILE    output results to FILE\n\
     --disable-force           disable memory monitor of server forcibly\n
 
-$set 60 MSGCAT_UTIL_SET_MEMMON
+$set 60 MSGCAT_UTIL_SET_RKCHECK
 60 \
 rkcheck: Checks HA replication key constraints.\n\
 usage: %1$s rkcheck [OPTION] database-name\n\
 \n\
 valid option:\n\
-    -r, --rk-result           print rk result\n\
-    -f, --fk-results          print fk result\n
+    -r, --rk-results           print RK(Replication Key constraint violation list)\n\
+    -f, --fk-results           print FK(Foreign Key) constraint violation list\n
+    

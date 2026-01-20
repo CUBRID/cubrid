@@ -94,7 +94,7 @@ typedef enum
   GET_SHARID,
   TEST,
   REPLICATION,
-  RKCHECK
+  SC_RKCHECK
 } UTIL_SERVICE_COMMAND_E;
 
 typedef enum
@@ -244,7 +244,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Command_map[] = {
   {TEST, COMMAND_TYPE_TEST, MASK_BROKER},
   {REPLICATION, COMMAND_TYPE_REPLICATION, MASK_HEARTBEAT},
   {REPLICATION, COMMAND_TYPE_REPLICATION_SHORT, MASK_HEARTBEAT},
-  {CHECK_REPL_CONS, COMMAND_TYPE_RKCHECK, MASK_HEARTBEAT},
+  {SC_RKCHECK, COMMAND_TYPE_RKCHECK, MASK_HEARTBEAT},
   {-1, "", MASK_ALL}
 };
 
@@ -411,7 +411,7 @@ command_string (int command_type)
     case REPLICATION:
       command = PRINT_CMD_REPLICATION;
       break;
-    case CHECK_REPL_CONS:
+    case SC_RKCHECK:
       command = PRINT_CMD_RKCHECK;
       break;
     case STOP:
@@ -3217,6 +3217,7 @@ us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
   int status = NO_ERROR;
   char **dbs;
   int i;
+  int num_db_found = 0;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, UTIL_RKCHECK, PRINT_CMD_START);
 
@@ -3224,7 +3225,21 @@ us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
 
   for (i = 0; dbs[i] != NULL; i++)
     {
+
       if (db_name != NULL && strcmp (dbs[i], db_name) != 0)
+	{
+	  continue;
+	}
+      num_db_found++;
+
+      prm_set_integer_value (PRM_ID_HA_MODE_FOR_SA_UTILS_ONLY, HA_MODE_FAIL_BACK);
+      status = sysprm_load_and_init (dbs[i], NULL, SYSPRM_IGNORE_INTL_PARAMS);
+      if (status != NO_ERROR)
+	{
+	  goto ret;
+	}
+
+      if (util_get_ha_mode_for_sa_utils () == HA_MODE_OFF)
 	{
 	  continue;
 	}
@@ -3242,6 +3257,15 @@ us_hb_process_rkcheck (HA_CONF * ha_conf, const char *db_name)
 	  break;
 	}
     }
+  if (db_name != NULL && num_db_found == 0)
+    {
+      print_message (stderr, MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_HA_MODE_NOT_LISTED_HA_DB);
+      status = ER_GENERIC_ERROR;
+      goto ret;
+    }
+
+ret:
   print_result (UTIL_RKCHECK, status, START);
   return status;
 }
@@ -5035,7 +5059,7 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
     case SC_APPLYLOGDB:
       status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
       break;
-    case RKCHECK:
+    case SC_RKCHECK:
       status = us_hb_process_rkcheck (ha_conf, db_name_p);
       break;
     }

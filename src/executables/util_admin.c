@@ -992,7 +992,7 @@ static UTIL_MAP ua_Utility_Map[] = {
   {TDE, SA_CS, 1, UTIL_OPTION_TDE, "tde", ua_Tde_Option, ua_Tde_Option_Map},
   {FLASHBACK, CS_ONLY, 2, UTIL_OPTION_FLASHBACK, "flashback", ua_Flashback_Option, ua_Flashback_Option_Map},
   {MEMMON, CS_ONLY, 1, UTIL_OPTION_MEMMON, "memmon", ua_Memmon_Option, ua_Memmon_Option_Map},
-  {CHECK_REPL_CONS, CS_ONLY, 1, UTIL_OPTION_RKCHECK, "rkcheck", ua_Rkcheck_Option, ua_Rkcheck_Option_Map},
+  {RKCHECK, CS_ONLY, 1, UTIL_OPTION_RKCHECK, "rkcheck", ua_Rkcheck_Option, ua_Rkcheck_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

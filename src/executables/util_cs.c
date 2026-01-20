@@ -154,6 +154,8 @@ static BOOL WINAPI intr_handler (int sig_no);
 static void intr_handler (int sig_no);
 #endif
 
+typedef int (*REPL_CONSTRAINT_CHECK_FUNC) (MOP classop, FILE * fp, bool do_print);
+
 static void crash_handler (int sig_no);
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
@@ -161,6 +163,14 @@ static void print_timestamp (FILE * outfp);
 static int print_tran_entry (const ONE_TRAN_INFO * tran_info, TRANDUMP_LEVEL dump_level, bool full_sqltext);
 static int tranlist_cmp_f (const void *p1, const void *p2);
 static OID *util_get_class_oids_and_index_btid (dynamic_array * darray, const char *index_name, BTID * index_btid);
+static char *generate_violation_list_file_name (char *out, char *database_name, const char *util_name);
+static FILE *open_violation_list_file (const char *database_name, const char *util_name, char *file_path,
+				       size_t file_path_size);
+static int get_print_flags (UTIL_ARG_MAP * arg_map);
+static int check_rk_constraint (MOP classop, FILE * fp, bool do_print);
+static int check_fk_constraint (MOP classop, FILE * fp, bool do_print);
+static int check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print,
+					     REPL_CONSTRAINT_CHECK_FUNC check_func);
 
 /*
  * backupdb() - backupdb main routine
@@ -2822,8 +2832,11 @@ get_print_flags (UTIL_ARG_MAP * arg_map)
   return print_flags;
 }
 
-typedef int (*REPL_CONSTRAINT_CHECK_FUNC) (MOP classop, FILE * fp, bool do_print);
-
+/*
+ * check_rk_constraint - Check replication key constraint of a class.
+ *
+ * return: 1 if replication key constraint is missing, otherwise 0.
+ */
 static int
 check_rk_constraint (MOP classop, FILE * fp, bool do_print)
 {
@@ -2845,6 +2858,16 @@ check_fk_constraint (MOP classop, FILE * fp, bool do_print)
   return log_ha_repl_fk_ref_all_replicated (classop, fp, do_print);
 }
 
+/*
+ * check_repl_constraint_violations - Check replication constraint violations
+ *                                   for replicated user classes.
+ *
+ * return: Number of detected constraint violations.
+ *
+ * NOTE:
+ *   - System classes are skipped.
+ *   - Only replication-enabled classes are checked.
+ */
 static int
 check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print, REPL_CONSTRAINT_CHECK_FUNC check_func)
 {
@@ -2857,12 +2880,17 @@ check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print
 	{
 	  continue;
 	}
+
       ret += check_func (c->op, fp, do_print);
     }
 
   return ret;
 }
 
+/*
+ * rkcheck() - rkcheck(replication key check) main routine
+ *   return: 
+ */
 int
 rkcheck (UTIL_FUNCTION_ARG * arg)
 {
@@ -2963,7 +2991,7 @@ print_rkcheck_usage:
 	   basename (arg->argv0));
   util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
 
-  return EXIT_FAILURE;
+  return err;
 
 error:
   fclose (fp);
