@@ -11989,7 +11989,7 @@ fileio_lob_remove_dir (char *path)
 #if defined (__GNUC__)
       DISABLE_FMT_TRUNC_WARNING
 #endif
-      snprintf (sub_path, PATH_MAX, "%s%c%s", path, PATH_SEPARATOR, dir_entry->d_name);
+	snprintf (sub_path, PATH_MAX, "%s%c%s", path, PATH_SEPARATOR, dir_entry->d_name);
 
 #if defined (__GNUC__)
       ENABLE_FMT_TRUNC_WARNING
@@ -12066,7 +12066,7 @@ fileio_lob_remove_keyword_dir (const char *keyword)
 #if defined (__GNUC__)
 	  DISABLE_FMT_TRUNC_WARNING
 #endif
-	  snprintf (sub_path, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dir_entry->d_name);
+	    snprintf (sub_path, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dir_entry->d_name);
 
 #if defined (__GNUC__)
 	  ENABLE_FMT_TRUNC_WARNING
