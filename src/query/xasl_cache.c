@@ -266,14 +266,15 @@ static LF_ENTRY_DESCRIPTOR xcache_Entry_descriptor = {
 #define XCACHE_LOG_CLONE_ARGS(xclone) XASL_CLONE_AS_ARGS (xclone)
 
 #define XCACHE_LOG_OBJECT_TEXT		  "\t\t\t oid = %d|%d|%d \n"					  \
-					  "\t\t\t lock = %s \n"						  \
+					  "\t\t\t lock = %*s \n"					  \
 					  "\t\t\t tcard = %d \n"
 #define XCACHE_LOG_ENTRY_OBJECT_TEXT(msg)								  \
   "\t\t " msg ": \n"											  \
   XCACHE_LOG_OBJECT_TEXT
 #define XCACHE_LOG_ENTRY_OBJECT_ARGS(xent, oidx)							  \
   OID_AS_ARGS (&(xent)->related_objects[oidx].oid),							  \
-  lock_to_lockmode_string ((xent)->related_objects[oidx].lock),						  \
+  LOCK_MODE_STR_MAX_LENGTH,                                                                               \
+  lock_to_lockmode_string ((xent)->related_objects[oidx].lock),				                  \
   (xent)->related_objects[oidx].tcard
 
 static bool xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry);
@@ -2176,8 +2177,9 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
       fprintf (fp, "  OID_LIST (count = %d): \n", xcache_entry->n_related_objects);
       for (oid_index = 0; oid_index < xcache_entry->n_related_objects; oid_index++)
 	{
-	  fprintf (fp, "    OID = %d|%d|%d, LOCK = %s, TCARD = %8d \n",
+	  fprintf (fp, "    OID = %d|%d|%d, LOCK = %*s, TCARD = %8d \n",
 		   OID_AS_ARGS (&xcache_entry->related_objects[oid_index].oid),
+		   LOCK_MODE_STR_MAX_LENGTH,
 		   lock_to_lockmode_string (xcache_entry->related_objects[oid_index].lock),
 		   xcache_entry->related_objects[oid_index].tcard);
 	}
