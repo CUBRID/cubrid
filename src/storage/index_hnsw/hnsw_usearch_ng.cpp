@@ -91,25 +91,27 @@ class hnsw_usearch_ng final:public hnsw_index
     virtual int add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 		     const float *vector) override;
     virtual int search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
-			virtual int remove (cubthread::entry *thread_p, const OID *oid) override;
-			virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector) override;
+			OID *rec_oids, float *distances) override;
 
-			// SCAN_PRED from query_evaluator.h
-			virtual int filtered_search (cubthread::entry *thread_p, const float *query, const int k,
-			    const SCAN_PRED &filter, OID *rec_oids,
-			    float *distances) override;
-			virtual int dump (cubthread::entry *thread_p, FILE *fp) override;
+    virtual int remove (cubthread::entry *thread_p, const OID *oid) override;
+    virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector) override;
 
-			int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
+    // SCAN_PRED from query_evaluator.h
+    virtual int filtered_search (cubthread::entry *thread_p, const float *query, const int k,
+				 const SCAN_PRED &filter, OID *rec_oids,
+				 float *distances) override;
+    virtual int dump (cubthread::entry *thread_p, FILE *fp) override;
 
-			VPID m_root_vpid;
+    int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
 
-			std::unique_ptr < algo_type > m_algo;
-			std::unique_ptr < storage_type > m_storage;
+    VPID m_root_vpid;
+
+    std::unique_ptr < algo_type > m_algo;
+    std::unique_ptr < storage_type > m_storage;
 
 #if defined (SERVER_MODE)
-			cubthread::entry_workpool *m_worker_pool;
-			size_t m_worker_pool_size;
+    cubthread::entry_workpool *m_worker_pool;
+    size_t m_worker_pool_size;
 #endif
 };
 
@@ -211,6 +213,7 @@ hnsw_usearch_ng::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &re
   m_worker_pool = cubthread::get_manager ()->create_worker_pool (
 			  m_worker_pool_size, m_worker_pool_size, "hnsw insertion worker pool", NULL, 1, false);
 #endif
+  return NO_ERROR;
 }
 
 hnsw_usearch_ng::~hnsw_usearch_ng ()
@@ -238,7 +241,7 @@ hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
     {
 #if defined (SERVER_MODE)
       auto exec_f = std::bind (&hnsw_usearch_ng::add_vector, std::ref (*this), std::placeholders::_1, oid[i],
-			       vector + i * m_build_params.dimension, m_thread_p->tran_index);
+			       vector + i * m_build_params.dimension, thread_p->tran_index);
       cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
       cubthread::get_manager()->push_task (m_worker_pool, task);
 #else
@@ -248,12 +251,13 @@ hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
 	  continue;
 	}
-      m_algo->add (m_thread_p, oid[i], vector + i * m_build_params.dimension, m_build_params.ef_construction);
+      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension, m_build_params.ef_construction);
 #endif
     }
   return NO_ERROR;
 }
 
+int
 hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index)
 {
   thread_ref.tran_index = tran_index;
