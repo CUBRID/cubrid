@@ -16076,22 +16076,25 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_
 
       if (qo_is_iscan (qo_plan))
 	{
+	  SORT_LIST *sort_list;
 	  QO_INDEX_ENTRY *index_entry;
 	  PT_NODE *attr;
+	  int col_idx = 0, is_desc = 0;
 
 	  assert (qo_plan->plan_un.scan.index->head);
 
 	  index_entry = qo_plan->plan_un.scan.index->head;
 
-	  int col_idx = 0;
-	  SORT_LIST *sort_list = newa->sort_list;
+	  sort_list = newa->sort_list;
 	  while (sort_list != NULL && col_idx < index_entry->col_num)
 	    {
 	      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
+	      is_desc = index_entry->constraints->asc_desc[col_idx];
 
 	      const char *column_name = db_attribute_name (index_entry->constraints->attributes[col_idx]);
 
-	      if (!pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
+	      if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
+		  && !pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
 		{
 		  newa->covered_size++;
 		}
