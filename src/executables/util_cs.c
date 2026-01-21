@@ -100,7 +100,9 @@
   while (0)
 
 #define RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "Replication Key(PRIMARY KEY or NOT NULL UNIQUE KEY) Constraint Violations"
+#define RK_CONSTRAINT_COMPLIANCE_MESSAGE        "All replicated tables comply with the replication key constraints."
 #define FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE  "Foreign Key Constraint Violations"
+#define FK_CONSTRAINT_COMPLIANCE_MESSAGE        "All replicated tables comply with the foreign key constraints."
 
 #define CONSTRAINT_VIOLATIONS_HOW_TO_FIX_TITLE                        "< HOW TO FIX >"
 
@@ -156,6 +158,13 @@ static void intr_handler (int sig_no);
 
 typedef int (*REPL_CONSTRAINT_CHECK_FUNC) (MOP classop, FILE * fp, bool do_print);
 
+typedef struct repl_constraint_check_desc
+{
+  const char *title;
+  REPL_CONSTRAINT_CHECK_FUNC check_func;
+  const char *success_message;
+} REPL_CONSTRAINT_CHECK_DESC;
+
 static void crash_handler (int sig_no);
 static void backupdb_sig_interrupt_handler (int sig_no);
 STATIC_INLINE char *spacedb_get_size_str (char *buf, UINT64 num_pages, T_SPACEDB_SIZE_UNIT size_unit);
@@ -170,7 +179,21 @@ static int get_print_flags (UTIL_ARG_MAP * arg_map);
 static int check_rk_constraint (MOP classop, FILE * fp, bool do_print);
 static int check_fk_constraint (MOP classop, FILE * fp, bool do_print);
 static int check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print,
-					     REPL_CONSTRAINT_CHECK_FUNC check_func);
+					     REPL_CONSTRAINT_CHECK_DESC * desc);
+static int do_check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print,
+						REPL_CONSTRAINT_CHECK_FUNC check_func);
+
+static const REPL_CONSTRAINT_CHECK_DESC rk_check_desc = {
+  RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE,
+  check_rk_constraint,
+  RK_CONSTRAINT_COMPLIANCE_MESSAGE
+};
+
+static const REPL_CONSTRAINT_CHECK_DESC fk_check_desc = {
+  FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE,
+  check_fk_constraint,
+  FK_CONSTRAINT_COMPLIANCE_MESSAGE
+};
 
 /*
  * backupdb() - backupdb main routine
@@ -2859,7 +2882,7 @@ check_fk_constraint (MOP classop, FILE * fp, bool do_print)
 }
 
 /*
- * check_repl_constraint_violations - Check replication constraint violations
+ * do_check_repl_constraint_violations - Check replication constraint violations
  *                                   for replicated user classes.
  *
  * return: Number of detected constraint violations.
@@ -2869,7 +2892,8 @@ check_fk_constraint (MOP classop, FILE * fp, bool do_print)
  *   - Only replication-enabled classes are checked.
  */
 static int
-check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print, REPL_CONSTRAINT_CHECK_FUNC check_func)
+do_check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print,
+				     REPL_CONSTRAINT_CHECK_FUNC check_func)
 {
   DB_OBJLIST *c;
   int ret = 0;
@@ -2882,6 +2906,46 @@ check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print
 	}
 
       ret += check_func (c->op, fp, do_print);
+    }
+
+  return ret;
+}
+
+/*
+ * check_repl_constraint_violations () - Check replication-related constraint
+ *                                     violations for replicated classes.
+ *
+ * return        : Number of constraint violations
+ * classes (in)  : List of class objects to be checked
+ * fp (in)       : Output file pointer for printing results
+ * do_print (in) : Whether to print check results
+ * desc (in)     : Descriptor containing section title, check function,
+ *                 and success message
+ *
+ * NOTE:
+ *   - Only replicated, non-system classes are checked.
+ *   - When do_print is true, a section title and result messages are printed.
+ */
+static int
+check_repl_constraint_violations (DB_OBJLIST * classes, FILE * fp, bool do_print,
+				  const REPL_CONSTRAINT_CHECK_DESC * desc)
+{
+  int ret = 0;
+
+  if (do_print)
+    {
+      PRINT_SECTION_TITLE (fp, desc->title);
+    }
+
+  ret = do_check_repl_constraint_violations (classes, fp, do_print, desc->check_func);
+
+  if (do_print)
+    {
+      if (ret == 0)
+	{
+	  fprintf (fp, "%s\n", desc->success_message);
+	}
+      PRINT_BLANK_LINE (fp);
     }
 
   return ret;
@@ -2901,7 +2965,7 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   int rk_violation_count = 0, fk_violation_count = 0;
   char er_msg_file[PATH_MAX];
   char violation_list_file[PATH_MAX];
-  FILE *fp;
+  FILE *fp = NULL;
   int print_flags = 0;
 
   database_name = utility_get_option_string_value (arg_map, OPTION_STRING_TABLE, 0);
@@ -2914,11 +2978,8 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
   print_flags = get_print_flags (arg_map);
 
   /* error message log file */
-  snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
+  snprintf (er_msg_file, PATH_MAX, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
-
-  generate_violation_list_file_name (violation_list_file, database_name, arg->command_name);
-  fp = open_violation_list_file (database_name, arg->command_name, violation_list_file, PATH_MAX);
 
   AU_DISABLE_PASSWORDS ();	/* disable authorization for this operation */
   db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
@@ -2930,6 +2991,8 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
       goto error;
     }
 
+  fp = open_violation_list_file (database_name, arg->command_name, violation_list_file, PATH_MAX);
+
   classes = db_get_all_classes ();
   if (classes == NULL)
     {
@@ -2937,25 +3000,8 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
       goto error;
     }
 
-  PRINT_SECTION_TITLE (fp, RK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
-  rk_violation_count =
-    check_repl_constraint_violations (classes, fp, (print_flags & PRINT_RK) != 0, check_rk_constraint);
-  if (rk_violation_count == 0)
-    {
-      fprintf (fp, "All replicated tables comply with the replication key constraints.\n");
-    }
-
-  PRINT_BLANK_LINE (fp);
-
-  PRINT_SECTION_TITLE (fp, FK_CONSTRAINT_VIOLATIONS_SECTION_TITLE);
-  fk_violation_count =
-    check_repl_constraint_violations (classes, fp, (print_flags & PRINT_FK) != 0, check_fk_constraint);
-  if (fk_violation_count == 0)
-    {
-      fprintf (fp, "All replicated tables comply with the foreign key constraints.\n");
-    }
-
-  PRINT_BLANK_LINE (fp);
+  rk_violation_count = check_repl_constraint_violations (classes, fp, (print_flags & PRINT_RK) != 0, &rk_check_desc);
+  fk_violation_count = check_repl_constraint_violations (classes, fp, (print_flags & PRINT_FK) != 0, &fk_check_desc);
 
   if (rk_violation_count > 0 || fk_violation_count > 0)
     {
@@ -2994,7 +3040,11 @@ print_rkcheck_usage:
   return err;
 
 error:
-  fclose (fp);
+  if (fp != NULL)
+    {
+      fclose (fp);
+    }
+
   PRINT_AND_LOG_ERR_MSG ("%s: %s\n", arg->command_name, db_error_string (3));
 
   return err;

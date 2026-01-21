@@ -1343,6 +1343,6 @@ rkcheck: Checks HA replication key constraints.\n\
 usage: %1$s rkcheck [OPTION] database-name\n\
 \n\
 valid option:\n\
-    -r, --rk-results           print RK(Replication Key constraint violation list)\n\
+    -r, --rk-results           print RK(Replication Key) constraint violation list\n\
     -f, --fk-results           print FK(Foreign Key) constraint violation list\n
     
