@@ -91,25 +91,25 @@ class hnsw_usearch_ng final:public hnsw_index
     virtual int add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 		     const float *vector) override;
     virtual int search (cubthread::entry *thread_p, const float *query, const int k, const int ef_search,
-    virtual int remove (cubthread::entry *thread_p, const OID *oid) override;
-    virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector) override;
+			virtual int remove (cubthread::entry *thread_p, const OID *oid) override;
+			virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector) override;
 
-    // SCAN_PRED from query_evaluator.h
-    virtual int filtered_search (cubthread::entry *thread_p, const float *query, const int k,
-				 const SCAN_PRED &filter, OID *rec_oids,
-				 float *distances) override;
-    virtual int dump (cubthread::entry *thread_p, FILE *fp) override;
-    
-    int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
+			// SCAN_PRED from query_evaluator.h
+			virtual int filtered_search (cubthread::entry *thread_p, const float *query, const int k,
+			    const SCAN_PRED &filter, OID *rec_oids,
+			    float *distances) override;
+			virtual int dump (cubthread::entry *thread_p, FILE *fp) override;
 
-    VPID m_root_vpid;
+			int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
 
-    std::unique_ptr < algo_type > m_algo;
-    std::unique_ptr < storage_type > m_storage;
+			VPID m_root_vpid;
+
+			std::unique_ptr < algo_type > m_algo;
+			std::unique_ptr < storage_type > m_storage;
 
 #if defined (SERVER_MODE)
-    cubthread::entry_workpool *m_worker_pool;
-    size_t m_worker_pool_size;
+			cubthread::entry_workpool *m_worker_pool;
+			size_t m_worker_pool_size;
 #endif
 };
 
@@ -186,6 +186,7 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
 
   m_storage = std::make_unique < storage_type > (btid, build_params);
   m_algo = std::make_unique < algo_type > (build_params);
+}
 
 int
 hnsw_usearch_ng::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &rec)
