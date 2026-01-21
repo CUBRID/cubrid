@@ -617,8 +617,7 @@ namespace cubhnsw
   template <typename Traits>
   int
   algo<Traits>::seek_down_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
-			    const level_t begin_level,
-			    const level_t end_level, slot_id_t &out_slot)
+			    const level_t begin_level, const level_t end_level, slot_id_t &out_slot)
   {
     visited_set_t<Traits> &visits = context.m_visits;
     cubthread::entry *thread_p = context.m_thread_p;
@@ -658,8 +657,7 @@ namespace cubhnsw
   template <typename Traits>
   void
   algo<Traits>::form_links_to_closest_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk,
-					const level_t level,
-					candidates_view_t<Traits> &top_view)
+					const level_t level, candidates_view_t<Traits> &top_view)
   {
     top_candidates_t<Traits> &top = context.m_top_candidates;
     cubthread::entry *thread_p = context.m_thread_p;
@@ -676,8 +674,7 @@ namespace cubhnsw
   template <typename Traits>
   int
   algo<Traits>::form_reverse_links_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk, const float *value,
-				     candidates_view_t<Traits> &new_neighbors,
-				     level_t level)
+				     candidates_view_t<Traits> &new_neighbors, level_t level)
   {
     cubthread::entry *thread_p = context.m_thread_p;
 
