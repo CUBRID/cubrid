@@ -117,24 +117,16 @@ namespace cubhnsw
       virtual void set_empty (bool is_empty) noexcept = 0;
 
       virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
-      virtual slot_id_t add_node (const OID &key, const float *vector, const level_t &level) = 0;
+      virtual slot_id_t add_node (cubthread::entry *thread_ref, const OID &key, const float *vector,
+				  const level_t &level) = 0;
 
-      virtual pinned_t get_root (lock_mode mode) = 0;
-      virtual pinned_t get_node_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
-      virtual pinned_t get_vector_by_slot_id (const slot_id_t &slot_id, const lock_mode &mode) = 0;
+      virtual pinned_t get_root (cubthread::entry *thread_ref, lock_mode mode) = 0;
+      virtual pinned_t get_node_by_slot_id (cubthread::entry *thread_p, const slot_id_t &slot_id, const lock_mode &mode) = 0;
+      virtual pinned_t get_vector_by_slot_id (cubthread::entry *thread_p, const slot_id_t &slot_id,
+					      const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive
       virtual void promote_root (pinned_t &root) = 0;
-
-      virtual void set_thread_entry (cubthread::entry *thread_p)
-      {
-	m_thread_p = thread_p;
-      }
-
-      virtual cubthread::entry *get_thread_entry() const noexcept
-      {
-	return m_thread_p;
-      }
 
       short get_max_level () const
       {
@@ -175,7 +167,6 @@ namespace cubhnsw
 
     protected:
 
-      cubthread::entry *m_thread_p;
       BTID m_giid; // general index identifier
       hnsw_build_params m_build_params;
   };

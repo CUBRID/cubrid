@@ -55,12 +55,12 @@ namespace cubhnsw
       virtual bool is_empty() override;
 
       // Vector storage
-      virtual slot_id_t add_vector (const OID &oid, const float *vector) override;
+      virtual slot_id_t add_vector (cubthread::entry *thread_p, const OID &oid, const float *vector) override;
       virtual const float *get_vector (const slot_id_t &at) const override;
       virtual slot_id_t vector_at (const OID &oid) const override;
 
       // Node storage
-      virtual slot_id_t add_node (const OID &key, const level_t &level) override;
+      virtual slot_id_t add_node (cubthread::entry *thread_p, const OID &key, const level_t &level) override;
       virtual node_type get_node (const slot_id_t &at) const override;
       virtual slot_id_t node_at (const OID &oid) override;
 
