@@ -5770,6 +5770,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 
   state = tdes->state;
 
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
   if (tdes->coord != NULL && tdes->coord->ack_received != NULL)
     {
       /*
@@ -5905,12 +5906,12 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      return state;
 	    }
 	}
-
       /*
        * All acknowledgments of participants have been received, declare the
        * the transaction as completed
        */
     }
+#endif
 
   /*
    * DECLARE THE TRANSACTION AS COMPLETED

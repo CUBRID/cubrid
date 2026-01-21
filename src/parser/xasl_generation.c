@@ -639,6 +639,8 @@ static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parse
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
 
+static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
+
 static void
 pt_init_xasl_supp_info ()
 {
@@ -4530,7 +4532,7 @@ pt_set_access_spec_for_aggregation (PARSER_CONTEXT * parser, AGGREGATE_TYPE * ag
     }
   if (min_max_only_scan && min_max_scan)
     {
-      access_spec->flags = (ACCESS_SPEC_FLAG) (access_spec->flags | ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN);
+      ACCESS_SPEC_SET_FLAG (access_spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN);
     }
 }
 
@@ -12448,13 +12450,17 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (access_method == ACCESS_METHOD_SEQUENTIAL
 		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
 		{
-		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
 		}
 
 	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
 		{
-		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
 		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		}
+	      else
+		{
+		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
 		}
 
 	    }
@@ -12684,7 +12690,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	    {
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
-		  access->flags = (ACCESS_SPEC_FLAG) (access->flags | ACCESS_SPEC_FLAG_FOR_UPDATE);
+		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
 	      access->next = access_list;
@@ -16591,6 +16597,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
+	  int *attr_offsets;
+	  attr_offsets = pt_make_identity_offsets (select_list_ex);
+
+	  buildlist->a_scan_regu_list =
+	    pt_to_regu_variable_list (parser, select_list_ex, UNBOX_AS_VALUE, buildlist->a_val_list, attr_offsets);
+
+	  if (attr_offsets != NULL)
+	    {
+	      free_and_init (attr_offsets);
+	    }
+
 	  /* generate regu list (identity fetching from temp tuple) */
 	  buildlist->a_regu_list =
 	    pt_to_position_regu_variable_list (parser, select_list_ex, buildlist->a_val_list, NULL);
@@ -16635,6 +16652,52 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  /* optimize analytic function list */
 	  xasl->proc.buildlist.a_eval_list = pt_optimize_analytic_list (parser, &analytic_info, &no_optimization_done);
+
+	  if (pt_check_analytic_limit_optimization (xasl, xasl->proc.buildlist.a_eval_list) != NO_ERROR)
+	    {
+	      PT_ERRORm (parser, select_list_ex, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto analytic_exit_on_error;
+	    }
+
+
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      PT_NODE *final_node = NULL;
+	      REGU_VARIABLE_LIST regu_list_new, prev = NULL;
+	      REGU_VARIABLE *regu_var_temp;
+
+	      for (final_node = select_list_final; final_node != NULL; final_node = final_node->next)
+		{
+		  if (pt_is_instnum (final_node))
+		    {
+		      buildlist->a_outptr_list_ex->valptr_cnt++;
+
+		      regu_alloc (regu_list_new);
+		      if (regu_list_new == NULL)
+			{
+			  goto analytic_exit_on_error;
+			}
+
+		      regu_var_temp = pt_make_regu_numbering (parser, final_node);
+		      regu_list_new->value = *regu_var_temp;
+
+		      if (prev == NULL)
+			{
+			  prev = regu_list_new;
+			  regu_list_new->next = buildlist->a_outptr_list_ex->valptrp;
+			  buildlist->a_outptr_list_ex->valptrp = regu_list_new;
+			}
+		      else
+			{
+			  regu_list_new->next = prev->next;
+			  prev->next = regu_list_new;
+			}
+		      prev = prev->next;
+		    }
+
+		  prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
+		}
+	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */
 	  if (no_optimization_done == true)
@@ -16735,7 +16798,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  select_list_ex = NULL;
 
 	  /* register initial outlist */
-	  xasl->outptr_list = buildlist->a_outptr_list_ex;
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	    {
+	      xasl->outptr_list = buildlist->a_outptr_list;
+	    }
+	  else
+	    {
+	      xasl->outptr_list = buildlist->a_outptr_list_ex;
+	    }
 
 	  /* all done */
 	  goto analytic_exit;
@@ -16804,7 +16874,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     }
   else
     {
-      xasl->parallelism = -1;
+      xasl->parallelism = -1;	/* auto-compute */
     }
 
   if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
@@ -16931,7 +17001,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
 
       if ((xasl->instnum_pred != NULL || xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
-	  && pt_has_analytic (parser, select_node))
+	  && pt_has_analytic (parser, select_node) && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  /* we have an inst_num() which should not get evaluated in the initial fetch(processing stage)
 	   * qexec_execute_analytic(post-processing stage) will use it in the final sort */
@@ -17172,7 +17242,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
     }
   else
     {
-      xasl->parallelism = -1;
+      xasl->parallelism = -1;	/* auto-compute */
     }
 
   if (select_node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
@@ -17399,7 +17469,6 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	    }
 	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
-      xasl->parallelism = -1;
     }				/* end xasl */
   else
     {
@@ -18143,7 +18212,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		  index = (int) (oid_ptr - o_list);
 
 		  /* Merge existing lock with IS_LOCK/IX_LOCK. */
-		  lck_list[index] = lock_Conv[lck_list[index]][lock];
+		  lck_list[index] = lock_conv ((LOCK) lck_list[index], (LOCK) lock);
 		}
 
 	      if (o_num >= o_size)
@@ -24425,6 +24494,11 @@ pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE ** e
       return NULL;
     }
 
+  if (PT_IS_VALUE_NODE (tree))
+    {
+      return tree;
+    }
+
   if (PT_IS_ANALYTIC_NODE (tree))
     {
       /* select ntile(select stddev(...)...)... from ... is allowed */
@@ -25044,6 +25118,11 @@ pt_substitute_analytic_references (PARSER_CONTEXT * parser, PT_NODE * node, PT_N
   if (node == NULL)
     {
       /* nothing to do */
+      return node;
+    }
+
+  if (PT_IS_VALUE_NODE (node))
+    {
       return node;
     }
 
@@ -25927,6 +26006,8 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 
   /* set TDE flag */
   XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
+
+  scan_check_parallel_heap_scan_possible (xasl);
 
   return xasl;
 }
@@ -28235,4 +28316,63 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
     }
 
   return new_node;
+}
+
+/*
+ * pt_check_analytic_limit_optimization () -
+ *   Check if analytic functions are optimizable for limit optimization.
+ *   If optimizable, set the XASL_ANALYTIC_USES_LIMIT_OPT flag.
+ * 
+ * return :
+ * xasl (in)  :
+ * eval_list (in) :
+ */
+static int
+pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list)
+{
+  ANALYTIC_EVAL_TYPE *eval;
+  ANALYTIC_TYPE *a_func_list;
+  bool is_optimizable = false;
+
+  if (!xasl->instnum_pred && !xasl->instnum_val)
+    {
+      return NO_ERROR;
+    }
+
+  /* NOTE: If eval->sort_list is NULL, eval_list length is always 1.
+   *       If eval_list length >= 2, all eval entries have non-NULL sort_list.
+   *       Since we check sort_list == NULL here, checking only one eval is sufficient. */
+  for (eval = eval_list; eval != NULL; eval = eval->next)
+    {
+      is_optimizable = !(eval->sort_list) ? true : false;
+
+      for (a_func_list = eval->head; a_func_list && is_optimizable; a_func_list = a_func_list->next)
+	{
+	  switch (a_func_list->function)
+	    {
+	    case PT_FIRST_VALUE:
+	      if (a_func_list->ignore_nulls)
+		{
+		  is_optimizable = false;
+		  break;
+		}
+
+	    case PT_ROW_NUMBER:
+	    case PT_RANK:
+	    case PT_DENSE_RANK:
+	      break;
+
+	    default:
+	      is_optimizable = false;
+	      break;
+	    }
+	}
+    }
+
+  if (is_optimizable)
+    {
+      XASL_SET_FLAG (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
+    }
+
+  return NO_ERROR;
 }
