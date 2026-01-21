@@ -554,8 +554,7 @@ namespace cubhnsw
   template <typename Traits>
   int
   algo<Traits>::seek_on_layer_ (algo_context_t<Traits> &context, const float *query, const slot_id_t &start_slot,
-				const level_t level,
-				const std::size_t expansion_limit)
+				const level_t level, const std::size_t expansion_limit)
   {
     next_candidates_t<Traits> &next = context.m_next_candidates;
     top_candidates_t<Traits> &top = context.m_top_candidates;
