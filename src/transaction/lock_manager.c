@@ -9302,7 +9302,8 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
     {
       assert (tran_index == entry->tran_index);
 
-      fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->granted_mode));
+      fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
+	       lock_to_lockmode_string (entry->granted_mode));
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
       lock_event_log_lock_info (thread_p, log_fp, entry);
@@ -9324,7 +9325,8 @@ lock_event_log_tran_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_inde
   if (entry != NULL)
     {
       fprintf (log_fp, "wait:\n");
-      fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->blocked_mode));
+      fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
+	       lock_to_lockmode_string (entry->blocked_mode));
 
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
@@ -9386,13 +9388,12 @@ lock_event_log_deadlock_locks (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_
 	}
       fprintf (log_fp, "\n");
 
-      for (lock_name =
-	   i % 2 ? lock_to_lockmode_string (entry->blocked_mode) : lock_to_lockmode_string (entry->granted_mode);
-	   *lock_name == ' '; lock_name++);
+      lock_name =
+	(i % 2) ? lock_to_lockmode_string (entry->blocked_mode) : lock_to_lockmode_string (entry->granted_mode);
       fprintf (log_fp, "%*clock: %s", indent, ' ', lock_name);
       if (!(i % 2) && entry->blocked_mode != NULL_LOCK)
 	{
-	  for (lock_name = lock_to_lockmode_string (entry->blocked_mode); *lock_name == ' '; lock_name++);
+	  lock_name = lock_to_lockmode_string (entry->blocked_mode);
 	  fprintf (log_fp, "|waiting for lock conversion to %s", lock_name);
 	}
       SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
@@ -9435,7 +9436,8 @@ lock_event_log_blocked_lock (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * 
   fprintf (log_fp, "waiter:\n");
   event_log_print_client_info (entry->tran_index, indent);
 
-  fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->blocked_mode));
+  fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
+	   lock_to_lockmode_string (entry->blocked_mode));
   lock_event_log_lock_info (thread_p, log_fp, entry);
 
   event_log_sql_string (thread_p, log_fp, &entry->xasl_id, indent);
@@ -9484,7 +9486,8 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 	{
 	  event_log_print_client_info (entry->tran_index, indent);
 
-	  fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->granted_mode));
+	  fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
+		   lock_to_lockmode_string (entry->granted_mode));
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
@@ -9519,7 +9522,8 @@ lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY 
 
 	  event_log_print_client_info (entry->tran_index, indent);
 
-	  fprintf (log_fp, "%*clock: %s", indent, ' ', lock_to_lockmode_string (entry->blocked_mode));
+	  fprintf (log_fp, "%*clock: %*s", indent, ' ', LOCK_MODE_STR_MAX_LENGTH,
+		   lock_to_lockmode_string (entry->blocked_mode));
 
 	  SET_EMULATE_THREAD_WITH_LOCK_ENTRY (thread_p, entry);
 
