@@ -904,6 +904,11 @@ namespace cubconn::master
 	break;
 
       case SERVER_START_SHUTDOWN:
+	if (!HA_DISABLED ())
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
+		    "Disconnected with the cub_master and will shut itself down", "");
+	  }
 	m_stop = true;
 	NEXT_STATE (ctx, RecvRequestType);
 	break;
@@ -1237,7 +1242,7 @@ namespace cubconn::master
 	if (!HA_DISABLED ())
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
-		    "disconnected with the cub_master and will shut itself down", "");
+		    "Disconnected with the cub_master and will shut itself down", "");
 	    return true;
 	  }
 	/* WAIT RESPONSE or ESTABLISHED */
