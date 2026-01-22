@@ -7006,9 +7006,9 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 
   assert (prev_hfid != NULL || new_hfid != NULL);
 
-  if (prev_hfid && new_hfid) /* truncate case */
+  if (prev_hfid && new_hfid)	/* truncate case */
     {
-      error = lob_remove_dir (prev_hfid, -1); /* -1 means remove all LOB directories of the table. */
+      error = lob_remove_dir (prev_hfid, -1);	/* -1 means remove all LOB directories of the table. */
       if (error != NO_ERROR)
 	{
 	  return error;
