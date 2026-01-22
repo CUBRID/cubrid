@@ -11566,6 +11566,7 @@ end:
   db_private_free_and_init (thread_p, attrid_arr);
 
   ptr = or_pack_errcode (reply, error);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
