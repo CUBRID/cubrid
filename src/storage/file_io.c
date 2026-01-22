@@ -12032,14 +12032,16 @@ fileio_lob_remove_dir (char *path)
 }
 
 /*
- * fileio_lob_remove_keyword_dir () - Remove LOB subdirectories whose names contain the given keyword by calling
+ * fileio_lob_remove_matching_dir () - Remove LOB subdirectories whose names contain the given keyword by calling
  *                                    fileio_lob_remove_dir().
  *
  * return: error code.
- * keyword (in): Keyword for removing LOB subdirectories.
+ * keyword (in): keyword (in): A keyword representing part or all of a directory name
+ *               to be removed under the LOB path.
+ *               Examples include an HFID (attrid) or a temporary directory name ("ces").
  */
 int
-fileio_lob_remove_keyword_dir (const char *keyword)
+fileio_lob_remove_matching_dir (const char *keyword)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   DIR *dir_p;
