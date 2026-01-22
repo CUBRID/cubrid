@@ -251,17 +251,8 @@ hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	  continue;
 	}
-      <<<<<<< HEAD
-      <<<<<<< HEAD
-      m_algo->add (oid[i], vector + i * m_build_params.dimension);
-      =======
-	      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension, m_build_params.ef_construction);
+      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension);
 #endif
-      >>>>>>> origin/cubvec/cubvec
-      =======
-	      m_algo->add (m_thread_p, oid[i], vector + i * m_build_params.dimension);
-#endif
-      >>>>>>> hgryoo/CUBVEC-151
     }
   return NO_ERROR;
 }
@@ -293,7 +284,7 @@ hnsw_usearch_ng::search (cubthread::entry *thread_p, const float *query, const i
       return NO_ERROR;
     }
 
-  auto results = m_algo->search (query, k, ef_search);
+  auto results = m_algo->search (thread_p, query, k, ef_search);
   if (results.error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "Error during search: %s", results.error);

@@ -375,12 +375,6 @@ namespace cubhnsw
 
     // precompute inverse log connectivity
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.m));
-    <<<<<<< HEAD
-    =======
-
-	    // pre-reserve top_for_refine
-	    m_context.m_top_for_refine.reserve (m_connectivity * 2 + 1);
-    >>>>>>> hgryoo/CUBVEC-151
   }
 
   template <typename Traits>
@@ -524,23 +518,14 @@ namespace cubhnsw
     context.m_thread_p = thread_p;
     context.clear_candidates();
 
-    std::size_t connectivity_max = m_connectivity * 2 + 1;
-    context.m_top_for_refine.reserve (connectivity_max);
-
     top_candidates_t<Traits> &top = context.m_top_candidates;
     next_candidates_t<Traits> &next = context.m_next_candidates;
 
     std::size_t expansion_size = std::max (k, expansion);
-
-    if (!top.reserve (expansion_size))
+    if (!top.reserve (expansion_size) || !next.reserve (expansion_size))
       {
-	// TODO: error handling
-	assert (false);
-	return result;
-      }
-    if (!next.reserve (expansion_size))
-      {
-	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expansion_size * sizeof (candidate_t<Traits>));
+        assert (false);
 	return result;
       }
 
