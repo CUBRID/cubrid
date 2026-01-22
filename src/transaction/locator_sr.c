@@ -46,6 +46,8 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
+#include "oos_file.hpp"
+#include "oos_oid_queue.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
@@ -229,6 +231,8 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 							 MVCC_REEV_DATA * mvcc_reev_data_p,
 							 MVCC_REC_HEADER * mvcc_header_p,
 							 const OID * curr_row_version_oid_p, RECDES * recdes);
+
+static int locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes);
 
 /*
  * locator_initialize () - Initialize the locator on the server
@@ -5265,6 +5269,43 @@ error2:
   return error_code;
 }
 
+int
+locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes, bool is_repl)
+{
+  int error_code = NO_ERROR;
+  HFID oos_hfid = HFID_INITIALIZER;
+  VFID oos_vfid = VFID_INITIALIZER;
+  OID oos_oid = OID_INITIALIZER;
+
+  if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
+    {
+      error_code = S_ERROR;
+      goto err;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+    {
+      error_code = S_ERROR;
+      goto err;
+    }
+
+  if (oos_insert (thread_p, oos_vfid, *recdes, oos_oid) != NO_ERROR)
+    {
+      error_code = S_ERROR;
+      goto err;
+    }
+  else
+    {
+      oos_oid_queue ().push_back (oos_oid);
+    }
+
+  repl_log_insert (thread_p, class_oid, &oos_oid, LOG_REPLICATION_DATA, RVREPL_OOS_INSERT, NULL,
+		   REPL_INFO_TYPE_RBR_NORMAL);
+
+err:
+  return error_code;
+}
+
 /*
  * locator_move_record () - relocate a record from a partitioned class
  * return : error code or NO_ERROR
@@ -7002,9 +7043,20 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
       if (error_code == NO_ERROR)
 	{
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
+	  if (obj->operation == LC_FLUSH_INSERT && heap_recdes_contains_oos (&recdes))
+	    {
+	      error_code = locator_fixup_oos_oids_in_recdes (thread_p, &obj->class_oid, &recdes);
+	      if (error_code != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
 
 	  switch (obj->operation)
 	    {
+	    case LC_FLUSH_INSERT_OOS:
+	      error_code = locator_oos_insert_force (thread_p, &obj->class_oid, &recdes, true);
+	      break;
 	    case LC_FLUSH_INSERT:
 	    case LC_FLUSH_INSERT_PRUNE:
 	    case LC_FLUSH_INSERT_PRUNE_VERIFY:
@@ -12375,6 +12427,7 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
     case LC_FLUSH_INSERT:
     case LC_FLUSH_UPDATE:
     case LC_FLUSH_DELETE:
+    case LC_FLUSH_INSERT_OOS:
       return DB_NOT_PARTITIONED_CLASS;
 
     case LC_FLUSH_INSERT_PRUNE:
@@ -13929,4 +13982,75 @@ void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
 {
   xcache_remove_by_oid (thread_p, oidp);
+}
+
+static int
+locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = NO_ERROR;
+
+  error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    return error;
+
+  OR_CLASSREP *classrep = attr_info.read_classrepr;
+
+  for (int i = 0; i < classrep->n_attributes; i++)
+    {
+      OR_ATTRIBUTE *attrepr = &classrep->attributes[i];
+
+      if (attrepr->is_fixed != 0)
+	continue;
+
+      if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
+	continue;
+
+      int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+      int offset = 0;
+
+      // var table 엔트리 읽기 (heap_attrvalue_point_variable()과 동일)
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							  attrepr->location, offset_size));
+	  break;
+	case OR_SHORT_SIZE:
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							   attrepr->location, offset_size));
+	  break;
+	case OR_INT_SIZE:
+	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							 attrepr->location, offset_size));
+	  break;
+	default:
+	  assert_release (false);
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (!OR_IS_OOS (offset))
+	continue;
+
+      char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+
+      OID new_oid;
+      if (!oos_oid_queue_pop (&new_oid))
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      OR_BUF b;
+      b.buffer = (char *) recdes->data;
+      b.ptr = oid_ptr;
+      b.endptr = (char *) recdes->data + recdes->length;
+
+      or_put_oid (&b, &new_oid);
+    }
+
+end:
+  heap_attrinfo_end (thread_p, &attr_info);
+  return error;
 }

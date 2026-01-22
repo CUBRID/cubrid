@@ -111,6 +111,7 @@ typedef enum
   LC_FLUSH_INSERT,
   LC_FLUSH_INSERT_PRUNE,
   LC_FLUSH_INSERT_PRUNE_VERIFY,
+  LC_FLUSH_INSERT_OOS,
   LC_FLUSH_DELETE,
   LC_FLUSH_UPDATE,
   LC_FLUSH_UPDATE_PRUNE,
@@ -120,7 +121,7 @@ typedef enum
 
 #define LC_IS_FLUSH_INSERT(operation) \
   (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE \
-   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY)
+   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS)
 
 #define LC_IS_FLUSH_UPDATE(operation) \
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \

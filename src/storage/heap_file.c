@@ -12297,6 +12297,11 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	    {
 	      return S_ERROR;
 	    }
+
+	  // TODO : 이 때 RK를 알 수 있는 방법을 찾아야 함, POC이기 때문에 임시로 아무 dbvalue값을 전달
+	  repl_log_insert (thread_p, &attr_info->class_oid, &oos_oid, LOG_REPLICATION_DATA, RVREPL_OOS_INSERT,
+			   &attr_info->values[i].dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
+
 	  (*oos_oids)[i] = oos_oid;
 	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
 	    {
@@ -27596,7 +27601,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 // *INDENT-ON*
 
-static bool
+bool
 heap_recdes_contains_oos (const RECDES * record)
 {
   int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
