@@ -5750,7 +5750,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	}
       au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
 
-      if (locator_lob_process_create_dir (class_, NULL, hfid) != NO_ERROR)
+      if (locator_lob_process_dir (class_, NULL, hfid) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -6996,7 +6996,23 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 {
   int error = NO_ERROR;
 
-  if (prev_hfid != NULL)
+  assert (prev_hfid != NULL || new_hfid != NULL);
+
+  if (prev_hfid && new_hfid) /* truncate case */
+    {
+      error = lob_remove_dir (prev_hfid, -1); /* -1 means remove all LOB directories of the table. */
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (prev_hfid != NULL)
     {
       error = lob_remove_dir (prev_hfid, lob_attrid_arr[0]);
       if (error != NO_ERROR)
@@ -7004,8 +7020,7 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 	  return error;
 	}
     }
-
-  if (new_hfid != NULL)
+  else if (new_hfid != NULL)
     {
       error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
       if (error != NO_ERROR)
@@ -7018,7 +7033,7 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
 }
 
 /*
- * locator_lob_process_create_dir() - Prepare an array of LOB attrid to create or remove LOB directories.
+ * locator_lob_process_dir() - Prepare an array of LOB attrid to create or remove LOB directories.
  * return: error code
  * class_(in): Class structure that contains LOB information.
  * prev_hfid(in): HFID of an existing LOB directory to remove.
@@ -7027,7 +7042,7 @@ locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_at
  * NOTE: Call locator_lob_create_or_remove_dir() to handle LOB directories.
  */
 int
-locator_lob_process_create_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
+locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
 {
   SM_ATTRIBUTE *attr;
   int lob_attrid_arr_length = 0;
@@ -7088,10 +7103,10 @@ locator_lob_process_create_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_
       lob_attrid_arr = lob_local_attrid_arr;
     }
 
-  /* Destroy and Create the lob dir if need */
+  /* Create or Remove the lob dir if need */
   if (lob_attrid_arr_length)
     {
-      error = locator_lob_create_or_remove_dir (NULL, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
     }
   if (error != NO_ERROR)
     {

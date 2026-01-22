@@ -15778,7 +15778,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
       goto end;
     }
 
-  error = locator_lob_process_create_dir (class_, &prev_hfid, insts_hfid);
+  error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
   if (error != NO_ERROR)
     {
       goto end;
