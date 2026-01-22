@@ -37,7 +37,9 @@
 #include "slotted_page.h"
 
 #include "db_vector.hpp"	// db_vector_is_all_zeros
-
+#if defined (SERVER_MODE)
+#include "thread_worker_pool.hpp"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -81,13 +83,13 @@ class hnsw_usearch_ng final:public hnsw_index
 		     const std::string &name,
 		     const hnsw_build_params &build_params,
 		     PAGE_PTR page_ptr, RECDES &rec);
-    ~hnsw_usearch_ng () = default;
+    ~hnsw_usearch_ng () override;
 
     virtual int prepare_to_add (int n_vectors, const OID *oid,
 				const float *vector) override;
     virtual int add (int n_vectors, const OID *oid,
 		     const float *vector) override;
-
+    int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
     virtual int search (const float *query, const int k, const int ef_search,
 			OID *rec_oids, float *distances) override;
     virtual int remove (const OID *oid) override;
@@ -107,6 +109,11 @@ class hnsw_usearch_ng final:public hnsw_index
 
     std::unique_ptr < algo_type > m_algo;
     std::unique_ptr < storage_type > m_storage;
+
+#if defined (SERVER_MODE)
+    cubthread::entry_workpool *m_worker_pool;
+    size_t m_worker_pool_size;
+#endif
 };
 
 // =====================================================================
@@ -176,7 +183,6 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
   this->m_thread_p = thread_get_thread_entry_info ();
 
   m_storage = std::make_unique < storage_type > (btid, build_params);
-  m_storage->set_thread_entry (thread_get_thread_entry_info ());
 
   std::size_t root_size;
   m_storage->init_root (reinterpret_cast < std::byte * > (rec.data),
@@ -193,6 +199,19 @@ hnsw_usearch_ng::hnsw_usearch_ng (hnsw_index_backend &backend, const BTID &btid,
 
   m_algo = std::make_unique < algo_type > (build_params);
   m_algo->set_storage (m_storage.get ());
+
+#if defined (SERVER_MODE)
+  m_worker_pool_size = std::thread::hardware_concurrency ();
+  m_worker_pool = cubthread::get_manager ()->create_worker_pool (
+			  m_worker_pool_size, m_worker_pool_size, "hnsw insertion worker pool", NULL, 1, false);
+#endif
+}
+
+hnsw_usearch_ng::~hnsw_usearch_ng ()
+{
+#if defined (SERVER_MODE)
+  cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
+#endif
 }
 
 int
@@ -206,19 +225,42 @@ hnsw_usearch_ng::prepare_to_add (int n_vectors, const OID *oid,
 int
 hnsw_usearch_ng::add (int n_vectors, const OID *oid, const float *vector)
 {
-  #pragma omp parallel
-  #pragma omp for
+
+  // Push insert each vector insertion task to worker pool
+
   for (int i = 0; i < n_vectors; ++i)
     {
+#if defined (SERVER_MODE)
+      auto exec_f = std::bind (&hnsw_usearch_ng::add_vector, std::ref (*this), std::placeholders::_1, oid[i],
+			       vector + i * m_build_params.dimension, m_thread_p->tran_index);
+      cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
+      cubthread::get_manager()->push_task (m_worker_pool, task);
+#else
       if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
-	  && db_vector_is_all_zeros (vector + i * m_build_params.dimension,
-				     m_build_params.dimension))
+	  && db_vector_is_all_zeros (vector + i * m_build_params.dimension, m_build_params.dimension))
 	{
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	  continue;
 	}
-      m_algo->add (oid[i], vector + i * m_build_params.dimension);
+      m_algo->add (m_thread_p, oid[i], vector + i * m_build_params.dimension);
+#endif
     }
+  return NO_ERROR;
+}
+
+int
+hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index)
+{
+  thread_ref.tran_index = tran_index;
+
+  if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
+      && db_vector_is_all_zeros (vector, m_build_params.dimension))
+    {
+      er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
+      return NO_ERROR;
+    }
+
+  m_algo->add (&thread_ref, oid, vector);
   return NO_ERROR;
 }
 
