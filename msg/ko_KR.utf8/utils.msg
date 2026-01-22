@@ -1329,6 +1329,6 @@ rkcheck: HA 복제 키 제약 조건 준수 여부를 검사합니다.\n\
 사용법: %1$s rkcheck [OPTION] database-name\n\
 \n\
 valid option:\n\
-    -r, --rk-results           rk 제약사항 확인 결과를 출력합니다\n\
-    -f, --fk-results           fk 제약사항 확인 결과를 출력합니다\n
+    -r, --rk-check           RK(Replication Key) 제약사항을 확인합니다.\n\
+    -f, --fk-check           FK(Foreign Key) 제약사항을 확인합니다.\n
     

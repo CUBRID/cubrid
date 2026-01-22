@@ -8912,7 +8912,7 @@ check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
  *   as a replication constraint violation.
  */
 int
-log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp, bool do_print)
+log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
 {
   DB_CONSTRAINT *tmp_c;
   int ret = 0;
@@ -8931,12 +8931,9 @@ log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp, bool do_pri
 
       if (!sm_is_replication_class (ref_class_mop))
 	{
-	  if (do_print)
-	    {
-	      DB_CONSTRAINT *pk_c = db_constraint_find_primary_key (db_get_constraints (ref_class_mop));
-	      fprintf (fp, "%s(%s) -> %s(%s)\n", sm_get_ch_name (class_obj), tmp_c->name,
-		       sm_get_ch_name (ref_class_mop), pk_c->name);
-	    }
+	  DB_CONSTRAINT *pk_c = db_constraint_find_primary_key (db_get_constraints (ref_class_mop));
+	  fprintf (fp, "%s(%s) -> %s(%s)\n", sm_get_ch_name (class_obj), tmp_c->name,
+		   sm_get_ch_name (ref_class_mop), pk_c->name);
 	  ret++;
 	}
     }

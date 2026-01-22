@@ -1766,10 +1766,10 @@ typedef struct _ha_config
 #define MEMMON_DISABLE_FORCE_S      14103
 #define MEMMON_DISABLE_FORCE_L      "disable-force"
 
-#define RKCHECK_PRINT_RK_RESULT_S 'r'
-#define RKCHECK_PRINT_RK_RESULT_L "rk-result"
-#define RKCHECK_PRINT_FK_RESULT_S 'f'
-#define RKCHECK_PRINT_FK_RESULT_L "fk-result"
+#define RKCHECK_CHECK_RK_CONSTRAINT_S 'r'
+#define RKCHECK_CHECK_RK_CONSTRAINT_L "rk-check"
+#define RKCHECK_CHECK_FK_CONSTRAINT_S 'f'
+#define RKCHECK_CHECK_FK_CONSTRAINT_L "fk-check"
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
