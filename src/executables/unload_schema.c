@@ -4759,7 +4759,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 		}
 	      else
 		{
-		  output_ctx ("COMMENT ");
+		  output_ctx (" COMMENT ");
 		}
 	      desc_value_print (output_ctx, comment);
 	    }
