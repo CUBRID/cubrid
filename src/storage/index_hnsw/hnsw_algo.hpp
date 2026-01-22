@@ -398,13 +398,9 @@ namespace cubhnsw
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
     std::size_t top_limit = std::max (connectivity_max, m_expansion);
-    if (!top.reserve (top_limit))
+    if (!top.reserve (top_limit) || !next.reserve (top_limit))
       {
-	assert (false);
-	return {ER_FAILED, OID_INITIALIZER};
-      }
-    if (!next.reserve (m_expansion))
-      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, top_limit * sizeof (candidate_t<Traits>));
 	assert (false);
 	return {ER_FAILED, OID_INITIALIZER};
       }
