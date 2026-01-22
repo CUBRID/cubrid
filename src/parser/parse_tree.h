@@ -3234,7 +3234,6 @@ struct pt_stored_proc_body_info
   int lang;
   PT_NODE *decl;		/* PT_VALUE */
   PT_NODE *impl;		/* PT_VALUE */
-  bool direct;			/* whether the body has implementation (direct) or points to a implementation file (indirect) */
 };
 
 struct pt_stored_proc_info

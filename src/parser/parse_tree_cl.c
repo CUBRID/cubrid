@@ -8065,40 +8065,13 @@ pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_nulstring (parser, q, parser->flag.is_unloading_schema ? " AS\n" : " as ");
   if (p->info.sp_body.lang == SP_LANG_PLCSQL)
     {
-      // TODO: PL/CSQL compiler should permit it.
-      // q = pt_append_nulstring (parser, q, "language plcsql ");
       r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
     }
-  else				/* (p->info.sp_body.lang == SP_LANG_JAVA) */
+  else
+    /* (p->info.sp_body.lang == SP_LANG_JAVA) */
     {
-      q = pt_append_nulstring (parser, q, "language java ");
-
-      // TODO: CBRD-24641
-      /*
-         if (p->info.sp_body.direct)
-         {
-         q = pt_append_nulstring (parser, q, " begin ");
-         r1 = pt_print_bytes (parser, p->info.sp_body.impl);
-         }
-       */
-
-      if (p->info.sp_body.direct == false)
-	{
-	  q = pt_append_nulstring (parser, q, " name ");
-	  r1 = pt_print_bytes (parser, p->info.sp_body.decl);
-	}
-      else
-	{
-	  r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
-	}
-
-      // TODO: CBRD-24641
-      /*
-         if (p->info.sp_body.direct)
-         {
-         q = pt_append_nulstring (parser, q, " end ");
-         }
-       */
+      q = pt_append_nulstring (parser, q, "language java name ");
+      r1 = pt_print_bytes (parser, p->info.sp_body.decl);
     }
 
   q = pt_append_varchar (parser, q, r1);
