@@ -525,7 +525,7 @@ namespace cubhnsw
     if (!top.reserve (expansion_size) || !next.reserve (expansion_size))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expansion_size * sizeof (candidate_t<Traits>));
-        assert (false);
+	assert (false);
 	return result;
       }
 
