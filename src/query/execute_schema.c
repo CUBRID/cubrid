@@ -230,7 +230,7 @@ struct db_value_slist
 static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
-static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
+static int lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -630,7 +630,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    assert (alter->info.alter.create_index == NULL);
 
-	    error = lob_process_dir_add_attr (ctemplate->current, old_att_count);
+	    error = lob_process_dir_add_attr_if_needed (ctemplate->current, old_att_count);
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
@@ -1417,7 +1417,7 @@ alter_partition_fail:
 }
 
 /*
- * lob_process_dir_add_attr() - Collect newly added LOB attributes, build/manage
+ * lob_process_dir_add_attr_if_needed() - Collect newly added LOB attributes, build/manage
  *                              their attribute id array, and trigger LOB
  *                              directory creation for those attributes.
  *   return: Error code
@@ -1425,7 +1425,7 @@ alter_partition_fail:
  *   old_att_count(in): Number of attributes before adding new attributes
  */
 static int
-lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
+lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count)
 {
   SM_ATTRIBUTE *attr;
   int lob_attrid_arr_length = 0;
