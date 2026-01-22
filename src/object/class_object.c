@@ -537,6 +537,54 @@ classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint)
 }
 
 /*
+ * classobj_copy_pk_unique_constraints() - Copy PK or NOT NULL UNIQUE constraints
+ *    from the source attribute to the destination attribute.
+ *    Previously, only the unique BTID was copied; now each constraint object is
+ *    recreated using classobj_make_constraint() to preserve type information.
+ *
+ *    This is required because later logic performs constraint-type comparisons,
+ *    but the destination (ctemplate) does not yet contain that information.
+ *
+ *    TODO: Consider copying the constraint cache or regenerating it on the
+ *    destination attribute in the future.
+ *          Also, since only the constraint type is required when comparing
+ *          PK and NOT NULL UNIQUE constraints, it may be worth exploring
+ *          an approach that copies only the type information.
+ *
+ * return: NO_ERROR on success, ER_FAILED on error
+ *   src(in): source attribute
+ *   dest(in/out): destination attribute
+ */
+static int
+classobj_copy_pk_and_uk_notnull_constraints (const SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest)
+{
+  SM_CONSTRAINT *src_cons, *dest_new;
+  for (src_cons = src->constraints; src_cons != NULL; src_cons = (SM_CONSTRAINT *) src_cons->next)
+    {
+      if (SM_IS_CONSTRAINT_UNIQUE_FAMILY (src_cons->type) && (src->flags & SM_ATTFLAG_NON_NULL) != 0)
+	{
+	  dest_new =
+	    classobj_make_constraint (src_cons->name, src_cons->type, &src_cons->index, src_cons->has_function);
+	  if (dest_new == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  if (dest->constraints == NULL)
+	    {
+	      dest->constraints = dest_new;
+	    }
+	  else
+	    {
+	      dest_new->next = dest->constraints;
+	      dest->constraints = dest_new;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * classobj_copy_props() - Copies a property list.  The filter class is optional and
  *    will cause those properties whose origin is the given class to be copied
  *    and others to be filtered out.  This is useful when we want to filter out
@@ -4698,12 +4746,11 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
 
       if (src->constraints != NULL)
 	{
-	  /*
-	   *  We used to just copy the unique BTID from the source to the
-	   *  destination.  We might want to copy the src cache to dest, or
-	   *  maybe regenerate the cache for dest since the information is
-	   *  already in its property list.  - JB
-	   */
+	  error = classobj_copy_pk_and_uk_notnull_constraints (src, dest);
+	  if (error != NO_ERROR)
+	    {
+	      goto memory_error;
+	    }
 	}
 
       /* make a copy of the default value */

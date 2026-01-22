@@ -100,6 +100,17 @@
 #define IS_ALTER_STMT_SET_REPL_OPTION(_node) \
   ((_node)->info.value.data_value.i )
 
+/* Returns true if the ALTER clause affects replication constraints.
+ * Used to check whether the given PT_ALTER_CODE value modifies
+ * replication-related properties.
+ */
+#define IS_REPL_CONSTRAINT_RELATED_ALTER(code)              \
+  ( ((code) == PT_ADD_ATTR_MTHD)         ||                 \
+    ((code) == PT_DROP_ATTR_MTHD)        ||                 \
+    ((code) == PT_DROP_CONSTRAINT)       ||                 \
+    ((code) == PT_DROP_PRIMARY_CLAUSE)                     \
+  )
+
 typedef enum
 {
   DO_INDEX_CREATE, DO_INDEX_DROP
@@ -1331,13 +1342,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  error = check_ha_repl_constraint (vclass);
-  if (error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
-    }
-
   /* If we have an ADD COLUMN x NOT NULL without a default value, the existing rows will be filled with NULL for the
    * new column by default. For compatibility with MySQL, we can auto-fill some column types with "hard defaults", like
    * 0 for integer types. THIS CAN TAKE A LONG TIME (it runs an UPDATE), and can be turned off by setting
@@ -1637,7 +1641,6 @@ change_ai_error:
   return error;
 }
 
-
 /*
  * do_alter() -
  *   return: Error code
@@ -1651,6 +1654,9 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *crt_clause = NULL;
   bool do_semantic_checks = false;
   bool do_rollback = false;
+  DB_OBJECT *vclass;
+  bool need_check_repl_constraint = false;
+  const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -1687,6 +1693,13 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
+	  /* 
+	   * entity_name is required for performing the HA replication constraint check 
+	   * after all ALTER clauses have been processed. 
+	   * Since the check must be based on the final table name, 
+	   * entity_name is continuously updated as each RENAME clause is applied.
+	   */
+	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
@@ -1730,7 +1743,29 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto error_exit;
 	}
+
+      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter->info.alter.code))
+	{
+	  need_check_repl_constraint = true;
+	}
+
       do_semantic_checks = true;
+    }
+
+  if (need_check_repl_constraint)
+    {
+      vclass = db_find_class (entity_name);
+
+      if (!sm_is_replication_class (vclass))
+	{
+	  return NO_ERROR;
+	}
+
+      error_code = check_ha_repl_constraint (vclass);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
 
   return error_code;
@@ -3912,6 +3947,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   size_t buf_size;
   SM_CLASS *smclass;
   bool reuse_oid = false;
+  bool replication_opt;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   CHECK_MODIFICATION_ERROR ();
@@ -3984,6 +4020,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
   reuse_oid = (smclass->flags & SM_CLASSFLAG_REUSE_OID) ? true : false;
   tde_algo = (TDE_ALGORITHM) smclass->tde_algorithm;
+  replication_opt = (smclass->flags & SM_CLASSFLAG_DATA_REPLICATION_OFF) ? false : true;
 
   parttemp->info.create_entity.entity_type = PT_CLASS;
   parttemp->info.create_entity.entity_name = parser_new_node (parser, PT_NAME);
@@ -4123,6 +4160,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  if (tde_algo != TDE_ALGORITHM_NONE)
 	    {
 	      error = sm_set_class_tde_algorithm (newpci->obj, tde_algo);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
+	    }
+	  if (!replication_opt)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
 	      if (error != NO_ERROR)
 		{
 		  goto end_create;
@@ -4353,6 +4398,15 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 		  goto end_create;
 		}
 	    }
+	  if (!replication_opt)
+	    {
+	      error = sm_set_class_flag (newpci->obj, SM_CLASSFLAG_DATA_REPLICATION_OFF, TRUE);
+	      if (error != NO_ERROR)
+		{
+		  goto end_create;
+		}
+	    }
+
 	  if (locator_create_heap_if_needed (newpci->obj, reuse_oid) == NULL
 	      || locator_flush_class (newpci->obj) != NO_ERROR)
 	    {
@@ -6953,6 +7007,44 @@ do_promote_partition_by_name (const char *class_name, const char *part_num, char
 }
 
 /*
+ * has_notnull_unique_constraints() - Check if attribute is NOT NULL and UNIQUE
+ *    return: true if the attribute has both NOT NULL and UNIQUE constraints,
+ *            false otherwise
+ *    smattr(in): attribute to check
+ *
+ * Note:
+ *    The decision is based on both smattr->flags (for NOT NULL)
+ *    and smattr->constraints (for UNIQUE).
+ *    - If the attribute has both NOT NULL and UNIQUE constraints, return true
+ *      so that the UNIQUE flags are preserved.
+ *    - Otherwise, return false and the UNIQUE-related flags will be reset.
+ */
+static bool
+has_notnull_unique_constraints (const SM_ATTRIBUTE * smattr)
+{
+  bool has_not_null = false;
+  bool has_unique = false;
+  SM_CONSTRAINT *c;
+
+  has_not_null = (smattr->flags & SM_ATTFLAG_NON_NULL) != 0;
+  if (!has_not_null)
+    {
+      return false;
+    }
+
+  for (c = smattr->constraints; c != NULL; c = c->next)
+    {
+      if (c->type == SM_CONSTRAINT_UNIQUE || c->type == SM_CONSTRAINT_REVERSE_UNIQUE)
+	{
+	  has_unique = true;
+	  break;
+	}
+    }
+
+  return has_not_null && has_unique;
+}
+
+/*
  * do_promote_partition () - promote a partition
  * return : error code or NO_ERROR
  * class_ (in) : class to promote
@@ -6965,8 +7057,10 @@ do_promote_partition (SM_CLASS * class_)
   SM_CLASS *current = NULL;
   DB_CTMPL *ctemplate = NULL;
   SM_ATTRIBUTE *smattr = NULL;
-  bool has_pk = false;
+  bool has_notnull_unique = false;
 
+  DB_CONSTRAINT *tmp;
+  SM_CLASS_CONSTRAINT *c;
   CHECK_1ARG_ERROR (class_);
 
   if (class_->partition == NULL)
@@ -7016,21 +7110,23 @@ do_promote_partition (SM_CLASS * class_)
       smattr->class_mop = subclass_mop;
     }
 
-  /* Make sure we do not copy anything that actually belongs to the root class (the class to which this partition
-   * belongs to). This includes: auto_increment flags, unique indexes, primary keys, and foreign keys */
+  /* Ensure that attributes belonging to a partition are not copied.  
+   * However, according to EPIC CBRD-26096, primary key (PK) constraints and 
+   * NOT NULL UNIQUE properties must be preserved and reflected properly. */
   for (smattr = ctemplate->attributes; smattr != NULL; smattr = (SM_ATTRIBUTE *) smattr->header.next)
     {
       /* reset flags that belong to the root partitioned table */
       smattr->auto_increment = NULL;
       smattr->flags &= ~(SM_ATTFLAG_AUTO_INCREMENT);
-      if ((smattr->flags & SM_ATTFLAG_PRIMARY_KEY) != 0)
+      if (!has_notnull_unique && has_notnull_unique_constraints (smattr))
 	{
-	  smattr->flags &= ~(SM_ATTFLAG_PRIMARY_KEY);
-	  smattr->flags &= ~(SM_ATTFLAG_NON_NULL);
-	  has_pk = true;
+	  has_notnull_unique = true;
 	}
-      smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
-      smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+      else
+	{
+	  smattr->flags &= ~(SM_ATTFLAG_UNIQUE);
+	  smattr->flags &= ~(SM_ATTFLAG_REVERSE_UNIQUE);
+	}
       smattr->flags &= ~(SM_ATTFLAG_FOREIGN_KEY);
       smattr->flags &= ~(SM_ATTFLAG_PARTITION_KEY);
     }
@@ -7052,14 +7148,12 @@ do_promote_partition (SM_CLASS * class_)
 
   if (ctemplate->properties != NULL)
     {
-      if (has_pk)
+      if (!has_notnull_unique)
 	{
-	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_PRIMARY_KEY);
-	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_NOT_NULL);
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
+	  classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
 	}
       classobj_drop_prop (ctemplate->properties, SM_PROPERTY_FOREIGN_KEY);
-      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_REVERSE_UNIQUE);
-      classobj_drop_prop (ctemplate->properties, SM_PROPERTY_UNIQUE);
     }
 
   if (dbt_finish_class (ctemplate) == NULL)
@@ -8872,10 +8966,6 @@ error_exit:
  *   class_obj(in): The class object being validated
  *
  */
-/* TODO: When creating a table, replication information can be obtained from the parse tree (PT), 
-but when adding a constraint to a column with ALTER TABLE, it has to be retrieved from the schema manager (SM). 
-If the time required to patch the SM is small, the same patch-based approach can be applied consistently. 
-*/
 bool
 check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
 {
@@ -8964,11 +9054,13 @@ check_ha_repl_constraint (DB_OBJECT * class_obj)
 
   if (!classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
     {
-      return ER_HA_REQUIRES_REPLICATION_KEY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_KEY_REQUIRED, 0);
+      return ER_HA_REPLICATION_KEY_REQUIRED;
     }
 
   if (!check_ha_repl_fk_ref_all_replicated (class_obj))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_FK_CONSTRAINT_VIOLATION, 0);
       return ER_HA_FK_CONSTRAINT_VIOLATION;
     }
 
@@ -9360,7 +9452,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  error = check_ha_repl_constraint (class_obj);
 	  if (error != NO_ERROR)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	      goto error_exit;
 	    }
 	}
@@ -10815,7 +10906,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
 
   if (!HA_DISABLED ())
     {
-      error = ER_REPLICATION_OPTION_CHANGE_IN_HA_MODE;
+      error = ER_HA_REPLICATION_KEY_REQUIRED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto exit;
     }
