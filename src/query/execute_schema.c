@@ -125,7 +125,7 @@ enum
   /* property is not changed (not present in both current schema or new defition or present in both but not affected in
    * any way) */
   ATT_CHG_PROPERTY_UNCHANGED = 0x10,
-  /* property is changed (i.e.: both present in old an new , but different) */
+  /* property is changed (i.e.: both present in old and new , but different) */
   ATT_CHG_PROPERTY_DIFF = 0x20,
   /* type : precision increase : varchar(2) -> varchar (10) */
   ATT_CHG_TYPE_PREC_INCR = 0x100,
@@ -11232,7 +11232,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
-  if (attr_def->info.attr_def.attr_invisible)
+  if (attr_def->info.attr_def.attr_invisible == 0){
+    attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
+  }
+  if (attr_def->info.attr_def.attr_invisible == 2)
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
