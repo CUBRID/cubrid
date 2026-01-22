@@ -5811,6 +5811,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  break;
 
 		case RVREPL_DATA_INSERT:
+		case RVREPL_OOS_INSERT:
 		  error = la_apply_insert_log (item);
 		  break;
 
