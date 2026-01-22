@@ -1336,3 +1336,13 @@ usage: %1$s memmon [OPTION] database-name\n\
 valid option:\n\
     -o, --output-file=FILE    output results to FILE\n\
     --disable-force           disable memory monitor of server forcibly\n
+
+$set 60 MSGCAT_UTIL_SET_RKCHECK
+60 \
+rkcheck: Checks HA replication key constraint violations.\n\
+usage: %1$s rkcheck [OPTION] database-name\n\
+\n\
+valid option:\n\
+    -r, --rk-check           Check RK(Replication Key) constraint violations\n\
+    -f, --fk-check           Check FK(Foreign Key) constraint violations\n
+    

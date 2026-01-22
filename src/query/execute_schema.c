@@ -8990,6 +8990,48 @@ check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
 }
 
 /*
+ * log_ha_repl_fk_ref_all_replicated() - Check foreign key replication constraints in HA mode.
+ *
+ * return        : Number of foreign key replication constraint violations
+ * class_obj(in): The class object to be checked
+ * fp(in)       : File pointer for printing violation information
+ * do_print(in) : Whether to print violation details
+ *
+ * NOTE:
+ *   If a foreign key references a non-replicated class, it is counted
+ *   as a replication constraint violation.
+ */
+int
+log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
+{
+  DB_CONSTRAINT *tmp_c;
+  int ret = 0;
+  MOP ref_class_mop;
+
+  assert (class_obj != NULL);
+
+  for (tmp_c = db_get_constraints (class_obj); tmp_c; tmp_c = db_constraint_next (tmp_c))
+    {
+      if (tmp_c->type != SM_CONSTRAINT_FOREIGN_KEY)
+	{
+	  continue;
+	}
+
+      ref_class_mop = ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL);
+
+      if (!sm_is_replication_class (ref_class_mop))
+	{
+	  DB_CONSTRAINT *pk_c = db_constraint_find_primary_key (db_get_constraints (ref_class_mop));
+	  fprintf (fp, "%s(%s) -> %s(%s)\n", sm_get_ch_name (class_obj), tmp_c->name,
+		   sm_get_ch_name (ref_class_mop), pk_c->name);
+	  ret++;
+	}
+    }
+
+  return ret;
+}
+
+/*
  * check_ha_repl_constraint() - Validate replication-related constraints in HA mode.
  *   return  : Error code (NO_ERROR if valid)
  *   class_obj(in) : The class object being created or altered
