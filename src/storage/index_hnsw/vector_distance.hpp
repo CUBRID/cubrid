@@ -32,6 +32,8 @@ namespace cubhnsw
     MAX
   };
 
+  bool cubvec_cosine_normalize (float *__restrict vec, std::size_t dim);
+
   using distance_t = float;
   using distance_fn_t = distance_t (*) (const float *, const float *, std::size_t);
 

@@ -248,10 +248,10 @@ hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
       if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
 	  && db_vector_is_all_zeros (vector + i * m_build_params.dimension, m_build_params.dimension))
 	{
-	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
+	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	  continue;
 	}
-      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension, m_build_params.ef_construction);
+      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension);
 #endif
     }
   return NO_ERROR;
@@ -269,7 +269,7 @@ hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const 
       return NO_ERROR;
     }
 
-  m_algo->add (&thread_ref, oid, vector, m_build_params.ef_construction);
+  m_algo->add (&thread_ref, oid, vector);
   return NO_ERROR;
 }
 
@@ -284,7 +284,7 @@ hnsw_usearch_ng::search (cubthread::entry *thread_p, const float *query, const i
       return NO_ERROR;
     }
 
-  auto results = m_algo->search (query, k, ef_search);
+  auto results = m_algo->search (thread_p, query, k, ef_search);
   if (results.error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "Error during search: %s", results.error);

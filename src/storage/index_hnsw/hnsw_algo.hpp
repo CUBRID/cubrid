@@ -198,9 +198,9 @@ namespace cubhnsw
       algo (const hnsw_build_params &build_params);
 
       // high-level APIs
-      add_result_t<Traits> add (cubthread::entry *thread_p, const key_id_t &oid, const float *vector,
-				const std::size_t expansion);
-      search_result_t<Traits> search (const float *query, const std::size_t k, const std::size_t expansion);
+      add_result_t<Traits> add (cubthread::entry *thread_p, const key_id_t &oid, const float *vector);
+      search_result_t<Traits> search (cubthread::entry *thread_p, const float *query, const std::size_t k,
+				      const std::size_t expansion);
 
       void set_storage (storage_t *storage) noexcept
       {
@@ -307,33 +307,32 @@ namespace cubhnsw
 
     // precompute inverse log connectivity
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.m));
-
   }
 
   template <typename Traits>
   add_result_t<Traits>
-  algo<Traits>::add (cubthread::entry *thread_p, const key_id_t &key, const float *vector, const std::size_t expansion)
+  algo<Traits>::add (cubthread::entry *thread_p, const key_id_t &key, const float *vector)
   {
     add_result_t<Traits> result;
 
     algo_context_t<Traits> context;
     context.m_thread_p = thread_p;
     context.clear_candidates();
-    context.m_top_for_refine.reserve (m_connectivity + 1);
+
+    std::size_t connectivity_max = m_connectivity * 2 + 1;
+
+    // pre-reserve top_for_refine
+    context.m_top_for_refine.reserve (connectivity_max);
 
     top_candidates_t<Traits> &top = context.m_top_candidates;
     next_candidates_t<Traits> &next = context.m_next_candidates;
 
     // TODO: now, connectivity_base is not considered.
     // std::size_t connecitvity_max = m_connectivity;
-    std::size_t top_limit = std::max (m_connectivity + 1, expansion);
-    if (!top.reserve (top_limit))
+    std::size_t top_limit = std::max (connectivity_max, m_expansion);
+    if (!top.reserve (top_limit) || !next.reserve (top_limit))
       {
-	assert (false);
-	return {ER_FAILED, OID_INITIALIZER};
-      }
-    if (!next.reserve (expansion))
-      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, top_limit * sizeof (candidate_t<Traits>));
 	assert (false);
 	return {ER_FAILED, OID_INITIALIZER};
       }
@@ -353,6 +352,13 @@ namespace cubhnsw
 	  new_target_level = MAX_LEVELS;
 	}
 
+      if (m_metric == vector_distance_metric_t::COSINE)
+	{
+	  if (!cubvec_cosine_normalize ((float *) vector, m_dimension))
+	    {
+	      abort ();
+	    }
+	}
       //
       new_slot = m_storage->add_node (context.m_thread_p, key, vector, new_target_level);
       //
@@ -428,7 +434,7 @@ namespace cubhnsw
 
   template <typename Traits>
   search_result_t<Traits>
-  algo<Traits>::search (const float *query, const std::size_t k, const std::size_t expansion)
+  algo<Traits>::search (cubthread::entry *thread_p, const float *query, const std::size_t k, const std::size_t expansion)
   {
     search_result_t<Traits> result;
     if (k == 0)
@@ -437,23 +443,16 @@ namespace cubhnsw
       }
 
     algo_context_t<Traits> context;
-    context.m_thread_p = thread_get_thread_entry_info();
+    context.m_thread_p = thread_p;
     context.clear_candidates();
-    context.m_top_for_refine.reserve (m_connectivity + 1);
 
     top_candidates_t<Traits> &top = context.m_top_candidates;
     next_candidates_t<Traits> &next = context.m_next_candidates;
 
     std::size_t expansion_size = std::max (k, expansion);
-
-    if (!top.reserve (expansion_size))
+    if (!top.reserve (expansion_size) || !next.reserve (expansion_size))
       {
-	// TODO: error handling
-	assert (false);
-	return result;
-      }
-    if (!next.reserve (expansion_size))
-      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expansion_size * sizeof (candidate_t<Traits>));
 	assert (false);
 	return result;
       }
@@ -466,6 +465,14 @@ namespace cubhnsw
       entry_slot = root_node.get_entry();
       root_level = root_node.get_level();
     }
+
+    if (m_metric == vector_distance_metric_t::COSINE)
+      {
+	if (!cubvec_cosine_normalize ((float *) query, m_dimension))
+	  {
+	    abort ();
+	  }
+      }
 
     slot_id_t closest_slot;
     if (seek_down_ (context, query, entry_slot, root_level, 0, closest_slot) != NO_ERROR)
@@ -599,9 +606,11 @@ namespace cubhnsw
   algo<Traits>::form_links_to_closest_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk,
 					const level_t level, candidates_view_t<Traits> &top_view)
   {
-    top_candidates_t<Traits> &top = context.m_top_candidates;
     cubthread::entry *thread_p = context.m_thread_p;
-    refine_ (thread_p, m_connectivity,top, top_view);
+
+    top_candidates_t<Traits> &top = context.m_top_candidates;
+    std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
+    refine_ (thread_p, layer_connectivity,top, top_view);
 
     // outgoing links from new node
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
@@ -618,6 +627,7 @@ namespace cubhnsw
   {
     cubthread::entry *thread_p = context.m_thread_p;
 
+    std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
     for (auto n : new_neighbors)
       {
 	slot_id_t close_slot = n.slot;
@@ -632,7 +642,7 @@ namespace cubhnsw
 	  // TODO: exclusive??
 	  pinned_t close_node_blk = m_storage->get_node_by_slot_id (thread_p, close_slot, lock_mode::exclusive);
 	  close_header = get_neighbors (close_node_blk, level);
-	  if (close_header.size () < m_connectivity)
+	  if (close_header.size () < layer_connectivity)
 	    {
 	      close_header.push_back (new_slot);
 	      continue;
@@ -656,7 +666,7 @@ namespace cubhnsw
 	// remove all neighbors from close_header
 	close_header.clear();
 	candidates_view_t<Traits> top_view;
-	(void) refine_ (thread_p, m_connectivity, top_for_refine, top_view);
+	(void) refine_ (thread_p, layer_connectivity, top_for_refine, top_view);
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
 	    close_header.push_back (top_view[i].slot);

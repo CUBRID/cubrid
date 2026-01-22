@@ -173,8 +173,13 @@ std::string db_vector_float_to_string (const DB_VECTOR_FLOAT &vf)
 
 bool db_vector_is_all_zeros (const float *vf, int dim)
 {
-  return std::all_of (vf, vf + dim, [] (float f)
-  {
-    return f == 0.0f;
-  });
+  constexpr float eps = 1e-12f;
+  for (int i = 0; i < dim; ++i)
+    {
+      if (std::fabs (vf[i]) > eps)
+	{
+	  return false;
+	}
+    }
+  return true;
 }

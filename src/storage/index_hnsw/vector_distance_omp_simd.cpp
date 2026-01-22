@@ -29,32 +29,46 @@
 
 namespace cubhnsw
 {
+  bool
+  cubvec_cosine_normalize (float *__restrict vec, std::size_t dim)
+  {
+    float norm_sq = 0.0f;
+
+    #pragma omp simd reduction(+ : norm_sq)
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	norm_sq += vec[i] * vec[i];
+      }
+
+    constexpr float eps = 1e-12f;
+    if (norm_sq < eps)
+      {
+	// zero / near-zero vector is invalid for cosine/IP
+	return false;
+      }
+
+    const float inv_norm = 1.0f / std::sqrt (norm_sq);
+
+    #pragma omp simd
+    for (std::size_t i = 0; i < dim; ++i)
+      {
+	vec[i] *= inv_norm;
+      }
+
+    return true;  // unit vector
+  }
+
   STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
   cubvec_cosine_distance (const float *vec1, const float *vec2, std::size_t dim)
   {
     float dot = 0.0f;
-    float norm1_sq = 0.0f;
-    float norm2_sq = 0.0f;
 
-    #pragma omp simd reduction(+ : dot, norm1_sq, norm2_sq)
+    #pragma omp simd reduction(+ : dot)
     for (std::size_t i = 0; i < dim; ++i)
       {
-	const float a = vec1[i];
-	const float b = vec2[i];
-	dot      += a * b;
-	norm1_sq += a * a;
-	norm2_sq += b * b;
+	dot += vec1[i] * vec2[i];
       }
-
-    constexpr float eps = 1e-12f;
-    if (norm1_sq < eps || norm2_sq < eps)
-      {
-	return 1.0f;
-      }
-
-    float cosine = dot / std::sqrt (norm1_sq * norm2_sq);
-    cosine = std::clamp (cosine, -1.0f, 1.0f);
-    return 1.0f - cosine;
+    return 1.0f - dot;
   }
 
   STATIC_INLINE distance_t __attribute__ ((ALWAYS_INLINE))
