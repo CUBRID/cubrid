@@ -252,11 +252,16 @@ hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid,
 	  continue;
 	}
       <<<<<<< HEAD
+      <<<<<<< HEAD
       m_algo->add (oid[i], vector + i * m_build_params.dimension);
       =======
 	      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension, m_build_params.ef_construction);
 #endif
       >>>>>>> origin/cubvec/cubvec
+      =======
+	      m_algo->add (m_thread_p, oid[i], vector + i * m_build_params.dimension);
+#endif
+      >>>>>>> hgryoo/CUBVEC-151
     }
   return NO_ERROR;
 }
@@ -273,7 +278,7 @@ hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const 
       return NO_ERROR;
     }
 
-  m_algo->add (&thread_ref, oid, vector, m_build_params.ef_construction);
+  m_algo->add (&thread_ref, oid, vector);
   return NO_ERROR;
 }
 

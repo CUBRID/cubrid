@@ -270,7 +270,8 @@ namespace cubhnsw
 
       // high-level APIs
       add_result_t<Traits> add (cubthread::entry *thread_p, const key_id_t &oid, const float *vector);
-      search_result_t<Traits> search (const float *query, const std::size_t k, const std::size_t expansion);
+      search_result_t<Traits> search (cubthread::entry *thread_p, const float *query, const std::size_t k,
+				      const std::size_t expansion);
 
       void set_storage (storage_t *storage) noexcept
       {
@@ -374,6 +375,12 @@ namespace cubhnsw
 
     // precompute inverse log connectivity
     m_inverse_log_connectivity = 1.0 / std::log (static_cast<double> (build_params.m));
+    <<<<<<< HEAD
+    =======
+
+	    // pre-reserve top_for_refine
+	    m_context.m_top_for_refine.reserve (m_connectivity * 2 + 1);
+    >>>>>>> hgryoo/CUBVEC-151
   }
 
   template <typename Traits>
@@ -505,7 +512,7 @@ namespace cubhnsw
 
   template <typename Traits>
   search_result_t<Traits>
-  algo<Traits>::search (const float *query, const std::size_t k, const std::size_t expansion)
+  algo<Traits>::search (cubthread::entry *thread_p, const float *query, const std::size_t k, const std::size_t expansion)
   {
     search_result_t<Traits> result;
     if (k == 0)
@@ -514,9 +521,11 @@ namespace cubhnsw
       }
 
     algo_context_t<Traits> context;
-    context.m_thread_p = thread_get_thread_entry_info();
+    context.m_thread_p = thread_p;
     context.clear_candidates();
-    context.m_top_for_refine.reserve (m_connectivity + 1);
+
+    std::size_t connectivity_max = m_connectivity * 2 + 1;
+    context.m_top_for_refine.reserve (connectivity_max);
 
     top_candidates_t<Traits> &top = context.m_top_candidates;
     next_candidates_t<Traits> &next = context.m_next_candidates;
