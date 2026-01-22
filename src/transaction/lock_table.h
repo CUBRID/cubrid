@@ -69,6 +69,9 @@ lock_compat (LOCK requested, LOCK current)
   return lock_Comp[requested][current];
 }
 
+#define LOCK_MODE_STR_MAX_LENGTH 10	/* SCH_S_LOCK, SCH_M_LOCK */
+#define LOCK_MODE_STR_FMT "%*s"
+
 inline const char *
 lock_to_lockmode_string (LOCK lock)
 {
