@@ -87,7 +87,7 @@ class hnsw_index_manager
     hnsw_index *get_index (const BTID *btid) const;
     int delete_index (const BTID *btid);
 
-    void print_index_info (const BTID *btid);
+    void print_index_info (THREAD_ENTRY *thread_p, const BTID *btid);
 
     // index management on disk
     int save_index (THREAD_ENTRY *thread_p, hnsw_index *index);
@@ -198,7 +198,7 @@ xhnsw_add_index (THREAD_ENTRY *thread_p, const OID *class_oid, const int attrid,
 #if !defined(NDEBUG)
   _er_log_debug (ARG_FILE_LINE, "HNSW Index added with ID %d", btid_out.root_pageid);
 
-  index_manager->print_index_info (&btid_out);
+  index_manager->print_index_info (thread_p, &btid_out);
 #endif
 
   return NO_ERROR;
@@ -405,13 +405,13 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
 	}
     }
 
-  if (index->prepare_to_add (n_vectors, oid, vector) != NO_ERROR)
+  if (index->prepare_to_add (thread_p, n_vectors, oid, vector) != NO_ERROR)
     {
       assert (false);
       return ER_FAILED;
     }
 
-  return index->add (n_vectors, oid, vector);
+  return index->add (thread_p, n_vectors, oid, vector);
 }
 
 int
@@ -438,7 +438,7 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   assert (vf != NULL && vf->dim == index->get_dimension());
 
   int ef_search = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
-  return index->search (vf->float_array, k, ef_search, rec_oids, distances);
+  return index->search (thread_p, vf->float_array, k, ef_search, rec_oids, distances);
 }
 
 // =====================================================================
@@ -552,11 +552,11 @@ hnsw_index_manager::delete_index (const BTID *btid)
 }
 
 void
-hnsw_index_manager::print_index_info (const BTID *btid)
+hnsw_index_manager::print_index_info (THREAD_ENTRY *thread_p, const BTID *btid)
 {
   if (is_index_loaded (btid))
     {
-      m_index_map.at (*btid)->dump (stdout);
+      m_index_map.at (*btid)->dump (thread_p, stdout);
     }
 }
 
@@ -637,7 +637,7 @@ int hnsw_index_manager::save_index (THREAD_ENTRY *thread_p, hnsw_index *index)
 {
   std::string prefix = index->get_backend().get_id();
   const BTID &btid = index->get_id();
-  index->save (get_index_file_path (prefix, &btid).string());
+  index->save (thread_p, get_index_file_path (prefix, &btid).string());
   return NO_ERROR;
 }
 
@@ -669,7 +669,7 @@ int hnsw_index_manager::load_index (THREAD_ENTRY *thread_p, const BTID *btid, hn
     {
       return ER_FAILED;
     }
-  if (index_out->load (get_index_file_path (meta.backend_id, btid).string()) != NO_ERROR)
+  if (index_out->load (thread_p, get_index_file_path (meta.backend_id, btid).string()) != NO_ERROR)
     {
       return ER_FAILED;
     }
