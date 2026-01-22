@@ -30,6 +30,7 @@
 #include "hnsw_utils.hpp"
 #include "hnsw_graph_base.hpp"
 #include "hnsw_storage.hpp" // storage_t
+#include "vector_distance.hpp"
 #include "thread_entry.hpp"
 
 #include "faiss/utils/distances.h" // faiss
@@ -39,78 +40,6 @@
 
 namespace cubhnsw
 {
-
-// =====================================================================
-// distance
-// =====================================================================
-
-  enum class vector_distance_metric_t
-  {
-    COSINE,
-    EUCLIDEAN,
-    MAX
-  };
-
-  inline float
-  cubvec_cosine_distance (const float *__restrict vec1,
-			  const float *__restrict vec2,
-			  std::size_t dim)
-  {
-    float dot = 0.0f;
-
-    #pragma omp simd reduction(+ : dot)
-    for (std::size_t i = 0; i < dim; ++i)
-      {
-	dot += vec1[i] * vec2[i];
-      }
-    return 1.0f - dot;
-  }
-
-  inline float
-  cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
-  {
-    float l2 = faiss::fvec_L2sqr (vec1, vec2, dim);
-    return std::sqrt (l2);
-  }
-
-  inline bool
-  cubvec_cosine_normalize (float *__restrict vec, std::size_t dim)
-  {
-    float norm_sq = 0.0f;
-
-    #pragma omp simd reduction(+ : norm_sq)
-    for (std::size_t i = 0; i < dim; ++i)
-      {
-	norm_sq += vec[i] * vec[i];
-      }
-
-    constexpr float eps = 1e-12f;
-    if (norm_sq < eps)
-      {
-	// zero / near-zero vector is invalid for cosine/IP
-	return false;
-      }
-
-    const float inv_norm = 1.0f / std::sqrt (norm_sq);
-
-    #pragma omp simd
-    for (std::size_t i = 0; i < dim; ++i)
-      {
-	vec[i] *= inv_norm;
-      }
-
-    return true;  // unit vector
-  }
-
-  using distance_t = float;
-  using Fn = distance_t (*) (const float *, const float *, size_t);
-
-  constexpr std::array<Fn, static_cast<size_t> (vector_distance_metric_t::MAX)> metric_table =
-  {
-    cubvec_cosine_distance,
-    cubvec_l2_distance
-  };
-
   // =====================================================================
   // algo's base structs
   // =====================================================================
@@ -368,6 +297,9 @@ namespace cubhnsw
 	break;
       case METRIC_EUCLIDEAN:
 	m_metric = vector_distance_metric_t::EUCLIDEAN;
+	break;
+      case METRIC_DOT:
+	m_metric = vector_distance_metric_t::DOT;
 	break;
       default:
 	assert (false);
