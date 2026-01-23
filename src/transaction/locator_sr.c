@@ -5272,7 +5272,6 @@ error2:
   return error_code;
 }
 
-#include "oos_file.hpp"
 int
 locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes)
 {
