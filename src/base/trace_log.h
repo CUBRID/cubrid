@@ -41,4 +41,9 @@ extern FILE *trace_log_start (THREAD_ENTRY * thread_p, const char *event_name);
 extern void trace_log_end (THREAD_ENTRY * thread_p);
 extern void trace_log_print_client_info (int tran_index, int indent);
 extern void trace_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index);
+
+#define TRACE_LOG_LEVEL_OFF     0
+#define TRACE_LOG_LEVEL_SIMPLE  1
+#define TRACE_LOG_LEVEL_DETAIL  2
+
 #endif /* _EVENT_LOG_H_ */

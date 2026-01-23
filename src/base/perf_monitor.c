@@ -31,6 +31,8 @@
 #include <sys/resource.h>
 #endif /* WINDOWS */
 
+#include "trace_log.h"
+
 #include "perf_monitor.h"
 
 #include "error_manager.h"
@@ -1493,7 +1495,7 @@ perfmon_trace_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_
 	  break;
 	}
 
-      if (trace_level < 2)
+      if (trace_level < TRACE_LOG_LEVEL_DETAIL)
 	{
 	  switch (i)
 	    {

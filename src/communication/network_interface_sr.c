@@ -5177,7 +5177,7 @@ sqmgr_execute_query (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
 	  return;
 	}
-      if (trace_level > 0)
+      if (trace_level != TRACE_LOG_LEVEL_OFF)
 	{
 	  xperfmon_server_copy_stats (thread_p, base_stats, false);
 	}
@@ -5427,9 +5427,9 @@ null_list:
 	      goto exit;
 	    }
 
-	  if (trace_level > 0)
+	  if (trace_level != TRACE_LOG_LEVEL_OFF)
 	    {
-	      bool need_pgbuf_stat = (trace_level > 1 && response_time >= trace_slow_msec);
+	      bool need_pgbuf_stat = (trace_level == TRACE_LOG_LEVEL_DETAIL && response_time >= trace_slow_msec);
 
 	      xperfmon_server_copy_stats (thread_p, current_stats, need_pgbuf_stat);
 	      perfmon_calc_diff_stats (diff_stats, current_stats, base_stats, need_pgbuf_stat);
@@ -5581,14 +5581,13 @@ trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  log_fp = trace_log_start (thread_p, title);
 
-  if (tdes == NULL || log_fp == NULL)
+  if (tdes == NULL)
     {
       return 0;
     }
 
-  if (trace_level > 0)
+  if (trace_level != TRACE_LOG_LEVEL_OFF)
     {
       perfmon_trace_dump_stats_to_buffer (diff_stats, stat_buf, STATDUMP_BUF_SIZE, trace_level);
     }
@@ -5604,6 +5603,12 @@ trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
       sql_id = NULL;
     }
 
+  log_fp = trace_log_start (thread_p, title);
+  if (log_fp == NULL)
+    {
+      return 0;
+    }
+
   trace_log_print_client_info (tran_index, indent);
 
   queryinfo_string_length =
@@ -5617,9 +5622,11 @@ trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
     {
       trace_log_bind_values (thread_p, log_fp, tran_index, tdes->num_exec_queries - 1);
     }
-  fprintf (log_fp, "%*ctime: %dmsec\n", indent, ' ', time);
 
+  fprintf (log_fp, "%*ctime: %dmsec\n", indent, ' ', time);
   fprintf (log_fp, "\n\n%s%s%s\n", queryinfo_string, stat_buf, line);
+
+  trace_log_end (thread_p);
 
   if (sql_id != NULL)
     {
@@ -5632,8 +5639,6 @@ trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
       queryinfo_string_length = QUERY_INFO_BUF_SIZE - 1;
       queryinfo_string[queryinfo_string_length] = '\0';
     }
-
-  trace_log_end (thread_p);
 
   return queryinfo_string_length;
 }
