@@ -5289,6 +5289,7 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       goto err;
     }
 
+  recdes->type = REC_HOME;
   if (oos_insert (thread_p, oos_vfid, *recdes, oos_oid) != NO_ERROR)
     {
       error_code = S_ERROR;
