@@ -149,8 +149,6 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 %{
 #define YYMAXDEPTH	1000000
 
-/* #define PARSER_DEBUG */
-
 #include "config.h"
 
 #include <stdio.h>
@@ -199,18 +197,6 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
-
-#ifdef PARSER_DEBUG
-#define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
-#define PRINT_(a) printf(a)
-#define PRINT_1(a, b) printf(a, b)
-#define PRINT_2(a, b, c) printf(a, b, c)
-#else
-#define DBG_PRINT
-#define PRINT_(a)
-#define PRINT_1(a, b)
-#define PRINT_2(a, b, c)
-#endif
 
 #define STACK_SIZE	128
 
@@ -548,7 +534,6 @@ static int g_plcsql_text_pos;
              (rv)->info.name.original = (iv);           \
      }                                                  \
    PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                \
-   DBG_PRINT                                            \
 } while (0)
 
 #define MAKE_MONETARY_LITERAL(rv, iv, b_p, sign_text, currency_type) do {    \
@@ -1795,13 +1780,9 @@ stmt_list
 			      }
 
 			    pt_push (this_parser, $3);
-
-			#ifdef PARSER_DEBUG
-			    printf ("node: %s\n", parser_print_tree (this_parser, $3));
-			#endif
 			  }
 
-		DBG_PRINT}}
+		}}
 	| stmt %dprec 3
 		{{
 
@@ -1817,13 +1798,9 @@ stmt_list
 			      }
 
 			    pt_push (this_parser, $1);
-
-			#ifdef PARSER_DEBUG
-			    printf ("node: %s\n", parser_print_tree (this_parser, $1));
-			#endif
 			  }
 
-		DBG_PRINT}}
+		}}
         | SEMICOLON
                 {{ /* empty line*/ }}
 	;
@@ -1871,7 +1848,7 @@ stmt
 			      }
 			  }
 
-		DBG_PRINT}}
+		}}
 		{{
 
 			parser_initialize_parser_context ();
@@ -1905,14 +1882,9 @@ stmt
                         g_plcsql_text_pos = -1;
                         is_in_sp_func_type = false;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
-		DBG_PRINT}}
+		}}
 	stmt_
 		{{ DBG_TRACE_GRAMMAR(stmt, stmt_ );
-
-			#ifdef PARSER_DEBUG
-			if (msg_ptr == 0)
-			  printf ("Good!!!\n");
-			#endif
 
 			if (msg_ptr > 0)
 			  {
@@ -1951,7 +1923,7 @@ stmt
 			      }
 			  }
 
-		DBG_PRINT}}
+		}}
 		{{
 
 			PT_NODE *node = $3;
@@ -1970,7 +1942,7 @@ stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 stmt_
 	: create_stmt
@@ -2001,7 +1973,7 @@ stmt_
 			    stmt->info.query.with = with_clause;
 			  }
 			$$ = stmt;
-	  DBG_PRINT}}
+	  }}
 	| evaluate_stmt
 		{ DBG_TRACE_GRAMMAR(stmt_, | evaluate_stmt);
                   $$ = $1; }
@@ -2024,7 +1996,7 @@ stmt_
 			    stmt->info.update.with = with_clause;
 			  }
 			$$ = stmt;
-	  DBG_PRINT}}
+	  }}
 	| opt_with_clause
 	  delete_stmt
 		{{ DBG_TRACE_GRAMMAR(stmt_, | opt_with_clause delete_stmt);
@@ -2035,7 +2007,7 @@ stmt_
 			    stmt->info.delete_.with = with_clause;
 			  }
 			$$ = stmt;
-	  DBG_PRINT}}
+	  }}
 	| show_stmt
 		{ DBG_TRACE_GRAMMAR(stmt_, | show_stmt);
                   $$ = $1; }
@@ -2105,7 +2077,7 @@ stmt_
 			$$ = dt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ATTACH
 		{ push_msg(MSGCAT_SYNTAX_INVALID_ATTACH); }
 	  unsigned_integer
@@ -2122,7 +2094,7 @@ stmt_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| PREPARE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_PREPARE); }
 	  opt_to COMMIT unsigned_integer
@@ -2139,7 +2111,7 @@ stmt_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| EXECUTE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_EXECUTE); }
 	  DEFERRED TRIGGER trigger_spec_list
@@ -2156,7 +2128,7 @@ stmt_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SCOPE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SCOPE); }
 	  trigger_action opt_from_table_spec_list
@@ -2174,7 +2146,7 @@ stmt_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| vacuum_stmt
 		{ DBG_TRACE_GRAMMAR(stmt_, | vacuum_stmt);
                   $$ = $1; }
@@ -2194,7 +2166,7 @@ stmt_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET Time ZONE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TIMEZONE); }
 	  char_string_literal
@@ -2209,7 +2181,7 @@ stmt_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -2239,7 +2211,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET OPTIMIZATION
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_OPT_COST); }
 	  COST opt_of char_string_literal opt_of_to_eq literal_
@@ -2258,7 +2230,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_SYS_PARAM); }
 	  SYSTEM PARAMETERS char_string_literal_list
@@ -2271,7 +2243,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TRAN); }
 	  TRANSACTION transaction_mode_list
@@ -2288,7 +2260,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET TRIGGER
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TRIGGER_TRACE); }
 	  TRACE trace_spec
@@ -2306,7 +2278,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET TRIGGER
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_TRIGGER_DEPTH); }
 	  opt_maximum DEPTH depth_spec
@@ -2324,7 +2296,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET session_variable_assignment_list
 		{{ DBG_TRACE_GRAMMAR(set_stmt, | SET session_variable_assignment_list);
 
@@ -2337,7 +2309,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET NAMES BINARY
 		{{ DBG_TRACE_GRAMMAR(set_stmt, | SET NAMES BINARY);
 
@@ -2364,7 +2336,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_NAMES); }
 	  NAMES char_string_literal
@@ -2382,7 +2354,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_NAMES); }
 	  NAMES IdName
@@ -2413,7 +2385,7 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SET TRACE query_trace_spec opt_trace_output_format
 		{{ DBG_TRACE_GRAMMAR(set_stmt, | SET TRACE query_trace_spec opt_trace_output_format);
 
@@ -2427,33 +2399,33 @@ set_stmt
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 query_trace_spec
 	: ON_
 		{{ DBG_TRACE_GRAMMAR(query_trace_spec, : ON_);
 			$$ = PT_TRACE_ON;
-		DBG_PRINT}}
+		}}
 	| OFF_
 		{{ DBG_TRACE_GRAMMAR(query_trace_spec, | OFF_);
 			$$ = PT_TRACE_OFF;
-		DBG_PRINT}}
+		}}
 	;
 
 opt_trace_output_format
 	: /* empty */
 		{{ DBG_TRACE_GRAMMAR(opt_trace_output_format, : );
 			$$ = PT_TRACE_FORMAT_TEXT;
-		DBG_PRINT}}
+		}}
 	| OUTPUT TEXT
 		{{ DBG_TRACE_GRAMMAR(opt_trace_output_format, | OUTPUT TEXT);
 			$$ = PT_TRACE_FORMAT_TEXT;
-		DBG_PRINT}}
+		}}
 	| OUTPUT JSON
 		{{ DBG_TRACE_GRAMMAR(opt_trace_output_format, | OUTPUT JSON);
 			$$ = PT_TRACE_FORMAT_JSON;
-		DBG_PRINT}}
+		}}
 	;
 
 session_variable_assignment_list
@@ -2463,7 +2435,7 @@ session_variable_assignment_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 	| session_variable_assignment
 		{{ DBG_TRACE_GRAMMAR(session_variable_assignment_list, | session_variable_assignment);
@@ -2471,7 +2443,7 @@ session_variable_assignment_list
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 session_variable_assignment
@@ -2484,14 +2456,14 @@ session_variable_assignment
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| session_variable_definition
 		{{ DBG_TRACE_GRAMMAR(session_variable_assignment, | session_variable_definition);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 session_variable_definition
@@ -2504,7 +2476,7 @@ session_variable_definition
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 session_variable_expression
@@ -2518,7 +2490,7 @@ session_variable_expression
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 session_variable_list
@@ -2528,14 +2500,14 @@ session_variable_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| session_variable
 		{{ DBG_TRACE_GRAMMAR(session_variable_list, | session_variable);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 session_variable
@@ -2559,7 +2531,7 @@ session_variable
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 get_stmt
@@ -2579,7 +2551,7 @@ get_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GET OPTIMIZATION
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_OPT_LEVEL); }
 	  LEVEL into_clause_opt
@@ -2596,7 +2568,7 @@ get_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GET OPTIMIZATION
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_OPT_COST); }
 	  COST opt_of char_string_literal into_clause_opt
@@ -2613,7 +2585,7 @@ get_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GET TRANSACTION
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_TRAN_ISOL); }
 	  ISOLATION LEVEL into_clause_opt
@@ -2631,7 +2603,7 @@ get_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GET TRANSACTION
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_TRAN_LOCK); }
 	  LOCK_ TIMEOUT into_clause_opt
@@ -2649,7 +2621,7 @@ get_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GET TRIGGER
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_TRIGGER_TRACE); }
 	  TRACE into_clause_opt
@@ -2667,7 +2639,7 @@ get_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GET TRIGGER
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GET_TRIGGER_DEPTH); }
 	  opt_maximum DEPTH into_clause_opt
@@ -2685,7 +2657,7 @@ get_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -2753,7 +2725,7 @@ create_stmt
 
 			$$ = qc;
 
-		DBG_PRINT}}
+		}}
 	| CREATE 					/* 1 */
 	  opt_or_replace				/* 2 */
 	  of_view_vclass 				/* 3 */
@@ -2795,7 +2767,7 @@ create_stmt
 			$$ = qc;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE					/* 1 */
 		{					/* 2 */
                         DBG_TRACE_GRAMMAR(create_stmt, | CREATE);
@@ -2977,7 +2949,7 @@ create_stmt
 			  }
 		      $$ = node;
 
-		DBG_PRINT}}
+		}}
 	| CREATE			/* 1 */
 	  USER				/* 2 */
 		{
@@ -3006,7 +2978,7 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_TRIGGER); }	/* 2 */
 	  TRIGGER 					/* 3 */
@@ -3042,7 +3014,7 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE					/* 1 */
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CREATE_SERIAL); }	/* 2 */
 	  SERIAL 					/* 3 */
@@ -3087,7 +3059,7 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE					/* 1 */
 	  opt_or_replace               		        /* 2 */
 	  PROCEDURE					/* 3 */
@@ -3150,7 +3122,7 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE                        		/* 1 */
 	  opt_or_replace                		/* 2 */
 	  FUNCTION					/* 3 */
@@ -3214,14 +3186,14 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE IdName
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE IdName);
 
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE);
 			csql_yyerror_explicit (@2.first_line, @2.first_column);
 
-		DBG_PRINT}}
+		}}
 	| CREATE					/* 1 */
 		{					/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
@@ -3248,7 +3220,7 @@ create_stmt
 			$$ = qc;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE					/* 1 */
 		{					/* 2 */
 			PT_NODE* qc = parser_new_node(this_parser, PT_CREATE_ENTITY);
@@ -3277,7 +3249,7 @@ create_stmt
 			$$ = qc;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE SERVER dblink_server_name '(' connect_info ')'
 		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE SERVER dblink_server_name '(' connect_info ')' );
                         PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SERVER);
@@ -3342,7 +3314,7 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CREATE			/* 1 */
 	  opt_create_synonym		/* 2 */
 	  SYNONYM			/* 3 */
@@ -3381,7 +3353,7 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 class_name_for_synonym
@@ -3537,7 +3509,7 @@ serial_option_list
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| of_serial_option
 		{{ DBG_TRACE_GRAMMAR(serial_option_list, | of_serial_option);
 			/* container order
@@ -3594,7 +3566,7 @@ serial_option_list
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_serial_option
@@ -3603,37 +3575,37 @@ of_serial_option
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_START), $1, NULL);
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	| serial_increment
 		{{ DBG_TRACE_GRAMMAR(of_serial_option, | serial_increment);
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_INC), $1, NULL);
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	| serial_min
 		{{ DBG_TRACE_GRAMMAR(of_serial_option, | serial_min);
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_MIN), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	| serial_max
 		{{ DBG_TRACE_GRAMMAR(of_serial_option, | serial_max);
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_MAX), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	| of_cycle_nocycle
 		{{ DBG_TRACE_GRAMMAR(of_serial_option, | of_cycle_nocycle);
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CYCLE), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	| of_cached_num
 		{{ DBG_TRACE_GRAMMAR(of_serial_option, | of_cached_num);
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CACHE), CONTAINER_AT_0($1), CONTAINER_AT_1($1));
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	;
 
 serial_owner_clause
@@ -3670,7 +3642,7 @@ serial_owner_clause
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_serial_owner_clause
@@ -3679,7 +3651,7 @@ of_serial_owner_clause
 			container_3 ctn;
 			SET_CONTAINER_3(ctn, FROM_NUMBER(SERIAL_CHANGE_OWNER), $3, NULL);
 			$$ = ctn;
-	        DBG_PRINT}}
+	        }}
 	;
 
 opt_replace
@@ -3688,13 +3660,13 @@ opt_replace
 
 			$$ = PT_CREATE_SELECT_NO_ACTION;
 
-		DBG_PRINT}}
+		}}
 	| REPLACE
 		{{ DBG_TRACE_GRAMMAR(opt_replace, | REPLACE);
 
 			$$ = PT_CREATE_SELECT_REPLACE;
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_stmt
@@ -3719,7 +3691,7 @@ alter_stmt
 
 			parser_save_alter_node (node);
 
-		DBG_PRINT}}
+		}}
 	  alter_clause_cubrid_specific
 		{{ DBG_TRACE_GRAMMAR(alter_stmt,  ~ alter_clause_cubrid_specific);
 
@@ -3732,7 +3704,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER						/* 1 */
 		{					/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER);
@@ -3795,7 +3767,7 @@ alter_stmt
 			$$ = $6;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
@@ -3821,7 +3793,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
@@ -3846,7 +3818,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  USER				/* 2 */
 	  identifier	        	/* 3 */
@@ -3871,7 +3843,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER						/* 1 */
 	  TRIGGER					/* 2 */
 	  trigger_name_list				/* 3 */
@@ -3899,7 +3871,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  TRIGGER			/* 2 */
 	  trigger_name			/* 3 */
@@ -3923,7 +3895,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER						/* 1 */
 	  SERIAL					/* 2 */
 	  serial_name					/* 3 */
@@ -3989,7 +3961,7 @@ alter_stmt
 			        node->info.serial.code = PT_CHANGE_OWNER;
 			      }
 			  }
-		DBG_PRINT}}
+		}}
 	| ALTER						/* 1 */
 		{					/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
@@ -4033,7 +4005,7 @@ alter_stmt
 
 		  $$ = node;
 		  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| ALTER						/* 1 */
 	  INDEX						/* 2 */
 	  identifier					/* 3 */
@@ -4068,7 +4040,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  INDEX				/* 2 */
 	  identifier			/* 3 */
@@ -4103,7 +4075,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  INDEX				/* 2 */
 	  identifier			/* 3 */
@@ -4138,7 +4110,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER						/* 1 */
 	  view_or_vclass				/* 2 */
 	  class_name					/* 3 */
@@ -4163,7 +4135,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER
 	  view_or_vclass
 	  class_name
@@ -4183,7 +4155,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
 	  procedure_or_function_name    /* 3 */
@@ -4212,7 +4184,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  procedure_or_function		/* 2 */
 	  procedure_or_function_name    /* 3 */
@@ -4232,7 +4204,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER  SERVER  dblink_server_name alter_server_list
                 {{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER  SERVER  dblink_server_name alter_server_list);
                         PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SERVER);
@@ -4324,7 +4296,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER				/* 1 */
 	  opt_access_modifier		/* 2 */
 	  SYNONYM			/* 3 */
@@ -4368,7 +4340,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 view_or_vclass
@@ -4383,7 +4355,7 @@ alter_clause_list
 			$$ = parser_make_link ($1, parser_get_alter_node ());
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| /* The first node in the list is the one that was pushed for hints. */
 		{
 
@@ -4396,7 +4368,7 @@ alter_clause_list
 			$$ = parser_get_alter_node ();
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 prepare_alter_node
@@ -4406,7 +4378,7 @@ prepare_alter_node
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER);
 			parser_save_alter_node (node);
 
-		DBG_PRINT}}
+		}}
 	;
 
 only_class_name
@@ -4438,7 +4410,7 @@ only_class_name_or_with_server_name
                     
                         $$ = scs;                       
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT}}
+                }}
 
 	;
 
@@ -4457,7 +4429,7 @@ rename_stmt
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| RENAME TRIGGER trigger_name as_or_to trigger_name
 		{{ DBG_TRACE_GRAMMAR(rename_stmt, | RENAME TRIGGER trigger_name as_or_to trigger_name);
 
@@ -4472,7 +4444,7 @@ rename_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| RENAME SERVER dblink_server_name as_or_to identifier_without_dot
 		{{ DBG_TRACE_GRAMMAR(rename_stmt, | RENAME SERVER dblink_server_name as_or_to identifier_without_dot);
 			PT_NODE *node = parser_new_node (this_parser, PT_RENAME_SERVER);
@@ -4486,7 +4458,7 @@ rename_stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| RENAME			/* 1 */
 	  opt_access_modifier		/* 2 */
 	  SYNONYM			/* 3 */
@@ -4515,7 +4487,7 @@ rename_stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 rename_class_list
@@ -4525,14 +4497,14 @@ rename_class_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| rename_class_pair
 		{{ DBG_TRACE_GRAMMAR(rename_class_list, | rename_class_pair);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 rename_class_pair
@@ -4550,7 +4522,7 @@ rename_class_pair
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 procedure_or_function
@@ -4559,13 +4531,13 @@ procedure_or_function
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	| FUNCTION
 		{{ DBG_TRACE_GRAMMAR(procedure_or_function, | FUNCTION);
 
 			$$ = 2;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_owner_clause
@@ -4596,7 +4568,7 @@ truncate_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 do_stmt
@@ -4626,7 +4598,7 @@ do_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 drop_stmt
@@ -4649,7 +4621,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP					/* 1 */
 		{				/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
@@ -4714,7 +4686,7 @@ drop_stmt
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			  }
 
-		DBG_PRINT}}
+		}}
 	| DROP USER identifier
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP USER identifier);
 
@@ -4728,7 +4700,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP TRIGGER trigger_name_list
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP TRIGGER trigger_name_list);
 
@@ -4748,7 +4720,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP DEFERRED TRIGGER trigger_spec_list
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP DEFERRED TRIGGER trigger_spec_list);
 
@@ -4762,7 +4734,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP VARIABLE_ identifier_list
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP VARIABLE_ identifier_list);
 
@@ -4772,7 +4744,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP SERIAL opt_if_exists serial_name
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP SERIAL opt_if_exists serial_name);
 
@@ -4785,7 +4757,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP PROCEDURE procedure_or_function_name_list
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PROCEDURE procedure_or_function_name_list);
 
@@ -4801,7 +4773,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP FUNCTION procedure_or_function_name_list
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP FUNCTION procedure_or_function_name_list);
 
@@ -4817,7 +4789,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP SERVER opt_if_exists dblink_server_name
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP SERVER opt_if_exists dblink_server_name);
                         PT_NODE *node = parser_new_node (this_parser, PT_DROP_SERVER);
@@ -4836,7 +4808,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP				/* 1 */
 	  opt_access_modifier		/* 2 */
 	  SYNONYM			/* 3 */
@@ -4866,7 +4838,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| deallocate_or_drop PREPARE identifier
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | deallocate_or_drop PREPARE identifier);
 
@@ -4881,7 +4853,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| deallocate_or_drop VARIABLE_ session_variable_list
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | deallocate_or_drop VARIABLE_ session_variable_list);
 
@@ -4894,7 +4866,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 deallocate_or_drop
@@ -4909,14 +4881,14 @@ opt_reverse
 			parser_save_is_reverse (false);
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| REVERSE
 		{{ DBG_TRACE_GRAMMAR(opt_reverse, | REVERSE);
 
 			parser_save_is_reverse (true);
 			$$ = true;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_unique
@@ -4925,13 +4897,13 @@ opt_unique
 
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| UNIQUE
 		{{ DBG_TRACE_GRAMMAR(opt_unique, | UNIQUE);
 
 			$$ = true;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_index_column_name_list
@@ -4940,14 +4912,14 @@ opt_index_column_name_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| index_column_name_list
 		{{ DBG_TRACE_GRAMMAR(opt_index_column_name_list, | index_column_name_list);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_column_name_list
@@ -4965,7 +4937,7 @@ index_column_name_list
 		      $$ = $2;
 		      PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 update_statistics_stmt
@@ -4982,7 +4954,7 @@ update_statistics_stmt
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| UPDATE STATISTICS ON_ ALL CLASSES opt_with_fullscan
 		{{ DBG_TRACE_GRAMMAR(update_statistics_stmt, | UPDATE STATISTICS ON_ ALL CLASSES opt_with_fullscan);
 
@@ -4996,7 +4968,7 @@ update_statistics_stmt
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_with_fullscan
 		{{ DBG_TRACE_GRAMMAR(update_statistics_stmt, | UPDATE STATISTICS ON_ CATALOG CLASSES opt_with_fullscan);
 
@@ -5010,7 +4982,7 @@ update_statistics_stmt
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 only_class_name_list
@@ -5020,14 +4992,14 @@ only_class_name_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| only_class_name
 		{{ DBG_TRACE_GRAMMAR(only_class_name_list, | only_class_name);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_invisible
@@ -5035,13 +5007,13 @@ opt_invisible
 		{{ DBG_TRACE_GRAMMAR(opt_invisible, : );
  			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| INVISIBLE
 		{{ DBG_TRACE_GRAMMAR(opt_invisible, | INVISIBLE);
 
 			$$ = true;
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -5051,13 +5023,13 @@ opt_with_fullscan
 
                         $$ = 0;
 
-                DBG_PRINT}}
+                }}
         | WITH FULLSCAN
                 {{ DBG_TRACE_GRAMMAR(opt_with_fullscan, |  WITH FULLSCAN);
 
                         $$ = 1;
 
-                DBG_PRINT}}
+                }}
         ;
 
 opt_of_to_eq
@@ -5076,7 +5048,7 @@ opt_level_spec
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| OFF_
 		{{ DBG_TRACE_GRAMMAR(opt_level_spec, | OFF_ );
 
@@ -5086,28 +5058,28 @@ opt_level_spec
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| unsigned_integer
 		{{ DBG_TRACE_GRAMMAR(opt_level_spec, |  unsigned_integer);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| param_
 		{{ DBG_TRACE_GRAMMAR(opt_level_spec, |  param_ );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| host_param_input
 		{{ DBG_TRACE_GRAMMAR(opt_level_spec, |  host_param_input);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 char_string_literal_list
@@ -5117,14 +5089,14 @@ char_string_literal_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| char_string_literal
 		{{ DBG_TRACE_GRAMMAR(char_string_literal_list, | char_string_literal);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 table_spec_list
@@ -5134,14 +5106,14 @@ table_spec_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| table_spec
 		{{ DBG_TRACE_GRAMMAR(table_spec_list, |  table_spec);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 extended_table_spec_list
@@ -5155,7 +5127,7 @@ extended_table_spec_list
 			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (number));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| extended_table_spec_list join_table_spec
 		{{ DBG_TRACE_GRAMMAR(extended_table_spec_list, | extended_table_spec_list join_table_spec);
 
@@ -5165,7 +5137,7 @@ extended_table_spec_list
 			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (1));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| '(' extended_table_spec_list join_table_spec ')'
 		{{ DBG_TRACE_GRAMMAR(extended_table_spec_list, | '(' extended_table_spec_list join_table_spec ')');
 
@@ -5175,7 +5147,7 @@ extended_table_spec_list
 			SET_CONTAINER_2 (ctn, parser_make_link (n1, n2), FROM_NUMBER (1));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| table_spec
 		{{ DBG_TRACE_GRAMMAR(extended_table_spec_list, | table_spec);
 
@@ -5183,7 +5155,7 @@ extended_table_spec_list
 			SET_CONTAINER_2 (ctn, $1, FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 join_table_spec
@@ -5196,7 +5168,7 @@ join_table_spec
 			$$ = sopt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| opt_of_inner_left_right JOIN table_spec join_condition
 		{{ DBG_TRACE_GRAMMAR(join_table_spec, | opt_of_inner_left_right JOIN table_spec join_condition);
 
@@ -5225,7 +5197,7 @@ join_table_spec
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_restore_pseudoc ();
 
-		DBG_PRINT}}
+		}}
 	| NATURAL opt_of_inner_left_right JOIN table_spec
 		{{ DBG_TRACE_GRAMMAR(join_table_spec, | NATURAL opt_of_inner_left_right JOIN table_spec );
 
@@ -5240,7 +5212,7 @@ join_table_spec
 			  }
 			$$ = sopt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 join_condition
@@ -5248,13 +5220,13 @@ join_condition
 		{{ DBG_TRACE_GRAMMAR(join_condition, : );
 			parser_save_and_set_pseudoc (0);
 			$$ = NULL;   /* just return NULL */
-		DBG_PRINT}}
+		}}
 	| ON_
 		{{
 			parser_save_and_set_pseudoc (0);
 			parser_save_and_set_wjc (1);
 			parser_save_and_set_ic (1);
-		DBG_PRINT}}
+		}}
 	  search_condition
 		{{ DBG_TRACE_GRAMMAR(join_condition, | ON_ search_condition);
 			PT_NODE *condition = $3;
@@ -5275,7 +5247,7 @@ join_condition
 
 			$$ = condition;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 
 
 	;
@@ -5285,25 +5257,25 @@ opt_of_inner_left_right
 		{{ DBG_TRACE_GRAMMAR(opt_of_inner_left_right, : );
 			$$ = PT_JOIN_INNER;
 
-		DBG_PRINT}}
+		}}
 	| INNER opt_outer
 		{{ DBG_TRACE_GRAMMAR(opt_of_inner_left_right, | INNER opt_outer );
 
 			$$ = PT_JOIN_INNER;
 
-		DBG_PRINT}}
+		}}
 	| LEFT opt_outer
 		{{ DBG_TRACE_GRAMMAR(opt_of_inner_left_right, | LEFT opt_outer );
 
 			$$ = PT_JOIN_LEFT_OUTER;
 
-		DBG_PRINT}}
+		}}
 	| RIGHT opt_outer
 		{{ DBG_TRACE_GRAMMAR(opt_of_inner_left_right, |  RIGHT opt_outer );
 
 			$$ = PT_JOIN_RIGHT_OUTER;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_outer
@@ -5318,14 +5290,14 @@ table_spec
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| original_table_spec %dprec 2
 		{{ DBG_TRACE_GRAMMAR(table_spec, | original_table_spec);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 original_table_spec
 	: class_spec opt_as_identifier_attr_name opt_table_spec_index_hint_list
@@ -5430,7 +5402,7 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| meta_class_spec opt_as_identifier_attr_name
 		{{ DBG_TRACE_GRAMMAR(original_table_spec, | meta_class_spec opt_as_identifier_attr_name);
 
@@ -5457,7 +5429,7 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| subquery opt_as_identifier_attr_name
 		{{ DBG_TRACE_GRAMMAR(original_table_spec, | subquery opt_as_identifier_attr_name);
 
@@ -5487,7 +5459,7 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TABLE '(' expression_ ')' opt_as_identifier_attr_name
 		{{ DBG_TRACE_GRAMMAR(original_table_spec, | TABLE '(' expression_ ')' opt_as_identifier_attr_name);
 
@@ -5505,7 +5477,7 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| JSON_TABLE json_table_rule opt_as identifier
 		{{ DBG_TRACE_GRAMMAR(original_table_spec, | JSON_TABLE json_table_rule opt_as identifier);
 			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
@@ -5518,7 +5490,7 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         | DBLINK  '('  dblink_expr ')'   dblink_identifier_col_attrs 
                 {{ DBG_TRACE_GRAMMAR(original_table_spec, | DBLINK  '('  dblink_expr ')' dblink_identifier_col_attrs );                       
 			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
@@ -5531,7 +5503,7 @@ original_table_spec
 			  }
 			$$ = ent;                        
 		        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 opt_table_spec_index_hint
@@ -5548,7 +5520,7 @@ opt_table_spec_index_hint
 			$$ = $4;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| FORCE index_or_key '(' identifier_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_table_spec_index_hint, | FORCE index_or_key '(' identifier_list ')' );
 
@@ -5563,7 +5535,7 @@ opt_table_spec_index_hint
 			$$ = $4;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| IGNORE_ index_or_key '(' identifier_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_table_spec_index_hint, | IGNORE_ index_or_key '(' identifier_list ')' );
 
@@ -5578,7 +5550,7 @@ opt_table_spec_index_hint
 			  $$ = $4;
 			  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_table_spec_index_hint_list
@@ -5588,21 +5560,21 @@ opt_table_spec_index_hint_list
 			$$ = 0;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| opt_table_spec_index_hint_list ',' opt_table_spec_index_hint
 		{{ DBG_TRACE_GRAMMAR(opt_table_spec_index_hint_list, | opt_table_spec_index_hint_list ',' opt_table_spec_index_hint );
 
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
-		DBG_PRINT}}
+		}}
 	| opt_table_spec_index_hint
 		{{ DBG_TRACE_GRAMMAR(opt_table_spec_index_hint_list, | opt_table_spec_index_hint );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_as_identifier_attr_name
@@ -5613,7 +5585,7 @@ opt_as_identifier_attr_name
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| opt_as identifier '(' identifier_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_as_identifier_attr_name, | opt_as identifier '(' identifier_list ')' );
 
@@ -5621,7 +5593,7 @@ opt_as_identifier_attr_name
 			SET_CONTAINER_2 (ctn, $2, $4);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| opt_as identifier
 		{{ DBG_TRACE_GRAMMAR(opt_as_identifier_attr_name, | opt_as identifier);
 
@@ -5629,7 +5601,7 @@ opt_as_identifier_attr_name
 			SET_CONTAINER_2 (ctn, $2, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_as
@@ -5644,14 +5616,14 @@ class_spec_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| class_spec_without_server_name
 		{{ DBG_TRACE_GRAMMAR(class_spec_list, | class_spec );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 class_spec_without_server_name
@@ -5661,14 +5633,14 @@ class_spec_without_server_name
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' only_all_class_spec_list ')'
 		{{ DBG_TRACE_GRAMMAR(class_spec, | '(' only_all_class_spec_list ')' );
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 class_spec
@@ -5678,21 +5650,21 @@ class_spec
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| only_all_class_spec_with_server
 		{{ DBG_TRACE_GRAMMAR(class_spec, : only_all_class_spec_with_server );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' only_all_class_spec_list ')'
 		{{ DBG_TRACE_GRAMMAR(class_spec, | '(' only_all_class_spec_list ')' );
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 only_all_class_spec_list
@@ -5706,14 +5678,14 @@ only_all_class_spec_list
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| only_all_class_spec
 		{{ DBG_TRACE_GRAMMAR(only_all_class_spec_list, | only_all_class_spec );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 meta_class_spec
@@ -5731,7 +5703,7 @@ meta_class_spec
 			$$ = ocs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 only_all_class_spec_with_server
@@ -5750,7 +5722,7 @@ only_all_class_spec_with_server
 
 			$$ = ocs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 only_all_class_spec
@@ -5773,7 +5745,7 @@ only_all_class_spec
 			$$ = ocs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALL class_name '(' EXCEPT class_spec_list ')'
 		{{ DBG_TRACE_GRAMMAR(only_all_class_spec, | ALL class_name '(' EXCEPT class_spec_list ')' );
 
@@ -5789,7 +5761,7 @@ only_all_class_spec
 			$$ = acs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALL class_name
 		{{ DBG_TRACE_GRAMMAR(only_all_class_spec, | class_name);
 
@@ -5804,7 +5776,7 @@ only_all_class_spec
 			$$ = acs;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 class_name_with_server_name
@@ -5816,7 +5788,7 @@ class_name_with_server_name
                 PT_NAME_INFO_CLEAR_FLAG($1, PT_NAME_INFO_USER_SPECIFIED);
                 SET_CONTAINER_2 (ctn, $1, $3);
                 $$ = ctn;
-                DBG_PRINT}}
+                }}
         ;
 
 object_name
@@ -5835,14 +5807,14 @@ object_name
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(object_name, | identifier);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 user_specified_name_without_dot
@@ -5863,7 +5835,7 @@ user_specified_name_without_dot
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier_without_dot
 		{{ DBG_TRACE_GRAMMAR(user_specified_name_without_dot, | identifier_without_dot);
 
@@ -5877,7 +5849,7 @@ user_specified_name_without_dot
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 user_specified_name
@@ -5894,7 +5866,7 @@ user_specified_name
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 class_name_without_dot
@@ -5914,14 +5886,14 @@ class_name_list
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| class_name
 		{{ DBG_TRACE_GRAMMAR(class_name_list, | class_name);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_name
@@ -5938,7 +5910,7 @@ index_name
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_name_without_dot
@@ -5958,14 +5930,14 @@ trigger_name_list
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| trigger_name
 		{{
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 serial_name_without_dot
@@ -6013,14 +5985,14 @@ procedure_or_function_name_list
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| procedure_or_function_name
 		{{ DBG_TRACE_GRAMMAR(procedure_or_function_name_list, : procedure_or_function_name);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_partition_spec
@@ -6032,7 +6004,7 @@ opt_partition_spec
 		{{ DBG_TRACE_GRAMMAR(opt_partition_spec, | PARTITION '(' identifier ')' );
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 opt_class_type
@@ -6041,31 +6013,31 @@ opt_class_type
 
 			$$ = PT_EMPTY;
 
-		DBG_PRINT}}
+		}}
 	| VCLASS
 		{{ DBG_TRACE_GRAMMAR(opt_class_type, | VCLASS);
 
 			$$ = PT_VCLASS;
 
-		DBG_PRINT}}
+		}}
 	| VIEW
 		{{ DBG_TRACE_GRAMMAR(opt_class_type, | VIEW );
 
 			$$ = PT_VCLASS;
 
-		DBG_PRINT}}
+		}}
 	| CLASS
 		{{ DBG_TRACE_GRAMMAR(opt_class_type, | CLASS );
 
 			$$ = PT_CLASS;
 
-		DBG_PRINT}}
+		}}
 	| TABLE
 		{{ DBG_TRACE_GRAMMAR(opt_class_type, | TABLE );
 
 			$$ = PT_CLASS;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_table_type
@@ -6074,19 +6046,19 @@ opt_table_type
 
 			$$ = PT_EMPTY;
 
-		DBG_PRINT}}
+		}}
 	| CLASS
 		{{ DBG_TRACE_GRAMMAR(opt_table_type, | CLASS );
 
 			$$ = PT_CLASS;
 
-		DBG_PRINT}}
+		}}
 	| TABLE
 		{{ DBG_TRACE_GRAMMAR(opt_table_type, | TABLE );
 
 			$$ = PT_CLASS;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_cascade
@@ -6095,13 +6067,13 @@ opt_cascade
 
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| CASCADE
 		{{ DBG_TRACE_GRAMMAR(opt_cascade, | CASCADE );
 
 			$$ = true;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_cascade_constraints
@@ -6110,13 +6082,13 @@ opt_cascade_constraints
 
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| CASCADE CONSTRAINTS
 		{{ DBG_TRACE_GRAMMAR(opt_cascade_constraints, | CASCADE CONSTRAINTS );
 
 			$$ = true;
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_clause_for_alter_list
@@ -6139,7 +6111,7 @@ alter_clause_for_alter_list
 			    alt->info.alter.code = PT_CHANGE_OWNER;
 			    alt->info.alter.alter_clause.user.user_name = $3;
 			  }
-		DBG_PRINT}}
+		}}
 	| charset_spec opt_collation
 		{{ DBG_TRACE_GRAMMAR(alter_clause_for_alter_list, | charset_spec opt_collation );
 			PT_NODE *node = parser_get_alter_node();
@@ -6169,7 +6141,7 @@ alter_clause_for_alter_list
 				  }
 			      }
 			  }
-		DBG_PRINT}}
+		}}
 	| collation_spec
 		{{ DBG_TRACE_GRAMMAR(alter_clause_for_alter_list, | collation_spec );
 			PT_NODE *node = parser_get_alter_node();
@@ -6193,7 +6165,7 @@ alter_clause_for_alter_list
 				node->info.alter.alter_clause.collation.collation_id = coll_id;
 			      }
 			  }
-		DBG_PRINT}}
+		}}
 	| class_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_clause_for_alter_list, | class_comment_spec );
 			PT_NODE *alter_node = parser_get_alter_node();
@@ -6203,7 +6175,7 @@ alter_clause_for_alter_list
 				alter_node->info.alter.code = PT_CHANGE_TABLE_COMMENT;
 				alter_node->info.alter.alter_clause.comment.tbl_comment = $1;
 			  }
-		DBG_PRINT}}
+		}}
 	;
 
 alter_clause_cubrid_specific
@@ -6224,7 +6196,7 @@ alter_clause_cubrid_specific
 			    alt->info.alter.super.resolution_list = $1;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_resolution_list_for_alter
@@ -6243,7 +6215,7 @@ resolution_list_for_alter
 			    alt->info.alter.super.resolution_list = $1;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_rename_clause_mysql_specific
@@ -6258,7 +6230,7 @@ alter_rename_clause_mysql_specific
 			    node->info.alter.alter_clause.rename.new_name = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_auto_increment_mysql_specific
@@ -6282,7 +6254,7 @@ alter_auto_increment_mysql_specific
 			    node->info.alter.alter_clause.auto_increment.start_value = val;
 			  }
 
-	      DBG_PRINT}}
+	      }}
 	;
 
 alter_rename_clause_allow_multiple
@@ -6309,7 +6281,7 @@ alter_rename_clause_allow_multiple
 			    node->info.alter.alter_clause.rename.old_name = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_rename_clause_cubrid_specific
@@ -6332,7 +6304,7 @@ alter_rename_clause_cubrid_specific
 			    node->info.alter.alter_clause.rename.old_name = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| File file_path_name AS file_path_name
 		{{ DBG_TRACE_GRAMMAR(alter_rename_clause_cubrid_specific, | File file_path_name AS file_path_name);
 
@@ -6346,7 +6318,7 @@ alter_rename_clause_cubrid_specific
 			    node->info.alter.alter_clause.rename.old_name = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_of_attr_column_method
@@ -6355,24 +6327,24 @@ opt_of_attr_column_method
 
 			$$ = PT_EMPTY;
 
-		DBG_PRINT}}
+		}}
 	| ATTRIBUTE
 		{{ DBG_TRACE_GRAMMAR(opt_of_attr_column_method, | ATTRIBUTE );
 
 			$$ = PT_ATTRIBUTE;
 
-		DBG_PRINT}}
+		}}
 	| COLUMN
 		{{ DBG_TRACE_GRAMMAR(opt_of_attr_column_method, | COLUMN );
 
 			$$ = PT_ATTRIBUTE;
 
-		DBG_PRINT}}
+		}}
 	| METHOD
 		{{ DBG_TRACE_GRAMMAR(opt_of_attr_column_method, | METHOD );
 
 			$$ = PT_METHOD;
-		DBG_PRINT}}
+		}}
 	;
 
 opt_class
@@ -6381,13 +6353,13 @@ opt_class
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| CLASS
 		{{ DBG_TRACE_GRAMMAR(opt_class, | CLASS );
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_identifier
@@ -6396,14 +6368,14 @@ opt_identifier
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(opt_identifier, | identifier );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_add_clause_for_alter_list
@@ -6420,7 +6392,7 @@ alter_add_clause_for_alter_list
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $5;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| CLASS ATTRIBUTE
 		{ parser_attr_type = PT_META_ATTR; }
 	  attr_def
@@ -6434,7 +6406,7 @@ alter_add_clause_for_alter_list
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| opt_of_column_attribute
 	  		{ allow_attribute_ordering = true; }
 	  '(' attr_def_list ')'
@@ -6448,7 +6420,7 @@ alter_add_clause_for_alter_list
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| opt_of_column_attribute
 			{ allow_attribute_ordering = true; }
 	  attr_def
@@ -6462,7 +6434,7 @@ alter_add_clause_for_alter_list
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_add_clause_cubrid_specific
@@ -6477,7 +6449,7 @@ alter_add_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.mthd_file_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| METHOD method_def_list
 		{{ DBG_TRACE_GRAMMAR(alter_add_clause_cubrid_specific, | METHOD method_def_list);
 
@@ -6488,7 +6460,7 @@ alter_add_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.mthd_def_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| METHOD method_def_list File method_file_list
 		{{ DBG_TRACE_GRAMMAR(alter_add_clause_cubrid_specific, | METHOD method_def_list File method_file_list);
 
@@ -6501,7 +6473,7 @@ alter_add_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.mthd_def_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| SUPERCLASS only_class_name_list
 		{{ DBG_TRACE_GRAMMAR(alter_add_clause_cubrid_specific, | SUPERCLASS only_class_name_list );
 
@@ -6513,7 +6485,7 @@ alter_add_clause_cubrid_specific
 			    node->info.alter.super.sup_class_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| QUERY csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_add_clause_cubrid_specific, | QUERY csql_query opt_vclass_comment_spec );
 
@@ -6526,7 +6498,7 @@ alter_add_clause_cubrid_specific
 			    node->info.alter.alter_clause.query.view_comment = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| CLASS ATTRIBUTE
 		{ parser_attr_type = PT_META_ATTR; }
 	  attr_def_list_with_commas
@@ -6540,7 +6512,7 @@ alter_add_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $4;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| opt_of_column_attribute attr_def_list_with_commas
 		{{ DBG_TRACE_GRAMMAR(alter_add_clause_cubrid_specific, | opt_of_column_attribute attr_def_list_with_commas );
 
@@ -6551,7 +6523,7 @@ alter_add_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_of_column_attribute
@@ -6568,7 +6540,7 @@ add_partition_clause
 			node->info.alter.code = PT_ADD_HASHPARTITION;
 			node->info.alter.alter_clause.partition.size = $2;
 
-		DBG_PRINT}}
+		}}
 	| '(' partition_def_list ')'
 		{{ DBG_TRACE_GRAMMAR(add_partition_clause, | '(' partition_def_list ')' );
 
@@ -6576,7 +6548,7 @@ add_partition_clause
 			node->info.alter.code = PT_ADD_PARTITION;
 			node->info.alter.alter_clause.partition.parts = $2;
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_drop_clause_mysql_specific
@@ -6593,7 +6565,7 @@ alter_drop_clause_mysql_specific
 			    node->info.alter.constraint_list = $4;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| PRIMARY KEY
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_mysql_specific, | PRIMARY KEY );
 
@@ -6604,7 +6576,7 @@ alter_drop_clause_mysql_specific
 			    node->info.alter.code = PT_DROP_PRIMARY_CLAUSE;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| FOREIGN KEY identifier
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_mysql_specific, | FOREIGN KEY identifier );
 
@@ -6616,7 +6588,7 @@ alter_drop_clause_mysql_specific
 			    node->info.alter.constraint_list = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_drop_clause_for_alter_list
@@ -6631,7 +6603,7 @@ alter_drop_clause_for_alter_list
 			    node->info.alter.alter_clause.attr_mthd.attr_mthd_name_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| CONSTRAINT identifier
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_for_alter_list, | CONSTRAINT identifier );
 
@@ -6643,7 +6615,7 @@ alter_drop_clause_for_alter_list
 			    node->info.alter.constraint_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| PARTITION identifier_list
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_for_alter_list, | PARTITION identifier_list );
 
@@ -6655,7 +6627,7 @@ alter_drop_clause_for_alter_list
 			    node->info.alter.alter_clause.partition.name_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_drop_clause_cubrid_specific
@@ -6670,7 +6642,7 @@ alter_drop_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.attr_mthd_name_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| File method_file_list
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_cubrid_specific, | File method_file_list);
 
@@ -6682,7 +6654,7 @@ alter_drop_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.mthd_file_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| SUPERCLASS only_class_name_list
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_cubrid_specific, | SUPERCLASS only_class_name_list);
 
@@ -6694,7 +6666,7 @@ alter_drop_clause_cubrid_specific
 			    node->info.alter.super.sup_class_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| QUERY query_number_list
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_cubrid_specific, | QUERY query_number_list);
 
@@ -6706,7 +6678,7 @@ alter_drop_clause_cubrid_specific
 			    node->info.alter.alter_clause.query.query_no_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| QUERY
 		{{ DBG_TRACE_GRAMMAR(alter_drop_clause_cubrid_specific, | QUERY );
 
@@ -6718,7 +6690,7 @@ alter_drop_clause_cubrid_specific
 			    node->info.alter.alter_clause.query.query_no_list = NULL;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 normal_or_class_attr_list_with_commas
@@ -6728,14 +6700,14 @@ normal_or_class_attr_list_with_commas
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| normal_or_class_attr ',' normal_or_class_attr
 		{{ DBG_TRACE_GRAMMAR(normal_or_class_attr_list_with_commas, | normal_or_class_attr ',' normal_or_class_attr);
 
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_modify_clause_for_alter_list
@@ -6754,7 +6726,7 @@ alter_modify_clause_for_alter_list
 			    /* no name change for MODIFY */
 			  }
 
-		DBG_PRINT}}
+		}}
 	| CLASS ATTRIBUTE
 	  { allow_attribute_ordering = true; }
 	  attr_def_one
@@ -6773,7 +6745,7 @@ alter_modify_clause_for_alter_list
 				info.attr_def.attr_type = PT_META_ATTR;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_change_clause_for_alter_list
@@ -6798,7 +6770,7 @@ alter_change_clause_for_alter_list
 			      node->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.meta_class;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_change_clause_cubrid_specific
@@ -6813,7 +6785,7 @@ alter_change_clause_cubrid_specific
 			    node->info.alter.alter_clause.attr_mthd.mthd_def_list = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| QUERY unsigned_integer csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_change_clause_cubrid_specific, | QUERY unsigned_integer csql_query opt_vclass_comment_spec);
 
@@ -6827,7 +6799,7 @@ alter_change_clause_cubrid_specific
 			    node->info.alter.alter_clause.query.view_comment = $4;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| QUERY csql_query opt_vclass_comment_spec
 		{{ DBG_TRACE_GRAMMAR(alter_change_clause_cubrid_specific, | QUERY csql_query opt_vclass_comment_spec);
 
@@ -6841,7 +6813,7 @@ alter_change_clause_cubrid_specific
 			    node->info.alter.alter_clause.query.view_comment = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| File file_path_name AS file_path_name
 		{{ DBG_TRACE_GRAMMAR(alter_change_clause_cubrid_specific, | File file_path_name AS file_path_name);
 
@@ -6855,7 +6827,7 @@ alter_change_clause_cubrid_specific
 			    node->info.alter.alter_clause.rename.old_name = $2;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 normal_or_class_attr
@@ -6870,7 +6842,7 @@ normal_or_class_attr
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 query_number_list
@@ -6880,14 +6852,14 @@ query_number_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| unsigned_integer
 		{{ DBG_TRACE_GRAMMAR(query_number_list, | unsigned_integer);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_column_clause_mysql_specific
@@ -6981,7 +6953,7 @@ alter_column_clause_mysql_specific
 			    alter_node->info.alter.alter_clause.ch_attr_def.data_default_list = node;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 normal_column_or_class_attribute
@@ -6996,7 +6968,7 @@ normal_column_or_class_attribute
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CLASS ATTRIBUTE identifier
 		{{ DBG_TRACE_GRAMMAR(normal_column_or_class_attribute, | CLASS ATTRIBUTE identifier);
 
@@ -7008,7 +6980,7 @@ normal_column_or_class_attribute
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_or_replace_stmt
@@ -7026,7 +6998,7 @@ insert_or_replace_stmt
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| insert_name_clause insert_stmt_value_clause into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(insert_or_replace_stmt, | insert_name_clause insert_stmt_value_clause into_clause_opt);
 
@@ -7041,7 +7013,7 @@ insert_or_replace_stmt
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| replace_name_clause insert_stmt_value_clause into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(insert_or_replace_stmt, | replace_name_clause insert_stmt_value_clause into_clause_opt);
 
@@ -7056,7 +7028,7 @@ insert_or_replace_stmt
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| insert_set_stmt on_duplicate_key_update
 		{{ DBG_TRACE_GRAMMAR(insert_or_replace_stmt, | insert_set_stmt on_duplicate_key_update);
 
@@ -7069,7 +7041,7 @@ insert_or_replace_stmt
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| insert_set_stmt into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(insert_or_replace_stmt, | insert_set_stmt into_clause_opt);
 
@@ -7083,7 +7055,7 @@ insert_or_replace_stmt
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| replace_set_stmt into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(insert_or_replace_stmt, | replace_set_stmt into_clause_opt);
 
@@ -7097,7 +7069,7 @@ insert_or_replace_stmt
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_set_stmt
@@ -7176,7 +7148,7 @@ insert_set_stmt_header
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_assignment_list
@@ -7188,7 +7160,7 @@ insert_assignment_list
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	| insert_assignment_list ',' identifier '=' DEFAULT
 		{{ DBG_TRACE_GRAMMAR(insert_assignment_list, | insert_assignment_list ',' identifier '=' DEFAULT );
 			PT_NODE *arg = parser_copy_tree (this_parser, $3);
@@ -7203,7 +7175,7 @@ insert_assignment_list
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	| identifier '=' expression_
 		{{ DBG_TRACE_GRAMMAR(insert_assignment_list, | identifier '=' expression_ );
 
@@ -7212,7 +7184,7 @@ insert_assignment_list
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| identifier '=' DEFAULT
 		{{ DBG_TRACE_GRAMMAR(insert_assignment_list, | identifier '=' DEFAULT);
 
@@ -7228,7 +7200,7 @@ insert_assignment_list
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 on_duplicate_key_update
@@ -7239,7 +7211,7 @@ on_duplicate_key_update
 			$$ = $5;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_expression
@@ -7256,7 +7228,7 @@ insert_expression
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' insert_name_clause insert_expression_value_clause into_clause_opt ')'
 		{{ DBG_TRACE_GRAMMAR(insert_expression, | '(' insert_name_clause insert_expression_value_clause into_clause_opt ')');
 
@@ -7271,7 +7243,7 @@ insert_expression
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_name_clause
@@ -7332,7 +7304,7 @@ insert_name_clause_header
 			$$ = ins;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_attr_list
@@ -7341,20 +7313,20 @@ opt_attr_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' ')'
 		{{ DBG_TRACE_GRAMMAR(opt_attr_list, | '(' ')' );
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' identifier_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_attr_list, | '(' identifier_list ')' );
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_path_attr_list
@@ -7363,20 +7335,20 @@ opt_path_attr_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' ')'
 		{{ DBG_TRACE_GRAMMAR(opt_path_attr_list, |  '(' ')' );
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' simple_path_id_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_path_attr_list, | '(' simple_path_id_list ')' );
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_stmt_value_clause
@@ -7386,7 +7358,7 @@ insert_stmt_value_clause
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| opt_with_clause
 	  csql_query_without_values_and_single_subquery
 		{{ DBG_TRACE_GRAMMAR(insert_stmt_value_clause, |  opt_with_clause csql_query_without_values_and_single_subquery);
@@ -7399,7 +7371,7 @@ insert_stmt_value_clause
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' opt_with_clause
 	  csql_query_without_values_query_no_with_clause ')'
 		{{ DBG_TRACE_GRAMMAR(insert_stmt_value_clause, |  '(' opt_with_clause csql_query_without_values_query_no_with_clause ')');
@@ -7411,7 +7383,7 @@ insert_stmt_value_clause
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_expression_value_clause
@@ -7421,7 +7393,7 @@ insert_expression_value_clause
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DEFAULT opt_values
 		{{ DBG_TRACE_GRAMMAR(insert_expression_value_clause, | DEFAULT opt_values);
 
@@ -7429,7 +7401,7 @@ insert_expression_value_clause
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_value_values
@@ -7452,21 +7424,21 @@ into_clause_opt
 		{{ DBG_TRACE_GRAMMAR(into_clause_opt, : );
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| INTO to_param
 		{{ DBG_TRACE_GRAMMAR(into_clause_opt, | INTO to_param );
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TO to_param
 		{{ DBG_TRACE_GRAMMAR(into_clause_opt, | TO to_param );
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_value_clause_list
@@ -7476,14 +7448,14 @@ insert_value_clause_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| insert_value_clause
 		{{ DBG_TRACE_GRAMMAR(insert_value_clause_list, | insert_value_clause);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_value_clause
@@ -7494,7 +7466,7 @@ insert_value_clause
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '('')'
 		{{ DBG_TRACE_GRAMMAR(insert_value_clause, | '('')' );
 
@@ -7512,7 +7484,7 @@ insert_value_clause
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DEFAULT opt_values
 		{{ DBG_TRACE_GRAMMAR(insert_value_clause, | DEFAULT opt_values);
 
@@ -7520,7 +7492,7 @@ insert_value_clause
 			$$ = nls;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_value_list
@@ -7530,14 +7502,14 @@ insert_value_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| insert_value
 		{{ DBG_TRACE_GRAMMAR(insert_value_list, | insert_value);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 insert_value
@@ -7547,14 +7519,14 @@ insert_value
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| normal_expression
 		{{ DBG_TRACE_GRAMMAR(insert_value, | normal_expression);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DEFAULT
 		{{ DBG_TRACE_GRAMMAR(insert_value, | DEFAULT);
 
@@ -7564,7 +7536,7 @@ insert_value
 			$$ = parser_make_expression (this_parser, PT_DEFAULTF, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 show_stmt
@@ -7582,7 +7554,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  opt_full
 	  TABLES
@@ -7600,7 +7572,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  opt_full
 	  TABLES
@@ -7618,7 +7590,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  opt_full
 	  COLUMNS
@@ -7637,7 +7609,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  opt_full
 	  COLUMNS
@@ -7659,7 +7631,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  opt_full
 	  COLUMNS
@@ -7681,7 +7653,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_describe_desc_explain
 	  class_name
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | of_describe_desc_explain class_name);
@@ -7695,7 +7667,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_describe_desc_explain
 	  class_name
 	  identifier
@@ -7710,7 +7682,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_describe_desc_explain
 	  class_name
 	  char_string_literal
@@ -7731,7 +7703,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  COLLATION
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW COLLATION);
@@ -7743,7 +7715,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  COLLATION
 	  LIKE
@@ -7761,7 +7733,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  COLLATION
 	  WHERE
@@ -7778,7 +7750,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  CREATE
 	  TABLE
@@ -7791,7 +7763,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  CREATE
 	  VIEW
@@ -7806,7 +7778,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  GRANTS
 	  For
@@ -7824,7 +7796,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  GRANTS
 	  opt_for_current_user
@@ -7837,7 +7809,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW
 	  of_index_indexes_keys
 	  of_from_in
@@ -7851,7 +7823,7 @@ show_stmt
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| SHOW EXEC STATISTICS ALL
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW EXEC STATISTICS ALL);
 			PT_NODE *node = NULL;
@@ -7861,7 +7833,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW EXEC STATISTICS
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW EXEC STATISTICS);
 			PT_NODE *node = NULL;
@@ -7871,7 +7843,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW TRACE
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW TRACE);
 			PT_NODE *node = NULL;
@@ -7880,7 +7852,7 @@ show_stmt
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW show_type);
 			int type = $2;
@@ -7889,7 +7861,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type_of_like LIKE expression_
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW show_type_of_like LIKE expression_);
 
@@ -7902,7 +7874,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type_of_where WHERE search_condition
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW show_type_of_where WHERE search_condition);
 			const int like_where_syntax = 2;  /* is WHERE */
@@ -7914,7 +7886,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type_arg1 OF arg_value
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW show_type_arg1 OF arg_value);
 			int type = $2;
@@ -7924,7 +7896,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type_arg1_opt opt_arg_value
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW show_type_arg1_opt opt_arg_value);
 			PT_NODE *node = NULL;
@@ -7936,7 +7908,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type_arg_named of_or_where named_args
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW show_type_arg_named of_or_where named_args);
 			PT_NODE *node = NULL;
@@ -7948,7 +7920,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type_id OF class_name
 		{{
 			int type = $2;
@@ -7959,7 +7931,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{ DBG_TRACE_GRAMMAR(show_stmt, | SHOW show_type_id_dot_id OF class_name DOT identifier);
 			int type = $2;
@@ -7971,7 +7943,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 kill_stmt
@@ -7987,7 +7959,7 @@ kill_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| KILL kill_type arg_value_list
 		{{ DBG_TRACE_GRAMMAR(kill_stmt, | KILL kill_type arg_value_list);
 			int type = $2;
@@ -8002,7 +7974,7 @@ kill_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 show_type
@@ -8179,11 +8151,11 @@ named_args
 	: named_arg
 		{{ DBG_TRACE_GRAMMAR(named_args, | named_arg);
 			$$ = $1;
-		DBG_PRINT}}
+		}}
 	| named_args AND named_arg
 		{{ DBG_TRACE_GRAMMAR(named_args, | named_args AND named_arg);
 			$$ = parser_make_link ($1, $3);
-		DBG_PRINT}}
+		}}
 	;
 
 named_arg
@@ -8193,7 +8165,7 @@ named_arg
 			node->info.named_arg.name = $1;
 			node->info.named_arg.value = $3;
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	;
 
 opt_arg_value
@@ -8218,29 +8190,29 @@ arg_value_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| arg_value
 		{{ DBG_TRACE_GRAMMAR(arg_value_list, | arg_value);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 arg_value
 	: char_string_literal
 		{{ DBG_TRACE_GRAMMAR(arg_value, : char_string_literal);
 			$$ = $1;
-		DBG_PRINT}}
+		}}
 	| unsigned_integer
 		{{ DBG_TRACE_GRAMMAR(arg_value, | unsigned_integer);
 			$$ = $1;
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(arg_value, | identifier);
 			$$ = $1;
-		DBG_PRINT}}
+		}}
 	;
 
 opt_full
@@ -8249,13 +8221,13 @@ opt_full
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| FULL
 		{{ DBG_TRACE_GRAMMAR(arg_vopt_fullalue, | FULL);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_from_in
@@ -8398,7 +8370,7 @@ update_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| update_head
 	  OBJECT
 	  from_param
@@ -8416,7 +8388,7 @@ update_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -8428,24 +8400,22 @@ opt_of_where_cursor
 			SET_CONTAINER_2 (ctn, 0, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| WHERE
 		{ DBG_TRACE_GRAMMAR(opt_of_where_cursor, | WHERE );
 			parser_save_and_set_ic(1);
-			DBG_PRINT
-		}
+			}
 	  search_condition
 	  	{
 			parser_restore_ic();
-			DBG_PRINT
-		}
+			}
 		{{ DBG_TRACE_GRAMMAR(opt_of_where_cursor, search_condition);
 
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), $3);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| WHERE CURRENT OF identifier
 		{{ DBG_TRACE_GRAMMAR(opt_of_where_cursor, | WHERE CURRENT OF identifier);
 
@@ -8453,7 +8423,7 @@ opt_of_where_cursor
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), $4);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_as_identifier
@@ -8462,21 +8432,21 @@ opt_as_identifier
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| AS identifier
 		{{ DBG_TRACE_GRAMMAR(opt_as_identifier, | AS identifier);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(opt_as_identifier, | identifier);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 update_assignment_list
@@ -8486,13 +8456,13 @@ update_assignment_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| update_assignment
 		{{ DBG_TRACE_GRAMMAR(update_assignment_list, | update_assignment);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 update_assignment
@@ -8502,7 +8472,7 @@ update_assignment
 			$$ = parser_make_expression (this_parser, PT_ASSIGN, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| simple_path_id '=' DEFAULT
 		{{ DBG_TRACE_GRAMMAR("update_assignment", "| simple_path_id '=' DEFAULT ");
 
@@ -8516,7 +8486,7 @@ update_assignment
 			$$ = parser_make_expression (this_parser, PT_ASSIGN, $1, node_df, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| paren_path_expression_set '=' primary_w_collate
 		{{ DBG_TRACE_GRAMMAR(update_assignment, | paren_path_expression_set '=' primary_w_collate);
 
@@ -8625,7 +8595,7 @@ update_assignment
 			      }
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 paren_path_expression_set
@@ -8644,7 +8614,7 @@ paren_path_expression_set
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 path_expression_list
@@ -8654,13 +8624,13 @@ path_expression_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| path_expression
 		{{ DBG_TRACE_GRAMMAR(path_expression_list, | path_expression);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 delete_name
@@ -8672,7 +8642,7 @@ delete_name
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| identifier DOT '*'
 		{{ DBG_TRACE_GRAMMAR(delete_name, | identifier DOT '*');
 
@@ -8681,7 +8651,7 @@ delete_name
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 delete_name_list
@@ -8690,13 +8660,13 @@ delete_name_list
 
 			$$ = parser_make_link ($1, $3);
 
-		DBG_PRINT}}
+		}}
 	| delete_name
 		{{ DBG_TRACE_GRAMMAR(delete_name_list, | delete_name);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 delete_from_using
@@ -8708,7 +8678,7 @@ delete_from_using
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| FROM delete_name_list USING extended_table_spec_list
 		{{ DBG_TRACE_GRAMMAR(delete_from_using, | FROM delete_name_list USING extended_table_spec_list);
 
@@ -8717,7 +8687,7 @@ delete_from_using
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| FROM table_spec
 		{{ DBG_TRACE_GRAMMAR(delete_from_using, | FROM table_spec);
 
@@ -8726,7 +8696,7 @@ delete_from_using
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| table_spec
 		{{ DBG_TRACE_GRAMMAR(delete_from_using, | table_spec);
 
@@ -8735,7 +8705,7 @@ delete_from_using
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 delete_stmt
@@ -8843,7 +8813,7 @@ delete_stmt
 			$$ = del;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 merge_stmt
@@ -8873,24 +8843,24 @@ merge_stmt
 			$$ = merge;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 merge_update_insert_clause
 	: merge_update_clause
 		{{ DBG_TRACE_GRAMMAR(merge_update_insert_clause, : merge_update_clause);
-		DBG_PRINT}}
+		}}
 	| merge_insert_clause
 		{{ DBG_TRACE_GRAMMAR(merge_update_insert_clause, | merge_insert_clause);
-		DBG_PRINT}}
+		}}
 	| merge_update_clause
 	  merge_insert_clause
 		{{ DBG_TRACE_GRAMMAR(merge_update_insert_clause, | merge_update_clause merge_insert_clause);
-		DBG_PRINT}}
+		}}
 	| merge_insert_clause
 	  merge_update_clause
 		{{ DBG_TRACE_GRAMMAR(merge_update_insert_clause, | merge_insert_clause merge_update_clause);
-		DBG_PRINT}}
+		}}
 	;
 
 merge_update_clause
@@ -8912,7 +8882,7 @@ merge_update_clause
 			      }
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 merge_insert_clause
@@ -8930,7 +8900,7 @@ merge_insert_clause
 			    merge->info.merge.insert.search_cond = $8;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_merge_delete_clause
@@ -8939,14 +8909,14 @@ opt_merge_delete_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| DELETE_ WHERE search_condition
 		{{ DBG_TRACE_GRAMMAR(opt_merge_delete_clause, | DELETE_ WHERE search_condition);
 
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 auth_stmt
@@ -8966,7 +8936,7 @@ auth_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| revoke_cmd on_class_list from_id_list
 		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_cmd on_class_list from_id_list);
 
@@ -8982,7 +8952,7 @@ auth_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| revoke_cmd from_id_list on_class_list
 		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_cmd from_id_list on_class_list);
 
@@ -8998,7 +8968,7 @@ auth_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         | revoke_proc_cmd procedure_or_function_name_list from_id_list
 		{{ DBG_TRACE_GRAMMAR(auth_stmt, | revoke_proc_cmd procedure_or_function_name_list from_id_list);
 
@@ -9014,7 +8984,7 @@ auth_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 revoke_cmd
@@ -9068,7 +9038,7 @@ grant_head
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| grant_cmd to_id_list on_class_list
 		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list on_class_list);
 
@@ -9084,7 +9054,7 @@ grant_head
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         | grant_cmd to_id_list
 		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_cmd to_id_list);
 
@@ -9100,7 +9070,7 @@ grant_head
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         | grant_proc_cmd procedure_or_function_name_list to_id_list
 		{{ DBG_TRACE_GRAMMAR(grant_head, | grant_proc_cmd procedure_or_function_name_list to_id_list);
 
@@ -9116,7 +9086,7 @@ grant_head
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_with_grant_option
@@ -9125,13 +9095,13 @@ opt_with_grant_option
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| WITH GRANT OPTION
 		{{ DBG_TRACE_GRAMMAR(opt_with_grant_option, | WITH GRANT OPTION);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 on_class_list
@@ -9168,14 +9138,14 @@ author_cmd_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| authorized_cmd
 		{{ DBG_TRACE_GRAMMAR(author_cmd_list, | authorized_cmd);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 authorized_execute_procedure_cmd
@@ -9189,7 +9159,7 @@ authorized_execute_procedure_cmd
 			  }
                         $$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT }}
+                }}
         ;
 
 authorized_cmd
@@ -9202,7 +9172,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| INSERT
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | INSERT);
 
@@ -9217,7 +9187,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| INDEX
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | INDEX);
 
@@ -9232,7 +9202,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DELETE_
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | DELETE_);
 
@@ -9247,7 +9217,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 	| UPDATE '(' identifier_list ')'
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | UPDATE '(' identifier_list ')');
@@ -9266,7 +9236,7 @@ authorized_cmd
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| UPDATE
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | UPDATE);
 
@@ -9281,7 +9251,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALTER
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | ALTER);
 
@@ -9296,7 +9266,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ADD
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | ADD);
 
@@ -9311,7 +9281,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DROP
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | DROP);
 
@@ -9326,7 +9296,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 	| EXECUTE
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | EXECUTE);
@@ -9342,7 +9312,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| REFERENCES
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | REFERENCES);
 
@@ -9357,7 +9327,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALL PRIVILEGES
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | ALL PRIVILEGES);
 
@@ -9372,7 +9342,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALL
 		{{ DBG_TRACE_GRAMMAR(authorized_cmd, | ALL);
 
@@ -9387,7 +9357,7 @@ authorized_cmd
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_password
@@ -9402,7 +9372,7 @@ opt_password
                            pt_add_password_offset(pwd_info.pwd_start_offset, pwd_info.pwd_end_offset, false, en_user_password);
                         }
 
-		DBG_PRINT}}
+		}}
 	| PASSWORD
 		{ push_msg(MSGCAT_SYNTAX_INVALID_PASSWORD);
                   pwd_info.pwd_start_offset = (@$.buffer_pos);
@@ -9416,7 +9386,7 @@ opt_password
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_groups
@@ -9425,7 +9395,7 @@ opt_groups
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| GROUPS
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GROUPS); }
 	  identifier_list
@@ -9435,7 +9405,7 @@ opt_groups
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_members
@@ -9444,7 +9414,7 @@ opt_members
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| MEMBERS
 		{ push_msg(MSGCAT_SYNTAX_INVALID_MEMBERS); }
 	  identifier_list
@@ -9454,7 +9424,7 @@ opt_members
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 call_stmt
@@ -9493,7 +9463,7 @@ call_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_class_or_normal_attr_def_list
@@ -9502,14 +9472,14 @@ opt_class_or_normal_attr_def_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' class_or_normal_attr_def_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_class_or_normal_attr_def_list, | '(' class_or_normal_attr_def_list ')');
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_method_def_list
@@ -9518,14 +9488,14 @@ opt_method_def_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| METHOD method_def_list
 		{{ DBG_TRACE_GRAMMAR(opt_method_def_list, | METHOD method_def_list);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_method_files
@@ -9534,14 +9504,14 @@ opt_method_files
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| File method_file_list
 		{{ DBG_TRACE_GRAMMAR(opt_method_files, | File method_file_list);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_inherit_resolution_list
@@ -9550,14 +9520,14 @@ opt_inherit_resolution_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| inherit_resolution_list
 		{{ DBG_TRACE_GRAMMAR(opt_inherit_resolution_list, | inherit_resolution_list);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_table_option_list
@@ -9567,7 +9537,7 @@ opt_table_option_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| table_option_list
 		{{ DBG_TRACE_GRAMMAR(opt_table_option_list, | table_option_list);
 
@@ -9575,7 +9545,7 @@ opt_table_option_list
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_partition_clause
@@ -9584,14 +9554,14 @@ opt_partition_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| partition_clause
 		{{ DBG_TRACE_GRAMMAR(opt_partition_clause, | partition_clause);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_create_as_clause
@@ -9602,13 +9572,13 @@ opt_create_as_clause
 			SET_CONTAINER_2(ctn, NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| create_as_clause
 		{{ DBG_TRACE_GRAMMAR(opt_create_as_clause, | create_as_clause);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_class_table_type
@@ -9617,13 +9587,13 @@ of_class_table_type
 
 			$$ = PT_CLASS;
 
-		DBG_PRINT}}
+		}}
 	| TABLE
 		{{ DBG_TRACE_GRAMMAR(of_class_table_type, | TABLE);
 
 			$$ = PT_CLASS;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_view_vclass
@@ -9637,13 +9607,13 @@ opt_or_replace
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| OR REPLACE
 		{{ DBG_TRACE_GRAMMAR(opt_or_replace, | OR REPLACE);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_if_not_exists
@@ -9652,13 +9622,13 @@ opt_if_not_exists
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| IF NOT EXISTS
 		{{ DBG_TRACE_GRAMMAR(opt_if_not_exists, |  IF NOT EXISTS);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_if_exists
@@ -9667,13 +9637,13 @@ opt_if_exists
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| IF EXISTS
 		{{ DBG_TRACE_GRAMMAR(opt_if_exists, | IF EXISTS);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_paren_view_attr_def_list
@@ -9682,14 +9652,14 @@ opt_paren_view_attr_def_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' view_attr_def_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_opt_paren_view_attr_def_listif_exists, | '(' view_attr_def_list ')');
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_as_query_list
@@ -9698,14 +9668,14 @@ opt_as_query_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| AS query_list
 		{{ DBG_TRACE_GRAMMAR(opt_as_query_list, | AS query_list);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_with_levels_clause
@@ -9714,25 +9684,25 @@ opt_with_levels_clause
 
 			$$ = PT_EMPTY;
 
-		DBG_PRINT}}
+		}}
 	| WITH LOCAL CHECK OPTION
 		{{ DBG_TRACE_GRAMMAR(opt_with_levels_clause, | WITH LOCAL CHECK OPTION);
 
 			$$ = PT_LOCAL;
 
-		DBG_PRINT}}
+		}}
 	| WITH CASCADED CHECK OPTION
 		{{ DBG_TRACE_GRAMMAR(opt_with_levels_clause, | WITH CASCADED CHECK OPTION);
 
 			$$ = PT_CASCADED;
 
-		DBG_PRINT}}
+		}}
 	| WITH CHECK OPTION
 		{{ DBG_TRACE_GRAMMAR(opt_with_levels_clause, | WITH CHECK OPTION);
 
 			$$ = PT_CASCADED;
 
-		DBG_PRINT}}
+		}}
 	;
 
 query_list
@@ -9742,14 +9712,14 @@ query_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| csql_query
 		{{ DBG_TRACE_GRAMMAR(query_list, | csql_query);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 inherit_resolution_list
@@ -9759,14 +9729,14 @@ inherit_resolution_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| INHERIT inherit_resolution
 		{{ DBG_TRACE_GRAMMAR(inherit_resolution_list, | INHERIT inherit_resolution);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 inherit_resolution
@@ -9790,7 +9760,7 @@ inherit_resolution
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| opt_class identifier OF class_name
 		{{ DBG_TRACE_GRAMMAR(inherit_resolution, | opt_class identifier OF class_name);
 
@@ -9810,7 +9780,7 @@ inherit_resolution
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 table_option_list
@@ -9820,21 +9790,21 @@ table_option_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| table_option_list table_option
 		{{ DBG_TRACE_GRAMMAR(table_option_list, | table_option_list table_option);
 
 			$$ = parser_make_link ($1, $2);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| table_option
 		{{ DBG_TRACE_GRAMMAR(table_option_list, | table_option);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 table_option
@@ -9844,14 +9814,14 @@ table_option
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_REUSE_OID, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DONT_REUSE_OID
 		{{ DBG_TRACE_GRAMMAR(table_option, | DONT_REUSE_OID);
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_DONT_REUSE_OID, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| AUTO_INCREMENT '=' UNSIGNED_INTEGER
 		{{ DBG_TRACE_GRAMMAR(table_option, | AUTO_INCREMENT '=' UNSIGNED_INTEGER);
 
@@ -9868,35 +9838,35 @@ table_option
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_AUTO_INCREMENT, val);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		  DBG_PRINT}}
+		  }}
 	| class_encrypt_spec
                 {{ DBG_TRACE_GRAMMAR(table_option, | class_encrypt_spec);
 	
                         $$ = pt_table_option (this_parser, PT_TABLE_OPTION_ENCRYPT, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		  DBG_PRINT}}
+		  }}
 	| charset_spec
 		{{ DBG_TRACE_GRAMMAR(table_option, | charset_spec);
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_CHARSET, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		  DBG_PRINT}}
+		  }}
 	| collation_spec
 		{{ DBG_TRACE_GRAMMAR(table_option, | collation_spec);
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_COLLATION, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		  DBG_PRINT}}
+		  }}
 	| class_comment_spec
 		{{ DBG_TRACE_GRAMMAR(table_option, | class_comment_spec);
 
 			$$ = pt_table_option (this_parser, PT_TABLE_OPTION_COMMENT, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-	      DBG_PRINT}}
+	      }}
 	;
 
 opt_subtable_clause
@@ -9905,21 +9875,21 @@ opt_subtable_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| UNDER only_class_name_list
 		{{ DBG_TRACE_GRAMMAR(opt_subtable_clause, | UNDER only_class_name_list);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| AS SUBCLASS OF only_class_name_list
 		{{ DBG_TRACE_GRAMMAR(opt_subtable_clause, | AS SUBCLASS OF only_class_name_list);
 
 			$$ = $4;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_constraint_id
@@ -9928,14 +9898,14 @@ opt_constraint_id
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| CONSTRAINT identifier
 		{{ DBG_TRACE_GRAMMAR(opt_constraint_id, | CONSTRAINT identifier);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_constraint_opt_id
@@ -9944,14 +9914,14 @@ opt_constraint_opt_id
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| CONSTRAINT opt_identifier
 		{{ DBG_TRACE_GRAMMAR(opt_constraint_opt_id, | CONSTRAINT opt_identifier);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_unique_foreign_check
@@ -9961,21 +9931,21 @@ of_unique_foreign_check
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| foreign_key_constraint
 		{{ DBG_TRACE_GRAMMAR(of_unique_foreign_check, | foreign_key_constraint);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| check_constraint
 		{{ DBG_TRACE_GRAMMAR(of_unique_foreign_check, | check_constraint);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_constraint_attr_list
@@ -9987,13 +9957,13 @@ opt_constraint_attr_list
 					 FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| constraint_attr_list
 		{{ DBG_TRACE_GRAMMAR(opt_constraint_attr_list, | constraint_attr_list);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 constraint_attr_list
@@ -10017,13 +9987,13 @@ constraint_attr_list
 
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| constraint_attr
 		{{ DBG_TRACE_GRAMMAR(constraint_attr_list, | constraint_attr);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 unique_constraint
@@ -10042,7 +10012,7 @@ unique_constraint
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| UNIQUE opt_of_index_key opt_identifier index_column_name_list
 		{{ DBG_TRACE_GRAMMAR(unique_constraint, | UNIQUE opt_of_index_key opt_identifier index_column_name_list);
 
@@ -10112,7 +10082,7 @@ unique_constraint
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 foreign_key_constraint
@@ -10147,7 +10117,7 @@ foreign_key_constraint
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_column_identifier_list
@@ -10157,14 +10127,14 @@ index_column_identifier_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| index_column_identifier
 		{{ DBG_TRACE_GRAMMAR(index_column_identifier_list, | index_column_identifier);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_column_identifier
@@ -10178,7 +10148,7 @@ index_column_identifier
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_asc_or_desc
@@ -10187,19 +10157,19 @@ opt_asc_or_desc
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| ASC
 		{{ DBG_TRACE_GRAMMAR(opt_asc_or_desc, | ASC);
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| DESC
 		{{ DBG_TRACE_GRAMMAR(opt_asc_or_desc, | DESC);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_paren_attr_list
@@ -10208,14 +10178,14 @@ opt_paren_attr_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' identifier_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_paren_attr_list, | '(' identifier_list ')');
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_ref_rule_list
@@ -10227,7 +10197,7 @@ opt_ref_rule_list
 					 FROM_NUMBER (PT_RULE_RESTRICT), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ref_rule_list
 		{{ DBG_TRACE_GRAMMAR(opt_ref_rule_list, | ref_rule_list);
 
@@ -10238,7 +10208,7 @@ opt_ref_rule_list
 			  ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 ref_rule_list
@@ -10255,7 +10225,7 @@ ref_rule_list
 			ctn.c1 = FROM_NUMBER (PT_RULE_CASCADE);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ref_rule_list ON_ DELETE_ NO ACTION
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ref_rule_list ON_ DELETE_ NO ACTION);
 
@@ -10269,7 +10239,7 @@ ref_rule_list
 			ctn.c1 = FROM_NUMBER (PT_RULE_NO_ACTION);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ref_rule_list ON_ DELETE_ RESTRICT
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ref_rule_list ON_ DELETE_ RESTRICT);
 
@@ -10283,7 +10253,7 @@ ref_rule_list
 			ctn.c1 = FROM_NUMBER (PT_RULE_RESTRICT);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ref_rule_list ON_ DELETE_ SET Null
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ref_rule_list ON_ DELETE_ SET Null);
 
@@ -10297,7 +10267,7 @@ ref_rule_list
 			ctn.c1 = FROM_NUMBER (PT_RULE_SET_NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ref_rule_list ON_ UPDATE NO ACTION
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ref_rule_list ON_ UPDATE NO ACTION);
 
@@ -10311,7 +10281,7 @@ ref_rule_list
 			ctn.c2 = FROM_NUMBER (PT_RULE_NO_ACTION);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ref_rule_list ON_ UPDATE RESTRICT
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ref_rule_list ON_ UPDATE RESTRICT);
 
@@ -10325,7 +10295,7 @@ ref_rule_list
 			ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ref_rule_list ON_ UPDATE SET Null
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ref_rule_list ON_ UPDATE SET Null);
 
@@ -10339,7 +10309,7 @@ ref_rule_list
 			ctn.c2 = FROM_NUMBER (PT_RULE_SET_NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ON_ DELETE_ CASCADE
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ON_ DELETE_ CASCADE);
 
@@ -10347,7 +10317,7 @@ ref_rule_list
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_CASCADE), NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ON_ DELETE_ NO ACTION
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ON_ DELETE_ NO ACTION);
 
@@ -10355,7 +10325,7 @@ ref_rule_list
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_NO_ACTION), NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ON_ DELETE_ RESTRICT
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ON_ DELETE_ RESTRICT);
 
@@ -10363,7 +10333,7 @@ ref_rule_list
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_RESTRICT), NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ON_ DELETE_ SET Null
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ON_ DELETE_ SET Null);
 
@@ -10371,7 +10341,7 @@ ref_rule_list
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_RULE_SET_NULL), NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ON_ UPDATE NO ACTION
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ON_ UPDATE NO ACTION);
 
@@ -10379,7 +10349,7 @@ ref_rule_list
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_NO_ACTION), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ON_ UPDATE RESTRICT
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ON_ UPDATE RESTRICT);
 
@@ -10387,7 +10357,7 @@ ref_rule_list
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_RESTRICT), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ON_ UPDATE SET Null
 		{{ DBG_TRACE_GRAMMAR(ref_rule_list, | ON_ UPDATE SET Null);
 
@@ -10395,7 +10365,7 @@ ref_rule_list
 			SET_CONTAINER_3 (ctn, NULL, FROM_NUMBER (PT_RULE_SET_NULL), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -10414,7 +10384,7 @@ check_constraint
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -10430,7 +10400,7 @@ constraint_attr
 			ctn.c4 = FROM_NUMBER (0);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| DEFERRABLE
 		{{ DBG_TRACE_GRAMMAR(constraint_attr, | DEFERRABLE);
 
@@ -10441,7 +10411,7 @@ constraint_attr
 			ctn.c4 = FROM_NUMBER (0);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| INITIALLY DEFERRED
 		{{ DBG_TRACE_GRAMMAR(constraint_attr, | INITIALLY DEFERRED);
 
@@ -10452,7 +10422,7 @@ constraint_attr
 			ctn.c4 = FROM_NUMBER (1);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| INITIALLY IMMEDIATE
 		{{ DBG_TRACE_GRAMMAR(constraint_attr, | INITIALLY IMMEDIATE);
 
@@ -10463,7 +10433,7 @@ constraint_attr
 			ctn.c4 = FROM_NUMBER (0);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 method_def_list
@@ -10473,14 +10443,14 @@ method_def_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| method_def
 		{{ DBG_TRACE_GRAMMAR(method_def_list, | method_def);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 method_def
@@ -10508,7 +10478,7 @@ method_def
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_method_def_arg_list
@@ -10517,20 +10487,20 @@ opt_method_def_arg_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' arg_type_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_method_def_arg_list, | '(' arg_type_list ')');
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' ')'
 		{{ DBG_TRACE_GRAMMAR(opt_method_def_arg_list, | '(' ')');
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	;
 
 arg_type_list
@@ -10540,14 +10510,14 @@ arg_type_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| inout_data_type
 		{{ DBG_TRACE_GRAMMAR(arg_type_list, | inout_data_type);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 inout_data_type
@@ -10566,7 +10536,7 @@ inout_data_type
 			$$ = at;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_data_type
@@ -10577,13 +10547,13 @@ opt_data_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| data_type
 		{{ DBG_TRACE_GRAMMAR(opt_data_type, | data_type);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_function_identifier
@@ -10592,14 +10562,14 @@ opt_function_identifier
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| FUNCTION identifier
 		{{ DBG_TRACE_GRAMMAR(opt_function_identifier, | FUNCTION identifier);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 method_file_list
@@ -10609,14 +10579,14 @@ method_file_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| file_path_name
 		{{ DBG_TRACE_GRAMMAR(method_file_list, | file_path_name);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 file_path_name
@@ -10629,7 +10599,7 @@ file_path_name
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_class_attr_def_list
@@ -10638,7 +10608,7 @@ opt_class_attr_def_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| CLASS
 	  ATTRIBUTE
 		{ parser_attr_type = PT_META_ATTR; }
@@ -10649,7 +10619,7 @@ opt_class_attr_def_list
 			$$ = $5;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 class_or_normal_attr_def_list
@@ -10659,14 +10629,14 @@ class_or_normal_attr_def_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| class_or_normal_attr_def
 		{{ DBG_TRACE_GRAMMAR(class_or_normal_attr_def_list, | class_or_normal_attr_def);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 class_or_normal_attr_def
@@ -10676,14 +10646,14 @@ class_or_normal_attr_def
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| attr_def
 		{{ DBG_TRACE_GRAMMAR(class_or_normal_attr_def, | attr_def);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 view_attr_def_list
@@ -10693,14 +10663,14 @@ view_attr_def_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| view_attr_def
 		{{ DBG_TRACE_GRAMMAR(class_or_normal_attr_def, | view_attr_def);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 view_attr_def
@@ -10710,7 +10680,7 @@ view_attr_def
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier opt_comment_spec
 		{{ DBG_TRACE_GRAMMAR(view_attr_def, | identifier opt_comment_spec);
 
@@ -10728,7 +10698,7 @@ view_attr_def
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_def_list_with_commas
@@ -10738,14 +10708,14 @@ attr_def_list_with_commas
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| attr_def ','  attr_def
 		{{ DBG_TRACE_GRAMMAR(attr_def_list_with_commas, | attr_def ','  attr_def);
 
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_def_list
@@ -10755,14 +10725,14 @@ attr_def_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| attr_def
 		{{ DBG_TRACE_GRAMMAR(attr_def_list, | attr_def);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_def
@@ -10772,21 +10742,21 @@ attr_def
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| attr_index_def
 		{{ DBG_TRACE_GRAMMAR(attr_def, | attr_index_def);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| attr_def_one
 		{{ DBG_TRACE_GRAMMAR(attr_def, | attr_def_one);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_constraint_def
@@ -10849,7 +10819,7 @@ attr_constraint_def
 			$$ = constraint;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_index_def
@@ -10923,7 +10893,7 @@ attr_index_def
 			  }
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_def_one
@@ -10953,7 +10923,7 @@ attr_def_one
 
 			parser_save_attr_def_one (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_constraint_list_and_opt_column_comment
 	  opt_attr_ordering_info
 		{{ DBG_TRACE_GRAMMAR(attr_def_one, opt_constraint_list_and_opt_column_comment opt_attr_ordering_info);
@@ -10971,7 +10941,7 @@ attr_def_one
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_attr_ordering_info
@@ -10980,7 +10950,7 @@ opt_attr_ordering_info
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| FIRST
 		{{ DBG_TRACE_GRAMMAR(opt_attr_ordering_info, | FIRST);
 
@@ -10999,7 +10969,7 @@ opt_attr_ordering_info
 
 			$$ = ord;
 
-		DBG_PRINT}}
+		}}
 	| AFTER identifier
 		{{ DBG_TRACE_GRAMMAR(opt_attr_ordering_info, | AFTER identifier);
 
@@ -11018,7 +10988,7 @@ opt_attr_ordering_info
 
 			$$ = ord;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_constraint_list_and_opt_column_comment
@@ -11149,7 +11119,7 @@ column_unique_constraint_def
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		}}
 	;
 
 column_primary_constraint_def
@@ -11183,7 +11153,7 @@ column_primary_constraint_def
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		}}
 	;
 
 column_null_constraint_def
@@ -11215,7 +11185,7 @@ column_null_constraint_def
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		}}
 	| opt_constraint_id NOT Null opt_constraint_attr_list
 		{{ DBG_TRACE_GRAMMAR(column_null_constraint_def, | opt_constraint_id NOT Null opt_constraint_attr_list);
 
@@ -11252,7 +11222,7 @@ column_null_constraint_def
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		}}
 	;
 
 column_other_constraint_def
@@ -11285,7 +11255,7 @@ column_other_constraint_def
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		}}
 	| opt_constraint_id			/* 1 */
 	  opt_foreign_key			/* 2 */
           opt_index_with_clause_no_online       /* 3 */
@@ -11328,7 +11298,7 @@ column_other_constraint_def
 
 			parser_make_link (node, constraint);
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_or_key
@@ -11392,7 +11362,7 @@ column_ai_constraint_def
 				       MSGCAT_SEMANTIC_CLASS_ATT_CANT_BE_AUTOINC);
 			  }
 
-		DBG_PRINT}}
+		}}
 	| AUTO_INCREMENT
 		{{ DBG_TRACE_GRAMMAR(column_ai_constraint_def, | AUTO_INCREMENT);
 
@@ -11409,7 +11379,7 @@ column_ai_constraint_def
 				       MSGCAT_SEMANTIC_CLASS_ATT_CANT_BE_AUTOINC);
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 column_shared_constraint_def
@@ -11429,7 +11399,7 @@ column_shared_constraint_def
 			attr_node->info.attr_def.data_default = node;
 			attr_node->info.attr_def.attr_type = PT_SHARED;
 
-		DBG_PRINT}}
+		}}
 	;
 
 column_on_update_def
@@ -11480,7 +11450,7 @@ column_on_update_def
 
 			attr_node->info.attr_def.on_update = default_expr_type;
 
-		DBG_PRINT}}
+		}}
 	;
 
 column_default_constraint_def
@@ -11570,7 +11540,7 @@ column_default_constraint_def
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_def_comment_list
@@ -11580,14 +11550,14 @@ attr_def_comment_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
-		DBG_PRINT}}
+		}}
 	| attr_def_comment
 		{{ DBG_TRACE_GRAMMAR(attr_def_comment_list, | attr_def_comment);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
-		DBG_PRINT}}
+		}}
 	;
 
 attr_def_comment
@@ -11607,7 +11577,7 @@ attr_def_comment
 			$$ = attr_node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
-		DBG_PRINT}}
+		}}
 	;
 
 column_comment_def
@@ -11618,7 +11588,7 @@ column_comment_def
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.comment = $2;
 
-		DBG_PRINT}}
+		}}
 	;
 
 transaction_mode_list
@@ -11628,14 +11598,14 @@ transaction_mode_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| transaction_mode						%dprec 2
 		{{ DBG_TRACE_GRAMMAR(transaction_mode_list, | transaction_mode);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 transaction_mode
@@ -11718,7 +11688,7 @@ transaction_mode
 
 			$$ = tm;
 
-		DBG_PRINT}}
+		}}
 	| ISOLATION LEVEL isolation_level_spec			%dprec 2
 		{{ DBG_TRACE_GRAMMAR(transaction_mode, | ISOLATION LEVEL isolation_level_spec);
 
@@ -11744,7 +11714,7 @@ transaction_mode
 
 			$$ = tm;
 
-		DBG_PRINT}}
+		}}
 	| LOCK_ TIMEOUT timeout_spec
 		{{ DBG_TRACE_GRAMMAR(transaction_mode, | LOCK_ TIMEOUT timeout_spec);
 
@@ -11758,7 +11728,7 @@ transaction_mode
 			$$ = tm;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -11772,7 +11742,7 @@ isolation_level_spec
 					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| ASYNC WORKSPACE
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | ASYNC WORKSPACE);
 
@@ -11781,7 +11751,7 @@ isolation_level_spec
 					 FROM_NUMBER (PT_NO_ISOLATION_LEVEL), FROM_NUMBER (1));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| SERIALIZABLE
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | SERIALIZABLE);
 
@@ -11790,7 +11760,7 @@ isolation_level_spec
 					 FROM_NUMBER (PT_SERIALIZABLE), FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| CURSOR STABILITY
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | CURSOR STABILITY);
 
@@ -11799,7 +11769,7 @@ isolation_level_spec
 					 FROM_NUMBER (PT_READ_COMMITTED), FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| isolation_level_name								%dprec 1
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | isolation_level_name);
 
@@ -11812,7 +11782,7 @@ isolation_level_spec
 					 FROM_NUMBER (level), FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| isolation_level_name of_schema_class 						%dprec 1
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | isolation_level_name of_schema_class);
 
@@ -11829,7 +11799,7 @@ isolation_level_spec
 					 FROM_NUMBER (error));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| isolation_level_name INSTANCES						%dprec 1
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | isolation_level_name INSTANCES);
 
@@ -11844,7 +11814,7 @@ isolation_level_spec
 					 FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| isolation_level_name of_schema_class ',' isolation_level_name INSTANCES	%dprec 10
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | isolation_level_name of_schema_class ',' isolation_level_name INSTANCES);
 
@@ -11860,7 +11830,7 @@ isolation_level_spec
 					 FROM_NUMBER (error));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| isolation_level_name INSTANCES ',' isolation_level_name of_schema_class	%dprec 10
 		{{ DBG_TRACE_GRAMMAR(isolation_level_spec, | isolation_level_name INSTANCES ',' isolation_level_name of_schema_class);
 			container_4 ctn;
@@ -11875,7 +11845,7 @@ isolation_level_spec
 					 FROM_NUMBER (error));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_schema_class
@@ -11889,13 +11859,13 @@ isolation_level_name
 
 			$$ = PT_REPEATABLE_READ;
 
-		DBG_PRINT}}
+		}}
 	| READ COMMITTED
 		{{ DBG_TRACE_GRAMMAR(isolation_level_name, | READ COMMITTED); 
 
 			$$ = PT_READ_COMMITTED;
 
-		DBG_PRINT}}
+		}}
 	;
 
 timeout_spec
@@ -11913,7 +11883,7 @@ timeout_spec
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| OFF_
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | OFF_);
 
@@ -11928,35 +11898,35 @@ timeout_spec
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| unsigned_integer
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | unsigned_integer);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| unsigned_real
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | unsigned_real);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| param_
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | param_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| host_param_input
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | host_param_input);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -11974,7 +11944,7 @@ transaction_stmt
 			$$ = comm;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| COMMIT opt_work
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | COMMIT opt_work);
 
@@ -11982,7 +11952,7 @@ transaction_stmt
 			$$ = comm;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ROLLBACK opt_work TO opt_savepoint expression_
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | ROLLBACK opt_work TO opt_savepoint expression_);
 
@@ -11996,7 +11966,7 @@ transaction_stmt
 			$$ = roll;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ROLLBACK opt_work
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | ROLLBACK opt_work);
 
@@ -12004,7 +11974,7 @@ transaction_stmt
 			$$ = roll;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SAVEPOINT expression_
 		{{ DBG_TRACE_GRAMMAR(timeout_spec, | expression_);
 
@@ -12018,7 +11988,7 @@ transaction_stmt
 			$$ = svpt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -12052,7 +12022,7 @@ evaluate_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 prepare_stmt
@@ -12070,7 +12040,7 @@ prepare_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 execute_stmt
@@ -12090,7 +12060,7 @@ execute_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_using
@@ -12100,7 +12070,7 @@ opt_using
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| USING
 		{ parser_save_and_set_hvar (0); }
 		execute_using_list
@@ -12124,7 +12094,7 @@ opt_using
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_status
@@ -12133,13 +12103,13 @@ opt_status
 
 			$$ = PT_MISC_DUMMY;
 
-		DBG_PRINT}}
+		}}
 	| trigger_status
 		{{ DBG_TRACE_GRAMMAR(opt_status, | trigger_status);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_status
@@ -12148,13 +12118,13 @@ trigger_status
 
 			$$ = PT_ACTIVE;
 
-		DBG_PRINT}}
+		}}
 	| STATUS INACTIVE
 		{{ DBG_TRACE_GRAMMAR(trigger_status, | STATUS INACTIVE);
 
 			$$ = PT_INACTIVE;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_priority
@@ -12163,14 +12133,14 @@ opt_priority
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| trigger_priority
 		{{ DBG_TRACE_GRAMMAR(opt_priority, | trigger_priority);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_priority
@@ -12180,7 +12150,7 @@ trigger_priority
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_if_trigger_condition
@@ -12189,14 +12159,14 @@ opt_if_trigger_condition
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| IF trigger_condition
 		{{ DBG_TRACE_GRAMMAR(opt_if_trigger_condition, |   IF trigger_condition);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_time
@@ -12205,19 +12175,19 @@ trigger_time
 
 			$$ = PT_BEFORE;
 
-		DBG_PRINT}}
+		}}
 	| AFTER
 		{{ DBG_TRACE_GRAMMAR(trigger_time, | AFTER);
 
 			$$ = PT_AFTER;
 
-		DBG_PRINT}}
+		}}
 	| DEFERRED
 		{{ DBG_TRACE_GRAMMAR(trigger_time, | DEFERRED);
 
 			$$ = PT_DEFERRED;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_trigger_action_time
@@ -12226,19 +12196,19 @@ opt_trigger_action_time
 
 			$$ = PT_MISC_DUMMY;
 
-		DBG_PRINT}}
+		}}
 	| AFTER
 		{{ DBG_TRACE_GRAMMAR(opt_trigger_action_time, | AFTER);
 
 			$$ = PT_AFTER;
 
-		DBG_PRINT}}
+		}}
 	| DEFERRED
 		{{ DBG_TRACE_GRAMMAR(opt_trigger_action_time, | DEFERRED);
 
 			$$ = PT_DEFERRED;
 
-		DBG_PRINT}}
+		}}
 	;
 
 event_spec
@@ -12255,7 +12225,7 @@ event_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| event_type event_target
 		{{ DBG_TRACE_GRAMMAR(opt_trigger_aevent_specction_time, | event_type event_target);
 
@@ -12270,7 +12240,7 @@ event_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 event_type
@@ -12279,49 +12249,49 @@ event_type
 
 			$$ = PT_EV_INSERT;
 
-		DBG_PRINT}}
+		}}
 	| STATEMENT INSERT
 		{{ DBG_TRACE_GRAMMAR(event_type, | STATEMENT INSERT);
 
 			$$ = PT_EV_STMT_INSERT;
 
-		DBG_PRINT}}
+		}}
 	| DELETE_
 		{{ DBG_TRACE_GRAMMAR(event_type, | DELETE_);
 
 			$$ = PT_EV_DELETE;
 
-		DBG_PRINT}}
+		}}
 	| STATEMENT DELETE_
 		{{ DBG_TRACE_GRAMMAR(event_type, | STATEMENT DELETE_);
 
 			$$ = PT_EV_STMT_DELETE;
 
-		DBG_PRINT}}
+		}}
 	| UPDATE
 		{{ DBG_TRACE_GRAMMAR(event_type, | UPDATE);
 
 			$$ = PT_EV_UPDATE;
 
-		DBG_PRINT}}
+		}}
 	| STATEMENT UPDATE
 		{{ DBG_TRACE_GRAMMAR(event_type, | STATEMENT UPDATE);
 
 			$$ = PT_EV_STMT_UPDATE;
 
-		DBG_PRINT}}
+		}}
 	| COMMIT
 		{{ DBG_TRACE_GRAMMAR(event_type, | COMMIT);
 
 			$$ = PT_EV_COMMIT;
 
-		DBG_PRINT}}
+		}}
 	| ROLLBACK
 		{{ DBG_TRACE_GRAMMAR(event_type, | ROLLBACK);
 
 			$$ = PT_EV_ROLLBACK;
 
-		DBG_PRINT}}
+		}}
 	;
 
 event_target
@@ -12339,7 +12309,7 @@ event_target
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ON_ class_name
 		{{ DBG_TRACE_GRAMMAR(event_target, | ON_ class_name);
 
@@ -12353,7 +12323,7 @@ event_target
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_condition
@@ -12363,14 +12333,14 @@ trigger_condition
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| call_stmt
 		{{ DBG_TRACE_GRAMMAR(trigger_condition, | call_stmt);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_action_in
@@ -12387,7 +12357,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| INVALIDATE TRANSACTION
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | INVALIDATE TRANSACTION);
 
@@ -12401,7 +12371,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| PRINT char_string_literal
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | PRINT char_string_literal);
 
@@ -12416,7 +12386,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| evaluate_stmt
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | evaluate_stmt);
 
@@ -12431,7 +12401,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| insert_or_replace_stmt
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | insert_or_replace_stmt);
 
@@ -12446,7 +12416,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| update_stmt
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | update_stmt);
 
@@ -12461,7 +12431,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| delete_stmt
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | delete_stmt);
 
@@ -12476,7 +12446,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| call_stmt
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | call_stmt);
 
@@ -12491,7 +12461,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| merge_stmt
 		{{ DBG_TRACE_GRAMMAR(trigger_action, | merge_stmt);
 
@@ -12506,7 +12476,7 @@ trigger_action_in
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_action
@@ -12514,7 +12484,7 @@ trigger_action
 	    {{ DBG_TRACE_GRAMMAR(trigger_action, : trigger_action_in);
 		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-	     DBG_PRINT}}
+	     }}
 	;
 
 trigger_spec_list
@@ -12532,7 +12502,7 @@ trigger_spec_list
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ALL TRIGGERS
 		{{ DBG_TRACE_GRAMMAR(trigger_spec_list, | ALL TRIGGERS);
 
@@ -12546,7 +12516,7 @@ trigger_spec_list
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 trigger_status_or_priority_or_change_owner
@@ -12557,7 +12527,7 @@ trigger_status_or_priority_or_change_owner
 			SET_CONTAINER_3 (ctn, FROM_NUMBER ($1), NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| trigger_priority
 		{{ DBG_TRACE_GRAMMAR(trigger_status_or_priority_or_change_owner, | trigger_priority);
 
@@ -12565,7 +12535,7 @@ trigger_status_or_priority_or_change_owner
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_MISC_DUMMY), $1, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| OWNER TO identifier
 		{{ DBG_TRACE_GRAMMAR(trigger_status_or_priority_or_change_owner, | OWNER TO identifier);
 
@@ -12573,7 +12543,7 @@ trigger_status_or_priority_or_change_owner
 			SET_CONTAINER_3 (ctn, FROM_NUMBER (PT_MISC_DUMMY), NULL, $3);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_maximum
@@ -12596,7 +12566,7 @@ trace_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| OFF_
 		{{ DBG_TRACE_GRAMMAR(trace_spec, | OFF_);
 
@@ -12611,28 +12581,28 @@ trace_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| unsigned_integer
 		{{ DBG_TRACE_GRAMMAR(trace_spec, | unsigned_integer);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| param_
 		{{ DBG_TRACE_GRAMMAR(trace_spec, | param_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| host_param_input
 		{{ DBG_TRACE_GRAMMAR(trace_spec, | host_param_input);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 depth_spec
@@ -12642,21 +12612,21 @@ depth_spec
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| param_
 		{{ DBG_TRACE_GRAMMAR(depth_spec, | param_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| host_param_input
 		{{ DBG_TRACE_GRAMMAR(depth_spec, | host_param_input);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 serial_start
@@ -12676,7 +12646,7 @@ serial_start
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 serial_increment
@@ -12696,7 +12666,7 @@ serial_increment
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -12718,7 +12688,7 @@ serial_min
 			SET_CONTAINER_2 (ctn, node, FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| NOMINVALUE
 		{{ DBG_TRACE_GRAMMAR(serial_min, | NOMINVALUE);
 
@@ -12726,7 +12696,7 @@ serial_min
 			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (1));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 serial_max
@@ -12747,7 +12717,7 @@ serial_max
 			SET_CONTAINER_2 (ctn, node, FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| NOMAXVALUE
 		{{ DBG_TRACE_GRAMMAR(serial_max, | NOMAXVALUE);
 
@@ -12755,7 +12725,7 @@ serial_max
 			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (1));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_cycle_nocycle
@@ -12766,7 +12736,7 @@ of_cycle_nocycle
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| NOCYCLE
 		{{ DBG_TRACE_GRAMMAR(of_cycle_nocycle, | NOCYCLE);
 
@@ -12774,7 +12744,7 @@ of_cycle_nocycle
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (1));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_cached_num
@@ -12785,14 +12755,14 @@ of_cached_num
 			SET_CONTAINER_2 (ctn, $2, FROM_NUMBER (0));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| NOCACHE
 		{{ DBG_TRACE_GRAMMAR(of_cached_num, | NOCACHE);
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER (1));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 integer_text
@@ -12801,13 +12771,13 @@ integer_text
 
 			$$ = $2;
 
-		DBG_PRINT}}
+		}}
 	| '-' UNSIGNED_INTEGER
 		{{ DBG_TRACE_GRAMMAR(integer_text, | '-' UNSIGNED_INTEGER);
 
 			$$ = pt_append_string (this_parser, (char *) "-", $2);
 
-		DBG_PRINT}}
+		}}
 	;
 
 uint_text
@@ -12816,7 +12786,7 @@ uint_text
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_plus
@@ -12835,7 +12805,7 @@ sp_return_type
                         is_in_sp_func_type = false;
 			$$ = $2;
 
-                DBG_PRINT}}
+                }}
         | CURSOR
                 {{ DBG_TRACE_GRAMMAR(sp_return_type, | CURSOR);
 
@@ -12843,7 +12813,7 @@ sp_return_type
 			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
 			$$ = ctn;
 
-                DBG_PRINT}}
+                }}
         | table_column MOD TYPE
 		{{ DBG_TRACE_GRAMMAR(sp_return_type, | table_column MOD TYPE);
 
@@ -12860,37 +12830,37 @@ sp_return_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), dt); // PT_TYPE_NONE: unknown yet
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
         ;
 
 opt_authid
         : AUTHID DEFINER
                 {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID DEFINER);
                         $$ = PT_AUTHID_OWNER; 
-                DBG_PRINT}}
+                }}
         | AUTHID OWNER
                 {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID OWNER);
                         $$ = PT_AUTHID_OWNER; 
-                DBG_PRINT}}
+                }}
         | AUTHID CALLER
                 {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID CALLER);
                         $$ = PT_AUTHID_CALLER; 
-                DBG_PRINT}}
+                }}
         | AUTHID CURRENT_USER
                 {{ DBG_TRACE_GRAMMAR(opt_authid, : AUTHID CURRENT_USER);
                         $$ = PT_AUTHID_CALLER; 
-                DBG_PRINT}}
+                }}
         ;
 
 opt_deterministic
         : NOT DETERMINISTIC
                 {{ DBG_TRACE_GRAMMAR(opt_deterministic, : NOT DETERMINISTIC);
                         $$ = PT_NOT_DETERMINISTIC; 
-                DBG_PRINT}}
+                }}
         | DETERMINISTIC
                 {{ DBG_TRACE_GRAMMAR(opt_deterministic, : DETERMINISTIC);
                         $$ = PT_DETERMINISTIC; 
-                DBG_PRINT}}
+                }}
         ;
 
 opt_authid_and_deterministic
@@ -12899,45 +12869,45 @@ opt_authid_and_deterministic
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
         | opt_authid opt_deterministic
 		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_authid opt_deterministic);
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), FROM_NUMBER($2));
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
         | opt_deterministic opt_authid
 		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_deterministic opt_authid);
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER($2), FROM_NUMBER($1));
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
         | opt_authid
 		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_authid);
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), NULL);
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
         | opt_deterministic
 		{{ DBG_TRACE_GRAMMAR(opt_authid_and_deterministic, : opt_deterministic);
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER($1));
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
         ;
 
 is_or_as
 	: IS          
-                { DBG_TRACE_GRAMMAR(is_or_as, : IS); DBG_PRINT}
+                { DBG_TRACE_GRAMMAR(is_or_as, : IS); }
 	| AS          
-                { DBG_TRACE_GRAMMAR(is_or_as, : AS); DBG_PRINT}
+                { DBG_TRACE_GRAMMAR(is_or_as, : AS); }
 	;
 
 opt_lang_plcsql
         : /* empty */          
-                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : ); DBG_PRINT}
+                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : ); }
         | LANGUAGE PLCSQL
-                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : LANGUAGE PLCSQL); DBG_PRINT}
+                { DBG_TRACE_GRAMMAR(opt_lang_plcsql, : LANGUAGE PLCSQL); }
         ;
 
 pl_language_spec
@@ -12961,7 +12931,7 @@ pl_language_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| LANGUAGE JAVA 		/* 1, 2 */
 	  NAME char_string_literal	/* 3, 4 */
 		{{ DBG_TRACE_GRAMMAR(pl_language_spec, : LANGAUGE JAVA );
@@ -12978,7 +12948,7 @@ pl_language_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 plcsql_text
@@ -12987,7 +12957,7 @@ plcsql_text
 
                         $$ = $1 + strlen($2);
 
-		DBG_PRINT}}
+		}}
         | plcsql_text_part
 		{{ DBG_TRACE_GRAMMAR(plcsql_text, | plcsql_text_part);
 
@@ -12995,42 +12965,42 @@ plcsql_text
                         $$ = strlen($1);
                         g_plcsql_text_pos = @$.buffer_pos - $$;
 
-		DBG_PRINT}}
+		}}
         ;
 
 plcsql_text_part
         : PLCSQL_TEXT_SOME
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, : PLCSQL_TEXT_SOME);
                     $$ = $1;
-		DBG_PRINT}}
+		}}
         | CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | CHAR_STRING);
                     char* val = pt_append_string(this_parser, NULL, "'");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "'");
                     $$ = val;
-		DBG_PRINT}}
+		}}
         | DelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | DelimitedIdName);
                     char* val = pt_append_string(this_parser, NULL, "\"");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "\"");
                     $$ = val;
-		DBG_PRINT}}
+		}}
         | BracketDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BracketDelimitedIdName);
                     char* val = pt_append_string(this_parser, NULL, "[");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "]");
                     $$ = val;
-		DBG_PRINT}}
+		}}
         | BacktickDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(plcsql_text_part, | BacktickDelimitedIdName);
                     char* val = pt_append_string(this_parser, NULL, "`");
                     val = pt_append_string(this_parser, val, $1);
                     val = pt_append_string(this_parser, val, "`");
                     $$ = val;
-		DBG_PRINT}}
+		}}
         ;
 
 opt_sp_param_list
@@ -13039,20 +13009,20 @@ opt_sp_param_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
         | '(' ')'
 		{{ DBG_TRACE_GRAMMAR(opt_sp_param_list, | '(' ')' );
 
 			$$ = NULL;  // same as the empty case
 
-		DBG_PRINT}}
+		}}
 	| '(' sp_param_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_sp_param_list, | '(' sp_param_list ')' );
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 sp_param_list
@@ -13062,14 +13032,14 @@ sp_param_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| sp_param_def
 		{{ DBG_TRACE_GRAMMAR(sp_param_list, | sp_param_def); 
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 sp_param_def
@@ -13095,7 +13065,7 @@ sp_param_def
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 sp_param_type
@@ -13109,7 +13079,7 @@ sp_param_type
                         is_in_sp_func_type = false;
                         $$ = $2;
 
-		DBG_PRINT}}
+		}}
         | CURSOR
 		{{ DBG_TRACE_GRAMMAR(sp_param_type, | CURSOR);
 
@@ -13117,7 +13087,7 @@ sp_param_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_RESULTSET), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
         | table_column MOD TYPE
 		{{ DBG_TRACE_GRAMMAR(sp_param_type, | table_column MOD TYPE);
 
@@ -13134,7 +13104,7 @@ sp_param_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_NONE), dt); // PT_TYPE_NONE: unknown yet
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
         ;
 
 table_column
@@ -13151,7 +13121,7 @@ table_column
                         $$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         ;
 
 opt_sp_in_out
@@ -13160,34 +13130,34 @@ opt_sp_in_out
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	| IN_ OUT_
 		{{ DBG_TRACE_GRAMMAR(opt_sp_in_out, | IN_ OUT_); 
 
 			$$ = PT_INPUTOUTPUT;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_sp_default_value
         : /* empty */
 		{{
 			$$ = NULL;
-		DBG_PRINT}}
+		}}
 	| DEFAULT
           expression_
 		{{
                         PT_NODE *node = pt_make_data_default_expr_node (this_parser, $2);
                         PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	| VAR_ASSIGN
           expression_
 		{{
                         PT_NODE *node = pt_make_data_default_expr_node (this_parser, $2);
                         PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 			$$ = node;
-		DBG_PRINT}}
+		}}
 
 esql_query_stmt
 	: 	{ parser_select_level++; }
@@ -13197,7 +13167,7 @@ esql_query_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_select_level--;
 
-		DBG_PRINT}}
+		}}
 	;
 
 csql_query
@@ -13216,14 +13186,14 @@ csql_query
 			parser_save_and_set_sqc (1);
 			parser_save_and_set_pseudoc (1);
 
-		DBG_PRINT}}
+		}}
 	  select_expression_opt_with
 		{{ DBG_TRACE_GRAMMAR(csql_query, : select_expression_opt_with);
 
 			PT_NODE *node = $2;
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_orderby_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query, opt_orderby_clause);
 
@@ -13276,7 +13246,7 @@ csql_query
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	opt_select_limit_clause
 	opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query, opt_select_limit_clause opt_for_update_clause);
@@ -13285,7 +13255,7 @@ csql_query
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 csql_query_select_has_no_with_clause
@@ -13304,14 +13274,14 @@ csql_query_select_has_no_with_clause
 			parser_save_and_set_sqc (1);
 			parser_save_and_set_pseudoc (1);
 
-		DBG_PRINT}}
+		}}
 	  select_expression
 		{{ DBG_TRACE_GRAMMAR(csql_query_select_has_no_with_clause, : select_expression);
 
 			PT_NODE *node = $2;
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_orderby_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_select_has_no_with_clause, opt_orderby_clause);
 
@@ -13364,7 +13334,7 @@ csql_query_select_has_no_with_clause
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	opt_select_limit_clause
 	opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_select_has_no_with_clause, opt_select_limit_clause opt_for_update_clause);
@@ -13373,7 +13343,7 @@ csql_query_select_has_no_with_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 csql_query_without_subquery_and_with_clause
@@ -13392,14 +13362,14 @@ csql_query_without_subquery_and_with_clause
 			parser_save_and_set_sqc (1);
 			parser_save_and_set_pseudoc (1);
 
-		DBG_PRINT}}
+		}}
 	  select_expression_without_subquery
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_subquery_and_with_clause, : select_expression_without_subquery);
 
 			PT_NODE *node = $2;
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_orderby_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_subquery_and_with_clause, opt_orderby_clause);
 
@@ -13452,7 +13422,7 @@ csql_query_without_subquery_and_with_clause
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	opt_select_limit_clause
 	opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_subquery_and_with_clause, opt_select_limit_clause opt_for_update_clause);
@@ -13461,7 +13431,7 @@ csql_query_without_subquery_and_with_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 csql_query_without_values_query_no_with_clause
@@ -13480,14 +13450,14 @@ csql_query_without_values_query_no_with_clause
 			parser_save_and_set_sqc (1);
 			parser_save_and_set_pseudoc (1);
 
-		DBG_PRINT}}
+		}}
 	  select_expression_without_values_query_no_with_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_query_no_with_clause, : select_expression_without_values_query_no_with_clause);
 
 			PT_NODE *node = $2;
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_orderby_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_query_no_with_clause, opt_orderby_clause);
 
@@ -13540,7 +13510,7 @@ csql_query_without_values_query_no_with_clause
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_select_limit_clause
 	  opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_query_no_with_clause, opt_select_limit_clause opt_for_update_clause);
@@ -13549,7 +13519,7 @@ csql_query_without_values_query_no_with_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 csql_query_without_values_and_single_subquery
@@ -13568,14 +13538,14 @@ csql_query_without_values_and_single_subquery
 			parser_save_and_set_sqc (1);
 			parser_save_and_set_pseudoc (1);
 
-		DBG_PRINT}}
+		}}
 	  select_expression_without_values_and_single_subquery
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_and_single_subquery, : select_expression_without_values_and_single_subquery);
 
 			PT_NODE *node = $2;
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_orderby_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_and_single_subquery,  opt_orderby_clause);
 
@@ -13627,7 +13597,7 @@ csql_query_without_values_and_single_subquery
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_select_limit_clause
 	  opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(csql_query_without_values_and_single_subquery,  opt_select_limit_clause opt_for_update_clause);
@@ -13636,7 +13606,7 @@ csql_query_without_values_and_single_subquery
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -13654,7 +13624,7 @@ select_expression_opt_with
 
 			$$ = stmt;
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_expression_without_subquery
@@ -13703,7 +13673,7 @@ select_expression_without_subquery
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 
           opt_select_limit_clause
           opt_for_update_clause
@@ -13713,7 +13683,7 @@ select_expression_without_subquery
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
 
           table_op select_or_values_query
                 {{ DBG_TRACE_GRAMMAR(select_expression_without_subquery,  select_or_values_query);
@@ -13742,13 +13712,13 @@ select_expression_without_subquery
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| select_or_values_query
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_subquery, | select_or_values_query);
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_expression
@@ -13797,7 +13767,7 @@ select_expression
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_select_limit_clause
 	  opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(select_expression, opt_select_limit_clause opt_for_update_clause);
@@ -13806,7 +13776,7 @@ select_expression
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	  table_op select_or_subquery
 		{{ DBG_TRACE_GRAMMAR(select_expression, table_op select_or_subquery);
 
@@ -13833,14 +13803,14 @@ select_expression
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| select_or_subquery
 		{{ DBG_TRACE_GRAMMAR(select_expression, | select_or_subquery);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_expression_without_values_query_no_with_clause
@@ -13888,7 +13858,7 @@ select_expression_without_values_query_no_with_clause
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_select_limit_clause
 	  opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query_no_with_clause, opt_select_limit_clause opt_for_update_clause);
@@ -13897,7 +13867,7 @@ select_expression_without_values_query_no_with_clause
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	  table_op select_or_subquery_without_values_query_no_with_clause
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query_no_with_clause, table_op select_or_subquery_without_values_query_no_with_clause);
 
@@ -13924,14 +13894,14 @@ select_expression_without_values_query_no_with_clause
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| select_or_subquery_without_values_query_no_with_clause
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_query_no_with_clause, | select_or_subquery_without_values_query_no_with_clause);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_expression_without_values_and_single_subquery
@@ -13980,7 +13950,7 @@ select_expression_without_values_and_single_subquery
 
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_select_limit_clause
 	  opt_for_update_clause
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_and_single_subquery, opt_select_limit_clause opt_for_update_clause);
@@ -13989,7 +13959,7 @@ select_expression_without_values_and_single_subquery
 			$<node>$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($<node>$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	  table_op select_or_subquery_without_values_query_no_with_clause
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_and_single_subquery, table_op select_or_subquery_without_values_query_no_with_clause);
 
@@ -14016,14 +13986,14 @@ select_expression_without_values_and_single_subquery
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| select_or_nested_values_query
 		{{ DBG_TRACE_GRAMMAR(select_expression_without_values_and_single_subquery, | select_or_nested_values_query);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 table_op
@@ -14041,7 +14011,7 @@ table_op
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DIFFERENCE_ all_distinct
 		{{ DBG_TRACE_GRAMMAR(table_op, | DIFFERENCE_ all_distinct);
 
@@ -14057,7 +14027,7 @@ table_op
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| EXCEPT all_distinct
 		{{ DBG_TRACE_GRAMMAR(table_op, | EXCEPT all_distinct);
 
@@ -14073,7 +14043,7 @@ table_op
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| INTERSECTION all_distinct
 		{{ DBG_TRACE_GRAMMAR(table_op, | INTERSECTION all_distinct);
 
@@ -14089,7 +14059,7 @@ table_op
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| INTERSECT all_distinct
 		{{ DBG_TRACE_GRAMMAR(table_op, | INTERSECT all_distinct);
 
@@ -14105,7 +14075,7 @@ table_op
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_or_subquery
@@ -14115,19 +14085,19 @@ select_or_subquery
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| subquery
 		{{ DBG_TRACE_GRAMMAR(select_or_subquery, | subquery);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| values_query
 		{{ DBG_TRACE_GRAMMAR(select_or_subquery, | values_query);
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 select_or_values_query
@@ -14135,14 +14105,14 @@ select_or_values_query
 		{{ DBG_TRACE_GRAMMAR(select_or_values_query, : values_query);
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| select_stmt
 		{{ DBG_TRACE_GRAMMAR(select_or_values_query, | select_stmt);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_or_subquery_without_values_query_no_with_clause
@@ -14152,14 +14122,14 @@ select_or_subquery_without_values_query_no_with_clause
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| subquery_without_subquery_and_with_clause
 		{{ DBG_TRACE_GRAMMAR(select_or_subquery_without_values_query_no_with_clause, | subquery_without_subquery_and_with_clause);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_or_nested_values_query
@@ -14169,12 +14139,12 @@ select_or_nested_values_query
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' values_query ')'
 		{{ DBG_TRACE_GRAMMAR(select_or_nested_values_query, | '(' values_query ')');
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 values_query
@@ -14197,7 +14167,7 @@ values_query
 
 			  parser_push_select_stmt_node (node);
 			  parser_push_hint_node (node);
-		DBG_PRINT}}
+		}}
 		values_expression
 			{{ DBG_TRACE_GRAMMAR(values_query, values_expression);
 				/* $3 node of type PT_NODE_LIST */
@@ -14241,7 +14211,7 @@ values_query
 				  parser_select_level--;
 
 				$$ = node;
-			DBG_PRINT}}
+			}}
 	;
 
 values_expression
@@ -14252,11 +14222,11 @@ values_expression
 			parser_make_link (node1, node2);
 
 			$$ = node1;
-		DBG_PRINT}}
+		}}
 	| values_expr_item
 		{{ DBG_TRACE_GRAMMAR(values_expression, | values_expr_item);
 			$$ = $1;
-		DBG_PRINT}}
+		}}
 	;
 
 values_expr_item
@@ -14276,7 +14246,7 @@ values_expr_item
 			PT_SET_VALUE_QUERY(node);
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	;
 
 select_stmt
@@ -14301,7 +14271,7 @@ select_stmt
 			parser_push_select_stmt_node (node);
 			parser_push_hint_node (node);
 
-		DBG_PRINT}}
+		}}
 	opt_hint_list 		/* $3 */
 	all_distinct            /* $4 */
 	select_list 		/* $5 */
@@ -14338,7 +14308,7 @@ opt_with_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| WITH            /* $1 */
 	  opt_recursive   /* $2 */
 	  cte_definition_list   /* $3 */
@@ -14357,7 +14327,7 @@ opt_with_clause
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_recursive
@@ -14365,12 +14335,12 @@ opt_recursive
 		{{ DBG_TRACE_GRAMMAR(opt_recursive, : );
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| RECURSIVE
 		{{ DBG_TRACE_GRAMMAR(opt_recursive, | RECURSIVE);
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 cte_definition_list
@@ -14380,14 +14350,14 @@ cte_definition_list
 			$$ = parser_make_link($1, $3);
 			PARSER_SAVE_ERR_CONTEXT($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| cte_definition
 		{{ DBG_TRACE_GRAMMAR(cte_definition_list, | cte_definition);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
   	;
 
 cte_definition
@@ -14411,7 +14381,7 @@ cte_definition
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
   	;
 
 cte_query_list
@@ -14433,14 +14403,14 @@ cte_query_list
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| select_or_subquery
 		{{ DBG_TRACE_GRAMMAR(cte_query_list, | select_or_subquery);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT($$, @$.buffer_pos);
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_from_clause
@@ -14481,14 +14451,14 @@ opt_from_clause
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| FROM				/* $1 */
 	  extended_table_spec_list	/* $2 */
 		{{			/* $3 */
                     DBG_TRACE_GRAMMAR(opt_from_clause, | FROM extended_table_spec_list);
 			parser_found_Oracle_outer = false;
 
-		DBG_PRINT}}
+		}}
 	  opt_where_clause		/* $4 */
 	  opt_startwith_connectby_clause/* $5 */
 	  opt_groupby_clause		/* $6 */
@@ -14609,7 +14579,7 @@ opt_from_clause
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_select_param_list
@@ -14618,21 +14588,21 @@ opt_select_param_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| INTO to_param_list
 		{{ DBG_TRACE_GRAMMAR(opt_select_param_list, | INTO to_param_list);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TO to_param_list
 		{{ DBG_TRACE_GRAMMAR(opt_select_param_list, | TO to_param_list);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_hint_list
@@ -14650,7 +14620,7 @@ hint_list
 			char *hint_comment = $2;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		}}
 	| hint_list SQL_STYLE_HINT
 		{{ DBG_TRACE_GRAMMAR(hint_list, | hint_list SQL_STYLE_HINT);
 
@@ -14658,7 +14628,7 @@ hint_list
 			char *hint_comment = $2;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		}}
 	| hint_list C_STYLE_HINT
 		{{ DBG_TRACE_GRAMMAR(hint_list, | hint_list C_STYLE_HINT);
 
@@ -14666,7 +14636,7 @@ hint_list
 			char *hint_comment = $2;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		}}
 	| CPP_STYLE_HINT
 		{{ DBG_TRACE_GRAMMAR(hint_list, | CPP_STYLE_HINT);
 
@@ -14674,7 +14644,7 @@ hint_list
 			char *hint_comment = $1;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		}}
 	| SQL_STYLE_HINT
 		{{ DBG_TRACE_GRAMMAR(hint_list, | SQL_STYLE_HINT);
 
@@ -14682,7 +14652,7 @@ hint_list
 			char *hint_comment = $1;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		}}
 	| C_STYLE_HINT
 		{{ DBG_TRACE_GRAMMAR(hint_list, | C_STYLE_HINT);
 
@@ -14690,7 +14660,7 @@ hint_list
 			char *hint_comment = $1;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 
-		DBG_PRINT}}
+		}}
 	;
 
 all_distinct
@@ -14699,25 +14669,25 @@ all_distinct
 
 			$$ = PT_EMPTY;
 
-		DBG_PRINT}}
+		}}
 	| ALL
 		{{ DBG_TRACE_GRAMMAR(all_distinct, | ALL);
 
 			$$ = PT_ALL;
 
-		DBG_PRINT}}
+		}}
 	| DISTINCT
 		{{ DBG_TRACE_GRAMMAR(all_distinct, | DISTINCT);
 
 			$$ = PT_DISTINCT;
 
-		DBG_PRINT}}
+		}}
 	| UNIQUE
 		{{ DBG_TRACE_GRAMMAR(all_distinct, | UNIQUE);
 
 			$$ = PT_DISTINCT;
 
-		DBG_PRINT}}
+		}}
 	;
 
 select_list
@@ -14730,7 +14700,7 @@ select_list
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 	| '*' ',' alias_enabled_expression_list_top
 		{{ DBG_TRACE_GRAMMAR(select_list, | '*' ',' alias_enabled_expression_list_top);
@@ -14742,13 +14712,13 @@ select_list
 			$$ = parser_make_link (node, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 	| alias_enabled_expression_list_top
 		{{ DBG_TRACE_GRAMMAR(select_list, | alias_enabled_expression_list_top);
 			 $$ = $1;
 			 PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 alias_enabled_expression_list_top
@@ -14762,7 +14732,7 @@ alias_enabled_expression_list_top
 			parser_save_and_set_prc (1);
 			parser_save_and_set_cbrc (1);
 
-		DBG_PRINT}}
+		}}
 	  alias_enabled_expression_list
 		{{ DBG_TRACE_GRAMMAR(alias_enabled_expression_list_top, alias_enabled_expression_list);
 
@@ -14775,7 +14745,7 @@ alias_enabled_expression_list_top
 			parser_restore_prc ();
 			parser_restore_cbrc ();
 
-		DBG_PRINT}}
+		}}
 	;
 
 alias_enabled_expression_list
@@ -14785,7 +14755,7 @@ alias_enabled_expression_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| alias_enabled_expression_
 		{{ DBG_TRACE_GRAMMAR(alias_enabled_expression_list, | alias_enabled_expression_);
 
@@ -14797,7 +14767,7 @@ alias_enabled_expression_list
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 alias_enabled_expression_
@@ -14845,7 +14815,7 @@ alias_enabled_expression_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| predicate_expression opt_as_identifier %dprec 1
 		{{ DBG_TRACE_GRAMMAR(alias_enabled_expression_, | predicate_expression opt_as_identifier);
 
@@ -14862,7 +14832,7 @@ alias_enabled_expression_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_list
@@ -14871,7 +14841,7 @@ expression_list
 
 			$$ = CONTAINER_AT_0($1);
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_queue
@@ -14887,7 +14857,7 @@ expression_queue
 			$$ = new_q;
 			PARSER_SAVE_ERR_CONTEXT (q_head, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_
 		{{ DBG_TRACE_GRAMMAR(expression_queue, | expression_);
 			container_2 new_q;
@@ -14896,7 +14866,7 @@ expression_queue
 			$$ = new_q;
 			PARSER_SAVE_ERR_CONTEXT ($1, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;        
 
 expression_list_for_call
@@ -14905,7 +14875,7 @@ expression_list_for_call
 
 			$$ = CONTAINER_AT_0($1);
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_queue_for_call
@@ -14936,7 +14906,7 @@ expression_queue_for_call
 			$$ = new_q;
 			PARSER_SAVE_ERR_CONTEXT (q_head, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| 
            {{ 
                 if(pwd_info.parser_call_check)
@@ -14960,7 +14930,7 @@ expression_queue_for_call
 			$$ = new_q;
 			PARSER_SAVE_ERR_CONTEXT ($2, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 to_param_list
@@ -14970,14 +14940,14 @@ to_param_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| to_param
 		{{ DBG_TRACE_GRAMMAR(to_param_list, | to_param);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 to_param
@@ -14988,7 +14958,7 @@ to_param
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| param_
 		{{ DBG_TRACE_GRAMMAR(to_param, | param_);
 
@@ -15004,7 +14974,7 @@ to_param
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         | identifier DOT identifier
 		{{ DBG_TRACE_GRAMMAR(to_param, | identifier DOT identifier);
 
@@ -15036,7 +15006,7 @@ to_param
                         $$ = val;  
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(to_param, | identifier);
@@ -15053,7 +15023,7 @@ to_param
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 from_param
@@ -15071,7 +15041,7 @@ from_param
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| param_
 		{{ DBG_TRACE_GRAMMAR(from_param, | param_);
 
@@ -15086,7 +15056,7 @@ from_param
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	/*
 	 * It must be changed to "CLASS class_name" by User Schema support.
 	 * However, it is difficult to change to "CLASS class_name"
@@ -15107,7 +15077,7 @@ from_param
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(from_param, | identifier);
 
@@ -15122,7 +15092,7 @@ from_param
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -15147,7 +15117,7 @@ host_param_input
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| PARAM_HEADER uint_text
 		{{ DBG_TRACE_GRAMMAR(host_param_input, | PARAM_HEADER uint_text);
 
@@ -15172,7 +15142,7 @@ host_param_input
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 host_param_output
@@ -15191,7 +15161,7 @@ host_param_output
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| PARAM_HEADER uint_text
 		{{ DBG_TRACE_GRAMMAR(host_param_output, | PARAM_HEADER uint_text);
 
@@ -15217,7 +15187,7 @@ host_param_output
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 param_
@@ -15228,7 +15198,7 @@ param_
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_where_clause
@@ -15237,7 +15207,7 @@ opt_where_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	|	{ DBG_TRACE_GRAMMAR(opt_where_clause, | );
 			parser_save_and_set_ic (1);
 			assert (parser_prior_check == 0);
@@ -15256,7 +15226,7 @@ opt_where_clause
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_startwith_connectby_clause
@@ -15267,7 +15237,7 @@ opt_startwith_connectby_clause
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| startwith_clause connectby_clause
 		{{ DBG_TRACE_GRAMMAR(opt_startwith_connectby_clause, |  startwith_clause connectby_clause);
 
@@ -15275,7 +15245,7 @@ opt_startwith_connectby_clause
 			SET_CONTAINER_2 (ctn, $1, $2);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| connectby_clause startwith_clause
 		{{ DBG_TRACE_GRAMMAR(opt_startwith_connectby_clause, |  connectby_clause startwith_clause);
 
@@ -15283,7 +15253,7 @@ opt_startwith_connectby_clause
 			SET_CONTAINER_2 (ctn, $2, $1);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| connectby_clause
 		{{ DBG_TRACE_GRAMMAR(opt_startwith_connectby_clause, |  connectby_clause);
 
@@ -15291,7 +15261,7 @@ opt_startwith_connectby_clause
 			SET_CONTAINER_2 (ctn, NULL, $1);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 
 startwith_clause
 	:	{ DBG_TRACE_GRAMMAR(startwith_clause, : );
@@ -15304,7 +15274,7 @@ startwith_clause
 			$$ = $4;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 connectby_clause
@@ -15324,7 +15294,7 @@ connectby_clause
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 connectby_clause_with_option
@@ -15338,12 +15308,12 @@ connectby_clause_with_option
 		  }
 
                 $$=$4;
-		DBG_PRINT}}
+		}}
 
         | CONNECT BY search_condition %dprec 1
         {{ DBG_TRACE_GRAMMAR(connectby_clause_with_option, | CONNECT BY search_condition);
                 $$=$3;
-		DBG_PRINT}}
+		}}
         ;
 
 opt_groupby_clause
@@ -15352,14 +15322,14 @@ opt_groupby_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| GROUP_ BY group_spec_list
 		{{ DBG_TRACE_GRAMMAR(opt_groupby_clause, |  GROUP_ BY group_spec_list);
 
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_with_rollup
@@ -15368,13 +15338,13 @@ opt_with_rollup
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| WITH ROLLUP
 		{{ DBG_TRACE_GRAMMAR(opt_with_rollup, |  WITH ROLLUP);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 group_spec_list
@@ -15384,14 +15354,14 @@ group_spec_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| group_spec
 		{{ DBG_TRACE_GRAMMAR(group_spec_list, |  group_spec);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -15448,7 +15418,7 @@ group_spec
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -15458,7 +15428,7 @@ opt_having_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	|	{ parser_save_and_set_gc(1); }
 	  HAVING search_condition
 		{{ DBG_TRACE_GRAMMAR(opt_having_clause, | HAVING search_condition);
@@ -15467,7 +15437,7 @@ opt_having_clause
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_using_index_clause
@@ -15476,14 +15446,14 @@ opt_using_index_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| USING INDEX index_hint_name_keylimit_list
 		{{ DBG_TRACE_GRAMMAR(opt_using_index_clause, | USING INDEX index_hint_name_keylimit_list);
 
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| USING INDEX NONE
 		{{ DBG_TRACE_GRAMMAR(opt_using_index_clause, | USING INDEX NONE);
 
@@ -15500,7 +15470,7 @@ opt_using_index_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| USING INDEX ALL EXCEPT index_hint_name_list
 		{{ DBG_TRACE_GRAMMAR(opt_using_index_clause, | USING INDEX ALL EXCEPT index_hint_name_list);
 			PT_NODE *curr;
@@ -15536,7 +15506,7 @@ opt_using_index_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_hint_name_keylimit_list
@@ -15546,14 +15516,14 @@ index_hint_name_keylimit_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| index_hint_name_keylimit
 		{{ DBG_TRACE_GRAMMAR(index_hint_name_keylimit_list, | index_hint_name_keylimit);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_hint_name_list
@@ -15563,14 +15533,14 @@ index_hint_name_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| index_hint_name
 		{{ DBG_TRACE_GRAMMAR(index_hint_name_list, | index_hint_name);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_hint_name_keylimit
@@ -15599,7 +15569,7 @@ index_hint_name_keylimit
 			  }
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| index_hint_name KEYLIMIT limit_expr ',' limit_expr
 		{{ DBG_TRACE_GRAMMAR(index_hint_name_keylimit, | index_hint_name KEYLIMIT limit_expr ',' limit_expr);
 
@@ -15624,14 +15594,14 @@ index_hint_name_keylimit
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| index_hint_name
 		{{ DBG_TRACE_GRAMMAR(index_hint_name_keylimit, | index_hint_name);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 index_hint_name
@@ -15643,7 +15613,7 @@ index_hint_name
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| index_name paren_minus
 		{{ DBG_TRACE_GRAMMAR(index_name, | index_name paren_minus);
 
@@ -15652,7 +15622,7 @@ index_hint_name
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| index_name
 		{{ DBG_TRACE_GRAMMAR(index_hint_name, | index_name);
 
@@ -15661,7 +15631,7 @@ index_hint_name
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier DOT NONE
 		{{ DBG_TRACE_GRAMMAR(index_name, | identifier DOT NONE);
 
@@ -15673,7 +15643,7 @@ index_hint_name
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_with_increment_clause
@@ -15682,21 +15652,21 @@ opt_with_increment_clause
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| WITH INCREMENT For incr_arg_name_list__inc
 		{{ DBG_TRACE_GRAMMAR(opt_with_increment_clause, | WITH INCREMENT For incr_arg_name_list__inc);
 
 			$$ = $4;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| WITH DECREMENT For incr_arg_name_list__dec
 		{{ DBG_TRACE_GRAMMAR(opt_with_increment_clause, | WITH DECREMENT For incr_arg_name_list__dec);
 
 			$$ = $4;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_for_update_clause
@@ -15720,7 +15690,7 @@ opt_for_update_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| For UPDATE OF class_name_list
 		{{ DBG_TRACE_GRAMMAR(opt_for_update_clause, | For UPDATE OF class_name_list);
 
@@ -15761,7 +15731,7 @@ opt_for_update_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 incr_arg_name_list__inc
@@ -15771,14 +15741,14 @@ incr_arg_name_list__inc
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| incr_arg_name__inc
 		{{ DBG_TRACE_GRAMMAR(incr_arg_name_list__inc, | incr_arg_name__inc);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 incr_arg_name__inc
@@ -15803,7 +15773,7 @@ incr_arg_name__inc
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 incr_arg_name_list__dec
@@ -15813,14 +15783,14 @@ incr_arg_name_list__dec
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| incr_arg_name__dec
 		{{ DBG_TRACE_GRAMMAR(incr_arg_name_list__dec, | incr_arg_name__dec);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 incr_arg_name__dec
@@ -15845,7 +15815,7 @@ incr_arg_name__dec
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 opt_update_orderby_clause
@@ -15866,7 +15836,7 @@ opt_update_orderby_clause
 
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 opt_orderby_clause
@@ -15898,7 +15868,7 @@ opt_orderby_clause
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
 
-		DBG_PRINT}}
+		}}
 	  sort_spec_list
 		{{ DBG_TRACE_GRAMMAR(opt_orderby_clause, sort_spec_list);
 
@@ -15910,7 +15880,7 @@ opt_orderby_clause
 			parser_restore_pseudoc ();
 			parser_save_and_set_oc (1);
 
-		DBG_PRINT}}
+		}}
 	  opt_for_search_condition
 		{{ DBG_TRACE_GRAMMAR(opt_orderby_clause, opt_for_search_condition);
 
@@ -16071,7 +16041,7 @@ opt_orderby_clause
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_siblings
@@ -16089,7 +16059,7 @@ opt_siblings
 				    "SIBLINGS");
 			    }
 
-		DBG_PRINT}}
+		}}
 	;
 
 limit_expr
@@ -16098,19 +16068,19 @@ limit_expr
                         $$ = parser_make_expression (this_parser, PT_PLUS, $1, $3, NULL);
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         | limit_expr '-' limit_term
                 {{ DBG_TRACE_GRAMMAR(limit_expr, | limit_expr '-' limit_term);
                         $$ = parser_make_expression (this_parser, PT_MINUS, $1, $3, NULL);
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         | limit_term
                 {{ DBG_TRACE_GRAMMAR(limit_expr, | limit_term);
                         $$ = $1;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         ;
 
 limit_term
@@ -16119,19 +16089,19 @@ limit_term
                         $$ = parser_make_expression (this_parser, PT_TIMES, $1, $3, NULL);
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         | limit_term '/' limit_factor
                 {{ DBG_TRACE_GRAMMAR(limit_term, | limit_term '/' limit_factor);
                         $$ = parser_make_expression (this_parser, PT_DIV, $1, $3, NULL);
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         | limit_factor
                 {{ DBG_TRACE_GRAMMAR(limit_term, | limit_factor);
                         $$ = $1;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
           ;
 
 limit_factor
@@ -16141,14 +16111,14 @@ limit_factor
                         $$ = $1;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         | unsigned_integer
                 {{ DBG_TRACE_GRAMMAR(limit_factor, | unsigned_integer);
 
                         $$ = $1;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         | identifier_without_dot    /* for PL/CSQL Static SQL only */
                 {{ DBG_TRACE_GRAMMAR(limit_factor, | identifier_without_dot);
 
@@ -16177,7 +16147,7 @@ limit_factor
                             $$ = NULL;
                         }
 
-                DBG_PRINT}}
+                }}
         | '(' limit_expr ')'
                 {{ DBG_TRACE_GRAMMAR(limit_factor, | '(' limit_expr ')');
 			PT_NODE *exp = $2;
@@ -16190,14 +16160,14 @@ limit_factor
                         $$ = exp;
                         PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
         ;
 
 opt_select_limit_clause
 	: /* empty */
            {{ DBG_TRACE_GRAMMAR(opt_select_limit_clause, : );
                   $$ = NULL; 
-                  DBG_PRINT }}
+                  }}
 	| LIMIT limit_options
 	        {{ DBG_TRACE_GRAMMAR(opt_select_limit_clause, | LIMIT limit_options);
 
@@ -16264,7 +16234,7 @@ opt_select_limit_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 limit_options
@@ -16280,7 +16250,7 @@ limit_options
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| limit_expr ',' limit_expr
 		{{ DBG_TRACE_GRAMMAR(limit_options, | limit_expr ',' limit_expr);
 
@@ -16299,7 +16269,7 @@ limit_options
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| limit_expr OFFSET limit_expr
 		{{ DBG_TRACE_GRAMMAR(limit_options, | limit_expr OFFSET limit_expr);
 
@@ -16318,7 +16288,7 @@ limit_options
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_upd_del_limit_clause
@@ -16331,7 +16301,7 @@ opt_upd_del_limit_clause
 			  $$ = $2;
 			  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_for_search_condition
@@ -16356,7 +16326,7 @@ opt_for_search_condition
 			     }
 			  }
 			$$ = $2;
-		DBG_PRINT}}
+		}}
 	;
 
 sort_spec_list
@@ -16366,14 +16336,14 @@ sort_spec_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| sort_spec
 		{{ DBG_TRACE_GRAMMAR(sort_spec_list, | sort_spec);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 sort_spec
@@ -16391,7 +16361,7 @@ sort_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ DESC opt_nulls_first_or_last
 		{{ DBG_TRACE_GRAMMAR(sort_spec, | expression_ DESC opt_nulls_first_or_last);
 
@@ -16407,7 +16377,7 @@ sort_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ opt_nulls_first_or_last
 		{{ DBG_TRACE_GRAMMAR(sort_spec, | expression_ opt_nulls_first_or_last);
 
@@ -16423,7 +16393,7 @@ sort_spec
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_nulls_first_or_last
@@ -16432,19 +16402,19 @@ opt_nulls_first_or_last
 
 			$$ = PT_NULLS_DEFAULT;
 
-		DBG_PRINT}}
+		}}
 	| NULLS FIRST
 		{{ DBG_TRACE_GRAMMAR(opt_nulls_first_or_last, | NULLS FIRST);
 
 			$$ = PT_NULLS_FIRST;
 
-		DBG_PRINT}}
+		}}
 	| NULLS LAST
 		{{ DBG_TRACE_GRAMMAR(opt_nulls_first_or_last, | NULLS LAST);
 
 			$$ = PT_NULLS_LAST;
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_
@@ -16454,14 +16424,14 @@ expression_
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| predicate_expression
 		{{DBG_TRACE_GRAMMAR(expression_, | predicate_expression);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -16472,14 +16442,14 @@ normal_expression
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_strcat
 		{{ DBG_TRACE_GRAMMAR(normal_expression, | expression_strcat);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_strcat
@@ -16489,14 +16459,14 @@ expression_strcat
 			$$ = parser_make_expression (this_parser, PT_STRCAT, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_bitor
 		{{ DBG_TRACE_GRAMMAR(expression_strcat, | expression_bitor);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_bitor
@@ -16506,14 +16476,14 @@ expression_bitor
 			$$ = parser_make_expression (this_parser, PT_BIT_OR, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_bitand
 		{{ DBG_TRACE_GRAMMAR(expression_bitor, | expression_bitand);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_bitand
@@ -16523,14 +16493,14 @@ expression_bitand
 			$$ = parser_make_expression (this_parser, PT_BIT_AND, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_bitshift
 		{{ DBG_TRACE_GRAMMAR(expression_bitand, | expression_bitshift);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_bitshift
@@ -16540,21 +16510,21 @@ expression_bitshift
 			$$ = parser_make_expression (this_parser, PT_BITSHIFT_LEFT, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_bitshift BITSHIFT_RIGHT expression_add_sub
 		{{ DBG_TRACE_GRAMMAR(expression_bitshift, | expression_bitshift BITSHIFT_RIGHT expression_add_sub);
 
 			$$ = parser_make_expression (this_parser, PT_BITSHIFT_RIGHT, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_add_sub
 		{{ DBG_TRACE_GRAMMAR(expression_bitshift, | expression_add_sub);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 expression_add_sub
@@ -16564,21 +16534,21 @@ expression_add_sub
 			$$ = parser_make_expression (this_parser, PT_PLUS, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_add_sub '-' term
 		{{ DBG_TRACE_GRAMMAR(expression_add_sub, | expression_add_sub '-' term);
 
 			$$ = parser_make_expression (this_parser, PT_MINUS, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| term
 		{{ DBG_TRACE_GRAMMAR(expression_add_sub, | term);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 term
@@ -16588,35 +16558,35 @@ term
 			$$ = parser_make_expression (this_parser, PT_TIMES, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| term '/' factor
 		{{ DBG_TRACE_GRAMMAR(term, | term '/' factor);
 
 			$$ = parser_make_expression (this_parser, PT_DIVIDE, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| term DIV factor
 		{{ DBG_TRACE_GRAMMAR(term, | term DIV factor);
 
 			$$ = parser_make_expression (this_parser, PT_DIV, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| term MOD factor
 		{{ DBG_TRACE_GRAMMAR(term, | term MOD factor);
 
 			$$ = parser_make_expression (this_parser, PT_MOD, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| factor
 		{{ DBG_TRACE_GRAMMAR(term, | factor);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 factor
@@ -16626,14 +16596,14 @@ factor
 			$$ = parser_make_expression (this_parser, PT_BIT_XOR, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| factor_
 		{{ DBG_TRACE_GRAMMAR(factor, | factor_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 factor_
@@ -16643,28 +16613,28 @@ factor_
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '-' factor_
 		{{ DBG_TRACE_GRAMMAR(factor_, | '-' factor_);
 
 			$$ = parser_make_expression (this_parser, PT_UNARY_MINUS, $2, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '+' factor_
 		{{ DBG_TRACE_GRAMMAR(factor_, | '+' factor_);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '~' primary
 		{{ DBG_TRACE_GRAMMAR(factor_, | '~' primary);
 
 			$$ = parser_make_expression (this_parser, PT_BIT_NOT, $2, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| PRIOR
 		{{ DBG_TRACE_GRAMMAR(factor_, | PRIOR);
 
@@ -16673,7 +16643,7 @@ factor_
 			parser_save_and_set_cbrc (0);
 			parser_save_and_set_pseudoc (0);
 
-		DBG_PRINT}}
+		}}
 	  primary_w_collate
 		{{ DBG_TRACE_GRAMMAR(factor_, primary_w_collate);
 
@@ -16693,7 +16663,7 @@ factor_
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| CONNECT_BY_ROOT
 		{{ DBG_TRACE_GRAMMAR(factor_, | CONNECT_BY_ROOT);
 
@@ -16702,7 +16672,7 @@ factor_
 			parser_save_and_set_cbrc (0);
 			parser_save_and_set_pseudoc (0);
 
-		DBG_PRINT}}
+		}}
 	  primary_w_collate
 		{{ DBG_TRACE_GRAMMAR(factor_, primary_w_collate);
 
@@ -16722,7 +16692,7 @@ factor_
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 
 primary_w_collate
@@ -16744,7 +16714,7 @@ primary_w_collate
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 
 primary
 	: pseudo_column		%dprec 11
@@ -16757,35 +16727,35 @@ primary
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| reserved_func		%dprec 10
 		{{ DBG_TRACE_GRAMMAR(primary, | reserved_func);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| case_expr		%dprec 9
 		{{ DBG_TRACE_GRAMMAR(primary, | case_expr);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| extract_expr		%dprec 8
 		{{ DBG_TRACE_GRAMMAR(primary, | extract_expr);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| literal_w_o_param	%dprec 7
 		{{ DBG_TRACE_GRAMMAR(primary, | literal_w_o_param);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| insert_expression	%dprec 6
 		{{ DBG_TRACE_GRAMMAR(primary, | insert_expression);
 
@@ -16794,14 +16764,14 @@ primary
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_IS_SUBINSERT;
 
-		DBG_PRINT}}
+		}}
 	| path_expression	%dprec 5
 		{{ DBG_TRACE_GRAMMAR(primary, | path_expression);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' expression_list ')' %dprec 4
 		{{ DBG_TRACE_GRAMMAR(primary, | '(' expression_list ')');
 			PT_NODE *exp = $2;
@@ -16809,7 +16779,7 @@ primary
 			$$ = exp;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ROW '(' expression_list ')' %dprec 4
 		{{ DBG_TRACE_GRAMMAR(primary, | ROW '(' expression_list ')');
 			PT_NODE *exp = $3;
@@ -16817,7 +16787,7 @@ primary
 			$$ = exp;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '(' search_condition_query ')' %dprec 2
 		{{ DBG_TRACE_GRAMMAR(primary, | '(' search_condition_query ')');
 
@@ -16832,13 +16802,13 @@ primary
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_EXPR;
 
-		DBG_PRINT}}
+		}}
 	| subquery    %dprec 1
 		{{ DBG_TRACE_GRAMMAR(primary, | subquery);
 			parser_groupby_exception = PT_IS_SUBQUERY;
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| session_variable_expression
 		{{ DBG_TRACE_GRAMMAR(primary, | session_variable_expression);
 
@@ -16855,7 +16825,7 @@ search_condition_query
 			PT_NODE *node = $1;
 			parser_push_orderby_node (node);
 
-		DBG_PRINT}}
+		}}
 	  opt_orderby_clause
 		{{ DBG_TRACE_GRAMMAR(search_condition_query, opt_orderby_clause);
 
@@ -16863,7 +16833,7 @@ search_condition_query
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 search_condition_expression
@@ -16873,7 +16843,7 @@ search_condition_expression
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 pseudo_column
@@ -16883,21 +16853,21 @@ pseudo_column
 			$$ = parser_make_expression (this_parser, PT_CONNECT_BY_ISCYCLE, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CONNECT_BY_ISLEAF
 		{{ DBG_TRACE_GRAMMAR(pseudo_column, | CONNECT_BY_ISLEAF);
 
 			$$ = parser_make_expression (this_parser, PT_CONNECT_BY_ISLEAF, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| LEVEL
 		{{ DBG_TRACE_GRAMMAR(pseudo_column, | LEVEL);
 
 			$$ = parser_make_expression (this_parser, PT_LEVEL, NULL, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -16918,7 +16888,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		}}
 	| COUNT '(' '*' ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | COUNT '(' '*' ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')');
 
@@ -16937,7 +16907,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| COUNT '(' of_distinct_unique expression_ ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | COUNT '(' of_distinct_unique expression_ ')');
 
@@ -16954,7 +16924,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		}}
 	| COUNT '(' of_distinct_unique expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | COUNT '(' of_distinct_unique expression_ ')' OVER '(' ~ ')');
 
@@ -16973,7 +16943,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| COUNT '(' opt_all expression_ ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | COUNT '(' opt_all expression_ ')');
 
@@ -16990,7 +16960,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		}}
 	| COUNT '(' opt_all expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | COUNT '(' opt_all expression_ ')' OVER '(' ~ ')');
 
@@ -17009,7 +16979,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_avg_max_etc '(' of_distinct_unique expression_ ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_avg_max_etc '(' of_distinct_unique expression_ ')');
 
@@ -17031,7 +17001,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		}}
 	| of_avg_max_etc '(' opt_all expression_ ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_avg_max_etc '(' opt_all expression_ ')');
 
@@ -17048,7 +17018,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_COUNT;
 
-		DBG_PRINT}}
+		}}
 	| of_analytic '(' of_distinct_unique expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic '(' of_distinct_unique expression_ ')' OVER '(' ~ ')');
 
@@ -17070,7 +17040,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_analytic '(' opt_all expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic '(' opt_all expression_ ')' OVER '(' ~ ')');
 
@@ -17089,7 +17059,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_analytic_first_last '(' expression_ ')' opt_analytic_ignore_nulls OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic_first_last '(' expression_ ')' opt_analytic_ignore_nulls OVER '(' ~ ')');
 
@@ -17111,7 +17081,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_analytic_nth_value '(' expression_ ',' expression_ ')' opt_analytic_from_last opt_analytic_ignore_nulls OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic_nth_value '(' expression_ ',' expression_ ')' opt_analytic_from_last opt_analytic_ignore_nulls OVER '(' ~ ')');
 
@@ -17142,7 +17112,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_analytic_lead_lag '(' expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic_lead_lag '(' expression_ ')' OVER '(' ~ ')');
 
@@ -17175,7 +17145,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_analytic_lead_lag '(' expression_ ',' expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic_lead_lag '(' expression_ ',' expression_ ')' OVER '(' ~ ')');
 
@@ -17202,7 +17172,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_analytic_lead_lag '(' expression_ ',' expression_ ',' expression_ ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic_lead_lag '(' expression_ ',' expression_ ',' expression_ ')' OVER '(' ~ ')');
 
@@ -17223,7 +17193,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_analytic_no_args '(' ')' OVER '(' opt_analytic_partition_by opt_analytic_order_by ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_analytic_no_args '(' ')' OVER '(' ~ ')');
 
@@ -17252,7 +17222,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GROUP_CONCAT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_GROUP_CONCAT); }
 		'(' of_distinct_unique expression_ opt_agg_order_by opt_group_concat_separator ')'
@@ -17272,7 +17242,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| GROUP_CONCAT '(' opt_all opt_expression_list opt_agg_order_by opt_group_concat_separator ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | GROUP_CONCAT '(' opt_all opt_expression_list opt_agg_order_by opt_group_concat_separator ')' );
 
@@ -17297,7 +17267,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| JSON_ARRAYAGG '(' expression_ ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_ARRAYAGG '(' expression_ ')' );
 
@@ -17313,7 +17283,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| JSON_OBJECTAGG '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_OBJECTAGG '(' expression_list ')' );
  			PT_NODE *node = parser_new_node (this_parser, PT_FUNCTION);
@@ -17334,7 +17304,7 @@ reserved_func
 
  			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
- 		DBG_PRINT}}
+ 		}}
 	| of_percentile '(' expression_ ')' WITHIN GROUP_ '(' ORDER BY sort_spec ')' opt_over_analytic_partition_by
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_percentile '(' expression_ ')' WITHIN GROUP_ '(' ORDER BY sort_spec ')' ~ );
 
@@ -17383,7 +17353,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
 
-		DBG_PRINT}}
+		}}
 	| INSERT
 	  { push_msg(MSGCAT_SYNTAX_INVALID_INSERT_SUBSTRING); }
 	  '(' expression_list ')'
@@ -17391,19 +17361,19 @@ reserved_func
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | INSERT '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_INSERT_SUBSTRING, $4, 4, 4);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| ELT '(' opt_expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | ELT '(' opt_expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_ELT, $3, 1, 0);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| POSITION '(' expression_ IN_ expression_ ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | POSITION '(' expression_ IN_ expression_ ')' );
 
 			$$ = parser_make_expression (this_parser, PT_POSITION, $3, $5, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SUBSTRING_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
 	  '(' expression_ FROM expression_ For expression_ ')'
@@ -17416,7 +17386,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SUBSTRING_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
 	  '(' expression_ FROM expression_ ')'
@@ -17429,7 +17399,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SUBSTRING_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
 	  '(' expression_ ',' expression_ ',' expression_ ')'
@@ -17442,7 +17412,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SUBSTRING_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBSTRING); }
 	  '(' expression_ ',' expression_ ')'
@@ -17455,7 +17425,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| Date
 		{ push_msg(MSGCAT_SYNTAX_INVALID_DATE); }
 	  '(' expression_ ')'
@@ -17467,7 +17437,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| Time
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TIME); }
 	  '(' expression_ ')'
@@ -17479,7 +17449,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ADDDATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_ADDDATE); }
 	  '(' expression_ ',' expression_ ')'
@@ -17491,7 +17461,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| adddate_name
 		{ push_msg(MSGCAT_SYNTAX_INVALID_DATE_ADD); }
 	  '(' expression_ ',' INTERVAL expression_ datetime_field ')'
@@ -17512,7 +17482,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SUBDATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SUBDATE); }
 	  '(' expression_ ',' expression_ ')'
@@ -17524,7 +17494,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| subdate_name
 		{ push_msg(MSGCAT_SYNTAX_INVALID_DATE_SUB); }
 	  '(' expression_ ',' INTERVAL expression_ datetime_field ')'
@@ -17545,7 +17515,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); }
 		'(' expression_ ')'
@@ -17564,7 +17534,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TIMESTAMP); }
 		'(' expression_ ',' expression_ ')'
@@ -17576,7 +17546,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| YEAR_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_YEAR); }
 		'(' expression_ ')'
@@ -17588,7 +17558,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| MONTH_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_MONTH); }
 		'(' expression_ ')'
@@ -17600,7 +17570,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DAY_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_DAY); }
 		'(' expression_ ')'
@@ -17612,7 +17582,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| HOUR_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_HOUR); }
 		'(' expression_ ')'
@@ -17624,7 +17594,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| MINUTE_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_MINUTE); }
 		'(' expression_ ')'
@@ -17636,7 +17606,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SECOND_
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SECOND); }
 		'(' expression_ ')'
@@ -17648,7 +17618,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DATABASE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_DATABASE); }
 	  '(' ')'
@@ -17660,7 +17630,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SCHEMA
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SCHEMA); }
 	  '(' ')'
@@ -17672,7 +17642,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TRIM
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
 	  '(' of_leading_trailing_both expression_ FROM expression_ ')'
@@ -17685,7 +17655,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TRIM
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
 	  '(' of_leading_trailing_both FROM expression_ ')'
@@ -17698,7 +17668,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TRIM
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
 	  '(' expression_ FROM  expression_ ')'
@@ -17711,7 +17681,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TRIM
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRIM); }
 	  '(' expression_ ')'
@@ -17724,7 +17694,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CHR
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CHR); }
 	  '(' expression_ opt_using_charset ')'
@@ -17736,7 +17706,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CLOB_TO_CHAR
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CLOB_TO_CHAR); }
 	  '(' expression_ opt_using_charset ')'
@@ -17748,7 +17718,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CAST
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CAST); }
 	  '(' expression_ AS of_cast_data_type ')'
@@ -17783,7 +17753,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CLASS '(' identifier ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | CLASS '(' identifier ')' );
 
@@ -17792,7 +17762,7 @@ reserved_func
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			parser_groupby_exception = PT_OID_ATTR;
 
-		DBG_PRINT}}
+		}}
 	| SYS_DATE
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | SYS_DATE );
 
@@ -17800,7 +17770,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_current_date
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_current_date );
 
@@ -17808,7 +17778,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SYS_TIME_
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | SYS_TIME_ );
 
@@ -17816,7 +17786,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_current_time
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_current_time );
 
@@ -17824,7 +17794,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_db_timezone_
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_db_timezone_ );
 
@@ -17832,7 +17802,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_session_timezone_
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_session_timezone_ );
 
@@ -17840,7 +17810,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SYS_TIMESTAMP
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | SYS_TIMESTAMP );
 
@@ -17848,7 +17818,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_current_timestamps
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_current_timestamps );
 
@@ -17856,7 +17826,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SYS_DATETIME
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | SYS_DATETIME );
 
@@ -17864,7 +17834,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_current_datetime
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_current_datetime );
 
@@ -17872,7 +17842,7 @@ reserved_func
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_users
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_users );
 
@@ -17884,7 +17854,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_users
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SYSTEM_USER); }
 	  '(' ')'
@@ -17896,7 +17866,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DEFAULT '('
 		{ push_msg(MSGCAT_SYNTAX_INVALID_DEFAULT); }
 	  simple_path_id ')'
@@ -17916,7 +17886,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| LOCAL_TRANSACTION_ID
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | LOCAL_TRANSACTION_ID);
 
@@ -17929,7 +17899,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ROWNUM
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | ROWNUM);
 
@@ -17950,7 +17920,7 @@ reserved_func
 				       MSGCAT_SEMANTIC_INSTNUM_COMPATIBILITY_ERR,
 				       "INST_NUM() or ROWNUM", "INST_NUM() or ROWNUM");
 
-		DBG_PRINT}}
+		}}
 	| ADD_MONTHS
 		{ push_msg(MSGCAT_SYNTAX_INVALID_ADD_MONTHS); }
 	  '(' expression_ ',' expression_ ')'
@@ -17960,7 +17930,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_ADD_MONTHS, $4, $6, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| OCTET_LENGTH
 		{ push_msg(MSGCAT_SYNTAX_INVALID_OCTET_LENGTH); }
 	  '(' expression_ ')'
@@ -17970,7 +17940,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_OCTET_LENGTH, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| BIT_LENGTH
 		{ push_msg(MSGCAT_SYNTAX_INVALID_BIT_LENGTH); }
 	  '(' expression_ ')'
@@ -17980,7 +17950,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_BIT_LENGTH, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| LOWER
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LOWER); }
 	  '(' expression_ ')'
@@ -17990,7 +17960,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_LOWER, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| LCASE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LOWER); }
 	  '(' expression_ ')'
@@ -18000,7 +17970,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_LOWER, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| UPPER
 		{ push_msg(MSGCAT_SYNTAX_INVALID_UPPER); }
 	  '(' expression_ ')'
@@ -18010,7 +17980,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_UPPER, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| UCASE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_UPPER); }
 	  '(' expression_ ')'
@@ -18020,7 +17990,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_UPPER, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SYS_CONNECT_BY_PATH
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | SYS_CONNECT_BY_PATH );
 
@@ -18054,7 +18024,7 @@ reserved_func
 			  }
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| IF
 		{ push_msg (MSGCAT_SYNTAX_INVALID_IF); }
 	  '(' search_condition ',' expression_ ',' expression_ ')'
@@ -18064,7 +18034,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_IF, $4, $6, $8);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| IFNULL
 		{ push_msg (MSGCAT_SYNTAX_INVALID_IFNULL); }
 	  '(' expression_ ',' expression_ ')'
@@ -18074,7 +18044,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_IFNULL, $4, $6, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ISNULL
 		{ push_msg (MSGCAT_SYNTAX_INVALID_ISNULL); }
 	  '(' expression_ ')'
@@ -18084,7 +18054,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_ISNULL, $4, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| LEFT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_LEFT); }
 	  '(' expression_ ',' expression_ ')'
@@ -18096,7 +18066,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| RIGHT
 		{ push_msg(MSGCAT_SYNTAX_INVALID_RIGHT); }
 	  '(' expression_ ',' expression_ ')'
@@ -18108,7 +18078,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| MOD
 		{ push_msg(MSGCAT_SYNTAX_INVALID_MODULUS); }
 	  '(' expression_ ',' expression_ ')'
@@ -18120,7 +18090,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TRUNCATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRUNCATE); }
 	  '(' expression_ ',' expression_ ')'
@@ -18130,7 +18100,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_TRUNC, $4, $6, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TRANSLATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); }
 	  '(' expression_  ',' expression_ ',' expression_ ')'
@@ -18140,7 +18110,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_TRANSLATE, $4, $6, $8);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| REPLACE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_TRANSLATE); }
 	  '(' expression_  ',' expression_ ',' expression_ ')'
@@ -18150,7 +18120,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_REPLACE, $4, $6, $8);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| REPLACE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_REPLACE); }
 	  '(' expression_  ',' expression_ ')'
@@ -18160,7 +18130,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_REPLACE, $4, $6, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| STR_TO_DATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); }
 	  '(' expression_  ',' string_literal_or_input_hv ')'
@@ -18170,7 +18140,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, $6, parser_make_date_lang (2, NULL));
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| STR_TO_DATE
 		{ push_msg(MSGCAT_SYNTAX_INVALID_STRTODATE); }
 	  '(' expression_  ',' Null ')'
@@ -18186,7 +18156,7 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, node, parser_make_date_lang (2, NULL));
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CHARSET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CHARSET); }
 	  '(' expression_ ')'
@@ -18198,7 +18168,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| COLLATION
 		{ push_msg(MSGCAT_SYNTAX_INVALID_COLLATION); }
 	  '(' expression_ ')'
@@ -18210,7 +18180,7 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| of_cume_dist_percent_rank_function '(' expression_list ')' WITHIN GROUP_ '('ORDER BY sort_spec_list')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | of_cume_dist_percent_rank_function '(' expression_list ')' WITHIN GROUP_ '('ORDER BY sort_spec_list')' );
 
@@ -18226,7 +18196,7 @@ reserved_func
 
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-        DBG_PRINT}}
+        }}
 	| INDEX_PREFIX
 		{ push_msg(MSGCAT_SYNTAX_INVALID_INDEX_PREFIX); }
 	  '(' expression_  ',' expression_ ',' expression_ ')'
@@ -18236,127 +18206,127 @@ reserved_func
 			$$ = parser_make_expression (this_parser, PT_INDEX_PREFIX, $4, $6, $8);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         | JSON_ARRAY_APPEND '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_ARRAY_APPEND '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_APPEND, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_ARRAY_INSERT '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_ARRAY_INSERT '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_ARRAY_INSERT, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_ARRAY_LEX '(' opt_expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_ARRAY_LEX '(' opt_expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_ARRAY, $3, 0, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| JSON_CONTAINS '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_CONTAINS '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_CONTAINS, $3, 2, 3);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-	      DBG_PRINT}}
+	      }}
 	| JSON_CONTAINS_PATH '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_CONTAINS_PATH '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_CONTAINS_PATH, $3, 3, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_DEPTH '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_DEPTH '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_DEPTH, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_EXTRACT '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_EXTRACT '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_EXTRACT, $3, 2, 0);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_GET_ALL_PATHS '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_GET_ALL_PATHS '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_GET_ALL_PATHS, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_INSERT '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_INSERT '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_INSERT, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_KEYS '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_KEYS '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_KEYS, $3, 0, 2);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_LENGTH '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_LENGTH '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_LENGTH, $3, 1, 2);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_MERGE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_MERGE '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_MERGE_PATCH '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_MERGE_PATCH '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE_PATCH, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_MERGE_PRESERVE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_MERGE_PRESERVE '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_MERGE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_OBJECT_LEX '(' opt_expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_OBJECT_LEX '(' opt_expression_list ')');
                     $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_OBJECT, $3, 0, 0, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_PRETTY '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_PRETTY '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_PRETTY, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_QUOTE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_QUOTE '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_QUOTE, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_REMOVE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_REMOVE '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_REMOVE, $3, 2, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_REPLACE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_REPLACE '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_REPLACE, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_SET '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_SET '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count_mod2 (this_parser, F_JSON_SET, $3, 3, 0, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_SEARCH '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_SEARCH '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_SEARCH, $3, 3, 0);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_TYPE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_TYPE '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_TYPE, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_UNQUOTE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_UNQUOTE '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_UNQUOTE, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | JSON_VALID '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | JSON_VALID '(' expression_list ')' );
                     $$ = parser_make_func_with_arg_count (this_parser, F_JSON_VALID, $3, 1, 1);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | simple_path_id RIGHT_ARROW CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | simple_path_id RIGHT_ARROW CHAR_STRING);
 		    PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
@@ -18371,7 +18341,7 @@ reserved_func
                     first_arg->next = matcher;
 		    $$ = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, first_arg);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT}}
+                }}
         | simple_path_id DOUBLE_RIGHT_ARROW CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | simple_path_id DOUBLE_RIGHT_ARROW CHAR_STRING);
                     PT_NODE *matcher = parser_new_node (this_parser, PT_VALUE);
@@ -18387,49 +18357,49 @@ reserved_func
 		    PT_NODE *extract_expr = parser_make_expr_with_func (this_parser, F_JSON_EXTRACT, first_arg);
 		    $$ = parser_make_expr_with_func (this_parser, F_JSON_UNQUOTE, extract_expr);
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
         | BENCHMARK '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | BENCHMARK '(' expression_list ')');
                     $$ = parser_make_func_with_arg_count (this_parser, F_BENCHMARK, $3, 2, 2);
 		    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| REGEXP_COUNT '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | REGEXP_COUNT '(' expression_list ')');
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_COUNT, $3, 2, 4);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| REGEXP_INSTR '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | REGEXP_INSTR '(' expression_list ')');
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_INSTR, $3, 2, 6);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| REGEXP_LIKE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | REGEXP_LIKE '(' expression_list ')');
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_LIKE, $3, 2, 3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| REGEXP_REPLACE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | REGEXP_REPLACE '(' expression_list ')');
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_REPLACE, $3, 3, 6);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| REGEXP_SUBSTR '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(reserved_func, | REGEXP_SUBSTR '(' expression_list ')');
 			$$ = parser_make_func_with_arg_count (this_parser, F_REGEXP_SUBSTR, $3, 2, 5);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 of_cume_dist_percent_rank_function
 	: CUME_DIST
 		{{ DBG_TRACE_GRAMMAR(of_cume_dist_percent_rank_function, : CUME_DIST);
 			$$ = PT_CUME_DIST;
-		DBG_PRINT}}
+		}}
 
 	| PERCENT_RANK
 		{{ DBG_TRACE_GRAMMAR(of_cume_dist_percent_rank_function, | PERCENT_RANK);
 			$$ = PT_PERCENT_RANK;
-		DBG_PRINT}}
+		}}
     ;
 
 of_current_date
@@ -18501,85 +18471,85 @@ of_avg_max_etc
 
 			$$ = PT_AVG;
 
-		DBG_PRINT}}
+		}}
 	| Max
 		{{
 
 			$$ = PT_MAX;
 
-		DBG_PRINT}}
+		}}
 	| Min
 		{{
 
 			$$ = PT_MIN;
 
-		DBG_PRINT}}
+		}}
 	| SUM
 		{{
 
 			$$ = PT_SUM;
 
-		DBG_PRINT}}
+		}}
 	| STDDEV
 		{{
 
 			$$ = PT_STDDEV;
 
-		DBG_PRINT}}
+		}}
 	| STDDEV_POP
 		{{
 
 			$$ = PT_STDDEV_POP;
 
-		DBG_PRINT}}
+		}}
 	| STDDEV_SAMP
 		{{
 
 			$$ = PT_STDDEV_SAMP;
 
-		DBG_PRINT}}
+		}}
 	| VAR_POP
 		{{
 
 			$$ = PT_VAR_POP;
 
-		DBG_PRINT}}
+		}}
 	| VAR_SAMP
 		{{
 
 			$$ = PT_VAR_SAMP;
 
-		DBG_PRINT}}
+		}}
 	| VARIANCE
 		{{
 
 			$$ = PT_VARIANCE;
 
-		DBG_PRINT}}
+		}}
 	| BIT_AND
 		{{
 
 			$$ = PT_AGG_BIT_AND;
 
-		DBG_PRINT}}
+		}}
 	| BIT_OR
 		{{
 
 			$$ = PT_AGG_BIT_OR;
 
-		DBG_PRINT}}
+		}}
 	| BIT_XOR
 		{{
 
 			$$ = PT_AGG_BIT_XOR;
 
-		DBG_PRINT}}
+		}}
 	| MEDIAN
 		{{
 
 			$$ = PT_MEDIAN;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_analytic
@@ -18588,73 +18558,73 @@ of_analytic
 
 			$$ = PT_AVG;
 
-		DBG_PRINT}}
+		}}
 	| Max
 		{{
 
 			$$ = PT_MAX;
 
-		DBG_PRINT}}
+		}}
 	| Min
 		{{
 
 			$$ = PT_MIN;
 
-		DBG_PRINT}}
+		}}
 	| SUM
 		{{
 
 			$$ = PT_SUM;
 
-		DBG_PRINT}}
+		}}
 	| STDDEV
 		{{
 
 			$$ = PT_STDDEV;
 
-		DBG_PRINT}}
+		}}
 	| STDDEV_POP
 		{{
 
 			$$ = PT_STDDEV_POP;
 
-		DBG_PRINT}}
+		}}
 	| STDDEV_SAMP
 		{{
 
 			$$ = PT_STDDEV_SAMP;
 
-		DBG_PRINT}}
+		}}
 	| VAR_POP
 		{{
 
 			$$ = PT_VAR_POP;
 
-		DBG_PRINT}}
+		}}
 	| VAR_SAMP
 		{{
 
 			$$ = PT_VAR_SAMP;
 
-		DBG_PRINT}}
+		}}
 	| VARIANCE
 		{{
 
 			$$ = PT_VARIANCE;
 
-		DBG_PRINT}}
+		}}
 	| NTILE
 		{{
 
 			$$ = PT_NTILE;
 
-		DBG_PRINT}}
+		}}
 	| MEDIAN
 		{{
 
 			$$ = PT_MEDIAN;
 
-		DBG_PRINT}}
+		}}
 	/* add other analytic functions here */
 	;
 
@@ -18664,13 +18634,13 @@ of_analytic_first_last
 
 			$$ = PT_FIRST_VALUE;
 
-		DBG_PRINT}}
+		}}
 	| LAST_VALUE
 		{{
 
 			$$ = PT_LAST_VALUE;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_analytic_nth_value
@@ -18679,7 +18649,7 @@ of_analytic_nth_value
 
 			$$ = PT_NTH_VALUE;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_analytic_lead_lag
@@ -18688,13 +18658,13 @@ of_analytic_lead_lag
 
 			$$ = PT_LEAD;
 
-		DBG_PRINT}}
+		}}
 	| LAG
 		{{
 
 			$$ = PT_LAG;
 
-		DBG_PRINT}}
+		}}
 	/* functions that use other row values */
 	;
 
@@ -18704,13 +18674,13 @@ of_percentile
 
 			$$ = PT_PERCENTILE_CONT;
 
-		DBG_PRINT}}
+		}}
 	| PERCENTILE_DISC
 		{{
 
 			$$ = PT_PERCENTILE_DISC;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_analytic_no_args
@@ -18719,29 +18689,29 @@ of_analytic_no_args
 
 			$$ = PT_ROW_NUMBER;
 
-		DBG_PRINT}}
+		}}
 	| RANK
 		{{
 
 			$$ = PT_RANK;
 
-		DBG_PRINT}}
+		}}
 	| DENSE_RANK
 		{{
 
 			$$ = PT_DENSE_RANK;
 
-		DBG_PRINT}}
+		}}
 	| CUME_DIST
 		{{
 			$$ = PT_CUME_DIST;
 
-		DBG_PRINT}}
+		}}
 	| PERCENT_RANK
 		{{
 			$$ = PT_PERCENT_RANK;
 
-		DBG_PRINT}}
+		}}
 	/* add other analytic functions here */
 	;
 
@@ -18756,21 +18726,21 @@ opt_group_concat_separator
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| SEPARATOR char_string
 		{{ DBG_TRACE_GRAMMAR(opt_group_concat_separator, | SEPARATOR char_string);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SEPARATOR bit_string_literal
 		{{ DBG_TRACE_GRAMMAR(opt_group_concat_separator, | SEPARATOR bit_string_literal);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_agg_order_by
@@ -18779,14 +18749,14 @@ opt_agg_order_by
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| ORDER BY sort_spec
 		{{ DBG_TRACE_GRAMMAR(opt_agg_order_by, | ORDER BY sort_spec);
 
 			$$ = $3;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_analytic_from_last
@@ -18795,19 +18765,19 @@ opt_analytic_from_last
 
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| FROM FIRST
 		{{ DBG_TRACE_GRAMMAR(opt_analytic_from_last, | FROM FIRST);
 
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| FROM LAST
 		{{ DBG_TRACE_GRAMMAR(opt_analytic_from_last, | FROM LAST);
 
 			$$ = true;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_analytic_ignore_nulls
@@ -18816,19 +18786,19 @@ opt_analytic_ignore_nulls
 
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| RESPECT NULLS
 		{{ DBG_TRACE_GRAMMAR(opt_analytic_ignore_nulls, | RESPECT NULLS);
 
 			$$ = false;
 
-		DBG_PRINT}}
+		}}
 	| IGNORE_ NULLS
 		{{ DBG_TRACE_GRAMMAR(opt_analytic_ignore_nulls, | IGNORE_ NULLS);
 
 			$$ = true;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_analytic_partition_by
@@ -18837,7 +18807,7 @@ opt_analytic_partition_by
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| PARTITION BY sort_spec_list
 		{{ DBG_TRACE_GRAMMAR(opt_analytic_partition_by, | PARTITION BY sort_spec_list);
 
@@ -18854,7 +18824,7 @@ opt_analytic_partition_by
 
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_over_analytic_partition_by
@@ -18864,14 +18834,14 @@ opt_over_analytic_partition_by
 			is_analytic_function = false;
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| OVER '(' opt_analytic_partition_by ')'
 		{{ DBG_TRACE_GRAMMAR(opt_over_analytic_partition_by, | OVER '(' opt_analytic_partition_by ')' );
 
 			is_analytic_function = true;
 			$$= $3;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_analytic_order_by
@@ -18880,7 +18850,7 @@ opt_analytic_order_by
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| ORDER BY sort_spec_list
 		{{ DBG_TRACE_GRAMMAR(opt_analytic_order_by, | ORDER BY sort_spec_list );
 
@@ -18896,7 +18866,7 @@ opt_analytic_order_by
 			  }
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_leading_trailing_both
@@ -18905,19 +18875,19 @@ of_leading_trailing_both
 
 			$$ = PT_LEADING;
 
-		DBG_PRINT}}
+		}}
 	| TRAILING_
 		{{ DBG_TRACE_GRAMMAR(of_leading_trailing_both, | TRAILING_);
 
 			$$ = PT_TRAILING;
 
-		DBG_PRINT}}
+		}}
 	| BOTH_
 		{{ DBG_TRACE_GRAMMAR(of_leading_trailing_both, | BOTH_ );
 
 			$$ = PT_BOTH;
 
-		DBG_PRINT}}
+		}}
 	;
 
 case_expr
@@ -18925,7 +18895,7 @@ case_expr
 		{{ DBG_TRACE_GRAMMAR(case_expr, : NULLIF '(' expression_ ',' expression_ ')' );
 			$$ = parser_make_expression (this_parser, PT_NULLIF, $3, $5, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	| COALESCE '(' expression_list ')'
 		{{ DBG_TRACE_GRAMMAR(case_expr, | COALESCE '(' expression_list ')' );
 			PT_NODE *prev, *expr, *arg, *tmp;
@@ -18991,7 +18961,7 @@ case_expr
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CASE expression_ simple_when_clause_list opt_else_expr END
 		{{ DBG_TRACE_GRAMMAR(case_expr, | CASE expression_ simple_when_clause_list opt_else_expr END );
 
@@ -19049,7 +19019,7 @@ case_expr
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CASE searched_when_clause_list opt_else_expr END
 		{{ DBG_TRACE_GRAMMAR(case_expr, | CASE searched_when_clause_list opt_else_expr END );
 
@@ -19094,7 +19064,7 @@ case_expr
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_else_expr
@@ -19103,14 +19073,14 @@ opt_else_expr
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| ELSE expression_
 		{{ DBG_TRACE_GRAMMAR(opt_else_expr, | ELSE expression_);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 simple_when_clause_list
@@ -19120,14 +19090,14 @@ simple_when_clause_list
 			$$ = parser_make_link ($1, $2);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| simple_when_clause
 		{{ DBG_TRACE_GRAMMAR(simple_when_clause_list, | simple_when_clause);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 simple_when_clause
@@ -19159,7 +19129,7 @@ simple_when_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 searched_when_clause_list
@@ -19169,14 +19139,14 @@ searched_when_clause_list
 			$$ = parser_make_link ($1, $2);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| searched_when_clause
 		{{ DBG_TRACE_GRAMMAR(searched_when_clause_list, | searched_when_clause);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 searched_when_clause
@@ -19204,7 +19174,7 @@ searched_when_clause
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -19219,7 +19189,7 @@ extract_expr
 			$$ = tmp;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 adddate_name
@@ -19238,121 +19208,121 @@ datetime_field
 
 			$$ = PT_YEAR;
 
-		DBG_PRINT}}
+		}}
 	| MONTH_
 		{{
 
 			$$ = PT_MONTH;
 
-		DBG_PRINT}}
+		}}
 	| DAY_
 		{{
 
 			$$ = PT_DAY;
 
-		DBG_PRINT}}
+		}}
 	| HOUR_
 		{{
 
 			$$ = PT_HOUR;
 
-		DBG_PRINT}}
+		}}
 	| MINUTE_
 		{{
 
 			$$ = PT_MINUTE;
 
-		DBG_PRINT}}
+		}}
 	| SECOND_
 		{{
 
 			$$ = PT_SECOND;
 
-		DBG_PRINT}}
+		}}
 	| MILLISECOND_
 		{{
 
 			$$ = PT_MILLISECOND;
 
-		DBG_PRINT}}
+		}}
 	| WEEK
 		{{
 
 			$$ = PT_WEEK;
 
-		DBG_PRINT}}
+		}}
 	| QUARTER
 		{{
 
 			$$ = PT_QUARTER;
 
-    		DBG_PRINT}}
+    		}}
         | SECOND_MILLISECOND
 		{{
 
 			$$ = PT_SECOND_MILLISECOND;
 
-    		DBG_PRINT}}
+    		}}
 	| MINUTE_MILLISECOND
 		{{
 
 			$$ = PT_MINUTE_MILLISECOND;
 
-    		DBG_PRINT}}
+    		}}
 	| MINUTE_SECOND
 		{{
 
 			$$ = PT_MINUTE_SECOND;
 
-    		DBG_PRINT}}
+    		}}
 	| HOUR_MILLISECOND
 		{{
 
 			$$ = PT_HOUR_MILLISECOND;
 
-    		DBG_PRINT}}
+    		}}
 	| HOUR_SECOND
 		{{
 
 			$$ = PT_HOUR_SECOND;
 
-    		DBG_PRINT}}
+    		}}
 	| HOUR_MINUTE
 		{{
 
 			$$ = PT_HOUR_MINUTE;
 
-    		DBG_PRINT}}
+    		}}
 	| DAY_MILLISECOND
 		{{
 
 			$$ = PT_DAY_MILLISECOND;
 
-    		DBG_PRINT}}
+    		}}
 	| DAY_SECOND
 		{{
 
 			$$ = PT_DAY_SECOND;
 
-    		DBG_PRINT}}
+    		}}
 	| DAY_MINUTE
 		{{
 
 			$$ = PT_DAY_MINUTE;
 
-    		DBG_PRINT}}
+    		}}
 	| DAY_HOUR
 		{{
 
 			$$ = PT_DAY_HOUR;
 
-    		DBG_PRINT}}
+    		}}
 	| YEAR_MONTH
 		{{
 
 			$$ = PT_YEAR_MONTH;
 
-    		DBG_PRINT}}
+    		}}
 	;
 
 opt_on_target
@@ -19361,14 +19331,14 @@ opt_on_target
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| ON_ primary
 		{{ DBG_TRACE_GRAMMAR(opt_on_target, | ON_ primary);
 
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 generic_function
@@ -19403,7 +19373,7 @@ generic_function
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 generic_function_for_call        
@@ -19462,7 +19432,7 @@ generic_function_for_call
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 generic_function_id
@@ -19504,7 +19474,7 @@ generic_function_id
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_expression_list
@@ -19513,14 +19483,14 @@ opt_expression_list
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| expression_list
 		{{ DBG_TRACE_GRAMMAR(opt_expression_list, | expression_list );
                         
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_expression_list_for_call
@@ -19529,7 +19499,7 @@ opt_expression_list_for_call
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| expression_list_for_call
 		{{ DBG_TRACE_GRAMMAR(opt_expression_list_for_call, | expression_list );
                         
@@ -19543,7 +19513,7 @@ opt_expression_list_for_call
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 table_set_function_call
@@ -19560,7 +19530,7 @@ table_set_function_call
 			$$ = func_node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| SEQUENCE subquery
 		{{ DBG_TRACE_GRAMMAR(table_set_function_call, | SEQUENCE subquery );
 
@@ -19574,7 +19544,7 @@ table_set_function_call
 			$$ = func_node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| LIST subquery
 		{{ DBG_TRACE_GRAMMAR(table_set_function_call, | LIST subquery );
 
@@ -19588,7 +19558,7 @@ table_set_function_call
 			$$ = func_node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| MULTISET subquery
 		{{ DBG_TRACE_GRAMMAR(table_set_function_call, | MULTISET subquery );
 
@@ -19602,7 +19572,7 @@ table_set_function_call
 			$$ = func_node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 search_condition
@@ -19613,13 +19583,13 @@ search_condition
 			$$ = parser_make_expression (this_parser, PT_OR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| boolean_term_xor
 		{{DBG_TRACE_GRAMMAR(search_condition, | boolean_term_xor);
 			$$ = pt_check_non_logical_expr(this_parser, $1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 boolean_term_xor
@@ -19630,13 +19600,13 @@ boolean_term_xor
 			$$ = parser_make_expression (this_parser, PT_XOR, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| boolean_term_is
 		{{DBG_TRACE_GRAMMAR(boolean_term_xor, | boolean_term_is);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 boolean_term_is
@@ -19646,14 +19616,14 @@ boolean_term_is
 			$$ = parser_make_expression (this_parser, $2, arg, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| boolean_term
 		{{DBG_TRACE_GRAMMAR(boolean_term_xor, | boolean_term_is);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 is_op
@@ -19662,13 +19632,13 @@ is_op
 
 			$$ = PT_IS_NOT;
 
-		DBG_PRINT}}
+		}}
 	| IS
 		{{ DBG_TRACE_GRAMMAR(is_op, | IS);
 
 			$$ = PT_IS;
 
-		DBG_PRINT}}
+		}}
 	;
 
 boolean_term
@@ -19679,14 +19649,14 @@ boolean_term
 			$$ = parser_make_expression (this_parser, PT_AND, arg1, arg2, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| boolean_factor
 		{{DBG_TRACE_GRAMMAR(boolean_term, | boolean_factor);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 boolean_factor
@@ -19697,7 +19667,7 @@ boolean_factor
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '!' predicate
 		{{DBG_TRACE_GRAMMAR(boolean_factor, | '!' predicate);
 
@@ -19705,14 +19675,14 @@ boolean_factor
 			$$ = parser_make_expression (this_parser, PT_NOT, arg, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| predicate
 		{{DBG_TRACE_GRAMMAR(boolean_factor, | predicate);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 predicate
@@ -19721,14 +19691,14 @@ predicate
 			$$ = parser_make_expression (this_parser, PT_EXISTS, $2, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_
 		{{ DBG_TRACE_GRAMMAR(predicate, | expression_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 predicate_expression
@@ -19739,7 +19709,7 @@ predicate_expression
 			if (join_type == PT_JOIN_RIGHT_OUTER)
 			  parser_restore_wjc ();
 
-		DBG_PRINT}}
+		}}
 	  opt_paren_plus
 		{{ DBG_TRACE_GRAMMAR(predicate_expression, opt_paren_plus);
 
@@ -19822,7 +19792,7 @@ predicate_expression
 			$$ = e;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -19965,7 +19935,7 @@ predicate_expr_sub
 			$$ = e;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs like_op normal_expression ESCAPE escape_literal
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs like_op normal_expression ESCAPE escape_literal);
 
@@ -19974,7 +19944,7 @@ predicate_expr_sub
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs like_op normal_expression
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs like_op normal_expression);
 
@@ -19989,7 +19959,7 @@ predicate_expr_sub
 			$$ = parser_make_expression (this_parser, $2, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs rlike_op normal_expression
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs rlike_op normal_expression);
 
@@ -20009,21 +19979,21 @@ predicate_expr_sub
 			  }
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs null_op
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs null_op);
 
 			$$ = parser_make_expression (this_parser, $2, $1, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs set_op normal_expression
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs set_op normal_expression);
 
 			$$ = parser_make_expression (this_parser, $2, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs between_op normal_expression AND normal_expression
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs between_op normal_expression AND normal_expression);
 
@@ -20031,7 +20001,7 @@ predicate_expr_sub
 			$$ = parser_make_expression (this_parser, $2, $1, node, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs in_op in_pred_operand
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs in_op in_pred_operand);
 
@@ -20226,7 +20196,7 @@ predicate_expr_sub
 
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	;
 	| pred_lhs RANGE_ '(' range_list ')'
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs RANGE_ '(' range_list ')');
@@ -20234,13 +20204,13 @@ predicate_expr_sub
 			$$ = parser_make_expression (this_parser, PT_RANGE, $1, $4, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| pred_lhs IdName
 		{{ DBG_TRACE_GRAMMAR(predicate_expr_sub, | pred_lhs IdName);
 			PT_ERRORm (this_parser, $1, MSGCAT_SET_PARSER_SYNTAX,
 				    MSGCAT_SYNTAX_INVALID_RELATIONAL_OP);
 
-		DBG_PRINT}}
+		}}
 	;
 
 pred_lhs
@@ -20259,7 +20229,7 @@ pred_lhs
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_paren_plus
@@ -20268,13 +20238,13 @@ opt_paren_plus
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| paren_plus
 		{{ DBG_TRACE_GRAMMAR(opt_paren_plus, | paren_plus);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 comp_op
@@ -20297,7 +20267,7 @@ comp_op
 			    break;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| COMP_NOT_EQ opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | COMP_NOT_EQ opt_of_all_some_any);
 
@@ -20317,7 +20287,7 @@ comp_op
 			    break;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| '>' opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | '>' opt_of_all_some_any);
 
@@ -20337,7 +20307,7 @@ comp_op
 			    break;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| COMP_GE opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | COMP_GE opt_of_all_some_any);
 
@@ -20357,7 +20327,7 @@ comp_op
 			    break;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| '<'  opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | '<'  opt_of_all_some_any);
 
@@ -20377,7 +20347,7 @@ comp_op
 			    break;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| COMP_LE opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | COMP_LE opt_of_all_some_any);
 
@@ -20397,27 +20367,27 @@ comp_op
 			    break;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| '=''=' opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | '=''=' opt_of_all_some_any);
 
 			push_msg (MSGCAT_SYNTAX_INVALID_EQUAL_OP);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
 
-		DBG_PRINT}}
+		}}
 	| '!''=' opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | '!''=' opt_of_all_some_any);
 
 			push_msg (MSGCAT_SYNTAX_INVALID_NOT_EQUAL);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
 
-		DBG_PRINT}}
+		}}
 	| COMP_NULLSAFE_EQ opt_of_all_some_any
 		{{ DBG_TRACE_GRAMMAR(comp_op, | COMP_NULLSAFE_EQ opt_of_all_some_any);
 
 			$$ = PT_NULLSAFE_EQ;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_of_all_some_any
@@ -20426,25 +20396,25 @@ opt_of_all_some_any
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| ALL
 		{{ DBG_TRACE_GRAMMAR(opt_of_all_some_any, | ALL );
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	| SOME
 		{{ DBG_TRACE_GRAMMAR(opt_of_all_some_any, | SOME );
 
 			$$ = 2;
 
-		DBG_PRINT}}
+		}}
 	| ANY
 		{{ DBG_TRACE_GRAMMAR(opt_of_all_some_any, | ANY );
 
 			$$ = 3;
 
-		DBG_PRINT}}
+		}}
 	;
 
 like_op
@@ -20453,13 +20423,13 @@ like_op
 
 			$$ = PT_NOT_LIKE;
 
-		DBG_PRINT}}
+		}}
 	| LIKE
 		{{ DBG_TRACE_GRAMMAR(like_op, | LIKE );
 
 			$$ = PT_LIKE;
 
-		DBG_PRINT}}
+		}}
 	;
 
 rlike_op
@@ -20468,25 +20438,25 @@ rlike_op
 
 			$$ = PT_RLIKE;
 
-		DBG_PRINT}}
+		}}
 	| NOT rlike_or_regexp
 		{{ DBG_TRACE_GRAMMAR(rlike_op, | NOT rlike_or_regexp);
 
 			$$ = PT_NOT_RLIKE;
 
-		DBG_PRINT}}
+		}}
 	| rlike_or_regexp BINARY
 		{{ DBG_TRACE_GRAMMAR(rlike_op, | rlike_or_regexp BINARY );
 
 			$$ = PT_RLIKE_BINARY;
 
-		DBG_PRINT}}
+		}}
 	| NOT rlike_or_regexp BINARY
 		{{ DBG_TRACE_GRAMMAR(rlike_op, | NOT rlike_or_regexp BINARY);
 
 			$$ = PT_NOT_RLIKE_BINARY;
 
-		DBG_PRINT}}
+		}}
 	;
 
 rlike_or_regexp
@@ -20500,13 +20470,13 @@ null_op
 
 			$$ = PT_IS_NOT_NULL;
 
-		DBG_PRINT}}
+		}}
 	| IS Null
 		{{ DBG_TRACE_GRAMMAR(null_op, | IS Null);
 
 			$$ = PT_IS_NULL;
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -20516,13 +20486,13 @@ between_op
 
 			$$ = PT_NOT_BETWEEN;
 
-		DBG_PRINT}}
+		}}
 	| BETWEEN
 		{{ DBG_TRACE_GRAMMAR(between_op, | BETWEEN);
 
 			$$ = PT_BETWEEN;
 
-		DBG_PRINT}}
+		}}
 	;
 
 in_op
@@ -20531,13 +20501,13 @@ in_op
 
 			$$ = PT_IS_IN;
 
-		DBG_PRINT}}
+		}}
 	| NOT IN_
 		{{ DBG_TRACE_GRAMMAR(in_op, | NOT IN_);
 
 			$$ = PT_IS_NOT_IN;
 
-		DBG_PRINT}}
+		}}
 	;
 
 in_pred_operand
@@ -20555,7 +20525,7 @@ in_pred_operand
 			  }
 
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	;
 
 range_list
@@ -20565,14 +20535,14 @@ range_list
 			$$ = parser_make_link_or ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| range_
 		{{ DBG_TRACE_GRAMMAR(range_list, | range_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 range_
@@ -20582,63 +20552,63 @@ range_
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_GE_LE, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ GE_LT_ expression_
 		{{ DBG_TRACE_GRAMMAR(range_, | expression_ GE_LT_ expression_);
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_GE_LT, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ GT_LE_ expression_
 		{{ DBG_TRACE_GRAMMAR(range_, | expression_ GT_LE_ expression_);
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_GT_LE, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ GT_LT_ expression_
 		{{ DBG_TRACE_GRAMMAR(range_, | expression_ GT_LT_ expression_);
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_GT_LT, $1, $3, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ '='
 		{{ DBG_TRACE_GRAMMAR(range_, | expression_ '=');
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_EQ_NA, $1, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ GE_INF_ Max
 		{{ DBG_TRACE_GRAMMAR(range_, | expression_ GE_INF_ Max);
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_GE_INF, $1, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| expression_ GT_INF_ Max
 		{{ DBG_TRACE_GRAMMAR(range_, | expression_ GT_INF_ Max);
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_GT_INF, $1, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| Min INF_LE_ expression_
 		{{ DBG_TRACE_GRAMMAR(range_, | Min INF_LE_ expression_);
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_INF_LE, $3, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| Min INF_LT_ expression_
 		{{ DBG_TRACE_GRAMMAR(range_, | Min INF_LT_ expression_);
 
 			$$ = parser_make_expression (this_parser, PT_BETWEEN_INF_LT, $3, NULL, NULL);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 set_op
@@ -20647,37 +20617,37 @@ set_op
 
 			$$ = PT_SETEQ;
 
-		DBG_PRINT}}
+		}}
 	| SETNEQ
 		{{
 
 			$$ = PT_SETNEQ;
 
-		DBG_PRINT}}
+		}}
 	| SUBSET
 		{{
 
 			$$ = PT_SUBSET;
 
-		DBG_PRINT}}
+		}}
 	| SUBSETEQ
 		{{
 
 			$$ = PT_SUBSETEQ;
 
-		DBG_PRINT}}
+		}}
 	| SUPERSETEQ
 		{{
 
 			$$ = PT_SUPERSETEQ;
 
-		DBG_PRINT}}
+		}}
 	| SUPERSET
 		{{
 
 			$$ = PT_SUPERSET;
 
-		DBG_PRINT}}
+		}}
 	;
 
 subquery
@@ -20697,7 +20667,7 @@ subquery
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 subquery_without_subquery_and_with_clause
@@ -20717,7 +20687,7 @@ subquery_without_subquery_and_with_clause
 			$$ = stmt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -20733,14 +20703,14 @@ path_expression
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| path_header path_dot IDENTITY		%dprec 5
 		{{ DBG_TRACE_GRAMMAR(path_expression, | path_header path_dot IDENTITY);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| path_header path_dot OBJECT		%dprec 4
 		{{ DBG_TRACE_GRAMMAR(path_expression, | path_header path_dot OBJECT);
 
@@ -20753,7 +20723,7 @@ path_expression
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| path_header DOT '*'			%dprec 3
 		{{ DBG_TRACE_GRAMMAR(path_expression, | path_header DOT '*');
 
@@ -20773,7 +20743,7 @@ path_expression
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| path_id_list				%dprec 2
 		{{ DBG_TRACE_GRAMMAR(path_expression, | path_id_list);
 			PT_NODE *dot;
@@ -20848,7 +20818,7 @@ path_expression
 			$$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 path_id_list
@@ -20865,14 +20835,14 @@ path_id_list
 			$$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| path_header					%dprec 2
 		{{ DBG_TRACE_GRAMMAR(path_id_list, | path_header);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 path_header
@@ -20882,7 +20852,7 @@ path_header
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| CLASS path_id
 		{{ DBG_TRACE_GRAMMAR(path_header, | CLASS path_id);
 
@@ -20891,7 +20861,7 @@ path_header
 			  node->info.name.meta_class = PT_META_CLASS;
 			$$ = node;
 
-		DBG_PRINT}}
+		}}
 	| path_id
 		{{ DBG_TRACE_GRAMMAR(path_header, | path_id);
 
@@ -20901,7 +20871,7 @@ path_header
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 path_dot
@@ -20921,28 +20891,28 @@ path_id
 			$$ = name;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(path_id, | identifier);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| generic_function_id
 		{{ DBG_TRACE_GRAMMAR(path_id, | generic_function_id);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| table_set_function_call
 		{{ DBG_TRACE_GRAMMAR(path_id, | table_set_function_call);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 simple_path_id
@@ -20959,14 +20929,14 @@ simple_path_id
 			$$ = dot;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(simple_path_id, | identifier);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_in_out
@@ -20975,25 +20945,25 @@ opt_in_out
 
 			$$ = PT_NOPUT;
 
-		DBG_PRINT}}
+		}}
 	| IN_
 		{{
 
 			$$ = PT_INPUT;
 
-		DBG_PRINT}}
+		}}
 	| OUT_
 		{{
 
 			$$ = PT_OUTPUT;
 
-		DBG_PRINT}}
+		}}
 	| INOUT
 		{{
 
 			$$ = PT_INPUTOUTPUT;
 
-		DBG_PRINT}}
+		}}
 	;
 
 negative_prec_cast_type
@@ -21002,19 +20972,19 @@ negative_prec_cast_type
 
 			$$ = PT_TYPE_CHAR;
 
-		DBG_PRINT}}
+		}}
 	| NATIONAL CHAR_
 		{{ DBG_TRACE_GRAMMAR(negative_prec_cast_type, |  NATIONAL CHAR_);
 
 			$$ = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		}}
 	| NCHAR
 		{{ DBG_TRACE_GRAMMAR(negative_prec_cast_type, | NCHAR);
 
 			$$ = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_cast_data_type
@@ -21022,7 +20992,7 @@ of_cast_data_type
 		{{ DBG_TRACE_GRAMMAR(of_cast_data_type, : data_type);
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	| negative_prec_cast_type '(' '-' unsigned_integer ')' opt_charset opt_collation
 		{{ DBG_TRACE_GRAMMAR(of_cast_data_type, | negative_prec_cast_type '(' '-' unsigned_integer ')' opt_charset opt_collation);
 			container_2 ctn;
@@ -21088,7 +21058,7 @@ of_cast_data_type
 			    parser_free_node (this_parser, coll_node);
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 data_type
@@ -21116,7 +21086,7 @@ data_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| nested_set '(' data_type_list ')'
 		{{ DBG_TRACE_GRAMMAR(data_type, | nested_set '(' data_type_list ')');
 
@@ -21130,7 +21100,7 @@ data_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| nested_set '(' ')'
 		{{ DBG_TRACE_GRAMMAR(data_type, | nested_set '(' ')');
 
@@ -21141,7 +21111,7 @@ data_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| nested_set set_type
 		{{ DBG_TRACE_GRAMMAR(data_type, | nested_set set_type);
 
@@ -21160,7 +21130,7 @@ data_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| set_type
 		{{ DBG_TRACE_GRAMMAR(data_type, | set_type);
 
@@ -21170,13 +21140,13 @@ data_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| primitive_type
 		{{ DBG_TRACE_GRAMMAR(data_type, | primitive_type);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 nested_set
@@ -21185,13 +21155,13 @@ nested_set
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	| set_type
 		{{ DBG_TRACE_GRAMMAR(nested_set, | set_type);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 data_type_list
@@ -21227,7 +21197,7 @@ data_type_list
 			$$ = parser_make_link ($1, dt);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| data_type
 		{{ DBG_TRACE_GRAMMAR(data_type_list, | data_type);
 
@@ -21260,7 +21230,7 @@ data_type_list
 			$$ = dt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 char_bit_type
@@ -21272,13 +21242,13 @@ char_bit_type
 			else
 			  $$ = PT_TYPE_CHAR;
 
-		DBG_PRINT}}
+		}}
 	| VARCHAR
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | VARCHAR);
 
 			$$ = PT_TYPE_VARCHAR;
 
-		DBG_PRINT}}
+		}}
 	| NATIONAL CHAR_ opt_varying
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | NATIONAL CHAR_ opt_varying);
 
@@ -21287,7 +21257,7 @@ char_bit_type
 			else
 			  $$ = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		}}
 	| NCHAR	opt_varying
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | NCHAR	opt_varying);
 
@@ -21296,7 +21266,7 @@ char_bit_type
 			else
 			  $$ = PT_TYPE_NCHAR;
 
-		DBG_PRINT}}
+		}}
 	| BIT opt_varying
 		{{ DBG_TRACE_GRAMMAR(char_bit_type, | BIT opt_varying);
 
@@ -21305,7 +21275,7 @@ char_bit_type
 			else
 			  $$ = PT_TYPE_BIT;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_varying
@@ -21314,13 +21284,13 @@ opt_varying
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| VARYING
 		{{ DBG_TRACE_GRAMMAR(opt_varying, | VARYING);
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 json_schema
@@ -21329,13 +21299,13 @@ json_schema
 
 				$$ = 0;
 
-			DBG_PRINT}}
+			}}
 		| '(' CHAR_STRING ')'
 			{{ DBG_TRACE_GRAMMAR(json_schema, | '(' CHAR_STRING ')' );
 
 				$$ = $2;
 
-			DBG_PRINT}}
+			}}
 		;
 
 primitive_type
@@ -21346,7 +21316,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_INTEGER), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| SmallInt
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | SmallInt );
 
@@ -21354,7 +21324,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_SMALLINT), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| BIGINT
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | BIGINT );
 
@@ -21362,7 +21332,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BIGINT), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| Double PRECISION
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | Double PRECISION );
 
@@ -21370,7 +21340,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DOUBLE), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| Double
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | Double );
 
@@ -21378,7 +21348,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DOUBLE), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| Date
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | Date );
 
@@ -21386,7 +21356,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATE), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| Time
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | Time );
 
@@ -21394,7 +21364,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIME), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| Utime
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | Utime );
 
@@ -21402,7 +21372,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMP), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | TIMESTAMP );
 
@@ -21410,7 +21380,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMP), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP WITH Time ZONE
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | TIMESTAMP WITH Time ZONE );
 
@@ -21418,7 +21388,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPTZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMPTZ
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | TIMESTAMPTZ );
 
@@ -21426,7 +21396,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPTZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP WITH LOCAL Time ZONE
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | TIMESTAMP WITH LOCAL Time ZONE );
 
@@ -21434,7 +21404,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPLTZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMPLTZ
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | TIMESTAMPLTZ );
 
@@ -21442,7 +21412,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TIMESTAMPLTZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| DATETIME
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | DATETIME );
 
@@ -21450,7 +21420,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIME), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| DATETIME WITH Time ZONE
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | DATETIME WITH Time ZONE );
 
@@ -21458,7 +21428,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMETZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| DATETIMETZ
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | DATETIMETZ );
 
@@ -21466,7 +21436,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMETZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| DATETIME WITH LOCAL Time ZONE
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | DATETIME WITH LOCAL Time ZONE );
 
@@ -21474,7 +21444,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMELTZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| DATETIMELTZ
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | DATETIMELTZ );
 
@@ -21482,7 +21452,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_DATETIMELTZ), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| Monetary
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | Monetary );
 
@@ -21490,7 +21460,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_MONETARY), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| JSON json_schema
 	    {{ DBG_TRACE_GRAMMAR(primitive_type, | JSON json_schema );
 			const char * json_schema_str = $2;
@@ -21513,14 +21483,14 @@ primitive_type
 				}
 
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	| OBJECT
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | OBJECT );
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_OBJECT), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| String
 	  opt_charset
 	  opt_collation
@@ -21582,7 +21552,7 @@ primitive_type
 			    parser_free_node (this_parser, coll_node);
 			  }
 
-		DBG_PRINT}}
+		}}
 	| BLOB_ opt_internal_external
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | BLOB_ opt_internal_external );
 
@@ -21590,7 +21560,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| CLOB_ opt_internal_external
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | CLOB_ opt_internal_external );
 
@@ -21598,7 +21568,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| class_name opt_identity
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | class_name opt_identity );
 
@@ -21618,7 +21588,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (typ), dt);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| char_bit_type
 	  opt_prec_1
 	  opt_charset
@@ -21777,7 +21747,7 @@ primitive_type
 			    parser_free_node (this_parser, coll_node);
 			  }
 
-		DBG_PRINT}}
+		}}
 	| NUMERIC opt_prec_2
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | NUMERIC opt_prec_2 );
 
@@ -21836,7 +21806,7 @@ primitive_type
 			if (scale)
 			  parser_free_node (this_parser, scale);
 
-		DBG_PRINT}}
+		}}
    	| FLOAT_ opt_prec_1
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | FLOAT_ opt_prec_1);
 
@@ -21886,7 +21856,7 @@ primitive_type
 			if (prec)
 			  parser_free_node (this_parser, prec);
 
-		DBG_PRINT}}
+		}}
 	| ENUM '(' char_string_literal_list ')' opt_charset opt_collation
 	  {{ DBG_TRACE_GRAMMAR(primitive_type, | ENUM '(' char_string_literal_list ')' opt_charset opt_collation);
 			container_2 ctn;
@@ -21995,7 +21965,7 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_ENUMERATION), dt);
 
 			$$ = ctn;
-	  DBG_PRINT}}
+	  }}
 	;
 
 opt_internal_external
@@ -22004,19 +21974,19 @@ opt_internal_external
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| INTERNAL
 		{{ DBG_TRACE_GRAMMAR(opt_internal_external, | INTERNAL );
 
 			$$ = PT_LOB_INTERNAL;
 
-		DBG_PRINT}}
+		}}
 	| EXTERNAL
 		{{ DBG_TRACE_GRAMMAR(opt_internal_external, | EXTERNAL );
 
 			$$ = PT_LOB_EXTERNAL;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_identity
@@ -22025,13 +21995,13 @@ opt_identity
 
 			$$ = 0;
 
-		DBG_PRINT}}
+		}}
 	| IDENTITY
 		{{ DBG_TRACE_GRAMMAR(opt_identity, | IDENTITY );
 
 			$$ = 1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_prec_1
@@ -22040,13 +22010,13 @@ opt_prec_1
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' unsigned_integer ')'
 		{{ DBG_TRACE_GRAMMAR(opt_prec_1, | '(' unsigned_integer ')' );
 
 			$$ = $2;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_padding
@@ -22055,13 +22025,13 @@ opt_padding
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| '(' unsigned_integer ')'
 		{{ DBG_TRACE_GRAMMAR(opt_padding, | '(' unsigned_integer ')' );
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_prec_2
@@ -22072,7 +22042,7 @@ opt_prec_2
 			SET_CONTAINER_2 (ctn, NULL, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| '(' unsigned_integer ')'
 		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' unsigned_integer ')' );
 
@@ -22080,7 +22050,7 @@ opt_prec_2
 			SET_CONTAINER_2 (ctn, $2, NULL);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| '(' unsigned_integer ',' unsigned_integer ')'
 		{{ DBG_TRACE_GRAMMAR(opt_prec_2, | '(' unsigned_integer ',' unsigned_integer ')' );
 
@@ -22088,7 +22058,7 @@ opt_prec_2
 			SET_CONTAINER_2 (ctn, $2, $4);
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_charset
@@ -22102,13 +22072,13 @@ opt_collation
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| collation_spec
 		{{ DBG_TRACE_GRAMMAR(opt_collation, | collation_spec );
 
 			$$=$1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 collation_spec
@@ -22117,7 +22087,7 @@ collation_spec
 
 			$$ = $2;
 
-		DBG_PRINT}}
+		}}
 	| COLLATE BINARY
 		{{ DBG_TRACE_GRAMMAR(collation_spec, | COLLATE BINARY);
 			PT_NODE *node;
@@ -22134,7 +22104,7 @@ collation_spec
 			  }
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	| COLLATE IdName
 		{{ DBG_TRACE_GRAMMAR(collation_spec, | COLLATE IdName);
 			PT_NODE *node;
@@ -22151,7 +22121,7 @@ collation_spec
 			  }
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	;
 
 class_encrypt_spec
@@ -22169,7 +22139,7 @@ class_encrypt_spec
 			  }
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	;
 
 class_comment_spec
@@ -22192,7 +22162,7 @@ class_comment_spec
 			  }
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	| COMMENT					/* 1 */
 	  ON_						/* 2 */
 	  opt_of_column_attribute			/* 3 */
@@ -22207,7 +22177,7 @@ class_comment_spec
 				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
 				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $5;
 			  }
-		DBG_PRINT}}
+		}}
 	| COMMENT					/* 1 */
 	  ON_						/* 2 */
 	  CLASS ATTRIBUTE				/* 3, 4 */
@@ -22222,7 +22192,7 @@ class_comment_spec
 				alter_node->info.alter.code = PT_CHANGE_COLUMN_COMMENT;
 				alter_node->info.alter.alter_clause.attr_mthd.attr_def_list = $6;
 			  }
-		DBG_PRINT}}
+		}}
 	;
 
 opt_vclass_comment_spec
@@ -22269,7 +22239,7 @@ opt_index_with_clause
         | WITH index_with_item_list
           {  DBG_TRACE_GRAMMAR(opt_index_with_clause, | WITH index_with_item_list );
              $$ = $2;
-          DBG_PRINT}
+          }
         ;
 
 index_with_item_list  
@@ -22303,7 +22273,7 @@ online_parallel
 	: ONLINE
 	   {{ DBG_TRACE_GRAMMAR(online_parallel, : ONLINE);
                $$ = 1;  // thread count is 0
-           DBG_PRINT}}
+           }}
 	| ONLINE PARALLEL opt_equalsign unsigned_integer
 	   {{ DBG_TRACE_GRAMMAR(online_parallel, |  ONLINE PARALLEL opt_equalsign unsigned_integer);
                const int MIN_COUNT = 1;
@@ -22316,7 +22286,7 @@ online_parallel
                                   MSGCAT_SYNTAX_INVALID_PARALLEL_ARGUMENT, MIN_COUNT, MAX_COUNT);
                   }
 		$$ = thread_count + 1;
-	   DBG_PRINT}}
+	   }}
 	;
 
 deduplicate_key_mod_level
@@ -22330,7 +22300,7 @@ deduplicate_key_mod_level
                       }
 
                  $$ = int_val;
-               DBG_PRINT}
+               }
         ;
 
 opt_comment_spec
@@ -22362,7 +22332,7 @@ comment_value
 			  }
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	;
 
 opt_charset
@@ -22371,13 +22341,13 @@ opt_charset
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| charset_spec
 		{{ DBG_TRACE_GRAMMAR(opt_charset, | charset_spec);
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 charset_spec
@@ -22386,7 +22356,7 @@ charset_spec
 
 			$$ = $2;
 
-		DBG_PRINT}}
+		}}
 	| of_charset BINARY
 		{{ DBG_TRACE_GRAMMAR(charset_spec, | of_charset BINARY );
 			PT_NODE *node;
@@ -22403,7 +22373,7 @@ charset_spec
 			  }
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	| of_charset IdName
 		{{ DBG_TRACE_GRAMMAR(charset_spec, | of_charset IdName );
 			PT_NODE *node;
@@ -22420,7 +22390,7 @@ charset_spec
 			  }
 
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	;
 
 opt_using_charset
@@ -22440,7 +22410,7 @@ opt_using_charset
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| USING char_string_literal
 		{{ DBG_TRACE_GRAMMAR(opt_using_charset, | USING char_string_literal );
 
@@ -22467,7 +22437,7 @@ opt_using_charset
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| USING IdName
 		{{ DBG_TRACE_GRAMMAR(opt_using_charset, | USING IdName );
 
@@ -22506,7 +22476,7 @@ opt_using_charset
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| USING BINARY
 		{{ DBG_TRACE_GRAMMAR(opt_using_charset, | USING BINARY );
 
@@ -22522,7 +22492,7 @@ opt_using_charset
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 set_type
@@ -22531,25 +22501,25 @@ set_type
 
 			$$ = PT_TYPE_SET;
 
-		DBG_PRINT}}
+		}}
 	| MULTISET_OF
 		{{ DBG_TRACE_GRAMMAR(set_type, | MULTISET_OF );
 
 			$$ = PT_TYPE_MULTISET;
 
-		DBG_PRINT}}
+		}}
 	| SEQUENCE_OF
 		{{ DBG_TRACE_GRAMMAR(set_type, | SEQUENCE_OF );
 
 			$$ = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		}}
 	| of_container opt_of
 		{{ DBG_TRACE_GRAMMAR(set_type, | of_container opt_of );
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_of
@@ -22564,7 +22534,7 @@ signed_literal_
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '-' unsigned_integer
 		{{ DBG_TRACE_GRAMMAR(signed_literal_, | '-' unsigned_integer );
 
@@ -22611,7 +22581,7 @@ signed_literal_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '-' unsigned_real
 		{{ DBG_TRACE_GRAMMAR(signed_literal_,  | '-' unsigned_real);
 
@@ -22650,7 +22620,7 @@ signed_literal_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| '-' monetary_literal
 		{{ DBG_TRACE_GRAMMAR(signed_literal_,  | '-' monetary_literal);
 
@@ -22671,7 +22641,7 @@ signed_literal_
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 literal_
@@ -22681,14 +22651,14 @@ literal_
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| param_
 		{{ DBG_TRACE_GRAMMAR(literal_,  | param_ );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 literal_w_o_param
@@ -22698,21 +22668,21 @@ literal_w_o_param
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| unsigned_real
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  | unsigned_real );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| monetary_literal
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  : unsigned_integer );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| char_string_literal
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  | char_string_literal);
 
@@ -22723,21 +22693,21 @@ literal_w_o_param
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| bit_string_literal
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  | bit_string_literal );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| host_param_input
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  | host_param_input );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| Null
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  | Null );
 
@@ -22747,14 +22717,14 @@ literal_w_o_param
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| constant_set
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param, | constant_set );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| NA
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  | NA );
 
@@ -22764,27 +22734,27 @@ literal_w_o_param
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| date_or_time_literal
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param, | date_or_time_literal );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| boolean
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param,  | boolean );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| json_literal
 		{{ DBG_TRACE_GRAMMAR(literal_w_o_param, | json_literal );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-		DBG_PRINT}}
+		}}
 	;
 
 boolean
@@ -22801,7 +22771,7 @@ boolean
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| False
 		{{ DBG_TRACE_GRAMMAR(boolean, | False );
 
@@ -22815,7 +22785,7 @@ boolean
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| UNKNOWN
 		{{ DBG_TRACE_GRAMMAR(boolean, | UNKNOWN );
 
@@ -22825,7 +22795,7 @@ boolean
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 constant_set
@@ -22856,7 +22826,7 @@ constant_set
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| opt_of_container '{' '}'
 		{{ DBG_TRACE_GRAMMAR(constant_set, | opt_of_container '{' '}' );
 
@@ -22871,7 +22841,7 @@ constant_set
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_of_container
@@ -22880,13 +22850,13 @@ opt_of_container
 
 			$$ = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		}}
 	| of_container
 		{{ DBG_TRACE_GRAMMAR(opt_of_container, | of_container );
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_container
@@ -22895,25 +22865,25 @@ of_container
 
 			$$ = PT_TYPE_SET;
 
-		DBG_PRINT}}
+		}}
 	| MULTISET
 		{{ DBG_TRACE_GRAMMAR(of_container, | MULTISET );
 
 			$$ = PT_TYPE_MULTISET;
 
-		DBG_PRINT}}
+		}}
 	| SEQUENCE
 		{{ DBG_TRACE_GRAMMAR(of_container, | SEQUENCE );
 
 			$$ = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		}}
 	| LIST
 		{{ DBG_TRACE_GRAMMAR(of_container, | LIST );
 
 			$$ = PT_TYPE_SEQUENCE;
 
-		DBG_PRINT}}
+		}}
 	;
 
 identifier_list
@@ -22923,25 +22893,25 @@ identifier_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| identifier
 		{{ DBG_TRACE_GRAMMAR(identifier_list, | identifier );
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_bracketed_identifier_list
 	:	/* EMPTY */
 		{{ DBG_TRACE_GRAMMAR(opt_bracketed_identifier_list, : );
 			$$ = NULL;
-		DBG_PRINT}}
+		}}
 	| '(' identifier_list ')'
 		{{ DBG_TRACE_GRAMMAR(opt_bracketed_identifier_list, | '(' identifier_list ')' );
 			$$ = $2;
-		DBG_PRINT}}
+		}}
 	;
 
 simple_path_id_list
@@ -22951,14 +22921,14 @@ simple_path_id_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| simple_path_id
 		{{ DBG_TRACE_GRAMMAR(simple_path_id_list, | simple_path_id);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 identifier_without_dot
@@ -22984,7 +22954,7 @@ identifier_without_dot
 			$$ = p;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 identifier
@@ -23004,7 +22974,7 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-		DBG_PRINT}}
+		}}
 	| BracketDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(identifier, | BracketDelimitedIdName);
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -23021,7 +22991,7 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-		DBG_PRINT}}
+		}}
 	| BacktickDelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(identifier, | BacktickDelimitedIdName);
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -23038,7 +23008,7 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-		DBG_PRINT}}
+		}}
 	| DelimitedIdName
 		{{ DBG_TRACE_GRAMMAR(identifier, | DelimitedIdName);
 			PT_NODE *p = parser_new_node (this_parser, PT_NAME);
@@ -23055,7 +23025,7 @@ identifier
 			    p->info.name.original = str_name;
 			  }
 			$$ = p;
-		DBG_PRINT}}
+		}}
 /*{{{*/
 	| ACTIVE                 {{ DBG_TRACE_GRAMMAR(identifier, | ACTIVE             ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ADDDATE                {{ DBG_TRACE_GRAMMAR(identifier, | ADDDATE            ); SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -23277,7 +23247,7 @@ escape_literal
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| Null
 		{{ DBG_TRACE_GRAMMAR(escape_literal, | Null);
 
@@ -23287,7 +23257,7 @@ escape_literal
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 string_literal_or_input_hv
@@ -23301,14 +23271,14 @@ string_literal_or_input_hv
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| host_param_input
 		{{ DBG_TRACE_GRAMMAR(string_literal_or_input_hv, | host_param_input);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
         ;
 
 
@@ -23329,13 +23299,13 @@ char_string_literal
 			$$ = str;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| char_string
 		{{ DBG_TRACE_GRAMMAR(char_string_literal, | char_string);
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 char_string
@@ -23344,7 +23314,7 @@ char_string
 			$$ = pt_create_string_literal_node_w_charset_coll($1, -1);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| NCHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, | NCHAR_STRING);
 			PT_NODE *node = NULL;
@@ -23380,7 +23350,7 @@ char_string
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| BINARY_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, | BINARY_STRING);
 
@@ -23401,7 +23371,7 @@ char_string
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| EUCKR_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, | EUCKR_STRING);
 
@@ -23422,7 +23392,7 @@ char_string
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| ISO_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, | ISO_STRING);
 
@@ -23443,7 +23413,7 @@ char_string
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| UTF8_STRING
 		{{ DBG_TRACE_GRAMMAR(char_string, | UTF8_STRING);
 
@@ -23464,7 +23434,7 @@ char_string
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 
@@ -23485,14 +23455,14 @@ bit_string_literal
 			$$ = str;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| bit_string
 		{{ DBG_TRACE_GRAMMAR(bit_string_literal, | bit_string);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 bit_string
@@ -23513,7 +23483,7 @@ bit_string
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| HEX_STRING
 		{{ DBG_TRACE_GRAMMAR(bit_string, | HEX_STRING);
 
@@ -23531,7 +23501,7 @@ bit_string
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 unsigned_integer
@@ -23583,7 +23553,7 @@ unsigned_integer
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 unsigned_int32
@@ -23610,7 +23580,7 @@ unsigned_int32
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 unsigned_real
@@ -23665,7 +23635,7 @@ unsigned_real
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 monetary_literal
@@ -23686,7 +23656,7 @@ monetary_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DOLLAR_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | DOLLAR_SIGN of_integer_real_literal);
 
@@ -23704,7 +23674,7 @@ monetary_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| WON_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | WON_SIGN of_integer_real_literal);
 
@@ -23722,7 +23692,7 @@ monetary_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TURKISH_LIRA_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | TURKISH_LIRA_SIGN of_integer_real_literal);
 
@@ -23740,7 +23710,7 @@ monetary_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| BRITISH_POUND_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | BRITISH_POUND_SIGN of_integer_real_literal);
 
@@ -23757,7 +23727,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| CAMBODIAN_RIEL_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | CAMBODIAN_RIEL_SIGN of_integer_real_literal);
 
@@ -23774,7 +23744,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| CHINESE_RENMINBI_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | CHINESE_RENMINBI_SIGN of_integer_real_literal);
 
@@ -23791,7 +23761,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| INDIAN_RUPEE_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | INDIAN_RUPEE_SIGN of_integer_real_literal);
 
@@ -23808,7 +23778,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| RUSSIAN_RUBLE_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | RUSSIAN_RUBLE_SIGN of_integer_real_literal);
 
@@ -23825,7 +23795,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| AUSTRALIAN_DOLLAR_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | AUSTRALIAN_DOLLAR_SIGN of_integer_real_literal);
 
@@ -23842,7 +23812,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| CANADIAN_DOLLAR_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | CANADIAN_DOLLAR_SIGN of_integer_real_literal);
 
@@ -23859,7 +23829,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| BRASILIAN_REAL_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | BRASILIAN_REAL_SIGN of_integer_real_literal);
 
@@ -23876,7 +23846,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| ROMANIAN_LEU_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | ROMANIAN_LEU_SIGN of_integer_real_literal);
 
@@ -23893,7 +23863,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| EURO_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | EURO_SIGN of_integer_real_literal);
 
@@ -23910,7 +23880,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| SWISS_FRANC_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | SWISS_FRANC_SIGN of_integer_real_literal);
 
@@ -23927,7 +23897,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| DANISH_KRONE_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | DANISH_KRONE_SIGN of_integer_real_literal);
 
@@ -23944,7 +23914,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| NORWEGIAN_KRONE_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | NORWEGIAN_KRONE_SIGN of_integer_real_literal);
 
@@ -23961,7 +23931,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| BULGARIAN_LEV_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | BULGARIAN_LEV_SIGN of_integer_real_literal);
 
@@ -23978,7 +23948,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| VIETNAMESE_DONG_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | VIETNAMESE_DONG_SIGN of_integer_real_literal);
 
@@ -23995,7 +23965,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| CZECH_KORUNA_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | CZECH_KORUNA_SIGN of_integer_real_literal);
 
@@ -24012,7 +23982,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| POLISH_ZLOTY_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | POLISH_ZLOTY_SIGN of_integer_real_literal);
 
@@ -24029,7 +23999,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| SWEDISH_KRONA_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | SWEDISH_KRONA_SIGN of_integer_real_literal);
 
@@ -24046,7 +24016,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| CROATIAN_KUNA_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | CROATIAN_KUNA_SIGN of_integer_real_literal);
 
@@ -24063,7 +24033,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	| SERBIAN_DINAR_SIGN of_integer_real_literal
 		{{ DBG_TRACE_GRAMMAR(monetary_literal, | SERBIAN_DINAR_SIGN of_integer_real_literal);
 
@@ -24080,7 +24050,7 @@ monetary_literal
 
 			$$ = val;
 
-		DBG_PRINT}}
+		}}
 	;
 
 of_integer_real_literal
@@ -24089,19 +24059,19 @@ of_integer_real_literal
 
 			$$ = $1;
 
-		DBG_PRINT}}
+		}}
 	| opt_plus UNSIGNED_REAL
 		{{ DBG_TRACE_GRAMMAR(of_integer_real_literal, | opt_plus UNSIGNED_REAL);
 
 			$$ = $2;
 
-		DBG_PRINT}}
+		}}
 	| '-' UNSIGNED_REAL
 		{{ DBG_TRACE_GRAMMAR(of_integer_real_literal, | '-' UNSIGNED_REAL);
 
 			$$ = pt_append_string (this_parser, (char *) "-", $2);
 
-		DBG_PRINT}}
+		}}
 	;
 
 date_or_time_literal
@@ -24113,7 +24083,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| Time CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | Time CHAR_STRING);
 
@@ -24122,7 +24092,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | TIMESTAMP CHAR_STRING);
 
@@ -24131,7 +24101,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP WITH Time ZONE CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | TIMESTAMP WITH Time ZONE CHAR_STRING);
 
@@ -24140,7 +24110,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMPTZ CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | TIMESTAMPTZ CHAR_STRING);
 
@@ -24149,7 +24119,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMPLTZ CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | TIMESTAMPLTZ CHAR_STRING);
 
@@ -24158,7 +24128,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| TIMESTAMP WITH LOCAL Time ZONE CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | TIMESTAMP WITH LOCAL Time ZONE CHAR_STRING);
 
@@ -24167,7 +24137,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DATETIME CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | DATETIME CHAR_STRING);
 
@@ -24176,7 +24146,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DATETIME WITH Time ZONE CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | DATETIME WITH Time ZONE CHAR_STRING);
 
@@ -24185,7 +24155,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DATETIMETZ CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | DATETIMETZ CHAR_STRING);
 
@@ -24194,7 +24164,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DATETIMELTZ CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | DATETIMELTZ CHAR_STRING);
 
@@ -24203,7 +24173,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| DATETIME WITH LOCAL Time ZONE CHAR_STRING
 		{{ DBG_TRACE_GRAMMAR(date_or_time_literal, | DATETIME WITH LOCAL Time ZONE CHAR_STRING);
 
@@ -24212,7 +24182,7 @@ date_or_time_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 json_literal
@@ -24223,7 +24193,7 @@ json_literal
 			$$ = val;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-                DBG_PRINT}}
+                }}
 
 create_as_clause
 	: opt_replace AS csql_query
@@ -24231,7 +24201,7 @@ create_as_clause
 			container_2 ctn;
 			SET_CONTAINER_2(ctn, FROM_NUMBER ($1), $3);
 			$$ = ctn;
-		DBG_PRINT}}
+		}}
 	;
 
 partition_clause
@@ -24248,7 +24218,7 @@ partition_clause
 
 			$$ = qc;
 
-		DBG_PRINT}}
+		}}
 	| PARTITION opt_by RANGE_ '(' expression_ ')' '(' partition_def_list ')'
 		{{ DBG_TRACE_GRAMMAR(partition_clause, | PARTITION opt_by RANGE_ '(' expression_ ')' '(' partition_def_list ')');
 
@@ -24264,7 +24234,7 @@ partition_clause
 			$$ = qc;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| PARTITION opt_by LIST '(' expression_ ')' '(' partition_def_list ')'
 		{{ DBG_TRACE_GRAMMAR(partition_clause, | PARTITION opt_by LIST '(' expression_ ')' '(' partition_def_list ')');
 
@@ -24280,7 +24250,7 @@ partition_clause
 			$$ = qc;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_by
@@ -24295,14 +24265,14 @@ partition_def_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| partition_def
 		{{ DBG_TRACE_GRAMMAR(partition_def_list, | partition_def);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 partition_def
@@ -24321,7 +24291,7 @@ partition_def
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| PARTITION identifier VALUES LESS THAN '(' signed_literal_ ')' opt_comment_spec
 		{{ DBG_TRACE_GRAMMAR(partition_def, | PARTITION identifier VALUES LESS THAN '(' signed_literal_ ')' opt_comment_spec);
 
@@ -24337,7 +24307,7 @@ partition_def
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| PARTITION identifier VALUES IN_ '(' signed_literal_list ')' opt_comment_spec
 		{{ DBG_TRACE_GRAMMAR(partition_def, | PARTITION identifier VALUES IN_ '(' signed_literal_list ')' opt_comment_spec);
 
@@ -24353,7 +24323,7 @@ partition_def
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 alter_partition_clause_for_alter_list
@@ -24368,7 +24338,7 @@ alter_partition_clause_for_alter_list
 			    alt->info.alter.alter_clause.partition.info = $1;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| REMOVE PARTITIONING
 		{{ DBG_TRACE_GRAMMAR(alter_partition_clause_for_alter_list, | REMOVE PARTITIONING);
 
@@ -24377,7 +24347,7 @@ alter_partition_clause_for_alter_list
 			if (alt)
 			  alt->info.alter.code = PT_REMOVE_PARTITION;
 
-		DBG_PRINT}}
+		}}
 	| REORGANIZE PARTITION identifier_list INTO '(' partition_def_list ')'
 		{{ DBG_TRACE_GRAMMAR(alter_partition_clause_for_alter_list, | REORGANIZE PARTITION identifier_list INTO '(' partition_def_list ')');
 
@@ -24390,7 +24360,7 @@ alter_partition_clause_for_alter_list
 			    alt->info.alter.alter_clause.partition.parts = $6;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| ANALYZE PARTITION opt_all
 		{{ DBG_TRACE_GRAMMAR(alter_partition_clause_for_alter_list, | ANALYZE PARTITION opt_all);
 
@@ -24402,7 +24372,7 @@ alter_partition_clause_for_alter_list
 			    alt->info.alter.alter_clause.partition.name_list = NULL;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| ANALYZE PARTITION identifier_list
 		{{ DBG_TRACE_GRAMMAR(alter_partition_clause_for_alter_list, | ANALYZE PARTITION identifier_list);
 
@@ -24414,7 +24384,7 @@ alter_partition_clause_for_alter_list
 			    alt->info.alter.alter_clause.partition.name_list = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	| COALESCE PARTITION literal_w_o_param
 		{{ DBG_TRACE_GRAMMAR(alter_partition_clause_for_alter_list, | COALESCE PARTITION literal_w_o_param);
 
@@ -24426,7 +24396,7 @@ alter_partition_clause_for_alter_list
 			    alt->info.alter.alter_clause.partition.size = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	 | PROMOTE PARTITION identifier_list
 		{{ DBG_TRACE_GRAMMAR(alter_partition_clause_for_alter_list, | PROMOTE PARTITION identifier_list);
 
@@ -24438,7 +24408,7 @@ alter_partition_clause_for_alter_list
 			    alt->info.alter.alter_clause.partition.name_list = $3;
 			  }
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_all
@@ -24453,28 +24423,28 @@ execute_using_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| execute_using_list ',' signed_literal_
 		{{ DBG_TRACE_GRAMMAR(execute_using_list, | execute_using_list ',' signed_literal_);
 
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| session_variable_expression
 		{{ DBG_TRACE_GRAMMAR(execute_using_list, | session_variable_expression);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| signed_literal_
 		{{ DBG_TRACE_GRAMMAR(execute_using_list, | signed_literal_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 signed_literal_list
@@ -24484,14 +24454,14 @@ signed_literal_list
 			$$ = parser_make_link ($1, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	| signed_literal_
 		{{ DBG_TRACE_GRAMMAR(signed_literal_list, | signed_literal_);
 
 			$$ = $1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-		DBG_PRINT}}
+		}}
 	;
 
 paren_plus
@@ -24514,7 +24484,7 @@ vacuum_stmt
 				    sizeof (PT_NODE));
 			  }
 			$$ = node;
-		DBG_PRINT}}
+		}}
 	;
 
 json_table_column_behavior_rule
@@ -24522,12 +24492,12 @@ json_table_column_behavior_rule
       {{ DBG_TRACE_GRAMMAR(json_table_column_behavior_rule, : Null);
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
         $$.m_default_value = NULL;
-      DBG_PRINT}}
+      }}
     | ERROR_
       {{ DBG_TRACE_GRAMMAR(json_table_column_behavior_rule, | ERROR_);
         $$.m_behavior = JSON_TABLE_THROW_ERROR;
         $$.m_default_value = NULL;
-      DBG_PRINT}}
+      }}
     | DEFAULT expression_
       {{ DBG_TRACE_GRAMMAR(json_table_column_behavior_rule, | DEFAULT expression_);
         PT_NODE * default_value = $2;
@@ -24540,7 +24510,7 @@ json_table_column_behavior_rule
         $$.m_default_value = db_value_copy (temp);
 
         parser_free_node(this_parser, default_value);
-      DBG_PRINT}}
+      }}
     ;
 
 json_table_on_error_rule_optional
@@ -24548,11 +24518,11 @@ json_table_on_error_rule_optional
       {{ DBG_TRACE_GRAMMAR(json_table_on_error_rule_optional, : );
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
         $$.m_default_value = NULL;
-      DBG_PRINT}}
+      }}
     | json_table_column_behavior_rule ON_ ERROR_
       {{ DBG_TRACE_GRAMMAR(json_table_on_error_rule_optional, | json_table_column_behavior_rule ON_ ERROR_);
         $$ = $1;
-      DBG_PRINT}}
+      }}
     ;
 
 json_table_on_empty_rule_optional
@@ -24560,11 +24530,11 @@ json_table_on_empty_rule_optional
       {{ DBG_TRACE_GRAMMAR(json_table_on_empty_rule_optional, : );
         $$.m_behavior = JSON_TABLE_RETURN_NULL;
         $$.m_default_value = NULL;
-      DBG_PRINT}}
+      }}
     | json_table_column_behavior_rule ON_ EMPTY
       {{ DBG_TRACE_GRAMMAR(json_table_on_empty_rule_optional, | json_table_column_behavior_rule ON_ EMPTY );
         $$ = $1;
-      DBG_PRINT}}
+      }}
     ;
 
 json_table_column_rule
@@ -24575,7 +24545,7 @@ json_table_column_rule
         pt_col->info.json_table_column_info.func = JSON_TABLE_ORDINALITY;
         pt_col->type_enum = PT_TYPE_INTEGER;
         $$ = pt_col;
-      DBG_PRINT}}
+      }}
     | identifier data_type PATH CHAR_STRING json_table_on_empty_rule_optional json_table_on_error_rule_optional
     //        $1        $2   $3          $4                                $5                                $6
       {{ DBG_TRACE_GRAMMAR(json_table_column_rule, | identifier data_type PATH CHAR_STRING json_table_on_empty_rule_optional json_table_on_error_rule_optional );
@@ -24588,7 +24558,7 @@ json_table_column_rule
         pt_col->info.json_table_column_info.on_empty = $5;
         pt_col->info.json_table_column_info.on_error = $6;
         $$ = pt_col;
-      DBG_PRINT}}
+      }}
     | identifier data_type EXISTS PATH CHAR_STRING
       {{ DBG_TRACE_GRAMMAR(json_table_column_rule, | identifier data_type EXISTS PATH CHAR_STRING );
         PT_NODE *pt_col = parser_new_node (this_parser, PT_JSON_TABLE_COLUMN);
@@ -24598,15 +24568,15 @@ json_table_column_rule
         pt_col->info.json_table_column_info.path=$5;
         pt_col->info.json_table_column_info.func = JSON_TABLE_EXISTS;
         $$ = pt_col;
-      DBG_PRINT}}
+      }}
     | NESTED json_table_node_rule
       {{ DBG_TRACE_GRAMMAR(json_table_column_rule, | NESTED json_table_node_rule );
         $$ = $2;
-      DBG_PRINT}}
+      }}
     | NESTED PATH json_table_node_rule
       {{ DBG_TRACE_GRAMMAR(json_table_column_rule, | NESTED PATH json_table_node_rule );
         $$ = $3;
-      DBG_PRINT}}
+      }}
     ;
 
 json_table_column_list_rule
@@ -24614,13 +24584,13 @@ json_table_column_list_rule
       {{ DBG_TRACE_GRAMMAR(json_table_column_list_rule,  : json_table_column_list_rule ',' json_table_column_rule );
         pt_jt_append_column_or_nested_node ($1, $3);
         $$ = $1;
-      DBG_PRINT}}
+      }}
     | json_table_column_rule
       {{ DBG_TRACE_GRAMMAR(json_table_column_list_rule, | json_table_column_rule );
         PT_NODE *pt_jt_node = parser_new_node (this_parser, PT_JSON_TABLE_NODE);
         pt_jt_append_column_or_nested_node (pt_jt_node, $1);
         $$ = pt_jt_node;
-      DBG_PRINT}}
+      }}
     ;
 
 json_table_node_rule
@@ -24633,13 +24603,13 @@ json_table_node_rule
         jt_node->info.json_table_node_info.path = $1;
 
         $$ = jt_node;
-      DBG_PRINT}}
+      }}
     ;
 
 json_table_rule
     : {{ DBG_TRACE_GRAMMAR(json_table_rule,  : );
             json_table_column_count = 0;
-      DBG_PRINT}}
+      }}
       '(' expression_ ',' json_table_node_rule ')'
       {{ DBG_TRACE_GRAMMAR(json_table_rule,  '(' expression_ ',' json_table_node_rule ')' );
         PT_NODE *jt = parser_new_node (this_parser, PT_JSON_TABLE);
@@ -24648,7 +24618,7 @@ json_table_rule
         json_table_column_count = 0;  // reset for next json table, if I am nested
 
         $$ = jt;
-      DBG_PRINT}}
+      }}
     ;
 
 connect_info
@@ -24658,7 +24628,7 @@ connect_info
 
                pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $3);
 	        $$ = ctn;
-           DBG_PRINT }}
+           }}
         | connect_item
           {{ DBG_TRACE_GRAMMAR(connect_info, | connect_item );
                 container_10 ctn;
@@ -24666,7 +24636,7 @@ connect_info
 
                 pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $1);    
 	        $$ = ctn;                
-           DBG_PRINT}}
+           }}
         ;
 
 connect_item    
@@ -24687,7 +24657,7 @@ connect_item
                   }
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_HOST), val);
                 $$ = ctn;
-            DBG_PRINT}}
+            }}
         | PORT '=' UNSIGNED_INTEGER 
           {{ DBG_TRACE_GRAMMAR(connect_item, | PORT '=' UNSIGNED_INTEGER );
                 container_2 ctn;
@@ -24705,7 +24675,7 @@ connect_item
 
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PORT), val);
                 $$ = ctn;
-           DBG_PRINT}}
+           }}
          | DBNAME '=' char_string_literal 
           {{ DBG_TRACE_GRAMMAR(connect_item,  | DBNAME '=' char_string_literal  );
                container_2 ctn;
@@ -24718,13 +24688,13 @@ connect_item
 		 PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), val);
                 $$ = ctn;
-           DBG_PRINT}}            
+           }}            
         | DBNAME '=' identifier 
           {{ DBG_TRACE_GRAMMAR(connect_item,  | DBNAME '=' identifier  );
                 container_2 ctn;
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_DBNAME), $3);
                 $$ = ctn;
-           DBG_PRINT}}
+           }}
         | USER '=' char_string_literal 
           {{ DBG_TRACE_GRAMMAR(connect_item,  | USER '=' char_string_literal);
                container_2 ctn;
@@ -24738,14 +24708,14 @@ connect_item
                SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), val);
                $$ = ctn;
                PARSER_SAVE_ERR_CONTEXT ($3, @$.buffer_pos)
-           DBG_PRINT}}            
+           }}            
         | USER '=' identifier
           {{ DBG_TRACE_GRAMMAR(connect_item, | USER '=' identifier);
                 container_2 ctn;
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_USER), $3);
                 $$ = ctn;
                 PARSER_SAVE_ERR_CONTEXT ($3, @$.buffer_pos)
-            DBG_PRINT}}
+            }}
         | PASSWORD '=' 
           {{ DBG_TRACE_GRAMMAR(connect_item,   | PASSWORD '='  );
                container_2 ctn;
@@ -24772,7 +24742,7 @@ connect_item
 
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
                  $$ = ctn;
-           DBG_PRINT}}
+           }}
         | PASSWORD '=' 
           {
                 pwd_info.pwd_start_offset = (@$.buffer_pos);
@@ -24801,13 +24771,13 @@ connect_item
 
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PASSWORD), val);
                 $$ = ctn;
-           DBG_PRINT}}
+           }}
         | PROPERTIES '=' 
           {{ DBG_TRACE_GRAMMAR(connect_item, | PROPERTIES '=' );
                 container_2 ctn;
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), NULL);
                 $$ = ctn;
-           DBG_PRINT}}
+           }}
         | PROPERTIES '=' CHAR_STRING 
           {{ DBG_TRACE_GRAMMAR(connect_item,  | PROPERTIES '=' CHAR_STRING );
                 container_2 ctn;
@@ -24828,13 +24798,13 @@ connect_item
 
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_PROPERTIES), val);
                 $$ = ctn;
-           DBG_PRINT}}
+           }}
         | COMMENT '='
           {{ DBG_TRACE_GRAMMAR(connect_item,| COMMENT '=');
                 container_2 ctn;
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), NULL);
                 $$ = ctn;
-           DBG_PRINT }}
+           }}
         | COMMENT '=' char_string_literal
           {{ DBG_TRACE_GRAMMAR(connect_item, | COMMENT '=' char_string );
                 container_2 ctn;
@@ -24847,7 +24817,7 @@ connect_item
 	        PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);                
                 SET_CONTAINER_2(ctn, FROM_NUMBER(CONN_INFO_COMMENT), val);
                 $$ = ctn;
-           DBG_PRINT}}
+           }}
         ;
 
 alter_server_list
@@ -24857,7 +24827,7 @@ alter_server_list
 
                pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $3);
 	        $$ = ctn;
-           DBG_PRINT }}
+           }}
         | alter_server_item
           {{ DBG_TRACE_GRAMMAR(alter_server_list, | alter_server_item);
                 container_10 ctn;
@@ -24865,7 +24835,7 @@ alter_server_list
 
                 pt_fill_conn_info_container(this_parser, @$.buffer_pos, &ctn, $1);
 	        $$ = ctn;
-           DBG_PRINT}}
+           }}
         ;
 
 alter_server_item
@@ -24879,7 +24849,7 @@ alter_server_item
         | CHANGE connect_item
           {{ DBG_TRACE_GRAMMAR(alter_server_item, | CHANGE connect_item); 
 	        $$ = $2;
-           DBG_PRINT}}
+           }}
         ;
 
 dblink_server_name
@@ -24895,11 +24865,11 @@ dblink_server_name
                }  
               $$ = $3;
               PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-          DBG_PRINT}}
+          }}
         | server_identifier
           {{ DBG_TRACE_GRAMMAR(dblink_server_name, | server_identifier);
               $$ = $1;
-          DBG_PRINT}}
+          }}
         ;
 
 server_identifier
@@ -24914,7 +24884,7 @@ server_identifier
                   }
                 $$ = $1;
                 PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-                DBG_PRINT}}
+                }}
          ;
 dblink_expr
         :   dblink_conn  ',' 
@@ -24973,18 +24943,18 @@ dblink_expr
              }
 
              $$ = ct;   
-             DBG_PRINT}}    
+             }}    
         ;
 
 dblink_conn:
         dblink_server_name      
         {{ DBG_TRACE_GRAMMAR(dblink_conn, : dblink_server_name); 
                 $$ = $1;                
-                DBG_PRINT}}
+                }}
         | dblink_conn_str
         {{ DBG_TRACE_GRAMMAR(dblink_conn, | dblink_conn_str);
                 $$ = $1;
-		DBG_PRINT}}
+		}}
         ;   
 
 dblink_conn_str:
@@ -25044,7 +25014,7 @@ dblink_conn_str:
                  }
 
                 $$ = node_list;
-		DBG_PRINT}}
+		}}
         ;             
 
 dblink_identifier_col_attrs  
@@ -25054,7 +25024,7 @@ dblink_identifier_col_attrs
              
 	     SET_CONTAINER_2 (ctn, $2, $4);
              $$ = ctn;              
-             DBG_PRINT}}
+             }}
         ;
 
 dblink_column_definition_list
@@ -25062,12 +25032,12 @@ dblink_column_definition_list
            {{ DBG_TRACE_GRAMMAR(dblink_column_definition_list, :  dblink_column_definition_list ','  dblink_column_definition );  
                 $$ = parser_make_link($1, $3);
 	        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos);
-                DBG_PRINT}}
+                }}
         | dblink_column_definition
            {{ DBG_TRACE_GRAMMAR(dblink_column_definition_list, | dblink_column_definition );
                $$ = $1;
                PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-             DBG_PRINT}}
+             }}
         ;
 
 dblink_column_definition
@@ -25101,7 +25071,7 @@ dblink_column_definition
                 $$ = node;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
-        DBG_PRINT}}
+        }}
         ;
 
 opt_access_modifier
@@ -25110,19 +25080,19 @@ opt_access_modifier
 
 	$$ = PT_PRIVATE;
 
-      DBG_PRINT}}
+      }}
     | PRIVATE
       {{ DBG_TRACE_GRAMMAR(opt_access_modifier, | PRIVATE);
 
 	$$ = PT_PRIVATE;
 
-      DBG_PRINT}}
+      }}
     | PUBLIC
       {{ DBG_TRACE_GRAMMAR(opt_access_modifier, | PUBLIC);
 
 	$$ = PT_PUBLIC;
 
-      DBG_PRINT}}
+      }}
     ;
 
 /*
@@ -25142,7 +25112,7 @@ opt_create_synonym
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PRIVATE));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| PRIVATE
 		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : PRIVATE);
 
@@ -25150,7 +25120,7 @@ opt_create_synonym
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PRIVATE));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| PUBLIC
 		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : PUBLIC);
 
@@ -25158,7 +25128,7 @@ opt_create_synonym
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (0), FROM_NUMBER (PT_PUBLIC));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| OR REPLACE
 		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE);
 
@@ -25166,7 +25136,7 @@ opt_create_synonym
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PRIVATE));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| OR REPLACE PRIVATE
 		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE PRIVATE);
 
@@ -25174,7 +25144,7 @@ opt_create_synonym
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PRIVATE));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	| OR REPLACE PUBLIC
 		{{ DBG_TRACE_GRAMMAR(opt_create_synonym, : OR REPLACE PUBLIC);
 
@@ -25182,7 +25152,7 @@ opt_create_synonym
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (1), FROM_NUMBER (PT_PUBLIC));
 			$$ = ctn;
 
-		DBG_PRINT}}
+		}}
 	;
 
 opt_alter_synonym
@@ -25191,13 +25161,13 @@ opt_alter_synonym
 
 			$$ = NULL;
 
-		DBG_PRINT}}
+		}}
 	| For class_name_for_synonym
 		{{ DBG_TRACE_GRAMMAR(opt_alter_syonnym, : For class_name_for_synonym);
 
 			$$ = $2;
 
-		DBG_PRINT}}
+		}}
 
 %%
 
@@ -25209,7 +25179,6 @@ extern FILE *yyin;
 void
 _push_msg (int code, int line)
 {
-  PRINT_2 ("push msg called: %d at line %d\n", code, line);
   g_msg[msg_ptr++] = code;
 }
 
