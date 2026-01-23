@@ -608,7 +608,8 @@ retry:
     /* alive context */
     for (auto &ctx : m_context)
       {
-	if (!ctx->m_conn->in_transaction)
+	if (!ctx->m_conn->in_transaction
+	    && css_count_transaction_worker_threads (m_entry, ctx->m_conn->get_tran_index (), ctx->m_conn->client_id) == 0)
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection::worker->ha_close_all_connections: close fd = %d, conn = %p\n",
 			 ctx->m_conn->fd, ctx->m_conn);
