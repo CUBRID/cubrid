@@ -576,7 +576,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
-		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT)
+		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
+		  && !derived_table->info.query.q.select.single_table_opt)
 		{
 		  /* traverse as_attr_list */
 		  for (attr = spec->info.spec.as_attr_list, idx = 0; attr; attr = attr->next, idx++)
@@ -601,21 +602,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 			}
 		    }
 		  /* do not reduce PT_NAME that belongs to PT_NODE_LIST to PT_VALUE */
-
-		  /* Do not reduce if derived_table is a hierarchical query with START WITH.
-		   *
-		   * When single_table_opt is set (no joins in hierarchical query), the START WITH
-		   * clause is moved to WHERE for optimization (see query_rewrite.c). However, this
-		   * WHERE does not behave like a normal filter - it only determines the initial
-		   * starting rows for the CONNECT BY traversal. The query result includes not only
-		   * these starting rows but also all their hierarchical descendants.
-		   *
-		   * Therefore, constants from START WITH (e.g., org_cd='7801000') must NOT be
-		   * propagated to the outer query, as they do not represent a filter condition
-		   * for the entire result set. */
-		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col)
-		      && !(derived_table->info.query.q.select.connect_by != NULL
-			   && derived_table->info.query.q.select.single_table_opt))
+		  if (attr && col && !PT_IS_VALUE_QUERY (col) && qo_is_reduceable_const (col))
 		    {
 		      /* add additional equailty-term; is reduced */
 		      PT_NODE *expr_copy = parser_copy_tree (parser, expr);
