@@ -120,6 +120,17 @@ namespace parallel_heap_scan
   int task<result_type>::finalize (cubthread::entry &thread_ref)
   {
     THREAD_ENTRY *main_thread_p = m_parent_thread_p;
+    while (main_thread_p->m_px_orig_thread_entry != nullptr)
+      {
+	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
+	  {
+	    break;
+	  }
+	main_thread_p = main_thread_p->m_px_orig_thread_entry;
+	assert (main_thread_p != m_parent_thread_p);
+      }
+
+
     if (thread_ref.on_trace)
       {
 	TSC_TICKS end_tick;
@@ -128,6 +139,17 @@ namespace parallel_heap_scan
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
 	TSC_ADD_TIMEVAL (elapsed_time, tv_diff);
+
+	if (m_xasl->dptr_list)
+	  {
+	    pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	    for (XASL_NODE *xaslp = m_xasl->dptr_list; xaslp; xaslp = xaslp->next)
+	      {
+		xasl_merge_stats (xaslp, m_orig_xasl);
+	      }
+	    pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	  }
+
 	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
@@ -151,16 +173,6 @@ namespace parallel_heap_scan
     db_private_free (&thread_ref, m_vd);
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
-    while (main_thread_p->m_px_orig_thread_entry != nullptr)
-      {
-	if (main_thread_p->m_px_orig_thread_entry == main_thread_p)
-	  {
-	    break;
-	  }
-	main_thread_p = main_thread_p->m_px_orig_thread_entry;
-	assert (main_thread_p != m_parent_thread_p);
-      }
-
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     if (m_uses_xasl_clone)
       {
@@ -178,6 +190,46 @@ namespace parallel_heap_scan
     pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 
     return NO_ERROR;
+  }
+
+  inline void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
+  {
+    if (xasl->dptr_list)
+      {
+	for (XASL_NODE *xaslp = xasl->dptr_list; xaslp; xaslp = xaslp->next)
+	  {
+	    if (uses_clones)
+	      {
+		if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
+		  {
+		    xaslp->status = XASL_CLEARED;
+		  }
+		else
+		  {
+		    /* The values allocated during execution will be cleared and the xasl is reused. */
+		    xaslp->status = XASL_INITIALIZED;
+		  }
+	      }
+	    else
+	      {
+		xaslp->status = XASL_CLEARED;
+	      }
+	    if (xaslp->list_id->tuple_cnt > 0)
+	      {
+		qfile_truncate_list (thread_p, xaslp->list_id);
+	      }
+	    if (xaslp->single_tuple)
+	      {
+		QPROC_DB_VALUE_LIST value_list;
+		int i;
+		for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
+		     value_list = value_list->next, i++)
+		  {
+		    pr_clear_value (value_list->val);
+		  }
+	      }
+	  }
+      }
   }
 
   template <RESULT_TYPE result_type>
@@ -259,6 +311,9 @@ namespace parallel_heap_scan
     bool stop = false;
     bool is_interrupt;
     bool dummy = false;
+    DB_LOGICAL ev_res;
+    bool uses_clones = xcache_uses_clones ();
+
     while (!stop)
       {
 	if (m_interrupt->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
@@ -314,6 +369,26 @@ namespace parallel_heap_scan
 		break;
 	      }
 
+	    if (m_xasl->if_pred)
+	      {
+		ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
+		if (ev_res != V_TRUE)
+		  {
+		    clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		    if (ev_res == V_FALSE)
+		      {
+			continue;
+		      }
+		    else
+		      {
+			m_err_messages->move_top_error_message_to_this();
+			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			stop = true;
+			break;
+		      }
+		  }
+	      }
+
 	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
 	      {
 		result_handler_p->write (&thread_ref, m_xasl->outptr_list);
@@ -326,6 +401,19 @@ namespace parallel_heap_scan
 	      {
 		result_handler_p->write (&thread_ref);
 	      }
+
+	    /* clear dptr lists
+	     * There are mainly 4 types of dptr:
+	     * 1. scalar correlated subquery - In this case, xasl is evaluated in fetch_peek_dbval during write (end_one_iteration).
+	     * 2. exists - In this case, it is evaluated in eval_pred (line 320).
+	     * 3. other if_pred such as IN clause - In this case, the checker restricts the mergeable list.
+	     * 4. correlated subquery in FROM clause - In this case, it does not work as a mergeable list because there is a join.
+	     *
+	     * Therefore, dptr that reaches here are only those that need to be re-executed per row during parallel heap scan.
+	     * Thus, it is correct to clear all dptr.
+	     */
+
+	    clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
 	  }
       }
   }

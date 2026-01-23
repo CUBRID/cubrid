@@ -86,7 +86,7 @@ namespace parallel_heap_scan
   template <RESULT_TYPE result_type>
   result_handler<result_type>::result_handler (QUERY_ID query_id, interrupt *interrupt_p,
       err_messages_with_lock *err_messages_p, int parallelism, bool g_agg_domain_resolve_need,
-      VAL_LIST *orig_val_list_for_agg_domain_resolve)
+      VAL_LIST *orig_val_list_for_domain_resolve)
   {
     m_parallelism = parallelism;
     m_query_id = query_id;
@@ -95,9 +95,8 @@ namespace parallel_heap_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	m_.result_p = nullptr;
-	m_.orig_val_list_for_agg_domain_resolve = orig_val_list_for_agg_domain_resolve;
+	m_.orig_val_list_for_domain_resolve = orig_val_list_for_domain_resolve;
 	m_.active_results = parallelism;
-	m_.g_agg_domain_resolve_need = g_agg_domain_resolve_need;
 	m_.is_list_id_domain_resolved = false;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -259,15 +258,13 @@ namespace parallel_heap_scan
 	    return;
 	  }
 	tl.tpl_buf.size = DB_PAGESIZE;
-	if (m_.g_agg_domain_resolve_need)
+	tl.dbvals_for_domain_resolve.resize (m_.orig_val_list_for_domain_resolve->val_cnt);
+	for (DB_VALUE &dbval : tl.dbvals_for_domain_resolve)
 	  {
-	    tl.dbvals_for_agg_domain_resolve.resize (m_.orig_val_list_for_agg_domain_resolve->val_cnt);
-	    for (DB_VALUE &dbval : tl.dbvals_for_agg_domain_resolve)
-	      {
-		dbval.domain.general_info.is_null = 1;
-	      }
-	    tl.val_list_for_agg_domain_resolve = val_list;
+	    dbval.domain.general_info.is_null = 1;
 	  }
+	tl.val_list_domain_resolved = false;
+	tl.val_list_for_domain_resolve = val_list;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -295,6 +292,7 @@ namespace parallel_heap_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	qfile_close_list (thread_p, tl.writer_result_p);
+
 	assert (tl.writer_result_p->last_pgptr == nullptr);
 	if (tl.writer_result_p != nullptr && tl.writer_result_p->tpl_descr.f_valp != nullptr)
 	  {
@@ -309,25 +307,24 @@ namespace parallel_heap_scan
 	tl.vd = nullptr;
 	{
 	  std::lock_guard<std::mutex> lock (m_result_mutex);
-	  if (m_.g_agg_domain_resolve_need)
+
+	  HL_HEAPID heap_id = db_change_private_heap (thread_p, 0);
+	  QPROC_DB_VALUE_LIST orig_valp = m_.orig_val_list_for_domain_resolve->valp;
+	  for (int i = 0; i < m_.orig_val_list_for_domain_resolve->val_cnt; i++)
 	    {
-	      HL_HEAPID heap_id = db_change_private_heap (thread_p, 0);
-	      QPROC_DB_VALUE_LIST orig_valp = m_.orig_val_list_for_agg_domain_resolve->valp;
-	      for (int i = 0; i < m_.orig_val_list_for_agg_domain_resolve->val_cnt; i++)
+	      if (orig_valp->val->domain.general_info.is_null && !tl.dbvals_for_domain_resolve[i].domain.general_info.is_null)
 		{
-		  if (orig_valp->val->domain.general_info.is_null)
-		    {
-		      pr_clone_value (&tl.dbvals_for_agg_domain_resolve[i], orig_valp->val);
-		    }
-		  orig_valp = orig_valp->next;
+		  pr_clone_value (&tl.dbvals_for_domain_resolve[i], orig_valp->val);
 		}
-	      db_change_private_heap (thread_p, heap_id);
-	      for (DB_VALUE &dbval : tl.dbvals_for_agg_domain_resolve)
-		{
-		  pr_clear_value (&dbval);
-		}
-	      tl.dbvals_for_agg_domain_resolve.clear();
+	      orig_valp = orig_valp->next;
 	    }
+	  db_change_private_heap (thread_p, heap_id);
+	  for (DB_VALUE &dbval : tl.dbvals_for_domain_resolve)
+	    {
+	      pr_clear_value (&dbval);
+	    }
+	  tl.dbvals_for_domain_resolve.clear();
+
 	  m_.active_results--;
 	  if (m_.active_results == 0)
 	    {
@@ -680,14 +677,22 @@ namespace parallel_heap_scan
 	    qfile_update_domains_on_type_list (thread_p, tl.writer_result_p, input);
 	    m_.is_list_id_domain_resolved = tl.writer_result_p->is_domain_resolved;
 	  }
-	if (m_.g_agg_domain_resolve_need)
+	if (unlikely (!tl.val_list_domain_resolved))
 	  {
-	    QPROC_DB_VALUE_LIST valp = tl.val_list_for_agg_domain_resolve->valp;
-	    for (int i = 0; i < tl.val_list_for_agg_domain_resolve->val_cnt; i++)
+	    QPROC_DB_VALUE_LIST valp = tl.val_list_for_domain_resolve->valp;
+	    tl.val_list_domain_resolved = true;
+	    for (int i = 0; i < tl.val_list_for_domain_resolve->val_cnt; i++)
 	      {
-		if (tl.dbvals_for_agg_domain_resolve[i].domain.general_info.is_null && !valp->val->domain.general_info.is_null)
+		if (tl.dbvals_for_domain_resolve[i].domain.general_info.is_null)
 		  {
-		    pr_clone_value (valp->val, &tl.dbvals_for_agg_domain_resolve[i]);
+		    if (!valp->val->domain.general_info.is_null)
+		      {
+			pr_clone_value (valp->val, &tl.dbvals_for_domain_resolve[i]);
+		      }
+		    else
+		      {
+			tl.val_list_domain_resolved = false;
+		      }
 		  }
 		valp = valp->next;
 	      }
