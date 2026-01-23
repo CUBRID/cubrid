@@ -5269,7 +5269,6 @@ error2:
   return error_code;
 }
 
-#include "oos_file.hpp"
 int
 locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes, bool is_repl)
 {
@@ -5290,8 +5289,8 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       goto err;
     }
 
-  recdes->data = recdes->data + oos_get_oos_record_header_size ();
-  recdes->length = recdes->length - oos_get_oos_record_header_size ();
+  recdes->data = recdes->data + 16;
+  recdes->length = recdes->length - 16;
 
   recdes->type = REC_HOME;
   if (oos_insert (thread_p, oos_vfid, *recdes, oos_oid) != NO_ERROR)
