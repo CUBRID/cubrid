@@ -3468,14 +3468,15 @@ struct pt_synonym_info
 
 struct pt_package_info
 {
-  unsigned or_replace:1;	/* OR REPLACE clause */
-  unsigned for_body:1;		/* 1 package body, 0 package spec */
-  PT_NODE *name;
-  PT_NODE *block;		/* pl/csql code block after AS/IS */
-  PT_NODE *comment;
-
-  PT_NODE *owner;		/* for ALTER PACKAGE name OWNER TO new_owner */
-  unsigned recompile:1;		/* for ALTER PACKAGE name COMPILE */
+  /* C: CREATE, D: DROP, A: ALTER */
+  PT_NODE *name;		/* C D A */
+  PT_NODE *block;		/* C, pl/csql code block beginning with AS/IS */
+  PT_NODE *comment;		/* C A */
+  PT_NODE *owner;		/* A, for ALTER PACKAGE name OWNER TO new_owner */
+  unsigned or_replace:1;	/* C, OR REPLACE clause */
+  unsigned if_exists:1;		/* D, IF EXISTS clause */
+  unsigned for_body:1;		/* C D, 1 package body, 0 package spec */
+  unsigned recompile:1;		/* A, for ALTER PACKAGE name COMPILE */
 };
 
 

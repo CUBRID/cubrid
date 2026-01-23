@@ -4966,7 +4966,7 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-        | DROP PACKAGE opt_body package_name_without_dot
+        | DROP PACKAGE opt_body opt_if_exists package_name_without_dot
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PACKAGE opt_body package_name_without_dot);
 
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_PACKAGE);
@@ -4974,7 +4974,8 @@ drop_stmt
 			if (node)
 			  {
 			    node->info.pkg.for_body = $3;
-			    node->info.pkg.name = $4;
+			    node->info.pkg.if_exists = $4;
+			    node->info.pkg.name = $5;
 			  }
 
 			$$ = node;

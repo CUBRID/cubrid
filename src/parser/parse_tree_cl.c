@@ -279,7 +279,8 @@ static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, v
 static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
-static PT_NODE *pt_apply_package_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
@@ -5138,8 +5139,8 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
   pt_apply_func_array[PT_CREATE_PACKAGE] = pt_apply_create_package;
-  pt_apply_func_array[PT_DROP_PACKAGE] = pt_apply_package_name;
-  pt_apply_func_array[PT_ALTER_PACKAGE] = pt_apply_package_name;
+  pt_apply_func_array[PT_DROP_PACKAGE] = pt_apply_drop_package;
+  pt_apply_func_array[PT_ALTER_PACKAGE] = pt_apply_alter_package;
   pt_apply_func_array[PT_SP_BODY] = pt_apply_sp_body;
 
   pt_apply_f = pt_apply_func_array;
@@ -19850,14 +19851,22 @@ pt_apply_create_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.pkg.name, arg);
   PT_APPLY_WALK (parser, p->info.pkg.block, arg);
   PT_APPLY_WALK (parser, p->info.pkg.comment, arg);
-  PT_APPLY_WALK (parser, p->info.pkg.owner, arg);
   return p;
 }
 
 static PT_NODE *
-pt_apply_package_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+pt_apply_drop_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.pkg.name, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_alter_package (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.pkg.name, arg);
+  PT_APPLY_WALK (parser, p->info.pkg.comment, arg);
+  PT_APPLY_WALK (parser, p->info.pkg.owner, arg);
   return p;
 }
 
