@@ -26363,6 +26363,23 @@ parser_make_number_lang (const int argc)
   return number_lang;
 }
 
+#if YYDEBUG
+static void
+parser_init_yydebug (void)
+{
+  static int initialized = 0;
+  if (!initialized)
+    {
+      const char *env = getenv ("CUBRID_PARSER_DEBUG");
+      if (env && env[0] == '1')
+        {
+          yydebug = 1;
+        }
+      initialized = 1;
+    }
+}
+#endif
+
 PT_NODE **
 parser_main (PARSER_CONTEXT * parser)
 {
@@ -26395,6 +26412,9 @@ parser_main (PARSER_CONTEXT * parser)
   g_original_buffer_len = 0;
 
   pt_initialize_hint(parser, parser_hint_table); 
+#if YYDEBUG
+  parser_init_yydebug ();
+#endif
   rv = yyparse ();
 
   // parser_main can be reentered while executing statements loaded by loaddb -s.
