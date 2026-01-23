@@ -26254,6 +26254,7 @@ parser_remove_dummy_select (PT_NODE ** ent_inout)
               		    new_ent->info.spec.range_var = NULL;
               		    }
 
+                      new_ent->info.spec.flag = (PT_SPEC_FLAG) (new_ent->info.spec.flag | PT_SPEC_FLAG_DUMMY_REMOVED);
             	      new_ent->info.spec.range_var = ent->info.spec.range_var;
             	      ent->info.spec.range_var = NULL;
 

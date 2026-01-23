@@ -131,9 +131,10 @@ static PT_NODE *pt_clear_Oracle_outerjoin_spec_id (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static PT_NODE *pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_bind_value_to_hostvar_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static int pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr);
+static int pt_find_attr_in_class_list (PARSER_CONTEXT * parser, DB_ATTRIBUTE ** ret_attribute, PT_NODE * flat,
+				       PT_NODE * attr);
 static int pt_find_class_attribute (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * attr);
-static int pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name);
+static int pt_is_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name);
 static int pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p);
 static PT_NODE *pt_common_attribute (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 static PT_NODE *pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * from);
@@ -216,7 +217,8 @@ static void free_natural_join_attrs (NATURAL_JOIN_ATTR_INFO * attrs);
 
 static int generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURAL_JOIN_ATTR_INFO ** attrs_p);
 
-static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN_ATTR_INFO ** attrs_p);
+static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN_ATTR_INFO ** attrs_p,
+						      bool flag_star_all_col);
 
 static bool is_pt_name_in_group_having (PT_NODE * node);
 
@@ -1516,7 +1518,7 @@ pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 			/* must re-resolve the name */
 			lhs->info.name.original = lhs->info.name.resolved;
 			lhs->info.name.spec_id = 0;
-			if (!pt_find_name_in_spec (parser, spec, lhs))
+			if (!pt_is_name_in_spec (parser, spec, lhs))
 			  {
 			    error = MSGCAT_SEMANTIC_IS_NOT_DEFINED;
 			    PT_ERRORmf (parser, lhs, MSGCAT_SET_PARSER_SEMANTIC, error, pt_short_print (parser, lhs));
@@ -3930,11 +3932,12 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
  * pt_find_attr_in_class_list () - trying to resolve X.attr
  *   return: returns a PT_NAME list or NULL
  *   parser(in):
+ *   ret_attribute(out): 
  *   flat(in): list of PT_NAME nodes (class names)
  *   attr(in): a PT_NAME (an attribute name)
  */
 static int
-pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr)
+pt_find_attr_in_class_list (PARSER_CONTEXT * parser, DB_ATTRIBUTE ** ret_attribute, PT_NODE * flat, PT_NODE * attr)
 {
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
@@ -3993,6 +3996,10 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	  if (attr->info.name.default_value != NULL)
 	    {
 	      /* default value was already set */
+	      if (ret_attribute != NULL)
+		{
+		  *ret_attribute = att;
+		}
 	      return 1;
 	    }
 	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
@@ -4065,7 +4072,10 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
       cname = cname->next;
     }
   attr->info.name.spec_id = flat->info.name.spec_id;
-
+  if (ret_attribute != NULL)
+    {
+      *ret_attribute = att;
+    }
   return 1;
 }
 
@@ -4119,19 +4129,20 @@ pt_find_class_attribute (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * attr)
 }
 
 /*
- * pt_find_name_in_spec () - Given a spec, see if name can be resolved to this
+ * pt_is_name_in_spec () - Given a spec, see if name can be resolved to this
  *   return: 0 if name is NOT an attribute of spec
  *   parser(in):
  *   spec(in):
  *   name(in): a PT_NAME (an attribute name)
  */
 static int
-pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
+pt_is_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 {
   int ok;
   PT_NODE *col;
   PT_NODE *range_var;
   const char *resolved_name;
+  bool exclude_invisible_column;
 
   if (spec == NULL)
     {
@@ -4167,7 +4178,14 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	    {
 	      return 1;
 	    }
-	  ok = pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name);
+	  DB_ATTRIBUTE *att = NULL;
+	  ok = pt_find_attr_in_class_list (parser, &att, spec->info.spec.flat_entity_list, name);
+
+	  exclude_invisible_column = (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED);
+	  if (ok && exclude_invisible_column && db_attribute_is_invisible_column (att))
+	    {
+	      ok = 0;
+	    }
 	}
     }
   else
@@ -5964,7 +5982,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
       /* Else, is this an attribute of a unique entity within scope? */
       for (savespec = NULL, spec = scope; spec; spec = spec->next)
 	{
-	  if (pt_find_name_in_spec (parser, spec, in_node))
+	  if (pt_is_name_in_spec (parser, spec, in_node))
 	    {
 	      if (spec->info.spec.remote_server_name)
 		{
@@ -6183,7 +6201,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
       if (arg1->node_type == PT_NAME && (arg1->info.name.meta_class == PT_OID_ATTR))
 	{
 	  /* Arg1 was an exposed name */
-	  if (pt_find_name_in_spec (parser, *p_entity, arg2))
+	  if (pt_is_name_in_spec (parser, *p_entity, arg2))
 	    {
 	      /* only mark it resolved if it was found! transfer the info from arg1 to arg2 */
 	      arg2->info.name.resolved = arg1->info.name.resolved;
@@ -6401,7 +6419,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      exposed_spec = NULL;
 	    }
-	  if (!pt_find_attr_in_class_list (parser, arg1->data_type->info.data_type.entity, arg2))
+	  if (!pt_find_attr_in_class_list (parser, NULL, arg1->data_type->info.data_type.entity, arg2))
 	    {
 	      temp = arg1->data_type;
 	      if (temp)
@@ -10731,7 +10749,7 @@ pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_
       /* walk specs */
       for (spec = scope->specs; spec; spec = spec->next)
 	{
-	  if (pt_find_name_in_spec (parser, spec, attr) > 0)
+	  if (pt_is_name_in_spec (parser, spec, attr) > 0)
 	    {
 	      *is_spec_attr = 1;
 	      break;
