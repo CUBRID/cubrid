@@ -5295,10 +5295,8 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       error_code = S_ERROR;
       goto err;
     }
-  else
-    {
-      oos_oid_queue ().push_back (oos_oid);
-    }
+
+  oos_oid_queue ().push_back (oos_oid);
 
   repl_log_insert (thread_p, class_oid, &oos_oid, LOG_REPLICATION_DATA, RVREPL_OOS_INSERT, NULL,
 		   REPL_INFO_TYPE_RBR_NORMAL);
@@ -7044,6 +7042,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
       if (error_code == NO_ERROR)
 	{
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
+
 	  if (obj->operation == LC_FLUSH_INSERT && heap_recdes_contains_oos (&recdes))
 	    {
 	      error_code = locator_fixup_oos_oids_in_recdes (thread_p, &obj->class_oid, &recdes);
@@ -14010,7 +14009,6 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
       int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
       int offset = 0;
 
-      // var table 엔트리 읽기 (heap_attrvalue_point_variable()과 동일)
       switch (offset_size)
 	{
 	case OR_BYTE_SIZE:
