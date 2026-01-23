@@ -646,8 +646,7 @@ namespace cubconn::master
 
     if (LSA_EQ (&prev_eof_lsa, eof_lsa))
       {
-	er_log_debug (ARG_FILE_LINE,
-		      "log eof unchanged (no new log since last heartbeat): prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
+	er_log_debug (ARG_FILE_LINE, "Disk failure has been occurred: prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
 		      LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
       }
     else
@@ -1243,6 +1242,7 @@ namespace cubconn::master
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2,
 		    "Disconnected with the cub_master and will shut itself down", "");
+	    m_stop = true;
 	    return true;
 	  }
 	/* WAIT RESPONSE or ESTABLISHED */
