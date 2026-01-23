@@ -471,8 +471,9 @@ extern "C"
 	if (error != NO_ERROR)
 	  {
 	    /* cleanup */
-	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager (); /* will release worker_manager_p */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
@@ -502,8 +503,9 @@ extern "C"
 	if (error != NO_ERROR)
 	  {
 	    /* cleanup */
-	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager (); /* will release worker_manager_p */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
@@ -533,8 +535,9 @@ extern "C"
 	if (error != NO_ERROR)
 	  {
 	    /* cleanup */
-	    ((manager_type *) scan_id->s.phsid.manager)->~manager ();	/* will release worker_manager_p */
+	    ((manager_type *) scan_id->s.phsid.manager)->~manager (); /* will release worker_manager_p */
 	    db_private_free_and_init (thread_p, scan_id->s.phsid.manager);
+	    worker_manager_p = nullptr;
 
 	    assert_release_error (er_errid () != NO_ERROR);
 	    error = er_errid ();
@@ -803,7 +806,7 @@ namespace parallel_heap_scan
 	task_p = placement_new ((task<result_type> *) task_p, m_thread_p, m_query_entry, m_result_handler,
 				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_hfid,
 				m_cls_oid, m_is_fixed,
-				m_is_grouped, m_uses_xasl_clone);
+				m_is_grouped, m_uses_xasl_clone, m_xasl);
 	m_worker_manager->push_task (task_p);
       }
     m_task_started = true;
@@ -815,6 +818,17 @@ namespace parallel_heap_scan
   {
     SCAN_CODE scan_code = S_SUCCESS;
     int err_code = NO_ERROR;
+
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
+	for (int i=0; i<m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clear_value (valp->val);
+	    valp = valp->next;
+	  }
+      }
+
     if (unlikely (!m_task_started))
       {
 	err_code = start_tasks();
@@ -844,34 +858,34 @@ namespace parallel_heap_scan
 		m_worker_manager = nullptr;
 	      }
 	  }
+
+	std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
+	QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
+	for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clone_value (valp->val, &dbval_container[i]);
+	    valp = valp->next;
+	  }
+
+	HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
+	valp = m_xasl->val_list->valp;
+	for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clear_value (valp->val);
+	    valp = valp->next;
+	  }
+	db_change_private_heap (m_thread_p, heap_id);
+	valp = m_xasl->val_list->valp;
+	for (int i=0; i<m_xasl->val_list->val_cnt; i++)
+	  {
+	    pr_clone_value (&dbval_container[i], valp->val);
+	    pr_clear_value (&dbval_container[i]);
+	    valp = valp->next;
+	  }
+
+	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
 	if (m_g_agg_domain_resolve_need)
 	  {
-	    std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
-	    QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
-	    for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (valp->val, &dbval_container[i]);
-		valp = valp->next;
-	      }
-
-	    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
-	    valp = m_xasl->val_list->valp;
-	    for (int i = 0; i < m_xasl->val_list->val_cnt; i++)
-	      {
-		pr_clear_value (valp->val);
-		valp = valp->next;
-	      }
-	    db_change_private_heap (m_thread_p, heap_id);
-	    valp = m_xasl->val_list->valp;
-	    for (int i=0; i<m_xasl->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (&dbval_container[i], valp->val);
-		pr_clear_value (&dbval_container[i]);
-		valp = valp->next;
-	      }
-
-	    fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
-
 	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan (m_thread_p, m_xasl, m_vd,
 		&m_xasl->proc.buildlist.g_agg_domains_resolved);
 	  }
