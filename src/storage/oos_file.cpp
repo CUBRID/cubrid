@@ -31,6 +31,20 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+struct oos_record_header
+{
+  int total_size;
+  int chunk_index;
+  OID next_chunk_oid;
+};
+using OOS_RECORD_HEADER = struct oos_record_header;
+constexpr size_t OOS_RECORD_HEADER_SIZE = sizeof (OOS_RECORD_HEADER);
+extern constexpr size_t oos_get_oos_record_header_size ()
+{
+  return OOS_RECORD_HEADER_SIZE;
+}
+
+
 // ****************************************************************************
 // static functions
 // ****************************************************************************
