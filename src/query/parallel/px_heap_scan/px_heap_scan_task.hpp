@@ -46,11 +46,12 @@ namespace parallel_heap_scan
 	    input_handler *input_handler,
 	    interrupt *interrupt, err_messages_with_lock *err_messages, val_descr *vd, trace_handler *trace_handler,
 	    worker_manager *worker_manager, int xasl_id, HFID hfid, OID cls_oid, bool is_fixed, bool is_grouped,
-	    bool uses_xasl_clone)
+	    bool uses_xasl_clone, XASL_NODE *orig_xasl)
 	: m_parent_thread_p (parent_thread_p),
 	  m_query_entry (query_entry),
 	  m_xasl_cache_entry (nullptr),
 	  m_xasl_clone ({NULL, NULL}),
+      m_orig_xasl (orig_xasl),
       m_xasl_tree (nullptr),
       m_xasl_unpack_info (nullptr),
       m_xasl_id (xasl_id),
@@ -88,6 +89,7 @@ namespace parallel_heap_scan
       QMGR_QUERY_ENTRY *m_query_entry;
       XASL_CACHE_ENTRY *m_xasl_cache_entry;
       XASL_CLONE m_xasl_clone;
+      XASL_NODE *m_orig_xasl; /* for dptr trace */
       XASL_NODE *m_xasl_tree;
       XASL_UNPACK_INFO *m_xasl_unpack_info;
       int m_xasl_id;

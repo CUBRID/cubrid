@@ -89,7 +89,6 @@ namespace parallel_heap_scan
 		m_stats[i] = {0,0,0,0,0,{0,0}};
 	      }
 	  }
-
 	m_stats_last = {0,0,0,0,0,{0,0}};
 	for (size_t i = 0; i < m_stats.size(); i++)
 	  {
