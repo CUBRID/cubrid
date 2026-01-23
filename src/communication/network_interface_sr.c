@@ -5607,10 +5607,11 @@ trace_log_slow_query (THREAD_ENTRY * thread_p, EXECUTION_INFO * info, int time, 
   trace_log_print_client_info (tran_index, indent);
 
   queryinfo_string_length =
-    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n SQL_ID: %s\n  sql: %s%s\n", line, title, line,
+    snprintf (queryinfo_string, QUERY_INFO_BUF_SIZE, "%s\n%s\n%s\n %s\n\n SQL_ID: %s\n  sql: %s\n", line, title, line,
 	      info->sql_user_text ? info->sql_user_text : "(UNKNOWN USER_TEXT)", sql_id ? sql_id : "(UNKNOWN SQL_ID)",
-	      info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)",
-	      info->sql_plan_text ? info->sql_plan_text : "");
+	      info->sql_hash_text ? info->sql_hash_text : "(UNKNOWN HASH_TEXT)");
+
+  fprintf (log_fp, "%*c%s\n", indent, ' ', info->sql_plan_text ? info->sql_plan_text : "");
 
   if (tdes->num_exec_queries <= MAX_NUM_EXEC_QUERY_HISTORY)
     {

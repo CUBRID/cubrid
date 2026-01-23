@@ -1,5 +1,4 @@
 /*
- * Copyright 2008 Search Solution Corporation
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,11 +30,15 @@
 
 #include <stdio.h>
 
+// forward declarations
+struct clientids;
+
+#define EVENT_EMPTY_QUERY "***EMPTY***"
+
 extern void trace_log_init (const char *db_name);
 extern void trace_log_final (void);
-extern FILE *trace_log_start (THREAD_ENTRY * thread_p, const char *trace_name);
+extern FILE *trace_log_start (THREAD_ENTRY * thread_p, const char *event_name);
 extern void trace_log_end (THREAD_ENTRY * thread_p);
 extern void trace_log_print_client_info (int tran_index, int indent);
 extern void trace_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index);
-extern void trace_log_sql_without_user_oid (FILE * fp, const char *format, int indent, const char *hash_text);
-#endif /* _TRACE_LOG_H_ */
+#endif /* _EVENT_LOG_H_ */
