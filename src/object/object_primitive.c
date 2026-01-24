@@ -8466,7 +8466,7 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
 
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      disk_size = OR_GET_BYTE (mem) & 0x7F;
+      disk_size = FLOAT_NUMERIC_SIZE;
     }
   else
     {
@@ -8480,14 +8480,13 @@ static void
 mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 {
   int calc_size = 0;
-  DB_C_NUMERIC num;
 
   /* if stored size is unknown, the domain precision must be set correctly */
   if (size < 0)
     {
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  size = OR_GET_BYTE (mem) & 0x7F;
+	  size = FLOAT_NUMERIC_SIZE;
 	}
       else
 	{
@@ -8507,11 +8506,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
       /* calculate expected size and verify it matches the provided size */
       if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
 	{
-	  num = (DB_C_NUMERIC) buf->ptr;
-	  unsigned char header[NUMERIC_HEADER_SIZE] = { num[0], num[1], num[2] };
-	  int precision = (header[1] & 0x7F);
-	  calc_size =
-	    DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
+	  calc_size = FLOAT_NUMERIC_SIZE;
 	}
       else
 	{
@@ -8532,7 +8527,20 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 static int
 mr_index_lengthmem_numeric (void *mem, TP_DOMAIN * domain)
 {
-  return mr_data_lengthmem_numeric (mem, domain, 1);
+  int len;
+
+  assert (!(IS_FLOATING_PRECISION (domain->precision) && mem == NULL));
+
+  if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      len = OR_GET_BYTE (mem) & 0x7F;
+    }
+  else
+    {
+      len = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
+    }
+
+  return len;
 }
 
 static int
@@ -8542,16 +8550,7 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
 
   if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      if (mem != NULL)
-	{
-	  /* primarily used for calculating index-key length. */
-	  len = OR_GET_BYTE (mem) & 0x7F;
-	}
-      else
-	{
-	  /* the actual length is stored in the header and is not available here, so return the maximum size (FLOAT_NUMERIC_SIZE) */
-	  len = FLOAT_NUMERIC_SIZE;
-	}
+      len = FLOAT_NUMERIC_SIZE;
     }
   else
     {

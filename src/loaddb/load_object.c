@@ -575,6 +575,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
   int rc = NO_ERROR;
   bool do_copy = is_unloaddb ? false : true;
   int zvar[32];
+  int float_numeric_len;
 
   /* need nicer way to store these */
   if (class_->variable_count)
@@ -622,7 +623,30 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       else
 	{
 	  /* read the disk value into the db_value */
-	  att->type->data_readval (buf, &obj->values[i], att->domain, -1, do_copy, NULL, 0);
+	  if (att->domain->type->id == DB_TYPE_NUMERIC && att->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      /*
+	       * for the float numeric type in the unloaddb path:
+	       * - the mr_data_*mem path uses a fixed 20-byte layout, which may include padding.
+	       * - the mr_data_*val path uses a variable-length layout and reads only the
+	       *   actual data without padding.
+	       *
+	       * since the value is stored in a 20-byte buffer following the mr_data_*mem layout,
+	       * after consuming data via mr_data_*val, the remaining padding bytes in the buffer
+	       * must be skipped.
+	       */
+
+	      float_numeric_len = OR_GET_BYTE (buf->ptr) & 0x7F;
+
+	      att->type->data_readval (buf, &obj->values[i], att->domain, -1, do_copy, NULL, 0);
+
+	      float_numeric_len = 20 - float_numeric_len;	// 20 = NUMERIC_HEADER_SIZE(3) + DB_NUMERIC_BUF_SIZE(17)
+	      buf->ptr += float_numeric_len;
+	    }
+	  else
+	    {
+	      att->type->data_readval (buf, &obj->values[i], att->domain, -1, do_copy, NULL, 0);
+	    }
 	}
     }
 

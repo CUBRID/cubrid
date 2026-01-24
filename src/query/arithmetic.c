@@ -1028,11 +1028,13 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NUMERIC:
       {
 	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value2, &is_float_numeric);
+	int precision = 0, scale = 0;
+	db_get_numeric_precision_and_scale (value1, &precision, &scale, &is_float_numeric);
 	numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
 	if (d2 == 0)
 	  {
-	    (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
+	    db_make_numeric (result, db_locate_numeric (value1), precision, scale, DB_NUMERIC_BUF_SIZE,
+			     is_float_numeric);
 	  }
 	else
 	  {
@@ -1179,11 +1181,13 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NUMERIC:
       {
 	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value2, &is_float_numeric);
+	int precision = 0, scale = 0;
+	db_get_numeric_precision_and_scale (value1, &precision, &scale, &is_float_numeric);
 	numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
 	if (d2 == 0)
 	  {
-	    (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
+	    db_make_numeric (result, db_locate_numeric (value1), precision, scale, DB_NUMERIC_BUF_SIZE,
+			     is_float_numeric);
 	  }
 	else
 	  {
@@ -1330,11 +1334,13 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     case DB_TYPE_NUMERIC:
       {
 	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value2, &is_float_numeric);
+	int precision = 0, scale = 0;
+	db_get_numeric_precision_and_scale (value1, &precision, &scale, &is_float_numeric);
 	numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
 	if (d2 == 0)
 	  {
-	    (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
+	    db_make_numeric (result, db_locate_numeric (value1), precision, scale, DB_NUMERIC_BUF_SIZE,
+			     is_float_numeric);
 	  }
 	else
 	  {
@@ -1709,7 +1715,6 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   DB_TYPE type1;
 #endif
   DB_TYPE type2;
-  short s2;
   int i2;
   float f2;
   double d1, d2;
@@ -1717,7 +1722,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   double dtmp;
   DB_DATA_STATUS data_stat;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
-  int p, s;
+  int p, s, s2;
   int er_status = NO_ERROR;
   DB_VALUE cast_value2;
   bool is_float_numeric = false;
@@ -1731,7 +1736,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   assert (type1 == DB_TYPE_NUMERIC);
 #endif
 
-  s = db_get_numeric_scale (value1, &is_float_numeric);
+  db_get_numeric_precision_and_scale (value1, &p, &s, &is_float_numeric);
   numeric_coerce_num_to_double (db_locate_numeric (value1), s, &d1);
 
   type2 = DB_VALUE_DOMAIN_TYPE (value2);
@@ -1816,11 +1821,11 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_NUMERIC:
       is_float_numeric = false;
-      s = db_get_numeric_scale (value2, &is_float_numeric);
-      numeric_coerce_num_to_double (db_locate_numeric (value2), s, &d2);
+      s2 = db_get_numeric_scale (value2, &is_float_numeric);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), s2, &d2);
       if (d2 == 0)
 	{
-	  (void) numeric_db_value_coerce_to_num (value1, result, &data_stat);
+	  db_make_numeric (result, db_locate_numeric (value1), p, s, DB_NUMERIC_BUF_SIZE, is_float_numeric);
 	}
       else
 	{
