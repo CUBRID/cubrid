@@ -217,8 +217,7 @@ static void free_natural_join_attrs (NATURAL_JOIN_ATTR_INFO * attrs);
 
 static int generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_list, NATURAL_JOIN_ATTR_INFO ** attrs_p);
 
-static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN_ATTR_INFO ** attrs_p,
-						      bool flag_star_all_col);
+static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN_ATTR_INFO ** attrs_p);
 
 static bool is_pt_name_in_group_having (PT_NODE * node);
 
@@ -3930,9 +3929,9 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 
 /*
  * pt_find_attr_in_class_list () - trying to resolve X.attr
- *   return: returns a PT_NAME list or NULL
- *   parser(in):
- *   ret_attribute(out): 
+ *   return: 1 on success, 0 on failure
+ *   parser(in): parser context
+ *   ret_attribute(out): resolved attribute pointer
  *   flat(in): list of PT_NAME nodes (class names)
  *   attr(in): a PT_NAME (an attribute name)
  */
