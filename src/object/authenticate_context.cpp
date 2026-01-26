@@ -401,7 +401,7 @@ authenticate_context::install (void)
   }
 
   /*
-   * db_password
+   * _db_password
    */
 
   def = smt_edit_class_mop (pass_cls, AU_ALTER);

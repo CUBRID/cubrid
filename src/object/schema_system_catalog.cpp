@@ -46,7 +46,7 @@ namespace cubschema
      */
     CT_ROOT_NAME,		// "db_root"
     CT_USER_NAME,		// "db_user"
-    CT_PASSWORD_NAME,	// "db_password"
+    CT_PASSWORD_NAME,	// "_db_password"
     CT_AUTHORIZATION_NAME,	// "_db_authorization"
 
     /* currently, not implemented */

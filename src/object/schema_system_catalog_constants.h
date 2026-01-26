@@ -48,7 +48,7 @@
 #define CT_USER_NAME               "db_user"
 #define CT_TRIGGER_NAME            "_db_trigger"
 #define CT_ROOT_NAME               "db_root"
-#define CT_PASSWORD_NAME           "db_password"
+#define CT_PASSWORD_NAME           "_db_password"
 #define CT_AUTHORIZATION_NAME      "_db_authorization"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
