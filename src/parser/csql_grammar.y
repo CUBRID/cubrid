@@ -111,6 +111,7 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int expecting_plcsql_text;
 extern int yylex(void);
 
 #if defined(SA_MODE)
@@ -609,6 +610,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_cascade
 %type <boolean> opt_cascade_constraints
 %type <number> plcsql_text
+%type <number> opt_body
 %type <number> opt_replace
 %type <number> opt_of_inner_left_right
 %type <number> opt_class_type
@@ -739,6 +741,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> serial_name
 %type <node> synonym_name_without_dot
 %type <node> synonym_name
+%type <node> package_name_without_dot
 %type <node> procedure_or_function_name_without_dot
 %type <node> procedure_or_function_name
 %type <node> procedure_or_function_name_list
@@ -1169,6 +1172,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BITSHIFT_LEFT
 %token BITSHIFT_RIGHT
 %token BLOB_
+%token BODY
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
@@ -1363,6 +1367,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token OUTER
 %token OUTPUT
 %token OVERLAPS
+%token PACKAGE
 %token PARAMETERS
 %token PARTIAL
 %token PARTITION
@@ -1905,6 +1910,7 @@ stmt
                         g_plcsql_text_pos = -1;
                         is_in_sp_func_type = false;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
+                        assert(expecting_plcsql_text == 0); // initialized in parser_main() or parse_one_statement()
 		DBG_PRINT}}
 	stmt_
 		{{ DBG_TRACE_GRAMMAR(stmt, stmt_ );
@@ -3090,6 +3096,46 @@ create_stmt
 		DBG_PRINT}}
 	| CREATE					/* 1 */
 	  opt_or_replace               		        /* 2 */
+	  PACKAGE					/* 3 */
+          opt_body                                      /* 4 */
+                {
+		  PT_NODE *node = parser_new_node (this_parser, PT_CREATE_PACKAGE);
+		  parser_push_hint_node (node);
+                  expecting_plcsql_text = 1;
+                }
+	  package_name_without_dot                      /* 6 */
+	  is_or_as plcsql_text                          /* 7, 8 */
+	  opt_comment_spec				/* 9 */
+		{{ DBG_TRACE_GRAMMAR(create_stmt, | CREATE opt_or_replace PACKAGE~);
+                        PT_NODE *node = parser_pop_hint_node ();
+                        assert (node);
+
+                        // package blocks after IS/AS have the same syntax as SP body
+			PT_NODE *plcsql_block = parser_new_node (this_parser, PT_SP_BODY);
+			if (plcsql_block)
+			  {
+			    plcsql_block->info.sp_body.lang = SP_LANG_PLCSQL;
+                            if (g_query_string) {
+                                plcsql_block->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(
+                                        g_query_string + g_plcsql_text_pos, $8);
+                            } else {
+                                plcsql_block->info.sp_body.impl = NULL; // set later
+                            }
+			    plcsql_block->info.sp_body.direct = 1;
+			  }
+                        node->info.pkg.block = plcsql_block;
+
+                        node->info.pkg.or_replace = $2;
+                        node->info.pkg.for_body = $4;
+                        node->info.pkg.name = $6;
+                        node->info.pkg.comment = $9;
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| CREATE					/* 1 */
+	  opt_or_replace               		        /* 2 */
 	  PROCEDURE					/* 3 */
 		{ 					/* 4 */
 		  PT_NODE* node = parser_new_node (this_parser, PT_CREATE_STORED_PROCEDURE);
@@ -3382,6 +3428,17 @@ create_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+	;
+
+opt_body
+	: /* empty */
+		{{ DBG_TRACE_GRAMMAR(opt_body, : );
+			$$ = 0;
+		}}
+	| BODY
+		{{ DBG_TRACE_GRAMMAR(opt_body, | BODY );
+			$$ = 1;
+		}}
 	;
 
 class_name_for_synonym
@@ -4369,7 +4426,49 @@ alter_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
-	;
+	| ALTER PACKAGE                 /* 1, 2 */
+	  package_name_without_dot      /* 3 */
+	  opt_owner_clause	        /* 4 */
+	  opt_comment_spec		/* 5 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER PACKAGE package_name_without_dot opt_owner_clause opt_comment_spec);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_PACKAGE);
+
+			if (node != NULL)
+			  {
+			    node->info.pkg.name = $3;
+			    node->info.pkg.owner = $4;
+			    node->info.pkg.comment = $5;
+			    if ($4 == NULL && $5 == NULL)
+			      {
+			        PT_ERRORm (this_parser, node,
+			                   MSGCAT_SET_PARSER_SYNTAX,
+			                   MSGCAT_SYNTAX_INVALID_ALTER);
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+	| ALTER PACKAGE                 /* 1, 2 */
+	  package_name_without_dot      /* 3 */
+	  COMPILE	                /* 4 */
+		{{ DBG_TRACE_GRAMMAR(alter_stmt, | ALTER PACKAGE package_name_without_dot COMPILE);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_PACKAGE);
+
+			if (node != NULL)
+			  {
+			    node->info.pkg.name = $3;
+			    node->info.pkg.recompile = 1;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+
+		DBG_PRINT}}
+;
 
 view_or_vclass
 	: VIEW   { DBG_TRACE_GRAMMAR(view_or_vclass, : VIEW ); }
@@ -4867,6 +4966,22 @@ drop_stmt
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
 		DBG_PRINT}}
+        | DROP PACKAGE opt_body opt_if_exists package_name_without_dot
+		{{ DBG_TRACE_GRAMMAR(drop_stmt, | DROP PACKAGE opt_body package_name_without_dot);
+
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_PACKAGE);
+
+			if (node)
+			  {
+			    node->info.pkg.for_body = $3;
+			    node->info.pkg.if_exists = $4;
+			    node->info.pkg.name = $5;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		DBG_PRINT}}
+
 	| deallocate_or_drop PREPARE identifier
 		{{ DBG_TRACE_GRAMMAR(drop_stmt, | deallocate_or_drop PREPARE identifier);
 
@@ -5988,6 +6103,13 @@ synonym_name_without_dot
 synonym_name
 	: user_specified_name
 		{ DBG_TRACE_GRAMMAR(synonym_name, : user_specified_name);
+			$$ = $1;
+		}
+	;
+
+package_name_without_dot
+	: user_specified_name_without_dot
+		{ DBG_TRACE_GRAMMAR(package_name_without_dot, : user_specified_name_without_dot);
 			$$ = $1;
 		}
 	;
@@ -26388,6 +26510,7 @@ parser_main (PARSER_CONTEXT * parser)
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -26496,6 +26619,7 @@ parse_one_statement (int state)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;

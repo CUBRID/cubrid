@@ -75,6 +75,7 @@ int msg_ptr;
 int yybuffer_pos;
 int is_dblink_query_string = 0;
 int expecting_pl_lang_spec = 0;
+int expecting_plcsql_text = 0;
 
 /* TODO: 
  * For now, I've set it to ignore warnings in the automatically generated code. 
@@ -160,7 +161,10 @@ IDL       [a-zA-Z0-9_]
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ARIA; }
 [aA][sS]								{ begin_token(yytext);
-                                                                                if (expecting_pl_lang_spec) {
+                                                                                if (expecting_plcsql_text) {
+                                                                                        expecting_plcsql_text = 0;
+                                                                                        BEGIN(PLCSQL_TEXT);
+                                                                                } else if (expecting_pl_lang_spec) {
                                                                                         expecting_pl_lang_spec = 0;
                                                                                         BEGIN(PL_LANG_SPEC);
                                                                                 }
@@ -198,6 +202,7 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return BIT_XOR; }
 [bB][lL][oO][bB]							{ begin_token(yytext);	 return BLOB_; }
+[bB][oO][dD][yY]							{ begin_token(yytext);	 return BODY; }
 [bB][oO][oO][lL][eE][aA][nN]						{ begin_token(yytext);   return BOOLEAN_; }
 [bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
@@ -515,7 +520,10 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return INVISIBLE; }
 [iI][sS]								{ begin_token(yytext);
-                                                                                if (expecting_pl_lang_spec) {
+                                                                                if (expecting_plcsql_text) {
+                                                                                        expecting_plcsql_text = 0;
+                                                                                        BEGIN(PLCSQL_TEXT);
+                                                                                } else if (expecting_pl_lang_spec) {
                                                                                         expecting_pl_lang_spec = 0;
                                                                                         BEGIN(PL_LANG_SPEC);
                                                                                 }
@@ -766,6 +774,7 @@ IDL       [a-zA-Z0-9_]
 [oO][wW][nN][eE][rR]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return OWNER; }
+[pP][aA][cC][kK][aA][gG][eE]					        { begin_token(yytext);   return PACKAGE; }
 [pP][aA][gG][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PAGE; }
