@@ -11236,7 +11236,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
     }
-  if (attr_def->info.attr_def.attr_invisible == 2)
+  else if (attr_def->info.attr_def.attr_invisible == 2)
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
