@@ -4730,17 +4730,17 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_na
 }
 
 /*
- * smt_is_attribute_all_invisible() - Check whether all attributes of template are invisible
+ * smt_check_attribute_all_invisible() - Check whether all attributes of template are invisible
  *
  *   return: NO_ERROR that all attributes are invisible, non-zero for ERROR.
  *   ctemplate(in): class template
  *   class_name(in) : class name for error message
  *
  *   Note: This function only check attributes, not class attributes or shared attributes.
- *         if there are no attributes, return False since CUBRID allows empty class.
+ *         if there are no attributes, return NO_ERROR since CUBRID allows empty class.
  */
 int
-smt_is_attribute_all_invisible (SM_TEMPLATE * ctemplate, const char *class_name)
+smt_check_attribute_all_invisible (SM_TEMPLATE * ctemplate, const char *class_name)
 {
   SM_ATTRIBUTE *attr;
 
