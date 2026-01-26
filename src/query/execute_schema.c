@@ -1302,11 +1302,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
 
   /* check if all of attributes are invisible. if is, abort */
-  if (smt_is_attribute_all_invisible (ctemplate))
+  error = smt_is_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1,
-	      alter->info.alter.entity_name->info.name.original);
-      error = er_errid ();
       dbt_abort_class (ctemplate);
       return error;
     }
@@ -9143,11 +9141,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   /* check if all of attributes are invisible. if is, abort */
-  if (smt_is_attribute_all_invisible (ctemplate))
+  error = smt_is_attribute_all_invisible (ctemplate, node->info.create_entity.entity_name->info.name.original);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1,
-	      node->info.create_entity.entity_name->info.name.original);
-      error = er_errid ();
       goto error_exit;
     }
 
@@ -9956,11 +9952,9 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
     }
 
   /* check if all of attributes are invisible. if is, abort */
-  if (smt_is_attribute_all_invisible (ctemplate))
+  error = smt_is_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1,
-	      alter->info.alter.entity_name->info.name.original);
-      error = er_errid ();
       goto exit;
     }
 
