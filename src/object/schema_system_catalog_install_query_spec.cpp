@@ -1406,8 +1406,7 @@ sm_define_view_serial_spec (void)
 	  /* CT_SERIAL_NAME */
           "[%s] AS [serial] "
         "WHERE "
-          "[serial].[class_name] IS NULL "
-          "AND [serial].[attr_name] IS NULL",
+          "[serial].[class_name] IS NULL",
         CT_SERIAL_NAME);
   // *INDENT-ON*
 
