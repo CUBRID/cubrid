@@ -7374,7 +7374,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	}
     }
 
-  if (error == NO_ERROR && attribute->info.attr_def.attr_invisible)
+  if (error == NO_ERROR && attribute->info.attr_def.attr_invisible == 2)
     {
       /* skip finding attribute if att is already available */
       if (att == NULL)
