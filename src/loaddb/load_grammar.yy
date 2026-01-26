@@ -32,6 +32,12 @@
 
 %define parse.assert
 
+%initial-action {
+#if YYDEBUG
+  set_debug_level (loader_init_yydebug ());
+#endif
+}
+
 %union {
   int int_val;
   string_type *string;
@@ -57,8 +63,29 @@ namespace cubload
 #include "dbtype.h"
 #include "load_driver.hpp"
 
+#include <cstdlib>
+
 #undef yylex
 #define yylex m_driver.get_scanner ().yylex
+
+#if YYDEBUG
+static int
+loader_init_yydebug (void)
+{
+  static int initialized = 0;
+  static int debug_level = 0;
+  if (!initialized)
+    {
+      const char *env = std::getenv ("CUBRID_LOADER_DEBUG");
+      if (env && env[0] == '1')
+        {
+          debug_level = 1;
+        }
+      initialized = 1;
+    }
+  return debug_level;
+}
+#endif
 }
 
 %token NL

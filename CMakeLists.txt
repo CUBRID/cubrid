@@ -337,8 +337,13 @@ add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
 add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
 # Loader FLEX/BISON targets
+set(BISON_LOADER_FLAGS "-d -r all")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BISON_LOADER_FLAGS "${BISON_LOADER_FLAGS} --debug")
+endif()
+
 bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "-d -r all")
+  COMPILE_FLAGS "${BISON_LOADER_FLAGS}")
 flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline")
 add_flex_bison_dependency(loader_lexer loader_grammar)
