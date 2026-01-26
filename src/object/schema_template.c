@@ -4739,24 +4739,27 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_na
  *         if there are no attributes, return False since CUBRID allows empty class.
  */
 int
-smt_is_attribute_all_invisible (SM_TEMPLATE* ctemplate){
+smt_is_attribute_all_invisible (SM_TEMPLATE * ctemplate)
+{
   SM_ATTRIBUTE *attr;
   bool is_all_invisible = false;
 
-  assert(ctemplate != NULL);
+  assert (ctemplate != NULL);
   // assert(ctemplate->attributes != NULL); // empty class is available in CUBRID
   attr = ctemplate->attributes;
 
   for (; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+    {
+      if (db_attribute_is_invisible_column ((DB_ATTRIBUTE *) attr))
 	{
-	  if(db_attribute_is_invisible_column((DB_ATTRIBUTE*) attr)){
-      is_all_invisible = true;
-    }
-    else{
-      is_all_invisible = false;
-      break;
-    }
+	  is_all_invisible = true;
 	}
+      else
+	{
+	  is_all_invisible = false;
+	  break;
+	}
+    }
   return is_all_invisible;
 }
 

@@ -1301,13 +1301,15 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
-  /* check if all of attributes are invisible. if is, abort*/
-  if (smt_is_attribute_all_invisible(ctemplate)){
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1, alter->info.alter.entity_name->info.name.original);
-	      error = er_errid ();
-        dbt_abort_class(ctemplate);
-	      return error;
-	    }
+  /* check if all of attributes are invisible. if is, abort */
+  if (smt_is_attribute_all_invisible (ctemplate))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1,
+	      alter->info.alter.entity_name->info.name.original);
+      error = er_errid ();
+      dbt_abort_class (ctemplate);
+      return error;
+    }
 
   vclass = dbt_finish_class (ctemplate);
 
@@ -9139,13 +9141,15 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       goto error_exit;
     }
-  
-  /* check if all of attributes are invisible. if is, abort*/
-  if (smt_is_attribute_all_invisible(ctemplate)){
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1, node->info.create_entity.entity_name->info.name.original);
-	      error = er_errid ();
-	      goto error_exit;
-	    }
+
+  /* check if all of attributes are invisible. if is, abort */
+  if (smt_is_attribute_all_invisible (ctemplate))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1,
+	      node->info.create_entity.entity_name->info.name.original);
+      error = er_errid ();
+      goto error_exit;
+    }
 
   class_obj = dbt_finish_class (ctemplate);
 
@@ -9951,12 +9955,14 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
       att_id = attr_chg_prop.att_id;
     }
 
-  /* check if all of attributes are invisible. if is, abort*/
-  if (smt_is_attribute_all_invisible(ctemplate)){
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1, alter->info.alter.entity_name->info.name.original);
-	      error = er_errid ();
-	      goto exit;
-	    }
+  /* check if all of attributes are invisible. if is, abort */
+  if (smt_is_attribute_all_invisible (ctemplate))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1,
+	      alter->info.alter.entity_name->info.name.original);
+      error = er_errid ();
+      goto exit;
+    }
 
   /* force schema update to server */
   class_obj = dbt_finish_class (ctemplate);
