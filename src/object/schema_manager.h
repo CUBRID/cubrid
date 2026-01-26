@@ -119,7 +119,6 @@ extern int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
 
 /* Misc schema operations */
 extern int sm_rename_class (MOP op, const char *new_name);
-extern void sm_mark_system_classes (void);
 extern int sm_update_all_catalog_statistics (bool with_fullscan);
 extern int sm_update_catalog_statistics (const char *class_name, bool with_fullscan);
 extern int sm_force_write_all_classes (void);

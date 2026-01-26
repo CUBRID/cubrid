@@ -22,6 +22,7 @@
 
 #include "load_common.hpp"
 
+#include "db_client_type.hpp"
 #include "dbtype_def.h"
 #include "error_code.h"
 #include "intl_support.h"
@@ -538,21 +539,24 @@ namespace cubload
   }
 
   load_status::load_status ()
-    : m_load_completed (false)
+    : m_load_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY)
+    , m_load_completed (false)
     , m_load_failed (false)
     , m_load_stats ()
   {
   }
 
-  load_status::load_status (bool load_completed, bool load_failed, std::vector<stats> &load_stats)
-    : m_load_completed (load_completed)
+  load_status::load_status (int load_client_type, bool load_completed, bool load_failed, std::vector<stats> &load_stats)
+    : m_load_client_type (load_client_type)
+    , m_load_completed (load_completed)
     , m_load_failed (load_failed)
     , m_load_stats (load_stats)
   {
   }
 
   load_status::load_status (load_status &&other) noexcept
-    : m_load_completed (other.m_load_completed)
+    : m_load_client_type (other.m_load_client_type)
+    , m_load_completed (other.m_load_completed)
     , m_load_failed (other.m_load_failed)
     , m_load_stats (std::move (other.m_load_stats))
   {
@@ -561,11 +565,18 @@ namespace cubload
   load_status &
   load_status::operator= (load_status &&other) noexcept
   {
+    m_load_client_type = other.m_load_client_type;
     m_load_completed = other.m_load_completed;
     m_load_failed = other.m_load_failed;
     m_load_stats = std::move (other.m_load_stats);
 
     return *this;
+  }
+
+  int
+  load_status::get_load_client_type ()
+  {
+    return m_load_client_type;
   }
 
   bool
@@ -589,6 +600,7 @@ namespace cubload
   void
   load_status::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (m_load_client_type);
     serializator.pack_bool (m_load_completed);
     serializator.pack_bool (m_load_failed);
 
@@ -602,6 +614,7 @@ namespace cubload
   void
   load_status::unpack (cubpacking::unpacker &deserializator)
   {
+    deserializator.unpack_int (m_load_client_type);
     deserializator.unpack_bool (m_load_completed);
     deserializator.unpack_bool (m_load_failed);
 
@@ -618,7 +631,8 @@ namespace cubload
   size_t
   load_status::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_bool_size (start_offset); // m_load_completed
+    size_t size = serializator.get_packed_int_size (start_offset); // m_load_client_type
+    size += serializator.get_packed_bool_size (size); // m_load_completed
     size += serializator.get_packed_bool_size (size); // m_load_failed
     size += serializator.get_packed_bigint_size (size); // m_load_stats size
     for (const stats &s : m_load_stats)
@@ -701,75 +715,65 @@ namespace cubload
 
     for (std::string line; std::getline (object_file, line); ++lineno, ++one_row_lineno)
       {
-	bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
-	bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
-
-	if (is_id_line || is_class_line)
+	if (single_quote_checker == 0)
 	  {
-	    if (one_row_buffer.empty() == false)
+	    bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
+	    bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
+
+	    if (is_id_line || is_class_line)
 	      {
-		error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
-						    lineno, one_row_lineno, batch_start_offset, batch_rows);
+		if (one_row_buffer.empty() == false)
+		  {
+		    error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
+							lineno, one_row_lineno, batch_start_offset, batch_rows);
+		    if (error_code != NO_ERROR)
+		      {
+			object_file.close ();
+			return error_code;
+		      }
+		  }
+
+		if (is_class_line)
+		  {
+		    // in case of class line collect remaining for current class
+		    // and start new batch for the new class
+
+		    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
+		    if (error_code != NO_ERROR)
+		      {
+			object_file.close ();
+			return error_code;
+		      }
+
+		    ++clsid;
+		    batch_buffer.reserve (DEFAULT_STRING_SZ);
+		    size_bk = DEFAULT_STRING_SZ;
+		  }
+
+		// New class so we check if the previous one was ignored.
+		// If so, then we should empty the current batch since we do not send it to the server.
+
+		line.append ("\n"); // feed lexer with new line
+		batch c_batch (batch_id, clsid, line, lineno, 1);
+		error_code = c_handler (c_batch, class_is_ignored);
 		if (error_code != NO_ERROR)
 		  {
 		    object_file.close ();
 		    return error_code;
 		  }
+
+		// Next batch should start from the following line.
+		batch_start_offset = lineno + 1;
+		continue;
 	      }
-
-	    if (is_class_line)
-	      {
-		// in case of class line collect remaining for current class
-		// and start new batch for the new class
-
-		error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
-		if (error_code != NO_ERROR)
-		  {
-		    object_file.close ();
-		    return error_code;
-		  }
-
-		++clsid;
-		batch_buffer.reserve (DEFAULT_STRING_SZ);
-		size_bk = DEFAULT_STRING_SZ;
-	      }
-
-	    // New class so we check if the previous one was ignored.
-	    // If so, then we should empty the current batch since we do not send it to the server.
-
-	    line.append ("\n"); // feed lexer with new line
-	    batch c_batch (batch_id, clsid, line, lineno, 1);
-	    error_code = c_handler (c_batch, class_is_ignored);
-	    if (error_code != NO_ERROR)
-	      {
-		object_file.close ();
-		return error_code;
-	      }
-
-	    // Next batch should start from the following line.
-	    batch_start_offset = lineno + 1;
-	    continue;
 	  }
 
 	if (class_is_ignored)
 	  {
+	    assert (single_quote_checker == 0);
 	    // Skip the remaining lines until we find another class.
 	    continue;
 	  }
-
-	// strip trailing whitespace
-	rtrim (line);
-
-	if (line.empty ())
-	  {
-	    continue;
-	  }
-
-	// it is a line containing row data so append it
-	one_row_buffer.append (line);
-
-	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
-	one_row_buffer.append ("\n");
 
 	// check for matching single quotes
 	for (const char &c: line)
@@ -779,6 +783,23 @@ namespace cubload
 		single_quote_checker ^= 1;
 	      }
 	  }
+
+	if (single_quote_checker == 0)
+	  {
+	    // strip trailing whitespace
+	    rtrim (line);
+
+	    if (line.empty ())
+	      {
+		continue;
+	      }
+	  }
+
+	// it is a line containing row data so append it
+	one_row_buffer.append (line);
+
+	// since std::getline eats end line character, add it back in order to make loaddb lexer happy
+	one_row_buffer.append ("\n");
 
 	// it could be that a row is wrapped on the next line,
 	// this means that the row ends on the last line that does not end with '+' (plus) character

@@ -509,8 +509,10 @@ typedef enum
   LOADDB_MSG_IGNORED_CLASS = 121,
   LOADDB_MSG_EXCEED_MAX_USER_LEN = 122,
   LOADDB_MSG_EMPTY_SCHEMA_FILE_LIST = 123,
-
-  LOADDB_MSG_USAGE = 124
+  LOADDB_MSG_COMPAT_UNDER_11_2 = 124,
+  LOADDB_MSG_COMPAT_UNDER_11_4 = 125,
+  LOADDB_MSG_COMPAT_OFF = 126,
+  LOADDB_MSG_USAGE = 127
 } MSGCAT_LOADDB_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_MIGDB */
@@ -1498,6 +1500,8 @@ typedef struct _ha_config
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
 #define CSQL_SYSADM_REBUILD_CATALOG_S           12020
 #define CSQL_SYSADM_REBUILD_CATALOG_L           "sysadm-rebuild-catalog"
+#define CSQL_NOPRINT_TITLE_S			12021
+#define CSQL_NOPRINT_TITLE_L			"skip-title"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

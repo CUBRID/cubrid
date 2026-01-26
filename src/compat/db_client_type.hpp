@@ -45,9 +45,17 @@ enum db_client_type
   DB_CLIENT_TYPE_SKIP_VACUUM_CSQL = 15,
   DB_CLIENT_TYPE_SKIP_VACUUM_ADMIN_CSQL = 16,
   DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS = 17, /* admin compactdb that can run on standby */
-  DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT = 18, /* loaddb with --no-user-specified-name option */
-  DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG = 19,
-  DB_CLIENT_TYPE_LOADDB_UTILITY = 20,
+  DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG = 18,
+
+  /*
+   * loaddb with --no-user-specified-name:
+   *   - default: DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+   *   - if source version >= 11.2: switch to DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4
+   *   - if source version >= 11.4: switch to DB_CLIENT_TYPE_LOADDB_UTILITY (compat off)
+   */
+  DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 = 19,
+  DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4 = 20,
+  DB_CLIENT_TYPE_LOADDB_UTILITY = 21,
 
   DB_CLIENT_TYPE_MAX
 };

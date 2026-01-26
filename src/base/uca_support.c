@@ -38,6 +38,8 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+#if defined(SA_MODE)
+
 #define DUCET_FILE "ducet.txt"
 
 #define MAX_WEIGHT_LEVELS 4
@@ -3584,3 +3586,5 @@ build_uca_w_l4 (const UCA_COLL_CE_LIST * ce_list, UCA_L4_W * uca_w_l4)
       uca_w_l4[i] = GET_UCA_WEIGHT (ce_list, i, 3);
     }
 }
+
+#endif //#if defined(SA_MODE)
