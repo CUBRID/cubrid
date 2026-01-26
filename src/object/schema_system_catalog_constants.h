@@ -33,7 +33,7 @@
 #define CT_METHARG_NAME            "_db_meth_arg"
 #define CT_METHFILE_NAME           "_db_meth_file"
 #define CT_QUERYSPEC_NAME          "_db_query_spec"
-#define CT_RESOLUTION_NAME         "_db_resolution"
+#define CT_RESOLUTION_NAME         "_db_resolution"	// TODO erase
 #define CT_INDEX_NAME              "_db_index"
 #define CT_INDEXKEY_NAME           "_db_index_key"
 #define CT_CLASSAUTH_NAME          "_db_auth"
@@ -52,8 +52,14 @@
 #define CT_AUTHORIZATION_NAME      "db_authorization"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
-#define CT_SERVER_NAME          "_db_server"
+#define CT_SERVER_NAME             "_db_server"
 #define CT_SYNONYM_NAME            "_db_synonym"
+#define CT_PACKAGE_NAME                 "_db_package"
+#define CT_PACKAGE_CODE_NAME            "_db_package_code"
+#define CT_PACKAGE_VAR_NAME             "_db_package_var"
+#define CT_PACKAGE_EXCEPTION_NAME       "_db_package_exception"
+#define CT_PACKAGE_CURSOR_NAME          "_db_package_cursor"
+#define CT_PACKAGE_RECORD_TYPE_NAME     "_db_package_record_type"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
@@ -74,9 +80,9 @@
 #define CTV_SERIAL_NAME            "db_serial"
 #define CTV_HA_APPLY_INFO_NAME     "db_ha_apply_info"
 #define CTV_PARTITION_NAME         "db_partition"
-#define CTV_COLLATION_NAME      "db_collation"
+#define CTV_COLLATION_NAME             "db_collation"
 #define CTV_CHARSET_NAME	   "db_charset"
-#define CTV_SERVER_NAME         "db_server"
+#define CTV_SERVER_NAME             "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
 
 #define CT_DBCOLL_COLL_ID_COLUMN	   "coll_id"

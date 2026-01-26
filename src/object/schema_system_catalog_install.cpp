@@ -286,6 +286,12 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
   ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
   ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
+  ADD_TABLE_DEFINITION (CT_PACKAGE_NAME, system_catalog_initializer::get_package ());
+  ADD_TABLE_DEFINITION (CT_PACKAGE_CODE_NAME, system_catalog_initializer::get_package_code ());
+  ADD_TABLE_DEFINITION (CT_PACKAGE_VAR_NAME, system_catalog_initializer::get_package_var ());
+  ADD_TABLE_DEFINITION (CT_PACKAGE_EXCEPTION_NAME, system_catalog_initializer::get_package_exception ());
+  ADD_TABLE_DEFINITION (CT_PACKAGE_CURSOR_NAME, system_catalog_initializer::get_package_cursor ());
+  ADD_TABLE_DEFINITION (CT_PACKAGE_RECORD_TYPE_NAME, system_catalog_initializer::get_package_record_type ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
   ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_direct_super_class ());
@@ -1235,6 +1241,181 @@ namespace cubschema
 // constraints
     {
       {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_package ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_PACKAGE_NAME,
+		   // columns
+    {
+      {"unique_name", format_varchar (255)},
+      {"pkg_name", format_varchar (255)},
+      {"code_name", "string"},
+      {"flags", "integer"}, // bit0: system pkg or not, bit1~: reserved
+      {"owner", AU_USER_CLASS_NAME},
+      {"variables", format_sequence (CT_PACKAGE_VAR_NAME)},
+      {"exceptions", format_sequence (CT_PACKAGE_EXCEPTION_NAME)},
+      {"cursors", format_sequence (CT_PACKAGE_CURSOR_NAME)},
+      {"procedures", format_sequence (CT_STORED_PROC_NAME)},
+      {"record_types", format_sequence (CT_PACKAGE_RECORD_TYPE_NAME)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_package_code ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_PACKAGE_CODE_NAME,
+		   // columns
+    {
+      {"code_name", "string"},
+      {"stype", "integer"},
+      {"scode_spec", "string"},
+      {"scode_body", "string"},
+      {"otype", "integer"},
+      {"ocode", "string"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"code_name", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_package_var ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_PACKAGE_VAR_NAME,
+		   // columns
+    {
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"var_name", format_varchar (255)},
+      {"var_type", "integer"},
+      {"init_value", "string"},
+      {"flags", "integer"},     // bit0: constant or not, bit1: not null or nullable, bit2~: reserved
+      {"comment", format_varchar (1024)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "var_name", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_package_exception ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_PACKAGE_EXCEPTION_NAME,
+		   // columns
+    {
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"exception_name", format_varchar (255)},
+      {"comment", format_varchar (1024)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "exception_name", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_package_cursor ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_PACKAGE_CURSOR_NAME,
+		   // columns
+    {
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"cursor_name", format_varchar (255)},
+      {"record_type", "string"},
+      {"parameters", format_sequence ("string")}, // sequence of 'name:type' strings
+      {"comment", format_varchar (1024)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "cursor_name", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_package_record_type ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_PACKAGE_RECORD_TYPE_NAME,
+		   // columns
+    {
+      {"pkg_of", CT_PACKAGE_NAME},
+      {"record_type_name", format_varchar (255)},
+      {"fields", format_sequence ("string")}, // sequence of 'name:type:not-null-or-nullable:init-expr' strings
+      {"comment", format_varchar (1024)}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"pkg_of", "record_type_name", nullptr}, false}
     },
 // authorization
     {

@@ -50,7 +50,7 @@ namespace cubschema
     CT_AUTHORIZATION_NAME,		// "db_authorization"
 
     /* currently, not implemented */
-    // AU_GRANT_CLASS_NAME,		// "db_grant"
+    // AU_GRANT_CLASS_NAME,		// "db_grant" TODO erase
 
     /*
      * catalog classes
@@ -78,9 +78,15 @@ namespace cubschema
     CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_TRIGGER_NAME,		// "_db_trigger"
+    CT_PACKAGE_NAME,                	// "_db_package"
+    CT_PACKAGE_CODE_NAME,           	// "_db_package_code"
+    CT_PACKAGE_VAR_NAME,            	// "_db_package_var"
+    CT_PACKAGE_EXCEPTION_NAME,      	// "_db_package_exception"
+    CT_PACKAGE_CURSOR_NAME,         	// "_db_package_cursor"
+    CT_PACKAGE_RECORD_TYPE_NAME,    	// "_db_package_record_type"
 
     /* currently, not implemented */
-    CT_RESOLUTION_NAME		// "_db_resolution"
+    CT_RESOLUTION_NAME		// "_db_resolution" TODO erase
   };
 
   static const std::vector <std::string> sm_system_vclass_names =
