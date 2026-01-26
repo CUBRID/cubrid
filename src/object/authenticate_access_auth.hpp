@@ -89,7 +89,7 @@ class au_auth_accessor
 extern int au_delete_auth_of_dropping_user (MOP user);
 
 /*
-* access db_authorization through executing query
+* access _db_authorization through executing query
 */
 extern int au_delete_authorizartion_of_dropping_user (MOP user);
 

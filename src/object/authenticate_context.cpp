@@ -417,7 +417,7 @@ authenticate_context::install (void)
     }
 
   /*
-   * db_authorization
+   * _db_authorization
    */
 
   /*
@@ -490,7 +490,6 @@ authenticate_context::install (void)
   au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
   au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
   au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, auth_cls, AU_SELECT, false);
 
   au_add_method_check_authorization ();
 

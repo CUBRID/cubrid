@@ -1035,6 +1035,36 @@ sm_define_view_auth_spec (void)
 }
 
 const char *
+sm_define_view_authorization_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+          "[a].[owner] AS [owner], "
+	  "[a].[grants] AS [grants] "
+	"FROM "
+	  /* CT_AUTHORIZATION_NAME */
+	  "[%s] AS [a] "
+	"WHERE "
+	  "{ 'DBA', [a].[owner].[name] } * ("
+	    "SELECT "
+	      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	    "FROM "
+	      /* AU_USER_CLASS_NAME */
+	      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	    "WHERE "
+	      "[u].[name] = CURRENT_USER"
+	  ") SETNEQ {}",
+	CT_AUTHORIZATION_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
 sm_define_view_trigger_spec (void)
 {
   static char stmt [2048];

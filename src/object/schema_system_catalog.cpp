@@ -47,7 +47,7 @@ namespace cubschema
     CT_ROOT_NAME,		// "db_root"
     CT_USER_NAME,		// "db_user"
     CT_PASSWORD_NAME,	// "db_password"
-    CT_AUTHORIZATION_NAME,		// "db_authorization"
+    CT_AUTHORIZATION_NAME,	// "_db_authorization"
 
     /* currently, not implemented */
     // AU_GRANT_CLASS_NAME,		// "db_grant"
@@ -100,6 +100,7 @@ namespace cubschema
     CTV_INDEX_NAME,			// "db_index"
     CTV_INDEXKEY_NAME,		// "db_index_key"
     CTV_AUTH_NAME,			// "db_auth"
+    CTV_AUTHORIZATION_NAME,	// "db_authorization"
     CTV_TRIGGER_NAME,		// "db_trigger"
     CTV_PARTITION_NAME,		// "db_partition"
     CTV_STORED_PROC_NAME,	// "db_stored_procedure"
