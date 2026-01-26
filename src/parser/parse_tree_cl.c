@@ -8082,11 +8082,6 @@ pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
 
   q = pt_append_varchar (parser, q, r1);
 
-  if (!parser->flag.is_parsing_unload_schema)
-    {
-      q = pt_append_nulstring (parser, q, ";");
-    }
-
   return q;
 }
 
