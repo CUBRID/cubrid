@@ -60,7 +60,7 @@ class print_output;
 #define Au_public_user                  au_ctx ()->public_user
 #define Au_disable                      au_ctx ()->disable_auth_check
 
-#define Au_authorizations_class         au_ctx ()->authorizations_class
+#define Au_root_class                   au_ctx ()->root_class
 #define Au_authorization_class          au_ctx ()->authorization_class
 #define Au_user_class                   au_ctx ()->user_class
 #define Au_password_class               au_ctx ()->password_class
@@ -167,6 +167,8 @@ extern int au_add_member (MOP group, MOP member);
 extern int au_drop_member (MOP group, MOP member);
 extern int au_drop_user (MOP user);
 extern int au_set_user_comment (MOP user, const char *comment);
+extern int au_set_user_timestamps (MOP user);
+extern int au_update_user_timestamp (MOP user);
 
 extern char *au_get_user_name (MOP obj);
 extern bool au_is_dba_group_member (MOP user);

@@ -527,8 +527,6 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   shm_as_p->as_port = br_info_p->appl_server_port;
 #endif /* WINDOWS */
   shm_as_p->query_timeout = br_info_p->query_timeout;
-  shm_as_p->mysql_read_timeout = br_info_p->mysql_read_timeout;
-  shm_as_p->mysql_keepalive_interval = br_info_p->mysql_keepalive_interval;
   shm_as_p->max_string_length = br_info_p->max_string_length;
   shm_as_p->stripped_column_name = br_info_p->stripped_column_name;
   shm_as_p->keep_connection = br_info_p->keep_connection;
@@ -963,19 +961,7 @@ get_error_log_file_name (char *access_log_file, char *error_log_path, char *brok
 static const char *
 get_appl_server_name (int appl_server_type)
 {
-  if (appl_server_type == APPL_SERVER_CAS_ORACLE)
-    {
-      return APPL_SERVER_CAS_ORACLE_NAME;
-    }
-  else if (appl_server_type == APPL_SERVER_CAS_MYSQL51)
-    {
-      return APPL_SERVER_CAS_MYSQL51_NAME;
-    }
-  else if (appl_server_type == APPL_SERVER_CAS_MYSQL)
-    {
-      return APPL_SERVER_CAS_MYSQL_NAME;
-    }
-  else if (appl_server_type == APPL_SERVER_CAS_CGW)
+  if (appl_server_type == APPL_SERVER_CAS_CGW)
     {
       return APPL_SERVER_CAS_CGW_NAME;
     }

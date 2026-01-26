@@ -39,7 +39,6 @@ namespace cubschema
      * authorization classes
      *
      * AU_ROOT_CLASS_NAME     = CT_ROOT_NAME
-     * AU_OLD_ROOT_CLASS_NAME = CT_AUTHORIZATIONS_NAME
      * AU_USER_CLASS_NAME     = CT_USER_NAME
      * AU_PASSWORD_CLASS_NAME = CT_PASSWORD_NAME
      * AU_AUTH_CLASS_NAME     = CT_AUTHORIZATION_NAME
@@ -49,7 +48,6 @@ namespace cubschema
     CT_USER_NAME,		// "db_user"
     CT_PASSWORD_NAME,	// "db_password"
     CT_AUTHORIZATION_NAME,		// "db_authorization"
-    CT_AUTHORIZATIONS_NAME,	// "db_authorizations"
 
     /* currently, not implemented */
     // AU_GRANT_CLASS_NAME,		// "db_grant"
@@ -73,14 +71,13 @@ namespace cubschema
     CT_STORED_PROC_NAME,		// "_db_stored_procedure"
     CT_STORED_PROC_ARGS_NAME,	// "_db_stored_procedure_args"
     CT_STORED_PROC_CODE_NAME,   // "_db_stored_procedure_code"
-    CT_SERIAL_NAME,			// "db_serial"
-    CT_HA_APPLY_INFO_NAME,	// "db_ha_apply_info"
+    CT_SERIAL_NAME,		// "_db_serial"
+    CT_HA_APPLY_INFO_NAME,	        // "_db_ha_apply_info"
     CT_COLLATION_NAME,		// "_db_collation"
     CT_CHARSET_NAME,			// "_db_charset"
-    CT_DB_SERVER_NAME,		// "_db_server"
+    CT_SERVER_NAME,		// "_db_server"
     CT_SYNONYM_NAME,			// "_db_synonym"
-
-    CT_TRIGGER_NAME,			// "db_trigger"
+    CT_TRIGGER_NAME,		// "_db_trigger"
 
     /* currently, not implemented */
     CT_RESOLUTION_NAME		// "_db_resolution"
@@ -103,13 +100,15 @@ namespace cubschema
     CTV_INDEX_NAME,			// "db_index"
     CTV_INDEXKEY_NAME,		// "db_index_key"
     CTV_AUTH_NAME,			// "db_auth"
-    CTV_TRIGGER_NAME,		// "db_trig"
+    CTV_TRIGGER_NAME,		// "db_trigger"
     CTV_PARTITION_NAME,		// "db_partition"
     CTV_STORED_PROC_NAME,	// "db_stored_procedure"
     CTV_STORED_PROC_ARGS_NAME,	// "db_stored_procedure_args"
-    CTV_DB_COLLATION_NAME,	// "db_collation"
-    CTV_DB_CHARSET_NAME,		// "db_charset"
-    CTV_DB_SERVER_NAME,		// "db_server"
+    CTV_SERIAL_NAME,		// "db_serial"
+    CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
+    CTV_COLLATION_NAME,	// "db_collation"
+    CTV_CHARSET_NAME,		// "db_charset"
+    CTV_SERVER_NAME,		// "db_server"
     CTV_SYNONYM_NAME			// "db_synonym"
   };
 

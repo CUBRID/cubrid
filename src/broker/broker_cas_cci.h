@@ -119,8 +119,16 @@ typedef enum
 
   CCI_U_TYPE_CHAR = 1,
   CCI_U_TYPE_STRING = 2,
-  CCI_U_TYPE_NCHAR = 3,
-  CCI_U_TYPE_VARNCHAR = 4,
+
+  /* TODO:
+   *  CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   *  However, to maintain compatibility with previous versions, the enum list will be preserved. 
+   *  To remove CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR,
+   * you need to remove U_TYPE_VARNCHAR and U_TYPE_NCHAR from the UUType.java file.      
+   */
+  CCI_U_TYPE_NCHAR_DEPRECATED = 3,
+  CCI_U_TYPE_VARNCHAR_DEPRECATED = 4,
+
   CCI_U_TYPE_BIT = 5,
   CCI_U_TYPE_VARBIT = 6,
   CCI_U_TYPE_NUMERIC = 7,

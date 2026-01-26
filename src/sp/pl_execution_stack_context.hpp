@@ -79,7 +79,7 @@ namespace cubpl
 
     public:
       execution_stack () = delete; // Not DefaultConstructible
-      execution_stack (cubthread::entry *thread_p);
+      execution_stack (cubthread::entry *thread_p, session *sess);
 
       execution_stack (execution_stack &&other) = delete; // Not MoveConstructible
       execution_stack (const execution_stack &copy) = delete; // Not CopyConstructible

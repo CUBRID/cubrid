@@ -3306,9 +3306,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        */
       method_name_node = node->info.method_call.method_name;
       // parser_print_tree is for built-in package names such as DBMS_OUTPUT
-      method_name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-									     method_name_node) :
-	PT_NAME_ORIGINAL (method_name_node);
+      if (PT_NAME_RESOLVED (method_name_node))
+	{
+	  int custom_print_saved = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_QUOTES;
+	  parser->custom_print &= ~PT_PRINT_QUOTES;
+	  method_name = parser_print_tree (parser, method_name_node);
+	  parser->custom_print = custom_print_saved;
+	}
+      else
+	{
+	  method_name = PT_NAME_ORIGINAL (method_name_node);
+	}
       if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
 	{
 	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
@@ -3463,7 +3472,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
-		    break;	// FIXME: something wrong
+		    *continue_walk = PT_STOP_WALK;
+		    return node;
 		  }
 		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
 
@@ -3549,7 +3559,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 	      if (node1 == NULL)
 		{
-		  break;	// FIXME: something wrong
+		  *continue_walk = PT_STOP_WALK;
+		  return node;
 		}
 
 	      if (node1->node_type == PT_METHOD_CALL)
@@ -4572,8 +4583,6 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       result = parser_new_node (parser, PT_DATA_TYPE);
       if (result == NULL)
 	{
@@ -5020,8 +5029,14 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
-  PT_TYPE_NCHAR,
-  PT_TYPE_VARNCHAR,
+  /* TODO:
+   * PT_TYPE_NCHAR and PT_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.
+   */
+  PT_TYPE_NULL,			// PT_TYPE_NCHAR  for CCI_U_TYPE_NCHAR
+  PT_TYPE_NULL,			// PT_TYPE_VARNCHAR for CCI_U_TYPE_VARNCHAR
+
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_NUMERIC,
@@ -5098,8 +5113,6 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CHAR:
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_NUMERIC:
@@ -5437,10 +5450,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
   else
     {
-      int client_type = db_get_client_type ();
-
       /* in the case of loaddb, it can just check the column from the attr_def node. */
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb ())
 	{
 	  PT_NODE *cols;
 
@@ -5649,8 +5660,6 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_ENUMERATION:
     case PT_TYPE_JSON:
       attr->data_type = pt_domain_to_data_type (parser, dom);
@@ -7078,7 +7087,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
 	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 		{
 		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
 		    {
@@ -10267,8 +10276,6 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       node->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:
@@ -10447,8 +10454,15 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   new_node->info.method_call.method_id = (UINTPTR) new_node;
 
-  int sp_type_misc = jsp_get_sp_type (sp_name);
-  new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+  PT_MISC_TYPE sp_type_misc = (PT_MISC_TYPE) jsp_get_sp_type (sp_name);
+  // stored procedures can only be invoked through a CALL statement
+  if (sp_type_misc == PT_SP_PROCEDURE &&
+      (bind_arg->sc_info->top_node == NULL || bind_arg->sc_info->top_node->node_type != PT_METHOD_CALL))
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_STORED_PROC_CALL_IN_SQL);
+      return NULL;
+    }
+  new_node->info.method_call.method_type = sp_type_misc;
 
   PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
   if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
@@ -11803,7 +11817,7 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
       parser->custom_print = PT_SUPPRESS_RESOLVED | PT_SUPPRESS_QUOTES;
       char *err = parser_print_tree (parser, name_node);
       parser->custom_print = saved_custom;
-      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_INVALID_HOST_EXPR, err);
+      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_HOST_EXPR, err);
       return NULL;
     }
   hostvar->info.host_var.label = host_expr_str;

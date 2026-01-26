@@ -134,7 +134,6 @@ namespace cubload
     LDR_NULL,
     LDR_INT,
     LDR_STR,
-    LDR_NSTR,
     LDR_NUMERIC,                 /* Default real */
     LDR_DOUBLE,                  /* Reals specified with scientific notation, 'e', or 'E' */
     LDR_FLOAT,                   /* Reals specified with 'f' or 'F' notation */
@@ -280,7 +279,7 @@ namespace cubload
   {
     public:
       load_status ();
-      load_status (bool is_load_completed, bool is_session_failed, std::vector<stats> &load_stats);
+      load_status (int load_client_type, bool is_load_completed, bool is_session_failed, std::vector<stats> &load_stats);
 
       load_status (load_status &&other) noexcept;
       load_status &operator= (load_status &&other) noexcept;
@@ -288,6 +287,7 @@ namespace cubload
       load_status (const load_status &copy) = delete; // Not CopyConstructible
       load_status &operator= (const load_status &copy) = delete; // Not CopyAssignable
 
+      int get_load_client_type ();
       bool is_load_completed ();
       bool is_load_failed ();
       std::vector<stats> &get_load_stats ();
@@ -297,6 +297,7 @@ namespace cubload
       size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
     private:
+      int m_load_client_type;	/* ADMIN_LOADDB_COMPAT_UNDER_11_2 or ADMIN_LOADDB_COMPAT_UNDER_11_4 or LOADDB_UTILITY */
       bool m_load_completed;
       bool m_load_failed;
       std::vector<stats> m_load_stats;
