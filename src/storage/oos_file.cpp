@@ -189,12 +189,15 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, RECDES &recdes, OID &o
   if (recdes.length <= oos_get_max_chunk_size_within_page ())
     {
       const OOS_RECORD_HEADER header{recdes.length, 0, OID_INITIALIZER};
-      return oos_insert_within_page (thread_p, oos_vfid, recdes, header, oid);
+      err = oos_insert_within_page (thread_p, oos_vfid, recdes, header, oid);
     }
   else
     {
-      return oos_insert_across_pages (thread_p, oos_vfid, recdes, oid);
+      err = oos_insert_across_pages (thread_p, oos_vfid, recdes, oid);
     }
+
+  oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
+  return err;
 }
 
 
@@ -440,8 +443,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes,
 int
 oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
 {
-  oos_debug ("arguments: oos_vfid={fileid=%d, volid=%d}, oid={pageid=%d, slotid=%d, volid=%d}",
-	     oid.pageid, oid.slotid, oid.volid);
+  oos_debug ("reading from oid={vol=%d,page=%d,slot=%d}",
+	     oid.volid, oid.pageid, oid.slotid);
 
   int err = NO_ERROR;
 

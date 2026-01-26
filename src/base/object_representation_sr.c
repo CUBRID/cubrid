@@ -4307,8 +4307,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 
   mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
-  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
-  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
+  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag & 0x7];	// 0x7 == 0b111
+  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag & 0x7];	// 0x7 == 0b111
   if (old_mvcc_size != new_mvcc_size)
     {
       /* resize MVCC info inside recdes */
