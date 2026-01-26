@@ -2122,18 +2122,18 @@ $set 14 MSGCAT_SET_LOCK
 16 Object type: Class = %1$s.\n
 17 Object type: Instance of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
 18 Object type: Unknown.\n
-19 Total mode of holders = %1$8s, Total mode of waiters = %2$8s.\n
+19 Total mode of holders = %1$10s, Total mode of waiters = %2$10s.\n
 20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n
 24 NON_2PL_RELEASED:\n
-25 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n
-26 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n
-27 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n\t%5$13s Blocked_mode = %6$8s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
-28 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode =%7$8s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
-29 %1$4sTran_index = %2$3d, Blocked_mode =%3$8s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
-30 %1$4sTran_index = %2$3d, Non_2_phase_lock =%3$8s\n
+25 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d\n
+26 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d, Nsubgranules = %5$2d\n
+27 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d\n\t%5$13s Blocked_mode = %6$10s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
+28 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode = %7$10s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
+29 %1$4sTran_index = %2$3d, Blocked_mode = %3$10s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
+30 %1$4sTran_index = %2$3d, Non_2_phase_lock = %3$10s\n
 31 VPID (volid|pageid) = %1$3d|%2$6d.\n
 32 *** Lock Table Dump ***\n Lock Escalation at = %1$d, Run Deadlock interval = %2$5.2f\n
 33 Transaction (index %1$2d, %2$s, %3$s@%4$s|%5$d)\n
