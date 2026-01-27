@@ -4138,7 +4138,6 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
   PT_NODE *col;
   PT_NODE *range_var;
   const char *resolved_name;
-  bool exclude_invisible_column;
 
   if (spec == NULL)
     {
