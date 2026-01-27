@@ -156,6 +156,18 @@ typedef enum
 
 #define GUID_STANDARD_BYTES_LENGTH 16
 
+typedef enum
+{
+  COMPOSITE_YEAR = 0,
+  COMPOSITE_MONTH,
+  COMPOSITE_DAY,
+  COMPOSITE_HOUR,
+  COMPOSITE_MINUTE,
+  COMPOSITE_SECOND,
+  COMPOSITE_MILLISECOND,
+  COMPOSITE_MAX
+} EN_COMPOSITE_POS;
+
 static int db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
@@ -251,19 +263,17 @@ static int get_cur_year (void);
 static int get_cur_month (void);
 /* utility functions */
 static int add_and_normalize_date_time (int *years, int *months, int *days, int *hours, int *minutes, int *seconds,
-					int *milliseconds, DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h,
-					DB_BIGINT mi, DB_BIGINT s, DB_BIGINT ms);
+					int *milliseconds, const DB_BIGINT * composite_values);
 static int sub_and_normalize_date_time (int *years, int *months, int *days, int *hours, int *minutes, int *seconds,
-					int *milliseconds, DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h,
-					DB_BIGINT mi, DB_BIGINT s, DB_BIGINT ms);
+					int *milliseconds, const DB_BIGINT * composite_values);
 static void set_time_argument (struct tm *dest, int year, int month, int day, int hour, int min, int sec);
 static long calc_unix_timestamp (struct tm *time_argument);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int parse_for_next_int (char **ch, char *output);
 #endif
-static int db_str_to_millisec (const char *str);
-static void copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...);
-static DB_BIGINT get_single_unit_value (const char *expr, DB_BIGINT int_val);
+
+static int db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values,
+						     int *is_positive_value);
 static int db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr,
 					  const int unit, int is_add);
 static int db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * db_days,
@@ -7148,6 +7158,8 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   if (left_is_datetime)
     {
+      DB_BIGINT composite_values[COMPOSITE_MAX] = { 0, 0, 0, rhour, rminute, rsecond, 0 };
+
       /* add a datetime to a time */
       if (!is_datetime_decoded)
 	{
@@ -7161,9 +7173,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	  goto error_return;
 	}
 
-      error =
-	add_and_normalize_date_time (&year, &month, &day, &lhour, &lminute, &lsecond, &lms, 0, 0, 0, rhour, rminute,
-				     rsecond, 0);
+      error = add_and_normalize_date_time (&year, &month, &day, &lhour, &lminute, &lsecond, &lms, composite_values);
       if (error != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
@@ -19582,6 +19592,18 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
   return error_status;
 }
 
+// Monthly Days and Monthly Cumulative Days Table
+// The 0th position is unused and left blank for array access efficiency.
+static const int days_per_month[2][13] = {
+  {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+  {0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+};
+
+static const int cumulative_days_per_month[2][13] = {
+  {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365},
+  {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366}
+};
+
 /*
  * add_and_normalize_date_time ()
  *
@@ -19597,33 +19619,21 @@ db_string_reverse (const DB_VALUE * src_str, DB_VALUE * result_str)
  */
 int
 add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *minute, int *second, int *millisecond,
-			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
-			     DB_BIGINT ms)
+			     const DB_BIGINT * composite_values)
 {
-  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-  DB_BIGINT i;
+  int days_idx;
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
-  DB_BIGINT old_day = *day;
-
-  _y = *year;
-  _m = *month;
-  _d = *day;
-  _h = *hour;
-  _mi = *minute;
-  _s = *second;
-  _ms = *millisecond;
-
-  _y += y;
-  _m += m;
-  _d += d;
-  _h += h;
-  _mi += mi;
-  _s += s;
-  _ms += ms;
 
   /* just years and/or months case */
-  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
+  if (composite_values[COMPOSITE_MONTH] > 0 || composite_values[COMPOSITE_YEAR] > 0)
     {
+      assert (composite_values[COMPOSITE_DAY] == 0 && composite_values[COMPOSITE_HOUR] == 0 &&
+	      composite_values[COMPOSITE_MINUTE] == 0 && composite_values[COMPOSITE_SECOND] == 0 &&
+	      composite_values[COMPOSITE_MILLISECOND] == 0);
+
+      _y = *year + composite_values[COMPOSITE_YEAR];
+      _m = *month + composite_values[COMPOSITE_MONTH];
+
       if (_m % 12 == 0)
 	{
 	  _y += (_m - 12) / 12;
@@ -19635,15 +19645,30 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	  _m %= 12;
 	}
 
-      days[2] = LEAP (_y) ? 29 : 28;
-
-      if (old_day > days[_m])
+      days_idx = LEAP (_y) ? 1 : 0;
+      if (*day > days_per_month[days_idx][_m])
 	{
-	  _d = days[_m];
+	  *day = days_per_month[days_idx][_m];
 	}
 
-      goto set_and_return;
+      if (_y > 9999)
+	{
+	  return ER_FAILED;
+	}
+
+      *year = (int) _y;
+      *month = (int) _m;
+      return NO_ERROR;
     }
+
+  assert (composite_values[COMPOSITE_MONTH] == 0 && composite_values[COMPOSITE_YEAR] == 0);
+  _y = *year;
+  _m = *month;
+  _d = *day + composite_values[COMPOSITE_DAY];
+  _h = *hour + composite_values[COMPOSITE_HOUR];
+  _mi = *minute + composite_values[COMPOSITE_MINUTE];
+  _s = *second + composite_values[COMPOSITE_SECOND];
+  _ms = *millisecond + composite_values[COMPOSITE_MILLISECOND];
 
   /* time */
   _s += _ms / 1000;
@@ -19658,65 +19683,49 @@ add_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
   _d += _h / 24;
   _h %= 24;
 
-  /* date */
-  if (_m > 12)
-    {
-      _y += _m / 12;
-      _m %= 12;
-
-      if (_m == 0)
-	{
-	  _m = 1;
-	}
-    }
-
-  days[2] = LEAP (_y) ? 29 : 28;
-
-  if (_d > days[_m])
+  days_idx = LEAP (_y) ? 1 : 0;
+  if (_d > days_per_month[days_idx][_m])
     {
       /* rewind to 1st january */
-      for (i = 1; i < _m; i++)
-	{
-	  _d += days[i];
-	}
-      _m = 1;
+      _d += cumulative_days_per_month[days_idx][_m - 1];
 
       /* days for years */
-      while (_d >= 366)
+      int maxdays = cumulative_days_per_month[days_idx][12];
+      while (_d >= maxdays)
 	{
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _d -= (days[2] == 29) ? 366 : 365;
+	  _d -= maxdays;
 	  _y++;
 	  if (_y > 9999)
 	    {
 	      goto set_and_return;
 	    }
+	  maxdays = LEAP (_y) ? 366 : 365;
 	}
 
       /* days within a year */
-      days[2] = LEAP (_y) ? 29 : 28;
-      for (_m = 1;; _m++)
+      days_idx = LEAP (_y) ? 1 : 0;
+      for (_m = (_d < cumulative_days_per_month[days_idx][7]) ? 1 : 7; /* blank */ ; _m++)
 	{
-	  if (_d <= days[_m])
+	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
+	      _d -= cumulative_days_per_month[days_idx][_m - 1];
 	      break;
 	    }
-	  _d -= days[_m];
 	}
     }
 
-  if (_m == 0)
-    {
-      _m = 1;
-    }
+  assert (_m > 0 && _m <= 12);
   if (_d == 0)
     {
-      _d = 1;
+      assert (_m == 1);
+      _y--;
+      _m = 12;
+      _d = 31;
     }
 
 set_and_return:
 
-  if (_y >= 10000 || _y < 0)
+  if (_y > 9999)
     {
       return ER_FAILED;
     }
@@ -19747,31 +19756,56 @@ set_and_return:
  */
 int
 sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *minute, int *second, int *millisecond,
-			     DB_BIGINT y, DB_BIGINT m, DB_BIGINT d, DB_BIGINT h, DB_BIGINT mi, DB_BIGINT s,
-			     DB_BIGINT ms)
+			     const DB_BIGINT * composite_values)
 {
-  DB_BIGINT days[13] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-  DB_BIGINT i;
-  DB_BIGINT old_day = *day;
+  int days_idx;
   DB_BIGINT _y, _m, _d, _h, _mi, _s, _ms;
 
+  /* just years and/or months case */
+  if (composite_values[COMPOSITE_MONTH] > 0 || composite_values[COMPOSITE_YEAR] > 0)
+    {
+      assert (composite_values[COMPOSITE_DAY] == 0 && composite_values[COMPOSITE_HOUR] == 0 &&
+	      composite_values[COMPOSITE_MINUTE] == 0 && composite_values[COMPOSITE_SECOND] == 0 &&
+	      composite_values[COMPOSITE_MILLISECOND] == 0);
+
+      _y = *year - composite_values[COMPOSITE_YEAR];
+      _m = *month - composite_values[COMPOSITE_MONTH];
+
+      if (_m <= 0)
+	{
+	  _y += (_m / 12);
+	  _m %= 12;
+	  if (_m <= 0)
+	    {
+	      _m += 12;
+	      _y--;
+	    }
+	}
+
+      if (_y < 0)
+	{
+	  return ER_FAILED;
+	}
+
+      days_idx = LEAP (_y) ? 1 : 0;
+      if (*day > days_per_month[days_idx][_m])
+	{
+	  *day = days_per_month[days_idx][_m];
+	}
+
+      *year = (int) _y;
+      *month = (int) _m;
+      return NO_ERROR;
+    }
+
+  assert (composite_values[COMPOSITE_MONTH] == 0 && composite_values[COMPOSITE_YEAR] == 0);
   _y = *year;
   _m = *month;
-  _d = *day;
-  _h = *hour;
-  _mi = *minute;
-  _s = *second;
-  _ms = *millisecond;
-
-  _y -= y;
-  _m -= m;
-  _d -= d;
-  _h -= h;
-  _mi -= mi;
-  _s -= s;
-  _ms -= ms;
-
-  days[2] = LEAP (_y) ? 29 : 28;
+  _d = *day - composite_values[COMPOSITE_DAY];
+  _h = *hour - composite_values[COMPOSITE_HOUR];
+  _mi = *minute - composite_values[COMPOSITE_MINUTE];
+  _s = *second - composite_values[COMPOSITE_SECOND];
+  _ms = *millisecond - composite_values[COMPOSITE_MILLISECOND];
 
   /* time */
   _s += _ms / 1000;
@@ -19806,66 +19840,11 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
       _d--;
     }
 
-  if (_d == 0)
-    {
-      _m--;
-
-      if (_m == 0)
-	{
-	  _y--;
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _m = 12;
-	}
-      _d = days[_m];
-    }
-
-  /* date */
-  if (_m <= 0)
-    {
-      _y += (_m / 12);
-      _m %= 12;
-      if (_m <= 0)
-	{
-	  _m += 12;
-	  _y--;
-	}
-      days[2] = LEAP (_y) ? 29 : 28;
-    }
-
-  /* just years and/or months case */
-  if (d == 0 && h == 0 && mi == 0 && s == 0 && ms == 0 && (m > 0 || y > 0))
-    {
-      if (_m <= 0)
-	{
-	  _y += (_m / 12);
-	  _m %= 12;
-	  if (_m <= 0)
-	    {
-	      _m += 12;
-	      _y--;
-	    }
-	}
-
-      days[2] = LEAP (_y) ? 29 : 28;
-
-      if (old_day > days[_m])
-	{
-	  _d = days[_m];
-	}
-
-      goto set_and_return;
-    }
-
-  days[2] = LEAP (_y) ? 29 : 28;
-
-  if (_d > days[_m] || _d < 0)
+  days_idx = LEAP (_y) ? 1 : 0;
+  if (_d > days_per_month[days_idx][_m] || _d < 0)
     {
       /* rewind to 1st january */
-      for (i = 1; i < _m; i++)
-	{
-	  _d += days[i];
-	}
-      _m = 1;
+      _d += cumulative_days_per_month[days_idx][_m - 1];
 
       /* days for years */
       while (_d < 0)
@@ -19875,34 +19854,38 @@ sub_and_normalize_date_time (int *year, int *month, int *day, int *hour, int *mi
 	    {
 	      goto set_and_return;
 	    }
-	  days[2] = LEAP (_y) ? 29 : 28;
-	  _d += (days[2] == 29) ? 366 : 365;
+
+	  _d += (LEAP (_y) ? 366 : 365);
 	}
 
       /* days within a year */
-      days[2] = LEAP (_y) ? 29 : 28;
-      for (_m = 1;; _m++)
+      days_idx = LEAP (_y) ? 1 : 0;
+      for (_m = (_d < cumulative_days_per_month[days_idx][7]) ? 1 : 7; /* blank */ ; _m++)
 	{
-	  if (_d <= days[_m])
+	  if (_d <= cumulative_days_per_month[days_idx][_m])
 	    {
+	      _d -= cumulative_days_per_month[days_idx][_m - 1];
 	      break;
 	    }
-	  _d -= days[_m];
 	}
     }
 
-  if (_m == 0)
-    {
-      _m = 1;
-    }
+  assert (_m > 0 && _m <= 12);
   if (_d == 0)
     {
-      _d = 1;
+      _m--;
+      if (_m == 0)
+	{
+	  _y--;
+	  _m = 12;
+	  days_idx = LEAP (_y) ? 1 : 0;
+	}
+      _d = days_per_month[days_idx][_m];
     }
 
 set_and_return:
 
-  if (_y >= 10000 || _y < 0)
+  if (_y < 0)
     {
       return ER_FAILED;
     }
@@ -19944,12 +19927,12 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
   DB_TIMESTAMP db_timestamp, *ts_p = NULL;
   int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
   DB_TYPE res_type;
-  const char *date_s = NULL;
   char res_s[64];
   int y, m, d, h, mi, s, ms;
   int ret;
   char *res_final;
   TZ_ID tz_id;
+  DB_BIGINT composite_values[COMPOSITE_MAX] = { 0, 0, 0, 0, 0, 0, 0 };
 
   res_type = DB_VALUE_DOMAIN_TYPE (date);
   if (res_type == DB_TYPE_NULL || DB_IS_NULL (date))
@@ -19965,8 +19948,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
   /* simple case, where just a number of days is added to date */
-
   days = db_get_int (db_days);
+  composite_values[COMPOSITE_DAY] = abs (days);
 
   switch (res_type)
     {
@@ -19974,6 +19957,7 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
     case DB_TYPE_CHAR:
       {
 	bool has_explicit_time = false;
+	const char *date_s = NULL;
 	int str_len = db_get_string_size (date);
 	date_s = db_get_string (date);
 
@@ -20109,22 +20093,22 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  if (days > 0)
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       else
 	{
 	  if (days > 0)
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
 
@@ -20180,22 +20164,22 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  if (days > 0)
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       else
 	{
 	  if (days > 0)
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       /* year should always be greater than 1 and less than 9999 */
@@ -20283,22 +20267,22 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 	{
 	  if (days > 0)
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
       else
 	{
 	  if (days > 0)
 	    {
-	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, days, 0, 0, 0, 0);
+	      ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	  else
 	    {
-	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, 0, 0, -days, 0, 0, 0, 0);
+	      ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	    }
 	}
 
@@ -20394,141 +20378,136 @@ db_date_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const DB_VA
   return db_date_add_sub_interval_days (result, date, db_days, false);
 }
 
-/*
- * db_str_to_millisec () -
- *
- * Arguments:
- *         str: millisecond format
- *
- * Returns: int
- *
- * Errors:
- */
 static int
-db_str_to_millisec (const char *str)
+db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGINT * values, int *is_positive_value)
 {
-  int digit_num, value, ret;
+  int cnt = 0, base;
+  int max_composite;
+  bool millisec_flag = false;
+  char *endptr;
+  const char *ms_ptr = NULL;
 
-  if (str == NULL || str[0] == '\0')
-    {
-      return 0;
-    }
+  assert (values);
 
-  digit_num = strlen (str);
-  if (digit_num >= 1 && str[0] == '-')
+  switch (unit)
     {
-      digit_num--;
-      ret = sscanf (str, "%4d", &value);
-    }
-  else
-    {
-      ret = sscanf (str, "%3d", &value);
-    }
-
-  if (ret != 1)
-    {
-      return 0;
-    }
-
-  switch (digit_num)
-    {
-    case 1:
-      value *= 100;
+      /*  composite units  */
+    case PT_SECOND_MILLISECOND:
+      base = COMPOSITE_SECOND;
+      max_composite = 2;
+      millisec_flag = true;
+      break;
+    case PT_MINUTE_MILLISECOND:
+      base = COMPOSITE_MINUTE;
+      max_composite = 3;
+      millisec_flag = true;
+      break;
+    case PT_HOUR_MILLISECOND:
+      base = COMPOSITE_HOUR;
+      max_composite = 4;
+      millisec_flag = true;
+      break;
+    case PT_DAY_MILLISECOND:
+      base = COMPOSITE_DAY;
+      max_composite = 5;
+      millisec_flag = true;
       break;
 
-    case 2:
-      value *= 10;
+    case PT_MINUTE_SECOND:
+      base = COMPOSITE_MINUTE;
+      max_composite = 2;
+      break;
+    case PT_HOUR_SECOND:
+      base = COMPOSITE_HOUR;
+      max_composite = 3;
+      break;
+    case PT_DAY_SECOND:
+      base = COMPOSITE_DAY;
+      max_composite = 4;
+      break;
+
+    case PT_HOUR_MINUTE:
+      base = COMPOSITE_HOUR;
+      max_composite = 2;
+      break;
+    case PT_DAY_MINUTE:
+      base = COMPOSITE_DAY;
+      max_composite = 3;
+      break;
+
+    case PT_DAY_HOUR:
+      base = COMPOSITE_DAY;
+      max_composite = 2;
+      break;
+
+    case PT_YEAR_MONTH:
+      base = COMPOSITE_YEAR;
+      max_composite = 2;
       break;
 
     default:
-      break;
+      assert (false);
+      return ER_OBJ_INVALID_ARGUMENTS;
     }
 
-  return value;
-}
-
-/*
- * copy_and_shift_values () -
- *
- * Arguments:
- *         shift: the offset the values are shifted
- *         n: normal number of arguments
- *	   first...: arguments
- *
- * Returns: int
- *
- * Errors:
- *
- * Note:
- *    shifts all arguments by the given value
- */
-static void
-copy_and_shift_values (int shift, int n, DB_BIGINT * first, ...)
-{
-  va_list marker;
-  DB_BIGINT *curr = first;
-  DB_BIGINT *v[16];		/* will contain max 5 elements */
-  int i, count = 0, cnt_src = 0;
-
-  /*
-   * numeric arguments from interval expression have a delimiter read also
-   * as argument so out of N arguments there are actually (N + 1)/2 numeric
-   * values (ex: 1:2:3:4 or 1:2 or 1:2:3)
-   */
-  shift = (shift + 1) / 2;
-
-  if (shift == n)
+  while (char_isspace (*expr_s))
     {
-      return;
+      expr_s++;
     }
 
-  va_start (marker, first);	/* init variable arguments */
-  while (cnt_src < n)
+  // Like MySQL, it only accepts the first sign character, excluding spaces.
+  if (*expr_s == '-')
     {
-      cnt_src++;
-      v[count++] = curr;
-      curr = va_arg (marker, DB_BIGINT *);
-    }
-  va_end (marker);
-
-  cnt_src = shift - 1;
-  /* move backwards to not overwrite values */
-  for (i = count - 1; i >= 0; i--)
-    {
-      if (cnt_src >= 0)
-	{
-	  /* replace */
-	  *v[i] = *v[cnt_src--];
-	}
-      else
-	{
-	  /* reset */
-	  *v[i] = 0;
-	}
-    }
-}
-
-/*
- * get_single_unit_value () -
- *   return:
- *   expr (in): input as string
- *   int_val (in) : input as integer
- */
-static DB_BIGINT
-get_single_unit_value (const char *expr, DB_BIGINT int_val)
-{
-  DB_BIGINT v = 0;
-
-  if (expr == NULL)
-    {
-      v = int_val;
+      *is_positive_value = 0;
+      expr_s++;
     }
   else
     {
-      sscanf (expr, "%lld", (long long *) &v);
+      *is_positive_value = 1;
     }
 
-  return v;
+  while (*expr_s)
+    {
+      if (char_isdigit (*expr_s))
+	{
+	  if (cnt >= max_composite)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  ms_ptr = expr_s;
+	  values[base + cnt] = strtoll (expr_s, &endptr, 10);
+	  cnt++;
+	  expr_s = endptr;
+	}
+      else
+	{
+	  expr_s++;
+	}
+    }
+
+  if (millisec_flag && cnt > 0)
+    {
+      assert (ms_ptr);
+      // Adjust in milliseconds, cnt must be greater than 1 to be treated as yy.xxx format.
+      if (!char_isdigit (ms_ptr[1]))
+	{
+	  values[base + cnt - 1] *= 100;
+	}
+      else if (!char_isdigit (ms_ptr[2]))
+	{
+	  values[base + cnt - 1] *= 10;
+	}
+    }
+
+  if (cnt < max_composite)
+    {
+      memmove (values + (base + (max_composite - cnt)), values + base, sizeof (DB_BIGINT) * cnt);
+      memset (values + base, 0x00, sizeof (DB_BIGINT) * (max_composite - cnt));
+    }
+
+  return NO_ERROR;
+
 }
 
 /*
@@ -20550,24 +20529,21 @@ static int
 db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const DB_VALUE * expr, const int unit,
 			       int is_add)
 {
-  int sign = 0;
-  int type = 0;			/* 1 -> time, 2 -> date, 3 -> both */
+  int is_positive_value = 0;
+  bool date_only = false;
   DB_TYPE res_type, expr_type;
   const char *expr_s = NULL, *date_s = NULL;
-  char res_s[64], millisec_s[64];
+  char res_s[64];
   int error_status = NO_ERROR;
-  DB_BIGINT millisec, seconds, minutes, hours;
-  DB_BIGINT days, weeks, months, quarters, years;
   DB_DATETIME db_datetime, *dt_p = NULL;
   DB_DATETIMETZ dt_tz;
   DB_TIME db_time;
   DB_DATE db_date, *d_p;
   DB_TIMESTAMP db_timestamp, *ts_p = NULL;
-  int narg, is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
-  char delim;
-  DB_VALUE trimed_expr;
-  DB_BIGINT unit_int_val;
-  double dbl;
+  int is_dt = -1, is_d = -1, is_t = -1, is_timest = -1, is_timezone = -1, is_local_timezone = -1;
+  DB_BIGINT unit_int_val = 0;
+  DB_BIGINT composite_values[COMPOSITE_MAX];	// { years, month, days, hours, minutes, seconds, millisec }
+
   int y, m, d, h, mi, s, ms;
   int ret;
   char *res_final;
@@ -20587,32 +20563,11 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       return NO_ERROR;
     }
 
-  db_make_null (&trimed_expr);
-  unit_int_val = 0;
-  expr_s = NULL;
-
-  /* 1. Prepare the input: convert expr to char */
-
-  /*
-   * expr is converted to char because it may contain a more complicated form
-   * for the multiple unit formats, for example:
-   * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
-   * For the simple unit tags, expr is integer
-   */
-
-  expr_type = DB_VALUE_DOMAIN_TYPE (expr);
   switch (expr_type)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      error_status = db_string_trim (BOTH, NULL, expr, &trimed_expr);
-      if (error_status != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      /* db_string_trim builds a NULL terminated string, expr_s is NULL terminated */
-      expr_s = db_get_string (&trimed_expr);
+      expr_s = db_get_string (expr);
       if (expr_s == NULL)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
@@ -20621,271 +20576,122 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	}
       break;
 
-    case DB_TYPE_SHORT:
+    case DB_TYPE_SMALLINT:
       unit_int_val = db_get_short (expr);
       break;
-
     case DB_TYPE_INTEGER:
       unit_int_val = db_get_int (expr);
       break;
-
     case DB_TYPE_BIGINT:
       unit_int_val = db_get_bigint (expr);
       break;
 
-    case DB_TYPE_FLOAT:
-      unit_int_val = (DB_BIGINT) round (db_get_float (expr));
-      break;
-
-    case DB_TYPE_DOUBLE:
-      unit_int_val = (DB_BIGINT) round (db_get_double (expr));
-      break;
-
-    case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (expr), DB_VALUE_SCALE (expr), &dbl);
-      unit_int_val = (DB_BIGINT) round (dbl);
-      break;
-
     default:
+      assert (false);
       error_status = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
       goto error;
     }
 
-  /* 2. the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
+  memset (composite_values, 0x00, sizeof (composite_values));
+  if (expr_s == NULL)
+    {
+      assert (unit == PT_MILLISECOND || unit == PT_SECOND || unit == PT_MINUTE || unit == PT_HOUR ||
+	      unit == PT_DAY || unit == PT_WEEK || unit == PT_MONTH || unit == PT_QUARTER || unit == PT_YEAR);
 
-  millisec_s[0] = '\0';
-  millisec = seconds = minutes = hours = 0;
-  days = weeks = months = quarters = years = 0;
+      if (unit_int_val >= 0)
+	{
+	  is_positive_value = 1;
+	}
+      else
+	{
+	  is_positive_value = 0;
+	  unit_int_val = -unit_int_val;
+	}
+    }
+  else
+    {
+      /* the big switch: according to unit, we parse expr and get amounts of ms/s/m/h/d/m/y/w/q to add or subtract */
+      /*
+       * expr is converted to char because it may contain a more complicated form
+       * for the multiple unit formats, for example:
+       * 'DAYS HOURS:MINUTES:SECONDS.MILLISECONDS'
+       * For the simple unit tags, expr is integer
+       */
+
+      error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &is_positive_value);
+      if (error_status != NO_ERROR)
+	{
+	  db_make_null (result);
+	  if (error_status == ER_FAILED)
+	    {
+	      return NO_ERROR;
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto error;
+	}
+    }
 
   switch (unit)
     {
     case PT_MILLISECOND:
-      millisec = get_single_unit_value (expr_s, unit_int_val);
-      sign = (millisec >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_MILLISECOND] = unit_int_val;
       break;
 
     case PT_SECOND:
-      seconds = get_single_unit_value (expr_s, unit_int_val);
-      sign = (seconds >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_SECOND] = unit_int_val;
       break;
 
     case PT_MINUTE:
-      minutes = get_single_unit_value (expr_s, unit_int_val);
-      sign = (minutes >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_MINUTE] = unit_int_val;
       break;
 
     case PT_HOUR:
-      hours = get_single_unit_value (expr_s, unit_int_val);
-      sign = (hours >= 0);
-      type |= 1;
+      composite_values[COMPOSITE_HOUR] = unit_int_val;
       break;
 
     case PT_DAY:
-      days = get_single_unit_value (expr_s, unit_int_val);
-      sign = (days >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_DAY] = unit_int_val;
+      date_only = true;
       break;
-
     case PT_WEEK:
-      weeks = get_single_unit_value (expr_s, unit_int_val);
-      sign = (weeks >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_DAY] = unit_int_val * 7;
+      date_only = true;
       break;
 
     case PT_MONTH:
-      months = get_single_unit_value (expr_s, unit_int_val);
-      sign = (months >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_MONTH] = unit_int_val;
+      date_only = true;
       break;
-
     case PT_QUARTER:
-      quarters = get_single_unit_value (expr_s, unit_int_val);
-      sign = (quarters >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_MONTH] = unit_int_val * 3;
+      date_only = true;
       break;
 
     case PT_YEAR:
-      years = get_single_unit_value (expr_s, unit_int_val);
-      sign = (years >= 0);
-      type |= 2;
+      composite_values[COMPOSITE_YEAR] = unit_int_val;
+      date_only = true;
       break;
 
     case PT_SECOND_MILLISECOND:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%s", (long long *) &seconds, &delim, millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 2, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (seconds >= 0);
-      type |= 1;
-      break;
-
     case PT_MINUTE_MILLISECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%s", (long long *) &minutes, &delim, (long long *) &seconds, &delim,
-		    millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 3, &minutes, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (minutes >= 0);
-      type |= 1;
-      break;
-
-    case PT_MINUTE_SECOND:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &minutes, &delim, (long long *) &seconds);
-	  copy_and_shift_values (narg, 2, &minutes, &seconds);
-	}
-      else
-	{
-	  seconds = unit_int_val;
-	}
-      sign = (minutes >= 0);
-      type |= 1;
-      break;
-
     case PT_HOUR_MILLISECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld%c%s", (long long *) &hours, &delim, (long long *) &minutes, &delim,
-		    (long long *) &seconds, &delim, millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 4, &hours, &minutes, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (hours >= 0);
-      type |= 1;
-      break;
-
+    case PT_MINUTE_SECOND:
     case PT_HOUR_SECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &hours, &delim, (long long *) &minutes, &delim,
-		    (long long *) &seconds);
-	  copy_and_shift_values (narg, 3, &hours, &minutes, &seconds);
-	}
-      else
-	{
-	  seconds = unit_int_val;
-	}
-      sign = (hours >= 0);
-      type |= 1;
-      break;
-
     case PT_HOUR_MINUTE:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &hours, &delim, (long long *) &minutes);
-	  copy_and_shift_values (narg, 2, &hours, &minutes);
-	}
-      else
-	{
-	  minutes = unit_int_val;
-	}
-      sign = (hours >= 0);
-      type |= 1;
+      assert (expr_s);
       break;
 
     case PT_DAY_MILLISECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld%c%lld%c%s", (long long *) &days, &delim, (long long *) &hours, &delim,
-		    (long long *) &minutes, &delim, (long long *) &seconds, &delim, millisec_s);
-	  millisec = db_str_to_millisec (millisec_s);
-	  copy_and_shift_values (narg, 5, &days, &hours, &minutes, &seconds, &millisec);
-	}
-      else
-	{
-	  millisec = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
-      break;
-
     case PT_DAY_SECOND:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld%c%lld", (long long *) &days, &delim, (long long *) &hours, &delim,
-		    (long long *) &minutes, &delim, (long long *) &seconds);
-	  copy_and_shift_values (narg, 4, &days, &hours, &minutes, &seconds);
-	}
-      else
-	{
-	  seconds = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
-      break;
-
     case PT_DAY_MINUTE:
-      if (expr_s)
-	{
-	  narg =
-	    sscanf (expr_s, "%lld%c%lld%c%lld", (long long *) &days, &delim, (long long *) &hours, &delim,
-		    (long long *) &minutes);
-	  copy_and_shift_values (narg, 3, &days, &hours, &minutes);
-	}
-      else
-	{
-	  minutes = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
-      break;
-
     case PT_DAY_HOUR:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &days, &delim, (long long *) &hours);
-	  copy_and_shift_values (narg, 2, &days, &hours);
-	}
-      else
-	{
-	  hours = unit_int_val;
-	}
-      sign = (days >= 0);
-      type |= 1;
-      type |= 2;
+      assert (expr_s);
       break;
 
     case PT_YEAR_MONTH:
-      if (expr_s)
-	{
-	  narg = sscanf (expr_s, "%lld%c%lld", (long long *) &years, &delim, (long long *) &months);
-	  copy_and_shift_values (narg, 2, &years, &months);
-	}
-      else
-	{
-	  months = unit_int_val;
-	}
-      sign = (years >= 0);
-      type |= 2;
+      assert (expr_s);
+      date_only = true;
       break;
 
     default:
@@ -20894,31 +20700,7 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       goto error;
     }
 
-  /* we have the sign of the amounts, turn them in absolute value */
-  years = ABS (years);
-  months = ABS (months);
-  days = ABS (days);
-  weeks = ABS (weeks);
-  quarters = ABS (quarters);
-  hours = ABS (hours);
-  minutes = ABS (minutes);
-  seconds = ABS (seconds);
-  millisec = ABS (millisec);
-
-  /* convert weeks and quarters to our units */
-  if (weeks != 0)
-    {
-      days += weeks * 7;
-      weeks = 0;
-    }
-
-  if (quarters != 0)
-    {
-      months += 3 * quarters;
-      quarters = 0;
-    }
-
-  /* 3. Convert string with date to DateTime or Time */
+  /* Convert string with date to DateTime or Time */
 
   switch (res_type)
     {
@@ -21056,7 +20838,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
-	  pr_clear_value (&trimed_expr);
 	  db_make_null (result);
 	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21067,17 +20848,13 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  return ER_DATE_CONVERSION;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
-	  ret =
-	    sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
       else
 	{
-	  ret =
-	    add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
 
       /* year should always be greater than 1 and less than 9999 */
@@ -21088,13 +20865,12 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  goto error;
 	}
 
-      if (type == 2)
+      if (date_only)
 	{
 	  db_date_encode (&db_date, m, d, y);
 
 	  if (m == 0 && d == 0 && y == 0)
 	    {
-	      pr_clear_value (&trimed_expr);
 	      db_make_null (result);
 	      er_clear ();
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21124,14 +20900,13 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	      db_make_date (result, m, d, y);
 	    }
 	}
-      else if (type & 1)
+      else
 	{
 	  db_datetime.date = db_datetime.time = 0;
 	  db_datetime_encode (&db_datetime, m, d, y, h, mi, s, ms);
 
 	  if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	    {
-	      pr_clear_value (&trimed_expr);
 	      db_make_null (result);
 	      er_clear ();
 	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21195,7 +20970,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
-	  pr_clear_value (&trimed_expr);
 	  db_make_null (result);
 	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21206,17 +20980,13 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  return ER_DATE_CONVERSION;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
-	  ret =
-	    sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
       else
 	{
-	  ret =
-	    add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
 
       /* year should always be greater than 1 and less than 9999 */
@@ -21291,7 +21061,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
-	  pr_clear_value (&trimed_expr);
 	  db_make_null (result);
 	  er_clear ();
 	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
@@ -21302,17 +21071,13 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	  return ER_TIMESTAMP_CONVERSION;
 	}
 
-      if (sign ^ is_add)
+      if (is_positive_value ^ is_add)
 	{
-	  ret =
-	    sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = sub_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
       else
 	{
-	  ret =
-	    add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, years, months, days, hours, minutes, seconds,
-					 millisec);
+	  ret = add_and_normalize_date_time (&y, &m, &d, &h, &mi, &s, &ms, composite_values);
 	}
 
       /* year should always be greater than 1 and less than 9999 */
@@ -21394,7 +21159,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
 error:
-  pr_clear_value (&trimed_expr);
   return error_status;
 }
 
@@ -23753,8 +23517,8 @@ error:
 }
 
 int
-db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VALUE * date_lang, DB_VALUE * result,
-		  const TP_DOMAIN * domain)
+db_from_unixtime (const DB_VALUE * src_value, const DB_VALUE * format, const DB_VALUE * date_lang,
+		  DB_VALUE * result, const TP_DOMAIN * domain)
 {
   time_t unix_timestamp;
   DB_TYPE format_type;
@@ -25072,9 +24836,10 @@ is_safe_last_char_for_like_optimization (const char *chr, const bool is_escaped,
  * execution than the alternatives.
  */
 int
-db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool has_escape_char, const char *escape_str,
-				   int *const num_logical_chars, int *const last_safe_logical_pos,
-				   int *const num_match_many, int *const num_match_one)
+db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool has_escape_char,
+				   const char *escape_str, int *const num_logical_chars,
+				   int *const last_safe_logical_pos, int *const num_match_many,
+				   int *const num_match_one)
 {
   int i = 0;
   int error_code = NO_ERROR;
@@ -25111,8 +24876,8 @@ db_get_info_for_like_optimization (const DB_VALUE * const pattern, const bool ha
       bool is_escaped = false;
 
       error_code =
-	db_get_next_like_pattern_character (pattern_str, pattern_size, db_get_string_codeset (pattern), has_escape_char,
-					    escape_str, &i, &crt_char_p, &is_escaped);
+	db_get_next_like_pattern_character (pattern_str, pattern_size, db_get_string_codeset (pattern),
+					    has_escape_char, escape_str, &i, &crt_char_p, &is_escaped);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -25847,8 +25612,8 @@ get_string_date_token_id (const STRING_DATE_TOKEN token_type, const INTL_LANG in
  *   token_size(out): size in bytes of token printed
  */
 static int
-print_string_date_token (const STRING_DATE_TOKEN token_type, const INTL_LANG intl_lang_id, const INTL_CODESET codeset,
-			 int token_id, int case_mode, char *buffer, int *token_size)
+print_string_date_token (const STRING_DATE_TOKEN token_type, const INTL_LANG intl_lang_id,
+			 const INTL_CODESET codeset, int token_id, int case_mode, char *buffer, int *token_size)
 {
   const char *p;
   int error_status = NO_ERROR;

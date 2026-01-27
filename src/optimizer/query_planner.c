@@ -106,6 +106,14 @@
 typedef enum
 { JOIN_RIGHT_ORDER, JOIN_OPPOSITE_ORDER } JOIN_ORDER_TRY;
 
+struct ndv_info
+{
+  QO_ENV *env;
+  int total_ndv;
+  BITSET seg_bitset;
+};
+typedef struct ndv_info NDV_INFO;
+
 typedef int (*QO_WALK_FUNCTION) (QO_PLAN *, void *);
 
 static int infos_allocated = 0;
@@ -165,6 +173,10 @@ static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
+static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
+static int qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
+static double qo_estimate_ndv (double N, double p, double n);
+
 static QO_PLAN *qo_top_plan_new (QO_PLAN *);
 
 static double log3 (double);
@@ -176,7 +188,7 @@ static QO_PLAN_COMPARE_RESULT qo_cmp_planvec (QO_PLANVEC *, QO_PLAN *);
 static QO_PLAN *qo_find_best_plan_on_planvec (QO_PLANVEC *, double);
 
 static void qo_info_nodes_init (QO_ENV *);
-static QO_INFO *qo_alloc_info (QO_PLANNER *, BITSET *, BITSET *, BITSET *, double);
+static QO_INFO *qo_alloc_info (QO_PLANNER *, BITSET *, BITSET *, BITSET *, double, double);
 static void qo_free_info (QO_INFO *);
 static void qo_detach_info (QO_INFO *);
 static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
@@ -251,6 +263,7 @@ static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
@@ -450,6 +463,7 @@ static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static PRED_CLASS qo_classify (PT_NODE * attr);
 
 static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
+static int qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
 
 /*
  * log3 () -
@@ -605,6 +619,136 @@ qo_term_string (QO_TERM * term)
   return p;
 }
 
+/*
+ * qo_estimate_ngroups () -
+ *   return:
+ *   plan(in):
+ *
+ * GROUP BY cardinality estimation:
+ *
+ * - Single table without filters:
+ *   The number of groups is estimated as the NDV of the GROUP BY column.
+ *   e.g. GROUP BY col2 -> Ngroups = NDV(col2)
+ *
+ * - Multiple GROUP BY columns:
+ *   Columns are assumed to be independent.
+ *   Ngroups = NDV(col1) * NDV(col2)
+ *   This may overestimate the actual number of groups.
+ *
+ * - With filters:
+ *   NDV after filtering is estimated using:
+ *     n * (1 - ((N - p) / N)^(N / n))
+ *   where n = NDV, N = total rows, p = filtered rows.
+ *
+ * - With joins:
+ *   The same formula is applied.
+ *   N is the estimated row count after join conditions,
+ *   and p is the estimated row count after applying all predicates.
+ */
+static void
+qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
+{
+  int group_ndv, estimate_ndv;
+  double expected_nrows = plan->info->cardinality;
+  double total_nrows = plan->info->total_rows;
+
+  /* get NDV of GROUP BY */
+  group_ndv = MIN (qo_get_group_ndv (plan, sort_type), expected_nrows);
+  if (group_ndv == -1)
+    {
+      plan->info->group_rows = expected_nrows;
+      return;
+    }
+
+  if (expected_nrows == total_nrows)
+    {
+      estimate_ndv = group_ndv;
+    }
+  else
+    {
+      /* estimate number of groups */
+      estimate_ndv = MAX (qo_estimate_ndv (total_nrows, expected_nrows, group_ndv), 1);
+    }
+
+  estimate_ndv = MIN (expected_nrows, estimate_ndv);
+
+  if (plan->info->group_rows > estimate_ndv)
+    {
+      plan->info->group_rows = estimate_ndv;
+    }
+}
+
+/*
+ * qo_estimate_ndv () - NDV estimation formula derived from extracted data volume
+ *   return:  estimated ndv
+ *
+ * formula:
+ *   n * (1 - ((N - p) / N)^(N / n))
+ *
+ * N: total_nrows
+ * p: expected_nrows
+ * n: NDV of group columns
+ */
+double
+qo_estimate_ndv (double N, double p, double n)
+{
+  if (N <= 0.0 || n <= 0.0)
+    {
+      return 0.0;
+    }
+
+  double ratio = (N - p) / N;
+  double exponent = N / n;
+
+  return n * (1.0 - pow (ratio, exponent));
+}
+
+/*
+ * qo_get_group_ndv () -
+ *   return:
+ *   plan(in):
+ */
+static int
+qo_get_group_ndv (QO_PLAN * plan, SORT_TYPE sort_type)
+{
+  PT_NODE *nodes;
+  QO_ENV *env = NULL;
+  PARSER_CONTEXT *parser = NULL;
+  NDV_INFO ndv_info;
+
+
+  env = (plan->info)->env;
+  parser = QO_ENV_PARSER (env);
+
+  if ((QO_ENV_PT_TREE (env))->node_type == PT_SELECT)
+    {
+      if (sort_type == SORT_GROUPBY)
+	{
+	  nodes = (QO_ENV_PT_TREE (env))->info.query.q.select.group_by;
+	}
+      else
+	{
+	  nodes = (QO_ENV_PT_TREE (env))->info.query.q.select.list;
+	}
+    }
+  else
+    {
+      return -1;
+    }
+
+  ndv_info.env = env;
+  ndv_info.total_ndv = 1;
+  bitset_init (&ndv_info.seg_bitset, env);
+  /* The NDV is simply extracted from column without considering the function, etc. and product of NDV of each column */
+  parser_walk_tree (parser, nodes, qo_get_col_product_ndv, &ndv_info, NULL, NULL);
+  if (ndv_info.total_ndv == 1)
+    {
+      ndv_info.total_ndv = -1;
+    }
+  bitset_delset (&ndv_info.seg_bitset);
+
+  return ndv_info.total_ndv;
+}
 
 /*
  * qo_plan_compute_cost () -
@@ -1299,6 +1443,11 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
 
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable,
 	   (plan->info)->cardinality);
+#if TEST_DUMP_PLAN_SCAN_COST
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f", (int) howfar, ' ',
+	   "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
+	   (plan->info)->group_rows);
+#endif
 }
 
 
@@ -2426,6 +2575,10 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
   plan->need_final_sort = subplan->need_final_sort;
 
   qo_plan_compute_cost (plan);
+  if (sort_type == SORT_GROUPBY || sort_type == SORT_DISTINCT)
+    {
+      qo_estimate_ngroups (plan, sort_type);
+    }
 
   plan = qo_top_plan_new (plan);
 
@@ -5452,7 +5605,8 @@ qo_info_nodes_init (QO_ENV * env)
  *   cardinality(in):
  */
 static QO_INFO *
-qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eqclasses, double cardinality)
+qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eqclasses, double cardinality,
+	       double total_rows)
 {
   QO_INFO *info;
   int i;
@@ -5483,6 +5637,8 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->projected_size = qo_compute_projected_size (planner, &info->projected_segs);
   info->cardinality = cardinality;
   info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
+  info->total_rows = total_rows;
+  info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
 
   qo_init_planvec (&info->best_no_order);
 
@@ -7470,7 +7626,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (new_info == NULL)
     {
 
-      double selectivity, cardinality;
+      double selectivity, cardinality, total_rows;
       BITSET eqclasses;
 
       bitset_init (&eqclasses, planner->env);
@@ -7479,6 +7635,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       selectivity = 1.0;	/* init */
 
       cardinality = head_info->cardinality * tail_info->cardinality;
+      total_rows = head_info->total_rows * tail_info->total_rows;
       if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* set lower bound of outer join result */
@@ -7510,11 +7667,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      else
 		{
 		  selectivity *= QO_TERM_SELECTIVITY (term);
-		  selectivity = MAX (1.0 / cardinality, selectivity);
+		  selectivity = MAX (1.0 / MAX (head_info->cardinality, tail_info->cardinality), selectivity);
 		}
 	    }
 	  cardinality *= selectivity;
 	  cardinality = MAX (1.0, cardinality);
+	  total_rows *= selectivity;
+	  total_rows = MAX (1.0, total_rows);
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
@@ -7534,7 +7693,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_union (&eqclasses, &(tail_info->eqclasses));
 
       new_info = planner->join_info[QO_INFO_INDEX (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)] =
-	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality);
+	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
 
       bitset_delset (&eqclasses);
     }
@@ -8538,7 +8697,7 @@ qo_search_planner (QO_PLANNER * planner)
       goto end;
     }
 
-  planner->worst_info = qo_alloc_info (planner, &nodes, &nodes, &nodes, QO_INFINITY);
+  planner->worst_info = qo_alloc_info (planner, &nodes, &nodes, &nodes, QO_INFINITY, QO_INFINITY);
   (planner->worst_plan)->info = planner->worst_info;
   (void) qo_plan_add_ref (planner->worst_plan);
 
@@ -8602,7 +8761,7 @@ qo_search_planner (QO_PLANNER * planner)
       bitset_add (&nodes, i);
       planner->node_info[i] =
 	qo_alloc_info (planner, &nodes, &QO_NODE_SARGS (node), &QO_NODE_EQCLASSES (node),
-		       QO_NODE_SELECTIVITY (node) * (double) QO_NODE_NCARD (node));
+		       QO_NODE_SELECTIVITY (node) * (double) QO_NODE_NCARD (node), (double) QO_NODE_NCARD (node));
 
       if (planner->node_info[i] == NULL)
 	{
@@ -9214,7 +9373,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
   BITSET subqueries;
   BITSET_ITERATOR bi;
   int i, t, s;
-  double cardinality;
+  double cardinality, total_rows;
   QO_PLAN *next_plan;
 
   bitset_init (&nodes, planner->env);
@@ -9242,6 +9401,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
    */
   plan = QO_PARTITION_PLAN (partition);
   cardinality = (plan->info)->cardinality;
+  total_rows = (plan->info)->total_rows;
 
   bitset_assign (&nodes, &((plan->info)->nodes));
   bitset_assign (&terms, &((plan->info)->terms));
@@ -9255,8 +9415,9 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
       bitset_union (&terms, &((next_plan->info)->terms));
       bitset_union (&eqclasses, &((next_plan->info)->eqclasses));
       cardinality *= (next_plan->info)->cardinality;
+      total_rows *= (next_plan->info)->total_rows;
 
-      planner->cp_info[i] = qo_alloc_info (planner, &nodes, &terms, &eqclasses, cardinality);
+      planner->cp_info[i] = qo_alloc_info (planner, &nodes, &terms, &eqclasses, cardinality, total_rows);
 
       for (t = planner->E; t < (signed) planner->T; ++t)
 	{
@@ -10170,7 +10331,90 @@ qo_index_cardinality (QO_ENV * env, PT_NODE * attr)
     {
       int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
 
-      if (info->cum_stats.is_indexed == true)
+      if (info->cum_stats.is_indexed == true && info->cum_stats.pkeys[0] > 0)
+	{
+	  /* Choose the better NDV of the two. */
+	  return MIN (ndv, info->cum_stats.pkeys[0]);
+	}
+      return ndv;
+    }
+
+  if (info->cum_stats.is_indexed != true)
+    {
+      return 0;
+    }
+
+  QO_ASSERT (env, info->cum_stats.pkeys_size > 0);
+  QO_ASSERT (env, info->cum_stats.pkeys_size <= BTREE_STATS_PKEYS_NUM);
+  QO_ASSERT (env, info->cum_stats.pkeys != NULL);
+
+  /* return number of the first partial-key of the index on the attribute shown in the expression */
+  return info->cum_stats.pkeys[0];
+}
+
+/*
+ * qo_index_cardinality_with_dedup () - Determine if the attribute has an index with duplicate column checking
+ *   return: cardinality of the index if the index exists, otherwise return 0
+ *   env(in): optimizer environment
+ *   attr(in): pt node for the attribute for which we want the index cardinality
+ *   seg_bitset(in): segment bitset for checking if there are duplicate columns
+ */
+static int
+qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset)
+{
+  PT_NODE *dummy;
+  QO_NODE *nodep;
+  QO_SEGMENT *segp;
+  QO_ATTR_INFO *info;
+
+  if (attr->node_type == PT_DOT_)
+    {
+      attr = attr->info.dot.arg2;
+    }
+
+  QO_ASSERT (env, (attr->node_type == PT_NAME || pt_is_function_index_expression (attr)));
+
+  nodep = lookup_node (attr, env, &dummy);
+  if (nodep == NULL)
+    {
+      return 0;
+    }
+
+  segp = lookup_seg (nodep, attr, env);
+  if (segp == NULL)
+    {
+      return 0;
+    }
+
+  /* check if there are duplicate columns */
+  if (seg_bitset)
+    {
+      if (BITSET_MEMBER (*seg_bitset, QO_SEG_IDX (segp)))
+	{
+	  return 0;
+	}
+      else
+	{
+	  bitset_add (seg_bitset, QO_SEG_IDX (segp));
+	}
+    }
+
+  if (attr->info.name.meta_class == PT_RESERVED)
+    {
+      return 0;
+    }
+
+  info = QO_SEG_INFO (segp);
+  if (info == NULL)
+    {
+      return 0;
+    }
+
+  if (info->ndv > 0)
+    {
+      int ndv = (info->ndv > INT_MAX) ? INT_MAX : info->ndv;	/* need to change type to INT64 */
+
+      if (info->cum_stats.is_indexed == true && info->cum_stats.pkeys[0] > 0)
 	{
 	  /* Choose the better NDV of the two. */
 	  return MIN (ndv, info->cum_stats.pkeys[0]);
@@ -10595,6 +10839,38 @@ qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, i
 	      env->bail_out = 1;
 	    }
 	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_get_col_product_ndv () -
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   tree(in): tree to walk
+ *   arg(in):
+ *   continue_walk(in):
+ *
+ * Note: get product of NDV of each column on GROUP BY
+ */
+static PT_NODE *
+qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  NDV_INFO *ndv_info = (NDV_INFO *) arg;
+  int ndv;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return tree;
+    }
+  else if (pt_is_attr (tree))
+    {
+      ndv = qo_index_cardinality_with_dedup (ndv_info->env, pt_get_end_path_node (tree), &ndv_info->seg_bitset);
+      ndv_info->total_ndv *= (ndv == 0) ? 1 : ndv;
     }
 
   return tree;
