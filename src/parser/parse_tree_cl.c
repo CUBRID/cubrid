@@ -7675,16 +7675,21 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 
   r1 = pt_print_bytes (parser, p->info.sp.name);
 
-  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? "CREATE OR REPLACE " : "create ");
-  if (p->info.sp.or_replace && !parser->flag.is_parsing_unload_schema)
+  if (parser->flag.is_unloading_schema)
     {
-      q = pt_append_nulstring (parser, q, "or replace ");
+      q = pt_append_nulstring (parser, q, "CREATE OR REPLACE ");
+      q = pt_append_nulstring (parser, q, (p->info.sp.type == PT_SP_PROCEDURE) ? "PROCEDURE" : "FUNCTION");
     }
-  q =
-    pt_append_nulstring (parser, q,
-			 parser->flag.is_parsing_unload_schema ? strcmp (pt_show_misc_type (p->info.sp.type),
-									 "procedure") ==
-			 0 ? "PROCEDURE" : "FUNCTION" : pt_show_misc_type (p->info.sp.type));
+  else
+    {
+      q = pt_append_nulstring (parser, q, "create ");
+      if (p->info.sp.or_replace)
+	{
+	  q = pt_append_nulstring (parser, q, "or replace ");
+	}
+      q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
+    }
+
   q = pt_append_nulstring (parser, q, " ");
   if (parser->custom_print & (PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_NO_CURRENT_USER_NAME))
     {
@@ -7702,7 +7707,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
-      q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? " RETURN " : " return ");
+      q = pt_append_nulstring (parser, q, parser->flag.is_unloading_schema ? " RETURN " : " return ");
       if (p->info.sp.ret_data_type)
 	{
 	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
@@ -7713,7 +7718,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (parser->flag.is_parsing_unload_schema)
+  if (parser->flag.is_unloading_schema)
     {
       if (p->info.sp.auth_id == PT_AUTHID_OWNER)
 	{
@@ -7729,11 +7734,27 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " DETERMINISTIC");
 	}
     }
+  else
+    {
+      if (p->info.sp.auth_id == PT_AUTHID_OWNER)
+	{
+	  q = pt_append_nulstring (parser, q, " authid owner");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, " authid caller");
+	}
+
+      if (p->info.sp.dtrm_type == PT_DETERMINISTIC)
+	{
+	  q = pt_append_nulstring (parser, q, " deterministic");
+	}
+    }
 
   r3 = pt_print_bytes (parser, p->info.sp.body);
   q = pt_append_varchar (parser, q, r3);
 
-  if (p->info.sp.comment != NULL && !parser->flag.is_parsing_unload_schema)
+  if (p->info.sp.comment != NULL && !parser->flag.is_unloading_schema)
     {
       r1 = pt_print_bytes (parser, p->info.sp.comment);
       q = pt_append_nulstring (parser, q, " comment ");
@@ -7987,7 +8008,7 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes (parser, p->info.sp_param.name);
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ?
+  q = pt_append_nulstring (parser, q, parser->flag.is_unloading_schema ?
 			   (p->info.sp_param.mode == PT_INPUT || p->info.sp_param.mode == PT_NOPUT) ?
 			   "IN" : p->info.sp_param.mode == PT_OUTPUT ?
 			   "OUT" : "INOUT" : pt_show_misc_type (p->info.sp_param.mode));
@@ -8041,43 +8062,16 @@ static PARSER_VARCHAR *
 pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1 = NULL;
-  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? " AS\n" : " as ");
+  q = pt_append_nulstring (parser, q, parser->flag.is_unloading_schema ? " AS\n" : " as ");
   if (p->info.sp_body.lang == SP_LANG_PLCSQL)
     {
-      // TODO: PL/CSQL compiler should permit it.
-      // q = pt_append_nulstring (parser, q, "language plcsql ");
       r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
     }
-  else				/* (p->info.sp_body.lang == SP_LANG_JAVA) */
+  else
+    /* (p->info.sp_body.lang == SP_LANG_JAVA) */
     {
-      q = pt_append_nulstring (parser, q, "language java ");
-
-      // TODO: CBRD-24641
-      /*
-         if (p->info.sp_body.direct)
-         {
-         q = pt_append_nulstring (parser, q, " begin ");
-         r1 = pt_print_bytes (parser, p->info.sp_body.impl);
-         }
-       */
-
-      if (p->info.sp_body.direct == false)
-	{
-	  q = pt_append_nulstring (parser, q, " name ");
-	  r1 = pt_print_bytes (parser, p->info.sp_body.decl);
-	}
-      else
-	{
-	  r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
-	}
-
-      // TODO: CBRD-24641
-      /*
-         if (p->info.sp_body.direct)
-         {
-         q = pt_append_nulstring (parser, q, " end ");
-         }
-       */
+      q = pt_append_nulstring (parser, q, "language java name ");
+      r1 = pt_print_bytes (parser, p->info.sp_body.decl);
     }
 
   q = pt_append_varchar (parser, q, r1);
@@ -8676,7 +8670,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-      if (parser->flag.is_parsing_unload_schema)
+      if (parser->flag.is_unloading_schema)
 	{
 	  switch (p->type_enum)
 	    {

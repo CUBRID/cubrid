@@ -88,9 +88,6 @@
 #define PT_NODE_SP_ARGS(node) \
   ((node)->info.sp.param_list)
 
-#define PT_NODE_SP_DIRECT(node) \
-  ((node)->info.sp.body->info.sp_body.direct)
-
 #define PT_NODE_SP_IMPL(node) \
   ((node)->info.sp.body->info.sp_body.impl->info.value.data_value.str->bytes)
 
@@ -1158,16 +1155,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     }
   else				/* SP_LANG_JAVA */
     {
-      bool is_direct = PT_NODE_SP_DIRECT (statement);
-      if (is_direct)
-	{
-	  // TODO: CBRD-24641
-	  assert (false);
-	}
-      else
-	{
-	  decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
-	}
+      decl = (const char *) PT_NODE_SP_JAVA_METHOD (statement);
     }
 
   if (decl)
