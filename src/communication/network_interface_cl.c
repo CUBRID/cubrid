@@ -11404,7 +11404,6 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
     }
   else
     {
-      request = request_local;
       request = (char *) malloc (request_size);
       if (request == NULL)
 	{
