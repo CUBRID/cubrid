@@ -1131,8 +1131,15 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-      assert (statement->sql_user_text && statement->sql_user_text_len);
-      compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
+      PT_NODE *comment_saved = statement->info.sp.comment;
+      int custom_print_saved = parser->custom_print;
+      statement->info.sp.comment = NULL;
+      parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+      char *code = parser_print_tree (parser, statement);
+      parser->custom_print = custom_print_saved;
+      statement->info.sp.comment = comment_saved;
+
+      compile_request.code.assign (code, strlen (code));
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
 
       // TODO: Only the owner's rights is supported for PL/CSQL
