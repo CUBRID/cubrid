@@ -2874,7 +2874,7 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 	  summary->fixed_io_cost = plan->fixed_io_cost;
 	  summary->variable_cpu_cost = plan->variable_cpu_cost;
 	  summary->variable_io_cost = plan->variable_io_cost;
-	  summary->cardinality = (plan->info)->cardinality;
+	  summary->cardinality = (plan->info)->group_rows;
 	  summary->xasl = xasl;
 	  select->info.query.q.select.qo_summary = summary;
 	}
@@ -2887,7 +2887,8 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
       if (plan != NULL && xasl != NULL)
 	{
 	  xasl->projected_size = (plan->info)->projected_size;
-	  xasl->cardinality = (plan->info)->cardinality;
+	  /* If no aggregate function, group_rows is the same as cardinality. */
+	  xasl->cardinality = (plan->info)->group_rows;
 	}
     }
 
