@@ -1306,6 +1306,10 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (error != NO_ERROR)
     {
       dbt_abort_class (ctemplate);
+      if (partition_savepoint)
+	{
+	  goto alter_partition_fail;
+	}
       return error;
     }
 
