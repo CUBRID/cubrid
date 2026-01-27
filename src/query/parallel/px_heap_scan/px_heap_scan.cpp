@@ -96,7 +96,7 @@ extern "C"
 	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::MERGEABLE_LIST >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
-	manager_p->end();
+	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
 	  {
@@ -127,7 +127,7 @@ extern "C"
 	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::XASL_SNAPSHOT >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
-	manager_p->end();
+	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
 	  {
@@ -158,7 +158,7 @@ extern "C"
 	using manager_type = parallel_heap_scan::manager < parallel_heap_scan::RESULT_TYPE::COUNT_DISTINCT >;
 	manager_type *manager_p = (manager_type *) scan_id->s.phsid.manager;
 
-	manager_p->end();
+	manager_p->merge_stats();
 
 	if (thread_p->on_trace)
 	  {
@@ -944,8 +944,13 @@ namespace parallel_heap_scan
   int manager<result_type>::reset ()
   {
     int err_code = NO_ERROR;
-    using worker_manager = parallel_query::worker_manager;
-    worker_manager *worker_manager_p = nullptr;
+
+    if (m_interrupt.get_code() != parallel_query::interrupt::interrupt_code::JOB_ENDED)
+      {
+	m_interrupt.set_code (parallel_query::interrupt::interrupt_code::JOB_ENDED);
+      }
+
+    m_result_handler->read_finalize (m_thread_p);
 
     /* Clean up input handler */
     if (m_input_handler != nullptr)
@@ -990,14 +995,46 @@ namespace parallel_heap_scan
     err_code = open ();
     if (err_code != NO_ERROR)
       {
-	worker_manager_p->release_workers ();
+	m_worker_manager->release_workers ();
+	m_worker_manager=nullptr;
 	return err_code;
       }
 
     /* Finalize setup */
-    m_worker_manager = worker_manager_p;
     m_scan_id->s.phsid.manager = this;
     return NO_ERROR;
+  }
+
+  template <RESULT_TYPE result_type>
+  int manager<result_type>::merge_stats()
+  {
+    int error = NO_ERROR;
+
+    if (m_on_trace)
+      {
+	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
+	  {
+	    /* child thread */
+	    if (m_px_stats_initialized_by_me)
+	      {
+		perfmon_destroy_parallel_stats (m_thread_p);
+		assert (false);
+		error = ER_FAILED;
+	      }
+	  }
+	else
+	  {
+	    /* main thread */
+	    if (m_px_stats_initialized_by_me)
+	      {
+		perfmon_destroy_parallel_stats (m_thread_p);
+	      }
+	  }
+
+	m_trace_handler.merge_stats (m_thread_p, &m_scan_id->scan_stats);
+      }
+
+    return error;
   }
 
   template <RESULT_TYPE result_type>
@@ -1013,37 +1050,8 @@ namespace parallel_heap_scan
 	m_worker_manager->release_workers ();
 	m_worker_manager = nullptr;
       }
-    if (m_on_trace)
-      {
-	if (m_thread_p->m_px_orig_thread_entry != m_thread_p)
-	  {
-	    /* child thread */
-	    if (m_px_stats_initialized_by_me)
-	      {
-		perfmon_destroy_parallel_stats (m_thread_p);
-		err_code = ER_FAILED;
-	      }
-	    else
-	      {
-
-	      }
-	  }
-	else
-	  {
-	    /* main thread */
-	    if (m_px_stats_initialized_by_me)
-	      {
-		perfmon_destroy_parallel_stats (m_thread_p);
-	      }
-	    else
-	      {
-
-	      }
-	  }
-	m_trace_handler.merge_stats (m_thread_p, &m_scan_id->scan_stats);
-      }
+    err_code = merge_stats();
     m_result_handler->read_finalize (m_thread_p);
-
     return err_code;
   }
 
