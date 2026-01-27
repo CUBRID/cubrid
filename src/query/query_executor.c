@@ -21195,12 +21195,14 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	    {
 	      return ER_FAILED;
 	    }
+	  memset (a_eval_list->current_values, 0, sizeof (DB_VALUE) * length);
 
 	  a_eval_list->temp_values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * length);
 	  if (a_eval_list->temp_values == NULL)
 	    {
 	      return ER_FAILED;
 	    }
+	  memset (a_eval_list->temp_values, 0, sizeof (DB_VALUE) * length);
 	}
       else
 	{
