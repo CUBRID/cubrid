@@ -4743,6 +4743,7 @@ int
 smt_check_attribute_all_invisible (SM_TEMPLATE * ctemplate, const char *class_name)
 {
   SM_ATTRIBUTE *attr;
+  int error;
 
   assert (ctemplate != NULL);
   // assert(ctemplate->attributes != NULL); // empty class is available in CUBRID
@@ -4760,8 +4761,9 @@ smt_check_attribute_all_invisible (SM_TEMPLATE * ctemplate, const char *class_na
 	  return NO_ERROR;
 	}
     }
+  error = ER_SM_ATT_AT_LEAST_ONE_VISIBLE;
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1, class_name);
-  return er_errid ();
+  return error;
 }
 
 static int
