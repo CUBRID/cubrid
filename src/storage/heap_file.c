@@ -12185,7 +12185,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  int32_t fileid;
 	  short volid;
 	  char *save_meta_data, *new_meta_data;
-	  char lob_path_suffix[PATH_MAX];
+	  char lob_path_prefix[PATH_MAX];
 	  int ret;
 
 	  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
@@ -12205,28 +12205,25 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    }
 
 	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
-	  hpgid = hfid.hpgid;
-	  fileid = hfid.vfid.fileid;
-	  volid = hfid.vfid.volid;
 
-	  snprintf (lob_path_suffix, PATH_MAX - 1, "%d_%d_%d_id%d", volid, fileid, hpgid, attrid);
+	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
 
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
-	  ret = db_elo_copy_with_suffix (db_get_elo (dbvalue), &dest_elo, lob_path_suffix);
+	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
 
 	  free_and_init (elo_p->meta_data);
+	  if (ret != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
 	  elo_p->meta_data = save_meta_data;
 
 	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
 	   * elo again. Otherwize it will generate 2 copies. */
 	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
-
-	  if (ret != NO_ERROR)
-	    {
-	      return (SCAN_CODE) ret;
-	    }
 
 	  pr_clear_value (dbvalue);
 	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
@@ -26755,7 +26752,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 // *INDENT-ON*
 
 /*
- * heap_lob_rv_remove_dir () - Recovery function for LOB directories.
+ * heap_rv_lob_remove_dir () - Recovery function for LOB directories.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -26768,15 +26765,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
  *       committed, this function will be called to actually remove the directory.
  */
 int
-heap_lob_rv_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  const char *path = rcv->data;
-  char lob_path[PATH_MAX];
-  int error = NO_ERROR;
-
-  snprintf (lob_path, (strlen (path) + 1), "%s", path);
-
-  error = fileio_lob_remove_dir (lob_path);
-
-  return error;
+  return fileio_lob_remove_matching_dir (rcv->data);
 }

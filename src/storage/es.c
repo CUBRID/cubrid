@@ -408,18 +408,19 @@ es_copy_file (const char *in_uri, const char *metaname, char *out_uri)
 }
 
 /*
- * es_copy_file_with_suffix - Similar to es_copy_file(), but handles only the ES_POSIX type and performs file copy
-                              while adding a suffix to the destination path.
+ * es_copy_file_with_prefix - Similar to es_copy_file(), but handles only the ES_POSIX type and performs file copy
+                              while adding a prefix to the destination path.
  *
  * return: error code
  * in_uri(in): path of the original source file
- * metaname(in) : mataname was used as a keyword to identify tables, but it is no longer used. TODO: remove mataname
+ * metaname(in) : mataname was used as a keyword to identify tables
+ * prefix(in): prefix that will be added to the destination path when copying
  * out_uri(out): new path of the copied file
- * suffix(in): suffix that will be added to the destination path when copying
  */
 int
-es_copy_file_with_suffix (const char *in_uri, const char *metaname, char *out_uri, const char *suffix)
+es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *prefix, char *out_uri)
 {
+#if defined (SERVER_MODE) || defined (SA_MODE)
   ES_TYPE es_type;
   int ret = NO_ERROR;
 
@@ -445,12 +446,10 @@ es_copy_file_with_suffix (const char *in_uri, const char *metaname, char *out_ur
   if (es_type == ES_POSIX)
     {
       memcpy (out_uri, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
-#if defined (SERVER_MODE) || defined (SA_MODE)
       ret =
-	xes_posix_copy_file_with_suffix (ES_POSIX_PATH_POS (in_uri), (char *) metaname, ES_POSIX_PATH_POS (out_uri),
-					 suffix);
+	xes_posix_copy_file_with_prefix (ES_POSIX_PATH_POS (in_uri), (char *) metaname, prefix,
+					 ES_POSIX_PATH_POS (out_uri));
       es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", in_uri, out_uri, ret);
-#endif /* SERVER_MODE || SA_MODE */
     }
   else
     {
@@ -459,6 +458,9 @@ es_copy_file_with_suffix (const char *in_uri, const char *metaname, char *out_ur
     }
 
   return ret;
+#else /* SERVER_MODE || SA_MODE */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
+#endif
 }
 
 /*

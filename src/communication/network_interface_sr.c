@@ -11528,7 +11528,7 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 
 /*
  * slob_create_dir - Called when a request is sent from the client to the server.
-                     Invokes xlob_create_dir() to create the LOB directory
+ *                   Invokes xlob_create_dir() to create the LOB directory
  *
  *   thread_p(in): the thread pointer
  *   rid(in): the request id
@@ -11550,43 +11550,31 @@ slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_int (ptr, &attrid_arr_length);
   if (ptr == NULL)
     {
-      goto error_end;
+      error = ER_FAILED;
+      goto end;
     }
   ptr = or_unpack_int_array (ptr, attrid_arr_length, &attrid_arr);
   if (ptr == NULL)
     {
-      goto error_end;
+      error = ER_FAILED;
+      goto end;
     }
 
   error = xlob_create_dir (thread_p, &hfid, attrid_arr, attrid_arr_length);
 
-  if (error != NO_ERROR)
-    {
-      goto error_end;
-    }
-
-  if (attrid_arr != NULL)
-    {
-      db_private_free_and_init (thread_p, attrid_arr);
-    }
+end:
+  db_private_free_and_init (thread_p, attrid_arr);
 
   ptr = or_pack_errcode (reply, error);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  return;
 
-error_end:
-  if (attrid_arr != NULL)
-    {
-      db_private_free_and_init (thread_p, attrid_arr);
-    }
-
-  (void) return_error_to_client (thread_p, rid);
   return;
 }
 
 /*
  * slob_remove_dir - Called when a request is sent from the client to the server.
-                     Invokes xlob_remove_dir() to remove the LOB directory
+ *                   Invokes xlob_remove_dir() to remove the LOB directory
  *
  *   thread_p(in): the thread pointer
  *   rid(in): the request id

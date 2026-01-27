@@ -13955,10 +13955,18 @@ xlob_create_dir (THREAD_ENTRY * thread_p, HFID * hfid, int *attrid_arr, int attr
   for (int i = 0; i < attrid_arr_length; i++)
     {
       ret = locator_lob_make_dir_path (rv_path, hfid, attrid_arr[i]);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
 
       log_append_undo_data (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), &rv_path);
 
-      es_make_dirs (rv_path, NULL);
+      ret = es_make_dirs (rv_path, NULL);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
     }
 
   return ret;
@@ -13985,8 +13993,12 @@ xlob_remove_dir (THREAD_ENTRY * thread_p, HFID * hfid, int attrid)
   addr.vfid = NULL;
 
   ret = locator_lob_make_dir_path (rv_path, hfid, attrid);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
-  log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, sizeof (rv_path), rv_path);
+  log_append_postpone (thread_p, RVHF_LOB_REMOVE_DIR, &addr, (strlen (rv_path) + 1), rv_path);
 
   return ret;
 }
@@ -14007,11 +14019,11 @@ locator_lob_make_dir_path (char *lob_path, const HFID * hfid, int attrid)
 
   if (attrid == -1)
     {
-      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid);
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d", HFID_AS_ARGS (hfid));
     }
   else
     {
-      ret = snprintf (lob_path, PATH_MAX, "%d_%d_%d_id%d/", hfid->vfid.volid, hfid->vfid.fileid, hfid->hpgid, attrid);
+      ret = snprintf (lob_path, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (hfid), attrid);
     }
 
   if (ret < 0 || ret >= PATH_MAX)
