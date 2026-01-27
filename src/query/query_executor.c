@@ -8136,6 +8136,22 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
   return S_SUCCESS;
 }
 
+SCAN_CODE
+qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state, void *scan_func_ptr)
+{
+  XASL_SCAN_FNC_PTR ptr = (XASL_SCAN_FNC_PTR) scan_func_ptr;
+  if (!(*ptr))
+    {
+      for (xasl_node * xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr, ptr++)
+	{
+	  *ptr = ((XSAL_SCAN_FUNC) qexec_execute_scan);
+	}
+      ptr = (XASL_SCAN_FNC_PTR) scan_func_ptr;
+    }
+
+  return qexec_execute_scan (thread_p, xasl, xasl_state, NULL, ptr);
+}
+
 /*
  * qexec_execute_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
@@ -15619,7 +15635,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			  if (qexec_open_scan (thread_p, specp, xptr->val_list, &xasl_state->vd, force_select_lock,
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
 					       xasl_state->query_id, xptr->scan_op_type, scan_immediately_stop,
-					       &mvcc_select_lock_needed, xasl) != NO_ERROR)
+					       &mvcc_select_lock_needed, xptr) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;

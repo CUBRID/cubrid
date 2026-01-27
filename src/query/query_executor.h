@@ -108,4 +108,6 @@ extern int qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p, qfile_list_id 
 					 valptr_list_node * outptr_list, val_descr * vd, qfile_tuple_record * tplrec);
 extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, regu_variable_node * regu,
 						      xasl_node * xasl, xasl_node * connect_by_ptr);
+extern SCAN_CODE qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
+					 void *scan_func_ptr);
 #endif /* _QUERY_EXECUTOR_H_ */

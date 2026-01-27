@@ -107,6 +107,10 @@ namespace parallel_heap_scan
   possible_flags check (ACCESS_SPEC_TYPE *arg);
   template <bool is_outptr_list>
   possible_flags check (XASL_NODE *arg);
+  template <bool is_outptr_list>
+  possible_flags sibling_check (XASL_NODE *sibling);
+  template <bool is_outptr_list>
+  possible_flags sibling_check (ACCESS_SPEC_TYPE *arg);
 
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
@@ -365,6 +369,101 @@ namespace parallel_heap_scan
   }
 
   template <bool is_outptr_list>
+  possible_flags sibling_check (ACCESS_SPEC_TYPE *arg)
+  {
+    possible_flags result = 0;
+    if (!arg)
+      {
+	return 0;
+      }
+    if (arg->next)
+      {
+	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	return result;
+      }
+    if (arg->type != TARGET_CLASS)
+      {
+	set_flag (result, CANNOT_LIST_MERGE);
+      }
+    else
+      {
+	result |= check<false> (arg->s.cls_node.cls_regu_list_pred);
+	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
+	result |= check<false> (arg->where_pred);
+      }
+    return result;
+  }
+
+  template <bool is_outptr_list>
+  possible_flags sibling_check (XASL_NODE *sibling)
+  {
+    if (!sibling)
+      {
+	return 0;
+      }
+
+    possible_flags result = 0, temp = 0;
+    bool count_opt = false;
+
+    if (sibling->selected_upd_list || sibling->scan_op_type != S_SELECT || sibling->upd_del_class_cnt > 0
+	|| XASL_IS_FLAGED (sibling, XASL_MULTI_UPDATE_AGG))
+      {
+	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+      }
+    for (XASL_NODE *xaslp = sibling->aptr_list; xaslp; xaslp = xaslp->next)
+      {
+	result |= check<is_outptr_list> (xaslp);
+      }
+
+    if (sibling->bptr_list || sibling->fptr_list || sibling->connect_by_ptr)
+      {
+	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+      }
+
+    for (XASL_NODE *xaslp = sibling->dptr_list; xaslp; xaslp = xaslp->next)
+      {
+	temp = check<false> (xaslp);
+	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	  }
+      }
+
+    if (sibling->scan_ptr)
+      {
+	temp = sibling_check<is_outptr_list> (sibling->scan_ptr);
+	result |= temp;
+      }
+
+    if (sibling->connect_by_ptr)
+      {
+	set_flag (result, CANNOT_LIST_MERGE);
+	count_opt = false;
+      }
+
+    if (sibling->if_pred)
+      {
+	if (!is_pred_exists (sibling->if_pred))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	  }
+      }
+
+    if (sibling->instnum_pred || sibling->instnum_val)
+      {
+	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
+	count_opt = false;
+      }
+
+    for (ACCESS_SPEC_TYPE *specp = sibling->spec_list; specp; specp = specp->next)
+      {
+	result |= sibling_check<is_outptr_list> (specp);
+      }
+
+    return result;
+  }
+
+  template <bool is_outptr_list>
   possible_flags check (XASL_NODE *arg)
   {
     if (!arg)
@@ -476,8 +575,7 @@ namespace parallel_heap_scan
 
     if (arg->scan_ptr)
       {
-	set_flag (result, CANNOT_LIST_MERGE);
-	count_opt = false;
+	result |= sibling_check<is_outptr_list> (arg->scan_ptr);
       }
 
     if (arg->connect_by_ptr)
