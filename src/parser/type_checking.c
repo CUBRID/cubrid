@@ -9988,14 +9988,49 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  /* if arg2 is integer, unit must be one of MILLISECOND, SECOND, MINUTE, HOUR, DAY, WEEK, MONTH, QUARTER,
 	   * YEAR. */
-	  int is_single_unit;
+	  bool type_date_flag = false;
 
-	  is_single_unit = (arg3
-			    && (arg3->info.expr.qualifier == PT_MILLISECOND || arg3->info.expr.qualifier == PT_SECOND
-				|| arg3->info.expr.qualifier == PT_MINUTE || arg3->info.expr.qualifier == PT_HOUR
-				|| arg3->info.expr.qualifier == PT_DAY || arg3->info.expr.qualifier == PT_WEEK
-				|| arg3->info.expr.qualifier == PT_MONTH || arg3->info.expr.qualifier == PT_QUARTER
-				|| arg3->info.expr.qualifier == PT_YEAR));
+	  assert (arg3);
+	  switch (arg3->info.expr.qualifier)
+	    {
+	    case PT_DAY:
+	    case PT_WEEK:
+	    case PT_MONTH:
+	    case PT_QUARTER:
+	    case PT_YEAR:
+	      type_date_flag = true;
+	      [[fallthrough]];	/* fallthrough */
+	    case PT_MILLISECOND:
+	    case PT_HOUR:
+	    case PT_SECOND:
+	    case PT_MINUTE:
+	      if (!PT_IS_COUNTER_TYPE (arg2_type))
+		{		// cast to int type for arg2
+		  if (pt_coerce_expression_argument (parser, arg2, &arg2, PT_TYPE_BIGINT, NULL) != NO_ERROR)
+		    {
+		      node->type_enum = PT_TYPE_NONE;
+		      goto error;
+		    }
+		  node->info.expr.arg2 = arg2;
+		}
+	      break;
+
+	    case PT_YEAR_MONTH:
+	      type_date_flag = true;
+	      [[fallthrough]];	/* fallthrough */
+	    default:
+	      if (!PT_IS_CHAR_STRING_TYPE (arg2_type))
+		{		// cast to char type for arg2
+		  if (pt_coerce_expression_argument (parser, arg2, &arg2, PT_TYPE_CHAR, NULL) != NO_ERROR)
+		    {
+		      node->type_enum = PT_TYPE_NONE;
+		      goto error;
+		    }
+		  node->info.expr.arg2 = arg2;
+		}
+	      break;
+	    }
+
 
 	  if (arg1_type == PT_TYPE_DATETIMETZ || arg1_type == PT_TYPE_TIMESTAMPTZ)
 	    {
@@ -10011,9 +10046,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  else if (arg1_type == PT_TYPE_DATE)
 	    {
-	      if (arg3->info.expr.qualifier == PT_DAY || arg3->info.expr.qualifier == PT_WEEK
-		  || arg3->info.expr.qualifier == PT_MONTH || arg3->info.expr.qualifier == PT_QUARTER
-		  || arg3->info.expr.qualifier == PT_YEAR || arg3->info.expr.qualifier == PT_YEAR_MONTH)
+	      if (type_date_flag)
 		{
 		  node->type_enum = PT_TYPE_DATE;
 		}
