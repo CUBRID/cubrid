@@ -230,7 +230,7 @@ struct db_value_slist
 static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
-static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
+static int lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr_if_needed (SM_CLASS * class_, const char *attr_mthd_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -630,7 +630,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 
 	    assert (alter->info.alter.create_index == NULL);
 
-	    error = lob_process_dir_add_attr (ctemplate->current, old_att_count);
+	    error = lob_process_dir_add_attr_if_needed (ctemplate->current, old_att_count);
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
@@ -703,110 +703,73 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       break;
 
     case PT_DROP_ATTR_MTHD:
-      {
-	attr_mthd_name = "";
-	p = alter->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
-	for (; p && p->node_type == PT_NAME; p = p->next)
-	  {
-	    attr_mthd_name = p->info.name.original;
-	    if (p->info.name.meta_class == PT_META_ATTR)
-	      {
-		found_attr = db_get_class_attribute (vclass, attr_mthd_name);
-		if (found_attr)
-		  {
-		    error = dbt_drop_class_attribute (ctemplate, attr_mthd_name);
-		  }
-		else
-		  {
-		    found_mthd = db_get_class_method (vclass, attr_mthd_name);
-		    if (found_mthd)
-		      {
-			error = dbt_drop_class_method (ctemplate, attr_mthd_name);
-		      }
-		  }
-	      }
-	    else
-	      {
-		found_attr = db_get_attribute (vclass, attr_mthd_name);
-		if (found_attr)
-		  {
-		    error = dbt_drop_attribute (ctemplate, attr_mthd_name);
-		  }
-		else
-		  {
-		    found_mthd = db_get_method (vclass, attr_mthd_name);
-		    if (found_mthd)
-		      {
-			error = dbt_drop_method (ctemplate, attr_mthd_name);
-		      }
-		  }
-	      }
+      attr_mthd_name = "";
+      p = alter->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
+      for (; p && p->node_type == PT_NAME; p = p->next)
+	{
+	  attr_mthd_name = p->info.name.original;
+	  if (p->info.name.meta_class == PT_META_ATTR)
+	    {
+	      found_attr = db_get_class_attribute (vclass, attr_mthd_name);
+	      if (found_attr)
+		{
+		  error = dbt_drop_class_attribute (ctemplate, attr_mthd_name);
+		}
+	      else
+		{
+		  found_mthd = db_get_class_method (vclass, attr_mthd_name);
+		  if (found_mthd)
+		    {
+		      error = dbt_drop_class_method (ctemplate, attr_mthd_name);
+		    }
+		}
+	    }
+	  else
+	    {
+	      found_attr = db_get_attribute (vclass, attr_mthd_name);
+	      if (found_attr)
+		{
+		  error = dbt_drop_attribute (ctemplate, attr_mthd_name);
+		}
+	      else
+		{
+		  found_mthd = db_get_method (vclass, attr_mthd_name);
+		  if (found_mthd)
+		    {
+		      error = dbt_drop_method (ctemplate, attr_mthd_name);
+		    }
+		}
+	    }
 
-	    if (error != NO_ERROR)
-	      {
-		dbt_abort_class (ctemplate);
-		return error;
-	      }
-	  }
+	  if (error != NO_ERROR)
+	    {
+	      dbt_abort_class (ctemplate);
+	      return error;
+	    }
+	}
 
-	p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
-	for (;
-	     p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
-	     && path->node_type == PT_VALUE && (path->type_enum == PT_TYPE_VARCHAR
-						|| path->type_enum == PT_TYPE_CHAR); p = p->next)
-	  {
-	    mthd_file = (char *) path->info.value.data_value.str->bytes;
-	    error = dbt_drop_method_file (ctemplate, mthd_file);
-	    if (error != NO_ERROR)
-	      {
-		dbt_abort_class (ctemplate);
-		return error;
-	      }
-	  }
+      p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
+      for (;
+	   p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL && path->node_type == PT_VALUE
+	   && (path->type_enum == PT_TYPE_VARCHAR || path->type_enum == PT_TYPE_CHAR); p = p->next)
+	{
+	  mthd_file = (char *) path->info.value.data_value.str->bytes;
+	  error = dbt_drop_method_file (ctemplate, mthd_file);
+	  if (error != NO_ERROR)
+	    {
+	      dbt_abort_class (ctemplate);
+	      return error;
+	    }
+	}
 
-	SM_CLASS *class_ = ctemplate->current;
+      error = lob_process_dir_drop_attr_if_needed (ctemplate->current, (char *) attr_mthd_name);
+      if (error != NO_ERROR)
+	{
+	  dbt_abort_class (ctemplate);
+	  return error;
+	}
 
-	for (int i = 0; i < class_->att_count; i++)
-	  {
-	    SM_ATTRIBUTE attr = class_->attributes[i];
-
-	    if (strcmp (attr.header.name, attr_mthd_name) == 0)
-	      {
-		if (TP_IS_LOB_TYPE (attr.type->id))
-		  {
-		    HFID lob_hfid = class_->header.ch_heap;
-		    int lob_attrid_arr[1];
-
-		    p = alter->info.alter.alter_clause.attr_mthd.mthd_file_list;
-		    for (;
-			 p && p->node_type == PT_FILE_PATH && (path = p->info.file_path.string) != NULL
-			 && path->node_type == PT_VALUE && (path->type_enum == PT_TYPE_VARCHAR
-							    || path->type_enum == PT_TYPE_CHAR); p = p->next)
-		      {
-			mthd_file = (char *) path->info.value.data_value.str->bytes;
-			error = dbt_drop_method_file (ctemplate, mthd_file);
-			if (error != NO_ERROR)
-			  {
-			    dbt_abort_class (ctemplate);
-			    return error;
-			  }
-		      }
-
-		    lob_attrid_arr[0] = attr.id;
-		    error = locator_lob_create_or_remove_dir (&lob_hfid, NULL, lob_attrid_arr, 0);
-		    if (error != NO_ERROR)
-		      {
-			dbt_abort_class (ctemplate);
-			return error;
-		      }
-
-		    break;
-		  }
-	      }
-	  }
-
-	break;
-      }
+      break;
 
     case PT_MODIFY_ATTR_MTHD:
       p = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
@@ -1454,7 +1417,7 @@ alter_partition_fail:
 }
 
 /*
- * lob_process_dir_add_attr() - Collect newly added LOB attributes, build/manage
+ * lob_process_dir_add_attr_if_needed() - Collect newly added LOB attributes, build/manage
  *                              their attribute id array, and trigger LOB
  *                              directory creation for those attributes.
  *   return: Error code
@@ -1462,7 +1425,7 @@ alter_partition_fail:
  *   old_att_count(in): Number of attributes before adding new attributes
  */
 static int
-lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
+lob_process_dir_add_attr_if_needed (SM_CLASS * class_, int old_att_count)
 {
   SM_ATTRIBUTE *attr;
   int lob_attrid_arr_length = 0;

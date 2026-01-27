@@ -133,6 +133,19 @@
 /* TODO: why is this in client module?                                  */
 /************************************************************************/
 
+/* Suppress GCC -Wformat-truncation warnings for PATH_MAX-based snprintf usage */
+#if defined (__GNUC__)
+#define DISABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic push") \
+  _Pragma("GCC diagnostic ignored \"-Wformat-truncation\"")
+
+#define ENABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic pop")
+#else
+#define DISABLE_FMT_TRUNC_WARNING
+#define ENABLE_FMT_TRUNC_WARNING
+#endif
+
 /*
  * Message id in the set MSGCAT_SET_IO
  * in the message catalog MSGCAT_CATALOG_CUBRID (file cubrid.msg).
@@ -11947,65 +11960,23 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
 /*
  * fileio_lob_remove_dir () - Remove LOB directory(OS level).
  *
- * return	 : Error code.
- * path_key (in) : Path key for the LOB directory (keyword or path information).
- *
- * NOTE: This function receives the path information for a LOB directory
- *       and recursively deletes the corresponding physical directory at the OS level.
- *       The input parameter 'path_key' can take two forms:
- *       1. keyword: If a keyword is provided (e.g., "ces" or "hfid"..),
- *          all directories in the LOB directory that include the keyword will be deleted.
- *       2. lob directory name: If a directory name under the LOB directory is provided,
- *          the function will traverse and delete that specific directory recursively.
+ * return: error code.
+ * path (in): An absolute path under the LOB directory.
  */
 int
-fileio_lob_remove_dir (char *path_key)
+fileio_lob_remove_dir (char *path)
 {
 #if defined(SERVER_MODE) || defined(SA_MODE)
   DIR *dir_p;
   struct dirent *dir_entry;
   struct stat statbuf;
-  char base_dir[PATH_MAX], full_path[PATH_MAX], re_path[PATH_MAX];
-  char *pos, *keyword;
-  int result, sub_result;
-  result = sub_result = 0;
-  int error = NO_ERROR;
+  char sub_path[PATH_MAX];
+  int result = 0;
 
-  if (stat (es_base_dir, &statbuf) != 0 || !S_ISDIR (statbuf.st_mode))
-    {
-      error = ER_ES_NO_LOB_PATH;
-      return error;
-    }
-  dir_p = opendir (es_base_dir);
+  dir_p = opendir (path);
   if (dir_p == NULL)
     {
-      error = ER_ES_NO_LOB_PATH;
-      return error;
-    }
-  closedir (dir_p);
-
-  pos = strrchr (path_key, '/');
-  if (pos != NULL)
-    {
-      keyword = NULL;
-      snprintf (base_dir, (strlen (es_base_dir) + 1 + strlen (path_key) + 1), "%s/%s", es_base_dir, path_key);
-
-      if (base_dir[strlen (base_dir)] == '/')
-	{
-	  base_dir[strlen (base_dir)] = '\0';
-	}
-    }
-  else
-    {
-      snprintf (base_dir, (strlen (es_base_dir) + 1), "%s", es_base_dir);
-      keyword = path_key;
-    }
-
-  dir_p = opendir (base_dir);
-  if (dir_p == NULL)
-    {
-      error = ER_ES_INVALID_PATH;
-      return error;
+      return ER_ES_INVALID_PATH;
     }
 
   while ((dir_entry = readdir (dir_p)) != NULL && result == 0)
@@ -12015,64 +11986,120 @@ fileio_lob_remove_dir (char *path_key)
 	  continue;
 	}
 
-      snprintf (full_path, (strlen (base_dir) + 1 + strlen (dir_entry->d_name) + 1), "%s/%s", base_dir,
-		dir_entry->d_name);
+#if defined (__GNUC__)
+      DISABLE_FMT_TRUNC_WARNING
+#endif
+	snprintf (sub_path, PATH_MAX, "%s%c%s", path, PATH_SEPARATOR, dir_entry->d_name);
 
-      if (keyword != NULL)
+#if defined (__GNUC__)
+      ENABLE_FMT_TRUNC_WARNING
+#endif
+	if (stat (sub_path, &statbuf) != 0)
 	{
-	  if (strncmp (dir_entry->d_name, keyword, strlen (keyword)) == 0)
-	    {
-	      if (stat (full_path, &statbuf) != 0)
-		{
-		  continue;
-		}
+	  continue;
+	}
 
-	      if (S_ISDIR (statbuf.st_mode))
-		{
-		  snprintf (re_path, (strlen (dir_entry->d_name) + 2), "%s/", dir_entry->d_name);
-		  sub_result = fileio_lob_remove_dir (re_path);
-
-		  rmdir (full_path);
-		}
-	      else
-		{
-		  /* This case should never happen. */
-		}
-	    }
+      if (S_ISDIR (statbuf.st_mode))
+	{
+	  result = fileio_lob_remove_dir (sub_path);
 	}
       else
 	{
-	  if (stat (full_path, &statbuf) != 0)
+	  result = unlink (sub_path);
+	}
+    }
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  result = closedir (dir_p);
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  result = rmdir (path);
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+#else /* SERVER_MODE || SA_MODE */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * fileio_lob_remove_matching_dir () - Remove LOB subdirectories whose names contain the given keyword by calling
+ *                                    fileio_lob_remove_dir().
+ *
+ * return: error code.
+ * keyword (in): keyword (in): A keyword representing part or all of a directory name
+ *               to be removed under the LOB path.
+ *               Examples include an HFID (attrid) or a temporary directory name ("ces").
+ */
+int
+fileio_lob_remove_matching_dir (const char *keyword)
+{
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  DIR *dir_p;
+  struct dirent *dir_entry;
+  struct stat statbuf;
+  char sub_path[PATH_MAX];
+  int result = 0;
+
+  dir_p = opendir (es_base_dir);
+  if (dir_p == NULL)
+    {
+      return ER_ES_INVALID_PATH;
+    }
+
+  while ((dir_entry = readdir (dir_p)) != NULL && result == 0)
+    {
+      if (strcmp (dir_entry->d_name, ".") == 0 || strcmp (dir_entry->d_name, "..") == 0)
+	{
+	  continue;
+	}
+
+      if (strncmp (dir_entry->d_name, keyword, strlen (keyword)) == 0)
+	{
+#if defined (__GNUC__)
+	  DISABLE_FMT_TRUNC_WARNING
+#endif
+	    snprintf (sub_path, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dir_entry->d_name);
+
+#if defined (__GNUC__)
+	  ENABLE_FMT_TRUNC_WARNING
+#endif
+	    if (stat (sub_path, &statbuf) != 0)
 	    {
 	      continue;
 	    }
-
 	  if (S_ISDIR (statbuf.st_mode))
 	    {
-	      snprintf (re_path, (strlen (path_key) + 1 + strlen (dir_entry->d_name) + 1), "%s/%s/", path_key,
-			dir_entry->d_name);
-
-	      sub_result = fileio_lob_remove_dir (re_path);
-
-	      rmdir (full_path);
+	      result = fileio_lob_remove_dir (sub_path);
 	    }
 	  else
 	    {
-	      sub_result = unlink (full_path);
+	      /* This case should never happen. */
 	    }
 	}
-
-      result = sub_result;
     }
-
-  if (strcmp (base_dir, es_base_dir) != 0)
+  if (result != 0)
     {
-      rmdir (base_dir);
+      return ER_FAILED;
     }
 
-  closedir (dir_p);
+  result = closedir (dir_p);
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
 
-  return error;
-#endif /* SERVER_MODE || SA_MODE */
   return NO_ERROR;
+#else /* SERVER_MODE || SA_MODE */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
+#endif /* SERVER_MODE || SA_MODE */
 }
