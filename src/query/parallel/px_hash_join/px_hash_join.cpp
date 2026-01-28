@@ -147,7 +147,7 @@ namespace parallel_query
     {
       HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
-      UINT32 worker_cnt, worker_index;
+      UINT32 task_cnt, task_index;
 
       assert (manager != nullptr);
       assert (split_info != nullptr);
@@ -159,7 +159,7 @@ namespace parallel_query
       outer = &split_info->outer;
       inner = &split_info->inner;
 
-      worker_cnt = manager->max_parallel_workers;
+      task_cnt = manager->num_parallel_threads;
 
       if (hjoin_init_shared_split_info (&thread_ref, manager, &shared_info) != NO_ERROR)
 	{
@@ -176,9 +176,9 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+      for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  task = new split_task (task_manager, manager, outer, &shared_info, worker_index);
+	  task = new split_task (task_manager, manager, outer, &shared_info, task_index);
 	  task_manager.push_task (task);
 	}
 
@@ -210,10 +210,9 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+      for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  task = new split_task (task_manager, manager, inner, &shared_info,
-				 worker_index);
+	  task = new split_task (task_manager, manager, inner, &shared_info, task_index);
 	  task_manager.push_task (task);
 	}
 
@@ -250,7 +249,7 @@ namespace parallel_query
       HASHJOIN_CONTEXT *current_context;
       HASHJOIN_SHARED_JOIN_INFO shared_info;
       UINT32 context_index;
-      UINT32 worker_cnt, worker_index;
+      UINT32 task_cnt, task_index;
 
       int error = NO_ERROR;
 
@@ -263,7 +262,7 @@ namespace parallel_query
 #endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
-      worker_cnt = manager->max_parallel_workers;
+      task_cnt = manager->num_parallel_threads;
 
       task_manager task_manager (manager->px_worker_pool_manager->get_worker_pool (),
 				 cuberr::context::get_thread_local_context ());
@@ -274,9 +273,9 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      for (worker_index = 0; worker_index < worker_cnt; worker_index++)
+      for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  task = new join_task (task_manager, manager, manager->contexts, &shared_info, worker_index);
+	  task = new join_task (task_manager, manager, manager->contexts, &shared_info, task_index);
 	  task_manager.push_task (task);
 	}
 
