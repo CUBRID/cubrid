@@ -20079,14 +20079,9 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	    {
-	      return NO_ERROR;
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
-	  return ER_ATTEMPT_TO_USE_ZERODATE;
+	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+	  goto error;
 	}
 
       if (is_add)
@@ -20150,14 +20145,9 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	    {
-	      return NO_ERROR;
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
-	  return ER_ATTEMPT_TO_USE_ZERODATE;
+	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+	  goto error;
 	}
 
       if (is_add)
@@ -20253,14 +20243,9 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	    {
-	      return NO_ERROR;
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
-	  return ER_ATTEMPT_TO_USE_ZERODATE;
+	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
+	  goto error;
 	}
 
       if (is_add)
@@ -20363,6 +20348,16 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
 error:
+  if (error_status != NO_ERROR)
+    {
+      db_make_null (result);
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  /* clear error and return NULL */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+    }
   return error_status;
 }
 
@@ -20838,14 +20833,9 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	    {
-	      return NO_ERROR;
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	  return ER_DATE_CONVERSION;
+	  error_status = ER_DATE_CONVERSION;
+	  goto error;
 	}
 
       if (is_positive_value ^ is_add)
@@ -20871,14 +20861,9 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  if (m == 0 && d == 0 && y == 0)
 	    {
-	      db_make_null (result);
-	      er_clear ();
-	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-		{
-		  return NO_ERROR;
-		}
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	      return ER_DATE_CONVERSION;
+	      error_status = ER_DATE_CONVERSION;
+	      goto error;
 	    }
 
 	  if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
@@ -20907,14 +20892,9 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	    {
-	      db_make_null (result);
-	      er_clear ();
-	      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-		{
-		  return NO_ERROR;
-		}
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	      return ER_DATE_CONVERSION;
+	      error_status = ER_DATE_CONVERSION;
+	      goto error;
 	    }
 
 	  if (res_type == DB_TYPE_STRING || res_type == DB_TYPE_CHAR)
@@ -20970,14 +20950,9 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	    {
-	      return NO_ERROR;
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
-	  return ER_DATE_CONVERSION;
+	  error_status = ER_DATE_CONVERSION;
+	  goto error;
 	}
 
       if (is_positive_value ^ is_add)
@@ -21061,14 +21036,9 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
-	  db_make_null (result);
-	  er_clear ();
-	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-	    {
-	      return NO_ERROR;
-	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
-	  return ER_TIMESTAMP_CONVERSION;
+	  error_status = ER_TIMESTAMP_CONVERSION;
+	  goto error;
 	}
 
       if (is_positive_value ^ is_add)
@@ -21159,6 +21129,16 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
 error:
+  if (error_status != NO_ERROR)
+    {
+      db_make_null (result);
+      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  /* clear error and return NULL */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+    }
   return error_status;
 }
 
