@@ -6742,6 +6742,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	      /* fixed data type: always show parameter */
 	      show_precision = true;
 	      break;
+
 	    default:
 	      /* variable data type: only show non-maximum(i.e., default) parameter */
 	      if (precision == TP_FLOATING_PRECISION_VALUE)
@@ -7746,8 +7747,9 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   r3 = pt_print_bytes (parser, p->info.sp.body);
   q = pt_append_varchar (parser, q, r3);
 
-  if (p->info.sp.comment != NULL && !parser->flag.is_unloading_schema)
+  if (p->info.sp.comment != NULL)
     {
+      assert (!parser->flag.is_unloading_schema);	// CBRD-26513
       r1 = pt_print_bytes (parser, p->info.sp.comment);
       q = pt_append_nulstring (parser, q, " comment ");
       q = pt_append_varchar (parser, q, r1);
@@ -8697,6 +8699,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	    /* fixed data type: always show parameter */
 	    show_precision = true;
 	    break;
+
 	  default:
 	    /* variable data type: only show non-maximum(i.e., default) parameter */
 	    if (precision == TP_FLOATING_PRECISION_VALUE)
