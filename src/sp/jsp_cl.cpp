@@ -1131,24 +1131,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (sp_info.lang == SP_LANG_PLCSQL)
     {
-
-      // get code without the user name and the comment
-      char *code;
-      {
-	PT_NODE *comment_saved = statement->info.sp.comment;
-	int custom_print_saved = parser->custom_print;
-
-	statement->info.sp.comment = NULL;
-	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
-	parser->flag.is_unloading_schema = 1;
-	code = parser_print_tree (parser, statement);
-	parser->flag.is_unloading_schema = 0;
-
-	parser->custom_print = custom_print_saved;
-	statement->info.sp.comment = comment_saved;
-      }
-
-      compile_request.code.assign (code, strlen (code));
+      assert (statement->sql_user_text && statement->sql_user_text_len);
+      compile_request.code.assign (statement->sql_user_text, statement->sql_user_text_len);
       compile_request.owner.assign ((owner_name[0] == '\0') ? au_get_current_user_name () : owner_name);
 
       // TODO: Only the owner's rights is supported for PL/CSQL
@@ -1223,6 +1207,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   if (!compile_request.code.empty ())
     {
+      assert (sp_info.lang == SP_LANG_PLCSQL);
       SP_CODE_INFO code_info;
 
       auto now = std::chrono::system_clock::now();
@@ -1230,10 +1215,27 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       std::stringstream stm;
       stm << std::put_time (localtime (&converted_timep), "%Y%m%d%H%M%S");
 
+
+      // CBRD-26513, CBRD-26514: rewrite the user code without the user name and the comment
+      char *rewritten_code;
+      {
+	PT_NODE *comment_saved = statement->info.sp.comment;
+	int custom_print_saved = parser->custom_print;
+
+	statement->info.sp.comment = NULL;
+	parser->custom_print |= PT_PRINT_NO_SPECIFIED_USER_NAME;
+	parser->flag.is_unloading_schema = 1;
+	rewritten_code = parser_print_tree (parser, statement);
+	parser->flag.is_unloading_schema = 0;
+
+	parser->custom_print = custom_print_saved;
+	statement->info.sp.comment = comment_saved;
+      }
+
       code_info.name = sp_info.target_class;
       code_info.created_time = stm.str ();
-      code_info.stype = (sp_info.lang == SP_LANG_PLCSQL) ? SPSC_PLCSQL : SPSC_JAVA;
-      code_info.scode = compile_request.code;
+      code_info.stype = SPSC_PLCSQL;
+      code_info.scode.assign (rewritten_code, strlen (rewritten_code));
       code_info.otype = compile_response.compiled_type;
       code_info.ocode = compile_response.compiled_code;
       code_info.owner = sp_info.owner;
