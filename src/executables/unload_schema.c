@@ -4744,7 +4744,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
 		}
 	    }
 
-	  parser->flag.is_parsing_unload_schema = 1;
+	  parser->flag.is_unloading_schema = 1;
 	  scode_ptr_result = parser_print_tree_with_quotes (parser, *scode_ptr);
 	}
 
