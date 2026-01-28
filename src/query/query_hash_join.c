@@ -1054,10 +1054,6 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	      coerce_domains[domain_index] = outer_domains[domain_index];
 	      continue;
 	    }
-	  else if (outer_type == DB_TYPE_NUMERIC || inner_type == DB_TYPE_NUMERIC)
-	    {
-	      common_type = DB_TYPE_NUMERIC;
-	    }
 	  else
 	    {
 	      common_type = (tp_more_general_type (outer_type, inner_type) > 0) ? outer_type : inner_type;

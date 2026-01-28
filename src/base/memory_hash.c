@@ -2445,6 +2445,8 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_NUMERIC:
 	  {
 	    bool is_float_numeric = false;
+	    unsigned int tmp = 0;
+	    unsigned int *buf;
 	    int precision = 0, scale = 0;
 	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
 
@@ -2460,10 +2462,8 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	    if (!is_float_numeric
 		|| (is_float_numeric && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
 	      {
-		unsigned int tmp = 0;
-		unsigned int *buf = (unsigned int *) db_locate_numeric (val);
-
-		memcpy (&tmp, db_locate_numeric (val) + 16, 2);
+		buf = (unsigned int *) db_locate_numeric (val);
+		memcpy (&tmp, db_locate_numeric (val) + 16, 1);
 
 		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
 	      }
@@ -2473,9 +2473,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
 							 scale);
 
-		unsigned int tmp = 0;
-		unsigned int *buf = (unsigned int *) calc_buf;
-
+		buf = (unsigned int *) calc_buf;
 		memcpy (&tmp, (char *) calc_buf + 16, 1);
 
 		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);

@@ -12061,6 +12061,7 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
 
   if (value->do_increment && (incremented_attrids->find (index) == incremented_attrids->end ()))
     {
+      /* handle INCR(), DECR() functions */
       if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -12103,18 +12104,6 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
       else
 	{
 	  OR_ENABLE_BOUND_BIT (bitmap_bound, value->last_attrepr->position);
-	  /* 
-	   * User AUTO_INCREMENT NUMERIC(1~28) uses 4–12 bytes, while
-	   * _db_serial.current_val (NUMERIC(38)) always uses 16 bytes.
-	   * This byte-size mismatch corrupts values.
-	   * Fix: if user column precision < 38, override current_val precision to match it.
-	   */
-	  if (pr_type->id == DB_TYPE_NUMERIC && value->last_attrepr->is_autoincrement
-	      && value->last_attrepr->domain->precision != DB_MAX_FIXED_NUMERIC_PRECISION
-	      && dbvalue->domain.general_info.type == DB_TYPE_NUMERIC)
-	    {
-	      dbvalue->domain.numeric_info.precision = value->last_attrepr->domain->precision;
-	    }
 	  pr_type->data_writeval (buf, dbvalue);
 	}
     }
@@ -12168,6 +12157,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   if (value->do_increment != 0)
     {
+      /* handle INCR(), DECR() functions */
       return S_ERROR;
     }
 
@@ -12227,6 +12217,18 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  pr_clear_value (dbvalue);
 	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
 	  dbvalue->need_clear = true;
+	}
+
+      /* 
+       * user AUTO_INCREMENT NUMERIC(1~28) uses 4–12 bytes, while
+       * _db_serial.current_val (NUMERIC(38)) always uses 16 bytes.
+       * this byte-size mismatch corrupts values.
+       * fix: if user column precision < 38, override current_val precision to match it.
+       */
+      if (dbvalue->domain.general_info.type == DB_TYPE_NUMERIC && value->last_attrepr->is_autoincrement
+	  && value->last_attrepr->domain->precision != DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  dbvalue->domain.numeric_info.precision = value->last_attrepr->domain->precision;
 	}
 
       if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
