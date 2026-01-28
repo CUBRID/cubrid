@@ -789,8 +789,6 @@ namespace parallel_heap_scan
     m_task_started = false;
     m_interrupt.clear();
 
-    m_join_info.capture_join_info (m_xasl);
-
     return NO_ERROR;
   }
 
@@ -834,6 +832,13 @@ namespace parallel_heap_scan
 
     if (unlikely (!m_task_started))
       {
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
+	  {
+	    if (m_xasl->scan_ptr)
+	      {
+		m_join_info.capture_join_info (m_xasl);
+	      }
+	  }
 	err_code = start_tasks();
 	if (err_code != NO_ERROR)
 	  {
@@ -862,7 +867,10 @@ namespace parallel_heap_scan
 	      }
 	  }
 
-	m_join_info.apply_join_info (m_xasl->scan_ptr);
+	if (m_xasl->scan_ptr)
+	  {
+	    m_join_info.apply_join_info (m_xasl);
+	  }
 
 	std::vector<DB_VALUE> dbval_container (m_xasl->val_list->val_cnt);
 	QPROC_DB_VALUE_LIST valp = m_xasl->val_list->valp;
@@ -902,7 +910,10 @@ namespace parallel_heap_scan
     else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
       {
 	scan_code = m_result_handler->read (m_thread_p, m_xasl->proc.buildvalue.agg_list);
-	m_join_info.apply_join_info (m_xasl->scan_ptr);
+	if (m_xasl->scan_ptr)
+	  {
+	    m_join_info.apply_join_info (m_xasl);
+	  }
       }
     else
       {

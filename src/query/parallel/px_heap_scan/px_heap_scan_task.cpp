@@ -115,80 +115,83 @@ namespace parallel_heap_scan
 	  }
 	else
 	  {
-	    scan_info scan_info = m_join_info->get_scan_info (xptr->header.id);
-	    ACCESS_SPEC_TYPE *specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
-	    xptr->curr_spec = xptr->spec_list;
-	    if (spec_ptr->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (spec_ptr->access)
-		&& qfile_is_sort_list_covered (xptr->after_iscan_list, xptr->orderby_list))
+	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
 	      {
-		spec_ptr->grouped_scan = false;
-		iscan_oid_order = false;
-	      }
+		scan_info scan_info = m_join_info->get_scan_info (xptr->header.id);
+		ACCESS_SPEC_TYPE *specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
+		xptr->curr_spec = xptr->spec_list;
+		if (spec_ptr->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (spec_ptr->access)
+		    && qfile_is_sort_list_covered (xptr->after_iscan_list, xptr->orderby_list))
+		  {
+		    spec_ptr->grouped_scan = false;
+		    iscan_oid_order = false;
+		  }
 
-	    assert (specp->type == TARGET_CLASS);
+		assert (specp->type == TARGET_CLASS);
 
-	    switch (specp->access)
-	      {
-	      case ACCESS_METHOD_SEQUENTIAL:
-	      {
-		err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, specp->s_id.mvcc_select_lock_needed,
-						specp->s_id.scan_op_type, specp->s_id.fixed, specp->s_id.grouped,
-						specp->s_id.single_fetch, specp->s_dbval, xptr->val_list, m_vd,
-						&scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
-						specp->s.cls_node.cls_regu_list_rest, specp->s.cls_node.num_attrs_pred,
-						specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
-						specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
-						specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
-						specp->s.cls_node.cls_regu_list_reserved, true);
+		switch (specp->access)
+		  {
+		  case ACCESS_METHOD_SEQUENTIAL:
+		  {
+		    err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, specp->s_id.mvcc_select_lock_needed,
+						    specp->s_id.scan_op_type, specp->s_id.fixed, specp->s_id.grouped,
+						    specp->s_id.single_fetch, specp->s_dbval, xptr->val_list, m_vd,
+						    &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
+						    specp->s.cls_node.cls_regu_list_rest, specp->s.cls_node.num_attrs_pred,
+						    specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
+						    specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
+						    specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
+						    specp->s.cls_node.cls_regu_list_reserved, true);
+		    if (err_code != NO_ERROR)
+		      {
+			return err_code;
+		      }
+		  }
+		  break;
+		  case ACCESS_METHOD_INDEX:
+		  {
+		    QUERY_ID query_id = m_query_entry->query_id;
+		    bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
+		    specp->indexptr->btid = scan_info.btid;
+		    err_code =
+			    scan_open_index_scan (&thread_ref, &specp->s_id, specp->s_id.mvcc_select_lock_needed,
+						  specp->s_id.scan_op_type, specp->s_id.fixed, specp->s_id.grouped,
+						  specp->s_id.single_fetch, specp->s_dbval, xptr->val_list, m_vd,
+						  specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
+						  specp->where_key, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
+						  specp->s.cls_node.cls_regu_list_rest, specp->where_range,
+						  specp->s.cls_node.cls_regu_list_range, specp->s.cls_node.cls_output_val_list,
+						  specp->s.cls_node.cls_regu_val_list, specp->s.cls_node.num_attrs_key,
+						  specp->s.cls_node.attrids_key, specp->s.cls_node.cache_key,
+						  specp->s.cls_node.num_attrs_pred, specp->s.cls_node.attrids_pred,
+						  specp->s.cls_node.cache_pred, specp->s.cls_node.num_attrs_rest,
+						  specp->s.cls_node.attrids_rest, specp->s.cls_node.cache_rest,
+						  specp->s.cls_node.num_attrs_range, specp->s.cls_node.attrids_range,
+						  specp->s.cls_node.cache_range, iscan_oid_order, query_id,
+						  ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+		    if (err_code != NO_ERROR)
+		      {
+			return S_ERROR;
+		      }
+		  }
+		  break;
+		  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
+		  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+		  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
+		  case ACCESS_METHOD_JSON_TABLE:
+		  case ACCESS_METHOD_SCHEMA:
+		  case ACCESS_METHOD_INDEX_KEY_INFO:
+		  case ACCESS_METHOD_INDEX_NODE_INFO:
+		  default:
+		    assert (false);
+		    break;
+		  }
+
+		err_code = scan_start_scan (&thread_ref, &specp->s_id);
 		if (err_code != NO_ERROR)
 		  {
 		    return err_code;
 		  }
-	      }
-	      break;
-	      case ACCESS_METHOD_INDEX:
-	      {
-		QUERY_ID query_id = m_query_entry->query_id;
-		bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
-		specp->indexptr->btid = scan_info.btid;
-		err_code =
-			scan_open_index_scan (&thread_ref, &specp->s_id, specp->s_id.mvcc_select_lock_needed,
-					      specp->s_id.scan_op_type, specp->s_id.fixed, specp->s_id.grouped,
-					      specp->s_id.single_fetch, specp->s_dbval, xptr->val_list, m_vd,
-					      specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
-					      specp->where_key, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
-					      specp->s.cls_node.cls_regu_list_rest, specp->where_range,
-					      specp->s.cls_node.cls_regu_list_range, specp->s.cls_node.cls_output_val_list,
-					      specp->s.cls_node.cls_regu_val_list, specp->s.cls_node.num_attrs_key,
-					      specp->s.cls_node.attrids_key, specp->s.cls_node.cache_key,
-					      specp->s.cls_node.num_attrs_pred, specp->s.cls_node.attrids_pred,
-					      specp->s.cls_node.cache_pred, specp->s.cls_node.num_attrs_rest,
-					      specp->s.cls_node.attrids_rest, specp->s.cls_node.cache_rest,
-					      specp->s.cls_node.num_attrs_range, specp->s.cls_node.attrids_range,
-					      specp->s.cls_node.cache_range, iscan_oid_order, query_id,
-					      ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
-		if (err_code != NO_ERROR)
-		  {
-		    return S_ERROR;
-		  }
-	      }
-	      break;
-	      case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
-	      case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
-	      case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
-	      case ACCESS_METHOD_JSON_TABLE:
-	      case ACCESS_METHOD_SCHEMA:
-	      case ACCESS_METHOD_INDEX_KEY_INFO:
-	      case ACCESS_METHOD_INDEX_NODE_INFO:
-	      default:
-		assert (false);
-		break;
-	      }
-
-	    err_code = scan_start_scan (&thread_ref, &specp->s_id);
-	    if (err_code != NO_ERROR)
-	      {
-		return err_code;
 	      }
 	  }
       }
@@ -274,25 +277,32 @@ namespace parallel_heap_scan
     m_input_handler->finalize (&thread_ref);
     m_slot_iterator.finalize (&thread_ref);
 
-    for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
       {
-	if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->parts != NULL)
+	for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
-	    xptr->spec_list->curent = NULL;
-
-	    /* init btid */
-	    if (xptr->spec_list->indexptr)
+	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->parts != NULL)
 	      {
-		BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
+		xptr->spec_list->curent = NULL;
+
+		/* init btid */
+		if (xptr->spec_list->indexptr)
+		  {
+		    BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
+		  }
 	      }
-	  }
-	if (xptr != m_xasl)
-	  {
+
 	    m_join_info->record_join_info (xptr->header.id, xptr);
+
 	  }
-	scan_end_scan (&thread_ref, &xptr->spec_list->s_id);
-	scan_close_scan (&thread_ref, &xptr->spec_list->s_id);
+
       }
+    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
+      {
+	scan_end_scan (&thread_ref, m_scan_id);
+	scan_close_scan (&thread_ref, m_scan_id);
+      }
+
 
     for (int i = 0; i < m_vd->dbval_cnt; i++)
       {
@@ -465,6 +475,7 @@ namespace parallel_heap_scan
 	scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
 	if (scan_code == S_END)
 	  {
+	    m_xasl->curr_spec->s_id.position = S_AFTER;
 	    break;
 	  }
 	if (scan_code == S_ERROR)
@@ -518,64 +529,62 @@ namespace parallel_heap_scan
 		      }
 		  }
 	      }
-
-	    if (m_xasl->scan_ptr)
+	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::COUNT_DISTINCT)
 	      {
-		m_xasl->curr_spec->s_id.qualified_block = true;
-
-		/* handle the scan procedure */
-		m_xasl->scan_ptr->next_scan_on = false;
-		if (scan_reset_scan_block (&thread_ref, &m_xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		if (m_xasl->scan_ptr)
 		  {
-		    m_err_messages->move_top_error_message_to_this();
-		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    stop = true;
-		    break;
-		  }
+		    m_xasl->curr_spec->s_id.qualified_block = true;
 
-		m_xasl->next_scan_on = true;
-		if (m_xasl->scan_ptr->memoize_storage)
-		  {
-		    m_xasl->scan_ptr->memoize_storage->set_key_changed ();
+		    /* handle the scan procedure */
+		    m_xasl->scan_ptr->next_scan_on = false;
+		    if (scan_reset_scan_block (&thread_ref, &m_xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		      {
+			m_err_messages->move_top_error_message_to_this();
+			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			stop = true;
+			break;
+		      }
+
+		    m_xasl->next_scan_on = true;
+		    if (m_xasl->scan_ptr->memoize_storage)
+		      {
+			m_xasl->scan_ptr->memoize_storage->set_key_changed ();
+		      }
+		    while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, NULL, m_scan_func_ptr)) == S_SUCCESS)
+		      {
+			if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+			  {
+			    result_handler_p->write (&thread_ref, m_xasl->outptr_list);
+			  }
+			else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
+			  {
+			    result_handler_p->write (&thread_ref);
+			  }
+		      }
+		    if (xs_scan == S_ERROR)
+		      {
+			m_err_messages->move_top_error_message_to_this();
+			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			stop = true;
+			break;
+		      }
+		    m_xasl->next_scan_on = false;
 		  }
-		while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, NULL, m_scan_func_ptr)) == S_SUCCESS)
+		else
 		  {
 		    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
 		      {
 			result_handler_p->write (&thread_ref, m_xasl->outptr_list);
-		      }
-		    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
-		      {
-			result_handler_p->write (&thread_ref, m_xasl->val_list);
 		      }
 		    else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
 		      {
 			result_handler_p->write (&thread_ref);
 		      }
 		  }
-		if (xs_scan == S_ERROR)
-		  {
-		    m_err_messages->move_top_error_message_to_this();
-		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    stop = true;
-		    break;
-		  }
-		m_xasl->next_scan_on = false;
 	      }
-	    else
+	    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
 	      {
-		if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
-		  {
-		    result_handler_p->write (&thread_ref, m_xasl->outptr_list);
-		  }
-		else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
-		  {
-		    result_handler_p->write (&thread_ref, m_xasl->val_list);
-		  }
-		else if constexpr (result_type == RESULT_TYPE::COUNT_DISTINCT)
-		  {
-		    result_handler_p->write (&thread_ref);
-		  }
+		result_handler_p->write (&thread_ref, m_xasl->val_list);
 	      }
 
 	    /* clear dptr lists

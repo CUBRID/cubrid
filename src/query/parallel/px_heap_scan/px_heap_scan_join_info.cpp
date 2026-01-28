@@ -43,8 +43,25 @@ namespace parallel_heap_scan
     for (n_scan_ptrs = 0; xptr; xptr = xptr->scan_ptr, n_scan_ptrs++)
       {
 	specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
-	COPY_OID (&scan_info.oid, &ACCESS_SPEC_CLS_OID (specp));
-	HFID_COPY (&scan_info.hfid, &ACCESS_SPEC_HFID (specp));
+	if (specp->curent != NULL)
+	  {
+	    COPY_OID (&scan_info.oid, &specp->curent->oid);
+	    HFID_COPY (&scan_info.hfid, &specp->curent->hfid);
+	    if (specp->access == ACCESS_METHOD_INDEX)
+	      {
+		BTID_COPY (&scan_info.btid, &specp->curent->btid);
+	      }
+	  }
+	else
+	  {
+	    COPY_OID (&scan_info.oid, &ACCESS_SPEC_CLS_OID (specp));
+	    HFID_COPY (&scan_info.hfid, &ACCESS_SPEC_HFID (specp));
+	    if (specp->access == ACCESS_METHOD_INDEX)
+	      {
+		BTID_COPY (&scan_info.btid, &specp->btid);
+	      }
+	  }
+
 	scan_info.target_type = specp->type;
 	scan_info.access_method = specp->access;
 	if (specp->type == TARGET_LIST)
@@ -55,10 +72,6 @@ namespace parallel_heap_scan
 	  {
 	    scan_info.list_id = NULL;
 	  }
-	if (specp->access == ACCESS_METHOD_INDEX)
-	  {
-	    BTID_COPY (&scan_info.btid, &specp->btid);
-	  }
 	m_scan_infos[xptr->header.id] = scan_info;
       }
   }
@@ -68,7 +81,6 @@ namespace parallel_heap_scan
     scan_info &scan_info = m_scan_infos[xasl_id];
     scan_info.status = xptr->curr_spec->s_id.status;
     scan_info.qualified_block = xptr->curr_spec->s_id.qualified_block;
-    scan_info.next_scan_block_on = xptr->next_scan_block_on;
   }
   void join_info::apply_join_info (xasl_node *xasl)
   {
@@ -80,8 +92,8 @@ namespace parallel_heap_scan
 	scan_info &scan_info = m_scan_infos[xptr->header.id];
 	specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
 	specp->s_id.qualified_block = scan_info.qualified_block;
-	xptr->next_scan_block_on = scan_info.next_scan_block_on;
 	specp->s_id.status = scan_info.status;
+	specp->s_id.position = S_AFTER;
       }
   }
 }

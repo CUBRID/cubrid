@@ -47,7 +47,6 @@ namespace parallel_heap_scan
     /* writable section (mutex needed) */
     SCAN_STATUS status;
     bool qualified_block;	/* qualified block? */
-    bool next_scan_block_on;	/* next scan block on? */
   };
 
   using XASL_ID = int;
