@@ -72,6 +72,8 @@ namespace parallel_heap_scan
 	  {
 	    scan_info.list_id = NULL;
 	  }
+	scan_info.status = specp->s_id.status;
+	scan_info.qualified_block = specp->s_id.qualified_block;
 	m_scan_infos[xptr->header.id] = scan_info;
       }
   }
