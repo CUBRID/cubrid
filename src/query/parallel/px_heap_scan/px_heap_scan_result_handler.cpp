@@ -513,7 +513,7 @@ namespace parallel_heap_scan
 	      {
 		if (dest->type_list.type_cnt > 0)
 		  {
-		    qfile_clear_list_id (dest);
+		    qfile_destroy_list (thread_p, dest);
 		  }
 		qfile_copy_list_id (dest, m_.result_p, true, QFILE_MOVE_DEPENDENT);
 		qfile_clear_list_id (m_.result_p);

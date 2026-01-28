@@ -133,9 +133,9 @@ namespace parallel_heap_scan
 		  {
 		  case ACCESS_METHOD_SEQUENTIAL:
 		  {
-		    err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, specp->s_id.mvcc_select_lock_needed,
-						    specp->s_id.scan_op_type, specp->s_id.fixed, specp->s_id.grouped,
-						    specp->s_id.single_fetch, specp->s_dbval, xptr->val_list, m_vd,
+		    err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
+						    S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
+						    specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 						    &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
 						    specp->s.cls_node.cls_regu_list_rest, specp->s.cls_node.num_attrs_pred,
 						    specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
@@ -154,9 +154,9 @@ namespace parallel_heap_scan
 		    bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
 		    specp->indexptr->btid = scan_info.btid;
 		    err_code =
-			    scan_open_index_scan (&thread_ref, &specp->s_id, specp->s_id.mvcc_select_lock_needed,
-						  specp->s_id.scan_op_type, specp->s_id.fixed, specp->s_id.grouped,
-						  specp->s_id.single_fetch, specp->s_dbval, xptr->val_list, m_vd,
+			    scan_open_index_scan (&thread_ref, &specp->s_id, false,
+						  S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
+						  specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 						  specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
 						  specp->where_key, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
 						  specp->s.cls_node.cls_regu_list_rest, specp->where_range,
