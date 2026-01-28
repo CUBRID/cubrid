@@ -224,15 +224,16 @@ jobs:
                       name: Download build to GlusterFS
                       command: |
                         BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM)
-                        BUILD_DIR="/home/build-cache/builds/\${CIRCLE_WORKFLOW_ID}"
+                        # Use CIRCLE_SHA1 (commit hash) to reuse build across workflow retries
+                        BUILD_DIR="/home/build-cache/builds/\${CIRCLE_SHA1}"
                         
-                        echo "CIRCLE_WORKFLOW_ID: \${CIRCLE_WORKFLOW_ID}"
+                        echo "CIRCLE_SHA1: \${CIRCLE_SHA1}"
                         echo "BUILD_NUM: \${BUILD_NUM}"
                         echo "BUILD_DIR: \${BUILD_DIR}"
                         
-                        # Check if build already exists
+                        # Check if build already exists (same commit = same build)
                         if [ -d "\${BUILD_DIR}/CUBRID" ]; then
-                          echo "Build already exists, skipping download"
+                          echo "Build already exists for this commit, skipping download"
                           ls -la "\${BUILD_DIR}/CUBRID" | head -10
                           exit 0
                         fi
