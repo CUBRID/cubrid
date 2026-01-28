@@ -1270,8 +1270,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
       else
 	{
 	  assert (scan_cache->page_latch > NULL_LOCK);
-	  page_lock = lock_Conv[scan_cache->page_latch][lock];
-	  assert (page_lock != NA_LOCK);
+	  page_lock = lock_conv (scan_cache->page_latch, lock);
 	}
     }
   else
@@ -6859,6 +6858,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 		      break;
 		    }
 		  target_thread_p = target_thread_p->m_px_orig_thread_entry;
+		  assert (target_thread_p != thread_p);
 		}
 	      assert (target_thread_p != NULL);
 	      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);

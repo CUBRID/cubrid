@@ -58,6 +58,7 @@ regu_init (xasl_node &node)
   node.option = Q_ALL;
   node.iscan_oid_order = prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER);
   node.scan_op_type = S_SELECT;
+  node.parallelism = -1;	/* auto-compute */
 
   regu_alloc (node.list_id);
 }
@@ -152,6 +153,7 @@ regu_init (access_spec_node &spec)
   spec.s_dbval = NULL;
   spec.next = NULL;
   spec.flags = ACCESS_SPEC_FLAG_NONE;
+  spec.num_parallel_threads = -1;	/* auto-compute */
 }
 
 static void

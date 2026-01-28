@@ -189,7 +189,7 @@ typedef struct hashjoin_start_stats
 
 typedef struct hashjoin_stats
 {
-  UINT32 max_parallel_workers;
+  UINT32 num_parallel_threads;
 
   HASH_METHOD hash_method;
   bool use_hash_memory;
@@ -332,7 +332,7 @@ typedef struct hashjoin_manager
 
   /* Pointer to a member of XASL_NODE. */
   PRED_EXPR *during_join_pred;
-  int max_parallel_workers;
+  int num_parallel_threads;
 
   /* Pointer to a member of XASL_STATE. */
   QUERY_ID query_id;

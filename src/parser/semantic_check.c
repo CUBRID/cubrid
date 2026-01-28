@@ -1385,7 +1385,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       return result;
     }
@@ -5111,9 +5111,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  MOP me = NULL;
 	  MOP owner = NULL;
 	  bool change_owner_flag = false;
-	  int client_type = db_get_client_type ();
 
-	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	  if (db_client_type_is_loaddb ())
 	    {
 	      const char *user_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
 	      if (user_name != NULL)
@@ -5581,18 +5580,8 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_ADD_MONTHS:
     case PT_LAST_DAY:
     case PT_MONTHS_BETWEEN:
-    case PT_SYS_DATE:
     case PT_TO_DATE:
     case PT_TO_NUMBER:
-    case PT_SYS_TIME:
-    case PT_CURRENT_DATE:
-    case PT_CURRENT_TIME:
-    case PT_SYS_TIMESTAMP:
-    case PT_CURRENT_TIMESTAMP:
-    case PT_SYS_DATETIME:
-    case PT_CURRENT_DATETIME:
-    case PT_UTC_TIME:
-    case PT_UTC_DATE:
     case PT_TO_TIME:
     case PT_TO_TIMESTAMP:
     case PT_TO_DATETIME:
@@ -5649,12 +5638,10 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_INET_NTOA:
     case PT_DBTIMEZONE:
     case PT_SESSIONTIMEZONE:
-    case PT_TZ_OFFSET:
     case PT_FROM_TZ:
     case PT_NEW_TIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_UTC_TIMESTAMP:
     case PT_CONV_TZ:
       break;
 
@@ -8798,9 +8785,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       MOP me = NULL;
       MOP owner = NULL;
       bool change_owner_flag = false;
-      int client_type = db_get_client_type ();
 
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb ())
 	{
 	  const char *user_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
 	  if (user_name != NULL)

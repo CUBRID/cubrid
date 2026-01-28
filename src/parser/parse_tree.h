@@ -1240,10 +1240,6 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
 
-/* Parallel query execution threads limits */
-#define  PT_MAX_PARALLEL_THREADS  64
-#define  PT_MIN_PARALLEL_THREADS  0
-
 /* Codes for error messages */
 typedef enum
 {
@@ -3238,7 +3234,6 @@ struct pt_stored_proc_body_info
   int lang;
   PT_NODE *decl;		/* PT_VALUE */
   PT_NODE *impl;		/* PT_VALUE */
-  bool direct;			/* whether the body has implementation (direct) or points to a implementation file (indirect) */
 };
 
 struct pt_stored_proc_info
@@ -3869,7 +3864,7 @@ struct parser_context
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
-    unsigned is_parsing_unload_schema:1;	/* Parsing in unload: used to parse the scode (original query) of PL/CSQL to remove the owner. */
+    unsigned is_unloading_schema:1;
     unsigned is_parsing_trigger:1;
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
   } flag;
