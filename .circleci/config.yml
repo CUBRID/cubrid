@@ -77,10 +77,8 @@ jobs:
             # --------------------------------------------------
             commands:
               attach-and-run-tests:
-                description: "Attach workspace and run test scripts"
+                description: "Run test scripts (CUBRID must be at /home/CUBRID)"
                 steps:
-                  - attach_workspace:
-                      at: .
                   - run:
                       name: Test
                       shell: /bin/bash
@@ -182,6 +180,40 @@ jobs:
                   - store_artifacts:
                       path: /tmp/build_logs
                       when: always
+
+              download-build-from-artifact:
+                description: "Download CUBRID build from artifact (for sql/medium tests)"
+                steps:
+                  - attach_workspace:
+                      at: /tmp/workspace
+                  - run:
+                      name: Download build from artifact
+                      command: |
+                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM)
+                        echo "Downloading build from job #\${BUILD_NUM}..."
+                        
+                        # Fetch artifact list
+                        RESPONSE=\$(curl -s -H "Circle-Token: \${CIRCLECI_TOKEN}" \\
+                          "https://circleci.com/api/v2/project/gh/\${CIRCLE_PROJECT_USERNAME}/\${CIRCLE_PROJECT_REPONAME}/\${BUILD_NUM}/artifacts")
+                        
+                        # Extract CUBRID.tar.gz URL
+                        ARTIFACT_URL=\$(echo "\$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+                        
+                        if [ -z "\$ARTIFACT_URL" ]; then
+                          echo "ERROR: CUBRID.tar.gz artifact not found"
+                          echo "Response: \$RESPONSE"
+                          exit 1
+                        fi
+                        
+                        echo "Artifact URL: \$ARTIFACT_URL"
+                        
+                        # Download and extract
+                        curl -L -o /tmp/CUBRID.tar.gz "\$ARTIFACT_URL"
+                        tar xzf /tmp/CUBRID.tar.gz -C /home/
+                        rm /tmp/CUBRID.tar.gz
+                        
+                        echo "Build extracted to /home/CUBRID"
+                        ls -la /home/CUBRID | head -10
                       
             # --------------------------------------------------
             # 2. Reusable executors
@@ -240,66 +272,20 @@ jobs:
                   - run:
                       name: Package build for artifact
                       command: |
-                        echo "Packaging CUBRID build..."
                         tar czf CUBRID.tar.gz CUBRID
-                        ls -lh CUBRID.tar.gz
+                        echo "Build packaged: \$(ls -lh CUBRID.tar.gz | awk '{print \$5}')"
                   - store_artifacts:
                       path: CUBRID.tar.gz
                       destination: CUBRID.tar.gz
                   - run:
-                      name: Test artifact API access
+                      name: Save build metadata for test jobs
                       command: |
-                        echo "=== Testing CircleCI Artifact API Access ==="
-                        echo "CIRCLE_BUILD_NUM: \${CIRCLE_BUILD_NUM}"
-                        echo "CIRCLE_PROJECT_USERNAME: \${CIRCLE_PROJECT_USERNAME}"
-                        echo "CIRCLE_PROJECT_REPONAME: \${CIRCLE_PROJECT_REPONAME}"
-                        echo "CIRCLE_WORKFLOW_ID: \${CIRCLE_WORKFLOW_ID}"
-                        echo ""
-                        
-                        # Check if CIRCLECI_TOKEN is available
-                        if [ -z "\${CIRCLECI_TOKEN}" ]; then
-                          echo "WARNING: CIRCLECI_TOKEN is not set"
-                          echo "Artifact API access requires CIRCLECI_TOKEN environment variable"
-                          exit 0
-                        fi
-                        
-                        echo "CIRCLECI_TOKEN is set (length: \${#CIRCLECI_TOKEN})"
-                        echo ""
-                        
-                        # Wait a moment for artifact to be uploaded
-                        sleep 5
-                        
-                        # Try to access artifacts API
-                        echo "Fetching artifacts for job \${CIRCLE_BUILD_NUM}..."
-                        RESPONSE=\$(curl -s -w "\\nHTTP_STATUS:%{http_code}" \\
-                          -H "Circle-Token: \${CIRCLECI_TOKEN}" \\
-                          "https://circleci.com/api/v2/project/gh/\${CIRCLE_PROJECT_USERNAME}/\${CIRCLE_PROJECT_REPONAME}/\${CIRCLE_BUILD_NUM}/artifacts")
-                        
-                        HTTP_STATUS=\$(echo "\$RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
-                        BODY=\$(echo "\$RESPONSE" | grep -v "HTTP_STATUS")
-                        
-                        echo "HTTP Status: \$HTTP_STATUS"
-                        echo "Response:"
-                        echo "\$BODY"
-                        
-                        if [ "\$HTTP_STATUS" = "200" ]; then
-                          echo ""
-                          echo "SUCCESS: Artifact API is accessible"
-                          
-                          # Extract artifact URL using grep/sed (no jq needed)
-                          ARTIFACT_URL=\$(echo "\$BODY" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
-                          if [ -n "\$ARTIFACT_URL" ]; then
-                            echo "Artifact URL: \$ARTIFACT_URL"
-                          else
-                            echo "Note: CUBRID.tar.gz not found in artifacts yet (may still be uploading)"
-                          fi
-                        else
-                          echo ""
-                          echo "FAILED: Could not access artifact API (HTTP \$HTTP_STATUS)"
-                        fi
+                        mkdir -p workspace
+                        echo "\${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM
+                        echo "Saved BUILD_NUM: \$(cat workspace/BUILD_NUM)"
                   - persist_to_workspace:
-                      root: .
-                      paths: [ CUBRID ]
+                      root: workspace
+                      paths: [ BUILD_NUM ]
               
               test_medium:
                 executor: cubrid-default
@@ -312,6 +298,7 @@ jobs:
                       keys:
                         - "cubrid-testcases-develop-${TC_SHA}"
                         - "cubrid-testcases-develop-"
+                  - download-build-from-artifact
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -335,6 +322,7 @@ jobs:
                       keys:
                         - "cubrid-testcases-develop-${TC_SHA}"
                         - "cubrid-testcases-develop-"
+                  - download-build-from-artifact
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
