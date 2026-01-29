@@ -19947,6 +19947,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       return NO_ERROR;
     }
 
+  bool is_null_on_error = prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS);
+
   /* simple case, where just a number of days is added to date */
   days = db_get_int (db_days);
   composite_values[COMPOSITE_DAY] = abs (days);
@@ -20068,7 +20070,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
@@ -20079,7 +20084,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	    }
 	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
 	  goto error;
 	}
@@ -20111,7 +20119,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -20145,7 +20156,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	    }
 	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
 	  goto error;
 	}
@@ -20176,7 +20190,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -20243,7 +20260,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ATTEMPT_TO_USE_ZERODATE, 0);
+	    }
 	  error_status = ER_ATTEMPT_TO_USE_ZERODATE;
 	  goto error;
 	}
@@ -20275,7 +20295,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -20348,10 +20371,10 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
 error:
-  if (error_status != NO_ERROR)
+  if (error_status != NO_ERROR && error_status != ER_OUT_OF_VIRTUAL_MEMORY)
     {
       db_make_null (result);
-      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+      if (is_null_on_error)
 	{
 	  /* clear error and return NULL */
 	  er_clear ();
@@ -20558,6 +20581,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       return NO_ERROR;
     }
 
+  bool is_null_on_error = prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS);
+
   switch (expr_type)
     {
     case DB_TYPE_CHAR:
@@ -20566,7 +20591,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       if (expr_s == NULL)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
       break;
@@ -20584,7 +20612,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     default:
       assert (false);
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
@@ -20617,12 +20648,15 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       error_status = db_date_add_sub_interval_composite_value (expr_s, unit, composite_values, &is_positive_value);
       if (error_status != NO_ERROR)
 	{
-	  db_make_null (result);
 	  if (error_status == ER_FAILED)
 	    {
+	      db_make_null (result);
 	      return NO_ERROR;
 	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
     }
@@ -20691,7 +20725,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
@@ -20752,7 +20789,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 	if (is_t == 0)
 	  {
 	    error_status = ER_OBJ_INVALID_ARGUMENTS;
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    if (!is_null_on_error)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	      }
 	    goto error;
 	  }
 
@@ -20821,7 +20861,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
     default:
       error_status = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+      if (!is_null_on_error)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	}
       goto error;
     }
 
@@ -20833,7 +20876,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	    }
 	  error_status = ER_DATE_CONVERSION;
 	  goto error;
 	}
@@ -20851,7 +20897,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -20861,7 +20910,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  if (m == 0 && d == 0 && y == 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	      if (!is_null_on_error)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+		}
 	      error_status = ER_DATE_CONVERSION;
 	      goto error;
 	    }
@@ -20892,7 +20944,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
 	  if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	      if (!is_null_on_error)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+		}
 	      error_status = ER_DATE_CONVERSION;
 	      goto error;
 	    }
@@ -20950,7 +21005,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0 && ms == 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	    }
 	  error_status = ER_DATE_CONVERSION;
 	  goto error;
 	}
@@ -20968,7 +21026,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -21036,7 +21097,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
 
       if (m == 0 && d == 0 && y == 0 && h == 0 && mi == 0 && s == 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	    }
 	  error_status = ER_TIMESTAMP_CONVERSION;
 	  goto error;
 	}
@@ -21054,7 +21118,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       if (ret != NO_ERROR)
 	{
 	  error_status = ER_OBJ_INVALID_ARGUMENTS;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  if (!is_null_on_error)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	    }
 	  goto error;
 	}
 
@@ -21129,10 +21196,10 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
     }
 
 error:
-  if (error_status != NO_ERROR)
+  if (error_status != NO_ERROR && error_status != ER_OUT_OF_VIRTUAL_MEMORY)
     {
       db_make_null (result);
-      if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+      if (is_null_on_error)
 	{
 	  /* clear error and return NULL */
 	  er_clear ();
