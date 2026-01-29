@@ -3711,7 +3711,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of LLIST_SCAN_ID */
 		     QFILE_LIST_ID * list_id, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
 		     regu_variable_list_node * regu_list_rest, regu_variable_list_node * regu_list_build,
-		     regu_variable_list_node * regu_list_probe, int hash_list_scan_yn)
+		     regu_variable_list_node * regu_list_probe, int hash_list_scan_yn, bool is_read_only)
 {
   LLIST_SCAN_ID *llsidp;
   int val_cnt;
@@ -3742,6 +3742,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
   llsidp->hlsid.need_coerce_type = false;
+
+  llsidp->is_read_only = is_read_only;
 
   /* check if hash list scan is possible? */
   llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
@@ -4363,6 +4365,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  goto exit_on_error;
 	}
+      llsidp->lsid.is_read_only = llsidp->is_read_only;
       qfile_start_scan_fix (thread_p, &llsidp->lsid);
       break;
 

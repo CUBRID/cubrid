@@ -381,7 +381,7 @@ namespace parallel_heap_scan
 	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
 	return result;
       }
-    if (arg->type != TARGET_CLASS)
+    if (arg->type != TARGET_CLASS && arg->type != TARGET_LIST)
       {
 	set_flag (result, CANNOT_LIST_MERGE);
       }
@@ -415,9 +415,9 @@ namespace parallel_heap_scan
 	result |= check<is_outptr_list> (xaslp);
       }
 
-    if (sibling->bptr_list || sibling->fptr_list || sibling->connect_by_ptr)
+    if (sibling->bptr_list || sibling->fptr_list)
       {
-	set_flag (result, CANNOT_LIST_MERGE);
+	set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
       }
 
     for (XASL_NODE *xaslp = sibling->dptr_list; xaslp; xaslp = xaslp->next)
@@ -695,7 +695,7 @@ namespace parallel_heap_scan
       {
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }
-    for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->next)
+    for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
       {
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }
@@ -783,7 +783,7 @@ namespace parallel_heap_scan
       {
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }
-    for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->next)
+    for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
       {
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }

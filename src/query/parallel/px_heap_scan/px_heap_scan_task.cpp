@@ -22,6 +22,7 @@
 
 #include "px_heap_scan_task.hpp"
 #include "error_code.h"
+#include "error_manager.h"
 #include "storage_common.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -127,64 +128,88 @@ namespace parallel_heap_scan
 		    iscan_oid_order = false;
 		  }
 
-		assert (specp->type == TARGET_CLASS);
-
-		switch (specp->access)
+		if (specp->type == TARGET_LIST)
 		  {
-		  case ACCESS_METHOD_SEQUENTIAL:
-		  {
-		    err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
-						    S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
-						    specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
-						    &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
-						    specp->s.cls_node.cls_regu_list_rest, specp->s.cls_node.num_attrs_pred,
-						    specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
-						    specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
-						    specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
-						    specp->s.cls_node.cls_regu_list_reserved, true);
+		    assert_release_error (scan_info.list_id != NULL);
+		    if (er_errid() != NO_ERROR)
+		      {
+			return er_errid();
+		      }
+		    err_code =
+			    scan_open_list_scan (&thread_ref, &specp->s_id, specp->s_id.grouped, specp->single_fetch, specp->s_dbval,xptr->val_list,
+						 m_vd,scan_info.list_id, specp->s.list_node.list_regu_list_pred,specp->where_pred,
+						 specp->s.list_node.list_regu_list_rest,specp->s.list_node.list_regu_list_build, specp->s.list_node.list_regu_list_probe,
+						 specp->s.list_node.hash_list_scan_yn,true);
 		    if (err_code != NO_ERROR)
 		      {
 			return err_code;
 		      }
 		  }
-		  break;
-		  case ACCESS_METHOD_INDEX:
+		else if (specp->type == TARGET_CLASS)
 		  {
-		    QUERY_ID query_id = m_query_entry->query_id;
-		    bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
-		    specp->indexptr->btid = scan_info.btid;
-		    err_code =
-			    scan_open_index_scan (&thread_ref, &specp->s_id, false,
-						  S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
-						  specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
-						  specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
-						  specp->where_key, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
-						  specp->s.cls_node.cls_regu_list_rest, specp->where_range,
-						  specp->s.cls_node.cls_regu_list_range, specp->s.cls_node.cls_output_val_list,
-						  specp->s.cls_node.cls_regu_val_list, specp->s.cls_node.num_attrs_key,
-						  specp->s.cls_node.attrids_key, specp->s.cls_node.cache_key,
-						  specp->s.cls_node.num_attrs_pred, specp->s.cls_node.attrids_pred,
-						  specp->s.cls_node.cache_pred, specp->s.cls_node.num_attrs_rest,
-						  specp->s.cls_node.attrids_rest, specp->s.cls_node.cache_rest,
-						  specp->s.cls_node.num_attrs_range, specp->s.cls_node.attrids_range,
-						  specp->s.cls_node.cache_range, iscan_oid_order, query_id,
-						  ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
-		    if (err_code != NO_ERROR)
+
+		    switch (specp->access)
 		      {
-			return S_ERROR;
+		      case ACCESS_METHOD_SEQUENTIAL:
+		      {
+			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
+							S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
+							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
+							&scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
+							specp->s.cls_node.cls_regu_list_rest, specp->s.cls_node.num_attrs_pred,
+							specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
+							specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
+							specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
+							specp->s.cls_node.cls_regu_list_reserved, true);
+			if (err_code != NO_ERROR)
+			  {
+			    return err_code;
+			  }
+		      }
+		      break;
+		      case ACCESS_METHOD_INDEX:
+		      {
+			QUERY_ID query_id = m_query_entry->query_id;
+			bool iscan_oid_order = specp->s_id.s.isid.iscan_oid_order;
+			specp->indexptr->btid = scan_info.btid;
+			err_code =
+				scan_open_index_scan (&thread_ref, &specp->s_id, false,
+						      S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
+						      specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
+						      specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
+						      specp->where_key, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
+						      specp->s.cls_node.cls_regu_list_rest, specp->where_range,
+						      specp->s.cls_node.cls_regu_list_range, specp->s.cls_node.cls_output_val_list,
+						      specp->s.cls_node.cls_regu_val_list, specp->s.cls_node.num_attrs_key,
+						      specp->s.cls_node.attrids_key, specp->s.cls_node.cache_key,
+						      specp->s.cls_node.num_attrs_pred, specp->s.cls_node.attrids_pred,
+						      specp->s.cls_node.cache_pred, specp->s.cls_node.num_attrs_rest,
+						      specp->s.cls_node.attrids_rest, specp->s.cls_node.cache_rest,
+						      specp->s.cls_node.num_attrs_range, specp->s.cls_node.attrids_range,
+						      specp->s.cls_node.cache_range, iscan_oid_order, query_id,
+						      ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+			if (err_code != NO_ERROR)
+			  {
+			    return S_ERROR;
+			  }
+		      }
+		      break;
+		      case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
+		      case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
+		      case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
+		      case ACCESS_METHOD_JSON_TABLE:
+		      case ACCESS_METHOD_SCHEMA:
+		      case ACCESS_METHOD_INDEX_KEY_INFO:
+		      case ACCESS_METHOD_INDEX_NODE_INFO:
+		      default:
+			assert (false);
+			break;
 		      }
 		  }
-		  break;
-		  case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
-		  case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
-		  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
-		  case ACCESS_METHOD_JSON_TABLE:
-		  case ACCESS_METHOD_SCHEMA:
-		  case ACCESS_METHOD_INDEX_KEY_INFO:
-		  case ACCESS_METHOD_INDEX_NODE_INFO:
-		  default:
-		    assert (false);
-		    break;
+		else
+		  {
+		    assert_release_error (false);
+		    return ER_FAILED;
 		  }
 
 		err_code = scan_start_scan (&thread_ref, &specp->s_id);
