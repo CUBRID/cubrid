@@ -321,6 +321,19 @@ jobs:
                         - /home/.ccache
                   - collect-build-logs
                   - run:
+                      name: Stop after build logs on default trigger
+                      command: |
+                        case "${CIRCLE_BRANCH:-}" in
+                          */head*)
+                            echo "[info] head trigger detected (${CIRCLE_BRANCH}); continue to package artifacts"
+                            ;;
+                          *)
+                            echo "[info] default trigger detected (${CIRCLE_BRANCH}); stop after collect-build-logs"
+                            circleci-agent step halt
+                            exit 0
+                            ;;
+                        esac
+                  - run:
                       name: Package build for artifact
                       command: |
                         tar czf CUBRID.tar.gz CUBRID
