@@ -9201,7 +9201,7 @@ file_tempcache_init (void)
     }
   memset (file_Tempcache.tran_files, 0, memsize);
 
-
+#if 0
   for (int i = 0; i < ntrans; i++)
     {
       pthread_mutex_init (&file_Tempcache.tran_files[i].mutex, NULL);
@@ -9209,6 +9209,7 @@ file_tempcache_init (void)
       file_Tempcache.tran_files[i].owner_mutex = -1;
 #endif
     }
+#endif
 
   /* stats */
   memset (&file_Tempcache.spacedb_temp, 0, sizeof (file_Tempcache.spacedb_temp));
@@ -9252,7 +9253,7 @@ file_tempcache_final (void)
 	  file_tempcache_free_entry_list (&file_Tempcache.tran_files[tran].head);
 	}
       file_tempcache_unlock_tran_entry (&file_Tempcache.tran_files[tran]);
-      pthread_mutex_destroy (&file_Tempcache.tran_files[tran].mutex);
+      // pthread_mutex_destroy (&file_Tempcache.tran_files[tran].mutex);
     }
   free_and_init (file_Tempcache.tran_files);
 
@@ -9715,12 +9716,12 @@ file_tempcache_pop_tran_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 
 	  file_log ("file_tempcache_pop_tran_file", "removed entry " FILE_TEMPCACHE_ENTRY_MSG,
 		    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-	  file_tempcache_unlock_tran_entry (tran_entry);
+	  // file_tempcache_unlock_tran_entry (tran_entry);
 	  return entry;
 	}
       prev_entry = entry;
     }
-  file_tempcache_unlock_tran_entry (tran_entry);
+  // file_tempcache_unlock_tran_entry (tran_entry);
   /* should have found it */
   assert_release (false);
   return NULL;
@@ -9745,7 +9746,7 @@ file_tempcache_push_tran_file (THREAD_ENTRY * thread_p, FILE_TEMPCACHE_ENTRY * e
 
   file_log ("file_tempcache_push_tran_file", "pushed entry " FILE_TEMPCACHE_ENTRY_MSG,
 	    FILE_TEMPCACHE_ENTRY_AS_ARGS (entry));
-  file_tempcache_unlock_tran_entry (tran_entry);
+  // file_tempcache_unlock_tran_entry (tran_entry);
 }
 
 /*
@@ -9817,22 +9818,26 @@ file_tempcache_dump (FILE * fp)
 STATIC_INLINE void
 file_tempcache_lock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
 {
+#if 0
   assert (tran_entry->owner_mutex != thread_get_current_entry_index ());
   pthread_mutex_lock (&tran_entry->mutex);
   assert (tran_entry->owner_mutex == -1);
 #if !defined (NDEBUG)
   tran_entry->owner_mutex = thread_get_current_entry_index ();
 #endif /* !NDEBUG */
+#endif
 }
 
 STATIC_INLINE void
 file_tempcache_unlock_tran_entry (FILE_TEMPCACHE_TRAN_ENTRY * tran_entry)
 {
+#if 0
   assert (tran_entry->owner_mutex == thread_get_current_entry_index ());
 #if !defined (NDEBUG)
   tran_entry->owner_mutex = -1;
 #endif /* !NDEBUG */
   pthread_mutex_unlock (&tran_entry->mutex);
+#endif
 }
 
 
