@@ -744,6 +744,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 
   /* If it is a synonym name, change it to the target name. */
   class_name = spec->info.spec.entity_name->info.name.original;
+#if 0
   synonym_mop = db_find_synonym (class_name);
   if (synonym_mop != NULL)
     {
@@ -769,6 +770,7 @@ pt_add_lock_class (PARSER_CONTEXT * parser, PT_CLASS_LOCKS * lcks, PT_NODE * spe
 	  return error;
 	}
     }
+#endif
 
   sm_user_specified_name (class_name, realname, DB_MAX_IDENTIFIER_LENGTH);
 
