@@ -4744,7 +4744,6 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   int n_atts;
   int c, a, i;
   HEAP_SCANCACHE scan;
-  char *string = NULL;
   int alloced_string = 0;
   int error = NO_ERROR;
 
@@ -4791,20 +4790,12 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
       for (i = 0; i < n_atts; i++)
 	{
-	  string = NULL;
 	  alloced_string = 0;
 
-	  error = or_get_attrname (&class_record, i, &string, &alloced_string);
-	  if (error != NO_ERROR)
+	  error = or_get_attrname (&class_record, i, &attr_name_p, &alloced_string);
+	  if (error != NO_ERROR || attr_name_p == NULL)
 	    {
 	      ASSERT_ERROR ();
-	      (void) heap_scancache_end (thread_p, &scan);
-	      return error;
-	    }
-
-	  attr_name_p = string;
-	  if (attr_name_p == NULL)
-	    {
 	      (void) heap_scancache_end (thread_p, &scan);
 	      return ER_FAILED;
 	    }
@@ -4814,19 +4805,20 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	      if (strcmp (atts[a].ca_name, attr_name_p) == 0)
 		{
 		  atts[a].ca_id = i;
-
-		  if (string != NULL && alloced_string == 1)
-		    {
-		      db_private_free_and_init (thread_p, string);
-		    }
-
 		  break;
 		}
 	    }
 
-	  if (string != NULL && alloced_string == 1)
+	  if (attr_name_p != NULL && alloced_string == 1)
 	    {
-	      db_private_free_and_init (thread_p, string);
+	      db_private_free_and_init (thread_p, attr_name_p);
+	    }
+
+	  if (a == n_atts)
+	    {
+	      assert (false);
+	      (void) heap_scancache_end (thread_p, &scan);
+	      return ER_FAILED;
 	    }
 	}
       if (heap_scancache_end (thread_p, &scan) != NO_ERROR)

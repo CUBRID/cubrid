@@ -349,8 +349,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
   else
     {
       assert (cache_lock->implicit_lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-      lock = lock_Conv[cache_lock->implicit_lock][ws_get_lock (mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (cache_lock->implicit_lock, ws_get_lock (mop));
     }
 
   /*
@@ -472,8 +471,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 		}
 
 	      assert (ws_get_lock (mop) >= NULL_LOCK);
-	      lock = lock_Conv[lock][ws_get_lock (mop)];
-	      assert (lock != NA_LOCK);
+	      lock = lock_conv (lock, ws_get_lock (mop));
 	      found = true;
 	      /*
 	       * Cache the location of the current on for future initialization of
@@ -511,8 +509,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 		}
 
 	      assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-	      lock = lock_Conv[lock][ws_get_lock (mop)];
-	      assert (lock != NA_LOCK);
+	      lock = lock_conv (lock, ws_get_lock (mop));
 	      found = true;
 	      lockset->last_reqobj_cached = i;
 	      /*
@@ -567,8 +564,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
       lock = locator_to_prefetched_lock (lock);
 
       assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (mop));
 
       /*
        * If a prefetch a class somehow.. I don't have any lock on the root
@@ -765,8 +761,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
 	  cache_lock.class_lock = (lock <= S_LOCK) ? IS_LOCK : IX_LOCK;
 
 	  assert (ws_get_lock (class_mop) >= NULL_LOCK);
-	  cache_lock.class_lock = lock_Conv[cache_lock.class_lock][ws_get_lock (class_mop)];
-	  assert (cache_lock.class_lock != NA_LOCK);
+	  cache_lock.class_lock = lock_conv (cache_lock.class_lock, ws_get_lock (class_mop));
 	}
 
       /* Lock for prefetched instances of the same class */
@@ -1022,8 +1017,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	{
 	  /* The object is cached */
 	  assert (lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
-	  lock = lock_Conv[lock][ws_get_lock (mop)];
-	  assert (lock != NA_LOCK);
+	  lock = lock_conv (lock, ws_get_lock (mop));
 	  ws_set_lock (mop, lock);
 	  continue;
 	}
@@ -1038,8 +1032,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 
       current_lock = ws_get_lock (mop);
       assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-      lock = lock_Conv[lock][current_lock];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, current_lock);
 
       if (locator_can_skip_fetch_from_server (mop, &lock, TM_TRAN_READ_FETCH_VERSION ()))
 	{
@@ -1233,8 +1226,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 
 	  current_lock = ws_get_lock (mop);
 	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  lock = lock_Conv[lock][current_lock];
-	  assert (lock != NA_LOCK);
+	  lock = lock_conv (lock, current_lock);
 
 	  /* Object instances are not locked for read in MVCC */
 	  if ((class_mop == sm_Root_class_mop || lock > S_LOCK) && (current_lock == NULL_LOCK || lock != current_lock))
@@ -1484,8 +1476,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 
   current_lock = ws_get_lock (mop);
   assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-  conv_lock = lock_Conv[lock][current_lock];
-  assert (conv_lock != NA_LOCK);
+  conv_lock = lock_conv (lock, current_lock);
 
   if (object != NULL && current_lock != NULL_LOCK && conv_lock == current_lock && WS_MOP_GET_COMPOSITION_FETCH (mop))
     {
@@ -1644,8 +1635,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 
 	  current_lock = ws_get_lock (mop);
 	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  conv_lock = lock_Conv[lock][current_lock];
-	  assert (conv_lock != NA_LOCK);
+	  conv_lock = lock_conv (lock, current_lock);
 
 	  if (current_lock == NULL_LOCK || conv_lock != current_lock)
 	    {
@@ -1728,8 +1718,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
   if (*class_mop != NULL && class_obj != NULL)
     {
       assert (lock >= NULL_LOCK && ws_get_lock (*class_mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (*class_mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (*class_mop));
 
       ws_set_lock (*class_mop, lock);
       return NO_ERROR;
@@ -1761,8 +1750,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
       if (current_lock != NULL_LOCK)
 	{
 	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  lock = lock_Conv[lock][current_lock];
-	  assert (lock != NA_LOCK);
+	  lock = lock_conv (lock, current_lock);
 
 	  if (lock == current_lock || OID_ISTEMP (class_oid))
 	    {
@@ -1890,8 +1878,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
     {
       /* The object is cached */
       assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (mop));
 
       ws_set_lock (mop, lock);
       return LC_EXIST;
@@ -1992,8 +1979,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 	    }
 
 	  assert (cache_lock.class_lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
-	  cache_lock.class_lock = lock_Conv[cache_lock.class_lock][ws_get_lock (class_mop)];
-	  assert (cache_lock.class_lock != NA_LOCK);
+	  cache_lock.class_lock = lock_conv (cache_lock.class_lock, ws_get_lock (class_mop));
 
 	}
       /* Lock for prefetched instances of the same class */
@@ -2610,8 +2596,7 @@ locator_keep_mops (MOP mop, MOBJ object, void *kmops)
   keep_mops = (LOCATOR_LIST_KEEP_MOPS *) kmops;
 
   assert (keep_mops->lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-  lock = lock_Conv[keep_mops->lock][ws_get_lock (mop)];
-  assert (lock != NA_LOCK);
+  lock = lock_conv (keep_mops->lock, ws_get_lock (mop));
 
   ws_set_lock (mop, lock);
   if (keep_mops->fun != NULL && object != NULL)
@@ -2684,8 +2669,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
   else
     {
       assert (lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (class_mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (class_mop));
     }
 
   /*
@@ -3179,13 +3163,24 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
       do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
       if (other_class_name[0] != '\0')
 	{
+	  CUBRID_STMT_TYPE statement_type = db_get_client_statement_type ();
+	  assert (statement_type != CUBRID_STMT_CREATE_SYNONYM);
+
+	  if (statement_type == CUBRID_STMT_CREATE_CLASS
+	      || statement_type == CUBRID_STMT_CREATE_SYNONYM /* safe-guard */ )
+	    {
+	      /* maybe unloaded from version 11.2+ or later */
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	      return NULL;
+	    }
+
 	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
 	  if (found == LC_CLASSNAME_EXIST)
 	    {
@@ -5666,8 +5661,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
   if (lock != NULL_LOCK)
     {
       assert (lock >= NULL_LOCK);
-      lock = lock_Conv[lock][IX_LOCK];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, IX_LOCK);
 
       ws_set_lock (sm_Root_class_mop, lock);
     }
@@ -6282,8 +6276,7 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
 		{
 		  lock = ws_get_lock (class_mop);
 		  assert (lockhint->classes[i].lock >= NULL_LOCK && lock >= NULL_LOCK);
-		  lock = lock_Conv[lockhint->classes[i].lock][lock];
-		  assert (lock != NA_LOCK);
+		  lock = lock_conv (lockhint->classes[i].lock, lock);
 
 		  ws_set_lock (class_mop, lock);
 		}
@@ -6380,8 +6373,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	   */
 	  current_lock = ws_get_lock (class_mop);
 	  assert (many_locks[i] >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  conv_lock = lock_Conv[many_locks[i]][current_lock];
-	  assert (conv_lock != NA_LOCK);
+	  conv_lock = lock_conv (many_locks[i], current_lock);
 
 	  if (current_lock == NULL_LOCK || current_lock != conv_lock)
 	    {
@@ -6971,7 +6963,7 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_VERSION_TYPE 
     }
 
   /* Check lock */
-  *lock = lock_Conv[*lock][crt_lock];
+  *lock = lock_conv (*lock, crt_lock);
   if (crt_lock != NULL_LOCK && (*lock == crt_lock || OID_ISTEMP (oid)))
     {
       /* Object was already locked and lock doesn't need to be promoted */

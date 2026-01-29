@@ -30,6 +30,7 @@
 #include "object_primitive.h"
 #include "system_parameter.h"
 #include "dbtype.h"
+#include "lock_table.h"		// lock_to_lockmode_string
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "px_heap_scan_trace_handler.hpp"
@@ -2776,7 +2777,7 @@ qdump_print_xasl (xasl_node * xasl_p)
   for (i = 0; i < xasl_p->n_oid_list; ++i)
     {
       qdump_print_oid (&xasl_p->class_oid_list[i]);
-      fprintf (foutput, "/%s ", LOCK_TO_LOCKMODE_STRING (xasl_p->class_locks[i]));
+      fprintf (foutput, "/%s ", lock_to_lockmode_string ((LOCK) xasl_p->class_locks[i]));
       fprintf (foutput, "/%d ", xasl_p->tcard_list[i]);
     }
 

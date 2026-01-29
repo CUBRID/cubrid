@@ -18212,7 +18212,7 @@ pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, O
 		  index = (int) (oid_ptr - o_list);
 
 		  /* Merge existing lock with IS_LOCK/IX_LOCK. */
-		  lck_list[index] = lock_Conv[lck_list[index]][lock];
+		  lck_list[index] = lock_conv ((LOCK) lck_list[index], (LOCK) lock);
 		}
 
 	      if (o_num >= o_size)
