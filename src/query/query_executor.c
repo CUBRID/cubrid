@@ -15891,6 +15891,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
+	  bool skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
 
 	  for (eval_list = xasl->proc.buildlist.a_eval_list; eval_list; eval_list = eval_list->next)
 	    {
@@ -15901,6 +15902,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		}
 
 	      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
+	    }
+
+	  if (skip_sort)
+	    {
+	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
 	    }
 	}
 
@@ -21182,11 +21188,12 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 {
   ANALYTIC_EVAL_TYPE *a_eval_list;
   ANALYTIC_TYPE *a_func_list;
+  bool is_first = true;
   int length = 0;
 
   for (a_eval_list = xasl->proc.buildlist.a_eval_list; a_eval_list; a_eval_list = a_eval_list->next)
     {
-      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+      if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
 	  length = a_eval_list->sort_list_size;
 
@@ -21220,7 +21227,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	  a_func_list->curr_group_tuple_count_nn = 0;
 	  a_func_list->curr_sort_key_tuple_count = 0;
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT | XASL_ANALYTIC_USES_LIMIT_OPT))
+	  if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT | XASL_ANALYTIC_USES_LIMIT_OPT))
 	    {
 	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
 		{
@@ -21228,7 +21235,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 		}
 	    }
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+	  if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
 	    {
 	      /* initialize group header listfile */
 	      group_type_list.type_cnt = 2;
@@ -21271,6 +21278,8 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	      db_private_free_and_init (thread_p, value_type_list.domp);
 	    }
 	}
+
+      is_first = false;
     }
 
   return NO_ERROR;
