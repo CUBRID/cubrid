@@ -25,7 +25,6 @@
 #include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "page_buffer_util.hpp"
-#include "heap_file.h"
 
 #include "oos_file.hpp"
 #include "oos_log.hpp"
@@ -609,8 +608,6 @@ static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p)
 {
   LOG_DATA_ADDR log_addr;
-  INT16 bytes_reserved;
-  RECDES temp_recdes;
 
   /* populate address field */
   log_addr.vfid = vfid_p;
@@ -631,6 +628,48 @@ oos_get_max_chunk_size_within_page ()
   return actual_upper_limit - (int)sizeof (OOS_RECORD_HEADER);
 }
 
+int
+oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  INT16 slotid;
+
+  slotid = rcv->offset;
+  (void) spage_delete (thread_p, rcv->pgptr, slotid);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  return NO_ERROR;
+}
+
+int
+oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  INT16 slotid;
+  RECDES recdes;
+  int sp_success;
+
+  slotid = rcv->offset;
+  recdes.type = * (INT16 *) (rcv->data);
+  recdes.data = (char *) (rcv->data) + sizeof (recdes.type);
+  recdes.area_size = recdes.length = rcv->length - sizeof (recdes.type);
+
+  assert (recdes.type == REC_HOME);
+
+  sp_success = spage_insert_for_recovery (thread_p, rcv->pgptr, slotid, &recdes);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  if (sp_success != SP_SUCCESS)
+    {
+      /* Unable to redo insertion */
+      if (sp_success != SP_ERROR)
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 int

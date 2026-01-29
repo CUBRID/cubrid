@@ -586,8 +586,6 @@ extern int heap_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mvcc_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int oos_rv_redo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int oos_rv_redo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mvcc_undo_delete_overflow (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_mvcc_redo_delete_home (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
