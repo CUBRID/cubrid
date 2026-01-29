@@ -2852,7 +2852,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 // SP being defined
 
                 assert scopeLevel == SymbolStack.LEVEL_MAIN;
-                assert ctx.routine_uniq_name().owner == null; // CBRD-26514
+                if (ctx.routine_uniq_name().owner != null) {
+                    String owner = Misc.getNormalizedText(ctx.routine_uniq_name().owner);
+                    assert owner.equals(spOwner);
+                }
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
             }

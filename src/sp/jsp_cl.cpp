@@ -1217,7 +1217,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
 
       // CBRD-26513, CBRD-26514: rewrite the user code without the user name and the comment
-      char *rewritten_code;
+      const char *rewritten_code;
       {
 	PT_NODE *comment_saved = statement->info.sp.comment;
 	int custom_print_saved = parser->custom_print;
