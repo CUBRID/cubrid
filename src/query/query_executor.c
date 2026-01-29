@@ -16012,10 +16012,18 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      if (a_eval_p->current_values != NULL)
 		{
+		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
+		    {
+		      pr_clear_value (&a_eval_p->current_values[i]);
+		    }
 		  db_private_free_and_init (thread_p, a_eval_p->current_values);
 		}
 	      if (a_eval_p->temp_values != NULL)
 		{
+		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
+		    {
+		      pr_clear_value (&a_eval_p->temp_values[i]);
+		    }
 		  db_private_free_and_init (thread_p, a_eval_p->temp_values);
 		}
 	    }
