@@ -13988,26 +13988,37 @@ static int
 locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
 {
   HEAP_CACHE_ATTRINFO attr_info;
+  OR_CLASSREP *classrep = NULL;
+  OR_ATTRIBUTE *attrepr = NULL;
+  char *oid_ptr = NULL;
+  int offset_size = 0;
+  int offset = 0;
   int error = NO_ERROR;
 
   error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
   if (error != NO_ERROR)
-    return error;
+    {
+      return error;
+    }
 
-  OR_CLASSREP *classrep = attr_info.last_classrepr;
+  classrep = attr_info.last_classrepr;
 
   for (int i = 0; i < classrep->n_attributes; i++)
     {
-      OR_ATTRIBUTE *attrepr = &classrep->attributes[i];
+      attrepr = &classrep->attributes[i];
 
       if (attrepr->is_fixed != 0)
-	continue;
+	{
+	  continue;
+	}
 
       if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
-	continue;
+	{
+	  continue;
+	}
 
-      int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-      int offset = 0;
+      offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+      offset = 0;
 
       switch (offset_size)
 	{
@@ -14015,14 +14026,17 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
 							  attrepr->location, offset_size));
 	  break;
+
 	case OR_SHORT_SIZE:
 	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
 							   attrepr->location, offset_size));
 	  break;
+
 	case OR_INT_SIZE:
 	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
 							 attrepr->location, offset_size));
 	  break;
+
 	default:
 	  assert_release (false);
 	  error = ER_FAILED;
@@ -14030,9 +14044,12 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	}
 
       if (!OR_IS_OOS (offset))
-	continue;
+	{
+	  continue;
 
-      char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+	}
+
+      oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
 
       OID new_oid;
       if (!oos_oid_queue_pop (&new_oid))
