@@ -938,7 +938,6 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
 				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
 				       const VPID new_next_vpid, const VPID new_last_vpid, const int new_num_pages);
 
-static bool heap_recdes_contains_oos (const RECDES * record);
 static SCAN_CODE heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p,
 								     HEAP_GET_CONTEXT * context);
 
