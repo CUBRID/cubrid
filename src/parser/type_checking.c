@@ -10010,7 +10010,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    case PT_QUARTER:
 	    case PT_YEAR:
 	      type_date_flag = true;
-	      [[fallthrough]];	/* fallthrough */
+	      /* fallthrough */
 	    case PT_MILLISECOND:
 	    case PT_HOUR:
 	    case PT_SECOND:
@@ -10028,7 +10028,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	    case PT_YEAR_MONTH:
 	      type_date_flag = true;
-	      [[fallthrough]];	/* fallthrough */
+	      /* fallthrough */
 	    default:
 	      if (!PT_IS_CHAR_STRING_TYPE (arg2_type))
 		{		// cast to char type for arg2
