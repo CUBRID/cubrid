@@ -5289,6 +5289,7 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       goto err;
     }
 
+  //TODO : Later, change to a function or macro that returns the size of OOS_RECORD_HEADER.
   recdes->data = recdes->data + 16;
   recdes->length = recdes->length - 16;
 
