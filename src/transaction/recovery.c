@@ -33,6 +33,7 @@
 #include "file_manager.h"
 #include "locator_sr.h"
 #include "log_manager.h"
+#include "oos_file.hpp"
 #include "overflow_file.h"
 #include "replication.h"
 #include "system_catalog.h"
@@ -835,6 +836,18 @@ struct rvfun RV_fun[] = {
    file_rv_set_tde_algorithm,
    NULL,
    NULL},
+  {RVOOS_INSERT,
+   "RVOOS_INSERT",
+   oos_rv_redo_delete,
+   oos_rv_redo_insert,
+   NULL,
+   NULL},
+  {RVOOS_DELETE,
+   "RVOOS_DELETE",
+   oos_rv_redo_insert,
+   oos_rv_redo_delete,
+   NULL,
+   NULL}
 };
 
 /*
