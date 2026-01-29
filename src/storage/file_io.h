@@ -634,4 +634,5 @@ extern bool fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_pa
 
 /* lob_dir */
 extern int fileio_lob_remove_dir (char *lob_path);
+extern int fileio_lob_remove_matching_dir (const char *keyword);
 #endif /* _FILE_IO_H_ */

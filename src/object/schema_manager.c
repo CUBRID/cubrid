@@ -15701,17 +15701,14 @@ int
 sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
-  HFID old_hfid;
+  HFID prev_hfid;
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
-  SM_ATTRIBUTE *attr;
   bool reuse_oid = false;
-  int error = NO_ERROR;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
-  int *lob_alloc_attrid_arr = NULL;
-  int lob_local_attrid_arr[2];
-  int lob_attrid_arr_length = 0;
+  int attrid_arr[1];
+  int error = NO_ERROR;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15748,46 +15745,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
-  old_hfid = *insts_hfid;
-
-  for (int i = 0; i < class_->att_count; i++)
-    {
-      attr = &class_->attributes[i];
-
-      if (TP_IS_LOB_TYPE (attr->type->id))
-	{
-	  if (lob_attrid_arr_length >= 2)
-	    {
-	      lob_attrid_arr_length++;
-	    }
-	  else
-	    {
-	      lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
-	    }
-	}
-    }
-
-  if (lob_attrid_arr_length > 2)
-    {
-      int index = 0;
-
-      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
-      if (lob_alloc_attrid_arr == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto end;
-	}
-
-      for (int i = 0; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_alloc_attrid_arr[index++] = attr->id;
-	    }
-	}
-    }
+  prev_hfid = *insts_hfid;
 
   /* Destroy the heap */
   error = heap_destroy_newly_created (insts_hfid, oid, true);
@@ -15813,14 +15771,14 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     }
 
   /* Destroy and Create the lob dir if need */
-  if (lob_attrid_arr_length)
+  attrid_arr[0] = -1;
+  error = locator_lob_create_or_remove_dir (&prev_hfid, NULL, attrid_arr, 1);
+  if (error != NO_ERROR)
     {
-      error =
-	locator_lob_create_or_remove_dir (&old_hfid, insts_hfid,
-					  lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
-					  lob_attrid_arr_length);
+      goto end;
     }
 
+  error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
   if (error != NO_ERROR)
     {
       goto end;
@@ -15830,8 +15788,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = locator_flush_class (class_mop);
 
 end:
-  free (lob_alloc_attrid_arr);
-
   return error;
 }
 
