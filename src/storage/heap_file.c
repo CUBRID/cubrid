@@ -12297,7 +12297,9 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	      return S_ERROR;
 	    }
 
-	  // TODO : 이 때 RK를 알 수 있는 방법을 찾아야 함, POC이기 때문에 임시로 아무 dbvalue값을 전달
+	  // TODO : Add a way to determine whether it is a replication target
+	  // TODO: Find a way to obtain the Replication Key at this point, or change where repl_log_insert is called.
+	  //       For now, since this is a POC, an arbitrary value is temporarily passed as a dbvalue.
 	  repl_log_insert (thread_p, &attr_info->class_oid, &oos_oid, LOG_REPLICATION_DATA, RVREPL_OOS_INSERT,
 			   &attr_info->values[i].dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
 

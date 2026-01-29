@@ -5301,9 +5301,6 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
 
   oos_oid_queue ().push_back (oos_oid);
 
-  repl_log_insert (thread_p, class_oid, &oos_oid, LOG_REPLICATION_DATA, RVREPL_OOS_INSERT, NULL,
-		   REPL_INFO_TYPE_RBR_NORMAL);
-
 err:
   return error_code;
 }
