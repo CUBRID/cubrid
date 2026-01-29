@@ -2156,10 +2156,15 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	    {
 	      int precision = TP_FLOATING_PRECISION_VALUE;
 
-	      precision = pt_character_length_for_node (arg, arg_type);
 	      if (max_precision != TP_FLOATING_PRECISION_VALUE)
 		{
-		  if (precision == TP_FLOATING_PRECISION_VALUE || max_precision < precision)
+		  precision = pt_character_length_for_node (arg, arg_type);
+		  if (precision == TP_FLOATING_PRECISION_VALUE)
+		    {
+		      max_precision = precision;
+		      break;
+		    }
+		  else if (max_precision < precision)
 		    {
 		      max_precision = precision;
 		    }
@@ -2674,7 +2679,7 @@ pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type)
       /* fixed numeric: calculate precision based on precision and scale*/
       precision++;	  /* for sign */
 
-      if (scale && scale != DB_DEFAULT_SCALE && scale != DB_DEFAULT_NUMERIC_SCALE)
+      if (scale != DB_DEFAULT_SCALE && scale != DB_DEFAULT_NUMERIC_SCALE)
 	{
 	  if (scale > precision)
 	    {
