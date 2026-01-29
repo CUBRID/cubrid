@@ -368,6 +368,8 @@ static int execute_create_select_query (PARSER_CONTEXT * parser, const char *con
 					PT_CREATE_SELECT_ACTION create_select_action, DB_QUERY_TYPE * query_columns,
 					PT_NODE * flagged_statement);
 
+static int do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char *attr_name,
+				  PT_NODE * attribute, SM_ATTRIBUTE ** attr);
 static int do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name, const char *attr_name);
 static int do_check_fk_constraints_internal (DB_CTMPL * ctemplate, PT_NODE * constraints, bool is_partitioned);
 
@@ -1586,10 +1588,10 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const a
       if (ai_serial != NULL)
 	{
 	  /*
-     * we already found a serial. AMBIGUITY! 
-     * CUBRID 11.5 (guava) allows onl one AUTO_INCREMENT attribute per class.
-     * Consider removing this logic. 
-     */
+	   * we already found a serial. AMBIGUITY! 
+	   * CUBRID 11.5 (guava) allows onl one AUTO_INCREMENT attribute per class.
+	   * Consider removing this logic. 
+	   */
 	  ERROR0 (error, ER_AUTO_INCREMENT_SINGLE_COL_AMBIGUITY);
 	  goto change_ai_error;
 	}
@@ -4988,41 +4990,45 @@ exit:
 }
 
 static int
-do_set_auto_increment(PARSER_CONTEXT* parser, DB_CTMPL* ctemplate, const char* attr_name, PT_NODE* attribute, SM_ATTRIBUTE** attr){
+do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char *attr_name, PT_NODE * attribute,
+		       SM_ATTRIBUTE ** attr)
+{
   SM_ATTRIBUTE *ctmpl_attrs = ctemplate->attributes;
   int error = NO_ERROR;
 
   assert (attribute->info.attr_def.attr_type != PT_META_ATTR && attribute->info.attr_def.attr_type != PT_SHARED);
   assert (attribute->info.attr_def.auto_increment != NULL);
 
-      while (ctmpl_attrs != NULL)
-	{
-    if (ctmpl_attrs->auto_increment == NULL)
+  while (ctmpl_attrs != NULL)
+    {
+      if (ctmpl_attrs->auto_increment == NULL)
 	{
 	  ctmpl_attrs = (SM_ATTRIBUTE *) ctmpl_attrs->header.next;
 	  continue;
 	}
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AUTO_INCREMENT_SINGLE_COL_ONLY, 0);
-		  error = er_errid ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AUTO_INCREMENT_SINGLE_COL_ONLY, 0);
+      error = er_errid ();
       break;
-	}
-
-      MOP auto_increment_obj = NULL;
-  if ( error == NO_ERROR){
-      error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
-  }
-
-      if (error == NO_ERROR)
-	{
-    if(*attr == NULL){
-    error = smt_find_attribute(ctemplate, attr_name, 0, attr);
     }
-	  if (error == NO_ERROR && *attr != NULL)
-	    {
-	      (*attr)->auto_increment = auto_increment_obj;
-	      (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
-	    }
+
+  MOP auto_increment_obj = NULL;
+  if (error == NO_ERROR)
+    {
+      error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
+    }
+
+  if (error == NO_ERROR)
+    {
+      if (*attr == NULL)
+	{
+	  error = smt_find_attribute (ctemplate, attr_name, 0, attr);
 	}
+      if (error == NO_ERROR && *attr != NULL)
+	{
+	  (*attr)->auto_increment = auto_increment_obj;
+	  (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
+	}
+    }
 
   return error;
 }
@@ -7402,7 +7408,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
     {
       if (attribute->info.attr_def.auto_increment)
 	{
-    error = do_set_auto_increment(parser,ctemplate,attr_name,attribute,&att);
+	  error = do_set_auto_increment (parser, ctemplate, attr_name, attribute, &att);
 	}
     }
 
@@ -10937,8 +10943,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       MOP auto_increment_obj = NULL;
 
       assert (attribute->info.attr_def.auto_increment != NULL);
-      error = do_set_auto_increment(parser,ctemplate,attr_name,attribute,&found_att);
-      
+      error = do_set_auto_increment (parser, ctemplate, attr_name, attribute, &found_att);
+
       if (error != NO_ERROR)
 	{
 	  goto exit;
