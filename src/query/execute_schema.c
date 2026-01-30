@@ -640,62 +640,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    error = lob_process_dir_add_attr_if_needed (ctemplate->current, old_att_count);
 	    if (error != NO_ERROR)
 	      {
-		attr = &class_->attributes[i];
-		type_id = attr->type->id;
-
-		if (TP_IS_LOB_TYPE (type_id))
-		  {
-		    if (lob_attrid_arr_length >= 2)
-		      {
-			lob_attrid_arr_length++;
-		      }
-		    else
-		      {
-			lob_local_attrid_arr[lob_attrid_arr_length++] = attr->id;
-		      }
-		  }
-	      }
-
-	    if (lob_attrid_arr_length > 2)
-	      {
-		int index = 0;
-
-		lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
-		if (lob_alloc_attrid_arr == NULL)
-		  {
-		    dbt_abort_class (ctemplate);
-		    tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-		    error = ER_OUT_OF_VIRTUAL_MEMORY;
-		    return error;
-		  }
-
-		for (int i = old_att_count; i < new_att_count; i++)
-		  {
-		    attr = &class_->attributes[i];
-		    type_id = attr->type->id;
-
-		    if (TP_IS_LOB_TYPE (type_id))
-		      {
-			lob_alloc_attrid_arr[index++] = attr->id;
-		      }
-		  }
-	      }
-
-	    if (lob_attrid_arr_length)
-	      {
-		HFID lob_hfid = class_->header.ch_heap;
-		error =
-		  locator_lob_create_or_remove_dir (NULL, &lob_hfid,
-						    lob_alloc_attrid_arr ? lob_alloc_attrid_arr : lob_local_attrid_arr,
-						    lob_attrid_arr_length);
-		free (lob_alloc_attrid_arr);
-
-		if (error != NO_ERROR)
-		  {
-		    dbt_abort_class (ctemplate);
-		    tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-		    return error;
-		  }
+                dbt_abort_class (ctemplate);
+                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+                return error;
 	      }
 	  }
 
