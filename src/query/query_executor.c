@@ -8274,10 +8274,6 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		{
 		  qfile_truncate_list (thread_p, xptr->list_id);
 		}
-	      else
-		{
-		  qexec_clear_head_lists (thread_p, xptr);
-		}
 
 	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 		{
