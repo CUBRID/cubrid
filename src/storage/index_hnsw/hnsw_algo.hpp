@@ -622,9 +622,9 @@ namespace cubhnsw
 	  }
 
 	neighbors_ref_type close_header;
+	pinned_t close_node_blk = m_storage->get_node_by_slot_id (thread_p, close_slot, lock_mode::exclusive);
 	{
 	  // TODO: exclusive??
-	  pinned_t close_node_blk = m_storage->get_node_by_slot_id (thread_p, close_slot, lock_mode::exclusive);
 	  close_header = get_neighbors (close_node_blk, level);
 	  if (close_header.size () < layer_connectivity)
 	    {
