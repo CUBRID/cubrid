@@ -37,4 +37,7 @@ extern bool dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num
 extern void dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool is_commit,
 				 void *block_particps_ids);
 extern void dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);
+/* For coordinator recovery: send commit/abort decision to one participant by reconnecting. */
+extern int dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn_url,
+						     const char *user_name, const char *password, bool is_commit);
 #endif

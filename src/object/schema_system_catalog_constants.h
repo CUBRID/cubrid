@@ -54,6 +54,7 @@
 #define CT_DUAL_NAME               "dual"
 #define CT_SERVER_NAME          "_db_server"
 #define CT_SYNONYM_NAME            "_db_synonym"
+#define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"

@@ -22,6 +22,7 @@
 #include "connection_defs.h"
 #include "thread_manager.hpp"
 #include "query_manager.h"
+#include "dblink_scan.h"
 #include "dblink_2pc.h"
 
 #ifndef DBDEF_HEADER_
@@ -174,5 +175,52 @@ dblink_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_
       fprintf (fp, "  CONN-HANDLE = %d, CONN-URL = %s, USER = %s\n", dblink[i].conn_handle, dblink[i].conn_url,
 	       dblink[i].user_name);
     }
+}
+
+/*
+ * dblink_2pc_send_decision_one_participant - For coordinator recovery: send commit/abort to one participant.
+ *   Reconnects using conn_url, user_name, password and sends XA end_tran with (gtrid, bqual).
+ *   Returns NO_ERROR on success, ER_* on failure.
+ */
+int
+dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn_url,
+					  const char *user_name, const char *password, bool is_commit)
+{
+  int err, conn_handle;
+  XID xid;
+  T_CCI_ERROR err_buf;
+  char type = is_commit ? CCI_TRAN_COMMIT : CCI_TRAN_ROLLBACK;
+  char conn_url_gateway[MAX_LEN_CONNECTION_URL + 64];
+
+  if (conn_url == NULL || user_name == NULL || password == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (strstr (conn_url, ":?"))
+    {
+      snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "&__gateway=true");
+    }
+  else
+    {
+      snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "?__gateway=true");
+    }
+
+  conn_handle = cci_connect_with_url_ex (conn_url_gateway, user_name, password, &err_buf);
+  if (conn_handle < 0)
+    {
+      return ER_DBLINK;
+    }
+
+  xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
+  xid.gtrid_length = sizeof (int);
+  xid.bqual_length = sizeof (int);
+  memcpy (xid.data, &gtrid, xid.gtrid_length);
+  memcpy (xid.data + xid.gtrid_length, &bqual, xid.bqual_length);
+
+  err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
+  (void) cci_disconnect (conn_handle, &err_buf);
+
+  return err;
 }
 #endif

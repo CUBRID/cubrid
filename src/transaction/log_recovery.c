@@ -24,6 +24,9 @@
 
 #include "log_recovery.h"
 
+#ifdef CCI_XA
+#include "dblink_2pc_daemon.h"
+#endif
 #include "boot_sr.h"
 #include "locator_sr.h"
 #include "log_impl.h"
@@ -914,6 +917,13 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
       (void) logtb_set_num_loose_end_trans (thread_p);
     }
+
+#ifdef CCI_XA
+  /* Recover pending _db_global_tran (state 'A'/'C'): send decision to participants, delete on success */
+  dblink_2pc_daemon_recovery_with_thread (thread_p);
+  /* Start send_2pc_decision daemon for coordinator recovery (_db_global_tran) */
+  dblink_2pc_daemon_start ();
+#endif
 
   /* Dismount any archive and checkpoint the database */
   logpb_decache_archive_info (thread_p);
