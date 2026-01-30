@@ -5754,7 +5754,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
 	{
 	  return NULL;
 	}
-      au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
+      au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_NONE);
 
       if (locator_lob_process_dir (class_, NULL, hfid) != NO_ERROR)
 	{
@@ -5917,7 +5917,7 @@ locator_remove_class (MOP class_mop)
 	  goto error;
 	}
 
-      au_fetch_class (class_mop, &class_, AU_FETCH_WRITE, DB_AUTH_ALTER);
+      au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_NONE);
 
       for (int i = 0; i < class_->att_count; i++)
 	{
