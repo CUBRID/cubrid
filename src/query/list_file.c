@@ -3222,23 +3222,25 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
   list_id->last_pgptr = NULL;
   list_id->last_offset = QFILE_NULL_PAGE_OFFSET;
   list_id->lasttpl_len = 0;
-
-  switch (tfile_vfid_p->membuf_type)
+  if (tfile_vfid_p != NULL)
     {
-    case TEMP_FILE_MEMBUF_NONE:
-      break;
-    case TEMP_FILE_MEMBUF_KEY_BUFFER:
-    case TEMP_FILE_MEMBUF_NORMAL:
-      {
-	tfile_vfid_p->membuf_last = -1;
-      }
-      break;
-    default:
-      assert (false);
-      break;
-    }
+      switch (tfile_vfid_p->membuf_type)
+	{
+	case TEMP_FILE_MEMBUF_NONE:
+	  break;
+	case TEMP_FILE_MEMBUF_KEY_BUFFER:
+	case TEMP_FILE_MEMBUF_NORMAL:
+	  {
+	    tfile_vfid_p->membuf_last = -1;
+	  }
+	  break;
+	default:
+	  assert (false);
+	  break;
+	}
 
-  error_code = file_temp_truncate (thread_p, &tfile_vfid_p->temp_vfid);
+      error_code = file_temp_truncate (thread_p, &tfile_vfid_p->temp_vfid);
+    }
   return error_code;
 }
 

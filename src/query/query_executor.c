@@ -8328,10 +8328,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
 	    {
 	      /* clear correlated subquery list files */
-	      if (xptr->list_id->tuple_cnt > 0)
-		{
-		  qfile_truncate_list (thread_p, xptr->list_id);
-		}
+	      qexec_clear_head_lists_with_truncate (thread_p, xptr);
 
 	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 		{
