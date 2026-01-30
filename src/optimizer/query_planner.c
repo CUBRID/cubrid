@@ -188,7 +188,7 @@ static QO_PLAN_COMPARE_RESULT qo_cmp_planvec (QO_PLANVEC *, QO_PLAN *);
 static QO_PLAN *qo_find_best_plan_on_planvec (QO_PLANVEC *, double);
 
 static void qo_info_nodes_init (QO_ENV *);
-static QO_INFO *qo_alloc_info (QO_PLANNER *, BITSET *, BITSET *, BITSET *, double, double);
+static QO_INFO *qo_alloc_info (QO_PLANNER *, BITSET *, BITSET *, BITSET *, double, double, double);
 static void qo_free_info (QO_INFO *);
 static void qo_detach_info (QO_INFO *);
 static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
@@ -1444,9 +1444,9 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable,
 	   (plan->info)->cardinality);
 #if TEST_DUMP_PLAN_SCAN_COST
-  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f", (int) howfar, ' ',
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f fanout %.5f", (int) howfar, ' ',
 	   "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
-	   (plan->info)->group_rows);
+	   (plan->info)->group_rows, (plan->info)->fanout);
 #endif
 }
 
@@ -3271,6 +3271,10 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
       guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
+    }
+  else if (QO_PLAN_HAS_LIMIT (planp))
+    {
+      guessed_result_cardinality = ((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) * (planp->info)->fanout;
     }
   else
     {
@@ -5603,10 +5607,12 @@ qo_info_nodes_init (QO_ENV * env)
  *   terms(in):
  *   eqclasses(in):
  *   cardinality(in):
+ *   total_rows(in):
+ *   fanout(in):
  */
 static QO_INFO *
 qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eqclasses, double cardinality,
-	       double total_rows)
+	       double total_rows, double fanout)
 {
   QO_INFO *info;
   int i;
@@ -5639,6 +5645,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
+  info->fanout = fanout;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -7626,7 +7633,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (new_info == NULL)
     {
 
-      double selectivity, cardinality, total_rows;
+      double selectivity, cardinality, total_rows, fanout;
       BITSET eqclasses;
 
       bitset_init (&eqclasses, planner->env);
@@ -7636,6 +7643,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
+      fanout = tail_info->cardinality;
       if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* set lower bound of outer join result */
@@ -7674,6 +7682,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  cardinality = MAX (1.0, cardinality);
 	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
+	  fanout *= selectivity;
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
@@ -7693,7 +7702,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_union (&eqclasses, &(tail_info->eqclasses));
 
       new_info = planner->join_info[QO_INFO_INDEX (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)] =
-	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
+	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows, fanout);
 
       bitset_delset (&eqclasses);
     }
@@ -8697,7 +8706,7 @@ qo_search_planner (QO_PLANNER * planner)
       goto end;
     }
 
-  planner->worst_info = qo_alloc_info (planner, &nodes, &nodes, &nodes, QO_INFINITY, QO_INFINITY);
+  planner->worst_info = qo_alloc_info (planner, &nodes, &nodes, &nodes, QO_INFINITY, QO_INFINITY, 1.0);
   (planner->worst_plan)->info = planner->worst_info;
   (void) qo_plan_add_ref (planner->worst_plan);
 
@@ -8761,7 +8770,7 @@ qo_search_planner (QO_PLANNER * planner)
       bitset_add (&nodes, i);
       planner->node_info[i] =
 	qo_alloc_info (planner, &nodes, &QO_NODE_SARGS (node), &QO_NODE_EQCLASSES (node),
-		       QO_NODE_SELECTIVITY (node) * (double) QO_NODE_NCARD (node), (double) QO_NODE_NCARD (node));
+		       QO_NODE_SELECTIVITY (node) * (double) QO_NODE_NCARD (node), (double) QO_NODE_NCARD (node), 1.0);
 
       if (planner->node_info[i] == NULL)
 	{
@@ -9417,7 +9426,7 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
       cardinality *= (next_plan->info)->cardinality;
       total_rows *= (next_plan->info)->total_rows;
 
-      planner->cp_info[i] = qo_alloc_info (planner, &nodes, &terms, &eqclasses, cardinality, total_rows);
+      planner->cp_info[i] = qo_alloc_info (planner, &nodes, &terms, &eqclasses, cardinality, total_rows, 1.0);
 
       for (t = planner->E; t < (signed) planner->T; ++t)
 	{

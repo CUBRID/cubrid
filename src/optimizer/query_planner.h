@@ -303,6 +303,7 @@ struct qo_info
   double scan_rows;		/* Number of rows required for scanning */
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
+  double fanout;		/* Number of inner rows matched per outer row on average */
 
   /*
    * One plan for each equivalence class, in each case the best we have
