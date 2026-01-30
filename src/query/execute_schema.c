@@ -640,9 +640,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    error = lob_process_dir_add_attr_if_needed (ctemplate->current, old_att_count);
 	    if (error != NO_ERROR)
 	      {
-                dbt_abort_class (ctemplate);
-                tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
-                return error;
+		dbt_abort_class (ctemplate);
+		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+		return error;
 	      }
 	  }
 
