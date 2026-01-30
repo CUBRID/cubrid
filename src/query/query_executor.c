@@ -21341,7 +21341,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   if (is_skip_sort)
     {
       /* finalize function */
-      if (qdata_finalize_analytic_func (thread_p, func_p, true) != NO_ERROR)
+      if (qdata_finalize_analytic_func (thread_p, func_p, false) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -23282,134 +23282,138 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       return ER_FAILED;
     }
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+  if (xasl->list_id->tuple_cnt == 0)
     {
-      if (xasl->list_id->tuple_cnt == 0)
+      int key_idx = 0;
+      for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
 	{
-	  int key_idx = 0;
-	  for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
-	    {
-	      REGU_VARIABLE_LIST tmp_regu_list = buildlist->a_scan_regu_list;
+	  REGU_VARIABLE_LIST tmp_regu_list = buildlist->a_scan_regu_list;
 
-	      for (int j = 0; j < tmp->pos_descr.pos_no; j++)
-		{
-		  tmp_regu_list = tmp_regu_list->next;
-		}
-	      pr_clear_value (&a_eval_list->current_values[key_idx]);
-	      pr_clone_value (tmp_regu_list->value.value.dbvalptr, &a_eval_list->current_values[key_idx]);
-	      key_idx++;
-	    }
-
-	  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+	  for (int j = 0; j < tmp->pos_descr.pos_no; j++)
 	    {
-	      a_func_list->curr_group_tuple_count = 0;
-	      a_func_list->curr_sort_key_tuple_count = 0;
+	      tmp_regu_list = tmp_regu_list->next;
 	    }
+	  pr_clear_value (&a_eval_list->current_values[key_idx]);
+	  pr_clone_value (tmp_regu_list->value.value.dbvalptr, &a_eval_list->current_values[key_idx]);
+	  key_idx++;
 	}
-      else
+
+      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 	{
-	  int key_idx = 0;
-	  bool need_key_change = false;
+	  a_func_list->curr_group_tuple_count = 0;
+	  a_func_list->curr_sort_key_tuple_count = 0;
+	}
+    }
+  else
+    {
+      int key_idx = 0;
+      bool need_key_change = false;
 
-	  for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
+      for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
+	{
+	  REGU_VARIABLE_LIST tmp_regu_list = buildlist->a_scan_regu_list;
+	  for (int j = 0; j < tmp->pos_descr.pos_no; j++)
 	    {
-	      REGU_VARIABLE_LIST tmp_regu_list = buildlist->a_scan_regu_list;
-	      for (int j = 0; j < tmp->pos_descr.pos_no; j++)
-		{
-		  tmp_regu_list = tmp_regu_list->next;
-		}
-	      pr_clear_value (&a_eval_list->temp_values[key_idx]);
-	      pr_clone_value (tmp_regu_list->value.value.dbvalptr, &a_eval_list->temp_values[key_idx]);
-	      key_idx++;
+	      tmp_regu_list = tmp_regu_list->next;
 	    }
+	  pr_clear_value (&a_eval_list->temp_values[key_idx]);
+	  pr_clone_value (tmp_regu_list->value.value.dbvalptr, &a_eval_list->temp_values[key_idx]);
+	  key_idx++;
+	}
 
-	  for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+      for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
+	{
+	  int sort_list_idx;
+	  bool is_same_group = false;
+	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++)
 	    {
-	      for (int sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++)
+	      if (tp_value_compare
+		  (&a_eval_list->current_values[sort_list_idx], &a_eval_list->temp_values[sort_list_idx], 1,
+		   0) != DB_EQ)
 		{
-		  if (tp_value_compare
-		      (&a_eval_list->current_values[sort_list_idx], &a_eval_list->temp_values[sort_list_idx], 1,
-		       0) != DB_EQ)
+		  need_key_change = true;
+
+		  /* this means the partition by values match, but the order by values do not. */
+		  if (sort_list_idx >= a_func_list->sort_prefix_size)
 		    {
-		      need_key_change = true;
-
-		      /* this means the partition by values match, but the order by values do not. */
-		      if (sort_list_idx >= a_func_list->sort_prefix_size)
-			{
-			  /* finalize, but do not insert into group_value_list */
-			  if (qdata_finalize_analytic_func (thread_p, a_func_list, true) != NO_ERROR)
-			    {
-			      return ER_FAILED;
-			    }
-
-			  if (!DB_IS_NULL (a_func_list->value))
-			    {
-			      /* keep track of non-NULL values */
-			      a_func_list->curr_group_tuple_count_nn += a_func_list->curr_sort_key_tuple_count;
-			    }
-
-			  qfile_fast_intval_tuple_to_list (thread_p, a_func_list->order_list_id,
-							   a_func_list->curr_sort_key_tuple_count, a_func_list->value);
-
-			  qdata_copy_db_value (a_func_list->value, &a_func_list->part_value);
-			  pr_clear_value (&a_func_list->part_value);
-
-			  a_func_list->curr_sort_key_tuple_count = 0;
-			  break;
-			}
-
-		      /* finalize function */
-		      if (qdata_finalize_analytic_func (thread_p, a_func_list, true) != NO_ERROR)
-			{
-			  return ER_FAILED;
-			}
-
-		      if (!DB_IS_NULL (a_func_list->value))
-			{
-			  a_func_list->curr_group_tuple_count_nn += a_func_list->curr_sort_key_tuple_count;
-			}
-
-		      if (qfile_fast_intint_tuple_to_list
-			  (thread_p, a_func_list->group_list_id, a_func_list->curr_group_tuple_count,
-			   a_func_list->curr_group_tuple_count) != NO_ERROR)
-			{
-			  return ER_FAILED;
-			}
-
-		      qfile_fast_intval_tuple_to_list (thread_p, a_func_list->order_list_id,
-						       a_func_list->curr_sort_key_tuple_count, a_func_list->value);
-
-		      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
-			{
-			  return ER_FAILED;
-			}
-
-		      if (a_func_list->function == PT_ROW_NUMBER)
-			{
-			  db_make_int (a_func_list->out_value, 0);
-			}
-
-		      a_func_list->curr_group_tuple_count = 0;
-		      a_func_list->curr_group_tuple_count_nn = 0;
-		      a_func_list->curr_sort_key_tuple_count = 0;
+		      is_same_group = true;
+		      break;
 		    }
 		}
+	    }
+
+	  if (sort_list_idx == a_func_list->sort_list_size)
+	    {
+	      ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
+	      if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (a_func_list))
+		{
+		  is_same_group = true;
+		}
+	      else
+		{
+		  continue;
+		}
+	    }
+
+	  if (qdata_finalize_analytic_func (thread_p, a_func_list, is_same_group) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  if (!DB_IS_NULL (a_func_list->value))
+	    {
+	      /* keep track of non-NULL values */
+	      a_func_list->curr_group_tuple_count_nn += a_func_list->curr_sort_key_tuple_count;
+	    }
+
+	  qfile_fast_intval_tuple_to_list (thread_p, a_func_list->order_list_id,
+					   a_func_list->curr_sort_key_tuple_count, a_func_list->value);
+
+	  if (!is_same_group)
+	    {
+	      /* finalize, but do not insert into group_value_list */
+	      qdata_copy_db_value (a_func_list->value, &a_func_list->part_value);
+	      pr_clear_value (&a_func_list->part_value);
+
+	      a_func_list->curr_sort_key_tuple_count = 0;
 
 	    }
-	  if (need_key_change)
+	  else if (a_func_list->function != PT_NTILE
+		   && (!QPROC_IS_INTERPOLATION_FUNC (a_func_list) || a_func_list->option == Q_ALL))
 	    {
-	      for (int i = 0; i < key_idx; i++)
+
+	      if (qfile_fast_intint_tuple_to_list
+		  (thread_p, a_func_list->group_list_id, a_func_list->curr_group_tuple_count,
+		   a_func_list->curr_group_tuple_count) != NO_ERROR)
 		{
-		  pr_clear_value (&a_eval_list->current_values[i]);
-		  pr_clone_value (&a_eval_list->temp_values[i], &a_eval_list->current_values[i]);
+		  return ER_FAILED;
 		}
+
+	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+
+	      if (a_func_list->function == PT_ROW_NUMBER)
+		{
+		  db_make_int (a_func_list->out_value, 0);
+		}
+
+	      a_func_list->curr_group_tuple_count = 0;
+	      a_func_list->curr_group_tuple_count_nn = 0;
+	      a_func_list->curr_sort_key_tuple_count = 0;
+	    }
+
+	  for (int i = 0; i < key_idx; i++)
+	    {
+	      pr_clear_value (&a_eval_list->current_values[i]);
+	      pr_clone_value (&a_eval_list->temp_values[i], &a_eval_list->current_values[i]);
 	    }
 	}
     }
 
   for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
     {
-      ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
       if (qdata_evaluate_analytic_func (thread_p, a_func_list, &xasl_state->vd) != NO_ERROR)
 	{
 	  return ER_FAILED;
