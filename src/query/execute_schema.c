@@ -4994,10 +4994,12 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
 		       SM_ATTRIBUTE ** attr)
 {
   SM_ATTRIBUTE *ctmpl_attrs = ctemplate->attributes;
+  SM_ATTRIBUTE *att = NULL;
   int error = NO_ERROR;
 
   assert (attribute->info.attr_def.attr_type != PT_META_ATTR && attribute->info.attr_def.attr_type != PT_SHARED);
   assert (attribute->info.attr_def.auto_increment != NULL);
+  assert (attr != NULL);
 
   while (ctmpl_attrs != NULL)
     {
@@ -5010,23 +5012,31 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
       return ER_AUTO_INCREMENT_SINGLE_COL_ONLY;
     }
 
-  MOP auto_increment_obj = NULL;
-  if (error == NO_ERROR)
+  if (attr != NULL)
     {
-      error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
+      att = *attr;
     }
+
+  MOP auto_increment_obj = NULL;
+  error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
+
 
   if (error == NO_ERROR)
     {
-      if (*attr == NULL)
+      if (att == NULL)
 	{
-	  error = smt_find_attribute (ctemplate, attr_name, 0, attr);
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
 	}
-      if (error == NO_ERROR && *attr != NULL)
+      if (error == NO_ERROR && att != NULL)
 	{
-	  (*attr)->auto_increment = auto_increment_obj;
-	  (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
+	  att->auto_increment = auto_increment_obj;
+	  att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 	}
+    }
+
+  if (error == NO_ERROR && attr != NULL)
+    {
+      *attr = att;
     }
 
   return error;
