@@ -281,13 +281,6 @@ jobs:
                 # self-hosted runner
                 resource_class: cubrid/ramdisk
                 working_directory: /home
-              
-              cubrid-test-staging:
-                docker:
-                  - image: cubridci/cubridci:test_shell
-                # self-hosted runner
-                resource_class: cubrid/staging
-                working_directory: /home
                 
             # --------------------------------------------------
             # 3. Jobs
@@ -407,8 +400,8 @@ jobs:
                         - cubrid-testcases
                       
               test_shell:
-                executor: cubrid-test-staging
-                parallelism: 1
+                executor: cubrid-test-shell
+                parallelism: 50
                 environment:
                   BASELINE: << pipeline.parameters.baseline >>
                   TEST_SUITE: "shell"
