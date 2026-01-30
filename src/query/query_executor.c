@@ -443,6 +443,7 @@ static int qexec_clear_analytic_function_list (THREAD_ENTRY * thread_p, XASL_NOD
 					       bool is_final);
 static int qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYPE * list, bool is_final);
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
+static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
@@ -3288,6 +3289,63 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   xasl->query_in_progress = query_save_state;
 
   return pg_cnt;
+}
+
+static void
+qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
+{
+  XASL_NODE *xasl;
+  /* clear XASL head node */
+  VAL_LIST *single_tuple;
+  QPROC_DB_VALUE_LIST value_list;
+  int i;
+
+  for (xasl = xasl_list; xasl != NULL; xasl = xasl->next)
+    {
+      if (XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL))
+	{
+	  /* skip out zero correlation-level uncorrelated subquery */
+	  continue;
+	}
+
+
+      if (xasl->list_id && !xasl->list_id->is_result_cached)
+	{
+	  qfile_truncate_list (thread_p, xasl->list_id);
+	}
+
+      single_tuple = xasl->single_tuple;
+      if (single_tuple)
+	{
+	  /* clear result value */
+	  for (value_list = single_tuple->valp, i = 0; i < single_tuple->val_cnt; value_list = value_list->next, i++)
+	    {
+	      pr_clear_value (value_list->val);
+	    }
+	}
+
+      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
+	{
+	  qexec_clear_xasl_head (thread_p, xasl->connect_by_ptr);
+	}
+
+      if (xcache_uses_clones ())
+	{
+	  if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE))
+	    {
+	      xasl->status = XASL_CLEARED;
+	    }
+	  else
+	    {
+	      /* The values allocated during execution will be cleared and the xasl is reused. */
+	      xasl->status = XASL_INITIALIZED;
+	    }
+	}
+      else
+	{
+	  xasl->status = XASL_CLEARED;
+	}
+    }
 }
 
 /*
@@ -9177,7 +9235,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
 		{
 		  /* clear correlated subquery list files */
-		  qexec_clear_head_lists (thread_p, xptr);
+		  qexec_clear_head_lists_with_truncate (thread_p, xptr);
 		  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
 		    {
 		      /* skip if linked to regu var */
