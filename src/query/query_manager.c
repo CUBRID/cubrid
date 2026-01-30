@@ -3406,21 +3406,6 @@ qmgr_is_query_interrupted (THREAD_ENTRY * thread_p, QUERY_ID query_id)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  pthread_mutex_lock (&tran_entry_p->mutex);
-  query_p = qmgr_find_query_entry (tran_entry_p->query_entry_list_p, query_id);
-  pthread_mutex_unlock (&tran_entry_p->mutex);
-
-  if (query_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_UNKNOWN_QUERYID, 1, query_id);
-      if (tran_entry_p->trans_stat != QMGR_TRAN_TERMINATED)
-	{
-	  // QMGR_TRAN_TERMINATED means a transaction has been terminated in PL/CSQL body.
-	  // And this routine is called in the middle of processing the root query.
-	  return true;
-	}
-    }
-
   return (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted_tran (thread_p, true, &dummy, tran_index));
 }
 #endif /* SERVER_MODE */
