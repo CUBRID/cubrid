@@ -418,7 +418,7 @@ jobs:
 
               download-build:
                 description: "Download CUBRID build to GlusterFS (1x download for all shell test pods)"
-                executor: cubrid-test-staging
+                executor: cubrid-test-shell
                 parallelism: 1
                 steps:
                   - download-build-to-glusterfs
