@@ -1588,9 +1588,9 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const a
       if (ai_serial != NULL)
 	{
 	  /*
-	   * we already found a serial. AMBIGUITY! 
-	   * CUBRID 11.5 (guava) allows onl one AUTO_INCREMENT attribute per class.
-	   * Consider removing this logic. 
+	   * we already found a serial. AMBIGUITY!
+	   * CUBRID 11.5 (guava) allows only one AUTO_INCREMENT attribute per class.
+	   * Consider removing this logic.
 	   */
 	  ERROR0 (error, ER_AUTO_INCREMENT_SINGLE_COL_AMBIGUITY);
 	  goto change_ai_error;
@@ -5007,8 +5007,7 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
 	  continue;
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AUTO_INCREMENT_SINGLE_COL_ONLY, 0);
-      error = er_errid ();
-      break;
+      return ER_AUTO_INCREMENT_SINGLE_COL_ONLY;
     }
 
   MOP auto_increment_obj = NULL;
@@ -10940,7 +10939,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_GAINED))
     {
-      MOP auto_increment_obj = NULL;
 
       assert (attribute->info.attr_def.auto_increment != NULL);
       error = do_set_auto_increment (parser, ctemplate, attr_name, attribute, &found_att);
