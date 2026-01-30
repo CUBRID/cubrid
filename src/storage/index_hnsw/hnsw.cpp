@@ -767,13 +767,13 @@ hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backen
 void hnsw_index_manager::finalize ()
 {
   for (const auto &pair : m_index_map)
-  {
-    hnsw_index *index = pair.second.get();
-    if (index)
     {
-      delete index;
+      hnsw_index *index = pair.second.get();
+      if (index)
+	{
+	  delete index;
+	}
     }
-  }
 }
 
 void hnsw_index_manager::register_backend (std::unique_ptr<hnsw_index_backend> backend)
