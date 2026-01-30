@@ -136,7 +136,7 @@ namespace parallel_heap_scan
 
     if (arg->xasl)
       {
-	temp = check<is_outptr_list> (arg->xasl);
+	temp = sibling_check<is_outptr_list> (arg->xasl);
 	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
@@ -422,7 +422,7 @@ namespace parallel_heap_scan
 
     for (XASL_NODE *xaslp = sibling->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	temp = check<false> (xaslp);
+	temp = sibling_check<false> (xaslp);
 	if (is_flag_set (temp, CANNOT_PARALLEL_HEAP_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_HEAP_SCAN);
