@@ -613,8 +613,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	     *   for float numeric with positive scale, trailing zero check is required
 	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
 	     */
-	    if (!is_float_numeric
-		|| (is_float_numeric && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
+	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
 		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
 	      }
@@ -2459,8 +2458,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	     *   for float numeric with positive scale, trailing zero check is required
 	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
 	     */
-	    if (!is_float_numeric
-		|| (is_float_numeric && (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))))
+	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
 		buf = (unsigned int *) db_locate_numeric (val);
 		memcpy (&tmp, db_locate_numeric (val) + 16, 1);

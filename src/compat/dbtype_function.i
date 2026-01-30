@@ -986,7 +986,6 @@ db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric)
   CHECK_1ARG_ZERO (value);
 #endif
   int precision = 0;
-  *is_float_numeric = false;
 
   assert (value->domain.general_info.type == DB_TYPE_NUMERIC);
 
@@ -995,6 +994,10 @@ db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric)
     {
       precision = value->data.num.header.precision;
       *is_float_numeric = true;
+    }
+  else
+    {
+      *is_float_numeric = false;
     }
 
   return precision;
@@ -1018,7 +1021,6 @@ db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric)
   CHECK_1ARG_ZERO (value);
 #endif
   int scale = 0;
-  *is_float_numeric = false;
 
   assert (value->domain.general_info.type == DB_TYPE_NUMERIC);
 
@@ -1030,6 +1032,7 @@ db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric)
   else
     {
       scale = value->domain.numeric_info.scale;
+      *is_float_numeric = false;
     }
 
   return scale;
@@ -1052,38 +1055,20 @@ void
 db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, int *scale_ptr,
 				    bool * is_float_numeric_ptr)
 {
-  if (value == NULL || value->domain.general_info.type != DB_TYPE_NUMERIC)
+  assert (value && value->domain.general_info.type == DB_TYPE_NUMERIC);
+
+  *precision_ptr = value->domain.numeric_info.precision;
+  if (*precision_ptr == DB_DEFAULT_NUMERIC_PRECISION)
     {
-      assert (false);
-
-      *precision_ptr = 0;
-      *scale_ptr = 0;
-      *is_float_numeric_ptr = false;
-      return;
-    }
-
-  bool is_float_numeric = false;
-  int precision = 0, scale = 0;
-
-  precision = value->domain.numeric_info.precision;
-  if (precision == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      precision = value->data.num.header.precision;
-      is_float_numeric = true;
-    }
-
-  if (is_float_numeric)
-    {
-      scale = value->data.num.header.scale;
+      *precision_ptr = value->data.num.header.precision;
+      *scale_ptr = value->data.num.header.scale;
+      *is_float_numeric_ptr = true;
     }
   else
     {
-      scale = value->domain.numeric_info.scale;
+      *scale_ptr = value->domain.numeric_info.scale;
+      *is_float_numeric_ptr = false;
     }
-
-  *precision_ptr = precision;
-  *scale_ptr = scale;
-  *is_float_numeric_ptr = is_float_numeric;
 }
 
 /***********************************************************/
