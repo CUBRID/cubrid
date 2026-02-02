@@ -33,16 +33,20 @@
      |-- (2) SEND XA PREPARE --------------------------->|
      |<-------------------------- PREPARE OK/FAIL -------|
      |                                                   |
-     |-- (3) UPDATE _db_global_tran (state='C'/'A') ---->|
+     |-- (3) LOCAL COMMIT/ABORT ------------------------>|
+     |                                                   |
+     |-- (4) UPDATE _db_global_tran (state='C'/'A') ---->|
      |      (server transaction)                         |
      |                                                   |
-     |-- (4) Enqueue to daemon ------------------------->|
+     |-- (5) Enqueue to daemon ------------------------->|
      |                                                   |
 [Daemon]                                                 |
-     |-- (5) SEND XA COMMIT/ROLLBACK ------------------->|
+     |-- (6) SEND XA COMMIT/ROLLBACK ------------------->|
      |<-------------------------- COMMIT/ROLLBACK OK ----|
      |                                                   |
-     |-- (6) DELETE _db_global_tran (server transaction) |
+     |-- (7) DELETE _db_global_tran (server transaction) |
+     |                                                   |
+     |   (에러 시 재시도: 6~7 반복)                      |
 ```
 
 ### 2.2 크래시 시나리오별 Recovery
@@ -51,9 +55,17 @@
 |------------|---------------------|---------------|
 | (1) 이전 | 없음 | Participant 자체 rollback |
 | (1)~(2) 사이 | state='P' | Daemon이 ABORT 전송 후 DELETE |
-| (2)~(3) 사이 | state='P' | Daemon이 ABORT 전송 후 DELETE |
-| (3)~(5) 사이 | state='C' 또는 'A' | Daemon이 해당 decision 전송 후 DELETE |
-| (5)~(6) 사이 | state='C' 또는 'A' | Daemon이 decision 재전송 후 DELETE |
+| (2)~(4) 사이 | state='P' | Daemon이 ABORT 전송 후 DELETE |
+| (4)~(6) 사이 | state='C' 또는 'A' | Daemon이 해당 decision 전송 후 DELETE |
+| (6)~(7) 사이 | state='C' 또는 'A' | Daemon이 decision 재전송 후 DELETE |
+
+### 2.3 Recovery 시 처리 흐름
+
+서버 시작 시:
+1. `_db_global_tran` 테이블 스캔
+2. 각 레코드에 대해 participant 정보를 daemon queue에 enqueue
+3. Daemon이 queue에서 dequeue하여 send decision 수행
+4. 성공 시 해당 레코드 DELETE, 실패 시 재시도
 
 ---
 
@@ -101,18 +113,25 @@ log_sysop_commit(thread_p);
 // Step 2: Send XA PREPARE to all participants
 decision = log_2pc_send_prepare(...);
 
-// Step 3: _db_global_tran UPDATE (state='C' or 'A') - server transaction
+// Step 3: Perform local commit/abort FIRST
+if (decision) {
+    log_commit_local(thread_p, tdes, false, false);
+} else {
+    log_abort_local(thread_p, tdes, false);
+}
+
+// Step 4: _db_global_tran UPDATE (state='C' or 'A') - server transaction
 log_sysop_start(thread_p);
 for (each participant) {
     dblink_global_tran_update_state(..., decision ? 'C' : 'A');
 }
 log_sysop_commit(thread_p);
 
-// Step 4: Enqueue to daemon
+// Step 5: Enqueue to daemon
 dblink_2pc_daemon_enqueue(..., decision ? 'C' : 'A', ...);
 ```
 
-### 4.2 Phase 2: Decision 단계 (`log_2pc_commit_second_phase`)
+### 4.2 Phase 2: Decision 단계
 
 - Daemon에 의해 비동기적으로 decision 전송 처리
 - `_db_global_tran` update 및 enqueue는 Phase 1에서 완료됨
@@ -141,25 +160,42 @@ typedef struct global_tran_queue_entry {
 서버 시작 시 `dblink_2pc_daemon_recovery_with_thread()` 함수가 호출되어:
 
 1. `_db_global_tran` 테이블을 스캔 (state = 'P', 'A', 'C')
-2. 각 레코드에 대해:
-   - state='P': ABORT decision 전송
-   - state='A': ABORT decision 전송
-   - state='C': COMMIT decision 전송
-3. 전송 성공 시 해당 레코드 DELETE (server transaction)
+2. 각 레코드에 대해 participant 정보를 daemon queue에 **enqueue**
+3. Daemon thread가 queue에서 처리
 
 ### 5.3 Queue 처리
 
-Coordinator로부터 enqueue된 데이터 처리:
-
 ```c
-if (state == DBLINK_2PC_STATE_PREPARE) {
-    // Prepare 상태에서는 ABORT 전송 (recovery 시나리오)
-    dblink_2pc_daemon_send_decision(..., DBLINK_2PC_STATE_ABORT, ...);
-} else {
-    // 'A' 또는 'C' 상태: 해당 decision 전송
-    dblink_2pc_daemon_send_decision(..., state, ...);
+while (!daemon_stop_requested) {
+    // Dequeue entry
+    e = dequeue();
+    
+    // Determine decision state ('P' -> ABORT)
+    send_state = (e.state == 'P') ? ABORT : e.state;
+    
+    // Send decision to participants
+    ret = dblink_2pc_daemon_send_decision(...);
+    
+    if (ret == NO_ERROR) {
+        // Success: delete from _db_global_tran catalog
+        log_sysop_start(thread_p);
+        for (each participant) {
+            dblink_global_tran_delete_row(...);
+        }
+        log_sysop_commit(thread_p);
+    } else {
+        // Error: re-enqueue for retry
+        enqueue(e);
+        sleep(1);  // Wait before retry
+    }
 }
 ```
+
+### 5.4 에러 처리
+
+- send decision 실패 시 해당 entry를 다시 queue에 enqueue
+- 에러가 없을 때까지 반복 재시도
+- Queue가 가득 찬 경우 entry 해제 (다음 서버 재시작 시 recovery에서 처리)
 
 ---
 

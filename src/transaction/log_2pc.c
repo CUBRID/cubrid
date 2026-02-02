@@ -504,6 +504,17 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
 	int i;
 	char new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
+
+	/* First perform local commit/abort before updating _db_global_tran */
+	if (*decision)
+	  {
+	    (void) log_commit_local (thread_p, tdes, false, false);
+	  }
+	else
+	  {
+	    (void) log_abort_local (thread_p, tdes, false);
+	  }
+
 	/* Update _db_global_tran state based on decision, using server transaction */
 	log_sysop_start (thread_p);
 	for (i = 0; i < tdes->coord->num_particps; i++)

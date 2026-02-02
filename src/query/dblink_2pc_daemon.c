@@ -92,52 +92,61 @@ dblink_2pc_daemon_insert_global_tran_prepare (int gtrid, int num_participants, D
 
 /*
  * Coordinator (log_2pc.c) already updated _db_global_tran state to 'A' or 'C'.
- * Daemon only sends decision to each participant.
+ * Daemon sends decision to each participant.
+ * Returns: NO_ERROR if all succeeded, ER_FAILED if any failed.
  */
-static void
+static int
 dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DBLINK_CONN_INFO * participants)
 {
   int i;
+  int ret;
+  int error_count = 0;
   bool is_commit = (state == DBLINK_2PC_STATE_COMMIT);
 
   for (i = 0; i < num_participants; i++)
     {
-      (void) dblink_2pc_send_decision_one_participant (gtrid, participants[i].conn_handle,
-						       participants[i].conn_url,
-						       participants[i].user_name, participants[i].password, is_commit);
+      ret = dblink_2pc_send_decision_one_participant (gtrid, participants[i].conn_handle,
+						      participants[i].conn_url,
+						      participants[i].user_name, participants[i].password, is_commit);
+      if (ret != NO_ERROR)
+	{
+	  error_count++;
+	}
     }
+
+  return (error_count > 0) ? ER_FAILED : NO_ERROR;
 }
 
-/* Callback for dblink_global_tran_scan_for_recovery: send decision, delete row on success */
+/* Callback for dblink_global_tran_scan_for_recovery: enqueue participant data to daemon */
 static bool
 dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data, OID * row_oid)
 {
-  THREAD_ENTRY *thread_p = (THREAD_ENTRY *) arg;
-  bool is_commit;
-  int ret;
+  DBLINK_CONN_INFO participant;
+  char state;
 
+  (void) arg;
   (void) row_oid;
 
-  /* For 'P' state (before decision), send ABORT for recovery */
+  /* For 'P' state (before decision), use ABORT for recovery */
   if (row_data->state == DBLINK_2PC_STATE_PREPARE)
     {
-      is_commit = false;
+      state = DBLINK_2PC_STATE_ABORT;
     }
   else
     {
-      is_commit = (row_data->state == DBLINK_2PC_STATE_COMMIT);
+      state = row_data->state;
     }
 
-  ret = dblink_2pc_send_decision_one_participant (row_data->gtrid, row_data->bqual,
-						  row_data->conn_url, row_data->user_name,
-						  row_data->password, is_commit);
-  if (ret == NO_ERROR)
-    {
-      /* Delete row using server transaction */
-      log_sysop_start (thread_p);
-      (void) dblink_global_tran_delete_row (thread_p, row_data->gtrid, row_data->bqual);
-      log_sysop_commit (thread_p);
-    }
+  /* Build participant info from row data */
+  memset (&participant, 0, sizeof (participant));
+  participant.conn_handle = row_data->bqual;
+  strncpy (participant.conn_url, row_data->conn_url, sizeof (participant.conn_url) - 1);
+  strncpy (participant.user_name, row_data->user_name, sizeof (participant.user_name) - 1);
+  strncpy (participant.password, row_data->password, sizeof (participant.password) - 1);
+
+  /* Enqueue to daemon for processing */
+  (void) dblink_2pc_daemon_enqueue (row_data->gtrid, state, 1, &participant);
+
   return true;			/* continue to next row */
 }
 
@@ -164,6 +173,9 @@ dblink_2pc_daemon_thread (void *arg)
   GLOBAL_TRAN_QUEUE_ENTRY e;
   struct timespec ts;
   int ret;
+  char send_state;
+  THREAD_ENTRY *thread_p;
+  int i;
 
   (void) arg;
 
@@ -195,17 +207,59 @@ dblink_2pc_daemon_thread (void *arg)
       global_tran_queue_count--;
       pthread_mutex_unlock (&global_tran_queue_mutex);
 
+      /* Determine decision state */
       if (e.state == DBLINK_2PC_STATE_PREPARE)
 	{
 	  /* PREPARE state before decision: send ABORT for recovery */
-	  dblink_2pc_daemon_send_decision (e.gtrid, DBLINK_2PC_STATE_ABORT, e.num_participants, e.participants);
+	  send_state = DBLINK_2PC_STATE_ABORT;
 	}
-      else if (e.state == DBLINK_2PC_STATE_ABORT || e.state == DBLINK_2PC_STATE_COMMIT)
+      else
 	{
-	  dblink_2pc_daemon_send_decision (e.gtrid, e.state, e.num_participants, e.participants);
+	  send_state = e.state;
 	}
 
-      global_tran_queue_entry_free (&e);
+      /* Send decision to participants */
+      ret = dblink_2pc_daemon_send_decision (e.gtrid, send_state, e.num_participants, e.participants);
+
+      if (ret == NO_ERROR)
+	{
+	  /* Success: delete from _db_global_tran catalog */
+	  thread_p = thread_get_thread_entry_info ();
+	  if (thread_p != NULL)
+	    {
+	      log_sysop_start (thread_p);
+	      for (i = 0; i < e.num_participants; i++)
+		{
+		  (void) dblink_global_tran_delete_row (thread_p, e.gtrid, e.participants[i].conn_handle);
+		}
+	      log_sysop_commit (thread_p);
+	    }
+	  global_tran_queue_entry_free (&e);
+	}
+      else
+	{
+	  /* Error: re-enqueue for retry */
+	  pthread_mutex_lock (&global_tran_queue_mutex);
+	  if (global_tran_queue_count < GLOBAL_TRAN_QUEUE_SIZE)
+	    {
+	      int tail_next = global_tran_queue_tail;
+	      global_tran_queue[tail_next].gtrid = e.gtrid;
+	      global_tran_queue[tail_next].state = send_state;
+	      global_tran_queue[tail_next].num_participants = e.num_participants;
+	      global_tran_queue[tail_next].participants = e.participants;	/* transfer ownership */
+	      global_tran_queue_tail = (global_tran_queue_tail + 1) % GLOBAL_TRAN_QUEUE_SIZE;
+	      global_tran_queue_count++;
+	    }
+	  else
+	    {
+	      /* Queue full, free entry (will be recovered on next restart) */
+	      global_tran_queue_entry_free (&e);
+	    }
+	  pthread_mutex_unlock (&global_tran_queue_mutex);
+
+	  /* Wait a bit before retry */
+	  sleep (1);
+	}
     }
 
   return NULL;
