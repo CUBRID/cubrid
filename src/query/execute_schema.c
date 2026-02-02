@@ -10890,7 +10890,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
 
   if (!HA_DISABLED ())
     {
-      error = ER_HA_REPLICATION_KEY_REQUIRED;
+      error = ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
       goto exit;
     }
