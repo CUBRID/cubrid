@@ -369,7 +369,8 @@ dblink_2pc_daemon_start (void)
   global_tran_queue_size = 0;
 
   /* Allocate initial queue */
-  global_tran_queue = (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+  global_tran_queue =
+    (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
   if (global_tran_queue != NULL)
     {
       global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
