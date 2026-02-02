@@ -651,7 +651,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	   */
 	  /* _db_global_tran update and enqueue already done in first_phase */
 	  (void) log_2pc_send_abort_decision (thread_p, tdes->gtrid, tdes->coord->num_particps,
-					     tdes->coord->block_particps_ids);
+					      tdes->coord->block_particps_ids);
 	}
       /* Check if all the acknowledgments have been received */
       state = log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID);

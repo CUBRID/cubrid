@@ -69,7 +69,8 @@ static pthread_cond_t global_tran_queue_cond = PTHREAD_COND_INITIALIZER;
 static volatile int daemon_stop_requested;
 static pthread_t daemon_thread_id;
 
-static void global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
+static void
+global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
 {
   if (e->participants != NULL)
     {
@@ -102,9 +103,8 @@ dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DB
   for (i = 0; i < num_participants; i++)
     {
       (void) dblink_2pc_send_decision_one_participant (gtrid, participants[i].conn_handle,
-						      participants[i].conn_url,
-						      participants[i].user_name,
-						      participants[i].password, is_commit);
+						       participants[i].conn_url,
+						       participants[i].user_name, participants[i].password, is_commit);
     }
 }
 
@@ -129,8 +129,8 @@ dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data
     }
 
   ret = dblink_2pc_send_decision_one_participant (row_data->gtrid, row_data->bqual,
-						   row_data->conn_url, row_data->user_name,
-						   row_data->password, is_commit);
+						  row_data->conn_url, row_data->user_name,
+						  row_data->password, is_commit);
   if (ret == NO_ERROR)
     {
       /* Delete row using server transaction */
@@ -138,7 +138,7 @@ dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data
       (void) dblink_global_tran_delete_row (thread_p, row_data->gtrid, row_data->bqual);
       log_sysop_commit (thread_p);
     }
-  return true;		/* continue to next row */
+  return true;			/* continue to next row */
 }
 
 /* Run by daemon thread on startup; actual recovery runs in log_recovery with thread_p (recovery_with_thread). */
@@ -223,7 +223,7 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
       return ER_FAILED;
     }
 
-  block_size = (size_t) num_participants * sizeof (DBLINK_CONN_INFO);
+  block_size = (size_t) num_participants *sizeof (DBLINK_CONN_INFO);
   copy = (DBLINK_CONN_INFO *) malloc (block_size);
   if (copy == NULL)
     {

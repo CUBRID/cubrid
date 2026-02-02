@@ -75,7 +75,7 @@ typedef bool (*dblink_global_tran_scan_callback) (void *arg, const DBLINK_GLOBAL
  * Invokes callback for each matching row. row_oid can be used for delete after send decision.
  */
 extern int dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tran_scan_callback callback,
-						void *arg);
+						 void *arg);
 
 #endif /* CCI_XA */
 
