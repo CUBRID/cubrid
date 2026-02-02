@@ -23307,7 +23307,6 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
   else
     {
       int key_idx = 0;
-      bool need_key_change = false;
 
       for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
 	{
@@ -23323,33 +23322,23 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 
       for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 	{
-	  int sort_list_idx;
-	  bool is_same_group = false;
+	  int sort_list_idx = 0;
+	  bool is_same_group = true;
 	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++)
 	    {
 	      if (tp_value_compare
 		  (&a_eval_list->current_values[sort_list_idx], &a_eval_list->temp_values[sort_list_idx], 1,
 		   0) != DB_EQ)
 		{
-		  need_key_change = true;
-
-		  /* this means the partition by values match, but the order by values do not. */
-		  if (sort_list_idx >= a_func_list->sort_prefix_size)
-		    {
-		      is_same_group = true;
-		      break;
-		    }
+		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
+		  break;
 		}
 	    }
 
-	  if (sort_list_idx == a_func_list->sort_list_size)
+	  if (is_same_group && sort_list_idx == a_func_list->sort_list_size)
 	    {
 	      ANALYTIC_FUNC_SET_FLAG (a_func_list, ANALYTIC_KEEP_RANK);
-	      if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (a_func_list))
-		{
-		  is_same_group = true;
-		}
-	      else
+	      if (!QPROC_ANALYTIC_IS_OFFSET_FUNCTION (a_func_list))
 		{
 		  continue;
 		}
@@ -23371,17 +23360,6 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 
 	  if (!is_same_group)
 	    {
-	      /* finalize, but do not insert into group_value_list */
-	      qdata_copy_db_value (a_func_list->value, &a_func_list->part_value);
-	      pr_clear_value (&a_func_list->part_value);
-
-	      a_func_list->curr_sort_key_tuple_count = 0;
-
-	    }
-	  else if (a_func_list->function != PT_NTILE
-		   && (!QPROC_IS_INTERPOLATION_FUNC (a_func_list) || a_func_list->option == Q_ALL))
-	    {
-
 	      if (qfile_fast_intint_tuple_to_list
 		  (thread_p, a_func_list->group_list_id, a_func_list->curr_group_tuple_count,
 		   a_func_list->curr_group_tuple_count) != NO_ERROR)
@@ -23401,6 +23379,15 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 
 	      a_func_list->curr_group_tuple_count = 0;
 	      a_func_list->curr_group_tuple_count_nn = 0;
+	      a_func_list->curr_sort_key_tuple_count = 0;
+	    }
+	  else if (a_func_list->function != PT_NTILE
+		   && (!QPROC_IS_INTERPOLATION_FUNC (a_func_list) || a_func_list->option == Q_ALL))
+	    {
+	      /* finalize, but do not insert into group_value_list */
+	      qdata_copy_db_value (a_func_list->value, &a_func_list->part_value);
+	      pr_clear_value (&a_func_list->part_value);
+
 	      a_func_list->curr_sort_key_tuple_count = 0;
 	    }
 
