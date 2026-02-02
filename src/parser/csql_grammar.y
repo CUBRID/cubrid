@@ -11647,7 +11647,6 @@ pl_language_spec
                             } else {
                                 node->info.sp_body.impl = NULL; // set later
                             }
-			    node->info.sp_body.direct = 1;
 			  }
 
 			$$ = node;
@@ -11662,7 +11661,6 @@ pl_language_spec
 			  {
 			    node->info.sp_body.lang = SP_LANG_JAVA;
 			    node->info.sp_body.decl = $4;
-			    node->info.sp_body.direct = 0;
 			  }
 
 			$$ = node;
