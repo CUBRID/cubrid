@@ -206,7 +206,7 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
       snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "?__gateway=true");
     }
 
-  conn_handle = cci_connect_with_url_ex (conn_url_gateway, user_name, password, &err_buf);
+  conn_handle = cci_connect_with_url_ex (conn_url_gateway, (char *) user_name, (char *) password, &err_buf);
   if (conn_handle < 0)
     {
       return ER_DBLINK;

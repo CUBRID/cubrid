@@ -70,7 +70,7 @@ static int global_tran_queue_head = 0;
 static int global_tran_queue_tail = 0;
 static int global_tran_queue_count = 0;
 static pthread_mutex_t global_tran_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t global_tran_queue_cond = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t global_tran_queue_cond = PTHREAD_COND_INITIALIZER;
 
 static volatile int daemon_stop_requested;
 static pthread_t daemon_thread_id;
@@ -164,13 +164,12 @@ dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DB
 
 /* Callback for dblink_global_tran_scan_for_recovery: enqueue participant data to daemon */
 static bool
-dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data, OID * row_oid)
+dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data)
 {
   DBLINK_CONN_INFO participant;
   char state;
 
   (void) arg;
-  (void) row_oid;
 
   /* For 'P' state (before decision), use ABORT for recovery */
   if (row_data->state == DBLINK_2PC_STATE_PREPARE)

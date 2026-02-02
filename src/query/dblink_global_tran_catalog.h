@@ -68,7 +68,7 @@ extern int dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, in
  * Callback for scan: return true to continue, false to stop.
  * row_data is valid only during the callback.
  */
-typedef bool (*dblink_global_tran_scan_callback) (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data, OID * row_oid);
+typedef bool (*dblink_global_tran_scan_callback) (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data);
 
 /*
  * Scan _db_global_tran rows where state is 'A' or 'C' (for recovery).
