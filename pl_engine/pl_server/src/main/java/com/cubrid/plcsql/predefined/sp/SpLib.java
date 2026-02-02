@@ -2256,11 +2256,6 @@ public class SpLib {
         int precision = p1 + p2;
         int scale = s1 + s2;
 
-        if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
-            scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
-            precision = NumericValue.DB_MAX_NUMERIC_PRECISION;
-        }
-
         BigDecimal ret =
                 l.multiply(r, new MathContext(precision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
@@ -2624,11 +2619,6 @@ public class SpLib {
         int precision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2);
         int scale = Math.max(s1, s2);
 
-        if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
-            scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
-            precision = NumericValue.DB_MAX_NUMERIC_PRECISION;
-        }
-
         BigDecimal ret =
                 l.add(r, new MathContext(precision, RoundingMode.HALF_UP))
                         .setScale(scale, RoundingMode.HALF_UP);
@@ -2827,11 +2817,6 @@ public class SpLib {
 
         int precision = Math.max(p1 - s1, p2 - s2) + Math.max(s1, s2);
         int scale = Math.max(s1, s2);
-
-        if (precision > NumericValue.DB_MAX_NUMERIC_PRECISION) {
-            scale -= (precision - NumericValue.DB_MAX_NUMERIC_PRECISION);
-            precision = NumericValue.DB_MAX_NUMERIC_PRECISION;
-        }
 
         BigDecimal ret =
                 l.subtract(r, new MathContext(precision, RoundingMode.HALF_UP))
