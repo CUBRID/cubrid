@@ -184,9 +184,9 @@ dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data
   /* Build participant info from row data */
   memset (&participant, 0, sizeof (participant));
   participant.conn_handle = row_data->bqual;
-  strncpy (participant.conn_url, row_data->conn_url, sizeof (participant.conn_url) - 1);
-  strncpy (participant.user_name, row_data->user_name, sizeof (participant.user_name) - 1);
-  strncpy (participant.password, row_data->password, sizeof (participant.password) - 1);
+  snprintf (participant.conn_url, sizeof (participant.conn_url), "%s", row_data->conn_url);
+  snprintf (participant.user_name, sizeof (participant.user_name), "%s", row_data->user_name);
+  snprintf (participant.password, sizeof (participant.password), "%s", row_data->password);
 
   /* Enqueue to daemon for processing */
   (void) dblink_2pc_daemon_enqueue (row_data->gtrid, state, 1, &participant);

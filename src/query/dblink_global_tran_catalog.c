@@ -34,7 +34,7 @@
 #include "heap_file.h"
 #include "locator_sr.h"
 #include "db.h"
-#include "dbtype_function.h"
+#include "dbtype.h"
 #include "db_date.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
