@@ -3231,6 +3231,87 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
 
 
 /*
+ * qo_can_apply_fanout () -
+ *   return: true if fanout can be applied to reduce guessed_result_cardinality for LIMIT, false otherwise
+ *   env(in):
+ *
+ * Fanout should NOT be applied when the query has:
+ * 1. ORDER BY (sort needed, cannot stop early)
+ * 2. Analytic (window functions need full partition)
+ * 3. DISTINCT (deduplication needs full result)
+ * 4. GROUP BY (aggregation needs full group)
+ * 5. Aggregate functions (scalar or with GROUP BY)
+ * 6. Window / Recursive CTE / Hierarchical Query (CONNECT BY)
+ */
+static bool
+qo_can_apply_fanout (QO_ENV * env)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE *tree;
+
+  if (env == NULL || (tree = QO_ENV_PT_TREE (env)) == NULL)
+    {
+      return false;
+    }
+
+  parser = QO_ENV_PARSER (env);
+  if (parser == NULL)
+    {
+      return false;
+    }
+
+  /* Only PT_SELECT has group_by, connect_by in q.select */
+  if (tree->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  /* 1. ORDER BY */
+  if (tree->info.query.order_by != NULL)
+    {
+      return false;
+    }
+
+  /* 2. Analytic (Window functions) */
+  if (pt_has_analytic (parser, tree))
+    {
+      return false;
+    }
+
+  /* 3. DISTINCT */
+  if (tree->info.query.all_distinct == PT_DISTINCT)
+    {
+      return false;
+    }
+
+  /* 4. GROUP BY */
+  if (tree->info.query.q.select.group_by != NULL)
+    {
+      return false;
+    }
+
+  /* 5. Aggregate functions */
+  if (pt_has_aggregate (parser, tree))
+    {
+      return false;
+    }
+
+  /* 6. Hierarchical Query (CONNECT BY) */
+  if (tree->info.query.q.select.connect_by != NULL)
+    {
+      return false;
+    }
+
+  /* 6. Recursive CTE */
+  if (tree->info.query.with != NULL && tree->info.query.with->info.with_clause.recursive != 0)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * qo_nljoin_cost () -
  *   return:
  *   planp(in):
@@ -3274,9 +3355,16 @@ qo_nljoin_cost (QO_PLAN * planp)
     }
   else if (outer->plan_type == QO_PLANTYPE_SCAN && QO_PLAN_HAS_LIMIT (planp))
     {
-      guessed_result_cardinality =
-	MAX (MIN (((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) / (outer->info)->fanout,
-		  (outer->info)->cardinality), 1.0);
+      if (qo_can_apply_fanout (planp->info->env))
+	{
+	  guessed_result_cardinality =
+	    MAX (MIN (((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) / (outer->info)->fanout,
+		      (outer->info)->cardinality), 1.0);
+	}
+      else
+	{
+	  guessed_result_cardinality = (outer->info)->cardinality;
+	}
     }
   else
     {
