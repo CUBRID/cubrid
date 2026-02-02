@@ -47,8 +47,9 @@
 #endif
 #include <pthread.h>
 
-/* Circular queue for coordinator -> daemon participant data */
-#define GLOBAL_TRAN_QUEUE_SIZE  64
+/* Initial and increment size for dynamic queue */
+#define GLOBAL_TRAN_QUEUE_INIT_SIZE  64
+#define GLOBAL_TRAN_QUEUE_GROW_SIZE  64
 
 typedef struct global_tran_queue_entry GLOBAL_TRAN_QUEUE_ENTRY;
 struct global_tran_queue_entry
@@ -59,12 +60,14 @@ struct global_tran_queue_entry
   DBLINK_CONN_INFO *participants;	/* malloc'd copy, daemon frees */
 };
 
-static GLOBAL_TRAN_QUEUE_ENTRY global_tran_queue[GLOBAL_TRAN_QUEUE_SIZE];
-static int global_tran_queue_head;
-static int global_tran_queue_tail;
-static int global_tran_queue_count;
+/* Dynamic circular queue */
+static GLOBAL_TRAN_QUEUE_ENTRY *global_tran_queue = NULL;
+static int global_tran_queue_size = 0;	/* allocated size */
+static int global_tran_queue_head = 0;
+static int global_tran_queue_tail = 0;
+static int global_tran_queue_count = 0;
 static pthread_mutex_t global_tran_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t global_tran_queue_cond = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t global_tran_queue_cond = PTHREAD_MUTEX_INITIALIZER;
 
 static volatile int daemon_stop_requested;
 static pthread_t daemon_thread_id;
@@ -76,6 +79,52 @@ global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
     {
       free_and_init (e->participants);
     }
+}
+
+/*
+ * global_tran_queue_expand - Expand queue by GLOBAL_TRAN_QUEUE_GROW_SIZE entries
+ * Must be called with mutex held.
+ * Returns: NO_ERROR on success, ER_OUT_OF_VIRTUAL_MEMORY on failure.
+ */
+static int
+global_tran_queue_expand (void)
+{
+  GLOBAL_TRAN_QUEUE_ENTRY *new_queue;
+  int new_size;
+  int i, j;
+
+  new_size = global_tran_queue_size + GLOBAL_TRAN_QUEUE_GROW_SIZE;
+  new_queue = (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (new_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+  if (new_queue == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* Copy existing entries to new queue (linearize circular buffer) */
+  for (i = 0, j = global_tran_queue_head; i < global_tran_queue_count; i++)
+    {
+      new_queue[i] = global_tran_queue[j];
+      j = (j + 1) % global_tran_queue_size;
+    }
+
+  /* Initialize remaining entries */
+  for (i = global_tran_queue_count; i < new_size; i++)
+    {
+      memset (&new_queue[i], 0, sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+    }
+
+  /* Free old queue and update pointers */
+  if (global_tran_queue != NULL)
+    {
+      free (global_tran_queue);
+    }
+
+  global_tran_queue = new_queue;
+  global_tran_queue_size = new_size;
+  global_tran_queue_head = 0;
+  global_tran_queue_tail = global_tran_queue_count;
+
+  return NO_ERROR;
 }
 
 /*
@@ -203,7 +252,7 @@ dblink_2pc_daemon_thread (void *arg)
       /* Dequeue one entry */
       e = global_tran_queue[global_tran_queue_head];
       global_tran_queue[global_tran_queue_head].participants = NULL;
-      global_tran_queue_head = (global_tran_queue_head + 1) % GLOBAL_TRAN_QUEUE_SIZE;
+      global_tran_queue_head = (global_tran_queue_head + 1) % global_tran_queue_size;
       global_tran_queue_count--;
       pthread_mutex_unlock (&global_tran_queue_mutex);
 
@@ -240,21 +289,28 @@ dblink_2pc_daemon_thread (void *arg)
 	{
 	  /* Error: re-enqueue for retry */
 	  pthread_mutex_lock (&global_tran_queue_mutex);
-	  if (global_tran_queue_count < GLOBAL_TRAN_QUEUE_SIZE)
+
+	  /* Expand queue if full */
+	  if (global_tran_queue_count >= global_tran_queue_size)
 	    {
-	      int tail_next = global_tran_queue_tail;
-	      global_tran_queue[tail_next].gtrid = e.gtrid;
-	      global_tran_queue[tail_next].state = send_state;
-	      global_tran_queue[tail_next].num_participants = e.num_participants;
-	      global_tran_queue[tail_next].participants = e.participants;	/* transfer ownership */
-	      global_tran_queue_tail = (global_tran_queue_tail + 1) % GLOBAL_TRAN_QUEUE_SIZE;
-	      global_tran_queue_count++;
+	      if (global_tran_queue_expand () != NO_ERROR)
+		{
+		  /* Failed to expand, free entry (will be recovered on next restart) */
+		  pthread_mutex_unlock (&global_tran_queue_mutex);
+		  global_tran_queue_entry_free (&e);
+		  sleep (1);
+		  continue;
+		}
 	    }
-	  else
-	    {
-	      /* Queue full, free entry (will be recovered on next restart) */
-	      global_tran_queue_entry_free (&e);
-	    }
+
+	  /* Enqueue for retry */
+	  global_tran_queue[global_tran_queue_tail].gtrid = e.gtrid;
+	  global_tran_queue[global_tran_queue_tail].state = send_state;
+	  global_tran_queue[global_tran_queue_tail].num_participants = e.num_participants;
+	  global_tran_queue[global_tran_queue_tail].participants = e.participants;	/* transfer ownership */
+	  global_tran_queue_tail = (global_tran_queue_tail + 1) % global_tran_queue_size;
+	  global_tran_queue_count++;
+
 	  pthread_mutex_unlock (&global_tran_queue_mutex);
 
 	  /* Wait a bit before retry */
@@ -268,7 +324,6 @@ dblink_2pc_daemon_thread (void *arg)
 int
 dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *block_particps_ids)
 {
-  int tail_next;
   size_t block_size;
   DBLINK_CONN_INFO *copy;
 
@@ -287,19 +342,22 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
 
   pthread_mutex_lock (&global_tran_queue_mutex);
 
-  if (global_tran_queue_count >= GLOBAL_TRAN_QUEUE_SIZE)
+  /* Expand queue if full */
+  if (global_tran_queue_count >= global_tran_queue_size)
     {
-      pthread_mutex_unlock (&global_tran_queue_mutex);
-      free_and_init (copy);
-      return ER_FAILED;
+      if (global_tran_queue_expand () != NO_ERROR)
+	{
+	  pthread_mutex_unlock (&global_tran_queue_mutex);
+	  free_and_init (copy);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
     }
 
-  tail_next = global_tran_queue_tail;
-  global_tran_queue[tail_next].gtrid = gtrid;
-  global_tran_queue[tail_next].state = state;
-  global_tran_queue[tail_next].num_participants = num_participants;
-  global_tran_queue[tail_next].participants = copy;
-  global_tran_queue_tail = (global_tran_queue_tail + 1) % GLOBAL_TRAN_QUEUE_SIZE;
+  global_tran_queue[global_tran_queue_tail].gtrid = gtrid;
+  global_tran_queue[global_tran_queue_tail].state = state;
+  global_tran_queue[global_tran_queue_tail].num_participants = num_participants;
+  global_tran_queue[global_tran_queue_tail].participants = copy;
+  global_tran_queue_tail = (global_tran_queue_tail + 1) % global_tran_queue_size;
   global_tran_queue_count++;
 
   pthread_cond_signal (&global_tran_queue_cond);
@@ -315,6 +373,15 @@ dblink_2pc_daemon_start (void)
   global_tran_queue_head = 0;
   global_tran_queue_tail = 0;
   global_tran_queue_count = 0;
+  global_tran_queue_size = 0;
+
+  /* Allocate initial queue */
+  global_tran_queue = (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+  if (global_tran_queue != NULL)
+    {
+      global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
+      memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+    }
 
   if (pthread_create (&daemon_thread_id, NULL, dblink_2pc_daemon_thread, NULL) != 0)
     {
@@ -325,9 +392,26 @@ dblink_2pc_daemon_start (void)
 void
 dblink_2pc_daemon_stop (void)
 {
+  int i;
+
   daemon_stop_requested = 1;
   pthread_cond_signal (&global_tran_queue_cond);
   pthread_join (daemon_thread_id, NULL);
+
+  /* Free remaining queue entries */
+  if (global_tran_queue != NULL)
+    {
+      for (i = 0; i < global_tran_queue_size; i++)
+	{
+	  global_tran_queue_entry_free (&global_tran_queue[i]);
+	}
+      free (global_tran_queue);
+      global_tran_queue = NULL;
+    }
+  global_tran_queue_size = 0;
+  global_tran_queue_head = 0;
+  global_tran_queue_tail = 0;
+  global_tran_queue_count = 0;
 }
 
 #endif /* CCI_XA */
