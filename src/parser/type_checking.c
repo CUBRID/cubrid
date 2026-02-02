@@ -19646,8 +19646,6 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
   bool always_true = false;
   PT_NODE *result = expr;
   double dtmp;
-  bool is_float_numeric = false;
-  int scale = 0;
 
   /* we can't determine anything if the types are the same */
   if (lhs_type == rhs_type)
@@ -19706,8 +19704,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), db_get_numeric_scale (rhs_val, NULL), &dtmp);
 	  if (dtmp > DB_INT16_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_INT16_MIN)
@@ -19751,8 +19748,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), db_get_numeric_scale (rhs_val, NULL), &dtmp);
 	  if (dtmp > DB_INT32_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_INT32_MIN)
@@ -19787,8 +19783,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), db_get_numeric_scale (rhs_val, NULL), &dtmp);
 	  if (dtmp > DB_BIGINT_MAX)
 	    lhs_less = true;
 	  else if (dtmp < DB_BIGINT_MIN)
@@ -19817,8 +19812,7 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (rhs_val, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), scale, &dtmp);
+	  numeric_coerce_num_to_double (db_locate_numeric (rhs_val), db_get_numeric_scale (rhs_val, NULL), &dtmp);
 	  if (dtmp > FLT_MAX)
 	    lhs_less = true;
 	  else if (dtmp < -(FLT_MAX))

@@ -136,7 +136,7 @@ extern unsigned int db_on_server;
  *                        Positive scale: 0 ~ 252.
  *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
  */
-#define NUMERIC_HEADER_SIZE 3
+#define NUMERIC_HEADER_SIZE (3)
 #define FLOAT_NUMERIC_SIZE (NUMERIC_HEADER_SIZE + DB_NUMERIC_BUF_SIZE)
 
 #define STR_SIZE(prec, codeset)                                             \

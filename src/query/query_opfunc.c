@@ -8946,9 +8946,8 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
 	    }
 	  else if (type == DB_TYPE_NUMERIC)
 	    {
-	      bool is_float_numeric = false;
-	      int scale = db_get_numeric_scale (f_value, &is_float_numeric);
-	      numeric_coerce_num_to_double (db_locate_numeric (f_value), scale, &d_result);
+	      numeric_coerce_num_to_double (db_locate_numeric (f_value), db_get_numeric_scale (f_value, NULL),
+					    &d_result);
 	    }
 
 	  db_make_double (result, d_result);
@@ -9140,21 +9139,14 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       break;
 
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = 0;
+      numeric_coerce_num_to_double (db_locate_numeric (f_value), db_get_numeric_scale (f_value, NULL), &d1);
+      numeric_coerce_num_to_double (db_locate_numeric (c_value), db_get_numeric_scale (c_value, NULL), &d2);
 
-	scale = db_get_numeric_scale (f_value, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (f_value), scale, &d1);
+      /* calculate */
+      d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
 
-	scale = db_get_numeric_scale (c_value, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (c_value), scale, &d2);
+      db_make_double (result, d_result);
 
-	/* calculate */
-	d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
-
-	db_make_double (result, d_result);
-      }
       break;
 
     case DB_TYPE_DATE:

@@ -77,7 +77,7 @@ public class NumericValue extends Value {
 
     public static BigDecimal adjustPrecisionScale(BigDecimal bd) {
         if (bd == null) {
-            assert (bd == null);
+            assert (false);
             return null;
         }
 

@@ -989,15 +989,21 @@ db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric)
 
   assert (value->domain.general_info.type == DB_TYPE_NUMERIC);
 
-  precision = value->domain.numeric_info.precision;
-  if (precision == DB_DEFAULT_NUMERIC_PRECISION)
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
       precision = value->data.num.header.precision;
-      *is_float_numeric = true;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = true;
+	}
     }
   else
     {
-      *is_float_numeric = false;
+      precision = value->domain.numeric_info.precision;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = false;
+	}
     }
 
   return precision;
@@ -1027,12 +1033,18 @@ db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric)
   if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
       scale = value->data.num.header.scale;
-      *is_float_numeric = true;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = true;
+	}
     }
   else
     {
       scale = value->domain.numeric_info.scale;
-      *is_float_numeric = false;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = false;
+	}
     }
 
   return scale;
@@ -1057,17 +1069,23 @@ db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, 
 {
   assert (value && value->domain.general_info.type == DB_TYPE_NUMERIC);
 
-  *precision_ptr = value->domain.numeric_info.precision;
-  if (*precision_ptr == DB_DEFAULT_NUMERIC_PRECISION)
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
       *precision_ptr = value->data.num.header.precision;
       *scale_ptr = value->data.num.header.scale;
-      *is_float_numeric_ptr = true;
+      if (is_float_numeric_ptr != NULL)
+	{
+	  *is_float_numeric_ptr = true;
+	}
     }
   else
     {
+      *precision_ptr = value->domain.numeric_info.precision;
       *scale_ptr = value->domain.numeric_info.scale;
-      *is_float_numeric_ptr = false;
+      if (is_float_numeric_ptr != NULL)
+	{
+	  *is_float_numeric_ptr = false;
+	}
     }
 }
 

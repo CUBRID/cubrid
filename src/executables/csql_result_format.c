@@ -914,8 +914,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
    * Allocate string length based on precision plus the commas plus a
    * character for each of the sign, decimal point, and NULL terminator.
    */
-  bool is_float_numeric = false;
-  db_get_numeric_precision_and_scale (value, &prec, &scale, &is_float_numeric);
+  db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
 
   /* 
    * Guard: if formatted length > max_length-1, return "NUM OVERFLOW".

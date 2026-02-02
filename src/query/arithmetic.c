@@ -136,9 +136,8 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	bool is_float_numeric = false;
 	int p = 0, s = 0;
-	db_get_numeric_precision_and_scale (value, &p, &s, &is_float_numeric);
+	db_get_numeric_precision_and_scale (value, &p, &s, NULL);
 
 	if (s)
 	  {
@@ -304,9 +303,8 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	bool is_float_numeric = false;
 	int p = 0, s = 0;
-	db_get_numeric_precision_and_scale (value, &p, &s, &is_float_numeric);
+	db_get_numeric_precision_and_scale (value, &p, &s, NULL);
 
 	if (s)
 	  {
@@ -524,23 +522,19 @@ db_sign_dbval (DB_VALUE * result, DB_VALUE * value)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (value), scale, &dtmp);
-	if (dtmp == 0)
-	  {
-	    db_make_int (result, 0);
-	  }
-	else if (dtmp < 0)
-	  {
-	    db_make_int (result, -1);
-	  }
-	else
-	  {
-	    db_make_int (result, 1);
-	  }
-      }
+      numeric_coerce_num_to_double (db_locate_numeric (value), db_get_numeric_scale (value, NULL), &dtmp);
+      if (dtmp == 0)
+	{
+	  db_make_int (result, 0);
+	}
+      else if (dtmp < 0)
+	{
+	  db_make_int (result, -1);
+	}
+      else
+	{
+	  db_make_int (result, 1);
+	}
       break;
     case DB_TYPE_MONETARY:
       dtmp = (db_get_monetary (value))->amount;
@@ -707,12 +701,8 @@ db_exp_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = exp (d);
       break;
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (value), scale, &d);
-	dtmp = exp (d);
-      }
+      numeric_coerce_num_to_double (db_locate_numeric (value), db_get_numeric_scale (value, NULL), &d);
+      dtmp = exp (d);
       break;
     case DB_TYPE_MONETARY:
       d = (db_get_monetary (value))->amount;
@@ -803,16 +793,12 @@ db_sqrt_dbval (DB_VALUE * result, DB_VALUE * value)
       dtmp = sqrt (d);
       break;
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (value), scale, &d);
-	if (d < 0)
-	  {
-	    goto sqrt_error;
-	  }
-	dtmp = sqrt (d);
-      }
+      numeric_coerce_num_to_double (db_locate_numeric (value), db_get_numeric_scale (value, NULL), &d);
+      if (d < 0)
+	{
+	  goto sqrt_error;
+	}
+      dtmp = sqrt (d);
       break;
     case DB_TYPE_MONETARY:
       d = (db_get_monetary (value))->amount;
@@ -1481,19 +1467,15 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value2, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
-	if (d2 == 0)
-	  {
-	    db_make_double (result, f1);
-	  }
-	else
-	  {
-	    db_make_double (result, (double) fmod ((double) f1, d2));
-	  }
-      }
+      numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
+      if (d2 == 0)
+	{
+	  db_make_double (result, f1);
+	}
+      else
+	{
+	  db_make_double (result, (double) fmod ((double) f1, d2));
+	}
       break;
     case DB_TYPE_MONETARY:
       d2 = (db_get_monetary (value2))->amount;
@@ -1626,19 +1608,15 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value2, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
-	if (d2 == 0)
-	  {
-	    db_make_double (result, d1);
-	  }
-	else
-	  {
-	    db_make_double (result, (double) fmod (d1, d2));
-	  }
-      }
+      numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
+      if (d2 == 0)
+	{
+	  db_make_double (result, d1);
+	}
+      else
+	{
+	  db_make_double (result, (double) fmod (d1, d2));
+	}
       break;
     case DB_TYPE_MONETARY:
       d2 = (db_get_monetary (value2))->amount;
@@ -1715,6 +1693,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   DB_TYPE type1;
 #endif
   DB_TYPE type2;
+  short s2;
   int i2;
   float f2;
   double d1, d2;
@@ -1722,7 +1701,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   double dtmp;
   DB_DATA_STATUS data_stat;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
-  int p, s, s2;
+  int p, s;
   int er_status = NO_ERROR;
   DB_VALUE cast_value2;
   bool is_float_numeric = false;
@@ -1820,9 +1799,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
       break;
     case DB_TYPE_NUMERIC:
-      is_float_numeric = false;
-      s2 = db_get_numeric_scale (value2, &is_float_numeric);
-      numeric_coerce_num_to_double (db_locate_numeric (value2), s2, &d2);
+      numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
       if (d2 == 0)
 	{
 	  db_make_numeric (result, db_locate_numeric (value1), p, s, DB_NUMERIC_BUF_SIZE, is_float_numeric);
@@ -1924,11 +1901,7 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       d2 = db_get_double (value2);
       break;
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value2, &is_float_numeric);
-	numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
-      }
+      numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
       break;
     case DB_TYPE_MONETARY:
       d2 = (db_get_monetary (value2))->amount;
@@ -2361,7 +2334,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   char num_string[NUMERIC_MAX_STRING_SIZE];
   char *ptr, *end;
   int need_round = 0;
-  bool is_float_numeric = false;
   int p, s;
   DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
@@ -2518,7 +2490,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       memset (num_string, 0, sizeof (num_string));
       numeric_coerce_num_to_dec_str (db_locate_numeric (value1), num_string);
 
-      db_get_numeric_precision_and_scale (value1, &p, &s, &is_float_numeric);
+      db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
       end = num_string + strlen (num_string);
 
       if (type2 == DB_TYPE_BIGINT)
@@ -2651,8 +2623,6 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   double d1, d2;
   DB_BIGINT bi1, bi2;
   double dtmp = 0.0;
-  bool is_float_numeric = false;
-  int scale = 0;
 
   if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
     {
@@ -2714,8 +2684,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) d2) / log10 ((double) s1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (value2, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2786,8 +2755,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 ((double) d2) / log10 ((double) bi1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (value2, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2858,8 +2826,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) i1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (value2, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -2930,8 +2897,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 ((double) f1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (value2, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3002,8 +2968,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (value2, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3025,8 +2990,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
 
     case DB_TYPE_NUMERIC:
-      scale = db_get_numeric_scale (value1, &is_float_numeric);
-      numeric_coerce_num_to_double (db_locate_numeric (value1), scale, &d1);
+      numeric_coerce_num_to_double (db_locate_numeric (value1), db_get_numeric_scale (value1, NULL), &d1);
       if (d1 <= 1)
 	{
 	  goto log_error;
@@ -3075,8 +3039,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (value2, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3147,8 +3110,7 @@ db_log_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  dtmp = log10 (d2) / log10 (d1);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  scale = db_get_numeric_scale (value2, &is_float_numeric);
-	  numeric_coerce_num_to_double (db_locate_numeric (value2), scale, &d2);
+	  numeric_coerce_num_to_double (db_locate_numeric (value2), db_get_numeric_scale (value2, NULL), &d2);
 	  if (d2 <= 0)
 	    {
 	      goto log_error;
@@ -3551,13 +3513,12 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 	char num_string[NUMERIC_MAX_STRING_SIZE];
 	char *ptr, *end;
-	bool is_float_numeric = false;
 	int p, s;
 
 	memset (num_string, 0, sizeof (num_string));
 	numeric_coerce_num_to_dec_str (db_locate_numeric (value1), num_string);
 
-	db_get_numeric_precision_and_scale (value1, &p, &s, &is_float_numeric);
+	db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
 	end = num_string + strlen (num_string);
 	ptr = end - s + bi2;
 
@@ -3766,11 +3727,8 @@ get_number_dbval_as_double (double *d, const DB_VALUE * value)
       dtmp = db_get_double (value);
       break;
     case DB_TYPE_NUMERIC:
-      {
-	bool is_float_numeric = false;
-	int scale = db_get_numeric_scale (value, &is_float_numeric);
-	numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (value), scale, &dtmp);
-      }
+      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (value), db_get_numeric_scale (value, NULL),
+				    &dtmp);
       break;
     case DB_TYPE_MONETARY:
       dtmp = (db_get_monetary (value))->amount;

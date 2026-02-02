@@ -2530,7 +2530,6 @@ int
 float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec, calc_prec1, calc_prec2;
   int calc_bytes;
@@ -2559,8 +2558,8 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
-  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -2765,7 +2764,6 @@ int
 float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec, calc_prec1, calc_prec2;
   int calc_bytes;
@@ -2794,8 +2792,8 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
-  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
   calc_prec1 = prec1 - scale1;
   calc_prec2 = prec2 - scale2;
 
@@ -2978,7 +2976,6 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
 {
   int ret = NO_ERROR;
   int calc_bytes;
-  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int scale1, scale2, result_scale;
   int prec1, prec2, result_prec;
   uint8_t result_buf[DB_NUMERIC_BUF_SIZE] = { 0 };
@@ -3024,8 +3021,8 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
       return NO_ERROR;
     }
 
-  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
-  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
   result_scale = scale1 + scale2;
   result_prec = prec1 + prec2;
 
@@ -3289,7 +3286,6 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int ret = NO_ERROR;
   int result_prec;
   int result_scale;
-  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int prec1, prec2;
   int scale1, scale2;
   int calc_bytes;
@@ -3337,8 +3333,8 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
     }
 
   /* 1) compute exact precision values for mantissa calculations */
-  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
-  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
   prec1 = float_numeric_get_precision_digits (dbv1_copy, DB_NUMERIC_BUF_SIZE);
   prec2 = float_numeric_get_precision_digits (dbv2_copy, DB_NUMERIC_BUF_SIZE);
 
@@ -3540,7 +3536,6 @@ int
 numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer)
 {
   int ret = NO_ERROR;
-  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
   bool arg1_sign = false, arg2_sign = false;
   int cmp_rez = 0;
@@ -3569,8 +3564,8 @@ numeric_db_value_compare (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE
       return NO_ERROR;
     }
 
-  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, &is_float_numeric1);
-  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, &is_float_numeric2);
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
 
   dbv1_copy = (unsigned char *) db_locate_numeric (dbv1);
   dbv2_copy = (unsigned char *) db_locate_numeric (dbv2);
@@ -4252,7 +4247,6 @@ int
 float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result)
 {
   int ret = NO_ERROR;
-  bool is_float_numeric1 = false, is_float_numeric2 = false;
   int prec1 = 0, prec2 = 0, scale1 = 0, scale2 = 0;
   int calc_bytes;
   int result_prec, result_scale;
@@ -4276,8 +4270,8 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
     }
 
   /* 1) compute exact precision values for mantissa calculations */
-  db_get_numeric_precision_and_scale (value1, &prec1, &scale1, &is_float_numeric1);
-  db_get_numeric_precision_and_scale (value2, &prec2, &scale2, &is_float_numeric2);
+  db_get_numeric_precision_and_scale (value1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (value2, &prec2, &scale2, NULL);
 
   /* 2) determine common sign of the result */
   bool arg1_sign = false, arg2_sign = false, result_sign = false;
@@ -5928,8 +5922,7 @@ int
 numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_status)
 {
   int ret = NO_ERROR;
-  bool is_float_numeric = false;
-  int scale = db_get_numeric_scale (src, &is_float_numeric);
+  int scale = db_get_numeric_scale (src, NULL);
 
 
   *data_status = DATA_STATUS_OK;
@@ -6131,8 +6124,7 @@ int
 numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
-  bool is_float_numeric = false;
-  int scale = db_get_numeric_scale (src, &is_float_numeric);
+  int scale = db_get_numeric_scale (src, NULL);
 
   switch (DB_VALUE_DOMAIN_TYPE (dest))
     {
@@ -6240,8 +6232,7 @@ numeric_db_value_print (const DB_VALUE * val, char *buf)
   int temp_size;
   int i;
   bool found_first_non_zero = false;
-  bool is_float_numeric = false;
-  int scale = db_get_numeric_scale (val, &is_float_numeric);
+  int scale = db_get_numeric_scale (val, NULL);
 
   /* it should not be static because the parameter could be changed without broker restart */
   bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
