@@ -17950,7 +17950,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
 	      bool can_skip_cast = false;
 
-	      if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION && dest_scale == DB_DEFAULT_NUMERIC_SCALE)
+	      if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION)
 		{
 		  /* this handles both ATT_CHG_TYPE_NUMERIC_PREC_INCR and SM_ATTR_CHG_WITH_ROW_UPDATE cases.
 		   * For float numeric, precision must be calculated accurately from the actual value.

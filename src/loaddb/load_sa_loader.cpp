@@ -3063,7 +3063,7 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
     }
 
   CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);
-  if (precision == DB_MAX_NUMERIC_PRECISION)
+  if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
     {
       FIXED_TO_FLOAT_NUMERIC (val);
     }

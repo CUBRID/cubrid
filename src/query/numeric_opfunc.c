@@ -5237,8 +5237,7 @@ numeric_coerce_num_to_num (DB_C_NUMERIC src_num, int src_prec, int src_scale, in
     }
 
   /* Check for trivial case */
-  if ((dest_prec == DB_DEFAULT_NUMERIC_PRECISION && dest_scale == DB_DEFAULT_NUMERIC_SCALE)
-      || (src_prec <= dest_prec && src_scale == dest_scale))
+  if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION || (src_prec <= dest_prec && src_scale == dest_scale))
     {
       numeric_copy (dest_num, src_num);
       return NO_ERROR;

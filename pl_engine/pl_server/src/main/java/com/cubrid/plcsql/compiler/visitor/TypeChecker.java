@@ -196,7 +196,6 @@ public class TypeChecker extends AstVisitor<Type> {
             if (node.typeSpec.type instanceof TypeNumeric) {
                 TypeNumeric typeNumeric = (TypeNumeric) node.typeSpec.type;
                 if (typeNumeric.precision == NumericValue.DB_DEFAULT_NUMERIC_PRECISION
-                        && typeNumeric.scale == NumericValue.DB_DEFAULT_NUMERIC_SCALE
                         && valType == Type.NUMERIC_ANY
                         && (node.val instanceof ExprFloat || node.val instanceof ExprUint)) {
 

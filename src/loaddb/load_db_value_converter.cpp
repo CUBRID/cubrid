@@ -481,7 +481,7 @@ namespace cubload
 	return error_code;
       }
 
-    if (precision == DB_MAX_NUMERIC_PRECISION)
+    if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
       {
 	FIXED_TO_FLOAT_NUMERIC (val);
       }
