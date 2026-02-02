@@ -460,8 +460,11 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 
       /*
        * Start the 2PC for this coordinator
+       * NOTE: When CCI_XA is enabled, _db_global_tran handles recovery instead of LOG_2PC_START log.
        */
+#ifndef CCI_XA
       log_2pc_append_start (thread_p, tdes);
+#endif
 
       if (execute_2pc_type == LOG_2PC_EXECUTE_FULL)
 	{
@@ -483,20 +486,36 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       {
 	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
 	int i;
-	/* Persist participant rows to _db_global_tran (state 'P') before prepare */
+	/* Persist participant rows to _db_global_tran (state 'P') before prepare, using server transaction */
+	log_sysop_start (thread_p);
 	for (i = 0; i < tdes->coord->num_particps; i++)
 	  {
 	    (void) dblink_global_tran_insert_row (thread_p, tdes->gtrid, participants[i].conn_handle,
 						  participants[i].conn_url, participants[i].user_name,
 						  participants[i].password, DBLINK_2PC_STATE_PREPARE);
 	  }
-	/* Enqueue participant data to daemon for recovery path */
-	(void) dblink_2pc_daemon_enqueue (tdes->gtrid, DBLINK_2PC_STATE_PREPARE,
-					 tdes->coord->num_particps, tdes->coord->block_particps_ids);
+	log_sysop_commit (thread_p);
       }
 #endif
       *decision =
 	log_2pc_send_prepare (thread_p, tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
+#ifdef CCI_XA
+      {
+	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
+	int i;
+	char new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
+	/* Update _db_global_tran state based on decision, using server transaction */
+	log_sysop_start (thread_p);
+	for (i = 0; i < tdes->coord->num_particps; i++)
+	  {
+	    (void) dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
+	  }
+	log_sysop_commit (thread_p);
+	/* Enqueue participant data to daemon for recovery path */
+	(void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state,
+					  tdes->coord->num_particps, tdes->coord->block_particps_ids);
+      }
+#endif
     }
   else
     {
@@ -550,21 +569,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
       (void) log_commit_local (thread_p, tdes, false, false);
 
       tdes->state = state;	/* Revert to 2PC state... */
-#ifdef CCI_XA
-      {
-	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-	int i;
-	/* Update _db_global_tran state to 'C' for each participant */
-	for (i = 0; i < tdes->coord->num_particps; i++)
-	  {
-	    (void) dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle,
-						   DBLINK_2PC_STATE_COMMIT);
-	  }
-	/* Enqueue to daemon for sending decision and recovery path */
-	(void) dblink_2pc_daemon_enqueue (tdes->gtrid, DBLINK_2PC_STATE_COMMIT,
-					  tdes->coord->num_particps, tdes->coord->block_particps_ids);
-      }
-#endif
+      /* _db_global_tran update and enqueue already done in first_phase */
       /*
        * If the following function fails, the transaction will be dangling
        * and we need to retry sending the decision at another point.
@@ -628,19 +633,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	   * and we need to retry sending the decision at another point.
 	   * We have already decided and log the decision in the log file.
 	   */
-#ifdef CCI_XA
-	  {
-	    DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-	    int i;
-	    for (i = 0; i < tdes->coord->num_particps; i++)
-	      {
-		(void) dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle,
-							DBLINK_2PC_STATE_ABORT);
-	      }
-	    (void) dblink_2pc_daemon_enqueue (tdes->gtrid, DBLINK_2PC_STATE_ABORT,
-					     tdes->coord->num_particps, tdes->coord->block_particps_ids);
-	  }
-#endif
+	  /* _db_global_tran update and enqueue already done in first_phase */
 	  (void) log_2pc_send_abort_decision (thread_p, tdes->gtrid, tdes->coord->num_particps,
 					      tdes->coord->block_particps_ids);
 	}
@@ -656,20 +649,7 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 	   * and we need to retry sending the decision at another point.
 	   * We have already decided and log the decision in the log file.
 	   */
-#ifdef CCI_XA
-	  {
-	    DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-	    int i;
-	    for (i = 0; i < tdes->coord->num_particps; i++)
-	      {
-		(void) dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle,
-							DBLINK_2PC_STATE_ABORT);
-	      }
-	    /* Enqueue to daemon for sending decision and recovery path */
-	    (void) dblink_2pc_daemon_enqueue (tdes->gtrid, DBLINK_2PC_STATE_ABORT,
-					     tdes->coord->num_particps, tdes->coord->block_particps_ids);
-	  }
-#endif
+	  /* _db_global_tran update and enqueue already done in first_phase */
 	  (void) log_2pc_send_abort_decision (thread_p, tdes->gtrid, tdes->coord->num_particps,
 					     tdes->coord->block_particps_ids);
 	}

@@ -33,6 +33,7 @@
 #include "dblink_global_tran_catalog.h"
 #include "dblink_scan.h"
 #include "error_manager.h"
+#include "log_manager.h"
 #include "memory_alloc.h"
 #include "thread_manager.hpp"
 
@@ -112,16 +113,30 @@ static bool
 dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data, OID * row_oid)
 {
   THREAD_ENTRY *thread_p = (THREAD_ENTRY *) arg;
-  bool is_commit = (row_data->state == DBLINK_2PC_STATE_COMMIT);
+  bool is_commit;
   int ret;
 
   (void) row_oid;
+
+  /* For 'P' state (before decision), send ABORT for recovery */
+  if (row_data->state == DBLINK_2PC_STATE_PREPARE)
+    {
+      is_commit = false;
+    }
+  else
+    {
+      is_commit = (row_data->state == DBLINK_2PC_STATE_COMMIT);
+    }
+
   ret = dblink_2pc_send_decision_one_participant (row_data->gtrid, row_data->bqual,
 						   row_data->conn_url, row_data->user_name,
 						   row_data->password, is_commit);
   if (ret == NO_ERROR)
     {
+      /* Delete row using server transaction */
+      log_sysop_start (thread_p);
       (void) dblink_global_tran_delete_row (thread_p, row_data->gtrid, row_data->bqual);
+      log_sysop_commit (thread_p);
     }
   return true;		/* continue to next row */
 }
@@ -182,7 +197,8 @@ dblink_2pc_daemon_thread (void *arg)
 
       if (e.state == DBLINK_2PC_STATE_PREPARE)
 	{
-	  dblink_2pc_daemon_insert_global_tran_prepare (e.gtrid, e.num_participants, e.participants);
+	  /* PREPARE state before decision: send ABORT for recovery */
+	  dblink_2pc_daemon_send_decision (e.gtrid, DBLINK_2PC_STATE_ABORT, e.num_participants, e.participants);
 	}
       else if (e.state == DBLINK_2PC_STATE_ABORT || e.state == DBLINK_2PC_STATE_COMMIT)
 	{

@@ -26,6 +26,7 @@
 #ifdef CCI_XA
 
 #include "config.h"
+#include "dblink_2pc_daemon.h"
 #include "dblink_global_tran_catalog.h"
 #include "schema_system_catalog_constants.h"
 #include "xserver_interface.h"
@@ -508,7 +509,9 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
 	      break;
 	    }
 	}
-      if (row.state == 'A' || row.state == 'C')
+      /* Include 'P' (Prepare), 'A' (Abort), 'C' (Commit) states for recovery */
+      if (row.state == DBLINK_2PC_STATE_PREPARE || row.state == DBLINK_2PC_STATE_ABORT
+	  || row.state == DBLINK_2PC_STATE_COMMIT)
 	{
 	  if (!(*callback) (arg, &row, &inst_oid))
 	    {
