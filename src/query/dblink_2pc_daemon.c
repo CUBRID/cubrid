@@ -85,6 +85,11 @@ global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
  * global_tran_queue_expand - Expand queue by GLOBAL_TRAN_QUEUE_GROW_SIZE entries
  * Must be called with mutex held.
  * Returns: NO_ERROR on success, ER_OUT_OF_VIRTUAL_MEMORY on failure.
+ *
+ * Note: We use malloc + copy instead of realloc because the circular buffer
+ * may have wrapped around (head > tail). In this case, we need to linearize
+ * the data anyway, so realloc would not save any copying. This approach also
+ * resets head to 0, making subsequent accesses more cache-friendly.
  */
 static int
 global_tran_queue_expand (void)
@@ -125,18 +130,6 @@ global_tran_queue_expand (void)
   global_tran_queue_tail = global_tran_queue_count;
 
   return NO_ERROR;
-}
-
-/*
- * Insert into _db_global_tran (state 'P') is done by coordinator (log_2pc.c) before enqueue.
- * Daemon only needs to process queue; no catalog access in daemon thread (no THREAD_ENTRY).
- */
-static void
-dblink_2pc_daemon_insert_global_tran_prepare (int gtrid, int num_participants, DBLINK_CONN_INFO * participants)
-{
-  (void) gtrid;
-  (void) num_participants;
-  (void) participants;
 }
 
 /*
