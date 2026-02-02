@@ -47,6 +47,9 @@
 #endif
 #include <pthread.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* Initial and increment size for dynamic queue */
 #define GLOBAL_TRAN_QUEUE_INIT_SIZE  64
 #define GLOBAL_TRAN_QUEUE_GROW_SIZE  64

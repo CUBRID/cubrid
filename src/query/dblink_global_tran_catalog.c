@@ -45,6 +45,9 @@
 #include <string.h>
 #include <time.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* _db_global_tran column order: gtrid(0), bqual(1), conn_url(2), user(3), password(4), state(5), created_date(6), updated_date(7) */
 #define GLOBAL_TRAN_NUM_ATTRS  8
 #define GLOBAL_TRAN_ATTR_GTRID    0
