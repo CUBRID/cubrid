@@ -101,6 +101,11 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#ifdef CCI_XA
+#include "dblink_2pc_daemon.h"
+#endif /* CCI_XA */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -3062,6 +3067,10 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   // log entry
   // hopefully, nothing else follows
   vacuum_stop_master (thread_p);
+
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif /* CCI_XA */
 
 #if defined(SERVER_MODE)
   pgbuf_daemons_destroy ();

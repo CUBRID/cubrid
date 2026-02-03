@@ -74,6 +74,7 @@ static pthread_cond_t global_tran_queue_cond = PTHREAD_COND_INITIALIZER;
 
 static volatile int daemon_stop_requested;
 static pthread_t daemon_thread_id;
+static bool daemon_thread_started = false;
 
 static void
 global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
@@ -326,6 +327,10 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
     {
       return ER_FAILED;
     }
+  if (global_tran_queue == NULL)
+    {
+      return ER_FAILED;		/* daemon not started (e.g. start failed) */
+    }
 
   block_size = (size_t) num_participants *sizeof (DBLINK_CONN_INFO);
   copy = (DBLINK_CONN_INFO *) malloc (block_size);
@@ -361,28 +366,39 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
   return NO_ERROR;
 }
 
-void
+int
 dblink_2pc_daemon_start (void)
 {
+  int err;
+
   daemon_stop_requested = 0;
+  daemon_thread_started = false;
   global_tran_queue_head = 0;
   global_tran_queue_tail = 0;
   global_tran_queue_count = 0;
   global_tran_queue_size = 0;
+  global_tran_queue = NULL;
 
-  /* Allocate initial queue */
+  /* Allocate initial queue before creating thread; avoid daemon accessing NULL queue */
   global_tran_queue =
     (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
-  if (global_tran_queue != NULL)
+  if (global_tran_queue == NULL)
     {
-      global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
-      memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
+  memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
 
-  if (pthread_create (&daemon_thread_id, NULL, dblink_2pc_daemon_thread, NULL) != 0)
+  err = pthread_create (&daemon_thread_id, NULL, dblink_2pc_daemon_thread, NULL);
+  if (err != 0)
     {
-      assert (false);
+      free (global_tran_queue);
+      global_tran_queue = NULL;
+      global_tran_queue_size = 0;
+      return ER_FAILED;
     }
+  daemon_thread_started = true;
+  return NO_ERROR;
 }
 
 void
@@ -391,8 +407,12 @@ dblink_2pc_daemon_stop (void)
   int i;
 
   daemon_stop_requested = 1;
-  pthread_cond_signal (&global_tran_queue_cond);
-  pthread_join (daemon_thread_id, NULL);
+  if (daemon_thread_started)
+    {
+      pthread_cond_signal (&global_tran_queue_cond);
+      pthread_join (daemon_thread_id, NULL);
+      daemon_thread_started = false;
+    }
 
   /* Free remaining queue entries */
   if (global_tran_queue != NULL)

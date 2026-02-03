@@ -486,13 +486,19 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       {
 	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
 	int i;
+	int error_code;
 	/* Persist participant rows to _db_global_tran (state 'P') before prepare, using server transaction */
 	log_sysop_start (thread_p);
 	for (i = 0; i < tdes->coord->num_particps; i++)
 	  {
-	    (void) dblink_global_tran_insert_row (thread_p, tdes->gtrid, participants[i].conn_handle,
-						  participants[i].conn_url, participants[i].user_name,
-						  participants[i].password, DBLINK_2PC_STATE_PREPARE);
+	    error_code = dblink_global_tran_insert_row (thread_p, tdes->gtrid, participants[i].conn_handle,
+							participants[i].conn_url, participants[i].user_name,
+							participants[i].password, DBLINK_2PC_STATE_PREPARE);
+	    if (error_code != NO_ERROR)
+	      {
+		log_sysop_abort (thread_p);
+		return error_code;
+	      }
 	  }
 	log_sysop_commit (thread_p);
       }
@@ -503,23 +509,39 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       {
 	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
 	int i;
+	int error_code;
+	TRAN_STATE state;
 	char new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
 
-	/* First perform local commit/abort before updating _db_global_tran */
+	/* First perform local commit/abort before updating _db_global_tran; on failure return error without catalog update */
 	if (*decision)
 	  {
-	    (void) log_commit_local (thread_p, tdes, false, false);
+	    state = log_commit_local (thread_p, tdes, false, false);
+	    if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
+	      {
+		return ER_FAILED;
+	      }
 	  }
 	else
 	  {
-	    (void) log_abort_local (thread_p, tdes, false);
+	    state = log_abort_local (thread_p, tdes, false);
+	    if (state != TRAN_UNACTIVE_ABORTED)
+	      {
+		return ER_FAILED;
+	      }
 	  }
 
 	/* Update _db_global_tran state based on decision, using server transaction */
 	log_sysop_start (thread_p);
 	for (i = 0; i < tdes->coord->num_particps; i++)
 	  {
-	    (void) dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
+	    error_code =
+	      dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
+	    if (error_code != NO_ERROR)
+	      {
+		log_sysop_abort (thread_p);
+		return error_code;
+	      }
 	  }
 	log_sysop_commit (thread_p);
 	/* Enqueue participant data to daemon for recovery path */
@@ -2250,20 +2272,8 @@ log_2pc_recovery_abort_decision (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
    * If the following function fails, the transaction will be dangling and we
    * need to retry sending the decision at another point.
    * We have already decided and log the decision in the log file.
+   * Note: In CCI_XA, recovery is done via _db_global_tran catalog; this function is not called.
    */
-#ifdef CCI_XA
-  {
-    DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-    int i;
-    for (i = 0; i < tdes->coord->num_particps; i++)
-      {
-	(void) dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle,
-						DBLINK_2PC_STATE_ABORT);
-      }
-    (void) dblink_2pc_daemon_enqueue (tdes->gtrid, DBLINK_2PC_STATE_ABORT,
-				      tdes->coord->num_particps, tdes->coord->block_particps_ids);
-  }
-#endif
   (void) log_2pc_send_abort_decision (thread_p, tdes->gtrid, tdes->coord->num_particps,
 				      tdes->coord->block_particps_ids);
   /* Check if all the acknowledgements have been received */
@@ -2350,20 +2360,8 @@ log_2pc_recovery_aborted_informing_participants (THREAD_ENTRY * thread_p, LOG_TD
    * dangling and we need to retry sending the decision at another
    * point.
    * We have already decided and log the decision in the log file.
+   * Note: In CCI_XA, recovery is done via _db_global_tran catalog; catalog update is not done here.
    */
-#ifdef CCI_XA
-  {
-    DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-    int i;
-    for (i = 0; i < tdes->coord->num_particps; i++)
-      {
-	(void) dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle,
-						DBLINK_2PC_STATE_ABORT);
-      }
-    (void) dblink_2pc_daemon_enqueue (tdes->gtrid, DBLINK_2PC_STATE_ABORT,
-				      tdes->coord->num_particps, tdes->coord->block_particps_ids);
-  }
-#endif
   (void) log_2pc_send_abort_decision (thread_p, tdes->gtrid, tdes->coord->num_particps,
 				      tdes->coord->block_particps_ids);
   (void) log_complete_for_2pc (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID);
@@ -2403,15 +2401,21 @@ log_2pc_recovery (THREAD_ENTRY * thread_p)
       switch (tdes->state)
 	{
 	case TRAN_UNACTIVE_2PC_COLLECTING_PARTICIPANT_VOTES:
+#ifndef CCI_XA
 	  log_2pc_recovery_collecting_participant_votes (thread_p, tdes);
+#endif
 	  break;
 
 	case TRAN_UNACTIVE_2PC_ABORT_DECISION:
+#ifndef CCI_XA
 	  log_2pc_recovery_abort_decision (thread_p, tdes);
+#endif
 	  break;
 
 	case TRAN_UNACTIVE_2PC_COMMIT_DECISION:
+#ifndef CCI_XA
 	  log_2pc_recovery_commit_decision (thread_p, tdes);
+#endif
 	  break;
 
 	case TRAN_UNACTIVE_WILL_COMMIT:
