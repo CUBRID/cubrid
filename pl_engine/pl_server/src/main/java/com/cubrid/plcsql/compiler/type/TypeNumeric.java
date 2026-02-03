@@ -40,13 +40,14 @@ public class TypeNumeric extends Type {
     /*
      * unique key formula: precision * KEY_MULTIPLIER + scale
      *
-     * scale range: MIN(-214) ~ MAX(252), total span = 466
-     * for two different (p1,s1) and (p2,s2) to collide: (p1-p2) * M = s2-s1
-     *
-     * since |s2-s1| <= 466 and |p1-p2| >= 1,
-     * if M > 466, then |p1-p2| * M > 466 >= |s2-s1|
-     * -> collision impossible
-     *
+     * scale range: MIN(-214) ~ MAX(252), total span = 466 
+     * For two (precision, scale) pairs, (p1, s1) and (p2, s2) which have the same key,
+     * p1 * M + s1 = p2 * M + s2
+     * (p1 - p2) * M = (s2 - s1)
+     * Since | s2 - s1 | is a multiple of M (500) and is less than or equal to 466,
+     * (s2 - s1)  can only be zero and so is (p1 - p2). That is, p1 = p2 and s1 = s2.
+     * Therefore, two different (precision, scale) pairs cannot have the same key.
+     * 
      * using 500 for safety margin.
      *
      * Note: simple integer arithmetic is chosen over alternatives

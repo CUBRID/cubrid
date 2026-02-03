@@ -1068,6 +1068,8 @@ db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, 
 				    bool * is_float_numeric_ptr)
 {
   assert (value && value->domain.general_info.type == DB_TYPE_NUMERIC);
+  assert (precision_ptr);
+  assert (scale_ptr);
 
   if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
     {
