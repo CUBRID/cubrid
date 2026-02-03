@@ -75,6 +75,34 @@ public class NumericValue extends Value {
         this.dbType = DBType.DB_NUMERIC;
     }
 
+    public static class PrecisionScale {
+        public final int precision;
+        public final int scale;
+
+        public PrecisionScale(int precision, int scale) {
+            this.precision = precision;
+            this.scale = scale;
+        }
+    }
+
+    public static PrecisionScale calculatePrecisionScale(String valStr) {
+        if (valStr == null) {
+            assert (false);
+            return null;
+        }
+
+        BigDecimal bd = new BigDecimal(valStr);
+        int precision = bd.precision();
+        int scale = bd.scale();
+
+        if (precision > DB_MAX_NUMERIC_PRECISION) {
+            scale -= (precision - DB_MAX_NUMERIC_PRECISION);
+            precision = DB_MAX_NUMERIC_PRECISION;
+        }
+
+        return new PrecisionScale(precision, scale);
+    }
+
     public static BigDecimal adjustPrecisionScale(BigDecimal bd) {
         if (bd == null) {
             assert (false);

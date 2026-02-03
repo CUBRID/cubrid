@@ -33,7 +33,6 @@ package com.cubrid.plcsql.compiler.visitor;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.ColumnInfo;
 import com.cubrid.jsp.data.Dependency;
-import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.compiler.Coercion;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.DBTypeAdapter;
@@ -51,9 +50,7 @@ import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.compiler.type.TypeChar;
-import com.cubrid.plcsql.compiler.type.TypeNumeric;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -191,38 +188,6 @@ public class TypeChecker extends AstVisitor<Type> {
                 throw new SemanticError(
                         Misc.getLineColumnOf(node.val.ctx), // s204
                         "NOT NULL variables may not have null as their initial value");
-            }
-
-            if (node.typeSpec.type instanceof TypeNumeric) {
-                TypeNumeric typeNumeric = (TypeNumeric) node.typeSpec.type;
-                if (typeNumeric.precision == NumericValue.DB_DEFAULT_NUMERIC_PRECISION
-                        && valType == Type.NUMERIC_ANY
-                        && (node.val instanceof ExprFloat || node.val instanceof ExprUint)) {
-
-                    String valStr =
-                            node.val instanceof ExprFloat
-                                    ? ((ExprFloat) node.val).val
-                                    : ((ExprUint) node.val).val;
-
-                    if (valStr == null) {
-                        assert false : "literal value should not be null";
-                        return null;
-                    }
-
-                    BigDecimal bd = new BigDecimal(valStr);
-                    bd = NumericValue.adjustPrecisionScale(bd);
-                    if (bd == null) {
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(node.val.ctx),
-                                "data overflow on data type NUMERIC: " + valStr);
-                    }
-                    int actualPrecision = bd.precision();
-                    int actualScale = bd.scale();
-
-                    TypeNumeric newType =
-                            TypeNumeric.getInstance(iStore, actualPrecision, (short) actualScale);
-                    node.typeSpec.type = newType;
-                }
             }
 
             Coercion c = Coercion.getCoercion(iStore, valType, node.typeSpec.type);

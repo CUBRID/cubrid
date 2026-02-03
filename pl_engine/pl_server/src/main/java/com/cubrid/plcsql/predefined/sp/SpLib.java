@@ -4728,8 +4728,8 @@ public class SpLib {
             if (r instanceof Boolean) {
                 // not applicable
             } else if (r instanceof String) {
-                // numeric
-                return opAdd((BigDecimal) l, convStringToNumeric((String) r));
+                // double
+                return opAdd(convNumericToDouble((BigDecimal) l), convStringToDouble((String) r));
             } else if (r instanceof Short) {
                 // numeric
                 return opAdd((BigDecimal) l, convShortToNumeric((Short) r));
