@@ -41,3 +41,10 @@ bool oos_oid_queue_pop (OID *out)
   q.pop_front ();
   return true;
 }
+
+bool oos_oid_queue_push (const OID &oid)
+{
+  auto &q = oos_oid_queue ();
+  q.push_back (oid);
+  return true;
+}

@@ -26,3 +26,4 @@
 std::deque<OID> &oos_oid_queue ();
 
 bool oos_oid_queue_pop (OID *out);
+bool oos_oid_queue_push (const OID &oid);

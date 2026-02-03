@@ -5300,7 +5300,7 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       goto err;
     }
 
-  oos_oid_queue ().push_back (oos_oid);
+  error_code = oos_oid_queue_push (oos_oid);
 
 err:
   return error_code;
