@@ -784,6 +784,7 @@ namespace parallel_heap_scan
 		m_px_stats_initialized_by_me = true;
 	      }
 	  }
+	m_trace_handler.m_trace_storage_for_sibling_xasl.set_main_xasl_tree (m_xasl);
       }
     m_result_handler_read_initialized = false;
     m_task_started = false;

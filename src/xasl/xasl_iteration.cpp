@@ -21,6 +21,7 @@
 #include <sstream>
 #include "error_manager.h"
 #include "tsc_timer.h"
+#include "memoize.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -85,10 +86,10 @@ extern "C" {
 
   void xasl_merge_stats (XASL_NODE *src, XASL_NODE *dst)
   {
-    std::function<bool (XASL_NODE *)> merge_stats = [src] (XASL_NODE* dst_node) -> bool
+    std::function<bool (XASL_NODE *)> merge_stats = [dst] (XASL_NODE* src_node) -> bool
     {
-      XASL_NODE *src_node = xasl_find_by_id (src, dst_node->header.id);
-      if (src_node == nullptr)
+      XASL_NODE *dst_node = xasl_find_by_id (dst, src_node->header.id);
+      if (dst_node == nullptr)
 	{
 	  return true;
 	}
@@ -137,15 +138,29 @@ extern "C" {
       dst_node->spec_list->s_id.scan_stats.multi_range_opt = dst_node->spec_list->s_id.scan_stats.multi_range_opt ? true : src_node->spec_list->s_id.scan_stats.multi_range_opt;
       /* agl copy needed..? */
 
-      dst_node->sq_cache->stats.hit += src_node->sq_cache->stats.hit;
-      dst_node->sq_cache->stats.miss += src_node->sq_cache->stats.miss;
-      dst_node->sq_cache->size += src_node->sq_cache->size;
-      dst_node->sq_cache->size_max += src_node->sq_cache->size_max;
-      dst_node->sq_cache->enabled = dst_node->sq_cache->enabled ? true : src_node->sq_cache->enabled;
+      if (dst_node->sq_cache != nullptr && src_node->sq_cache != nullptr)
+	{
+	  dst_node->sq_cache->stats.hit += src_node->sq_cache->stats.hit;
+	  dst_node->sq_cache->stats.miss += src_node->sq_cache->stats.miss;
+	  dst_node->sq_cache->size += src_node->sq_cache->size;
+	  dst_node->sq_cache->size_max += src_node->sq_cache->size_max;
+	  dst_node->sq_cache->enabled = dst_node->sq_cache->enabled ? true : src_node->sq_cache->enabled;
+	}
+
+      if (dst_node->memoize_storage != nullptr && src_node->memoize_storage != nullptr)
+	{
+	  if (!dst_node->memoize_storage->is_disabled())
+	    {
+	      dst_node->memoize_storage->set_disabled_flag (src_node->memoize_storage->is_disabled());
+	    }
+	  dst_node->memoize_storage->hit += src_node->memoize_storage->hit;
+	  dst_node->memoize_storage->miss += src_node->memoize_storage->miss;
+	  dst_node->memoize_storage->add_size_for_merge_stats (src_node->memoize_storage->get_size_for_merge_stats ());
+	}
 
       return true;
     };
-    cubxasl::iterate_xasl_tree<bool> (dst,merge_stats,true);
+    cubxasl::iterate_xasl_tree<bool> (src,merge_stats,true);
   }
 }
 
