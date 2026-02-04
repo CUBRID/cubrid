@@ -434,15 +434,17 @@ OR_PUT_DOUBLE (char *ptr, double val)
 /* flag for variable length */
 
 #define OR_VAR_BIT_OOS 0x1
-#define OR_VAR_BIT_RESERVED 0x2
+#define OR_VAR_BIT_LAST_ELEMENT 0x2
 #define OR_VAR_FALG_MASK 0x3
 
 #define OR_SET_VAR_OOS(length) ((int) (length) | OR_VAR_BIT_OOS)
+#define OR_SET_VAR_LAST_ELEMENT(length) ((int) (length) | OR_VAR_BIT_LAST_ELEMENT)
 
 #define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FALG_MASK)
 #define OR_GET_VAR_LENGTH(length) ((int) (length) & (~OR_VAR_FALG_MASK))
 
 #define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
+#define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
 
 /* variable offset */
 

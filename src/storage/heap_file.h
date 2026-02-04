@@ -720,4 +720,10 @@ extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
 						 const std::vector<VPID> &heap_pages_array);
 // *INDENT-ON*
+
+// *INDENT-OFF*
+using oid_vector = std::vector <OID>;
+// *INDENT-ON*
+static oid_vector heap_recdes_get_oos_oids (const RECDES * record);
+
 #endif /* _HEAP_FILE_H_ */
