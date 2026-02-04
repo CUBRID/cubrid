@@ -131,7 +131,7 @@ static void *op_server_shm_open (int shm_key);
 #define GRANT_ENTRY_TYPE(index)         (index + 3)
 #endif
 
-#define DBMT_ERROR_MSG_SIZE 5000 /* this is defined in cm_job_task.h on cubridmanager */
+#define DBMT_ERROR_MSG_SIZE 5000	/* this is defined in cm_job_task.h on cubridmanager */
 #define LINE_BUF_SIZE 1024
 
 static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname);
@@ -3043,36 +3043,36 @@ error_file_to_buf (const char *err_file, char *err_buf)
     {
       memset (buf, 0, LINE_BUF_SIZE);
       if (fgets (buf, LINE_BUF_SIZE - 1, fp) == NULL)
-        {
-          break;
-        }
+	{
+	  break;
+	}
       for (i = 0; i < LINE_BUF_SIZE - 2; i++)
-        {
-          if (buf[i] == '\0')
-            {
-              if (buf[i + 1] == '\0')
-                {
-                  break;
-                }
+	{
+	  if (buf[i] == '\0')
+	    {
+	      if (buf[i + 1] == '\0')
+		{
+		  break;
+		}
 
-              buf[i] = ' ';
-            }
-        }
+	      buf[i] = ' ';
+	    }
+	}
       ut_trim (buf);
       if (buf[0] == '\0')
-        {
-          continue;
-        }
+	{
+	  continue;
+	}
 
       if ((DBMT_ERROR_MSG_SIZE - msg_size - 1) > 0)
-        {
-          strncpy (err_buf + msg_size, buf, DBMT_ERROR_MSG_SIZE - msg_size - 1);
-        }
+	{
+	  strncpy (err_buf + msg_size, buf, DBMT_ERROR_MSG_SIZE - msg_size - 1);
+	}
       else
-        {
-          break;
-        }
-        msg_size += (int) strlen (buf);
+	{
+	  break;
+	}
+	msg_size += (int) strlen (buf);
     }
 
   err_buf[DBMT_ERROR_MSG_SIZE - 1] = '\0';
