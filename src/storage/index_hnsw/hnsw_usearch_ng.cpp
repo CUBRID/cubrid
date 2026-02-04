@@ -104,16 +104,143 @@ class hnsw_usearch_ng final:public hnsw_index
 
     int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
 
+    void update_pca_online (const float *vectors, int n_vectors, int dim,
+			    bool normalize_inputs);
+
     VPID m_root_vpid;
 
     std::unique_ptr < algo_type > m_algo;
     std::unique_ptr < storage_type > m_storage;
+
+    // For PCA Reordering
+    std::vector<float> m_pca_mean;  // running mean (dimension)
+    std::vector<float> m_pca_pc1;   // running PC1 (dimension)
+    uint64_t m_pca_seen {0};        // number of samples seen (for step schedule)
+    bool m_pca_inited {false};
 
 #if defined (SERVER_MODE)
     cubthread::entry_workpool *m_worker_pool;
     size_t m_worker_pool_size;
 #endif
 };
+
+// Helper functions for vector preprocessing
+
+static inline float dot_f (const float *a, const float *b, int dim)
+{
+  float s = 0.0f;
+  for (int i = 0; i < dim; ++i)
+    {
+      s += a[i] * b[i];
+    }
+  return s;
+}
+
+static inline float l2norm_f (const float *a, int dim)
+{
+  return std::sqrt (dot_f (a, a, dim));
+}
+
+static inline void normalize_vec (std::vector<float> &v)
+{
+  float n = std::sqrt (dot_f (v.data (), v.data (), (int) v.size ()));
+  if (n > 0.0f)
+    {
+      for (auto &x : v)
+	{
+	  x /= n;
+	}
+    }
+}
+
+static inline bool is_all_zeros_f (const float *v, int dim)
+{
+  for (int i = 0; i < dim; ++i) if (v[i] != 0.0f)
+      {
+	return false;
+      }
+  return true;
+}
+
+void
+hnsw_usearch_ng::update_pca_online (const float *vectors, int n_vectors, int dim,
+				    bool normalize_inputs)
+{
+  if (m_pca_mean.empty ())
+    {
+      m_pca_mean.assign (dim, 0.0f);
+    }
+  if (m_pca_pc1.empty ())
+    {
+      m_pca_pc1.assign (dim, 0.0f);
+    }
+
+  std::vector<float> x (dim);
+  std::vector<float> centered (dim);
+
+  for (int i = 0; i < n_vectors; ++i)
+    {
+      const float *v = vectors + i * dim;
+
+      if (normalize_inputs && db_vector_is_all_zeros (v, dim))
+	{
+	  continue;
+	}
+
+      // x = v (or normalized v)
+      if (!normalize_inputs)
+	{
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      x[d] = v[d];
+	    }
+	}
+      else
+	{
+	  float n = l2norm_f (v, dim);
+	  if (n <= 0.0f)
+	    {
+	      continue;
+	    }
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      x[d] = v[d] / n;
+	    }
+	}
+
+      // centered = x - mean(prev)
+      for (int d = 0; d < dim; ++d)
+	{
+	  centered[d] = x[d] - m_pca_mean[d];
+	}
+
+      ++m_pca_seen;
+      const float inv = 1.0f / (float) m_pca_seen;
+      for (int d = 0; d < dim; ++d)
+	{
+	  m_pca_mean[d] += centered[d] * inv;
+	}
+
+      if (!m_pca_inited)
+	{
+	  m_pca_pc1 = centered;
+	  normalize_vec (m_pca_pc1);
+	  m_pca_inited = true;
+	  continue;
+	}
+
+      // Oja update: w <- w + eta * centered * (centered^T w)
+      const float eta0 = 0.2f;
+      const float eta = eta0 / std::sqrt ((float) m_pca_seen);
+
+      const float proj = dot_f (centered.data (), m_pca_pc1.data (), dim);
+      for (int d = 0; d < dim; ++d)
+	{
+	  m_pca_pc1[d] += eta * centered[d] * proj;
+	}
+      normalize_vec (m_pca_pc1);
+    }
+}
 
 // =====================================================================
 // hnsw_usearch_ng_backend
@@ -232,26 +359,86 @@ hnsw_usearch_ng::prepare_to_add (cubthread::entry *thread_p, int n_vectors, cons
 }
 
 int
-hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const float *vector)
+hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors,
+		      const OID *oid, const float *vector)
 {
+  const int dim = m_build_params.dimension;
+  const bool normalize_inputs =
+	  (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE);
 
-  // Push insert each vector insertion task to worker pool
+  // 0) Update global PC1 using this batch
+  update_pca_online (vector, n_vectors, dim, normalize_inputs);
+
+  auto is_skippable = [&] (const float *v) -> bool
+  {
+    return (normalize_inputs && db_vector_is_all_zeros (v, dim));
+  };
+
+  // 1) score + ordering by projection onto (updated) PC1
+  std::vector<std::pair<float, int>> scored;
+  scored.reserve (n_vectors);
 
   for (int i = 0; i < n_vectors; ++i)
     {
-#if defined (SERVER_MODE)
-      auto exec_f = std::bind (&hnsw_usearch_ng::add_vector, std::ref (*this), std::placeholders::_1, oid[i],
-			       vector + i * m_build_params.dimension, thread_p->tran_index);
-      cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
-      cubthread::get_manager()->push_task (m_worker_pool, task);
-#else
-      if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
-	  && db_vector_is_all_zeros (vector + i * m_build_params.dimension, m_build_params.dimension))
+      const float *v = vector + i * dim;
+
+      if (is_skippable (v))
 	{
 	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
 	  continue;
 	}
-      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension);
+
+      float score = 0.0f;
+
+      // score = dot(pc1, (x - mean))
+      if (!normalize_inputs)
+	{
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      score += m_pca_pc1[d] * (v[d] - m_pca_mean[d]);
+	    }
+	}
+      else
+	{
+	  float n = l2norm_f (v, dim);
+	  if (n <= 0.0f)
+	    {
+	      continue;
+	    }
+
+	  for (int d = 0; d < dim; ++d)
+	    {
+	      const float x = v[d] / n;
+	      score += m_pca_pc1[d] * (x - m_pca_mean[d]);
+	    }
+	}
+
+      scored.emplace_back (score, i);
+    }
+
+  std::sort (scored.begin (), scored.end (),
+	     [] (const auto &a, const auto &b)
+  {
+    return a.first < b.first;
+  });
+
+  // 2) Push tasks / execute inserts in PCA order
+  for (const auto &kv : scored)
+    {
+      const int idx = kv.second;
+      const float *v = vector + idx * dim;
+
+#if defined (SERVER_MODE)
+      auto exec_f = std::bind (&hnsw_usearch_ng::add_vector,
+			       std::ref (*this),
+			       std::placeholders::_1,
+			       oid[idx],
+			       v,
+			       thread_p->tran_index);
+      cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
+      cubthread::get_manager()->push_task (m_worker_pool, task);
+#else
+      m_algo->add (thread_p, oid[idx], v);
 #endif
     }
   return NO_ERROR;
