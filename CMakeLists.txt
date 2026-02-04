@@ -323,8 +323,13 @@ set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 # whenever csql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
+set(BISON_CSQL_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BISON_CSQL_FLAGS "${BISON_CSQL_FLAGS} --debug")
+endif()
+
 bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+  COMPILE_FLAGS "${BISON_CSQL_FLAGS}")
 flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
 add_flex_bison_dependency(csql_lexer csql_grammar)
@@ -332,8 +337,13 @@ add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
 add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
 # Loader FLEX/BISON targets
+set(BISON_LOADER_FLAGS "-d -r all")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BISON_LOADER_FLAGS "${BISON_LOADER_FLAGS} --debug")
+endif()
+
 bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "-d -r all")
+  COMPILE_FLAGS "${BISON_LOADER_FLAGS}")
 flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline")
 add_flex_bison_dependency(loader_lexer loader_grammar)
