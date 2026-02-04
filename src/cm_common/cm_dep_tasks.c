@@ -3072,7 +3072,8 @@ error_file_to_buf (const char *err_file, char *err_buf)
 	{
 	  break;
 	}
-	msg_size += (int) strlen (buf);
+
+      msg_size += (int) strlen (buf);
     }
 
   err_buf[DBMT_ERROR_MSG_SIZE - 1] = '\0';
