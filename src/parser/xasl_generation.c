@@ -7265,11 +7265,10 @@ pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
       return NULL;
     }
 
-  if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_SCALE || prec < 0 || scale < DB_MIN_NUMERIC_SCALE)
+  if (prec > DB_MAX_NUMERIC_PRECISION)
     {
-      parser_free_tree (parser, dt);
-      dt = NULL;
-      return NULL;
+      prec = DB_DEFAULT_NUMERIC_PRECISION;
+      scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
   dt->type_enum = PT_TYPE_NUMERIC;

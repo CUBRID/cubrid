@@ -16133,11 +16133,20 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 
   if (precision > DB_MAX_NUMERIC_PRECISION)
     {
-      scale = DB_MAX_NUMERIC_PRECISION - precision;
+      scale -= (precision - DB_MAX_NUMERIC_PRECISION);
       precision = DB_MAX_NUMERIC_PRECISION;
     }
-  result_num->domain.numeric_info.precision = precision;
-  result_num->domain.numeric_info.scale = scale;
+
+  if (result_num->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      result_num->data.num.header.precision = precision;
+      result_num->data.num.header.scale = scale;
+    }
+  else
+    {
+      result_num->domain.numeric_info.precision = precision;
+      result_num->domain.numeric_info.scale = scale;
+    }
 
   if (do_free_buf_str)
     {
