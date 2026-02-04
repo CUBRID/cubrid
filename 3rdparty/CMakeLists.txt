@@ -557,6 +557,7 @@ if(WITH_HDF STREQUAL "EXTERNAL")
   else()
     set(HDF_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     set(HDF_LIBS ${3RDPARTY_LIBS_DIR}/lib/libhdf5.a)
+    set(HDF_CONFIGURE_OPTS --enable-static --disable-shared --disable-tests --disable-tools --disable-hl --disable-cxx --disable-fortran --disable-parallel --without-zlib --without-szlib)
 
     ADD_BY_PRODUCTS_VARIABLE ("HDF" ${HDF_LIBS})
     externalproject_add(${HDF_TARGET}
@@ -564,9 +565,10 @@ if(WITH_HDF STREQUAL "EXTERNAL")
       TIMEOUT               600
       LOG_BUILD             TRUE
       DOWNLOAD_NO_PROGRESS  1
-      CONFIGURE_COMMAND     ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_IN_SOURCE       true
+      CONFIGURE_COMMAND     <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} ${HDF_CONFIGURE_OPTS}
+      BUILD_IN_SOURCE       false
       BUILD_COMMAND         make CFLAGS=-fPIC CXXFLAGS=-fPIC # to allow static linking in shared library
+      INSTALL_COMMAND       make install && rm -rf <SOURCE_DIR>
       "${HDF_BYPRODUCTS}"
     )
 
