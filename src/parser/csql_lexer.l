@@ -36,13 +36,13 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#define CSQL_MAXNAME	256
-#define NUMBER_LITERAL_MAX_LEN  254
-#define NUMBER_LITERAL_EXTRA_BYTE 1 /* extra byte for overflow/rounding check in numeric literals */
+#define CSQL_MAXNAME	(256)
+#define NUMBER_LITERAL_MAX_LEN  (254)
+#define NUMBER_LITERAL_EXTRA_BYTE (1) /* extra byte for overflow/rounding check in numeric literals */
 #define INTEGER_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
 #define FLOAT_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
 #define FLOAT_LITERAL_BUFFER (FLOAT_MAX_LITERAL + 2) /* +2: +1 for trailing '0' (e.g., "3." -> "3.0"), +1 for null terminator */
-#define FLOAT_APPENDABLE_TRAILING_ZERO NUMBER_LITERAL_MAX_LEN
+#define FLOAT_APPENDABLE_TRAILING_ZERO (NUMBER_LITERAL_MAX_LEN)
 
 int parser_yyinput_single_mode = 0;
 
