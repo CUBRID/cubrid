@@ -14033,11 +14033,6 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 							   attrepr->location, offset_size));
 	  break;
 
-	case OR_INT_SIZE:
-	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
-							 attrepr->location, offset_size));
-	  break;
-
 	default:
 	  assert_release (false);
 	  error = ER_FAILED;
@@ -14047,7 +14042,6 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
       if (!OR_IS_OOS (offset))
 	{
 	  continue;
-
 	}
 
       oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
@@ -14059,12 +14053,12 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  goto end;
 	}
 
-      OR_BUF b;
-      b.buffer = (char *) recdes->data;
-      b.ptr = oid_ptr;
-      b.endptr = (char *) recdes->data + recdes->length;
+      OR_BUF buf;
+      buf.buffer = (char *) recdes->data;
+      buf.ptr = oid_ptr;
+      buf.endptr = (char *) recdes->data + recdes->length;
 
-      or_put_oid (&b, &new_oid);
+      or_put_oid (&buf, &new_oid);
     }
 
 end:
