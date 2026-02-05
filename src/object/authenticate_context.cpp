@@ -1028,8 +1028,6 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
 
-  au_grant (DB_OBJECT_CLASS, Au_public_user, auth, AU_EXECUTE, false);
-
   AU_ENABLE (save);
   return NO_ERROR;
 
