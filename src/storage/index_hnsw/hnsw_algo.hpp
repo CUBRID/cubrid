@@ -232,7 +232,7 @@ namespace cubhnsw
       int form_reverse_links_ (algo_context_t<Traits> &context, const pinned_t &new_slot, const float *value,
 			       candidates_view_t<Traits> &new_neighbors,
 			       level_t level);
-      void refine_ (cubthread::entry *thread_p, std::size_t needed, top_candidates_t<Traits> &top,
+      void refine_ (algo_context_t<Traits> &context, std::size_t needed, top_candidates_t<Traits> &top,
 		    candidates_view_t<Traits> &out, std::size_t &refines_counter) const;
 
       // random level generation
@@ -426,15 +426,12 @@ namespace cubhnsw
 	}
     }
 
-    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_HNSW_NUM_VISITED_NODE].start_offset,
-				    context.iteration_cycles);
-    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_HNSW_NUM_COMPUTED_DISTANCES].start_offset,
-				    context.computed_distances);
-    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES].start_offset,
-				    context.computed_distances_in_refines);
-    perfmon_add_at_offset_to_local (thread_p,
-				    pstat_Metadata[PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES].start_offset,
-				    context.computed_distances_in_reverse_refines);
+    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_VISITED_NODE, context.iteration_cycles);
+    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES, context.computed_distances);
+    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES,
+		      context.computed_distances_in_refines);
+    perfmon_add_stat (context.m_thread_p, PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES,
+		      context.computed_distances_in_reverse_refines);
 
     if (new_target_level > curr_max_level)
       {
@@ -629,12 +626,10 @@ namespace cubhnsw
   algo<Traits>::form_links_to_closest_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk,
 					const level_t level, candidates_view_t<Traits> &top_view)
   {
-    cubthread::entry *thread_p = context.m_thread_p;
-
     top_candidates_t<Traits> &top = context.m_top_candidates;
     std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
 
-    refine_ (thread_p, layer_connectivity,top, top_view, context.computed_distances_in_refines);
+    refine_ (context, layer_connectivity,top, top_view, context.computed_distances_in_refines);
 
     // outgoing links from new node
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
@@ -649,8 +644,6 @@ namespace cubhnsw
   algo<Traits>::form_reverse_links_ (algo_context_t<Traits> &context, const pinned_t &new_node_blk, const float *value,
 				     candidates_view_t<Traits> &new_neighbors, level_t level)
   {
-    cubthread::entry *thread_p = context.m_thread_p;
-
     std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
     for (auto n : new_neighbors)
       {
@@ -664,7 +657,7 @@ namespace cubhnsw
 	neighbors_ref_type close_header;
 	{
 	  // TODO: exclusive??
-	  pinned_t close_node_blk = m_storage->get_node_by_slot_id (thread_p, close_slot, lock_mode::exclusive);
+	  pinned_t close_node_blk = m_storage->get_node_by_slot_id (context.m_thread_p, close_slot, lock_mode::exclusive);
 	  close_header = get_neighbors (close_node_blk, level);
 	  if (close_header.size () < layer_connectivity)
 	    {
@@ -691,8 +684,7 @@ namespace cubhnsw
 	close_header.clear();
 	candidates_view_t<Traits> top_view;
 
-	(void) refine_ (thread_p, layer_connectivity, top_for_refine, top_view, refines_counter,
-			context.computed_distances_in_reverse_refines);
+	(void) refine_ (context, layer_connectivity, top_for_refine, top_view, context.computed_distances_in_reverse_refines);
 
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
@@ -705,7 +697,7 @@ namespace cubhnsw
 
   template <typename Traits>
   void
-  algo<Traits>::refine_ (cubthread::entry *thread_p, std::size_t needed, top_candidates_t<Traits> &top,
+  algo<Traits>::refine_ (algo_context_t<Traits> &context, std::size_t needed, top_candidates_t<Traits> &top,
 			 candidates_view_t<Traits> &out, std::size_t &refines_counter) const
   {
     out = {};
