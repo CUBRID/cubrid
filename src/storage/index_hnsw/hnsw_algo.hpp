@@ -32,6 +32,7 @@
 #include "hnsw_storage.hpp" // storage_t
 #include "vector_distance.hpp"
 #include "thread_entry.hpp"
+#include "perf_monitor.h"
 
 #include "faiss/utils/distances.h" // faiss
 
@@ -150,6 +151,12 @@ namespace cubhnsw
     std::default_random_engine m_level_generator;
     cubthread::entry *m_thread_p {nullptr};
 
+    // stats
+    std::size_t iteration_cycles{};
+    std::size_t computed_distances{};
+    std::size_t computed_distances_in_refines{};
+    std::size_t computed_distances_in_reverse_refines{};
+
     void clear_candidates ()
     {
       m_top_candidates.clear ();
@@ -226,35 +233,37 @@ namespace cubhnsw
 			       candidates_view_t<Traits> &new_neighbors,
 			       level_t level);
       void refine_ (cubthread::entry *thread_p, std::size_t needed, top_candidates_t<Traits> &top,
-		    candidates_view_t<Traits> &out) const;
+		    candidates_view_t<Traits> &out, std::size_t &refines_counter) const;
 
       // random level generation
       level_t choose_random_level_ (std::default_random_engine &generator, double inverse_log_connectivity);
 
       // distance
-      inline distance_t compute_distance_ (const float *v1, const float *v2) const
+      inline distance_t compute_distance_ (algo_context_t<Traits> &context, const float *v1, const float *v2) const
       {
+	context.computed_distances++;
 	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
-      inline distance_t compute_distance_from_query_ (cubthread::entry *thread_p, const float *query,
+      inline distance_t compute_distance_from_query_ (algo_context_t<Traits> &context, const float *query,
 	  const slot_id_t &slot) const
       {
-	pinned_t vec_blk = m_storage->get_vector_by_slot_id (thread_p, slot, lock_mode::shared);
+	pinned_t vec_blk = m_storage->get_vector_by_slot_id (context.m_thread_p, slot, lock_mode::shared);
 	node_type node = node_type (vec_blk->data);
-	return compute_distance_ (query, node.get_vector());
+	return compute_distance_ (context, query, node.get_vector());
       }
 
-      inline distance_t compute_distance_between (cubthread::entry *thread_p, const slot_id_t &a, const slot_id_t &b) const
+      inline distance_t compute_distance_between (algo_context_t<Traits> &context, const slot_id_t &a,
+	  const slot_id_t &b) const
       {
 	auto get_vec = [&] (const slot_id_t &slot) -> const float *
 	{
-	  pinned_t vec_blk = m_storage->get_vector_by_slot_id (thread_p, slot, lock_mode::shared);
+	  pinned_t vec_blk = m_storage->get_vector_by_slot_id (context.m_thread_p, slot, lock_mode::shared);
 	  node_type node = node_type (vec_blk->data);
 	  return node.get_vector();
 	};
 
-	return compute_distance_ (get_vec (a), get_vec (b));
+	return compute_distance_ (context, get_vec (a), get_vec (b));
       }
 
       inline neighbors_ref_type get_neighbors (const pinned_t &node_blk, const level_t level)
@@ -384,6 +393,7 @@ namespace cubhnsw
 	pinned_t cleanup {std::move (root_block)};
       }
 
+
     {
       slot_id_t closest_slot {};
       {
@@ -415,6 +425,16 @@ namespace cubhnsw
 	  --level;
 	}
     }
+
+    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_HNSW_NUM_VISITED_NODE].start_offset,
+				    context.iteration_cycles);
+    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_HNSW_NUM_COMPUTED_DISTANCES].start_offset,
+				    context.computed_distances);
+    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REFINES].start_offset,
+				    context.computed_distances_in_refines);
+    perfmon_add_at_offset_to_local (thread_p,
+				    pstat_Metadata[PSTAT_HNSW_NUM_COMPUTED_DISTANCES_IN_REVERSE_REFINES].start_offset,
+				    context.computed_distances_in_reverse_refines);
 
     if (new_target_level > curr_max_level)
       {
@@ -511,7 +531,7 @@ namespace cubhnsw
 
     context.clear_candidates();
 
-    distance_t radius = compute_distance_from_query_ (context.m_thread_p, query, start_slot);
+    distance_t radius = compute_distance_from_query_ (context, query, start_slot);
 
     next.insert_reserved (candidate_t<Traits> (-radius, start_slot));
     top.insert_reserved (candidate_t<Traits> (radius, start_slot));
@@ -526,6 +546,7 @@ namespace cubhnsw
 	  }
 
 	next.pop ();
+	context.iteration_cycles++;
 
 	slot_id_t candidate_slot = candidacy.slot;
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (thread_p, candidate_slot, lock_mode::shared);
@@ -544,7 +565,7 @@ namespace cubhnsw
 		visits.insert (successor_slot);
 	      }
 
-	    distance_t sucessor_dist = compute_distance_from_query_ (thread_p, query, successor_slot);
+	    distance_t sucessor_dist = compute_distance_from_query_ (context, query, successor_slot);
 	    if (top.size () < expansion_limit || sucessor_dist < radius)
 	      {
 		next.insert (candidate_t<Traits> (-sucessor_dist, successor_slot));
@@ -571,7 +592,7 @@ namespace cubhnsw
     visits.clear ();
 
     slot_id_t closest_slot = start_slot;
-    distance_t closest_dist = compute_distance_from_query_ (thread_p, query, closest_slot);
+    distance_t closest_dist = compute_distance_from_query_ (context, query, closest_slot);
     for (level_t level = begin_level; level > end_level; --level)
       {
 	bool changed = false;
@@ -585,7 +606,7 @@ namespace cubhnsw
 	      {
 		slot_id_t neighbor_id = neighbors.at (i);
 
-		distance_t candidate_dist = compute_distance_from_query_ (thread_p, query, neighbor_id);
+		distance_t candidate_dist = compute_distance_from_query_ (context, query, neighbor_id);
 		if (candidate_dist < closest_dist)
 		  {
 		    closest_dist = candidate_dist;
@@ -593,6 +614,8 @@ namespace cubhnsw
 		    changed = true;
 		  }
 	      }
+
+	    context.iteration_cycles++;
 	  }
 	while (changed);
       }
@@ -610,7 +633,8 @@ namespace cubhnsw
 
     top_candidates_t<Traits> &top = context.m_top_candidates;
     std::size_t layer_connectivity = level == 0 ? m_connectivity * 2 : m_connectivity;
-    refine_ (thread_p, layer_connectivity,top, top_view);
+
+    refine_ (thread_p, layer_connectivity,top, top_view, context.computed_distances_in_refines);
 
     // outgoing links from new node
     neighbors_ref_type new_neighbors = get_neighbors (new_node_blk, level);
@@ -652,21 +676,24 @@ namespace cubhnsw
 	top_candidates_t<Traits> &top_for_refine = context.m_top_for_refine;
 	top_for_refine.clear ();
 
-	distance_t dist = compute_distance_from_query_ (thread_p, value, close_slot);
+	distance_t dist = compute_distance_from_query_ (context, value, close_slot);
 
 	top_for_refine.insert_reserved (candidate_t<Traits> (dist, close_slot));
 
 	for (std::size_t i = 0; i < close_header.size (); i++)
 	  {
 	    slot_id_t successor_slot = close_header.at (i);
-	    dist = compute_distance_between (thread_p, close_slot, successor_slot);
+	    dist = compute_distance_between (context, close_slot, successor_slot);
 	    top_for_refine.insert_reserved (candidate_t<Traits> (dist, successor_slot));
 	  }
 
 	// remove all neighbors from close_header
 	close_header.clear();
 	candidates_view_t<Traits> top_view;
-	(void) refine_ (thread_p, layer_connectivity, top_for_refine, top_view);
+
+	(void) refine_ (thread_p, layer_connectivity, top_for_refine, top_view, refines_counter,
+			context.computed_distances_in_reverse_refines);
+
 	for (std::size_t i = 0; i != top_view.size (); i++)
 	  {
 	    close_header.push_back (top_view[i].slot);
@@ -679,7 +706,7 @@ namespace cubhnsw
   template <typename Traits>
   void
   algo<Traits>::refine_ (cubthread::entry *thread_p, std::size_t needed, top_candidates_t<Traits> &top,
-			 candidates_view_t<Traits> &out) const
+			 candidates_view_t<Traits> &out, std::size_t &refines_counter) const
   {
     out = {};
 
@@ -704,13 +731,14 @@ namespace cubhnsw
 	  {
 	    candidate_t submitted = top_data[idx];
 
-	    distance_t inter_result_dist = compute_distance_between (thread_p, candidate.slot, submitted.slot);
+	    distance_t inter_result_dist = compute_distance_between (context, candidate.slot, submitted.slot);
 	    if (inter_result_dist < candidate.distance)
 	      {
 		good = false;
 		break;
 	      }
 	  }
+	refines_counter += idx;
 
 	if (good)
 	  {
