@@ -68,7 +68,6 @@
 #define CTV_INDEX_NAME             "db_index"
 #define CTV_INDEXKEY_NAME          "db_index_key"
 #define CTV_AUTH_NAME              "db_auth"
-#define CTV_AUTHORIZATION_NAME     "db_authorization"
 #define CTV_TRIGGER_NAME           "db_trigger"
 #define CTV_STORED_PROC_NAME       "db_stored_procedure"
 #define CTV_STORED_PROC_ARGS_NAME  "db_stored_procedure_args"

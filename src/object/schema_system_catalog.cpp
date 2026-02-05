@@ -100,7 +100,6 @@ namespace cubschema
     CTV_INDEX_NAME,			// "db_index"
     CTV_INDEXKEY_NAME,		// "db_index_key"
     CTV_AUTH_NAME,			// "db_auth"
-    CTV_AUTHORIZATION_NAME,	// "db_authorization"
     CTV_TRIGGER_NAME,		// "db_trigger"
     CTV_PARTITION_NAME,		// "db_partition"
     CTV_STORED_PROC_NAME,	// "db_stored_procedure"

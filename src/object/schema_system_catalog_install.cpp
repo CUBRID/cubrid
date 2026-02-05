@@ -299,7 +299,6 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_INDEX_NAME, system_catalog_initializer::get_view_index ());
   ADD_VIEW_DEFINITION (CTV_INDEXKEY_NAME, system_catalog_initializer::get_view_index_key ());
   ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_auth ());
-  ADD_VIEW_DEFINITION (CTV_AUTHORIZATION_NAME, system_catalog_initializer::get_view_authorization ());
   ADD_VIEW_DEFINITION (CTV_TRIGGER_NAME, system_catalog_initializer::get_view_trigger ());
   ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
@@ -1683,35 +1682,6 @@ namespace cubschema
       {"is_grantable", format_varchar (3)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_auth_spec ()}
-    },
-// constraint
-    {},
-// authorization
-    {
-      // owner
-      Au_dba_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
-// initializer
-    nullptr
-	   );
-  }
-
-  system_catalog_definition
-  system_catalog_initializer::get_view_authorization ()
-  {
-    return system_catalog_definition (
-		   // name
-		   CTV_AUTHORIZATION_NAME,
-		   // columns
-    {
-      {"owner", AU_USER_CLASS_NAME},
-      {"grants", "sequence"},
-      // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
     },
 // constraint
     {},

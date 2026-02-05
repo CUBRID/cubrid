@@ -72,7 +72,6 @@ namespace cubschema
       static system_catalog_definition get_view_index ();
       static system_catalog_definition get_view_index_key ();
       static system_catalog_definition get_view_auth ();
-      static system_catalog_definition get_view_authorization ();
       static system_catalog_definition get_view_trigger ();
       static system_catalog_definition get_view_partition ();
       static system_catalog_definition get_view_stored_procedure ();
@@ -99,7 +98,6 @@ const char *sm_define_view_meth_file_spec (void);
 const char *sm_define_view_index_spec (void);
 const char *sm_define_view_index_key_spec (void);
 const char *sm_define_view_auth_spec (void);
-const char *sm_define_view_authorization_spec (void);
 const char *sm_define_view_trigger_spec (void);
 const char *sm_define_view_partition_spec (void);
 const char *sm_define_view_stored_procedure_spec (void);
