@@ -80,7 +80,7 @@ namespace cubschema
     CT_TRIGGER_NAME,		// "_db_trigger"
 
     /* currently, not implemented */
-    CT_RESOLUTION_NAME		// "_db_resolution"
+//     CT_RESOLUTION_NAME		// "_db_resolution"
   };
 
   static const std::vector <std::string> sm_system_vclass_names =

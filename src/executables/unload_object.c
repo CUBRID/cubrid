@@ -125,7 +125,7 @@ static const char *prohibited_classes[] = {
   CT_METHARG_NAME,
   CT_METHFILE_NAME,
   CT_QUERYSPEC_NAME,
-  CT_RESOLUTION_NAME,		/* currently, not implemented */
+//   CT_RESOLUTION_NAME,                /* currently, not implemented */
   CT_INDEX_NAME,
   CT_INDEXKEY_NAME,
   CT_CLASSAUTH_NAME,
