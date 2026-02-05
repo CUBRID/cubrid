@@ -10748,6 +10748,13 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
   error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, is_oos);
+  // TODO: heap_attrvalue_transform_to_dbvalue() used to PEEK &raw when creating value (dbvalue),
+  // but oos_insert() makes &raw point to newly allocated memory.
+  // Thus,
+  // 1) we need to free &raw only when is_oos is true.
+  // 2) we need to create dbvalue with mr_data_readval...(...COPY).
+  // This can be refactored later when dbvalue supports zero-copy to OOS data.
+  // oos_insert(OID) must be refactored to oos_read(PAGE_PTR, slotid, PEEK/COPY) and allow PEEK mode.
   if (is_oos)
     {
       recdes_free_data_area (&raw);
