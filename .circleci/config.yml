@@ -47,8 +47,8 @@ jobs:
             echo "RUN_ALL_TEST: $RUN_ALL_TEST"
             echo "BASELINE: $BASELINE"
                         
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
-            echo "sha value from tc repository.(only from develop branch)"
+            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git  system-catalog-naming-convention | cut -f1)
+            echo "sha value from tc repository.(only from system-catalog-naming-convention branch)"
             echo "TC_SHA: $TC_SHA"
 
             # Generate dynamic configuration file (continue.yml)
@@ -81,6 +81,8 @@ jobs:
                 steps:
                   - run:
                       name: Test
+                      environment:
+                        BRANCH_TESTCASES: system-catalog-naming-convention
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
