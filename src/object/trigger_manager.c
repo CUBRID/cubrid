@@ -2069,6 +2069,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
   DB_TRIGGER_EVENT e;
   TR_TRIGGER *trigger;
   int max, i;
+  int save;
 
   *trigger_list = NULL;
 
@@ -2077,6 +2078,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       return NO_ERROR;
     }
 
+  AU_DISABLE (save);
   error = obj_get (Au_user, "triggers", &value);
   if (error != NO_ERROR)
     {
@@ -2146,6 +2148,8 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       *trigger_list = NULL;
     }
 
+  AU_ENABLE (save);
+
   return error;
 }
 
@@ -2172,6 +2176,9 @@ tr_update_user_cache (void)
       tr_free_trigger_list (tr_User_triggers);
       tr_User_triggers = NULL;
     }
+
+  int save;
+  AU_DISABLE (save);
 
   if (Au_user != NULL && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
     {
@@ -2225,6 +2232,8 @@ tr_update_user_cache (void)
       tr_free_trigger_list (tr_User_triggers);
       tr_User_triggers = NULL;
     }
+
+  AU_ENABLE (save);
 
   return error;
 }

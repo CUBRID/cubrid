@@ -125,19 +125,22 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
   const char *dba_query = "select [%s] from [%s];";
   const char *user_query = "select [%s] from [%s] where name='%s';";
   const char *group_query =
-	  "select u.name, [t].[g].name from [db_user] [u], TABLE([u].[groups]) [t]([g]) where [t].[g].name = '%s';";
+	  "select u.name, [t].[g].name from [_db_user] [u], TABLE([u].[groups]) [t]([g]) where [t].[g].name = '%s';";
   char encrypt_mode = ENCODE_PREFIX_DEFAULT;
   char *upper_case_name = NULL;
   size_t upper_case_name_size = 0;
+  int save = 0;
+  bool has_dba_privilege = ctxt.is_dba_user || ctxt.is_dba_group_member;
 
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+  if (has_dba_privilege)
     {
       query_size = strlen (dba_query) + strlen (AU_USER_CLASS_NAME) * 2;
       query = (char *) malloc (query_size);
       if (query == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
       sprintf (query, dba_query, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
     }
@@ -148,7 +151,8 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       if (upper_case_name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       intl_identifier_upper (ctxt.login_user, upper_case_name);
@@ -157,38 +161,20 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       query = (char *) malloc (query_size);
       if (query == NULL)
 	{
-	  if (upper_case_name != NULL)
-	    {
-	      free_and_init (upper_case_name);
-	    }
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       sprintf (query, user_query, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, upper_case_name);
     }
 
-  error = db_compile_and_execute_local (query, &query_result, &query_error);
   /* error is row count if not negative. */
+  AU_DISABLE (save);
+  error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < NO_ERROR)
     {
-      if (upper_case_name != NULL)
-	{
-	  free_and_init (upper_case_name);
-	}
-
-      if (query != NULL)
-	{
-	  free_and_init (query);
-	}
-
-      if (query_result != NULL)
-	{
-	  db_query_end (query_result);
-	  query_result = NULL;
-	}
-      return error;
+      goto end;
     }
 
   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
@@ -198,69 +184,52 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	  continue;
 	}
 
-      if (DB_IS_NULL (&user_val))
-	{
-	  user = NULL;
-	}
-      else
-	{
-	  user = db_get_object (&user_val);
-	}
+      user = DB_IS_NULL (&user_val) ? NULL : db_get_object (&user_val);
 
       uname = au_get_user_name (user);
-      strcpy (passbuf, "");
+      passbuf[0] = '\0';
       encrypt_mode = ENCODE_PREFIX_DEFAULT;
 
       /* retrieve password */
       error = obj_get (user, "password", &value);
       if (error == NO_ERROR)
 	{
-	  if (DB_IS_NULL (&value))
-	    {
-	      pwd = NULL;
-	    }
-	  else
-	    {
-	      pwd = db_get_object (&value);
-	    }
+	  pwd = DB_IS_NULL (&value) ? NULL : db_get_object (&value);
 
 	  if (pwd != NULL)
 	    {
 	      error = obj_get (pwd, "password", &value);
-	      if (error == NO_ERROR)
+	      if (error == NO_ERROR && !DB_IS_NULL (&value) && DB_IS_STRING (&value))
 		{
-		  if (!DB_IS_NULL (&value) && DB_IS_STRING (&value))
+		  /*
+		   * copy password string using malloc
+		   * to be consistent with encrypt_password
+		   */
+		  str = db_get_string (&value);
+		  if (IS_ENCODED_DES (str))
 		    {
-		      /*
-		       * copy password string using malloc
-		       * to be consistent with encrypt_password
-		       */
-		      str = db_get_string (&value);
-		      if (IS_ENCODED_DES (str))
-			{
-			  /* strip off the prefix so its readable */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
-			  encrypt_mode = ENCODE_PREFIX_DES;
-			}
-		      else if (IS_ENCODED_SHA1 (str))
-			{
-			  /* strip off the prefix so its readable */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
-			  encrypt_mode = ENCODE_PREFIX_SHA1;
-			}
-		      else if (IS_ENCODED_SHA2_512 (str))
-			{
-			  /* not strip off the prefix */
-			  snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str);
-			  encrypt_mode = ENCODE_PREFIX_SHA2_512;
-			}
-		      else if (strlen (str))
-			{
-			  /* sha2 hashing with prefix */
-			  encrypt_password_sha2_512 (str, passbuf);
-			}
-		      ws_free_string (str);
+		      /* strip off the prefix so its readable */
+		      snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
+		      encrypt_mode = ENCODE_PREFIX_DES;
 		    }
+		  else if (IS_ENCODED_SHA1 (str))
+		    {
+		      /* strip off the prefix so its readable */
+		      snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
+		      encrypt_mode = ENCODE_PREFIX_SHA1;
+		    }
+		  else if (IS_ENCODED_SHA2_512 (str))
+		    {
+		      /* not strip off the prefix */
+		      snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str);
+		      encrypt_mode = ENCODE_PREFIX_SHA2_512;
+		    }
+		  else if (strlen (str))
+		    {
+		      /* sha2 hashing with prefix */
+		      encrypt_password_sha2_512 (str, passbuf);
+		    }
+		  ws_free_string (str);
 		}
 	    }
 	}
@@ -269,57 +238,35 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       error = obj_get (user, "comment", &value);
       if (error == NO_ERROR)
 	{
-	  if (DB_IS_NULL (&value))
-	    {
-	      comment = NULL;
-	    }
-	  else
-	    {
-	      comment = db_get_string (&value);
-	    }
+	  comment = DB_IS_NULL (&value) ? NULL : db_get_string (&value);
 	}
 
       if (error == NO_ERROR)
 	{
-	  if (!ws_is_same_object (user, Au_dba_user) && !ws_is_same_object (user, Au_public_user))
+	  bool is_system_user = ws_is_same_object (user, Au_dba_user) || ws_is_same_object (user, Au_public_user);
+	  bool has_password = (passbuf[0] != '\0');
+
+	  if (!is_system_user && has_dba_privilege)
 	    {
-	      if (!strlen (passbuf))
+	      output_ctx ("call [add_user]('%s', '') on class [db_root]", uname);
+	      if (has_password)
 		{
-		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		    {
-		      output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
-		    }
+		  output_ctx (" to [auser];\n");
+		  output_ctx ("call [%s]('%s') on [auser];\n",
+			      (encrypt_mode == ENCODE_PREFIX_DES) ? "set_password_encoded" : "set_password_encoded_sha1",
+			      passbuf);
 		}
 	      else
 		{
-		  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
-		    {
-		      output_ctx ("call [add_user]('%s', '') on class [db_root] to [auser];\n", uname);
-		      if (encrypt_mode == ENCODE_PREFIX_DES)
-			{
-			  output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
-			}
-		      else
-			{
-			  output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
-			}
-		    }
+		  output_ctx (";\n");
 		}
 	    }
-	  else
+	  else if (is_system_user && has_password)
 	    {
-	      if (strlen (passbuf))
-		{
-		  output_ctx ("call [find_user]('%s') on class [db_user] to [auser];\n", uname);
-		  if (encrypt_mode == ENCODE_PREFIX_DES)
-		    {
-		      output_ctx ("call [set_password_encoded]('%s') on [auser];\n", passbuf);
-		    }
-		  else
-		    {
-		      output_ctx ("call [set_password_encoded_sha1]('%s') on [auser];\n", passbuf);
-		    }
-		}
+	      output_ctx ("call [find_user]('%s') on class [_db_user] to [auser];\n", uname);
+	      output_ctx ("call [%s]('%s') on [auser];\n",
+			  (encrypt_mode == ENCODE_PREFIX_DES) ? "set_password_encoded" : "set_password_encoded_sha1",
+			  passbuf);
 	    }
 
 	  /* export comment */
@@ -343,7 +290,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
     }
 
   /* group hierarchy */
-  if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+  if (has_dba_privilege)
     {
       if (db_query_first_tuple (query_result) == DB_CURSOR_SUCCESS)
 	{
@@ -354,14 +301,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 		  continue;
 		}
 
-	      if (DB_IS_NULL (&user_val))
-		{
-		  user = NULL;
-		}
-	      else
-		{
-		  user = db_get_object (&user_val);
-		}
+	      user = DB_IS_NULL (&user_val) ? NULL : db_get_object (&user_val);
 
 	      uname = au_get_user_name (user);
 	      if (uname == NULL)
@@ -394,18 +334,11 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 		      continue;
 		    }
 
-		  if (DB_IS_NULL (&value))
-		    {
-		      gname = NULL;
-		    }
-		  else
-		    {
-		      gname = db_get_string (&value);
-		    }
+		  gname = DB_IS_NULL (&value) ? NULL : db_get_string (&value);
 
 		  if (gname != NULL)
 		    {
-		      output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+		      output_ctx ("call [find_user]('%s') on class [_db_user] to [g_%s];\n", gname, gname);
 		      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
 		    }
 		}
@@ -423,23 +356,6 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	    }
 	  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
 	}
-
-      if (query_result != NULL)
-	{
-	  db_query_end (query_result);
-	  query_result = NULL;
-	}
-
-      if (upper_case_name != NULL)
-	{
-	  free_and_init (upper_case_name);
-	}
-
-      if (query != NULL)
-	{
-	  free_and_init (query);
-	}
-
     }
   else
     {
@@ -465,7 +381,8 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       if (upper_case_name == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, upper_case_name_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       intl_identifier_upper (ctxt.login_user, upper_case_name);
@@ -474,13 +391,9 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       query = (char *) malloc (query_size);
       if (query == NULL)
 	{
-	  if (upper_case_name != NULL)
-	    {
-	      free_and_init (upper_case_name);
-	    }
-
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       sprintf (query, group_query, upper_case_name);
@@ -490,49 +403,23 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
       /* error is row count if not negative. */
       if (error < NO_ERROR)
 	{
-	  if (query_result != NULL)
-	    {
-	      db_query_end (query_result);
-	      query_result = NULL;
-	    }
-
-	  if (upper_case_name != NULL)
-	    {
-	      free_and_init (upper_case_name);
-	    }
-
-	  if (query != NULL)
-	    {
-	      free_and_init (query);
-	    }
-	  return error;
+	  goto end;
 	}
 
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
 	{
-	  if (db_query_get_tuple_value (query_result, 0, &user_group[0]) != NO_ERROR)
+	  if (db_query_get_tuple_value (query_result, 0, &user_group[0]) != NO_ERROR ||
+	      db_query_get_tuple_value (query_result, 1, &user_group[1]) != NO_ERROR)
 	    {
 	      continue;
 	    }
 
-	  if (db_query_get_tuple_value (query_result, 1, &user_group[1]) != NO_ERROR)
-	    {
-	      continue;
-	    }
-
-	  if (DB_IS_NULL (&user_group[0]) == false)
-	    {
-	      uname = db_get_string (&user_group[0]);
-	    }
-
-	  if (DB_IS_NULL (&user_group[1]) == false)
-	    {
-	      gname = db_get_string (&user_group[1]);
-	    }
+	  uname = DB_IS_NULL (&user_group[0]) ? NULL : db_get_string (&user_group[0]);
+	  gname = DB_IS_NULL (&user_group[1]) ? NULL : db_get_string (&user_group[1]);
 
 	  if (uname != NULL && gname != NULL)
 	    {
-	      output_ctx ("call [find_user]('%s') on class [db_user] to [g_%s];\n", gname, gname);
+	      output_ctx ("call [find_user]('%s') on class [_db_user] to [g_%s];\n", gname, gname);
 	      output_ctx ("call [add_member]('%s') on [g_%s];\n", uname, gname);
 	    }
 
@@ -546,25 +433,26 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	      ws_free_string_and_init (gname);
 	    }
 	}
-
-      if (query_result != NULL)
-	{
-	  db_query_end (query_result);
-	  query_result = NULL;
-	}
-
-      if (upper_case_name != NULL)
-	{
-	  free_and_init (upper_case_name);
-	}
-
-      if (query != NULL)
-	{
-	  free_and_init (query);
-	}
     }
 
-  return (error);
+end:
+  if (upper_case_name != NULL)
+    {
+      free_and_init (upper_case_name);
+    }
+
+  if (query != NULL)
+    {
+      free_and_init (query);
+    }
+
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+    }
+
+  AU_ENABLE (save);
+  return error;
 }
 
 
@@ -837,98 +725,117 @@ free_class_users (CLASS_USER *users)
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
- *       eliminated for performance reasons.  A query on the db_user class is
+ *       eliminated for performance reasons.  A query on the _db_user class is
  *       now used to find all users.
  */
 static int
 build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop)
 {
-  int error;
+  int error = NO_ERROR;
   MOP user, auth, source;
-  DB_SET *grants;
+  DB_SET *grants = NULL;
   DB_VALUE value;
-  int j, gsize, cache;
-  char *query;
+  int gsize, cache;
+  char *query = NULL;
   size_t query_size;
-  DB_QUERY_RESULT *query_result;
+  DB_QUERY_RESULT *query_result = NULL;
   DB_QUERY_ERROR query_error;
   DB_VALUE user_val;
   const char *qp1 = "select [%s] from [%s];";
+  int save = 0;
 
   query_size = strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2;
   query = (char *) malloc (query_size);
   if (query == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
     }
 
   sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
 
+  AU_DISABLE (save);
+  /* error is row count if not negative. */
   error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < 0)
-    /* error is row count if not negative. */
     {
-      free_and_init (query);
-      return error;
+      goto end;
     }
 
   while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
     {
-      if (db_query_get_tuple_value (query_result, 0, &user_val) == NO_ERROR)
+      if (db_query_get_tuple_value (query_result, 0, &user_val) != NO_ERROR)
 	{
-	  if (DB_IS_NULL (&user_val))
+	  continue;
+	}
+
+      user = DB_IS_NULL (&user_val) ? NULL : db_get_object (&user_val);
+
+      error = au_get_object (user, "authorization", &auth);
+      /* ignore the deleted object errors */
+      if (error == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  error = NO_ERROR;
+	  continue;
+	}
+      if (error != NO_ERROR)
+	{
+	  continue;
+	}
+
+      error = get_grants (auth, &grants, 1);
+      if (error != NO_ERROR)
+	{
+	  continue;
+	}
+
+      gsize = set_size (grants);
+      for (int j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
+	{
+	  error = set_get_element (grants, GRANT_ENTRY_CLASS (j), &value);
+	  if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_OBJECT || db_get_object (&value) != class_mop)
 	    {
-	      user = NULL;
-	    }
-	  else
-	    {
-	      user = db_get_object (&user_val);
+	      continue;
 	    }
 
-	  error = au_get_object (user, "authorization", &auth);
-	  /* ignore the deleted object errors */
+	  error = set_get_element (grants, GRANT_ENTRY_SOURCE (j), &value);
+	  if (error != NO_ERROR || DB_VALUE_TYPE (&value) != DB_TYPE_OBJECT || DB_IS_NULL (&value))
+	    {
+	      continue;
+	    }
+
+	  source = db_get_object (&value);
+	  if (source == NULL)
+	    {
+	      continue;
+	    }
+
+	  error = set_get_element (grants, GRANT_ENTRY_CACHE (j), &value);
 	  if (error != NO_ERROR)
 	    {
-	      if (error == ER_HEAP_UNKNOWN_OBJECT)
-		{
-		  error = NO_ERROR;
-		}
+	      continue;
 	    }
-	  else
-	    {
-	      if ((error = get_grants (auth, &grants, 1)) == NO_ERROR)
-		{
-		  gsize = set_size (grants);
-		  for (j = 0; j < gsize; j += GRANT_ENTRY_LENGTH)
-		    {
-		      error = set_get_element (grants, GRANT_ENTRY_CLASS (j), &value);
-		      if (error == NO_ERROR && DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT
-			  && db_get_object (&value) == class_mop)
-			{
-			  error = set_get_element (grants, GRANT_ENTRY_SOURCE (j), &value);
-			  if (error == NO_ERROR && DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value)
-			      && (source = db_get_object (&value)) != NULL)
-			    {
-			      error = set_get_element (grants, GRANT_ENTRY_CACHE (j), &value);
-			      if (error == NO_ERROR)
-				{
-				  cache = db_get_int (&value);
-				  error = add_class_grant (cl_auth, source, user, cache);
-				}
-			    }
-			}
-		    }
-		  set_free (grants);
-		}
-	    }
-	}			/* if */
-    }				/* while */
 
-  db_query_end (query_result);
-  free_and_init (query);
+	  cache = db_get_int (&value);
+	  error = add_class_grant (cl_auth, source, user, cache);
+	}
 
-  return (error);
+      set_free (grants);
+    }
+
+end:
+  AU_ENABLE (save);
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+    }
+  if (query != NULL)
+    {
+      free_and_init (query);
+    }
+
+  return error;
 }
 
 /*

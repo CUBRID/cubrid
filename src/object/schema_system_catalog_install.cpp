@@ -306,6 +306,7 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
   ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
   ADD_VIEW_DEFINITION (CTV_COLLATION_NAME, system_catalog_initializer::get_view_collation ());
+  ADD_VIEW_DEFINITION (CTV_USER_NAME, system_catalog_initializer::get_view_user ());
   ADD_VIEW_DEFINITION (CTV_CHARSET_NAME, system_catalog_initializer::get_view_charset ());
   ADD_VIEW_DEFINITION (CTV_SERVER_NAME, system_catalog_initializer::get_view_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
@@ -404,6 +405,17 @@ namespace cubschema
   const inline std::string format_sequence (const std::string_view type)
   {
     std::string s ("sequence of");
+    if (!type.empty ())
+      {
+	s.append (" ");
+	s.append (type);
+      }
+    return s;
+  }
+
+  const inline std::string format_set (const std::string_view type)
+  {
+    std::string s ("set of");
     if (!type.empty ())
       {
 	s.append (" ");
@@ -1978,6 +1990,48 @@ namespace cubschema
       // grants
       {
 	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_user ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_USER_NAME,
+		   // columns
+    {
+      {"name", format_varchar (255)},
+      {"id", "integer"},
+//       {"direct_groups", format_sequence (CT_USER_NAME)},
+      {"direct_groups", format_set (format_varchar (255))},
+//       {"groups", format_sequence (CT_USER_NAME)},
+      {"groups", format_set (format_varchar (255))},
+      {"triggers", format_sequence ("object")},
+      {"is_loginable", format_varchar (3)},
+      {"is_system_created", format_varchar (3)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // class methods (only find_user and login are exposed in view)
+      {attribute_kind::CLASS_METHOD, "find_user", "au_find_user_method"},
+      {attribute_kind::CLASS_METHOD, "login", "au_login_method"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_user_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false}
       }
     },
 // initializer

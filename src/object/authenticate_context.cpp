@@ -348,7 +348,7 @@ authenticate_context::install (void)
     }
 
   /*
-   * db_user
+   * _db_user
    */
 
   def = smt_edit_class_mop (user_cls, AU_ALTER);
@@ -362,8 +362,8 @@ authenticate_context::install (void)
   smt_add_attribute (def, "name", "string", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "id", "integer", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "direct_groups", "set of (db_user)", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "groups", "set of (db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "direct_groups", "set of (_db_user)", (DB_DOMAIN *) 0);
+  smt_add_attribute (def, "groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
   smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
@@ -488,8 +488,6 @@ authenticate_context::install (void)
    * note that the password class cannot be read by anyone except the DBA
    */
   au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-  au_grant (DB_OBJECT_CLASS, public_user, user_cls, AU_SELECT, false);
-  au_grant (DB_OBJECT_CLASS, public_user, user_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
 
   au_add_method_check_authorization ();
 

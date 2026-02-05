@@ -45,7 +45,7 @@ namespace cubschema
      * AU_GRANT_CLASS_NAME
      */
     CT_ROOT_NAME,		// "db_root"
-    CT_USER_NAME,		// "db_user"
+    CT_USER_NAME,		// "_db_user"
     CT_PASSWORD_NAME,	// "_db_password"
     CT_AUTHORIZATION_NAME,	// "_db_authorization"
 
@@ -107,6 +107,7 @@ namespace cubschema
     CTV_SERIAL_NAME,		// "db_serial"
     CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
     CTV_COLLATION_NAME,	// "db_collation"
+    CTV_USER_NAME,			// "db_user"
     CTV_CHARSET_NAME,		// "db_charset"
     CTV_SERVER_NAME,		// "db_server"
     CTV_SYNONYM_NAME			// "db_synonym"

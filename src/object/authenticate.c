@@ -243,7 +243,7 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
- *       eliminated for performance reasons.  A query on the db_user class is
+ *       eliminated for performance reasons.  A query on the _db_user class is
  *       new used to find all users.
  */
 void
@@ -369,7 +369,7 @@ au_dump_user (MOP user, FILE * fp)
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
- *       eliminated for performance reasons.  A query on the db_user class is
+ *       eliminated for performance reasons.  A query on the _db_user class is
  *       new used to find all users.
  */
 void
