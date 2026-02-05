@@ -5270,7 +5270,7 @@ error2:
 }
 
 int
-locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes, bool is_repl)
+locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes)
 {
   int error_code = NO_ERROR;
   HFID oos_hfid = HFID_INITIALIZER;
@@ -7056,7 +7056,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  switch (obj->operation)
 	    {
 	    case LC_FLUSH_INSERT_OOS:
-	      error_code = locator_oos_insert_force (thread_p, &obj->class_oid, &recdes, true);
+	      error_code = locator_oos_insert_force (thread_p, &obj->class_oid, &recdes);
 	      break;
 	    case LC_FLUSH_INSERT:
 	    case LC_FLUSH_INSERT_PRUNE:
