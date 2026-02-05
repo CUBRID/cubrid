@@ -3026,6 +3026,7 @@ error_file_to_buf (const char *err_file, char *err_buf)
   char buf[LINE_BUF_SIZE];
   int msg_size = 0;
   size_t i;
+  char *ptr;
 
   if (err_buf == NULL)
     {
@@ -3046,19 +3047,14 @@ error_file_to_buf (const char *err_file, char *err_buf)
 	{
 	  break;
 	}
-      for (i = 0; i < LINE_BUF_SIZE - 2; i++)
-	{
-	  if (buf[i] == '\0')
-	    {
-	      if (buf[i + 1] == '\0')
-		{
-		  break;
-		}
 
-	      buf[i] = ' ';
-	    }
+      if ((ptr = strchr (buf, '\n')) != NULL)
+	{
+	  *ptr = '\0';
 	}
+
       ut_trim (buf);
+
       if (buf[0] == '\0')
 	{
 	  continue;
@@ -3066,17 +3062,20 @@ error_file_to_buf (const char *err_file, char *err_buf)
 
       if ((DBMT_ERROR_MSG_SIZE - msg_size - 1) > 0)
 	{
-	  strncpy (err_buf + msg_size, buf, DBMT_ERROR_MSG_SIZE - msg_size - 1);
+	  snprintf (err_buf + msg_size, DBMT_ERROR_MSG_SIZE - msg_size - 1, "%s ", buf);
 	}
       else
 	{
 	  break;
 	}
 
-      msg_size += (int) strlen (buf);
+      msg_size = strlen (err_buf);
     }
 
-  err_buf[DBMT_ERROR_MSG_SIZE - 1] = '\0';
+  if (msg_size > 0)
+    {
+      err_buf[msg_size - 1] = '\0';
+    }
 
   fclose (fp);
   unlink (err_file);
