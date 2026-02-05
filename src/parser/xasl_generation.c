@@ -7253,6 +7253,9 @@ pt_to_misc_operand (REGU_VARIABLE * regu, PT_MISC_TYPE misc_specifier)
  *   parser(in):
  *   prec(in):
  *   scale(in):
+ *
+ *  Note : this function creates a PT_DATA_TYPE with NUMERIC type for PT_TO_NUMBER.
+ *         the TO_NUMBER() function processes NUMERIC values, so it is always handled as FLOAT NUMERIC.
  */
 PT_NODE *
 pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
@@ -7263,12 +7266,6 @@ pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
   if (dt == NULL)
     {
       return NULL;
-    }
-
-  if (prec > DB_MAX_NUMERIC_PRECISION)
-    {
-      prec = DB_DEFAULT_NUMERIC_PRECISION;
-      scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
   dt->type_enum = PT_TYPE_NUMERIC;
@@ -9045,17 +9042,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_TO_NUMBER:
 		  {
-		    int precision, scale;
+		    /* the TO_NUMBER() function processes NUMERIC values, so it is always handled as FLOAT NUMERIC. */
 
-		    /* If 2nd argument of to_number() exists, modify domain. */
-		    pt_to_regu_resolve_domain (&precision, &scale, node->info.expr.arg2);
-		    data_type = pt_make_prim_data_type_fortonum (parser, precision, scale);
+		    data_type =
+		      pt_make_prim_data_type_fortonum (parser, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
 
 		    /* create NUMERIC domain with default precision and scale. */
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
-
-		    /* If 2nd argument of to_number() exists, modify domain. */
-		    pt_to_regu_resolve_domain (&domain->precision, &domain->scale, node->info.expr.arg2);
 
 		    r3 = pt_to_regu_variable (parser, node->info.expr.arg3, unbox);
 
