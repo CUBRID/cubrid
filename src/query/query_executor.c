@@ -16111,10 +16111,18 @@ exit_on_error:
 	    {
 	      if (a_eval_p->current_values != NULL)
 		{
+		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
+		    {
+		      pr_clear_value (&a_eval_p->current_values[i]);
+		    }
 		  db_private_free_and_init (thread_p, a_eval_p->current_values);
 		}
 	      if (a_eval_p->temp_values != NULL)
 		{
+		  for (int i = 0; i < a_eval_p->sort_list_size; i++)
+		    {
+		      pr_clear_value (&a_eval_p->temp_values[i]);
+		    }
 		  db_private_free_and_init (thread_p, a_eval_p->temp_values);
 		}
 	    }
@@ -23367,6 +23375,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 		  return ER_FAILED;
 		}
 
+	      pr_clear_value (a_func_list->value);
 	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
 		{
 		  return ER_FAILED;
