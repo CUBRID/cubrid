@@ -12053,7 +12053,12 @@ fileio_lob_remove_matching_dir (const char *keyword)
   dir_p = opendir (es_base_dir);
   if (dir_p == NULL)
     {
-      return ER_ES_INVALID_PATH;
+      /*
+       * If opendir() failed (e.g., when es_base_dir is an invalid path),
+       * ignore the error in order to start the server nomally.
+       * This approach follows the design of es_init().
+       */
+      return NO_ERROR;
     }
 
   while ((dir_entry = readdir (dir_p)) != NULL && result == 0)
