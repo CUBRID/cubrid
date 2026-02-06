@@ -444,9 +444,9 @@ static void pt_metadomain_build_comp_graph (ANALYTIC_KEY_METADOMAIN * af_meta, i
 static SORT_LIST *pt_sort_list_from_metadomain (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta,
 						PT_NODE ** sort_list_index, PT_NODE * select_list);
 static void pt_metadomain_adjust_key_prefix (ANALYTIC_KEY_METADOMAIN * meta);
-static ANALYTIC_EVAL_TYPE *pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta,
-							ANALYTIC_EVAL_TYPE * eval, PT_NODE ** sort_list_index,
-							ANALYTIC_INFO * info);
+static ANALYTIC_EVAL_TYPE *pt_build_analytic_eval_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
+							ANALYTIC_KEY_METADOMAIN * meta, ANALYTIC_EVAL_TYPE * eval,
+							PT_NODE ** sort_list_index, ANALYTIC_INFO * info);
 static XASL_NODE *pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
 static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type);
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
@@ -640,6 +640,8 @@ static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_
 				    VAL_LIST * vallist);
 
 static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
+static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
+						ANALYTIC_INFO * info);
 
 static void
 pt_init_xasl_supp_info ()
@@ -15546,8 +15548,8 @@ pt_metadomain_adjust_key_prefix (ANALYTIC_KEY_METADOMAIN * meta)
  *   info(in): analytic info structure
  */
 static ANALYTIC_EVAL_TYPE *
-pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * meta, ANALYTIC_EVAL_TYPE * eval,
-			     PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
+pt_build_analytic_eval_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_KEY_METADOMAIN * meta,
+			     ANALYTIC_EVAL_TYPE * eval, PT_NODE ** sort_list_index, ANALYTIC_INFO * info)
 {
   ANALYTIC_EVAL_TYPE *newa = NULL, *new2 = NULL, *tail;
   ANALYTIC_TYPE *func_p;
@@ -15573,17 +15575,19 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 		  /* error was already set */
 		  return NULL;
 		}
+	      eval->sort_list_size = meta->key_size;
+	      eval->covered_size = pt_count_analytic_covered_sort_list (parser, qo_plan, eval, info);
 	    }
 
 	  /* this is the case of a perfect match where both children can be evaluated together */
-	  eval = pt_build_analytic_eval_list (parser, meta->children[0], eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
 	      return NULL;
 	    }
 
-	  eval = pt_build_analytic_eval_list (parser, meta->children[1], eval, sort_list_index, info);
+	  eval =  (parser, qo_plan, meta->children[1], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
@@ -15594,14 +15598,14 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	{
 	  if (meta->level >= meta->children[0]->level)
 	    {
-	      eval = pt_build_analytic_eval_list (parser, meta->children[0], eval, sort_list_index, info);
+	      eval =  (parser, qo_plan, meta->children[0], eval, sort_list_index, info);
 	      if (eval == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
 		}
 
-	      newa = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
+	      newa = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], NULL, sort_list_index, info);
 	      if (newa == NULL)
 		{
 		  /* error was already set */
@@ -15610,14 +15614,14 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else if (meta->level >= meta->children[1]->level)
 	    {
-	      eval = pt_build_analytic_eval_list (parser, meta->children[1], eval, sort_list_index, info);
+	      eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], eval, sort_list_index, info);
 	      if (eval == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
 		}
 
-	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      newa = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], NULL, sort_list_index, info);
 	      if (newa == NULL)
 		{
 		  /* error was already set */
@@ -15626,14 +15630,14 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else
 	    {
-	      newa = pt_build_analytic_eval_list (parser, meta->children[0], NULL, sort_list_index, info);
+	      newa = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], NULL, sort_list_index, info);
 	      if (newa == NULL)
 		{
 		  /* error was already set */
 		  return NULL;
 		}
 
-	      new2 = pt_build_analytic_eval_list (parser, meta->children[1], NULL, sort_list_index, info);
+	      new2 = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], NULL, sort_list_index, info);
 	      if (new2 == NULL)
 		{
 		  /* error was already set */
@@ -15643,6 +15647,12 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 
 	  if (newa != NULL && new2 != NULL)
 	    {
+	      if (newa->covered_size < new2->covered_size)
+		{
+		  ANALYTIC_EVAL_TYPE *tmp = newa;
+		  newa = new2;
+		  new2 = tmp;
+		}
 	      /* link new to new2 */
 	      tail = newa;
 	      while (tail->next != NULL)
@@ -15658,6 +15668,12 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	    }
 	  else
 	    {
+	      if (eval->covered_size < newa->covered_size)
+		{
+		  ANALYTIC_EVAL_TYPE *tmp = eval;
+		  eval = newa;
+		  newa = tmp;
+		}
 	      /* link eval to new */
 	      tail = eval;
 	      while (tail->next != NULL)
@@ -15687,6 +15703,8 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, ANALYTIC_KEY_METADOMAIN * 
 	      /* error was already set */
 	      return NULL;
 	    }
+	  eval->sort_list_size = meta->key_size;
+	  eval->covered_size = pt_count_analytic_covered_sort_list (parser, qo_plan, eval, info);
 	}
 
       meta->source->next = NULL;
@@ -16063,48 +16081,11 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_
 	}
 
       /* build new list */
-      newa = pt_build_analytic_eval_list (parser, &af_meta[i], NULL, sc_index, info);
+      newa = pt_build_analytic_eval_list (parser, qo_plan, &af_meta[i], NULL, sc_index, info);
       if (newa == NULL)
 	{
 	  /* error has already been set */
 	  return NULL;
-	}
-
-      newa->covered_size = 0;
-      newa->sort_list_size = af_meta[i].key_size;
-
-      if (qo_is_iscan (qo_plan))
-	{
-	  SORT_LIST *sort_list;
-	  QO_INDEX_ENTRY *index_entry;
-	  PT_NODE *attr;
-	  int col_idx = 0, is_desc = 0;
-
-	  assert (qo_plan->plan_un.scan.index->head);
-
-	  index_entry = qo_plan->plan_un.scan.index->head;
-
-	  sort_list = newa->sort_list;
-	  while (sort_list != NULL && col_idx < index_entry->col_num)
-	    {
-	      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
-	      is_desc = index_entry->constraints->asc_desc[col_idx];
-
-	      const char *column_name = db_attribute_name (index_entry->constraints->attributes[col_idx]);
-
-	      if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
-		  && !pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
-		{
-		  newa->covered_size++;
-		}
-	      else
-		{
-		  break;
-		}
-
-	      sort_list = sort_list->next;
-	      col_idx++;
-	    }
 	}
 
       /* attach to current list */
@@ -16115,24 +16096,21 @@ pt_optimize_analytic_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_
 	}
       else
 	{
-	  if (newa->covered_size > 0)
+	  if (ret->covered_size < newa->covered_size)
 	    {
-	      tail = ret;
+	      ANALYTIC_EVAL_TYPE *tmp = ret;
 	      ret = newa;
-	      newa->next = tail;
+	      newa = tmp;
 	    }
-	  else
+	  /* locate list tail */
+	  tail = ret;
+	  while (tail->next != NULL)
 	    {
-	      /* locate list tail */
-	      tail = ret;
-	      while (tail->next != NULL)
-		{
-		  tail = tail->next;
-		}
-
-	      /* link */
-	      tail->next = newa;
+	      tail = tail->next;
 	    }
+
+	  /* link */
+	  tail->next = newa;
 	}
     }
 
@@ -28431,4 +28409,46 @@ pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eva
     }
 
   return NO_ERROR;
+}
+
+static int
+pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
+				     ANALYTIC_INFO * info)
+{
+  SORT_LIST *sort_list;
+  QO_INDEX_ENTRY *index_entry;
+  PT_NODE *attr;
+  int col_idx = 0, is_desc = 0, covered_count = 0;
+
+  if (!qo_is_iscan (qo_plan))
+    {
+      return 0;
+    }
+
+  assert (qo_plan->plan_un.scan.index->head);
+  index_entry = qo_plan->plan_un.scan.index->head;
+
+  sort_list = eval->sort_list;
+  while (sort_list != NULL && col_idx < index_entry->col_num)
+    {
+      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
+      is_desc = index_entry->constraints->asc_desc[col_idx];
+
+      const char *column_name = db_attribute_name (index_entry->constraints->attributes[col_idx]);
+
+      if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
+	  && !pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
+	{
+	  covered_count++;
+	}
+      else
+	{
+	  break;
+	}
+
+      sort_list = sort_list->next;
+      col_idx++;
+    }
+
+  return covered_count;
 }
