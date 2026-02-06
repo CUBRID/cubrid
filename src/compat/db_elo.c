@@ -109,18 +109,18 @@ db_elo_copy (DB_ELO * src, DB_ELO * dest)
 }
 
 /*
- * db_elo_copy_with_prefix () - Similar to db_elo_copy (), but called when adding a prefix to the destination path.
- * return: elo_copy_with_prefix ()
+ * db_elo_move_with_prefix () - Called to move a LOB file with an additional prefix.
+ * return: elo_move_with_prefix ()
  * src(in): DB_ELO structure that represents the original source file
- * prefix(in): prefix that will be added to the destination path when copying
- * dest(out): DB_ELO structure that represents the copied file
+ * prefix(in): prefix to be added to the destination path when moving the file
+ * dest(out): DB_ELO structure that represents the moved file
  */
 int
-db_elo_copy_with_prefix (DB_ELO * src, const char *prefix, DB_ELO * dest)
+db_elo_move_with_prefix (DB_ELO * src, const char *prefix, DB_ELO * dest)
 {
   CHECK_3ARGS_ERROR (src, prefix, dest);
 
-  return elo_copy_with_prefix (src, prefix, dest);
+  return elo_move_with_prefix (src, prefix, dest);
 }
 
 /*
