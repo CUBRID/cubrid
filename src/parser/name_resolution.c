@@ -4874,6 +4874,12 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE
       att = (DB_ATTRIBUTE *) db_get_attributes_force (object);
     }
 
+  /* invisible columns will not be shown */
+  while (att != NULL && db_attribute_is_invisible_column (att))
+    {
+      att = db_attribute_next (att);
+    }
+
   if (att != NULL)
     {
       /* make result anchor the list */
@@ -4905,6 +4911,13 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE
       /* for the rest of the attributes do */
       while (att != NULL)
 	{
+	  /* column is invisible. skip it */
+	  if (db_attribute_is_invisible_column (att))
+	    {
+	      att = db_attribute_next (att);
+	      continue;
+	    }
+
 	  /* make new node & copy attribute name into it */
 	  node = pt_name (parser, db_attribute_name (att));
 	  if (node == NULL)
@@ -8676,6 +8689,10 @@ generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN
 
   for (db_attr_cur = db_attrs; db_attr_cur != NULL; db_attr_cur = db_attribute_next (db_attr_cur))
     {
+      if (db_attribute_is_invisible_column (db_attr_cur))
+	{
+	  continue;
+	}
       attr_cur = (NATURAL_JOIN_ATTR_INFO *) malloc (sizeof (NATURAL_JOIN_ATTR_INFO));
       if (attr_cur == NULL)
 	{

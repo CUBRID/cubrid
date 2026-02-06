@@ -125,7 +125,7 @@ enum
   /* property is not changed (not present in both current schema or new defition or present in both but not affected in
    * any way) */
   ATT_CHG_PROPERTY_UNCHANGED = 0x10,
-  /* property is changed (i.e.: both present in old an new , but different) */
+  /* property is changed (i.e.: both present in old and new , but different) */
   ATT_CHG_PROPERTY_DIFF = 0x20,
   /* type : precision increase : varchar(2) -> varchar (10) */
   ATT_CHG_TYPE_PREC_INCR = 0x100,
@@ -7374,7 +7374,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	}
     }
 
-  if (error == NO_ERROR && attribute->info.attr_def.attr_invisible)
+  if (error == NO_ERROR && attribute->info.attr_def.attr_invisible == 2)
     {
       /* skip finding attribute if att is already available */
       if (att == NULL)
@@ -7499,15 +7499,6 @@ do_add_attribute_from_select_column (PARSER_CONTEXT * parser, DB_CTMPL * ctempla
       if (sm_att_constrained (class_obj, column->attr_name, SM_ATTFLAG_NON_NULL))
 	{
 	  error = dbt_constrain_non_null (ctemplate, attr_name, 0, 1);
-	}
-      if (error == NO_ERROR && sm_att_constrained (class_obj, column->attr_name, SM_ATTFLAG_INVISIBLE_COLUMN))
-	{
-	  SM_ATTRIBUTE *att;
-	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
-	  if (error == NO_ERROR)
-	    {
-	      att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
-	    }
 	}
     }
 
@@ -11241,7 +11232,11 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
-  if (attr_def->info.attr_def.attr_invisible)
+  if (attr_def->info.attr_def.attr_invisible == 0)
+    {
+      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (attr_def->info.attr_def.attr_invisible == 2)
     {
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }

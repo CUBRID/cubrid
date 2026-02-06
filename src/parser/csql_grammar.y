@@ -199,6 +199,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_SHARED_DEFAULT_AI	(0x70)
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
+#define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
 
 #ifdef PARSER_DEBUG
 #define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
@@ -10933,8 +10934,7 @@ attr_index_def
 attr_def_one
 	: identifier
 	  data_type
-	  opt_invisible
-		{{ DBG_TRACE_GRAMMAR(attr_def_one, : identifier data_type opt_invisible);
+		{{ DBG_TRACE_GRAMMAR(attr_def_one, : identifier data_type);
 
 			PT_NODE *dt;
 			PT_TYPE_ENUM typ;
@@ -10953,7 +10953,6 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
-			    node->info.attr_def.attr_invisible = $3;
 
                             CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
@@ -10972,7 +10971,12 @@ attr_def_one
 			  }
 			if (node != NULL)
 			  {
-			    node->info.attr_def.ordering_info = $6;
+			    node->info.attr_def.ordering_info = $5;
+			  }
+			unsigned int mask = $4;
+			if (!(mask & COLUMN_CONSTRAINT_INVISIBLE))
+			  {
+			    node->info.attr_def.attr_invisible = 0;
 			  }
 
 			$$ = node;
@@ -11114,6 +11118,10 @@ column_constraint_and_comment_def
 	| column_on_update_def
 		{{ DBG_TRACE_GRAMMAR(column_constraint_and_comment_def, | column_on_update_def);
 			$$ = COLUMN_CONSTRAINT_ON_UPDATE;
+		}}
+	| column_invisible_def
+		{{ DBG_TRACE_GRAMMAR(column_constraint_and_comment_def, | column_invisible_def);
+			$$ = COLUMN_CONSTRAINT_INVISIBLE;
 		}}
 	;
 
@@ -11577,6 +11585,19 @@ column_default_constraint_def
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
 
+		DBG_PRINT}}
+	;
+
+column_invisible_def
+	: VISIBLE
+		{{ DBG_TRACE_GRAMMAR(column_invisible_def, : VISIBLE);
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_invisible = 1;
+		DBG_PRINT}}
+	| INVISIBLE
+		{{ DBG_TRACE_GRAMMAR(column_invisible_def, : INVISIBLE);
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_invisible = 2;
 		DBG_PRINT}}
 	;
 

@@ -6819,7 +6819,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, s);
     }
 
-  if (p->info.attr_def.attr_invisible)
+  if (p->info.attr_def.attr_invisible == 2)
     {
       q = pt_append_nulstring (parser, q, " invisible ");
     }
