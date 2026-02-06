@@ -131,7 +131,7 @@ static PT_NODE *pt_clear_Oracle_outerjoin_spec_id (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static PT_NODE *pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_bind_value_to_hostvar_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static int pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr);
+static int pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr, bool is_spec_dummy);
 static int pt_find_class_attribute (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * attr);
 static int pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name);
 static int pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p);
@@ -3928,13 +3928,14 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 
 /*
  * pt_find_attr_in_class_list () - trying to resolve X.attr
- *   return: returns a PT_NAME list or NULL
- *   parser(in):
+ *   return: 1 on success, 0 on failure
+ *   parser(in): parser context
  *   flat(in): list of PT_NAME nodes (class names)
  *   attr(in): a PT_NAME (an attribute name)
+ *   is_spec_dummy(in): is PT_SPEC has flag PT_SPEC_FLAG_DUMMY_REMOVED?
  */
 static int
-pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr)
+pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr, bool is_spec_dummy)
 {
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
@@ -3982,6 +3983,12 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	    {
 	      PT_ERRORc (parser, attr, er_msg ());
 	    }
+	  return 0;
+	}
+
+      if (is_spec_dummy && db_attribute_is_invisible_column (att))
+	{
+	  /* dummy spec from subquery cannot see invisible columns */
 	  return 0;
 	}
 
@@ -4065,7 +4072,6 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
       cname = cname->next;
     }
   attr->info.name.spec_id = flat->info.name.spec_id;
-
   return 1;
 }
 
@@ -4167,7 +4173,9 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	    {
 	      return 1;
 	    }
-	  ok = pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name);
+	  ok =
+	    pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name,
+					spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED);
 	}
     }
   else
@@ -6414,7 +6422,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      exposed_spec = NULL;
 	    }
-	  if (!pt_find_attr_in_class_list (parser, arg1->data_type->info.data_type.entity, arg2))
+	  if (!pt_find_attr_in_class_list (parser, arg1->data_type->info.data_type.entity, arg2, false))
 	    {
 	      temp = arg1->data_type;
 	      if (temp)
