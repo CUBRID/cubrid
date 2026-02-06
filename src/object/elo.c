@@ -352,20 +352,19 @@ error_return:
 }
 
 /*
- * elo_copy_with_prefix () - Similar to the LOB_PERMANENT_CREATED case in elo_copy(),
-                             but called when adding a prefix to the destination path during copy.
+ * elo_move_with_prefix () - TODO: write function comment
  * return: error code
  * elo(in): DB_ELO structure that represents the original source file
- * prefix(in): prefix that will be added to the destination path when copying
- * dest(out): DB_ELO structure that represents the copied file
+ * prefix(in): prefix to be added to the destination path when moving the file
+ * dest(out): DB_ELO structure that represents the moved file
  *
  * Note: CUBRID supports only the ES_POSIX type, so only the ES_POSIX case is handled.
  */
 int
-elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
+elo_move_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
 {
   int ret = NO_ERROR;
-  ES_URI out_uri;
+  ES_URI rename_uri, out_uri;
   char *locator = NULL;
   char *meta_data = NULL;
 
@@ -392,22 +391,26 @@ elo_copy_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
   elo->es_type = es_get_type (elo->locator);
   if (elo->es_type == ES_POSIX)
     {
-      ret = es_copy_file_with_prefix (elo->locator, elo->meta_data, prefix, out_uri);
+      ret = es_rename_file (elo->locator, elo->meta_data, rename_uri);
       if (ret != NO_ERROR)
-	{
-	  goto error_return;
-	}
+        {
+          goto error_return;
+        }
+
+      es_move_file_with_prefix (rename_uri, elo->meta_data, prefix, out_uri);
       locator = db_private_strdup (NULL, out_uri);
       if (locator == NULL)
-	{
-	  es_delete_file (out_uri);
-	  goto error_return;
-	}
-      ret = lob_locator_add (locator, LOB_PERMANENT_CREATED);
+        {
+          assert (er_errid () != NO_ERROR);
+          ret = er_errid ();
+          goto error_return;
+        }
+
+      ret = lob_locator_change_state (elo->locator, locator, LOB_PERMANENT_CREATED);
       if (ret != NO_ERROR)
-	{
-	  goto error_return;
-	}
+        {
+          goto error_return;
+        }
     }
   else
     {
