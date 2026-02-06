@@ -1301,6 +1301,18 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       return error;
     }
 
+  /* check if all of attributes are invisible. if is, abort */
+  error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+  if (error != NO_ERROR)
+    {
+      dbt_abort_class (ctemplate);
+      if (partition_savepoint)
+	{
+	  goto alter_partition_fail;
+	}
+      return error;
+    }
+
   vclass = dbt_finish_class (ctemplate);
 
   /* the dbt_finish_class() failed, the template was not freed */
@@ -9123,6 +9135,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       goto error_exit;
     }
 
+  /* check if all of attributes are invisible. if is, abort */
+  error = smt_check_attribute_all_invisible (ctemplate, node->info.create_entity.entity_name->info.name.original);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   class_obj = dbt_finish_class (ctemplate);
 
   if (class_obj == NULL)
@@ -9925,6 +9944,13 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
     {
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
       att_id = attr_chg_prop.att_id;
+    }
+
+  /* check if all of attributes are invisible. if is, abort */
+  error = smt_check_attribute_all_invisible (ctemplate, alter->info.alter.entity_name->info.name.original);
+  if (error != NO_ERROR)
+    {
+      goto exit;
     }
 
   /* force schema update to server */
