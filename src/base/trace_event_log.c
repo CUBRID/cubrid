@@ -69,9 +69,8 @@ static FILE *trace_Fp = NULL;
 static char event_log_file_path[PATH_MAX];
 static char trace_log_file_path[PATH_MAX];
 
-static FILE *trace_event_log_init (const char *db_name, const char *log_prefix, const char *log_suffix,
-				   char *log_file_path);
-static FILE *trace_event_file_open (const char *path);
+static FILE *trace_event_log_init (const char *db_name, char *log_file_path, char log_type);
+static FILE *trace_event_file_open (const char *path, char log_type);
 static FILE *trace_event_file_backup (FILE * fp, const char *path);
 static FILE *trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char log_type);
 static void trace_event_log_print_client_info (int tran_index, int indent, FILE * log_fp);
@@ -85,7 +84,7 @@ static void trace_event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp,
 void
 trace_log_init (const char *db_name)
 {
-  trace_Fp = trace_event_log_init (db_name, TRACE_LOG_FILE_PREFIX, TRACE_LOG_FILE_SUFFIX, trace_log_file_path);
+  trace_Fp = trace_event_log_init (db_name, trace_log_file_path, 'T');
 }
 
 /*
@@ -95,11 +94,11 @@ trace_log_init (const char *db_name)
 void
 event_log_init (const char *db_name)
 {
-  event_Fp = trace_event_log_init (db_name, EVENT_LOG_FILE_PREFIX, EVENT_LOG_FILE_SUFFIX, event_log_file_path);
+  event_Fp = trace_event_log_init (db_name, event_log_file_path, 'E');
 }
 
 static FILE *
-trace_event_log_init (const char *db_name, const char *log_prefix, const char *log_suffix, char *log_file_path)
+trace_event_log_init (const char *db_name, char *log_file_path, char log_type)
 {
   char *s, *base_db_name;
   char local_db_name[DB_MAX_IDENTIFIER_LENGTH];
@@ -135,13 +134,22 @@ trace_event_log_init (const char *db_name, const char *log_prefix, const char *l
       return NULL;
     }
 
-  snprintf (log_file_name, PATH_MAX - 1, "%s%c%s%s%04d%02d%02d_%02d%02d%s", LOG_FILE_DIR, PATH_SEPARATOR,
-	    base_db_name, log_prefix, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday,
-	    log_tm_p->tm_hour, log_tm_p->tm_min, log_suffix);
+  if (log_type == 'E')
+    {
+      snprintf (log_file_name, PATH_MAX - 1, "%s%c%s%s%04d%02d%02d_%02d%02d%s", LOG_FILE_DIR, PATH_SEPARATOR,
+		base_db_name, EVENT_LOG_FILE_PREFIX, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday,
+		log_tm_p->tm_hour, log_tm_p->tm_min, EVENT_LOG_FILE_SUFFIX);
+    }
+  else
+    {
+      snprintf (log_file_name, PATH_MAX - 1, "%s%c%s%s%04d%02d%02d_%02d%02d%s", LOG_FILE_DIR, PATH_SEPARATOR,
+		base_db_name, TRACE_LOG_FILE_PREFIX, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday,
+		log_tm_p->tm_hour, log_tm_p->tm_min, TRACE_LOG_FILE_SUFFIX);
+    }
 
   envvar_logdir_file (log_file_path, PATH_MAX, log_file_name);
 
-  return trace_event_file_open (log_file_path);
+  return trace_event_file_open (log_file_path, log_type);
 }
 
 /*
@@ -150,7 +158,7 @@ trace_event_log_init (const char *db_name, const char *log_prefix, const char *l
  *   path(in): file path
  */
 static FILE *
-trace_event_file_open (const char *path)
+trace_event_file_open (const char *path, char log_type)
 {
   FILE *fp;
   char dir[PATH_MAX], *tpath;
@@ -203,7 +211,7 @@ trace_event_file_open (const char *path)
     }
 
 #if !defined (WINDOWS) && defined (SERVER_MODE)
-  if (fp != NULL)
+  if (fp != NULL && log_type == 'E' /* event log */ )
     {
       er_file_create_link_to_current_log_file (path, EVENT_LOG_FILE_SUFFIX);
     }
@@ -321,7 +329,7 @@ trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char
 	  (void) fclose (log_Fp);
 	}
 
-      log_Fp = trace_event_file_open (log_file_name);
+      log_Fp = trace_event_file_open (log_file_name, log_type);
       if (log_Fp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
