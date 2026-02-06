@@ -553,7 +553,7 @@ namespace cubhnsw
 
 	slot_id_t candidate_slot = candidacy.slot;
 	pinned_t candidate_node_blk = m_storage->get_node_by_slot_id (thread_p, candidate_slot, lock_mode::shared);
-	context.visited_blocks++;
+	context.visited_nodes++;
 	neighbors_ref_type candidate_neighbors = get_neighbors (candidate_node_blk, level);
 	for (std::size_t i = 0; i < candidate_neighbors.size (); ++i)
 	  {
