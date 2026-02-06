@@ -57,6 +57,8 @@
 #include "tz_support.h"
 #include "util_func.h"
 
+#include "thread_entry.hpp"
+
 #include <algorithm>
 #include <string>
 #include <locale>
@@ -154,7 +156,10 @@ typedef enum
 
 #define MAX_TOKEN_SIZE 16000
 
-#define GUID_STANDARD_BYTES_LENGTH 16
+#if !defined (CS_MODE)
+static int uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes);
+static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, unsigned char *out_bytes);
+#endif /* !defined (CS_MODE) */
 
 typedef enum
 {
@@ -26022,10 +26027,127 @@ error:
 int
 db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
 {
+  return db_uuidv4(thread_p,result,false);
+}
+
+int
+db_uuid (THREAD_ENTRY * thread_p, UUID_VERSION version, DB_VALUE * result){
+  switch (version){
+    case UUID_V4:
+      return db_uuidv4(thread_p,result,true);
+    break;
+    case UUID_V7:
+      return db_uuidv7(thread_p,result);
+    break;
+    default:
+    
+    break;
+    
+  }
+  
+}
+
+int
+db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result, bool is_raw)
+{
   int i = 0, error_code = NO_ERROR;
   const char hex_digit[] = "0123456789ABCDEF";
-  char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
+  unsigned char guid_bytes_buf[GUID_STANDARD_BYTES_LENGTH];
+  char *guid_bytes_alloc = NULL;
+  unsigned char *guid_bytes = NULL;
   char *guid_hex = NULL;
+
+  if (result == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error;
+    }
+
+  if (is_raw)
+    {
+      guid_bytes_alloc = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH);
+      if (guid_bytes_alloc == NULL)
+        {
+          error_code = er_errid ();
+          goto error;
+        }
+      guid_bytes = (unsigned char *) guid_bytes_alloc;
+    }
+  else
+    {
+      guid_bytes = guid_bytes_buf;
+    }
+
+  db_make_null (result);
+
+  /* Generate UUIDv4 bytes using helper */
+  error_code = uuidv4_generate_bytes (thread_p, guid_bytes);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (is_raw)
+    {
+      db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, (char *) guid_bytes, GUID_STANDARD_BYTES_LENGTH * 8);
+      result->need_clear = true;
+      return NO_ERROR;
+    }
+  else
+    {
+      guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
+      if (guid_hex == NULL)
+        {
+          error_code = er_errid ();
+          goto error;
+        }
+
+      guid_hex[GUID_STANDARD_BYTES_LENGTH * 2] = '\0';
+
+      /* Encode the bytes to HEX */
+      for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
+        {
+          guid_hex[i * 2] = hex_digit[(guid_bytes[i] >> 4) & 0xF];
+          guid_hex[i * 2 + 1] = hex_digit[(guid_bytes[i] & 0xF)];
+        }
+
+      db_make_string (result, guid_hex);
+      result->need_clear = true;
+
+      return NO_ERROR;
+    }
+
+error:
+  if (guid_bytes_alloc != NULL)
+    {
+      db_private_free (thread_p, guid_bytes_alloc);
+    }
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      er_clear ();
+      error_code = NO_ERROR;
+    }
+
+  return error_code;
+}
+
+/*
+ * db_uuid_bin() - Generate a UUID and return as BIT(128) value.
+ *   return: error code or NO_ERROR
+ *   thread_p(in): thread context
+ *   version(in): UUID version (UUID_V4 or UUID_V7)
+ *   epoch_ms(in): epoch time in milliseconds (used for UUIDv7, from vd->sys_epochtime)
+ *   result(out): BIT(128) DB_VALUE
+ * Note:
+ *   For UUIDv7, epoch_ms should be calculated from val_descr as:
+ *   epoch_ms = (uint64_t)vd->sys_epochtime * 1000 + (uint64_t)vd->sys_epochtime_ms
+ */
+int
+db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, DB_VALUE * result)
+{
+  int error_code = NO_ERROR;
+  char *guid_bytes = NULL;
 
   if (result == NULL)
     {
@@ -26036,23 +26158,200 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
 
   db_make_null (result);
 
-  /* Generate random bytes */
-  error_code = crypt_generate_random_bytes (guid_bytes, GUID_STANDARD_BYTES_LENGTH);
+  guid_bytes = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH);
+  if (guid_bytes == NULL)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+
+  switch (version)
+    {
+    case UUID_V4:
+      error_code = uuidv4_generate_bytes (thread_p, (unsigned char *) guid_bytes);
+      break;
+    case UUID_V7:
+      error_code = uuidv7_generate_bytes (thread_p, epoch_ms, (unsigned char *) guid_bytes);
+      break;
+    default:
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error;
+    }
 
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  /* Clear UUID version field */
-  guid_bytes[6] &= 0x0F;
-  /* Set UUID version according to UUID version 4 protocol */
-  guid_bytes[6] |= 0x40;
+  db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, guid_bytes, GUID_STANDARD_BYTES_LENGTH * 8);
+  result->need_clear = true;
 
-  /* Clear variant field */
-  guid_bytes[8] &= 0x3f;
-  /* Set variant according to UUID version 4 protocol */
-  guid_bytes[8] |= 0x80;
+  return NO_ERROR;
+
+error:
+  if (guid_bytes != NULL)
+    {
+      db_private_free (thread_p, guid_bytes);
+    }
+  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+    {
+      er_clear ();
+      error_code = NO_ERROR;
+    }
+
+  return error_code;
+}
+
+/*
+ * uuidv7_generate_bytes() - Generate UUIDv7 bytes using per-thread monotonic state.
+ *   return: error code or NO_ERROR
+ *   thread_p(in): thread context
+ *   epoch_ms(in): epoch time in milliseconds (from query's val_descr)
+ *   out_bytes(out): 16-byte UUID output buffer
+ * Note:
+ *   UUIDv7 layout (RFC 9562):
+ *   - Octets 0-5 (bits 0 ~ 47): Unix timestamp in milliseconds (big-endian)
+ *     - GUID_V7_TS_BYTES_LENGTH
+ *   - Octet 6 (bits 48 ~ 51): version (0x7)
+ *   - Octets 6-7 (bits 52 ~ 59): seq (sequence counter)
+ *     - GUID_V7_SEQ_BITS
+ *   - Octet 7 (bits 60 ~ 63): random_a
+ *   - Octet 8 (bits 64 ~ 65): variant (0b10)
+ *   - Octets 8-15 (bits 66 ~ 127): random_b
+ *
+ *   This implementation uses per-thread state for monotonic ordering within a thread.
+ *   The epoch_ms comes from the query's xasl_state.vd for efficiency and
+ *   consistency within a single query execution.
+ */
+static int
+uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsigned char *out_bytes)
+{
+  int i = 0, error_code = NO_ERROR;
+  uint64_t last_ms = 0;
+  uint8_t seq = 0;
+
+  /* Load per-thread UUIDv7 state */
+  thread_get_uuidv7_state (thread_p, &last_ms, &seq);
+
+  if (xasl_vd_epoch_ms > last_ms)
+    {
+      /* New millisecond: reset sequence */
+      last_ms = xasl_vd_epoch_ms;
+      seq = 0;
+    }
+  else
+    {
+      /* 
+       * Cases
+       *   1. Same millisecond
+       *   2. Same Query Context
+       *   3. Clock went backwards
+       *   : use last_ms to preserve monotonicity
+       * Increment sequence to ensure uniqueness within the same effective timestamp
+       */
+      seq++;
+      if (seq > GUID_V7_SEQ_MAX || seq == 0)
+        {
+          /* Sequence overflow: advance timestamp by 1ms to preserve monotonicity */
+          last_ms++;
+          seq = 0;
+        }
+    }
+
+  /* Save updated state back to thread */
+  thread_set_uuidv7_state (thread_p, last_ms, seq);
+
+  /* Generate random bytes for the lower part (bytes 7-15) */
+  error_code = crypt_generate_random_bytes ((char *) (out_bytes + 7), GUID_STANDARD_BYTES_LENGTH - 7);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Fill timestamp (bytes 0-5, big-endian) */
+  for (i = 0; i < GUID_V7_TS_BYTES_LENGTH; i++)
+    {
+      out_bytes[i] = (unsigned char) ((last_ms >> ((GUID_V7_TS_BYTES_LENGTH - i - 1) * 8)) & 0xFF);
+    }
+
+  /* Set version (byte 6 high nibble = 0x7) and embed seq high 4 bits in byte 6 low nibble */
+  out_bytes[6] = (unsigned char) (0x70 | ((seq >> 4) & 0x0F));
+
+  /* Set seq low 4bits in byte 7 high nibble and remain low nibble as random */
+  out_bytes[7] = (unsigned char) (((seq & 0x0F) << 4) | (out_bytes[7] & 0x0F));
+
+  /* Set variant (byte 8 high 2 bits = 0b10) */
+  out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
+
+  return NO_ERROR;
+}
+
+/*
+ * uuidv4_generate_bytes() - Generate UUIDv4 bytes (random UUID).
+ *   return: error code or NO_ERROR
+ *   thread_p(in): thread context
+ *   out_bytes(out): 16-byte UUID output buffer
+ * Note:
+ *   UUIDv4 is fully random except for version and variant bits.
+ */
+static int
+uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes)
+{
+  int error_code = NO_ERROR;
+
+  /* Generate random bytes */
+  error_code = crypt_generate_random_bytes ((char *) out_bytes, GUID_STANDARD_BYTES_LENGTH);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Set version field (byte 6 high nibble = 0x4) */
+  out_bytes[6] = (unsigned char) ((out_bytes[6] & 0x0F) | 0x40);
+
+  /* Set variant field (byte 8 high 2 bits = 0b10) */
+  out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
+
+  return NO_ERROR;
+}
+
+/*
+ * db_uuidv7() - Generate a type 7 (time ordered) UUID as HEX string.
+ *   return: error code or NO_ERROR
+ *   thread_p(in): thread context
+ *   result(out): HEX encoded UUID string (32 characters)
+ * Note:
+ *   This function is for backward compatibility (string output).
+ *   It gets current time directly since there's no val_descr available.
+ */
+int
+db_uuidv7 (THREAD_ENTRY * thread_p, DB_VALUE * result)
+{
+  int i = 0, error_code = NO_ERROR;
+  const char hex_digit[] = "0123456789ABCDEF";
+  unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
+  char *guid_hex = NULL;
+  uint64_t epoch_ms = 0;
+
+  if (result == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error;
+    }
+
+  db_make_null (result);
+
+  /* Get current time for standalone call (no val_descr context) */
+  util_get_ms_since_epoch (&epoch_ms);
+
+  /* Generate UUIDv7 bytes using per-thread monotonic state */
+  error_code = uuidv7_generate_bytes (thread_p, epoch_ms, guid_bytes);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
   if (guid_hex == NULL)

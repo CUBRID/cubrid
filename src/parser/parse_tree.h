@@ -480,7 +480,8 @@ struct json_t;
            (n)->info.expr.op == PT_DRAND || \
            (n)->info.expr.op == PT_RANDOM || \
            (n)->info.expr.op == PT_RAND || \
-           (n)->info.expr.op == PT_SYS_GUID ))
+           (n)->info.expr.op == PT_SYS_GUID || \
+           (n)->info.expr.op == PT_UUID ))
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -1505,6 +1506,7 @@ typedef enum
   PT_SLEEP,
 
   PT_SYS_GUID,
+  PT_UUID,
 
   PT_DBTIMEZONE,
   PT_SESSIONTIMEZONE,

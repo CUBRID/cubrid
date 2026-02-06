@@ -26641,6 +26641,23 @@ parser_keyword_func (const char *name, PT_NODE * args)
         return expr;
       }
 
+    case PT_UUID:
+      {
+        PT_NODE *expr;
+        /* UUID accepts 0 or 1 argument (defaults to 4 if no argument) */
+        if (c < 0 || c > 1)
+          {
+            return NULL;
+          }
+        parser_cannot_cache = true;
+
+        a1 = (c == 1) ? args : NULL;
+        expr = parser_make_expression (this_parser, key->op, a1, NULL, NULL);
+        expr->flag.do_not_fold = 1;
+
+        return expr;
+      }
+
       /* arg 0 or 1 */
     case PT_RAND:
     case PT_RANDOM:

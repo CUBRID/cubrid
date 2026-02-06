@@ -603,6 +603,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_DBTIMEZONE:
     case T_SESSIONTIMEZONE:
     case T_SYS_GUID:
+    case T_UUID4:
+    case T_UUID7:
     case T_UTC_TIMESTAMP:
       /* nothing to fetch */
       break;
@@ -3518,6 +3520,26 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       break;
 
+    case T_UUID4:
+      /* uuid(4) is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (db_uuid_bin (thread_p, UUID_V4, 0, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_UUID7:
+      /* uuid(7) is not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (db_uuid_bin (thread_p, UUID_V7, ((uint64_t)vd->sys_epochtime * 1000ULL) + (uint64_t)vd->sys_epochtime_ms, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     case T_TYPEOF:
       if (db_typeof_dbval (arithptr->value, peek_right) != NO_ERROR)
 	{
@@ -3852,6 +3874,9 @@ fetch_peek_arith_end:
     case T_DRANDOM:
       /* sys_guid() is not constant */
     case T_SYS_GUID:
+      /* uuid() is not constant */
+    case T_UUID4:
+    case T_UUID7:
       /* sleep() is not constant */
     case T_SLEEP:
 
