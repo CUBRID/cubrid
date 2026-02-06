@@ -20159,15 +20159,36 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		{
 		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC)
 		    {
-		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, agg_p->domain->scale, NULL,
-					   0);
+		      if (agg_p->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+			{
+			  agg_p->accumulator_domain.value_dom =
+			    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
+					       DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
+			}
+		      else
+			{
+			  agg_p->accumulator_domain.value_dom =
+			    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_FIXED_NUMERIC_PRECISION,
+					       agg_p->domain->scale, NULL, 0);
+			}
 		    }
 		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
 		    {
-		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, DB_VALUE_SCALE (dbval),
-					   NULL, 0);
+		      int precision = 0, scale = 0;
+		      bool is_float_numeric = false;
+
+		      db_get_numeric_precision_and_scale (dbval, &precision, &scale, &is_float_numeric);
+		      if (is_float_numeric)
+			{
+			  agg_p->accumulator_domain.value_dom =
+			    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
+					       DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
+			}
+		      else
+			{
+			  agg_p->accumulator_domain.value_dom =
+			    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_FIXED_NUMERIC_PRECISION, scale, NULL, 0);
+			}
 		    }
 		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_FLOAT)
 		    {

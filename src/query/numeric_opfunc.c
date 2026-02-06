@@ -125,9 +125,9 @@ static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
-const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION] = {
-  1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15,
-  15, 15, 16, 16, 17, 17
+const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION + 1] = {
+  0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14,
+  15, 15, 15, 16, 16, 17, 17
 };
 
 /* precomputed lookup table for 10^1 through 10^16 */
@@ -2206,10 +2206,8 @@ numeric_common_prec_scale (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALU
   TP_DOMAIN *domain;
 
   /* If scales already match, merely copy them and return */
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
-  prec1 = DB_VALUE_PRECISION (dbv1);
-  prec2 = DB_VALUE_PRECISION (dbv2);
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
   if (scale1 == scale2)
     {
       cprec = MAX (prec1, prec2);
@@ -2270,10 +2268,8 @@ numeric_prec_scale_when_overflow (const DB_VALUE * dbv1, const DB_VALUE * dbv2, 
   unsigned char temp[DB_NUMERIC_BUF_SIZE];
   int ret;
 
-  prec1 = DB_VALUE_PRECISION (dbv1);
-  prec2 = DB_VALUE_PRECISION (dbv2);
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
+  db_get_numeric_precision_and_scale (dbv1, &prec1, &scale1, NULL);
+  db_get_numeric_precision_and_scale (dbv2, &prec2, &scale2, NULL);
 
   scale = MAX (scale1, scale2);
   prec = DB_MAX_FIXED_NUMERIC_PRECISION;
@@ -2504,7 +2500,7 @@ numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	  goto exit_on_error;
 	}
     }
-  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common), DB_NUMERIC_BUF_SIZE, false);
+  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common), DB_NUMERIC_BUF_SIZE, true);
 
   return ret;
 
@@ -2738,7 +2734,7 @@ numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	  goto exit_on_error;
 	}
     }
-  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common), DB_NUMERIC_BUF_SIZE, false);
+  db_make_numeric (answer, temp, prec, DB_VALUE_SCALE (&dbv1_common), DB_NUMERIC_BUF_SIZE, true);
 
   return ret;
 
@@ -2949,7 +2945,7 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
     {
       numeric_negate (result);
     }
-  db_make_numeric (answer, result, prec, scale, DB_NUMERIC_BUF_SIZE, false);
+  db_make_numeric (answer, result, prec, scale, DB_NUMERIC_BUF_SIZE, true);
 
   return ret;
 
@@ -3258,7 +3254,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
 	}
     }
 
-  db_make_numeric (answer, temp_quo, prec, scale, DB_NUMERIC_BUF_SIZE, false);
+  db_make_numeric (answer, temp_quo, prec, scale, DB_NUMERIC_BUF_SIZE, true);
 
   return ret;
 

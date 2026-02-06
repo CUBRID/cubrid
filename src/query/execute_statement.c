@@ -1827,9 +1827,9 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
-      FLOAT_TO_FIXED_NUMERIC (&range_val);
       er_clear ();
     }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   db_abs_dbval (&abs_inc_val, &inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE, inc_val_msgid,
@@ -1860,6 +1860,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -2871,9 +2872,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       // max - min might be flooded. Regard the range is big enough.
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
-      FLOAT_TO_FIXED_NUMERIC (&range_val);
       er_clear ();
     }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   db_abs_dbval (&abs_inc_val, &new_inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE,
@@ -2907,6 +2908,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)

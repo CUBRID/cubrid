@@ -6051,6 +6051,10 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
 	db_get_numeric_precision_and_scale (dbval_p, &precision, &scale, &is_float_numeric);
 
 	db_make_numeric (result_p, db_get_numeric (dbval_p), precision, scale, DB_NUMERIC_BUF_SIZE, is_float_numeric);
+	if (numeric_db_value_negate (result_p) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
       }
       break;
 

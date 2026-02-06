@@ -1937,7 +1937,27 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	  node->data_type = parser_copy_tree_list (parser, arg_list->data_type);
 	  if (arg_type == PT_TYPE_NUMERIC && node->data_type)
 	    {
-	      node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	      if (node->data_type->info.data_type.precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+		  node->data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+		}
+	      else
+		{
+		  node->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		}
+	      /* we modified precision and dec_precision of node->data_type above.
+	       * however, in the collation-checking phase below, after arg_list is set to
+	       * node->info.function.arg_list, calls such as pt_coerce_node_collation() may copy
+	       * node->data_type from node->info.function.arg_list->data_type again, overwriting
+	       * the modified values.
+	       *
+	       * therefore, we also set the same values on the original
+	       * node->info.function.arg_list->data_type so that the correct precision and
+	       * dec_precision are preserved during collation checking.
+	       */
+	      node->info.function.arg_list->data_type->info.data_type.precision = node->data_type->info.data_type.precision;
+	      node->info.function.arg_list->data_type->info.data_type.dec_precision = node->data_type->info.data_type.dec_precision;
 	    }
 	  break;
 

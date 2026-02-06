@@ -8324,7 +8324,7 @@ mr_initmem_numeric (void *memptr, TP_DOMAIN * domain)
     }
   else
     {
-      mem_length = DB_ALIGN ((_gv_numeric_precision_to_bytes_lookup[domain->precision - 1]), INT_ALIGNMENT);
+      mem_length = DB_ALIGN ((_gv_numeric_precision_to_bytes_lookup[domain->precision]), INT_ALIGNMENT);
     }
 
   memset (memptr, 0, mem_length);
@@ -8371,7 +8371,7 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 	      bool is_negative_data = (src_num[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 
 	      byte_size =
-		DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
+		DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision]), INT_ALIGNMENT);
 	      assert ((byte_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
 
 	      header[0] = byte_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
@@ -8392,7 +8392,7 @@ mr_setmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value)
 	    }
 	  else
 	    {
-	      byte_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision - 1], INT_ALIGNMENT);
+	      byte_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision], INT_ALIGNMENT);
 	      data_dest = num;
 	    }
 
@@ -8439,7 +8439,7 @@ mr_getmem_numeric (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
       is_float_numeric = false;
       is_negative_data = (num[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 
-      byte_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision - 1], INT_ALIGNMENT);
+      byte_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision], INT_ALIGNMENT);
     }
 
   if (is_negative_data)
@@ -8468,7 +8468,7 @@ mr_data_writemem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain)
     }
   else
     {
-      disk_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
+      disk_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision], INT_ALIGNMENT);
     }
 
   or_put_data (buf, (char *) mem, disk_size);
@@ -8488,7 +8488,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	}
       else
 	{
-	  size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
+	  size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision], INT_ALIGNMENT);
 	}
     }
 
@@ -8508,7 +8508,7 @@ mr_data_readmem_numeric (OR_BUF * buf, void *mem, TP_DOMAIN * domain, int size)
 	}
       else
 	{
-	  calc_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
+	  calc_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision], INT_ALIGNMENT);
 	}
 
       if (size != calc_size)
@@ -8546,7 +8546,7 @@ mr_data_lengthmem_numeric (void *mem, TP_DOMAIN * domain, int disk)
     }
   else
     {
-      len = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
+      len = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision], INT_ALIGNMENT);
     }
 
   return len;
@@ -8613,11 +8613,11 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       precision = db_get_numeric_precision (value, &is_float_numeric);
       if (is_float_numeric)
 	{
-	  len = DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
+	  len = DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision]), INT_ALIGNMENT);
 	}
       else
 	{
-	  len = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision - 1], INT_ALIGNMENT);
+	  len = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision], INT_ALIGNMENT);
 	}
     }
   return len;
@@ -8649,7 +8649,7 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	      bool is_negative_data = (numeric[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
 
 	      disk_size =
-		DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision - 1]), INT_ALIGNMENT);
+		DB_ALIGN ((NUMERIC_HEADER_SIZE + _gv_numeric_precision_to_bytes_lookup[precision]), INT_ALIGNMENT);
 	      assert ((disk_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
 
 	      header[0] = disk_size | (is_negative_data ? NUMERIC_VALUE_SIGN_BIT_MASK : 0x00);
@@ -8669,7 +8669,7 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	    }
 	  else
 	    {
-	      disk_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision - 1], INT_ALIGNMENT);
+	      disk_size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[precision], INT_ALIGNMENT);
 	    }
 
 	  rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
@@ -8710,7 +8710,7 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	}
       else
 	{
-	  size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision - 1], INT_ALIGNMENT);
+	  size = DB_ALIGN (_gv_numeric_precision_to_bytes_lookup[domain->precision], INT_ALIGNMENT);
 	}
     }
 
