@@ -15587,7 +15587,7 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTI
 	      return NULL;
 	    }
 
-	  eval =  (parser, qo_plan, meta->children[1], eval, sort_list_index, info);
+	  eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[1], eval, sort_list_index, info);
 	  if (eval == NULL)
 	    {
 	      /* error was already set */
@@ -15598,7 +15598,7 @@ pt_build_analytic_eval_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTI
 	{
 	  if (meta->level >= meta->children[0]->level)
 	    {
-	      eval =  (parser, qo_plan, meta->children[0], eval, sort_list_index, info);
+	      eval = pt_build_analytic_eval_list (parser, qo_plan, meta->children[0], eval, sort_list_index, info);
 	      if (eval == NULL)
 		{
 		  /* error was already set */

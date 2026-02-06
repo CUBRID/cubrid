@@ -6273,7 +6273,6 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 	}
     }
 
-
   /* sort_prefix_size */
   ptr = or_unpack_int (ptr, &analytic->sort_prefix_size);
 
