@@ -106,7 +106,7 @@ namespace parallel_heap_scan
 	if (level == 0)
 	  {
 	    scan_open_heap_scan (&thread_ref, m_scan_id, false, S_SELECT,
-				 true, m_is_grouped, spec->single_fetch, spec->s_dbval,
+				 m_is_fixed, m_is_grouped, spec->single_fetch, spec->s_dbval,
 				 m_xasl->val_list, m_vd, &m_cls_oid, &m_hfid,
 				 cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
 				 cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
