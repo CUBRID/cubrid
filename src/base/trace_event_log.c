@@ -18,7 +18,7 @@
 
 
 /*
- * event_log.c - event log module (server)
+ * trace_event_log.c - trace/event log module (server)
  */
 
 #ident "$Id$"
@@ -29,6 +29,7 @@
 #endif /* WINDOWS */
 
 #include "event_log.h"
+#include "trace_log.h"
 
 #include "config.h"
 #include "critical_section.h"
@@ -54,28 +55,56 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define EVENT_LOG_FILE_DIR "server"
+#define LOG_FILE_DIR "server"
+
+#define EVENT_LOG_FILE_PREFIX "_"
+#define TRACE_LOG_FILE_PREFIX "_sql_trace_"
+
 #define EVENT_LOG_FILE_SUFFIX ".event"
+#define TRACE_LOG_FILE_SUFFIX ".log"
 
 static FILE *event_Fp = NULL;
-static char event_log_file_path[PATH_MAX];
+static FILE *trace_Fp = NULL;
 
-static FILE *event_file_open (const char *path);
-static FILE *event_file_backup (FILE * fp, const char *path);
-static void event_log_print_client_ids_info (CLIENTIDS * client_info, int indent);
+static char event_log_file_path[PATH_MAX];
+static char trace_log_file_path[PATH_MAX];
+
+static FILE *trace_event_log_init (const char *db_name, char *log_file_path, char log_type);
+static FILE *trace_event_file_open (const char *path, char log_type);
+static FILE *trace_event_file_backup (FILE * fp, const char *path);
+static FILE *trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char log_type);
+static void trace_event_log_print_client_info (int tran_index, int indent, FILE * log_fp);
+static void trace_event_print_client_ids_info (CLIENTIDS * client_info, int indent);
+static void trace_event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index);
 
 /*
- * event_init - Initialize event log module
+ * trace_log_init - Initialize trace log module
+ *   return: none
+ */
+void
+trace_log_init (const char *db_name)
+{
+  trace_Fp = trace_event_log_init (db_name, trace_log_file_path, 'T');
+}
+
+/*
+ * event_log_init - Initialize event log module
  *   return: none
  */
 void
 event_log_init (const char *db_name)
 {
+  event_Fp = trace_event_log_init (db_name, event_log_file_path, 'E');
+}
+
+static FILE *
+trace_event_log_init (const char *db_name, char *log_file_path, char log_type)
+{
   char *s, *base_db_name;
   char local_db_name[DB_MAX_IDENTIFIER_LENGTH];
   time_t log_time;
   struct tm log_tm, *log_tm_p = &log_tm;
-  char event_log_name[PATH_MAX];
+  char log_file_name[PATH_MAX];
 
   assert (db_name != NULL);
 
@@ -90,7 +119,7 @@ event_log_init (const char *db_name)
   base_db_name = basename ((char *) local_db_name);
   if (base_db_name == NULL)
     {
-      return;
+      return NULL;
     }
 
   log_time = time (NULL);
@@ -102,15 +131,25 @@ event_log_init (const char *db_name)
 
   if (log_tm_p == NULL)
     {
-      return;
+      return NULL;
     }
 
-  snprintf (event_log_name, PATH_MAX - 1, "%s%c%s_%04d%02d%02d_%02d%02d%s", EVENT_LOG_FILE_DIR, PATH_SEPARATOR,
-	    base_db_name, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday, log_tm_p->tm_hour,
-	    log_tm_p->tm_min, EVENT_LOG_FILE_SUFFIX);
+  if (log_type == 'E')
+    {
+      snprintf (log_file_name, PATH_MAX - 1, "%s%c%s%s%04d%02d%02d_%02d%02d%s", LOG_FILE_DIR, PATH_SEPARATOR,
+		base_db_name, EVENT_LOG_FILE_PREFIX, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday,
+		log_tm_p->tm_hour, log_tm_p->tm_min, EVENT_LOG_FILE_SUFFIX);
+    }
+  else
+    {
+      snprintf (log_file_name, PATH_MAX - 1, "%s%c%s%s%04d%02d%02d_%02d%02d%s", LOG_FILE_DIR, PATH_SEPARATOR,
+		base_db_name, TRACE_LOG_FILE_PREFIX, log_tm_p->tm_year + 1900, log_tm_p->tm_mon + 1, log_tm_p->tm_mday,
+		log_tm_p->tm_hour, log_tm_p->tm_min, TRACE_LOG_FILE_SUFFIX);
+    }
 
-  envvar_logdir_file (event_log_file_path, PATH_MAX, event_log_name);
-  event_Fp = event_file_open (event_log_file_path);
+  envvar_logdir_file (log_file_path, PATH_MAX, log_file_name);
+
+  return trace_event_file_open (log_file_path, log_type);
 }
 
 /*
@@ -119,7 +158,7 @@ event_log_init (const char *db_name)
  *   path(in): file path
  */
 static FILE *
-event_file_open (const char *path)
+trace_event_file_open (const char *path, char log_type)
 {
   FILE *fp;
   char dir[PATH_MAX], *tpath;
@@ -163,7 +202,7 @@ event_file_open (const char *path)
       fseek (fp, 0, SEEK_END);
       if (ftell (fp) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
 	{
-	  fp = event_file_backup (fp, path);
+	  fp = trace_event_file_backup (fp, path);
 	}
     }
   else
@@ -172,7 +211,7 @@ event_file_open (const char *path)
     }
 
 #if !defined (WINDOWS) && defined (SERVER_MODE)
-  if (fp != NULL)
+  if (fp != NULL && log_type == 'E' /* event log */ )
     {
       er_file_create_link_to_current_log_file (path, EVENT_LOG_FILE_SUFFIX);
     }
@@ -187,7 +226,7 @@ event_file_open (const char *path)
  *   path(in): file path
  */
 static FILE *
-event_file_backup (FILE * fp, const char *path)
+trace_event_file_backup (FILE * fp, const char *path)
 {
   char backup_file[PATH_MAX];
 
@@ -204,6 +243,19 @@ event_file_backup (FILE * fp, const char *path)
   (void) rename (path, backup_file);
 
   return fopen (path, "w");
+}
+
+/*
+ * trace_log_final - Terminate the trace log module
+ *   return: none
+ */
+void
+trace_log_final (void)
+{
+  if (trace_Fp != NULL)
+    {
+      (void) fclose (trace_Fp);
+    }
 }
 
 /*
@@ -225,7 +277,24 @@ event_log_final (void)
  *   event_name(in):
  */
 FILE *
-event_log_start (THREAD_ENTRY * thread_p, const char *event_name)
+event_log_start (THREAD_ENTRY * thread_p, const char *log_name)
+{
+  return trace_event_log_start (thread_p, log_name, 'E');
+}
+
+/*
+ * trace_log_start -
+ *   return: log file pointer
+ *   event_name(in):
+ */
+FILE *
+trace_log_start (THREAD_ENTRY * thread_p, const char *log_name)
+{
+  return trace_event_log_start (thread_p, log_name, 'T');
+}
+
+static FILE *
+trace_event_log_start (THREAD_ENTRY * thread_p, const char *log_name, const char log_type)
 {
   time_t er_time;
 #if defined (SERVER_MODE) && !defined (WINDOWS)
@@ -234,35 +303,49 @@ event_log_start (THREAD_ENTRY * thread_p, const char *event_name)
   struct tm *er_tm_p = NULL;
   struct timeval tv;
   char time_array[256];
-  const char *log_file_name = event_log_file_path;
+  const char *log_file_name;
+  int csect;
+  FILE *log_Fp;
 
-  csect_enter (thread_p, CSECT_EVENT_LOG_FILE, INF_WAIT);
-
-  /* If file is not exist, it will recreate *log_fh file. */
-  if (event_Fp == NULL || access (log_file_name, F_OK) == -1)
+  if (log_type == 'E')
     {
-      if (event_Fp != NULL)
+      csect = CSECT_EVENT_LOG_FILE;
+      log_Fp = event_Fp;
+      log_file_name = event_log_file_path;
+    }
+  else
+    {
+      csect = CSECT_TRACE_LOG_FILE;
+      log_Fp = trace_Fp;
+      log_file_name = trace_log_file_path;
+    }
+
+  csect_enter (thread_p, csect, INF_WAIT);
+  /* If file is not exist, it will recreate *log_fh file. */
+  if (log_Fp == NULL || access (log_file_name, F_OK) == -1)
+    {
+      if (log_Fp != NULL)
 	{
-	  (void) fclose (event_Fp);
+	  (void) fclose (log_Fp);
 	}
 
-      event_Fp = event_file_open (log_file_name);
-      if (event_Fp == NULL)
+      log_Fp = trace_event_file_open (log_file_name, log_type);
+      if (log_Fp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  csect_exit (thread_p, CSECT_EVENT_LOG_FILE);
+	  csect_exit (thread_p, csect);
 	  return NULL;
 	}
     }
-  else if (ftell (event_Fp) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
+  else if (ftell (log_Fp) > prm_get_integer_value (PRM_ID_ER_LOG_SIZE))
     {
-      (void) fflush (event_Fp);
+      (void) fflush (log_Fp);
 
-      event_Fp = event_file_backup (event_Fp, log_file_name);
-      if (event_Fp == NULL)
+      log_Fp = trace_event_file_backup (log_Fp, log_file_name);
+      if (log_Fp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  csect_exit (thread_p, CSECT_EVENT_LOG_FILE);
+	  csect_exit (thread_p, csect);
 	  return NULL;
 	}
     }
@@ -285,9 +368,27 @@ event_log_start (THREAD_ENTRY * thread_p, const char *event_name)
 		tv.tv_usec / 1000);
     }
 
-  fprintf (event_Fp, "%s - %s\n", time_array, event_name);
+  fprintf (log_Fp, "%s - %s\n", time_array, log_name);
 
-  return event_Fp;
+  return log_Fp;
+}
+
+/*
+ * trace_log_end -
+ *   return:
+ */
+void
+trace_log_end (THREAD_ENTRY * thread_p)
+{
+  assert (csect_check_own (thread_p, CSECT_TRACE_LOG_FILE) == 1);
+
+  if (trace_Fp == NULL)
+    {
+      return;
+    }
+
+  fflush (trace_Fp);
+  csect_exit (thread_p, CSECT_TRACE_LOG_FILE);
 }
 
 /*
@@ -334,6 +435,18 @@ event_log_print_client_ids_info (CLIENTIDS * client_info, int indent)
 }
 
 /*
+ * trace_log_print_client_info -
+ *   return:
+ *   tran_index(in):
+ *   indent(in):
+ */
+void
+trace_log_print_client_info (int tran_index, int indent)
+{
+  trace_event_log_print_client_info (tran_index, indent, trace_Fp);
+}
+
+/*
  * event_log_print_client_info -
  *   return:
  *   tran_index(in):
@@ -342,10 +455,16 @@ event_log_print_client_ids_info (CLIENTIDS * client_info, int indent)
 void
 event_log_print_client_info (int tran_index, int indent)
 {
+  trace_event_log_print_client_info (tran_index, indent, event_Fp);
+}
+
+static void
+trace_event_log_print_client_info (int tran_index, int indent, FILE * log_Fp)
+{
   const char *prog, *user, *host;
   int pid;
 
-  if (event_Fp == NULL)
+  if (log_Fp == NULL)
     {
       return;
     }
@@ -354,14 +473,14 @@ event_log_print_client_info (int tran_index, int indent)
 
   if (indent > 0)
     {
-      fprintf (event_Fp, "%*c", indent, ' ');
+      fprintf (log_Fp, "%*c", indent, ' ');
     }
-  fprintf (event_Fp, "tran index: %d\n", tran_index);
+  fprintf (log_Fp, "tran index: %d\n", tran_index);
   if (indent > 0)
     {
-      fprintf (event_Fp, "%*c", indent, ' ');
+      fprintf (log_Fp, "%*c", indent, ' ');
     }
-  fprintf (event_Fp, "client: %s@%s|%s(%d)\n", user, host, prog, pid);
+  fprintf (log_Fp, "client: %s@%s|%s(%d)\n", user, host, prog, pid);
 }
 
 /*
@@ -454,6 +573,25 @@ event_log_sql_string (THREAD_ENTRY * thread_p, FILE * log_fp, XASL_ID * xasl_id,
  */
 void
 event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index)
+{
+  trace_event_log_bind_values (thread_p, log_fp, tran_index, bind_index);
+}
+
+/*
+ * trace_log_bind_values -
+ *   return:
+ *   log_fp(in):
+ *   tran_index(in):
+ *   bind_index(in):
+ */
+void
+trace_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index)
+{
+  trace_event_log_bind_values (thread_p, log_fp, tran_index, bind_index);
+}
+
+static void
+trace_event_log_bind_values (THREAD_ENTRY * thread_p, FILE * log_fp, int tran_index, int bind_index)
 {
   LOG_TDES *tdes;
   int i, indent = 2;
