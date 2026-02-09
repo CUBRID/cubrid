@@ -77,10 +77,8 @@ jobs:
             # --------------------------------------------------
             commands:
               attach-and-run-tests:
-                description: "Attach workspace and run test scripts"
+                description: "Run test scripts (CUBRID must be at /home/CUBRID)"
                 steps:
-                  - attach_workspace:
-                      at: .
                   - run:
                       name: Test
                       shell: /bin/bash
@@ -182,6 +180,91 @@ jobs:
                   - store_artifacts:
                       path: /tmp/build_logs
                       when: always
+
+              download-build-from-artifact:
+                description: "Download CUBRID build from artifact (for sql/medium tests)"
+                steps:
+                  - attach_workspace:
+                      at: /tmp/workspace
+                  - run:
+                      name: Download build from artifact
+                      command: |
+                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM)
+                        echo "Downloading build from job #\${BUILD_NUM}..."
+                        
+                        # Fetch artifact list
+                        RESPONSE=\$(curl -s -H "Circle-Token: \${CIRCLECI_TOKEN}" \\
+                          "https://circleci.com/api/v2/project/gh/\${CIRCLE_PROJECT_USERNAME}/\${CIRCLE_PROJECT_REPONAME}/\${BUILD_NUM}/artifacts")
+                        
+                        # Extract CUBRID.tar.gz URL
+                        ARTIFACT_URL=\$(echo "\$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+                        
+                        if [ -z "\$ARTIFACT_URL" ]; then
+                          echo "ERROR: CUBRID.tar.gz artifact not found"
+                          echo "Response: \$RESPONSE"
+                          exit 1
+                        fi
+                        
+                        echo "Artifact URL: \$ARTIFACT_URL"
+                        
+                        # Download and extract
+                        curl -L -o /tmp/CUBRID.tar.gz "\$ARTIFACT_URL"
+                        tar xzf /tmp/CUBRID.tar.gz -C /home/
+                        rm /tmp/CUBRID.tar.gz
+                        
+                        echo "Build extracted to /home/CUBRID"
+                        ls -la /home/CUBRID | head -10
+
+              download-build-to-glusterfs:
+                description: "Download CUBRID build to GlusterFS shared storage (for shell tests)"
+                steps:
+                  - attach_workspace:
+                      at: /tmp/workspace
+                  - run:
+                      name: Download build to GlusterFS
+                      command: |
+                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM)
+                        # Use CIRCLE_SHA1 (commit hash) to reuse build across workflow retries
+                        BUILD_DIR="/home/build-cache/builds/\${CIRCLE_SHA1}"
+                        
+                        echo "CIRCLE_SHA1: \${CIRCLE_SHA1}"
+                        echo "BUILD_NUM: \${BUILD_NUM}"
+                        echo "BUILD_DIR: \${BUILD_DIR}"
+                        
+                        # Check if build already exists (same commit = same build)
+                        if [ -d "\${BUILD_DIR}/CUBRID" ]; then
+                          echo "Build already exists for this commit, skipping download"
+                          ls -la "\${BUILD_DIR}/CUBRID" | head -10
+                          exit 0
+                        fi
+                        
+                        mkdir -p "\${BUILD_DIR}"
+                        
+                        echo "Downloading build from job #\${BUILD_NUM}..."
+                        
+                        # Fetch artifact list
+                        RESPONSE=\$(curl -s -H "Circle-Token: \${CIRCLECI_TOKEN}" \\
+                          "https://circleci.com/api/v2/project/gh/\${CIRCLE_PROJECT_USERNAME}/\${CIRCLE_PROJECT_REPONAME}/\${BUILD_NUM}/artifacts")
+                        
+                        # Extract CUBRID.tar.gz URL
+                        ARTIFACT_URL=\$(echo "\$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+                        
+                        if [ -z "\$ARTIFACT_URL" ]; then
+                          echo "ERROR: CUBRID.tar.gz artifact not found"
+                          echo "Response: \$RESPONSE"
+                          exit 1
+                        fi
+                        
+                        echo "Artifact URL: \$ARTIFACT_URL"
+                        
+                        # Download to GlusterFS
+                        curl -L -o "\${BUILD_DIR}/CUBRID.tar.gz" "\$ARTIFACT_URL"
+                        tar xzf "\${BUILD_DIR}/CUBRID.tar.gz" -C "\${BUILD_DIR}"
+                        rm "\${BUILD_DIR}/CUBRID.tar.gz"
+                        
+                        echo "Build extracted to \${BUILD_DIR}/CUBRID"
+                        ls -la "\${BUILD_DIR}/CUBRID" | head -10
+                        df -h /home/build-cache
                       
             # --------------------------------------------------
             # 2. Reusable executors
@@ -237,9 +320,36 @@ jobs:
                       paths:
                         - /home/.ccache
                   - collect-build-logs
+                  - run:
+                      name: Stop after build logs on default trigger
+                      command: |
+                        case "${CIRCLE_BRANCH:-}" in
+                          */head*)
+                            echo "[info] head trigger detected (${CIRCLE_BRANCH}); continue to package artifacts"
+                            ;;
+                          *)
+                            echo "[info] default trigger detected (${CIRCLE_BRANCH}); stop after collect-build-logs"
+                            circleci-agent step halt
+                            exit 0
+                            ;;
+                        esac
+                  - run:
+                      name: Package build for artifact
+                      command: |
+                        tar czf CUBRID.tar.gz CUBRID
+                        echo "Build packaged: \$(ls -lh CUBRID.tar.gz | awk '{print \$5}')"
+                  - store_artifacts:
+                      path: CUBRID.tar.gz
+                      destination: CUBRID.tar.gz
+                  - run:
+                      name: Save build metadata for test jobs
+                      command: |
+                        mkdir -p workspace
+                        echo "\${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM
+                        echo "Saved BUILD_NUM: \$(cat workspace/BUILD_NUM)"
                   - persist_to_workspace:
-                      root: .
-                      paths: [ CUBRID ]
+                      root: workspace
+                      paths: [ BUILD_NUM ]
               
               test_medium:
                 executor: cubrid-default
@@ -252,6 +362,7 @@ jobs:
                       keys:
                         - "cubrid-testcases-develop-${TC_SHA}"
                         - "cubrid-testcases-develop-"
+                  - download-build-from-artifact
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -275,6 +386,7 @@ jobs:
                       keys:
                         - "cubrid-testcases-develop-${TC_SHA}"
                         - "cubrid-testcases-develop-"
+                  - download-build-from-artifact
                   - attach-and-run-tests
                   - run:
                       name: Clean up tc before save_cache
@@ -296,6 +408,13 @@ jobs:
                   GITHUB_TOKEN: \$GHI_TOKEN
                 steps:
                   - attach-and-run-tests
+
+              download-build:
+                description: "Download CUBRID build to GlusterFS (1x download for all shell test pods)"
+                executor: cubrid-test-shell
+                parallelism: 1
+                steps:
+                  - download-build-to-glusterfs
             
             # --------------------------------------------------
             # 4. Conditional workflows
@@ -307,9 +426,12 @@ jobs:
             EOF
             
             echo "[debug] Conditionally add test jobs based on parameters"
-            [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium: {requires: [build]}" >> .circleci/continue.yml
-            [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:    {requires: [build]}" >> .circleci/continue.yml
-            [ "$RUN_SHELL_TEST"   = "true" ] && echo "      - test_shell:  {requires: [build]}" >> .circleci/continue.yml
+            [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium:    {requires: [build]}" >> .circleci/continue.yml
+            [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:       {requires: [build]}" >> .circleci/continue.yml
+            if [ "$RUN_SHELL_TEST" = "true" ]; then
+              echo "      - download-build: {requires: [build]}" >> .circleci/continue.yml
+              echo "      - test_shell:     {requires: [download-build]}" >> .circleci/continue.yml
+            fi
             
             echo "[debug] Output generated configuration (.circleci/continue.yml)"
             cat .circleci/continue.yml

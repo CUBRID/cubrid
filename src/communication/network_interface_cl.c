@@ -7881,7 +7881,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  xperfmon_server_copy_stats (thread_p, to_stats);
+  xperfmon_server_copy_stats (thread_p, to_stats, true);
 
   exit_server (*thread_p);
   return NO_ERROR;
