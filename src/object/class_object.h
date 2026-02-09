@@ -1136,6 +1136,7 @@ extern int classobj_count_cons_attributes (SM_CLASS_CONSTRAINT * cons);
 #endif
 
 extern SM_CLASS_CONSTRAINT *classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list);
+extern SM_CLASS_CONSTRAINT *classobj_find_cons_replication_key (SM_CLASS_CONSTRAINT * cons_list);
 
 extern const char *classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint);
 extern char *classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION action);

@@ -3970,6 +3970,27 @@ classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list)
 }
 
 /*
+ * classobj_find_cons_replication_key()
+ *   return: constraint
+ *   cons_list(in):
+ */
+SM_CLASS_CONSTRAINT *
+classobj_find_cons_replication_key (SM_CLASS_CONSTRAINT * cons_list)
+{
+  SM_CLASS_CONSTRAINT *cons = NULL;
+
+  for (cons = cons_list; cons; cons = cons->next)
+    {
+      if (IS_HA_REPLICATION_KEY_CONSTRAINT (cons))
+	{
+	  break;
+	}
+    }
+
+  return cons;
+}
+
+/*
  * classobj_find_class_primary_key()
  *   return: constraint
  *   class(in):
