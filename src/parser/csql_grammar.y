@@ -4737,6 +4737,10 @@ opt_invisible
 		{{
  			$$ = false;
 		}}
+	| VISIBLE
+		{{
+			$$ = false;
+		}}
 	| INVISIBLE
 		{{
 			$$ = true;
