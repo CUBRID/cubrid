@@ -257,9 +257,13 @@ extern "C"
   extern char *db_get_database_name (void);
   extern const char *db_get_database_comments (void);
   extern void db_set_client_type (int client_type);
+  extern void db_set_client_statement_type (CUBRID_STMT_TYPE is_create);
   extern void db_set_preferred_hosts (const char *hosts);
   extern void db_set_connect_order (int connect_order);
   extern int db_get_client_type (void);
+  extern bool db_client_type_is_loaddb (void);
+  extern bool db_client_type_is_loaddb_compat (void);
+  extern CUBRID_STMT_TYPE db_get_client_statement_type (void);
   extern const char *db_get_type_name (DB_TYPE type_id);
   extern DB_TYPE db_type_from_string (const char *name);
   extern int db_get_schema_def_dbval (DB_VALUE * result, DB_VALUE * name_val);

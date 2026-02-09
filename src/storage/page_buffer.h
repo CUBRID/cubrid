@@ -187,13 +187,13 @@ typedef enum
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
-typedef enum
+typedef enum:uint16_t
 {
   PGBUF_NO_LATCH = 0,
-  PGBUF_LATCH_READ,
-  PGBUF_LATCH_WRITE,
-  PGBUF_LATCH_FLUSH,		/* this is only used as block mode. page can never be fixed with flush latch mode. */
-  PGBUF_LATCH_INVALID
+  PGBUF_LATCH_READ = 1,
+  PGBUF_LATCH_WRITE = 2,
+  PGBUF_LATCH_FLUSH = 3,	/* this is only used as block mode. page can never be fixed with flush latch mode. */
+  PGBUF_LATCH_INVALID = 4
 } PGBUF_LATCH_MODE;
 
 typedef enum
@@ -478,6 +478,7 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
 extern int pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx);
 extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p);
 extern void pgbuf_adjust_quotas (THREAD_ENTRY * thread_p);
+void pgbuf_thread_variables_init (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)
 extern void pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p);

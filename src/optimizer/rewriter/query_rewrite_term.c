@@ -576,7 +576,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
-		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT)
+		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
+		  && !derived_table->info.query.q.select.single_table_opt)
 		{
 		  /* traverse as_attr_list */
 		  for (attr = spec->info.spec.as_attr_list, idx = 0; attr; attr = attr->next, idx++)
