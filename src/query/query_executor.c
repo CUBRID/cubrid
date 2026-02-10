@@ -328,6 +328,7 @@ struct analytic_state
   int input_recs;
 
   bool is_last_run;
+  bool is_first_run;
   bool is_output_rec;
 };
 
@@ -494,7 +495,8 @@ static ANALYTIC_STATE *qexec_initialize_analytic_state (THREAD_ENTRY * thread_p,
 							ANALYTIC_TYPE * a_func_list, SORT_LIST * sort_list,
 							REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
 							OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm,
-							bool is_last_run, XASL_NODE * xasl, XASL_STATE * xasl_state,
+							bool is_first_run, bool is_last_run, XASL_NODE * xasl,
+							XASL_STATE * xasl_state,
 							QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 							QFILE_TUPLE_RECORD * tplrec);
 static SORT_STATUS qexec_analytic_get_next (THREAD_ENTRY * thread_p, RECDES * recdes, void *arg);
@@ -596,7 +598,8 @@ static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * 
 					   QFILE_TUPLE_RECORD * tplrec);
 static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-				   ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last);
+				   ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last,
+				   bool is_first);
 static void qexec_update_btree_unique_stats_info (THREAD_ENTRY * thread_p, multi_index_unique_stats * info,
 						  const HEAP_SCANCACHE * scan_cache);
 static int qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * vd,
@@ -15891,22 +15894,17 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  && !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
 	  ANALYTIC_EVAL_TYPE *eval_list;
-	  bool skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
+	  bool is_first = true;
 
 	  for (eval_list = xasl->proc.buildlist.a_eval_list; eval_list; eval_list = eval_list->next)
 	    {
-	      if (qexec_execute_analytic (thread_p, xasl, xasl_state, eval_list, &tplrec, (eval_list->next == NULL)) !=
-		  NO_ERROR)
+	      if (qexec_execute_analytic
+		  (thread_p, xasl, xasl_state, eval_list, &tplrec, (eval_list->next == NULL), is_first) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
-	    }
-
-	  if (skip_sort)
-	    {
-	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
+	      is_first = false;
 	    }
 	}
 
@@ -20891,7 +20889,7 @@ qexec_clear_analytic_stats_list (THREAD_ENTRY * thread_p, ANALYTIC_STATS ** stat
  */
 static int
 qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-			ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last)
+			ANALYTIC_EVAL_TYPE * analytic_eval, QFILE_TUPLE_RECORD * tplrec, bool is_last, bool is_first)
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
   BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
@@ -20917,8 +20915,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   /* initialized analytic functions state structure */
   if (qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list,
 				       buildlist->a_regu_list, buildlist->a_val_list, a_outptr_list,
-				       buildlist->a_outptr_list_interm, is_last, xasl, xasl_state, &list_id->type_list,
-				       tplrec) == NULL)
+				       buildlist->a_outptr_list_interm, is_first, is_last, xasl, xasl_state,
+				       &list_id->type_list, tplrec) == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -20938,7 +20936,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+    if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
       {
 	analytic_state.interm_file = list_id;
       }
@@ -21038,7 +21036,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+  if (is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
     {
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
@@ -21112,9 +21110,9 @@ wrapup:
 	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
 	  new_stat->run_analytic = true;
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
-	  new_stat->analytic_sort = !XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
+	  new_stat->analytic_sort = !(is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT));
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+	  if (!new_stat->analytic_sort)
 	    {
 	      new_stat->analytic_fetches = (perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches);
 
@@ -21464,13 +21462,13 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 static ANALYTIC_STATE *
 qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list,
 				 SORT_LIST * sort_list, REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
-				 OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm, bool is_last_run,
-				 XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
-				 QFILE_TUPLE_RECORD * tplrec)
+				 OUTPTR_LIST * a_outptr_list, OUTPTR_LIST * a_outptr_list_interm, bool is_first_run,
+				 bool is_last_run, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				 QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_RECORD * tplrec)
 {
   REGU_VARIABLE_LIST regu_list = NULL;
   ANALYTIC_TYPE *func_p;
-  bool has_interpolation_func = false, is_skip_sort = false;
+  bool has_interpolation_func = false;
   SUBKEY_INFO *subkey = NULL;
   int i;
   int interpolation_func_sort_prefix_len = 0;
@@ -21490,6 +21488,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->xasl_state = xasl_state;
 
   analytic_state->is_last_run = is_last_run;
+  analytic_state->is_first_run = is_first_run;
 
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
@@ -21504,8 +21503,6 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->curr_sort_page.vpid.volid = NULL_VOLID;
   analytic_state->curr_sort_page.page_p = NULL;
   analytic_state->output_tplrec = tplrec;
-
-  is_skip_sort = XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT);
 
   if (sort_list)
     {
@@ -21541,7 +21538,8 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   for (i = 0, func_p = a_func_list; i < analytic_state->func_count; i++, func_p = func_p->next)
     {
       if (qexec_initialize_analytic_function_state
-	  (thread_p, &analytic_state->func_state_list[i], func_p, xasl_state, is_skip_sort) != NO_ERROR)
+	  (thread_p, &analytic_state->func_state_list[i], func_p, xasl_state,
+	   (is_first_run && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -23006,7 +23004,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 
   assert (analytic_state != NULL);
 
-  if (XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
+  if (analytic_state->is_first_run && XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
     {
       stage = ANALYTIC_INTERM_PROC;
     }
