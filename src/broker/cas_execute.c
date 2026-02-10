@@ -4604,6 +4604,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_VARBIT:
     case DB_TYPE_BIT:
+    case DB_TYPE_BLOB:
       {
 	int length = 0;
 
@@ -4619,6 +4620,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
       break;
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
+    case DB_TYPE_CLOB:
       {
 	DB_CONST_C_CHAR str;
 	int bytes_size = 0;

@@ -144,6 +144,8 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_ELO,
   DB_TYPE_BFILE,
   DB_TYPE_CFILE,
+  DB_TYPE_BLOB,
+  DB_TYPE_CLOB,
   DB_TYPE_VARIABLE,
   DB_TYPE_SUB,
   DB_TYPE_POINTER,
@@ -274,6 +276,8 @@ TP_DOMAIN tp_Midxkey_domain_list_heads[TP_NUM_MIDXKEY_DOMAIN_LIST] = {
 TP_DOMAIN tp_Elo_domain = { NULL, NULL, &tp_Elo, DOMAIN_INIT };	/* todo: remove me */
 TP_DOMAIN tp_Bfile_domain = { NULL, NULL, &tp_Bfile, DOMAIN_INIT };
 TP_DOMAIN tp_Cfile_domain = { NULL, NULL, &tp_Cfile, DOMAIN_INIT };
+
+
 TP_DOMAIN tp_Time_domain = { NULL, NULL, &tp_Time, DOMAIN_INIT4 (DB_TIME_PRECISION, 0) };
 TP_DOMAIN tp_Utime_domain = { NULL, NULL, &tp_Utime, DOMAIN_INIT4 (DB_TIMESTAMP_PRECISION, 0) };
 TP_DOMAIN tp_Timestamptz_domain = { NULL, NULL, &tp_Timestamptz, DOMAIN_INIT4 (DB_TIMESTAMPTZ_PRECISION, 0) };
@@ -374,6 +378,8 @@ static TP_DOMAIN *tp_Domains[] = {
    * added. */
   &tp_Bfile_domain,
   &tp_Cfile_domain,
+  &tp_Blob_domain,
+  &tp_Clob_domain,
   &tp_Enumeration_domain,
   &tp_Timestamptz_domain,
   &tp_Timestampltz_domain,
@@ -494,6 +500,10 @@ static TP_DOMAIN *tp_Sequence_conv[] = {
   &tp_Sequence_domain, &tp_Multiset_domain, NULL
 };
 
+static TP_DOMAIN *tp_Lob_conv[] = {
+  &tp_Blob_domain, &tp_Clob_domain, NULL
+};
+
 /*
  * tp_Domain_conversion_matrix
  *    This is the matrix of conversion rules.  It is used primarily
@@ -543,6 +553,8 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL,				/* DB_TYPE_DATETIME */
   NULL,				/* DB_TYPE_BFILE */
   NULL,				/* DB_TYPE_CFILE */
+  tp_Lob_conv,			/* DB_TYPE_BLOB */
+  tp_Lob_conv,			/* DB_TYPE_CLOB */
   NULL,				/* DB_TYPE_ENUMERATION */
   NULL,				/* DB_TYPE_TIMESTAMPTZ */
   NULL,				/* DB_TYPE_TIMESTAMPLTZ */
@@ -1031,10 +1043,16 @@ tp_domain_init (TP_DOMAIN * domain, DB_TYPE type_id)
 	  domain->enumeration.collation_id = LANG_SYS_COLLATION;
 	}
     }
-  else if (TP_IS_BIT_TYPE (type_id))
+  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+  else if (TP_IS_BIT_TYPE (type_id) || type_id == DB_TYPE_BLOB)
     {
       domain->codeset = INTL_CODESET_RAW_BITS;
       domain->collation_id = 0;
+    }
+  else if (type_id == DB_TYPE_CLOB)
+    {
+      domain->codeset = LANG_SYS_CODESET;
+      domain->collation_id = LANG_SYS_COLLATION;
     }
   else
     {
@@ -1812,6 +1830,41 @@ tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MAT
 	}
       break;
 
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      if (dom1->collation_id != dom2->collation_id)
+	{
+	  match = 0;
+	  break;
+	}
+      [[fallthrough]];
+    case DB_TYPE_BLOB:
+      if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
+	{
+	  match = dom1->precision == dom2->precision;
+	}
+      else if (exact == TP_STR_MATCH)
+	{
+	  /*
+	   * Allow the match if the precisions would allow us to reuse the
+	   * string without modification.
+	   */
+	  match = (dom1->precision >= dom2->precision);
+	}
+      else
+	{
+	  /*
+	   * Allow matches regardless of precision, let the actual length of the
+	   * value determine if it can be assigned.  This is important for
+	   * literal strings as their precision will be the maximum but they
+	   * can still be assigned to domains with a smaller precision
+	   * provided the actual value is within the destination domain
+	   * tolerance.
+	   */
+	  match = 1;
+	}
+      break;
+
     case DB_TYPE_NUMERIC:
       /*
        * note that we never allow inexact matches here because the
@@ -2563,6 +2616,105 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 	  domain = domain->next_list;
 	}
 
+      break;
+
+    case DB_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      while (domain)
+	{
+	  if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
+	    {
+	      /* check for descending order */
+	      if (domain->precision < transient->precision)
+		{
+		  break;
+		}
+
+	      match = ((domain->precision == transient->precision) && (domain->is_desc == transient->is_desc));
+	    }
+	  else if (exact == TP_STR_MATCH)
+	    {
+	      /*
+	       * Allow the match if the precisions would allow us to reuse the
+	       * string without modification.
+	       */
+	      match = ((domain->precision >= transient->precision) && (domain->is_desc == transient->is_desc));
+	    }
+	  else
+	    {
+	      /*
+	       * Allow matches regardless of precision, let the actual length
+	       * of the value determine if it can be assigned.  This is
+	       * important for literal strings as their precision will be the
+	       * maximum but they can still be assigned to domains with a
+	       * smaller precision provided the actual value is within the
+	       * destination domain tolerance.
+	       */
+	      match = (domain->is_desc == transient->is_desc);
+	    }
+
+	  if (match)
+	    {
+	      break;
+	    }
+
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
+      break;
+
+    case DB_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      while (domain)
+	{
+	  if (exact == TP_EXACT_MATCH || exact == TP_SET_MATCH)
+	    {
+	      /* check for descending order */
+	      if (domain->precision < transient->precision)
+		{
+		  break;
+		}
+
+	      match = ((domain->precision == transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag == transient->collation_flag));
+	    }
+	  else if (exact == TP_STR_MATCH)
+	    {
+	      /*
+	       * Allow the match if the precisions would allow us to reuse the
+	       * string without modification.
+	       */
+	      match = ((domain->precision >= transient->precision) && (domain->collation_id == transient->collation_id)
+		       && (domain->codeset == transient->codeset)
+		       && (domain->is_desc == transient->is_desc)
+		       && (domain->collation_flag == transient->collation_flag));
+	    }
+	  else
+	    {
+	      /*
+	       * Allow matches regardless of precision, let the actual length
+	       * of the value determine if it can be assigned.  This is
+	       * important for literal strings as their precision will be the
+	       * maximum but they can still be assigned to domains with a
+	       * smaller precision provided the actual value is within the
+	       * destination domain tolerance.
+	       */
+	      match = ((domain->collation_id == transient->collation_id) && (domain->is_desc == transient->is_desc)
+		       && (domain->codeset == transient->codeset)
+		       && (domain->collation_flag == transient->collation_flag));
+	    }
+
+	  if (match)
+	    {
+	      assert (domain->codeset == transient->codeset);
+	      break;
+	    }
+
+	  *ins_pos = domain;
+	  domain = domain->next_list;
+	}
       break;
 
     case DB_TYPE_NUMERIC:
@@ -3485,6 +3637,32 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	      domain = tp_domain_cache (domain);
 	    }
 	  break;
+
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_new (value_type);
+	      if (domain == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      domain = dbuf;
+	      tp_domain_init (domain, value_type);
+	    }
+	  domain->precision = db_value_precision (val);
+	    {
+	    }
+
+	  if (dbuf == NULL)
+	    {
+	      domain = tp_domain_cache (domain);
+	    }
+	  break;
+
 	case DB_TYPE_ENUMERATION:
 	  /*
 	   * We have no choice but to return the default enumeration domain
@@ -3711,6 +3889,8 @@ tp_domain_add (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_DOUBLE:
 	    case DB_TYPE_BFILE:
 	    case DB_TYPE_CFILE:
+	    case DB_TYPE_BLOB:
+	    case DB_TYPE_CLOB:
 	    case DB_TYPE_TIME:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPTZ:
@@ -3853,6 +4033,8 @@ tp_domain_drop (TP_DOMAIN ** dlist, TP_DOMAIN * domain)
 	    case DB_TYPE_DOUBLE:
 	    case DB_TYPE_BFILE:
 	    case DB_TYPE_CFILE:
+	    case DB_TYPE_BLOB:
+	    case DB_TYPE_CLOB:
 	    case DB_TYPE_TIME:
 	    case DB_TYPE_TIMESTAMP:
 	    case DB_TYPE_TIMESTAMPLTZ:
@@ -5545,7 +5727,7 @@ tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result)
   int ret;
   DB_TYPE type = DB_VALUE_TYPE (value);
 
-  if (!TP_IS_CHAR_STRING (type))
+  if (!(TP_IS_CHAR_TYPE (type) || TP_IS_LOB_TYPE (type)))
     {
       db_make_double (result, 0);
       return ER_FAILED;
@@ -7145,6 +7327,8 @@ tp_check_value_size (TP_DOMAIN * domain, DB_VALUE * value)
 
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_VARBIT:
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
 	  /*
 	   * The compatibility of the value is always determined by the
 	   * actual length of the value, not the destination precision.

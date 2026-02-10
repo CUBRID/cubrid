@@ -871,6 +871,55 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_json (void *mem1, void *mem2, TP_
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 					       int *start_colp, int collation);
+
+static void mr_initmem_clob (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_data_lengthmem_clob (void *memptr, TP_DOMAIN * domain, int disk);
+static void mr_data_writemem_clob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
+static void mr_data_readmem_clob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size);
+static void mr_freemem_clob (void *memptr);
+static void mr_initval_clob (DB_VALUE * value, int precision, int scale);
+static int mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_lengthval_clob (DB_VALUE * value, int disk);
+static int mr_data_writeval_clob (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				 char *copy_buf, int copy_buf_len);
+static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_clob (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+						     int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_clob (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+					       int total_order, int *start_colp, int collation);
+#if defined (ENABLE_UNUSED_FUNCTION)
+static int mr_cmpval_clob2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order,
+			    int *start_colp);
+#endif
+
+
+static void mr_initmem_blob (void *mem, TP_DOMAIN * domain);
+static int mr_setmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
+static int mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_data_lengthmem_blob (void *memptr, TP_DOMAIN * domain, int disk);
+static int mr_index_lengthmem_blob (void *memptr, TP_DOMAIN * domain);
+static void mr_data_writemem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
+static void mr_data_readmem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size);
+static void mr_freemem_blob (void *memptr);
+static void mr_initval_blob (DB_VALUE * value, int precision, int scale);
+static int mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_data_lengthval_blob (DB_VALUE * value, int disk);
+static int mr_data_writeval_blob (OR_BUF * buf, DB_VALUE * value);
+static int mr_data_readval_blob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				 char *copy_buf, int copy_buf_len);
+static int mr_lengthval_blob_internal (DB_VALUE * value, int disk, int align);
+static int mr_writeval_blob_internal (OR_BUF * buf, DB_VALUE * value, int align);
+static int mr_readval_blob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				     char *copy_buf, int copy_buf_len, int align);
+static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_blob (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
+						     int total_order, int *start_colp);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_blob (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+					       int *start_colp, int collation);
+static DB_VALUE_COMPARE_RESULT mr_cmpval_blob2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion,
+						int total_order, int *start_colp);
+
 /*
  * Value_area
  *    Area used for allocation of value containers that may be given out
@@ -1368,6 +1417,57 @@ const PR_TYPE tp_Cfile = {
 
 const PR_TYPE *tp_Type_cfile = &tp_Cfile;
 
+const PR_TYPE tp_Clob = {
+  "clob", DB_TYPE_CLOB, 1, sizeof (const char *), 0, 1,
+  mr_initmem_clob,
+  mr_initval_clob,
+  mr_setmem_clob,
+  mr_getmem_clob,
+  mr_setval_clob,
+  mr_data_lengthmem_clob,
+  mr_data_lengthval_clob,
+  mr_data_writemem_clob,
+  mr_data_readmem_clob,
+  mr_data_writeval_clob,
+  mr_data_readval_clob,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  mr_freemem_clob,
+  mr_data_cmpdisk_clob,
+  mr_cmpval_clob
+};
+
+const PR_TYPE *tp_Type_clob = &tp_Clob;
+
+// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+const PR_TYPE tp_Blob = {
+  "blob", DB_TYPE_BLOB, 1, sizeof (const char *), 0, 1,
+  mr_initmem_blob,
+  mr_initval_blob,
+  mr_setmem_blob,
+  mr_getmem_blob,
+  mr_setval_blob,
+  mr_data_lengthmem_blob,
+  mr_data_lengthval_blob,
+  mr_data_writemem_blob,
+  mr_data_readmem_blob,
+  mr_data_writeval_blob,
+  mr_data_readval_blob,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  mr_freemem_blob,
+  mr_data_cmpdisk_blob,
+  mr_cmpval_blob
+};
+
+const PR_TYPE *tp_Type_blob = &tp_Blob;
+
 const PR_TYPE tp_Variable = {
   "*variable*", DB_TYPE_VARIABLE, 1, sizeof (DB_VALUE), 0, 4,
   NULL,				/* initmem */
@@ -1727,6 +1827,8 @@ const PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetime,
   &tp_Bfile,
   &tp_Cfile,
+  &tp_Blob,
+  &tp_Clob,
   &tp_Enumeration,
   &tp_Timestamptz,
   &tp_Timestampltz,
@@ -1949,6 +2051,8 @@ pr_clear_value (DB_VALUE * value)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
       char_medium_buf = value->data.ch.medium.buf;
       if (char_medium_buf != NULL)
 	{
@@ -15370,4 +15474,716 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);
   return cmp_result;
+}
+
+
+
+
+
+
+
+
+
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_clob (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+{
+  DB_VALUE_COMPARE_RESULT c;
+  int size1, size2;
+  int strc;
+
+  static bool ti = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+  DB_TYPE type1 = (DB_TYPE) value1->domain.char_info.type;
+  DB_TYPE type2 = (DB_TYPE) value2->domain.char_info.type;
+
+  const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
+  const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
+
+  /*
+   *  Check if the is_max_string flag set for each DB_VALUE.
+   *  If "value1" has the flag set, return 1, meaning that "value2" is Less Than "value1".
+   *  If "value2" has the flag set, return -1, meaning that "value1" is Greater Than "value2".
+   */
+
+  if (value1->data.ch.info.is_max_string != 0)
+    {
+      if (value2->data.ch.info.is_max_string != 0)
+	{
+	  /* Both strings are max_string. Therefore equal. Even though this should not happen. */
+	  assert (false);
+	  return DB_EQ;
+	}
+      return DB_GT;
+    }
+  else
+    {
+      if (value2->data.ch.info.is_max_string != 0)
+	{
+	  return DB_LT;
+	}
+    }
+
+  if (string1 == NULL || string2 == NULL || db_get_string_codeset (value1) != db_get_string_codeset (value2))
+    {
+      return DB_UNK;
+    }
+
+  size1 = (int) db_get_string_size (value1);
+  size2 = (int) db_get_string_size (value2);
+
+  if (size1 < 0)
+    {
+      size1 = strlen ((char *) string1);
+    }
+
+  if (size2 < 0)
+    {
+      size2 = strlen ((char *) string2);
+    }
+
+  if (collation == -1)
+    {
+      assert (false);
+      return DB_UNK;
+    }
+
+  strc = QSTR_COMPARE (collation, string1, size1, string2, size2, ti);
+  c = MR_CMP_RETURN_CODE (strc);
+
+  return c;
+}
+
+#if defined (ENABLE_UNUSED_FUNCTION)
+static int
+mr_cmpval_clob2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
+{
+  int c;
+  int len1, len2, string_size;
+
+  const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
+  const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) db_get_string_size (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) db_get_string_size (value2);
+  len2 = MIN (string_size, length);
+
+  c = QSTR_COMPARE (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (c);
+
+  return c;
+}
+#endif
+
+/*
+ * TYPE BLOB
+ */
+
+static void
+mr_initmem_blob (void *mem, TP_DOMAIN * domain)
+{
+  *(char **) mem = NULL;
+}
+
+
+static int
+mr_setmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  const char *src;
+  char *cur, *new_, **mem;
+  int src_precision, src_length, src_length_bits, new_length;
+
+  /* get the current memory contents */
+  mem = (char **) memptr;
+  cur = *mem;
+
+  if (value == NULL || (src = db_get_string (value)) == NULL)
+    {
+      /* remove the current value */
+      if (cur != NULL)
+	{
+	  db_private_free_and_init (NULL, cur);
+	  mr_initmem_blob (memptr, domain);
+	}
+    }
+  else
+    {
+      /*
+       * Get information from the value.  Ignore precision for the time being
+       * since we really only care about the byte size of the value for varbit.
+       * Whether or not the value "fits" should have been checked by now.
+       */
+      src_precision = db_value_precision (value);
+      src_length = db_get_string_size (value);	/* size in bytes */
+      src_length_bits = db_get_string_length (value);	/* size in bits */
+
+      new_length = src_length + sizeof (int);
+      new_ = (char *) db_private_alloc (NULL, new_length);
+      if (new_ == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+      else
+	{
+	  if (cur != NULL)
+	    {
+	      db_private_free_and_init (NULL, cur);
+	    }
+
+	  /* pack in the length prefix */
+	  *(int *) new_ = src_length_bits;
+	  cur = new_ + sizeof (int);
+	  /* store the string */
+	  memcpy (cur, src, src_length);
+	  *mem = new_;
+	}
+    }
+
+  return error;
+}
+
+
+static int
+mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  int error = NO_ERROR;
+  int mem_bit_length;
+  char **mem, *cur, *new_;
+
+  /* get to the current value */
+  mem = (char **) memptr;
+  cur = *mem;
+
+  if (cur == NULL)
+    {
+      db_value_domain_init (value, DB_TYPE_BLOB, domain->precision, 0);
+      value->need_clear = false;
+    }
+  else
+    {
+      /* extract the length prefix and the pointer to the actual string data */
+      mem_bit_length = *(int *) cur;
+      cur += sizeof (int);
+
+      if (!copy)
+	{
+	  db_make_blob (value, domain->precision, cur, mem_bit_length);
+	  value->need_clear = false;
+	}
+      else
+	{
+	  /* return it */
+	  new_ = (char *) db_private_alloc (NULL, BITS_TO_BYTES (mem_bit_length) + 1);
+	  if (new_ == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      memcpy (new_, cur, BITS_TO_BYTES (mem_bit_length));
+	      db_make_blob (value, domain->precision, new_, mem_bit_length);
+	      value->need_clear = true;
+	    }
+	}
+    }
+
+  return error;
+}
+
+
+static int
+mr_data_lengthmem_blob (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  char **mem, *cur;
+  int len;
+
+  len = 0;
+  if (!disk)
+    {
+    }
+  else if (memptr != NULL)
+    {
+      mem = (char **) memptr;
+      cur = *mem;
+      if (cur != NULL)
+	{
+	  len = *(int *) cur;
+	  len = or_packed_varbit_length (len);
+	}
+    }
+
+  return len;
+}
+
+
+static void
+mr_data_writemem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+{
+  char **mem, *cur;
+  int bitlen;
+
+  mem = (char **) memptr;
+  cur = *mem;
+  if (cur != NULL)
+    {
+      bitlen = *(int *) cur;
+      cur += sizeof (int);
+      or_packed_put_varbit (buf, cur, bitlen);
+    }
+}
+
+
+/*
+ * The amount of memory requested is currently calculated based on the
+ * stored size prefix.  If we ever go to a system where we avoid storing the
+ * size, then we could use the size argument passed in to this function but
+ * that may also include any padding byte that added to bring us up to a word
+ * boundary. Might want some way to determine which bytes at the end of a
+ * string are padding.
+ */
+static void
+mr_data_readmem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+{
+  char **mem, *cur, *new_;
+  int bit_len;
+  int mem_length, pad;
+  char *start;
+  int rc = NO_ERROR;
+
+  /* Must have an explicit size here - can't be determined from the domain */
+  if (size < 0)
+    {
+      return;
+    }
+
+  if (memptr == NULL)
+    {
+      if (size)
+	{
+	  or_advance (buf, size);
+	}
+    }
+  else
+    {
+      mem = (char **) memptr;
+      cur = *mem;
+      /* should we be checking for existing strings ? */
+#if 0
+      if (cur != NULL)
+	db_private_free_and_init (NULL, cur);
+#endif
+
+      new_ = NULL;
+      if (size)
+	{
+	  start = buf->ptr;
+
+	  /* KLUDGE, we have some knowledge of how the thing is stored here in order have some control over the
+	   * conversion between the packed length prefix and the full word memory length prefix. Might want to put this
+	   * in another specialized or_ function. */
+
+	  /* Get just the length prefix. */
+	  bit_len = or_get_varbit_length (buf, &rc);
+
+	  /*
+	   * Allocate storage for this string, including our own full word size
+	   * prefix.
+	   */
+	  mem_length = BITS_TO_BYTES (bit_len) + sizeof (int);
+
+	  new_ = (char *) db_private_alloc (NULL, mem_length);
+	  if (new_ == NULL)
+	    {
+	      return;
+	    }
+	  else
+	    {
+	      /* store the length in our memory prefix */
+	      *(int *) new_ = bit_len;
+	      cur = new_ + sizeof (int);
+
+	      /* read the string */
+	      or_get_data (buf, cur, BITS_TO_BYTES (bit_len));
+	      /* align like or_get_varchar */
+	      or_get_align32 (buf);
+	    }
+
+	  /*
+	   * If we were given a size, check to see if for some reason this is
+	   * larger than the already word aligned string that we have now
+	   * extracted.  This shouldn't be the case but since we've got a
+	   * length, we may as well obey it.
+	   */
+	  pad = size - (int) (buf->ptr - start);
+	  if (pad > 0)
+	    {
+	      or_advance (buf, pad);
+	    }
+	}
+      *mem = new_;
+    }
+}
+
+static void
+mr_freemem_blob (void *memptr)
+{
+  char *cur;
+
+  if (memptr != NULL)
+    {
+      cur = *(char **) memptr;
+      if (cur != NULL)
+	{
+	  db_private_free_and_init (NULL, cur);
+	}
+    }
+}
+
+static void
+mr_initval_blob (DB_VALUE * value, int precision, int scale)
+{
+  db_make_blob (value, precision, NULL, 0);
+  value->need_clear = false;
+}
+
+static int
+mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  int error = NO_ERROR;
+  int src_precision, src_length, src_bit_length;
+  char *new_;
+  const char *src_str;
+
+  assert (!db_value_is_corrupted (src));
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      error = db_value_domain_init (dest, DB_TYPE_BLOB, DB_DEFAULT_PRECISION, 0);
+    }
+  else if ((src_str = db_get_string (src)) == NULL)
+    {
+      error = db_value_domain_init (dest, DB_TYPE_BLOB, db_value_precision (src), 0);
+    }
+  else
+    {
+      /* Get information from the value. */
+      src_precision = db_value_precision (src);
+      src_length = db_get_string_size (src);
+      src_bit_length = db_get_string_length (src);
+
+      /* should we be paying attention to this? it is extremely dangerous */
+      if (!copy)
+	{
+	  error = db_make_blob (dest, src_precision, src_str, src_bit_length);
+	}
+      else
+	{
+	  new_ = (char *) db_private_alloc (NULL, src_length + 1);
+	  if (new_ == NULL)
+	    {
+	      db_value_domain_init (dest, DB_TYPE_BLOB, src_precision, 0);
+	      assert (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	    }
+	  else
+	    {
+	      memcpy (new_, src_str, src_length);
+	      db_make_blob (dest, src_precision, new_, src_bit_length);
+	      dest->need_clear = true;
+	    }
+	}
+    }
+
+  return error;
+}
+
+
+static int
+mr_data_lengthval_blob (DB_VALUE * value, int disk)
+{
+  return mr_lengthval_blob_internal (value, disk, INT_ALIGNMENT);
+}
+
+static int
+mr_data_writeval_blob (OR_BUF * buf, DB_VALUE * value)
+{
+  return mr_writeval_blob_internal (buf, value, INT_ALIGNMENT);
+}
+
+static int
+mr_data_readval_blob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+		      int copy_buf_len)
+{
+  return mr_readval_blob_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
+}
+
+static int
+mr_lengthval_blob_internal (DB_VALUE * value, int disk, int align)
+{
+  int bit_length, len;
+
+  len = 0;
+  if (value != NULL && db_get_string (value) != NULL)
+    {
+      bit_length = db_get_string_length (value);	/* size in bits */
+
+      if (align == INT_ALIGNMENT)
+	{
+	  len = or_packed_varbit_length (bit_length);
+	}
+      else
+	{
+	  len = or_varbit_length (bit_length);
+	}
+    }
+
+  return len;
+}
+
+static int
+mr_writeval_blob_internal (OR_BUF * buf, DB_VALUE * value, int align)
+{
+  int src_bit_length;
+  const char *str;
+  int rc = NO_ERROR;
+
+  if (value != NULL && (str = db_get_string (value)) != NULL)
+    {
+      src_bit_length = db_get_string_length (value);	/* size in bits */
+
+      if (align == INT_ALIGNMENT)
+	{
+	  rc = or_packed_put_varbit (buf, str, src_bit_length);
+	}
+      else
+	{
+	  rc = or_put_varbit (buf, str, src_bit_length);
+	}
+    }
+
+  assert (buf->ptr <= buf->endptr);	/* safety check in heap_file.c */
+  return rc;
+}
+
+
+static int
+mr_readval_blob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+			  int copy_buf_len, int align)
+{
+  int pad, precision;
+  int str_bit_length, str_length;
+  char *new_, *start = NULL;
+  int rc = NO_ERROR;
+
+  if (value == NULL)
+    {
+      if (size == -1)
+	{
+	  rc = or_skip_varbit (buf, align);
+	}
+      else
+	{
+	  if (size)
+	    rc = or_advance (buf, size);
+	}
+    }
+  else
+    {
+      if (domain != NULL)
+	{
+	  precision = domain->precision;
+	}
+      else
+	{
+	  precision = DB_MAX_VARBIT_PRECISION;
+	}
+
+      if (size == 0)
+	{
+	  /* its NULL */
+	  db_value_domain_init (value, DB_TYPE_BLOB, precision, 0);
+	}
+      else if (!copy)
+	{
+	  str_bit_length = or_get_varbit_length (buf, &rc);
+	  if (rc == NO_ERROR)
+	    {
+	      db_make_blob (value, precision, buf->ptr, str_bit_length);
+	      value->need_clear = false;
+	      rc = or_skip_varbit_remainder (buf, str_bit_length, align);
+	    }
+	}
+      else
+	{
+	  if (size == -1)
+	    {
+	      /* Standard packed varbit with a size prefix */
+	      ;			/* do nothing */
+	    }
+	  else
+	    {			/* size != -1 */
+	      /* Standard packed varbit within an area of fixed size, usually this means we're looking at the disk
+	       * representation of an attribute. Just like the -1 case except we advance past the additional
+	       * padding. */
+	      start = buf->ptr;
+	    }			/* size != -1 */
+
+	  str_bit_length = or_get_varbit_length (buf, &rc);
+	  if (rc != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  /* get the string byte length */
+	  str_length = BITS_TO_BYTES (str_bit_length);
+
+	  if (copy_buf && copy_buf_len >= str_length + 1)
+	    {
+	      /* read buf image into the copy_buf */
+	      new_ = copy_buf;
+	    }
+	  else
+	    {
+	      /*
+	       * Allocate storage for the string including the kludge NULL
+	       * terminator
+	       */
+	      new_ = (char *) db_private_alloc (NULL, str_length + 1);
+	    }
+
+	  if (new_ == NULL)
+	    {
+	      /* need to be able to return errors ! */
+	      if (domain)
+		{
+		  db_value_domain_init (value, TP_DOMAIN_TYPE (domain), TP_FLOATING_PRECISION_VALUE, 0);
+		}
+	      return ER_FAILED;
+	    }
+	  else
+	    {
+	      /* do not read the kludge NULL terminator */
+	      rc = or_get_data (buf, new_, str_length);
+	      if (rc == NO_ERROR && align == INT_ALIGNMENT)
+		{
+		  /* round up to a word boundary */
+		  rc = or_get_align32 (buf);
+		}
+
+	      if (rc != NO_ERROR)
+		{
+		  if (new_ != copy_buf)
+		    {
+		      db_private_free_and_init (NULL, new_);
+		    }
+		  return ER_FAILED;
+		}
+
+	      new_[str_length] = '\0';	/* append the kludge NULL terminator */
+	      db_make_blob (value, precision, new_, str_bit_length);
+	      value->need_clear = (new_ != copy_buf) ? true : false;
+
+	      if (size == -1)
+		{
+		  /* Standard packed varbit with a size prefix */
+		  ;		/* do nothing */
+		}
+	      else
+		{		/* size != -1 */
+		  /* Standard packed varbit within an area of fixed size, usually this means we're looking at the
+		   * disk representation of an attribute. Just like the -1 case except we advance past the
+		   * additional padding. */
+		  pad = size - (int) (buf->ptr - start);
+		  if (pad > 0)
+		    {
+		      rc = or_advance (buf, pad);
+		    }
+		}		/* size != -1 */
+	    }			/* else */
+	}
+
+    }
+  return rc;
+}
+
+
+static DB_VALUE_COMPARE_RESULT
+mr_data_cmpdisk_blob (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+{
+  DB_VALUE_COMPARE_RESULT c;
+  int bit_length1, bit_length2;
+  int mem_length1, mem_length2, bitc;
+  OR_BUF buf1, buf2;
+  int error = NO_ERROR;
+
+  assert (domain != NULL);
+
+  or_init (&buf1, (char *) mem1, 0);
+  bit_length1 = or_get_varbit_length (&buf1, &error);
+  mem_length1 = BITS_TO_BYTES (bit_length1);
+  assert (error == NO_ERROR);
+
+  or_init (&buf2, (char *) mem2, 0);
+  bit_length2 = or_get_varbit_length (&buf2, &error);
+  mem_length2 = BITS_TO_BYTES (bit_length2);
+  assert (error == NO_ERROR);
+
+  bitc = varbit_compare ((unsigned char *) buf1.ptr, mem_length1, (unsigned char *) buf2.ptr, mem_length2);
+  c = MR_CMP_RETURN_CODE (bitc);
+
+  return c;
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_blob (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order, int *start_colp, int collation)
+{
+  DB_VALUE_COMPARE_RESULT c;
+  int bitc;
+
+  const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
+  const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  bitc = varbit_compare (string1, (int) db_get_string_size (value1), string2, (int) db_get_string_size (value2));
+  c = MR_CMP_RETURN_CODE (bitc);
+
+  return c;
+}
+
+static DB_VALUE_COMPARE_RESULT
+mr_cmpval_blob2 (DB_VALUE * value1, DB_VALUE * value2, int length, int do_coercion, int total_order, int *start_colp)
+{
+  DB_VALUE_COMPARE_RESULT c;
+  int len1, len2, string_size;
+  int bitc;
+
+  const unsigned char *string1 = REINTERPRET_CAST (const unsigned char *, db_get_string (value1));
+  const unsigned char *string2 = REINTERPRET_CAST (const unsigned char *, db_get_string (value2));
+
+  if (string1 == NULL || string2 == NULL)
+    {
+      return DB_UNK;
+    }
+
+  string_size = (int) db_get_string_size (value1);
+  len1 = MIN (string_size, length);
+  string_size = (int) db_get_string_size (value2);
+  len2 = MIN (string_size, length);
+
+  bitc = varbit_compare (string1, len1, string2, len2);
+  c = MR_CMP_RETURN_CODE (bitc);
+
+  return c;
 }

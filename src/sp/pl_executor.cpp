@@ -247,6 +247,8 @@ namespace cubpl
 	res = true;
 	break;
       // unsupported types
+      case DB_TYPE_CLOB:
+      case DB_TYPE_BLOB:
       case DB_TYPE_BIT:
       case DB_TYPE_VARBIT:
       case DB_TYPE_TABLE:

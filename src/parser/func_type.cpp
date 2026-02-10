@@ -705,6 +705,7 @@ namespace func_type
 	// todo -
 	return false;
 
+      case PT_GENERIC_TYPE_LOB:
       case PT_GENERIC_TYPE_LOBFILE:
 	// todo -
 	return false;
@@ -1591,6 +1592,12 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	{
 	  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INCOMPATIBLE_OPDS,
 		       fcode_get_lowercase_name (fcode), pt_show_type_enum (sep_type));
+	  break;
+	}
+
+	{
+	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	  break;
 	}
 
@@ -2801,6 +2808,13 @@ pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type)
 
     case PT_GENERIC_TYPE_LOBFILE:
       if (PT_IS_LOBFILE_TYPE (arg_type))
+	{
+	  return arg_type;
+	}
+      break;
+
+    case PT_GENERIC_TYPE_LOB:
+      if (PT_IS_LOB_TYPE (arg_type))
 	{
 	  return arg_type;
 	}

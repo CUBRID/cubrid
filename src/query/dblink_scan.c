@@ -276,6 +276,10 @@ print_utype_to_string (int type)
       return (char *) "bfile";
     case CCI_U_TYPE_CFILE:
       return (char *) "cfile";
+    case CCI_U_TYPE_BLOB:
+      return (char *) "blob";
+    case CCI_U_TYPE_CLOB:
+      return (char *) "clob";
     case CCI_U_TYPE_JSON:
       return (char *) "json";
     case CCI_U_TYPE_ENUM:

@@ -415,7 +415,7 @@ boot_check_and_fill_db_path_info (BOOT_CLIENT_CREDENTIAL * client_credential, BO
   if (db_path_info->lobfile_path == NULL)
     {
       /* assign the data volume directory */
-      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clobfile", LOBFILE_PATH_DEFAULT_PREFIX,
+      snprintf (boot_Lob_path_buf, sizeof (boot_Lob_path_buf), "%s%s%clob", LOBFILE_PATH_DEFAULT_PREFIX,
 		db_path_info->db_path, PATH_SEPARATOR);
       db_path_info->lobfile_path = boot_Lob_path_buf;
     }

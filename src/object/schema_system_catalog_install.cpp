@@ -98,8 +98,8 @@ catcls_add_data_type (DB_OBJECT *class_mop)
     NULL /* RESULTSET */, NULL /* MIDXKEY */,
     NULL /* TABLE */,
     "BIGINT", "DATETIME",
-    "BFILE", "CFILE", "ENUM",
-    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
+    "BFILE", "CFILE", "BLOB", "CLOB",
+    "ENUM", "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
     "JSON"
   };
 

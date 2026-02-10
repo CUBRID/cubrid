@@ -1165,6 +1165,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token BITSHIFT_LEFT
 %token BITSHIFT_RIGHT
 %token BFILE_
+%token BLOB_
 %token BOOLEAN_
 %token BOTH_
 %token BREADTH
@@ -1182,6 +1183,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CLASS
 %token CLASSES
 %token CFILE_
+%token CLOB_
 %token COALESCE
 %token COLLATE
 %token COLUMN
@@ -1557,6 +1559,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> CHARACTER_SET_
 %token <cptr> CHARSET
 %token <cptr> CHR
+%token <cptr> CLOB_TO_CHAR
 %token <cptr> CFILE_TO_CHAR
 %token <cptr> CLOSE
 %token <cptr> COLLATION
@@ -19509,13 +19512,25 @@ primitive_type
 	| BLOB_ opt_internal_external
 		{{
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), NULL);
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
+			  {
+			    dt->type_enum = PT_TYPE_BLOB;
+			    dt->info.data_type.precision = DB_MAX_LOB_PRECISION;
+			  }
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), dt);
 			$$ = ctn;
 		}}
 	| CLOB_ opt_internal_external
 		{{
 			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), NULL);
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
+			  {
+			    dt->type_enum = PT_TYPE_CLOB;
+			    dt->info.data_type.precision = DB_MAX_LOB_PRECISION;
+			  }
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), dt);
 			$$ = ctn;
 		}}
 	| class_name opt_identity
@@ -24934,10 +24949,15 @@ parser_keyword_func (const char *name, PT_NODE * args)
 				     parser_make_date_lang (c, a3));
 
     case PT_BIT_TO_BFILE:
+    case PT_BIT_TO_BLOB:
     case PT_CHAR_TO_BFILE:
     case PT_CHAR_TO_CFILE:
+    case PT_CHAR_TO_BLOB:
+    case PT_CHAR_TO_CLOB:
     case PT_BFILE_LENGTH:
     case PT_CFILE_LENGTH:
+    case PT_BLOB_LENGTH:
+    case PT_CLOB_LENGTH:
       if (c != 1)
 	{
 	  return NULL;
@@ -24967,6 +24987,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
       return parser_make_expression (this_parser, key->op, a1, NULL, NULL);
 
     case PT_BFILE_TO_BIT:
+    case PT_BLOB_TO_BIT:
       if (c != 1)
 	{
 	  return NULL;
@@ -24977,6 +24998,8 @@ parser_keyword_func (const char *name, PT_NODE * args)
 
     case PT_BFILE_FROM_FILE:
     case PT_CFILE_FROM_FILE:
+    case PT_BLOB_FROM_FILE:
+    case PT_CLOB_FROM_FILE:
       if (c != 1)
 	{
 	  return NULL;
@@ -24997,6 +25020,14 @@ parser_keyword_func (const char *name, PT_NODE * args)
 		{
 		  a2->type_enum = PT_TYPE_CFILE;
 		}
+              else if (key->op == PT_BLOB_FROM_FILE)
+                {
+                  a2->type_enum = PT_TYPE_BLOB;
+                }
+              else if (key->op == PT_CLOB_FROM_FILE)
+                {
+                  a2->type_enum = PT_TYPE_CLOB;
+                }
 	    }
 
 	  /* Those two functions should be evaluated at the compile time */
