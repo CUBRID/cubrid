@@ -4718,6 +4718,7 @@ drop_stmt
 			    $$ = node;
 			    PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 			  }
+                }}
 	| DROP					/* 1 */
 		{				/* 2 */
 			PT_NODE* node = parser_new_node(this_parser, PT_DROP_INDEX);
