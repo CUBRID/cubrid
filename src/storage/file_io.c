@@ -36,6 +36,7 @@
 #include <sys/stat.h>
 #include <assert.h>
 #include <signal.h>
+#include <dirent.h>
 
 #if defined(WINDOWS)
 #include <io.h>
@@ -88,6 +89,7 @@
 #include "log_volids.hpp"
 #include "fault_injection.h"
 #include "thread_worker_pool.hpp"
+#include "es_posix.h"
 
 #if defined (SERVER_MODE)
 #include "vacuum.h"
@@ -130,6 +132,19 @@
 /************************************************************************/
 /* TODO: why is this in client module?                                  */
 /************************************************************************/
+
+/* Suppress GCC -Wformat-truncation warnings for PATH_MAX-based snprintf usage */
+#if defined (__GNUC__)
+#define DISABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic push") \
+  _Pragma("GCC diagnostic ignored \"-Wformat-truncation\"")
+
+#define ENABLE_FMT_TRUNC_WARNING \
+  _Pragma("GCC diagnostic pop")
+#else
+#define DISABLE_FMT_TRUNC_WARNING
+#define ENABLE_FMT_TRUNC_WARNING
+#endif
 
 /*
  * Message id in the set MSGCAT_SET_IO
@@ -11939,4 +11954,156 @@ fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
 
   free_and_init (ref_page);
   return is_formatted;
+}
+
+/*
+ * fileio_lob_remove_dir () - Remove LOB directory(OS level).
+ *
+ * return: error code.
+ * path (in): An absolute path under the LOB directory.
+ */
+int
+fileio_lob_remove_dir (char *path)
+{
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  DIR *dir_p;
+  struct dirent *dir_entry;
+  struct stat statbuf;
+  char sub_path[PATH_MAX];
+  int result = 0;
+
+  dir_p = opendir (path);
+  if (dir_p == NULL)
+    {
+      return ER_ES_INVALID_PATH;
+    }
+
+  while ((dir_entry = readdir (dir_p)) != NULL && result == 0)
+    {
+      if (strcmp (dir_entry->d_name, ".") == 0 || strcmp (dir_entry->d_name, "..") == 0)
+	{
+	  continue;
+	}
+
+#if defined (__GNUC__)
+      DISABLE_FMT_TRUNC_WARNING
+#endif
+	snprintf (sub_path, PATH_MAX, "%s%c%s", path, PATH_SEPARATOR, dir_entry->d_name);
+
+#if defined (__GNUC__)
+      ENABLE_FMT_TRUNC_WARNING
+#endif
+	if (stat (sub_path, &statbuf) != 0)
+	{
+	  continue;
+	}
+
+      if (S_ISDIR (statbuf.st_mode))
+	{
+	  result = fileio_lob_remove_dir (sub_path);
+	}
+      else
+	{
+	  result = unlink (sub_path);
+	}
+    }
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  result = closedir (dir_p);
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  result = rmdir (path);
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+#else /* SERVER_MODE || SA_MODE */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
+ * fileio_lob_remove_matching_dir () - Remove LOB subdirectories whose names contain the given keyword by calling
+ *                                    fileio_lob_remove_dir().
+ *
+ * return: error code.
+ * keyword (in): keyword (in): A keyword representing part or all of a directory name
+ *               to be removed under the LOB path.
+ *               Examples include an HFID (attrid) or a temporary directory name ("ces").
+ */
+int
+fileio_lob_remove_matching_dir (const char *keyword)
+{
+#if defined(SERVER_MODE) || defined(SA_MODE)
+  DIR *dir_p;
+  struct dirent *dir_entry;
+  struct stat statbuf;
+  char sub_path[PATH_MAX];
+  int result = 0;
+
+  dir_p = opendir (es_base_dir);
+  if (dir_p == NULL)
+    {
+      /*
+       * If opendir() failed (e.g., when es_base_dir is an invalid path),
+       * ignore the error in order to start the server nomally.
+       * This approach follows the design of es_init().
+       */
+      return NO_ERROR;
+    }
+
+  while ((dir_entry = readdir (dir_p)) != NULL && result == 0)
+    {
+      if (strcmp (dir_entry->d_name, ".") == 0 || strcmp (dir_entry->d_name, "..") == 0)
+	{
+	  continue;
+	}
+
+      if (strncmp (dir_entry->d_name, keyword, strlen (keyword)) == 0)
+	{
+#if defined (__GNUC__)
+	  DISABLE_FMT_TRUNC_WARNING
+#endif
+	    snprintf (sub_path, PATH_MAX, "%s%c%s", es_base_dir, PATH_SEPARATOR, dir_entry->d_name);
+
+#if defined (__GNUC__)
+	  ENABLE_FMT_TRUNC_WARNING
+#endif
+	    if (stat (sub_path, &statbuf) != 0)
+	    {
+	      continue;
+	    }
+	  if (S_ISDIR (statbuf.st_mode))
+	    {
+	      result = fileio_lob_remove_dir (sub_path);
+	    }
+	  else
+	    {
+	      /* This case should never happen. */
+	    }
+	}
+    }
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  result = closedir (dir_p);
+  if (result != 0)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+#else /* SERVER_MODE || SA_MODE */
+  return ER_FAILED;		/* Not supported in CS_MODE because it handles server-side external storage. */
+#endif /* SERVER_MODE || SA_MODE */
 }

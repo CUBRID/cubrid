@@ -860,6 +860,12 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
+  {RVHF_LOB_REMOVE_DIR,
+   "RVHF_LOB_REMOVE_DIR",
+   heap_rv_lob_remove_dir,
+   heap_rv_lob_remove_dir,
+   NULL,
+   NULL},
 };
 
 /*
