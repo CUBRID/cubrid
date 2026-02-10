@@ -58,6 +58,7 @@
 #include "msgcat_set_log.hpp"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
+#include "catalog_class.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_append.hpp"
@@ -365,8 +366,6 @@ static cubthread::daemon *cdc_Loginfo_producer_daemon = NULL;
 static void log_daemons_init ();
 static void log_daemons_destroy ();
 
-// used by log_Check_ha_delay_info_daemon
-extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 #endif /* SERVER_MODE */
 
 /*
@@ -5771,6 +5770,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 
   state = tdes->state;
 
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
   if (tdes->coord != NULL && tdes->coord->ack_received != NULL)
     {
       /*
@@ -5906,12 +5906,12 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      return state;
 	    }
 	}
-
       /*
        * All acknowledgments of participants have been received, declare the
        * the transaction as completed
        */
     }
+#endif
 
   /*
    * DECLARE THE TRANSACTION AS COMPLETED

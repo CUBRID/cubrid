@@ -114,6 +114,7 @@ $ These 3 should be blank
 196 An undefined error has occurred.
 197 ';edit' is not allowed when output has been redirected.
 198 Format failed.
+199 Multibyte characters unavailable in prompt. Check LANG and DB codeset settings.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -215,3 +216,4 @@ $ csql help messages
 235 <Partitions>
 236 A class name is required.
 237 <Comment>
+238 Failed to compile system catalog classes.

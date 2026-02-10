@@ -73,6 +73,7 @@ namespace cubthread
     context.tran_index = NULL_TRAN_INDEX;
     context.check_interrupt = true;
     context.private_lru_index = -1;
+    context.m_is_private_lru_enabled = false;
 #if defined (SERVER_MODE)
     context.m_status = entry::status::TS_FREE;
     context.resume_status = THREAD_RESUME_NONE;
@@ -97,7 +98,6 @@ namespace cubthread
     context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
-    context.m_px_orig_thread_entry = NULL;
     context.shutdown = false;
     context.m_px_orig_thread_entry = NULL;
     perfmon_destroy_parallel_stats (&context);

@@ -2792,14 +2792,14 @@ qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfil
       if (tfile_vfid_p->tde_encrypted)
 	{
 	  tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
-	}
 
-      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
-	  VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
-	  return NULL;
+	  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	      VFID_SET_NULL (&tfile_vfid_p->temp_vfid);
+	      return NULL;
+	    }
 	}
     }
 
@@ -3070,13 +3070,13 @@ qmgr_create_result_file (THREAD_ENTRY * thread_p, QUERY_ID query_id)
     {
       tfile_vfid_p->tde_encrypted = true;
       tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
-    }
+      if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
+	{
+	  file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
+	  free_and_init (tfile_vfid_p);
+	  return NULL;
+	}
 
-  if (file_apply_tde_algorithm (thread_p, &tfile_vfid_p->temp_vfid, tde_algo) != NO_ERROR)
-    {
-      file_temp_retire (thread_p, &tfile_vfid_p->temp_vfid);
-      free_and_init (tfile_vfid_p);
-      return NULL;
     }
 
   if (qmgr_is_allowed_result_cache (query_p->query_flag))
@@ -3838,28 +3838,35 @@ qmgr_get_query_sql_user_text (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tr
 }
 
 int
-qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password)
+qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *user_name, char *password,
+			      bool set_participant)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  int conn_handle = -1;
+
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
   DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
 
   while (dblink)
     {
-      if (!strcmp (dblink->conn_url, conn_url) && !strcmp (dblink->user_name, user_name)
-	  && !strcmp (dblink->password, password))
+      if (!strcmp (dblink->conn_info.conn_url, conn_url) && !strcmp (dblink->conn_info.user_name, user_name)
+	  && !strcmp (dblink->conn_info.password, password))
 	{
-	  return dblink->conn_handle;
+	  /* 2pc participant is set only if DML query */
+	  dblink->is_2pc_participant = set_participant;
+	  conn_handle = dblink->conn_info.conn_handle;
+	  break;
 	}
 
       dblink = dblink->next;
     }
 
-  return -1;
+  return conn_handle;
 }
 
 int
-qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name, char *password)
+qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *conn_url, char *user_name, char *password,
+			     bool set_participant)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
@@ -3873,15 +3880,37 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  dblink_conn_entry->conn_handle = conn_handle;
+  dblink_conn_entry->conn_info.conn_handle = conn_handle;
+  dblink_conn_entry->is_2pc_participant = set_participant;
 
-  strcpy (dblink_conn_entry->conn_url, conn_url);
-  strcpy (dblink_conn_entry->user_name, user_name);
-  strcpy (dblink_conn_entry->password, password);
+  strcpy (dblink_conn_entry->conn_info.conn_url, conn_url);
+  strcpy (dblink_conn_entry->conn_info.user_name, user_name);
+  strcpy (dblink_conn_entry->conn_info.password, password);
 
   dblink_conn_entry->next = tran_entry_p->dblink_entry;
 
   tran_entry_p->dblink_entry = dblink_conn_entry;
 
   return NO_ERROR;
+}
+
+DBLINK_CONN_ENTRY *
+qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  return tran_entry_p->dblink_entry;
+}
+
+void
+qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
+  tran_entry_p->dblink_entry = NULL;
+
+  return;
 }

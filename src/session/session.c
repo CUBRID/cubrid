@@ -2790,6 +2790,7 @@ session_set_conn_entry_data (THREAD_ENTRY * thread_p, SESSION_STATE * session_p)
       thread_p->conn_entry->session_id = session_p->id;
     }
   thread_p->private_lru_index = session_p->private_lru_index;
+  pgbuf_thread_variables_init (thread_p);
 #endif
 }
 

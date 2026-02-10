@@ -39,6 +39,7 @@
 #include "locator_cl.h"
 #include "virtual_object.h"
 #include "dbtype.h"
+#include "boot.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -424,7 +425,6 @@ static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -1219,6 +1219,8 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 	    {
 	      PT_NODE *from;
 	      int i = 0;
+	      bool is_reuse_oid_class;
+	      int client_type = db_get_client_type ();
 
 	      for (from = statement->info.query.q.select.from; from != NULL; from = from->next)
 		{
@@ -1228,12 +1230,15 @@ mq_updatable_local (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT *** 
 
 	      for (i = 0; i < *num_classes; ++i)
 		{
-		  if (sm_is_reuse_oid_class ((*classes)[i]) || sm_is_system_class ((*classes)[i]) > 0)
+		  is_reuse_oid_class = sm_is_reuse_oid_class ((*classes)[i]);
+
+		  if (is_reuse_oid_class
+		      || (!BOOT_ADMIN_CSQL_CLIENT_TYPE (client_type) && (sm_is_system_class ((*classes)[i]) > 0)))
 		    {
 		      local = (PT_UPDATABILITY) (local & PT_NOT_UPDATABLE);
 		      if (parser->view_cache)
 			{
-			  parser->view_cache->has_reuse_oid_table = true;
+			  parser->view_cache->has_reuse_oid_table = is_reuse_oid_class;
 			}
 		      break;
 		    }
@@ -5286,7 +5291,7 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *cte;
   PT_HINT_ENUM hint;
-  bool is_inlinable = true;
+  bool has_click_counter = false;
 
   assert (node->node_type == PT_WITH_CLAUSE);
 
@@ -5305,14 +5310,14 @@ mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node)
 	  continue;
 	}
 
-      is_inlinable = true;
+      has_click_counter = false;
       /* CTE containing functions like incr, rownum etc. cannot be rewritten as inline view
        * since it may change the query results. Handle it same as CTE with materialize hint. */
       (void) parser_walk_tree (parser, cte->info.cte.non_recursive_part,
-			       mq_check_inline_cte, &is_inlinable, NULL, NULL);
+			       mq_has_click_counter, &has_click_counter, NULL, NULL);
 
       /* false subquery cannot be rewritten as inline view */
-      if (is_inlinable && pt_is_query (cte->info.cte.non_recursive_part))
+      if (!has_click_counter && pt_is_query (cte->info.cte.non_recursive_part))
 	{
 	  hint = pt_get_hint_from_query (parser, cte->info.cte.non_recursive_part);
 
@@ -5392,16 +5397,16 @@ mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
- * mq_check_inline_cte () -
+ * mq_has_click_counter () -
  *   return:
  *   parser(in):
  *   node(in):
  *   arg(in):
  */
-static PT_NODE *
-mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+PT_NODE *
+mq_has_click_counter (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  bool *can_inlining = (bool *) arg;
+  bool *has_click_counter = (bool *) arg;
 
   if (node == NULL)
     {
@@ -5410,11 +5415,10 @@ mq_check_inline_cte (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   switch (node->node_type)
     {
-      /* CTE cannot contain WITH clause inside, so we don't need to handle this case */
     case PT_EXPR:
       if (node->info.expr.op == PT_INCR || node->info.expr.op == PT_DECR)
 	{
-	  *can_inlining = false;
+	  *has_click_counter = true;
 	  *continue_walk = PT_STOP_WALK;
 	}
       break;
@@ -5553,7 +5557,7 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
   agg_sel->info.query.q.select.use_hash = NULL;
 
   derived->info.query.q.select.num_parallel_threads = agg_sel->info.query.q.select.num_parallel_threads;
-  agg_sel->info.query.q.select.num_parallel_threads = 0;
+  /* keep agg_sel->info.query.q.select.num_parallel_threads unchanged */
 
   derived->info.query.q.select.from = agg_sel->info.query.q.select.from;
   agg_sel->info.query.q.select.from = NULL;
@@ -14694,13 +14698,31 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
       is_index_ss = dest_query->info.query.q.select.hint & PT_HINT_INDEX_SS;
       is_index_ls = dest_query->info.query.q.select.hint & PT_HINT_INDEX_LS;
 
+      /* remove some hints if there are multiple tables.  */
+      if (dest_query->info.query.q.select.from->next != NULL)
+	{
+	  /* ignore ordered hint */
+	  if (src_query->info.query.q.select.hint & PT_HINT_ORDERED)
+	    {
+	      src_query->info.query.q.select.hint &= ~PT_HINT_ORDERED;
+	    }
+	  if (src_query->info.query.q.select.hint & PT_HINT_LEADING
+	      && dest_query->info.query.q.select.hint & PT_HINT_LEADING)
+	    {
+	      /* ignore leading hint */
+	      src_query->info.query.q.select.hint &= ~PT_HINT_LEADING;
+	    }
+	  else
+	    {
+	      dest_query->info.query.q.select.leading =
+		parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
+				    dest_query->info.query.q.select.leading);
+	    }
+	}
+
       /* merge HINT of vclass spec */
       dest_query->info.query.q.select.hint =
 	(PT_HINT_ENUM) (dest_query->info.query.q.select.hint | src_query->info.query.q.select.hint);
-
-      dest_query->info.query.q.select.leading =
-	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.leading),
-			    dest_query->info.query.q.select.leading);
 
       dest_query->info.query.q.select.use_nl =
 	parser_append_node (parser_copy_tree_list (parser, src_query->info.query.q.select.use_nl),

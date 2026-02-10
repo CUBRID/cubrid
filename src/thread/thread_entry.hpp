@@ -53,6 +53,8 @@ struct log_zip;
 struct vacuum_worker;
 // from xasl_unpack_info.hpp
 struct xasl_unpack_info;
+// from page_buffer.h
+struct pgbuf_holder_anchor;
 
 // forward resource trackers
 namespace cubbase
@@ -308,6 +310,9 @@ namespace cubthread
 
       bool m_skip_end_resource_tracks_in_recycle;
 
+      bool m_is_private_lru_enabled;
+      struct pgbuf_holder_anchor *m_holder_anchor;
+
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();
@@ -480,23 +485,12 @@ thread_unlock_entry (cubthread::entry *thread_p)
   thread_p->unlock ();
 }
 
-void thread_suspend (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
-int thread_timed_suspend (cubthread::entry *p, struct timespec *t,
-			  thread_resume_suspend_status suspended_reason);
+void thread_suspend_wakeup_and_unlock_entry (cubthread::entry *p, thread_resume_suspend_status suspended_reason);
+int thread_suspend_timeout_wakeup_and_unlock_entry (cubthread::entry *p, struct timespec *t,
+    thread_resume_suspend_status suspended_reason);
 void thread_wakeup (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_resume_suspend_status resume_reason,
     thread_resume_suspend_status suspend_reason);
-#define thread_suspend_and_unlock_entry(thread_p,suspended_reason) \
-  ({ \
-    thread_suspend((thread_p), (suspended_reason)); \
-    thread_unlock_entry((thread_p)); \
-  })
-#define thread_timed_suspend_and_unlock_entry(thread_p, t, suspended_reason) \
-  ({ \
-    int __r = thread_timed_suspend((thread_p), (t), (suspended_reason)); \
-    thread_unlock_entry((thread_p)); \
-    __r; \
-  })
 void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				     thread_resume_suspend_status suspended_reason);
