@@ -45,7 +45,7 @@
 #define MAX_STRING_OID_LENGTH 4096
 #define MIN_STRING_OID_LENGTH 18
 
-bool vid_inhibit_null_check = false;
+const bool vid_inhibit_null_check = false;
 
 static int vid_build_non_upd_object (MOP mop, DB_VALUE * seq);
 
