@@ -567,6 +567,7 @@ namespace cubhnsw
 			 candidates_view_t<Traits> &out, std::size_t &refines_counter) const
   {
     out = {};
+    std::size_t old_computed_distances;
 
     candidate_t<Traits> *top_data = top.data();
     std::size_t const top_count = top.size();
@@ -577,6 +578,11 @@ namespace cubhnsw
       }
 
     top.sort_ascending();
+
+    if (context.m_is_perf_tracking)
+      {
+	old_computed_distances = context.m_computed_distances;
+      }
 
     std::size_t submitted_count = 1;
     std::size_t consumed_count = 1; /// Always equal or greater than `submitted_count`.
@@ -597,17 +603,17 @@ namespace cubhnsw
 	      }
 	  }
 
-	if (context.m_is_perf_tracking)
-	  {
-	    refines_counter += idx;
-	  }
-
 	if (good)
 	  {
 	    top_data[submitted_count] = top_data[consumed_count];
 	    submitted_count++;
 	  }
 	consumed_count++;
+      }
+
+    if (context.m_is_perf_tracking)
+      {
+	refines_counter = context.m_computed_distances - old_computed_distances;
       }
 
     top.shrink (submitted_count);
