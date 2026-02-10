@@ -62,12 +62,12 @@ namespace cubhnsw
 
   struct oid_hash
   {
-    inline std::size_t operator()(const OID &o) const noexcept
+    inline std::size_t operator() (const OID &o) const noexcept
     {
       // bit packing of oid
-      return (uint64_t(uint32_t(o.pageid)) << 32)
-           | (uint64_t(uint16_t(o.slotid)) << 16)
-           |  uint64_t(uint16_t(o.volid));
+      return (uint64_t (uint32_t (o.pageid)) << 32)
+	     | (uint64_t (uint16_t (o.slotid)) << 16)
+	     |  uint64_t (uint16_t (o.volid));
     }
   };
 
