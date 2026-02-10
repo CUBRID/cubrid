@@ -264,7 +264,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   er_init (er_msg_file, ER_NEVER_EXIT);
 
   /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  sysprm_set_force (prm_get_name (PRM_ID_PRINT_INDEX_DETAIL),
+  sysprm_set_force (PRM_ID_PRINT_INDEX_DETAIL,
 		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");
 
 #if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)

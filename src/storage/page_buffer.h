@@ -187,13 +187,13 @@ typedef enum
 } PAGE_FETCH_MODE;
 
 /* public page latch mode */
-typedef enum
+typedef enum:uint16_t
 {
   PGBUF_NO_LATCH = 0,
-  PGBUF_LATCH_READ,
-  PGBUF_LATCH_WRITE,
-  PGBUF_LATCH_FLUSH,		/* this is only used as block mode. page can never be fixed with flush latch mode. */
-  PGBUF_LATCH_INVALID
+  PGBUF_LATCH_READ = 1,
+  PGBUF_LATCH_WRITE = 2,
+  PGBUF_LATCH_FLUSH = 3,	/* this is only used as block mode. page can never be fixed with flush latch mode. */
+  PGBUF_LATCH_INVALID = 4
 } PGBUF_LATCH_MODE;
 
 typedef enum
@@ -264,6 +264,12 @@ extern void pgbuf_finalize (void);
 extern PAGE_PTR pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
 				      PGBUF_LATCH_MODE request_mode, int retry);
 extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page);
+
+/* simple fix is used only for reading temporary files */
+PAGE_PTR pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix);
+void pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+int pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free);
+
 #if !defined(NDEBUG)
 
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
@@ -472,6 +478,7 @@ extern int pgbuf_fix_if_not_deallocated_with_caller (THREAD_ENTRY * thead_p, con
 extern int pgbuf_release_private_lru (THREAD_ENTRY * thread_p, const int private_idx);
 extern int pgbuf_assign_private_lru (THREAD_ENTRY * thread_p);
 extern void pgbuf_adjust_quotas (THREAD_ENTRY * thread_p);
+void pgbuf_thread_variables_init (THREAD_ENTRY * thread_p);
 
 #if defined (SERVER_MODE)
 extern void pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p);

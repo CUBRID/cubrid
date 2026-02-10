@@ -142,7 +142,7 @@ db_create_vclass (const char *name)
   int error = NO_ERROR;
   SM_TEMPLATE *def;
   DB_OBJECT *virtual_class;
-  PR_TYPE *type;
+  const PR_TYPE *type;
   OID class_oid = OID_INITIALIZER;
   const char *class_name = NULL;
 

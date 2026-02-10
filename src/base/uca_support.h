@@ -33,10 +33,10 @@
 extern "C"
 {
 #endif
-
+#if defined(SA_MODE)
   int uca_process_collation (LOCALE_COLLATION * lc, bool is_verbose);
   void uca_free_data (void);
-
+#endif
 #ifdef __cplusplus
 }
 #endif

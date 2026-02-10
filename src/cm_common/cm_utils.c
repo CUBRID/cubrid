@@ -634,11 +634,8 @@ uReadDBtxtFile (const char *dn, int idx, char *outbuf)
   char *value_p[4];
   int retval = ERR_DBDIRNAME_NULL;
   char *cubrid_database_path;
-#if !defined (DO_NOT_USE_CUBRIDENV)
+
   cubrid_database_path = getenv (CUBRID_DATABASES_ENV);
-#else
-  cubrid_database_path = CUBRID_VARDIR;
-#endif
 
   if (outbuf != NULL)
     outbuf[0] = '\0';
@@ -737,7 +734,7 @@ cm_util_log_write_command (int argc, char *argv[])
  */
 
 int
-make_temp_filename (char *tempfile, char *prefix, int size)
+make_temp_filename (char *tempfile, const char *prefix, int size)
 {
   struct timeval current_time;
 
@@ -773,7 +770,7 @@ make_temp_filepath (char *tempfile, char *tempdir, char *prefix, int task_code, 
       return -1;
     }
 
-  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%d_%d", tempdir, prefix ? prefix : "", task_code,
+  snprintf (tempfile, size - 1, "%s/%s_%03d_%ld_%ld_%d", tempdir, prefix ? prefix : "", task_code,
 	    current_time.tv_sec, current_time.tv_usec, rand () % 997);
 
   return 0;

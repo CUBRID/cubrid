@@ -62,9 +62,9 @@ For additional information, see http://www.cubrid.org\n
 46 %1$d command(s) successfully processed.
 47 In the command from line %1$d,
 48 In line %1$d, column %2$d,
-49 Type `;help' for help messages.
+49 Type ';help' for help messages, or ';exit' to quit.
 50 ERROR: 
-51 CUBRID SQL Interpreter
+51 \n\tCUBRID SQL Interpreter (version %1$s)\n\n
 52 There have been updates. Do you want to commit ? (`Y' or `N') 
 53 Enter `Y' to commit, `N' to abort. 
 54 Committed.
@@ -114,6 +114,7 @@ $ These 3 should be blank
 196 An undefined error has occurred.
 197 ';edit' is not allowed when output has been redirected.
 198 Format failed.
+199 Multibyte characters unavailable in prompt. Check LANG and DB codeset settings.
 
 203 <%1$s> 
 204 <Super Classes> 
@@ -215,3 +216,4 @@ $ csql help messages
 235 <Partitions>
 236 A class name is required.
 237 <Comment>
+238 Failed to compile system catalog classes.

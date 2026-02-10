@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <atomic>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -70,6 +71,7 @@
 #include "chartype.h"
 #include "connection_globals.h"
 #include "file_io.h"
+#include "compressor.hpp"
 #include "storage_common.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
@@ -85,6 +87,8 @@
 #include "log_common_impl.h"
 #include "log_volids.hpp"
 #include "fault_injection.h"
+#include "thread_worker_pool.hpp"
+
 #if defined (SERVER_MODE)
 #include "vacuum.h"
 #endif /* SERVER_MODE */
@@ -102,7 +106,7 @@
 #endif /* SERVER_MODE */
 
 #if !defined (CS_MODE)
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "page_buffer.h"
 #include "xserver_interface.h"
 #endif /* !defined (CS_MODE) */
@@ -117,7 +121,7 @@
 #if defined (SERVER_MODE)
 #include "thread_entry_task.hpp"
 #endif // SERVER_MODE
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 #endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -645,7 +649,7 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 
   if (need_sync)
     {
-      fileio_synchronize_all (thread_p, false);
+      fileio_synchronize_all (thread_p);
     }
 #endif /* SERVER_MODE */
 }
@@ -1825,11 +1829,12 @@ fileio_unlock (const char *vol_label_p, int vol_fd, FILEIO_LOCKF_TYPE lockf_type
  *   vdes(in): Volume descriptor
  *   io_pgptr(in): Initialization content of all pages
  *   npages(in): Number of pages to initialize
+ *   ensure_metadata(in): Include metadata when syncing.
  *   kbytes_to_be_written_per_sec : size to add volume per sec
  */
 void *
 fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, DKNPAGES start_pageid,
-			 DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec)
+			 DKNPAGES npages, size_t page_size, bool ensure_metadata, int kbytes_to_be_written_per_sec)
 {
   PAGEID page_id;
   bool skip_flush = false;
@@ -1885,7 +1890,7 @@ fileio_initialize_pages (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_p
 	}
 #endif
 
-      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, io_page_p, page_id, page_size) == NULL)
+      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, io_page_p, page_id, page_size, ensure_metadata) == NULL)
 	{
 	  return NULL;
 	}
@@ -2286,9 +2291,7 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   FILEIO_PAGE *malloc_io_page_p;
   off_t offset;
   DKNPAGES max_npages;
-#if !defined(WINDOWS)
   struct stat buf;
-#endif
   bool is_raw_device = false;
 
   /* Check for bad number of pages...and overflow */
@@ -2301,7 +2304,6 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   if (fileio_is_volume_exist (vol_label_p) == true && reuse_file == false)
     {
       /* The volume that we are trying to create already exist. Remove it and try again */
-#if !defined(WINDOWS)
       if (lstat (vol_label_p, &buf) != 0)
 	{
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
@@ -2320,10 +2322,6 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
 
 	  is_raw_device = S_ISCHR (buf.st_mode);
 	}
-#else /* !WINDOWS */
-      fileio_unformat (thread_p, vol_label_p);
-      is_raw_device = false;
-#endif /* !WINDOWS */
     }
 
   if (is_raw_device)
@@ -2378,59 +2376,62 @@ fileio_format (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   FI_TEST (thread_p, FI_TEST_FILE_IO_FORMAT, 0);
   if (vol_fd != NULL_VOLDES)
     {
+      if (fileio_synchronize_directory (thread_p, vol_label_p) != NO_ERROR)
+	{
+	  fileio_dismount (thread_p, vol_fd);
+	  fileio_unformat (thread_p, vol_label_p);
+	  free_and_init (malloc_io_page_p);
+	  return NULL_VOLDES;
+	}
+
       /* initialize the pages of the volume. */
 
       /* initialize at least two pages, the header page and the last page. in case of is_sweep_clean == true, every
        * page of the volume will be written. */
 
-      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, 0, page_size) == NULL)
+      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, 0, page_size, false) == NULL)
 	{
-	  fileio_dismount (thread_p, vol_fd);
-	  fileio_unformat (thread_p, vol_label_p);
-	  free_and_init (malloc_io_page_p);
-
 	  if (er_errid () != ER_INTERRUPTED)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2, 0, vol_id);
 	    }
 
-	  vol_fd = NULL_VOLDES;
-	  return vol_fd;
+	  fileio_dismount (thread_p, vol_fd);
+	  fileio_unformat (thread_p, vol_label_p);
+	  free_and_init (malloc_io_page_p);
+	  return NULL_VOLDES;
 	}
 
 #if defined(HPUX)
       if ((is_sweep_clean == true
-	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, kbytes_to_be_written_per_sec))
-	  || (is_sweep_clean == false
-	      && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, FILEIO_WRITE_DEFAULT_WRITE)))
+	   && !fileio_initialize_pages (vol_fd, malloc_io_page_p, npages, page_size, false,
+					kbytes_to_be_written_per_sec)) ||
+	  (is_sweep_clean == false
+	   && !fileio_write (vol_fd, malloc_io_page_p, npages - 1, page_size, FILEIO_WRITE_DEFAULT_WRITE)))
 #else /* HPUX */
-      if (!((fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size) == malloc_io_page_p)
-	    && (is_sweep_clean == false
-		|| fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
-					    kbytes_to_be_written_per_sec) == malloc_io_page_p)))
-#endif /* HPUX */
+      if (!((fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, npages - 1, page_size, true) ==
+	     malloc_io_page_p) && (is_sweep_clean == false
+				   || fileio_initialize_pages (thread_p, vol_fd, malloc_io_page_p, 0, npages, page_size,
+							       false,
+							       kbytes_to_be_written_per_sec) == malloc_io_page_p)))
+#endif /* !HPUX */
 	{
 	  /* It is likely that we run of space. The partition where the volume was created has been used since we
 	   * checked above. */
 
 	  max_npages = fileio_get_number_of_partition_free_pages (vol_label_p, page_size);
 
-	  fileio_dismount (thread_p, vol_fd);
-	  fileio_unformat (thread_p, vol_label_p);
-	  free_and_init (malloc_io_page_p);
 	  if (er_errid () != ER_INTERRUPTED)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_OUT_OF_SPACE, 5, vol_label_p, npages,
 		      (offset / 1024), max_npages, (long long) ((page_size / 1024) * max_npages));
 	    }
-	  vol_fd = NULL_VOLDES;
-	  return vol_fd;
-	}
 
-#if defined(WINDOWS)
-      fileio_dismount (thread_p, vol_fd);
-      vol_fd = fileio_mount (thread_p, NULL, vol_label_p, vol_id, false, false);
-#endif /* WINDOWS */
+	  fileio_dismount (thread_p, vol_fd);
+	  fileio_unformat (thread_p, vol_label_p);
+	  free_and_init (malloc_io_page_p);
+	  return NULL_VOLDES;
+	}
     }
   else
     {
@@ -2589,7 +2590,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
   if (voltype == DB_TEMPORARY_VOLTYPE)
     {
       /* Write the last page */
-      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, io_page_p, last_pageid, IO_PAGESIZE) != io_page_p)
+      if (fileio_write_or_add_to_dwb (thread_p, vol_fd, io_page_p, last_pageid, IO_PAGESIZE, false) != io_page_p)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	}
@@ -2600,7 +2601,7 @@ fileio_expand_to (THREAD_ENTRY * thread_p, VOLID vol_id, DKNPAGES size_npages, D
       assert_release (voltype == DB_PERMANENT_VOLTYPE);
 
       if (fileio_initialize_pages (thread_p, vol_fd, io_page_p, start_pageid, last_pageid - start_pageid + 1,
-				   IO_PAGESIZE, -1) == NULL)
+				   IO_PAGESIZE, true, -1) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	}
@@ -2798,7 +2799,8 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
       for (page_id = 0; page_id < npages; page_id++)
 	{
 	  if (fileio_read (thread_p, from_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL
-	      || fileio_write_or_add_to_dwb (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
+	      || fileio_write_or_add_to_dwb (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE,
+					     false) == NULL)
 	    {
 	      goto error;
 	    }
@@ -2816,7 +2818,8 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	  else
 	    {
 	      fileio_reset_page_lsa (malloc_io_page_p, IO_PAGESIZE);
-	      if (fileio_write_or_add_to_dwb (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
+	      if (fileio_write_or_add_to_dwb (thread_p, to_vol_desc, malloc_io_page_p, page_id, IO_PAGESIZE, false) ==
+		  NULL)
 		{
 		  goto error;
 		}
@@ -2824,7 +2827,11 @@ fileio_copy_volume (THREAD_ENTRY * thread_p, int from_vol_desc, DKNPAGES npages,
 	}
     }
 
-  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, FILEIO_SYNC_ALSO_FLUSH_DWB) != to_vol_desc)
+#if !defined(CS_MODE)
+  if (dwb_synchronize (thread_p, to_vol_desc, to_vol_label_p) != to_vol_desc)
+#else
+  if (fileio_synchronize (thread_p, to_vol_desc, to_vol_label_p, true) != to_vol_desc)
+#endif
     {
       goto error;
     }
@@ -2874,7 +2881,7 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
 	{
 	  fileio_set_page_lsa (malloc_io_page_p, reset_lsa_p, IO_PAGESIZE);
 
-	  if (fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE) == NULL)
+	  if (fileio_write_or_add_to_dwb (thread_p, vol_fd, malloc_io_page_p, page_id, IO_PAGESIZE, false) == NULL)
 	    {
 	      success = ER_FAILED;
 	      break;
@@ -2888,7 +2895,11 @@ fileio_reset_volume (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, DK
     }
   free_and_init (malloc_io_page_p);
 
-  if (fileio_synchronize (thread_p, vol_fd, vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB) != vol_fd)
+#if !defined(CS_MODE)
+  if (dwb_synchronize (thread_p, vol_fd, vlabel) != vol_fd)
+#else
+  if (fileio_synchronize (thread_p, vol_fd, vlabel, true) != vol_fd)
+#endif
     {
       success = ER_FAILED;
     }
@@ -3098,7 +3109,11 @@ fileio_dismount (THREAD_ENTRY * thread_p, int vol_fd)
    */
   vlabel = fileio_get_volume_label_by_fd (vol_fd, PEEK);
 
-  (void) fileio_synchronize (thread_p, vol_fd, vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB);
+#if !defined(CS_MODE)
+  (void) dwb_synchronize (thread_p, vol_fd, vlabel);
+#else
+  (void) fileio_synchronize (thread_p, vol_fd, vlabel, true);
+#endif
 
 #if !defined(WINDOWS)
   lockf_type = fileio_get_lockf_type (vol_fd);
@@ -3300,7 +3315,11 @@ fileio_dismount_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p
 {
   if (vol_info_p->vdes != NULL_VOLDES)
     {
-      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_ALSO_FLUSH_DWB);
+#if !defined(CS_MODE)
+      (void) dwb_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel);
+#else
+      (void) fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, true);
+#endif
 
 #if !defined(WINDOWS)
       if (vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3342,7 +3361,7 @@ fileio_dismount_all (THREAD_ENTRY * thread_p)
       if (sys_vol_info_p->vdes != NULL_VOLDES)
 	{
 	  /* System volume. No need to sync DWB. */
-	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_ONLY);
+	  (void) fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, true);
 
 #if !defined(WINDOWS)
 	  if (sys_vol_info_p->lockf_type != FILEIO_NOT_LOCKF)
@@ -3645,7 +3664,7 @@ pwrite_with_injected_fault (THREAD_ENTRY * thread_p, int fd, const void *buf, si
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FAILED_ASSERTION, 1, msg);
 
 	      // exit handler
-	      (void) fileio_synchronize (thread_p, fd, vlabel, FILEIO_SYNC_ONLY);
+	      (void) fileio_synchronize (thread_p, fd, vlabel, false);
 
 #if !defined(NDEBUG)
 	      if (prm_get_bool_value (PRM_ID_ER_LOG_DEBUG))
@@ -3970,11 +3989,12 @@ fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_i
  *   io_page_p(in): In-memory address where the current content of page resides
  *   page_id(in): Page identifier
  *   page_size(in): Page size
+ *   ensure_metadata(in): Include metadata when syncing.
  *
  */
 void *
 fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
-			    size_t page_size)
+			    size_t page_size, bool ensure_metadata)
 {
 #if !defined (CS_MODE)
   bool skip_flush = false;
@@ -4002,7 +4022,7 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
 	  io_page_p->prv.volid = vol_info_p->volid;
 	  io_page_p->prv.pageid = page_id;
 
-	  error_code = dwb_add_page (thread_p, io_page_p, &vpid, &p_dwb_slot);
+	  error_code = dwb_add_page (thread_p, io_page_p, &vpid, ensure_metadata, &p_dwb_slot);
 	  if (error_code != NO_ERROR)
 	    {
 	      return NULL;
@@ -4379,47 +4399,58 @@ fileio_writev (THREAD_ENTRY * thread_p, int vol_fd, void **io_page_array, PAGEID
   return io_page_array[0];
 }
 
+bool
+fileio_fsync_pending (void)
+{
+#if defined (SERVER_MODE)
+// *INDENT-OFF*
+  static std::atomic<uint64_t> counter (0);
+// *INDENT-ON*
+#else
+  static uint64_t counter (0);
+#endif
+  uint64_t prev_counter;
+  int threshold;
+
+  threshold = prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC);
+  if (threshold <= 0)
+    {
+      return false;
+    }
+
+#if defined (SERVER_MODE)
+  prev_counter = counter.fetch_add (1, std::memory_order_relaxed);
+#else
+  prev_counter = counter++;
+#endif
+
+  if (!((prev_counter + 1) % (uint64_t) threshold))
+    {
+      return false;
+    }
+  return true;
+}
+
 /*
  * fileio_synchronize () - Synchronize a database volume's state with that on disk
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor
  *   vlabel(in): Volume label
- *   sync_dwb(in): FILEIO_SYNC_ALSO_FLUSH_DWB if needs sync dwb
+ *   ensure_metadata(in): Include metadata when syncing.
  */
 int
-fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FILEIO_SYNC_OPTION sync_dwb)
+fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, bool ensure_metadata)
 {
-  int ret = NO_ERROR;
-  bool all_sync = false;
 #if defined (EnableThreadMonitoring)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL elapsed_time;
 #endif
-#if defined (SERVER_MODE)
-  static pthread_mutex_t inc_cnt_mutex = PTHREAD_MUTEX_INITIALIZER;
-  int r;
-#endif
-  static int inc_cnt = 0;
+  int error = NO_ERROR;
 
-  if (prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC) > 0)
+  /* should fsync ? */
+  if (fileio_fsync_pending ())
     {
-#if defined (SERVER_MODE)
-      r = pthread_mutex_lock (&inc_cnt_mutex);
-#endif
-      if (++inc_cnt >= prm_get_integer_value (PRM_ID_SUPPRESS_FSYNC))
-	{
-	  inc_cnt = 0;
-	}
-      else
-	{
-#if defined (SERVER_MODE)
-	  pthread_mutex_unlock (&inc_cnt_mutex);
-#endif
-	  return vol_fd;
-	}
-#if defined (SERVER_MODE)
-      pthread_mutex_unlock (&inc_cnt_mutex);
-#endif
+      return vol_fd;
     }
 
 #if defined (EnableThreadMonitoring)
@@ -4429,18 +4460,7 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
     }
 #endif
 
-#if !defined (CS_MODE)
-  if (sync_dwb == FILEIO_SYNC_ALSO_FLUSH_DWB && fileio_is_permanent_volume_descriptor (thread_p, vol_fd))
-    {
-      ret = dwb_flush_force (thread_p, &all_sync);
-    }
-#endif
-
-  /* If all_sync is true, everything was synchronized. This happens when DWB is completely flushed. */
-  if (ret == NO_ERROR && all_sync == false)
-    {
-      ret = fsync (vol_fd);
-    }
+  error = ensure_metadata ? fsync (vol_fd) : fdatasync (vol_fd);
 
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -4450,25 +4470,52 @@ fileio_synchronize (THREAD_ENTRY * thread_p, int vol_fd, const char *vlabel, FIL
     }
 #endif
 
-  if (ret != 0)
+  if (error != NO_ERROR)
     {
       /* sync error is not alwasy handled and I am not sure a proper safe handling is possible: raise as fatal error */
       er_set_with_oserror (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_SYNC, 1, (vlabel ? vlabel : "Unknown"));
       return NULL_VOLDES;
     }
-  else
-    {
+
 #if defined (EnableThreadMonitoring)
-      if (MONITOR_WAITING_THREAD (elapsed_time))
-	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
-		  prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
-	}
+  if (MONITOR_WAITING_THREAD (elapsed_time))
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_MNT_WAITING_THREAD, 3, __func__,
+	      prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD), TO_MSEC (elapsed_time));
+    }
 #endif
 
-      perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOSYNCHES);
-      return vol_fd;
+  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOSYNCHES);
+  return vol_fd;
+}
+
+/*
+ * fileio_synchronize_directory () - Synchronize a directory where the volume is located 
+ *   return: ER_FAILED or NO_ERROR 
+ *   label(in): Volume label
+ */
+int
+fileio_synchronize_directory (THREAD_ENTRY * thread_p, const char *label)
+{
+  char path[PATH_MAX + 1];
+  int fd;
+
+  (void) fileio_get_directory_path (path, label);
+
+  /* get the fd for the parent directory */
+  fd = fileio_open (path, O_RDONLY, FILEIO_DISK_PROTECTION_MODE);
+  if (fd == NULL_VOLDES)
+    {
+      return ER_FAILED;
     }
+  if (fileio_synchronize (thread_p, fd, path, true) == NULL_VOLDES)
+    {
+      fileio_close (fd);
+      return ER_FAILED;
+    }
+  fileio_close (fd);
+
+  return NO_ERROR;
 }
 
 /*
@@ -4515,7 +4562,7 @@ fileio_synchronize_sys_volume (THREAD_ENTRY * thread_p, FILEIO_SYSTEM_VOLUME_INF
 
 
       /* System volume. No need to sync DWB. */
-      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, FILEIO_SYNC_ONLY);
+      fileio_synchronize (thread_p, sys_vol_info_p->vdes, sys_vol_info_p->vlabel, false);
     }
 
   return found;
@@ -4551,7 +4598,7 @@ fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_inf
 	  return false;
 	}
 
-      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, FILEIO_SYNC_ONLY);
+      fileio_synchronize (thread_p, vol_info_p->vdes, vol_info_p->vlabel, false);
     }
 
   return found;
@@ -4560,10 +4607,9 @@ fileio_synchronize_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_inf
 /*
  * fileio_synchronize_all () - Synchronize all database volumes with disk
  *   return:
- *   include_log(in):
  */
 int
-fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
+fileio_synchronize_all (THREAD_ENTRY * thread_p)
 {
   int success = NO_ERROR;
   bool all_sync = false;
@@ -4577,12 +4623,6 @@ fileio_synchronize_all (THREAD_ENTRY * thread_p, bool is_include)
   arg.vol_id = NULL_VOLID;
 
   er_stack_push ();
-
-  if (is_include)
-    {
-      /* Flush logs. */
-      (void) fileio_traverse_system_volume (thread_p, fileio_synchronize_sys_volume, &arg);
-    }
 
 #if !defined (CS_MODE)
   /* Flush DWB before volume data. */
@@ -7277,6 +7317,7 @@ fileio_read_backup_end_time_from_last_page (FILEIO_BACKUP_SESSION * session_p)
   memcpy ((char *) &(session_p->bkup.bkuphdr->end_time), read_from, sizeof (INT64));
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_finish_backup () - Finish the backup session successfully
  *   return: session or NULL
@@ -7347,8 +7388,7 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	  return NULL;
 	}
 
-      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name,
-			      FILEIO_SYNC_ONLY) != session_p->bkup.vdes)
+      if (fileio_synchronize (thread_p, session_p->bkup.vdes, session_p->bkup.name, true) != session_p->bkup.vdes)
 	{
 	  return NULL;
 	}
@@ -7379,8 +7419,45 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
       free (msg_area);
     }
 
+  /*
+   * -------------------------------------------------------------------------
+   * WORKAROUND: Preventing Restore of Post-Backup Transactions
+   * -------------------------------------------------------------------------
+   *
+   * Problem:
+   * The restore process ('restoredb -d backuptime') compares the backup end time
+   * (stored in the backup volume header) with each transaction’s commit timestamp
+   * (LOG_COMMIT / LOG_ABORT).
+   *
+   * Issue:
+   * Since time(NULL) does not guarantee monotonic increase, the commit time
+   * obtained after backup completion can be equal to or earlier than the backup
+   * end time. In such cases, point-in-time restore may include transactions that
+   * were executed after the backup, which should have been excluded.
+   *
+   * Workaround:
+   * Enforce a 1-second delay after setting the backup end time so that any
+   * subsequent transaction obtains a strictly later commit timestamp.
+   *
+   * Limitation:
+   * This workaround resolves timing overlaps for transactions executed
+   * immediately after a backup in the same session, but cannot fully separate
+   * concurrent transactions across sessions due to second-level timestamp limits.
+   *
+   * TODO (Permanent Fix):
+   * - Use millisecond-level precision in LOG_COMMIT / LOG_ABORT timestamps to
+   *   accurately separate concurrent transactions.
+   * -------------------------------------------------------------------------
+   */
+  do
+    {
+      thread_sleep (1000);
+    }
+  while (end_time >= time (NULL));
+
   return session_p;
 }
+#endif /* SERVER_MODE || SA_MODE */
 
 /*
  * fileio_remove_all_backup () - REMOVE ALL BACKUP VOLUMES
@@ -7477,7 +7554,9 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
     {
     case FILEIO_ZIP_LZ4_METHOD:
       assert (size <= LZ4_MAX_INPUT_SIZE);
-      buf_size = LZ4_compressBound (size);
+      // *INDENT-OFF*
+      buf_size = cubcompress::bound<cubcompress::LZ4> (size);
+      // *INDENT-ON*
       zip_info_size = offsetof (FILEIO_ZIP_INFO, zip_page) + sizeof (int) + buf_size;
       node_p->zip_info = (FILEIO_ZIP_INFO *) malloc (zip_info_size);
       if (node_p->zip_info == NULL)
@@ -7625,8 +7704,11 @@ fileio_compress_backup_node (FILEIO_NODE * node_p, FILEIO_BACKUP_HEADER * backup
     {
     case FILEIO_ZIP_LZ4_METHOD:
       /* The alternative is compress faster - best speed, but, require more memory alloc */
+      // *INDENT-OFF*
       local_buf_len =
-	LZ4_compress_default ((char *) node_p->area, zip_page->buf, (int) node_p->nread, node_p->zip_info->buf_size);
+	cubcompress::compress<cubcompress::LZ4> ((char *) node_p->area, (int) node_p->nread, zip_page->buf,
+						 node_p->zip_info->buf_size);
+      // *INDENT-ON*
       if (local_buf_len <= 0)
 	{
 	  /* best reduction */
@@ -9047,7 +9129,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			  /* Probably a tape device, let user mount new one */
 			  if (next_vol_p != NULL)
 			    {
-			      strncpy (session_p->bkup.name, next_vol_p, PATH_MAX - 1);
+			      if (snprintf (session_p->bkup.name, PATH_MAX, "%s", next_vol_p) >= PATH_MAX)
+				{
+				  return ER_FAILED;
+				}
 			    }
 			  if (fileio_find_restore_volume (thread_p, session_p->bkup.bkuphdr->db_fullname,
 							  session_p->bkup.name, session_p->bkup.bkuphdr->unit_num + 1,
@@ -9059,7 +9144,10 @@ fileio_read_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			}
 		      else
 			{
-			  strncpy (session_p->bkup.name, next_vol_p, PATH_MAX - 1);
+			  if (snprintf (session_p->bkup.name, PATH_MAX, "%s", next_vol_p) >= PATH_MAX)
+			    {
+			      return ER_FAILED;
+			    }
 			}
 
 		      /* Reset session count, etc */
@@ -9449,10 +9537,10 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
 	    {
 	      char save_time1[64];
 
-	      fileio_ctime (&match_backup_creation_time, io_timeval);
+	      fileio_ctime (&backup_header_p->start_time, io_timeval);
 	      strcpy (save_time1, io_timeval);
 
-	      fileio_ctime (&backup_header_p->start_time, io_timeval);
+	      fileio_ctime (&match_backup_creation_time, io_timeval);
 	      if (asprintf (&error_message_p,
 			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BACKUP_TIME_MISMATCH),
 			    session_p->bkup.vlabel, save_time1, io_timeval) < 0)
@@ -9632,7 +9720,7 @@ fileio_finish_restore (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 {
   int success;
 
-  success = fileio_synchronize_all (thread_p, false);
+  success = fileio_synchronize_all (thread_p);
   fileio_abort_restore (thread_p, session_p);
 
   return success;
@@ -10113,9 +10201,12 @@ fileio_decompress_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 	      }
 
 	    /* decompress - use safe decompressor as data might be corrupted during a file transfer */
+	    // *INDENT-OFF*
 	    unzip_len =
-	      LZ4_decompress_safe ((const char *) zip_page->buf, (char *) session_p->dbfile.area, zip_page->buf_len,
-				   nbytes);
+	      cubcompress::decompress<cubcompress::LZ4> ((const char *) zip_page->buf, zip_page->buf_len,
+							 (char *) session_p->dbfile.area, nbytes);
+	    // *INDENT-ON*
+
 	    if (unzip_len < 0 || unzip_len != nbytes)
 	      {
 		error = ER_IO_LZ4_DECOMPRESS_FAIL;
@@ -10967,7 +11058,10 @@ fileio_add_volume_to_backup_info (const char *name_p, FILEIO_BACKUP_LEVEL level,
 	}
     }
 
-  strncpy (node_p->bkvol_name, name_p, PATH_MAX - 1);
+  if (snprintf (node_p->bkvol_name, PATH_MAX, "%s", name_p) >= PATH_MAX)
+    {
+      return ER_FAILED;
+    }
   node_p->unit_num = unit_num;
 
   /* Put it on the queue for that level */
@@ -11523,6 +11617,7 @@ fileio_lock_region (int fd, int cmd, int type, off_t offset, int whence, off_t l
 }
 #endif /* !WINDOWS */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 /*
  * fileio_os_sysconf () -
@@ -11552,6 +11647,7 @@ fileio_os_sysconf (void)
   return (nprocs > 1) ? (int) nprocs : 1;
 }
 #endif /* SERVER_MODE */
+#endif
 
 /*
  * fileio_initialize_res () -

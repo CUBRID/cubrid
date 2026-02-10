@@ -116,8 +116,6 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
@@ -130,7 +128,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 
       value = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       dtmp = floor (db_get_double (value));
@@ -283,8 +281,6 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
@@ -297,7 +293,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 
       value = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       dtmp = ceil (db_get_double (value));
@@ -605,8 +601,6 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value, &cast_value, &res_type);
       if (er_status != NO_ERROR
@@ -619,7 +613,7 @@ db_abs_dbval (DB_VALUE * result, DB_VALUE * value)
 
       value = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       dtmp = db_get_double (value);
@@ -984,8 +978,6 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
@@ -997,7 +989,7 @@ db_mod_short (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1133,8 +1125,6 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
@@ -1146,7 +1136,7 @@ db_mod_int (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1282,8 +1272,6 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
@@ -1295,7 +1283,7 @@ db_mod_bigint (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1427,8 +1415,6 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
@@ -1440,7 +1426,7 @@ db_mod_float (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1571,8 +1557,6 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
@@ -1584,7 +1568,7 @@ db_mod_double (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1762,8 +1746,6 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
@@ -1775,7 +1757,7 @@ db_mod_numeric (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1873,8 +1855,6 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       er_status = tp_value_str_auto_cast_to_number (value2, &cast_value2, &type2);
       if (er_status != NO_ERROR
 	  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true && type2 != DB_TYPE_DOUBLE))
@@ -1886,7 +1866,7 @@ db_mod_monetary (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
       value2 = &cast_value2;
 
-      /* fall through */
+      [[fallthrough]];
 
     case DB_TYPE_DOUBLE:
       d2 = db_get_double (value2);
@@ -1953,8 +1933,6 @@ db_mod_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       return db_mod_string (result, value1, value2);
 
     case DB_TYPE_DOUBLE:
@@ -2462,8 +2440,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       db_make_null (&cast_value);
       er_status = tp_value_str_auto_cast_to_number (value1, &cast_value, &type1);
       if (er_status != NO_ERROR
@@ -2475,7 +2451,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       assert (type1 == DB_TYPE_DOUBLE);
       value1 = &cast_value;
 
-      /* fall through */
+      [[fallthrough]];
     case DB_TYPE_DOUBLE:
       d1 = db_get_double (value1);
       dtmp = round_double (d1, d2);
@@ -4266,7 +4242,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	      return ER_FAILED;
 	    }
 	  tmpval_p = &tmpval;
-	  /* FALLTHRU */
+	  [[fallthrough]];
 	case DB_TYPE_DOUBLE:
 	  d = db_get_double (tmpval_p);
 	  if (d < 0)
@@ -4319,8 +4295,6 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
     case DB_TYPE_NUMERIC:
@@ -4675,8 +4649,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       /* try double */
       cast_type = DB_TYPE_UNKNOWN;
       cast_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);

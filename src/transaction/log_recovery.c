@@ -925,7 +925,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   /* Flush all dirty pages */
   logpb_flush_pages_direct (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
 
   logpb_flush_header (thread_p);
 
@@ -1553,7 +1553,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 #endif /* !NDEBUG */
       /*
        * Reset the log active and stop the recovery process at this
-       * point. Before reseting the log, make sure that we are not
+       * point. Before resetting the log, make sure that we are not
        * holding a page.
        */
       log_lsa->pageid = NULL_PAGEID;
@@ -3632,9 +3632,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		 * acquired at the time of the crash
 		 */
 
-		/* Get the DATA HEADER */
-		redo_context.m_reader.add_align (sizeof (LOG_RECORD_HEADER));
-
 		if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
 		  {
 		    /* The transaction was still prepared_to_commit state at the time of crash. So, read the global
@@ -3664,8 +3661,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			/* The transaction was still alive at the time of crash. So, copy the coordinator information
 			 * from the log record to the transaction descriptor. */
 
-			/* Get the DATA HEADER */
-			redo_context.m_reader.add_align (sizeof (LOG_RECORD_HEADER));
 			redo_context.m_reader.advance_when_does_not_fit (sizeof (LOG_REC_2PC_START));
 			/* Start 2PC commit log record */
 			// *INDENT-OFF*
@@ -3704,12 +3699,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			    logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_redo");
 			    break;
 			  }
-
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
 			/* Initialize the acknowledgment vector to 0 since we do not know what acknowledgments have
 			 * already been received. we need to continue reading the log */
 
 			if ((tdes->coord->ack_received =
-			     (int *) malloc (sizeof (int) * tdes->coord->num_particps)) == NULL)
+			     (bool *) malloc (sizeof (bool) * tdes->coord->num_particps)) == NULL)
 			  {
 			    /* Out of memory */
 			    LSA_SET_NULL (&log_Gl.unique_stats_table.curr_rcv_rec_lsa);
@@ -3720,11 +3715,12 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 			  {
 			    tdes->coord->ack_received[i] = false;
 			  }
+#endif
 		      }
 		  }
 	      }
 	      break;
-
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
 	    case LOG_2PC_RECV_ACK:
 	      {
 		const int tran_index = logtb_find_tran_index (thread_p, tran_id);
@@ -3768,7 +3764,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  }
 	      }
 	      break;
-
+#endif
 	    case LOG_COMMIT:
 	    case LOG_ABORT:
 	      {
@@ -4930,10 +4926,23 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 			}
 		      else
 			{
-			  (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
-					       LOG_NEED_TO_WRITE_EOT_LOG);
-			  logtb_free_tran_index (thread_p, tran_index);
-			  tdes = NULL;
+#ifdef CCI_XA
+			  if (tdes->state == TRAN_UNACTIVE_2PC_PREPARE)
+			    {
+			      /*
+			       * In 2PC Prepare state, commit or abort should not be performed.
+			       * Commit or abort should be performed by xa_tran_end from the coordinator.
+			       */
+			      ;
+			    }
+			  else
+#endif
+			    {
+			      (void) log_complete (thread_p, tdes, LOG_ABORT, LOG_DONT_NEED_NEWTRID,
+						   LOG_NEED_TO_WRITE_EOT_LOG);
+			      logtb_free_tran_index (thread_p, tran_index);
+			      tdes = NULL;
+			    }
 			}
 		    }
 		  else
@@ -6048,7 +6057,7 @@ log_rv_undoredo_partial_changes_recursive (THREAD_ENTRY * thread_p, OR_BUF * rcv
   if (rcv_buf->ptr + OR_SHORT_SIZE + 2 * OR_BYTE_SIZE > rcv_buf->endptr)
     {
       assert_release (false);
-      return or_overflow (rcv_buf);
+      return ER_TF_BUFFER_OVERFLOW;
     }
 
   /* Get offset_to_data. */

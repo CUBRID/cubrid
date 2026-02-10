@@ -63,7 +63,7 @@ sed -i "/CUBRID_DATABASES/i setenv CUBRID $cubrid_home" ${cubrid_csh_envfile}_te
 cubrid_sh_envfile="$HOME/.cubrid.sh"
 cp ${cubrid_home}/share/scripts/cubrid.sh ${cubrid_sh_envfile}_temp
 sed -i "/CUBRID=/d" ${cubrid_sh_envfile}_temp
-sed -i "/CUBRID_DATABASE/i CUBRID=$cubrid_home" ${cubrid_sh_envfile}_temp
+sed -i "/CUBRID_DATABASES=/i CUBRID=$cubrid_home" ${cubrid_sh_envfile}_temp
 
 # environment variables for *sh
 echo ""

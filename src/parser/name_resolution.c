@@ -531,7 +531,7 @@ pt_resolved (const PT_NODE * expr)
 	case PT_DOT_:
 	  return (pt_resolved (expr->info.dot.arg1) && pt_resolved (expr->info.dot.arg2));
 	case PT_FUNCTION:
-	  // Resolved as a function node.  
+	  // Resolved as a function node.
 	  // If it's actually a user-defined function, this node will be resolved in the next phase (function resolution).
 	  return (expr->info.function.function_type == PT_GENERIC);
 	default:
@@ -1165,8 +1165,8 @@ pt_resolve_server_names (PARSER_CONTEXT * parser, PT_NODE * spec)
    **   user.tbl           :    NULL
    **   user.tbl, user.tbl :    NULL
    **   tbl,      tbl      :    NULL
-   **   user.tbl, tbl      :   "user" 
-   **   tbl,      user.tbl :   "user"  
+   **   user.tbl, tbl      :   "user"
+   **   tbl,      user.tbl :   "user"
    */
 
   if (dblink_table->owner_list == NULL)
@@ -2043,6 +2043,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * obtaining record information or page header information and so on. In these cases, names will be resolved to a
        * set of reserved names for each type of results. The query spec must be marked accordingly. NOTE: These hints
        * can be applied on single-spec queries. If this is a joined-spec query, just ignore the hints. */
+      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+	{
+	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	    }
+	}
+
+      if (node->info.query.q.select.hint & PT_HINT_PARALLEL)
+	{
+	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	    {
+	      from->info.spec.num_parallel_threads = node->info.query.q.select.num_parallel_threads;
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_PARALLEL_THREAD);
+	    }
+	}
+
       if (node->info.query.q.select.from != NULL && node->info.query.q.select.from->next == NULL)
 	{
 	  if (node->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
@@ -3012,10 +3029,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-      if (node->info.update.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -3047,10 +3062,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       pt_bind_scope (parser, bind_arg);
 
       (void) pt_resolve_hint (parser, node);
-      if (node->info.delete_.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* pop the extra spec frame and add any extra specs to the from list */
       bind_arg->spec_frames = bind_arg->spec_frames->next;
@@ -3071,11 +3084,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       bind_arg->spec_frames = &spec_frame;
       pt_bind_scope (parser, bind_arg);
 
-      if (node->info.insert.spec->info.spec.remote_server_name)
-	{
-	  goto insert_end;
-	}
-
       result = pt_resolve_vclass_args (parser, node);
       if (!result)
 	{
@@ -3095,10 +3103,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       save = node->info.insert.odku_assignments;
       node->info.insert.odku_assignments = NULL;
 
-      if (node->info.insert.spec->info.spec.remote_server_name == NULL)
-	{
-	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-	}
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 
       /* Check for double assignments */
       pt_no_double_insert_assignments (parser, node);
@@ -3301,9 +3306,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        */
       method_name_node = node->info.method_call.method_name;
       // parser_print_tree is for built-in package names such as DBMS_OUTPUT
-      method_name = PT_NAME_RESOLVED (method_name_node) ? parser_print_tree (parser,
-									     method_name_node) :
-	PT_NAME_ORIGINAL (method_name_node);
+      if (PT_NAME_RESOLVED (method_name_node))
+	{
+	  int custom_print_saved = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_QUOTES;
+	  parser->custom_print &= ~PT_PRINT_QUOTES;
+	  method_name = parser_print_tree (parser, method_name_node);
+	  parser->custom_print = custom_print_saved;
+	}
+      else
+	{
+	  method_name = PT_NAME_ORIGINAL (method_name_node);
+	}
       if (!node->info.method_call.on_call_target && jsp_is_exist_stored_procedure (method_name))
 	{
 	  method_name_node->info.name.spec_id = (UINTPTR) method_name_node;
@@ -3325,7 +3339,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * When using a session variable in the first arg_list,
 	       * It is unknown whether the session variable contains a class, object, or constant value.
 	       * So, if it's not a Stored procedure and there is an on_call_target, then it's considered a method and [user_schema] is removed.
-	       * 
+	       *
 	       * ex) create class x (xint int, xstr string, class cint int) method add_int(int, int) int function add_int file '$METHOD_FILE';
 	       *     insert into x values (4, 'string 4');
 	       *     select x into p1 from x where xint = 4;
@@ -3434,7 +3448,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	else if (PT_CHECK_USER_SCHEMA_PROCEDURE_OR_FUNCTION (node))
 	  {
 	    /*
-	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION), 
+	     * when (dot.arg1->node_type == PT_NAME) && (dot.arg2->node_type == PT_FUNCTION),
 	     * pt_bind_name_or_path_in_scope() always returns NULL and sets the value PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
 	     */
 	    pt_reset_error (parser);
@@ -3458,7 +3472,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
 		if (node1 == NULL)
 		  {
-		    break;	// FIXME: something wrong
+		    *continue_walk = PT_STOP_WALK;
+		    return node;
 		  }
 		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
 
@@ -3513,7 +3528,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		{
 		  /*
 		   * when checking for a PROCEDURE in a PT_DOT_ type, if the PROCEDURE does not exist, the check moves on to the PT_FUNCTION.
-		   * along the way, it will go through the pt_bind_name_or_path_in_scope() function of PT_NAME, 
+		   * along the way, it will go through the pt_bind_name_or_path_in_scope() function of PT_NAME,
 		   * which will always return NULL and set the value of
 		   * PT_ERRORmf(.. MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED ..).
 		   */
@@ -3544,7 +3559,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 
 	      if (node1 == NULL)
 		{
-		  break;	// FIXME: something wrong
+		  *continue_walk = PT_STOP_WALK;
+		  return node;
 		}
 
 	      if (node1->node_type == PT_METHOD_CALL)
@@ -4146,6 +4162,11 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	}
       else
 	{
+	  /* in case of remote server, it always returns true */
+	  if (spec->info.spec.remote_server_name)
+	    {
+	      return 1;
+	    }
 	  ok = pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name);
 	}
     }
@@ -4562,8 +4583,6 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       result = parser_new_node (parser, PT_DATA_TYPE);
       if (result == NULL)
 	{
@@ -5010,8 +5029,14 @@ PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
-  PT_TYPE_NCHAR,
-  PT_TYPE_VARNCHAR,
+  /* TODO:
+   * PT_TYPE_NCHAR and PT_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.
+   */
+  PT_TYPE_NULL,			// PT_TYPE_NCHAR  for CCI_U_TYPE_NCHAR
+  PT_TYPE_NULL,			// PT_TYPE_VARNCHAR for CCI_U_TYPE_VARNCHAR
+
   PT_TYPE_BIT,
   PT_TYPE_VARBIT,
   PT_TYPE_NUMERIC,
@@ -5088,8 +5113,6 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CHAR:
-    case PT_TYPE_VARNCHAR:
-    case PT_TYPE_NCHAR:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
     case PT_TYPE_NUMERIC:
@@ -5427,10 +5450,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
   else
     {
-      int client_type = db_get_client_type ();
-
       /* in the case of loaddb, it can just check the column from the attr_def node. */
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb ())
 	{
 	  PT_NODE *cols;
 
@@ -5639,8 +5660,6 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_ENUMERATION:
     case PT_TYPE_JSON:
       attr->data_type = pt_domain_to_data_type (parser, dom);
@@ -5945,6 +5964,18 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	{
 	  if (pt_find_name_in_spec (parser, spec, in_node))
 	    {
+	      if (spec->info.spec.remote_server_name)
+		{
+		  /* only column name with remote server name is resolved
+		   * PT_DOT node such as new.col obj.old does not resolve */
+		  if (col_name && spec->info.spec.range_var)
+		    {
+		      in_node->info.name.resolved = spec->info.spec.range_var->info.name.original;
+		      return in_node;
+		    }
+		  return NULL;
+		}
+
 	      if (savespec)
 		{
 		  PT_ERRORmf (parser, in_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AMBIGUOUS_REF_TO,
@@ -7056,7 +7087,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
 	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 		{
 		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
 		    {
@@ -8354,7 +8385,7 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      q : object_name           -> object_name
        *
        *      or
-       * 
+       *
        *      p : object_name           -> object_name
        *      q : user_name.object_name -> object_name
        */
@@ -8366,7 +8397,7 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      original_q : user_name.object_name -> object_name
        *
        *      or
-       * 
+       *
        *      original_p : user_name.object_name -> object_name
        *      original_q : object_name.          -> NULL
        */
@@ -8384,7 +8415,7 @@ pt_user_specified_name_compare (const char *p, const char *q)
        *      q : user_name.object_name
        *
        *      or
-       * 
+       *
        *      p : object_name
        *      q : object_name
        */
@@ -10245,8 +10276,6 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_VARBIT:
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       node->data_type = pt_domain_to_data_type (parser, dom);
       break;
     default:
@@ -10425,8 +10454,15 @@ pt_resolve_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NA
 
   new_node->info.method_call.method_id = (UINTPTR) new_node;
 
-  int sp_type_misc = jsp_get_sp_type (sp_name);
-  new_node->info.method_call.method_type = (PT_MISC_TYPE) sp_type_misc;
+  PT_MISC_TYPE sp_type_misc = (PT_MISC_TYPE) jsp_get_sp_type (sp_name);
+  // stored procedures can only be invoked through a CALL statement
+  if (sp_type_misc == PT_SP_PROCEDURE &&
+      (bind_arg->sc_info->top_node == NULL || bind_arg->sc_info->top_node->node_type != PT_METHOD_CALL))
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_STORED_PROC_CALL_IN_SQL);
+      return NULL;
+    }
+  new_node->info.method_call.method_type = sp_type_misc;
 
   PT_METHOD_CALL_AUTH_ID (new_node) = PT_AUTHID_OWNER;	// TODO
   if (PT_METHOD_CALL_AUTH_ID (new_node) == PT_AUTHID_OWNER)
@@ -11612,7 +11648,7 @@ pt_resolve_dblink_server_name (PARSER_CONTEXT * parser, PT_NODE * node, char **s
   error = get_dblink_info_from_dbserver (parser, dblink_table->conn, dblink_table->owner_name, values);
   if (error != NO_ERROR)
     {
-      // TODO: error handling         
+      // TODO: error handling
       if (er_errid_if_has_error () != NO_ERROR)
 	{
 	  PT_ERROR (parser, node, (char *) er_msg ());
@@ -11704,7 +11740,7 @@ pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, cha
   error = get_dblink_owner_name_from_dbserver (parser, node, node->next, &value);
   if (error != NO_ERROR)
     {
-      // TODO: error handling         
+      // TODO: error handling
       if (er_errid_if_has_error () != NO_ERROR)
 	{
 	  PT_ERROR (parser, node, (char *) er_msg ());
@@ -11740,14 +11776,51 @@ pt_resolve_dblink_check_owner_name (PARSER_CONTEXT * parser, PT_NODE * node, cha
   return NO_ERROR;
 }
 
+static const char *
+pt_print_pl_host_expr (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (PT_IS_NAME_NODE (node))
+    {
+      assert (node->info.name.original);
+      return node->info.name.original;
+    }
+  else if (PT_IS_DOT_NODE (node))
+    {
+      PT_NODE *rec = node->info.dot.arg1;
+      PT_NODE *field = node->info.dot.arg2;
+      if (PT_IS_NAME_NODE (rec) && PT_IS_NAME_NODE (field))
+	{
+	  assert (rec->info.name.original);
+	  assert (field->info.name.original);
+
+	  PARSER_VARCHAR *q = NULL;
+	  q = pt_append_nulstring (parser, q, rec->info.name.original);
+	  q = pt_append_nulstring (parser, q, ".");
+	  q = pt_append_nulstring (parser, q, field->info.name.original);
+	  return (const char *) q->bytes;
+	}
+    }
+
+  return NULL;
+}
+
 static PT_NODE *
 pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 {
   PT_NODE *hostvar = parser_new_node (parser, PT_HOST_VAR);
   hostvar->info.host_var.str = pt_append_string (parser, NULL, "?");
 
-  // For cursor variable (for example: r.id), use parser_print_tree(name) instead of name.original.
-  hostvar->info.host_var.label = parser_print_tree (parser, name_node);
+  const char *host_expr_str = pt_print_pl_host_expr (parser, name_node);
+  if (!host_expr_str)
+    {
+      unsigned int saved_custom = parser->custom_print;
+      parser->custom_print = PT_SUPPRESS_RESOLVED | PT_SUPPRESS_QUOTES;
+      char *err = parser_print_tree (parser, name_node);
+      parser->custom_print = saved_custom;
+      PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_HOST_EXPR, err);
+      return NULL;
+    }
+  hostvar->info.host_var.label = host_expr_str;
   hostvar->info.host_var.var_type = PT_HOST_IN;
   hostvar->info.host_var.index = parser->host_var_count;
   hostvar->type_enum = PT_TYPE_NONE;

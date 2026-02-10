@@ -1186,8 +1186,7 @@ vid_build_non_upd_object (MOP mop, DB_VALUE * seq)
    */
   lock = ws_get_lock (mop);
   assert (lock >= NULL_LOCK);
-  lock = lock_Conv[S_LOCK][lock];
-  assert (lock != NA_LOCK);
+  lock = lock_conv (S_LOCK, lock);
 
   ws_set_lock (mop, lock);
 
@@ -1781,7 +1780,7 @@ static char *
 vid_pack_db_value (char *lbuf, DB_VALUE * dbval)
 {
   OR_BUF buf;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   int val_size;
   DB_TYPE dbval_type;
 

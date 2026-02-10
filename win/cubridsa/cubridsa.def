@@ -88,6 +88,7 @@ EXPORTS
     prm_get_bigint_value
     prm_get_string_value
     prm_get_name
+    prm_get_value
     prm_Def
     rel_copy_version_string
     rel_build_number
@@ -140,7 +141,6 @@ EXPORTS
     pl_writen
     pl_readn
     pl_get_info_file
-    pl_get_error_file
     pl_open_info_dir
     pl_open_info
     pl_read_info

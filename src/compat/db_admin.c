@@ -117,6 +117,7 @@ static DB_HOST_STATUS *db_add_host_status (char *hostname, int status);
 static DB_HOST_STATUS *db_find_host_status (char *hostname);
 
 static int db_Client_type = DB_CLIENT_TYPE_DEFAULT;
+static CUBRID_STMT_TYPE db_Client_statement_type = CUBRID_STMT_NONE;
 
 static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
@@ -510,6 +511,31 @@ db_set_client_type (int client_type)
     {
       db_Client_type = client_type;
     }
+}
+
+bool
+db_client_type_is_loaddb (void)
+{
+  return (db_Client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || db_client_type_is_loaddb_compat ());
+}
+
+bool
+db_client_type_is_loaddb_compat (void)
+{
+  return (db_Client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2
+	  || db_Client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+}
+
+void
+db_set_client_statement_type (CUBRID_STMT_TYPE statement_type)
+{
+  db_Client_statement_type = statement_type;
+}
+
+CUBRID_STMT_TYPE
+db_get_client_statement_type (void)
+{
+  return db_Client_statement_type;
 }
 
 char *
@@ -933,9 +959,6 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
-
-	  // Even if dblink_get_cipher_master_key() fails, it is executed normally.
-	  dblink_get_cipher_master_key ();
 	}
     }
 
@@ -2908,25 +2931,22 @@ db_set_system_parameters (const char *data)
     {
       if (ptr->prm_id == PRM_ID_LK_TIMEOUT)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LK_TIMEOUT), &tmp);
-	  if (tmp->value.i > 0)
-	    {
-	      tran_reset_wait_times (tmp->value.i * 1000);
-	    }
-	  else
-	    {
-	      tran_reset_wait_times (tmp->value.i);
-	    }
+	  int val = PRM_GET_INT_P (prm_get_value (PRM_ID_LK_TIMEOUT));
+	  (void) tran_reset_wait_times (((val > 0) ? (val * 1000) : val));
 	}
       else if (ptr->prm_id == PRM_ID_LOG_ISOLATION_LEVEL)
 	{
-	  SYSPRM_ASSIGN_VALUE *tmp;
-
-	  rc = sysprm_obtain_parameters ((char *) prm_get_name (PRM_ID_LOG_ISOLATION_LEVEL), &tmp);
-
-	  tran_reset_isolation ((TRAN_ISOLATION) tmp->value.i, TM_TRAN_ASYNC_WS ());
+	  int val = PRM_GET_INT_P (prm_get_value (PRM_ID_LOG_ISOLATION_LEVEL));
+#if defined(CS_MODE)
+	  error = tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
+	  if (error != NO_ERROR)
+	    {
+	      if (er_errid () == NO_ERROR)
+		goto cleanup;
+	    }
+#else
+	  (void) tran_reset_isolation ((TRAN_ISOLATION) val, TM_TRAN_ASYNC_WS ());
+#endif
 	}
     }
 

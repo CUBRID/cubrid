@@ -270,7 +270,7 @@ server_monitor::try_revive_server (const std::string &exec_path, char *const *ar
     }
   else if (pid == 0)
     {
-      execv (exec_path.c_str(), argv);
+      return execv (exec_path.c_str(), argv);
     }
   else
     {

@@ -158,12 +158,6 @@ typedef enum
 
 typedef enum
 {
-  FILEIO_SYNC_ONLY,
-  FILEIO_SYNC_ALSO_FLUSH_DWB
-} FILEIO_SYNC_OPTION;
-
-typedef enum
-{
   FILEIO_WRITE_DEFAULT_WRITE,	/* default write mode does compensate write including sync */
   FILEIO_WRITE_NO_COMPENSATE_WRITE	/* skips */
 } FILEIO_WRITE_MODE;
@@ -468,7 +462,8 @@ extern int fileio_format (THREAD_ENTRY * thread_p, const char *db_fullname, cons
 extern int fileio_expand_to (THREAD_ENTRY * threda_p, VOLID volid, DKNPAGES npages_toadd, DB_VOLTYPE voltype);
 #endif /* not CS_MODE */
 extern void *fileio_initialize_pages (THREAD_ENTRY * thread_p, int vdes, FILEIO_PAGE * io_pgptr, DKNPAGES start_pageid,
-				      DKNPAGES npages, size_t page_size, int kbytes_to_be_written_per_sec);
+				      DKNPAGES npages, size_t page_size, bool ensure_metadata,
+				      int kbytes_to_be_written_per_sec);
 extern void fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH page_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern DKNPAGES fileio_truncate (VOLID volid, DKNPAGES npages_to_resize);
@@ -486,7 +481,7 @@ extern void fileio_dismount_without_fsync (THREAD_ENTRY * thread_p, int vdes);
 extern void fileio_dismount_all (THREAD_ENTRY * thread_p);
 extern void *fileio_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size);
 extern void *fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * io_page_p, PAGEID page_id,
-					 size_t page_size);
+					 size_t page_size, bool ensure_metadata);
 extern void *fileio_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, PAGEID page_id, size_t page_size,
 			   FILEIO_WRITE_MODE write_mode);
 extern void *fileio_read_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_pages_p, PAGEID page_id, int num_pages,
@@ -495,9 +490,10 @@ extern void *fileio_write_pages (THREAD_ENTRY * thread_p, int vol_fd, char *io_p
 				 size_t page_size, FILEIO_WRITE_MODE write_mode);
 extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io_pgptr, PAGEID start_pageid,
 			    DKNPAGES npages, size_t page_size);
-extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel,
-			       FILEIO_SYNC_OPTION check_sync_dwb);
-extern int fileio_synchronize_all (THREAD_ENTRY * thread_p, bool include_log);
+extern bool fileio_fsync_pending (void);
+extern int fileio_synchronize_directory (THREAD_ENTRY * thread_p, const char *label);
+extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, bool ensure_metadata);
+extern int fileio_synchronize_all (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,
 				    void *area);
@@ -610,9 +606,11 @@ extern int fileio_symlink (const char *src, const char *dest, int overwrite);
 extern int fileio_set_permission (const char *vlabel);
 #endif /* !WINDOWS */
 
+#if defined(ENABLE_UNUSED_FUNCTION)
 #if defined(SERVER_MODE)
 int fileio_os_sysconf (void);
 #endif /* SERVER_MODE */
+#endif
 
 /* flush control related */
 extern int fileio_flush_control_initialize (void);

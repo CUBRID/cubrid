@@ -2765,6 +2765,7 @@ css_server_task::execute (context_type &thread_ref)
   if (session_p != NULL)
     {
       thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
+      pgbuf_thread_variables_init (&thread_ref);
     }
   else
     {
@@ -2777,8 +2778,6 @@ css_server_task::execute (context_type &thread_ref)
   //       convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
   (void) css_internal_request_handler (thread_ref, m_conn);
-
-  (void) session_notify_pl_task_completion (session_p);
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;

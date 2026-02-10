@@ -339,10 +339,6 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sfile_apply_tde_to_class_files;
 
-  /* dblink */
-  req_p = &net_Requests[NET_SERVER_DBLINK_GET_CRYPT_KEY];
-  req_p->processing_function = sdblink_get_crypt_keys;
-
   /* tde */
   req_p = &net_Requests[NET_SERVER_TDE_IS_LOADED];
   req_p->processing_function = stde_is_loaded;
@@ -752,6 +748,15 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_MMON_DISABLE_FORCE];
   req_p->processing_function = smmon_disable_force;
+
+  /* tdes */
+  req_p = &net_Requests[NET_SERVER_TDES_SET_QUERY_START_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = stdes_set_query_start_info;
+
+  req_p = &net_Requests[NET_SERVER_TDES_RESET_QUERY_START_INFO];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = stdes_reset_query_start_info;
 }
 
 /*
@@ -942,7 +947,7 @@ net_server_conn_down (THREAD_ENTRY * thread_p, CSS_THREAD_ARG arg)
 
   if (conn_p->session_p != NULL)
     {
-      ssession_stop_attached_threads (thread_p, conn_p->session_p, false);
+      ssession_stop_attached_threads (thread_p, conn_p->session_p);
     }
 
 loop:
@@ -978,7 +983,6 @@ loop:
 		    case THREAD_CSECT_WRITER_SUSPENDED:
 		    case THREAD_CSECT_PROMOTER_SUSPENDED:
 		    case THREAD_LOCK_SUSPENDED:
-		    case THREAD_PGBUF_SUSPENDED:
 		    case THREAD_JOB_QUEUE_SUSPENDED:
 		      /* never try to wake thread up while the thread is waiting for a critical section or a lock. */
 		      wakeup_now = false;
@@ -988,6 +992,7 @@ loop:
 		    case THREAD_LOGWR_SUSPENDED:
 		    case THREAD_ALLOC_BCB_SUSPENDED:
 		    case THREAD_DWB_QUEUE_SUSPENDED:
+		    case THREAD_PGBUF_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 

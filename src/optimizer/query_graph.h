@@ -37,7 +37,6 @@
 
 #include "optimizer.h"
 #include "parser.h"
-#include "query_bitset.h"
 
 typedef struct qo_class_info_entry QO_CLASS_INFO_ENTRY;
 

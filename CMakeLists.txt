@@ -71,7 +71,6 @@ message(STATUS "  CMAKE_RUNTIME_OUTPUT_DIRECTORY=${CMAKE_RUNTIME_OUTPUT_DIRECTOR
 option(ENABLE_32BIT "Build for 32-bit banaries (on 64-bit platform)" OFF)
 option(ENABLE_SYSTEMTAP "Enable dynamic tracing support using systemtap" ${ENABLE_SYSTEMTAP_DEFAULT})
 option(USE_DUMA "Use Detect Unintended Memory Access library" OFF)
-option(USE_CUBRID_ENV "Use CUBRID environment variables" ON)
 option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
@@ -174,7 +173,7 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
 endif(VERSION_MATCHES_LENGTH GREATER 3)
 set(CUBRID_VERSION ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION}${CUBRID_HASH_TAG})
 
-set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION})
+set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
 set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
 set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
 # TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
@@ -221,9 +220,9 @@ if(UNIX)
     set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
 
     # C flags for debug build
-    set(CMAKE_C_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
+    set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
     # C++ flags for debug build
-    set(CMAKE_CXX_DEBUG_FLAGS "-Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
+    set(CMAKE_CXX_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
 
     # C flags for release build
     set(CMAKE_C_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_C_COMMON_FLAGS}")
@@ -253,7 +252,8 @@ if(UNIX)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
     set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -static-libstdc++")
 
-  else(CMAKE_COMPILER_IS_GNUCC)
+  elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  else()
     message(FATAL_ERROR "We currently do not support ${CMAKE_CXX_COMPILER_ID} compiler")
   endif(CMAKE_COMPILER_IS_GNUCC)
 else(UNIX)
@@ -303,10 +303,6 @@ set(LOADER_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_grammar.yy)
 set(LOADER_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/load_grammar.cpp)
 set(LOADER_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/loaddb/load_lexer.l)
 set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/load_lexer.cpp)
-set(ESQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y)
-set(ESQL_GRAMMAR_OUTPUT ${CMAKE_BINARY_DIR}/esql_grammar.c)
-set(ESQL_LEXER_INPUT ${CMAKE_SOURCE_DIR}/src/executables/esql_lexer.l)
-set(ESQL_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/esql_lexer.c)
 
 # include 3rdparty
 message("Including Third Party Libraries")
@@ -327,8 +323,13 @@ set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 # whenever csql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
+set(BISON_CSQL_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BISON_CSQL_FLAGS "${BISON_CSQL_FLAGS} --debug")
+endif()
+
 bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+  COMPILE_FLAGS "${BISON_CSQL_FLAGS}")
 flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
 add_flex_bison_dependency(csql_lexer csql_grammar)
@@ -336,36 +337,18 @@ add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
 add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
 # Loader FLEX/BISON targets
+set(BISON_LOADER_FLAGS "-d -r all")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BISON_LOADER_FLAGS "${BISON_LOADER_FLAGS} --debug")
+endif()
+
 bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "-d -r all")
+  COMPILE_FLAGS "${BISON_LOADER_FLAGS}")
 flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline")
 add_flex_bison_dependency(loader_lexer loader_grammar)
 add_custom_target(gen_loader_grammar DEPENDS ${BISON_loader_grammar_OUTPUTS})
 add_custom_target(gen_loader_lexer DEPENDS ${FLEX_loader_lexer_OUTPUTS})
-
-# ESQL FLEX/BISON targets
-# replace old bison directives with new ones
-# use add_custom_command because we want to regenerate esql_grammar.yy
-# whenever esql_grammar.y is modified
-add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy
-  COMMAND ${CMAKE_COMMAND} -DGRAMMAR_INPUT_FILE=${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y -DGRAMMAR_OUTPUT_FILE=${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy -P ${CMAKE_SOURCE_DIR}/cmake/upgrade_bison_grammar.cmake
-  MAIN_DEPENDENCY ${CMAKE_SOURCE_DIR}/src/executables/esql_grammar.y
-)
-
-set(ESQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/esql_grammar.yy)
-
-# because esql_grammar.yy are generated through a custom command
-# whenever esql_grammar.y is modified, bison and flex will be
-# run to create new outputs
-
-bison_target(esql_grammar ${ESQL_GRAMMAR_INPUT} ${ESQL_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=esql_yy -d -r all")
-flex_target(esql_lexer ${ESQL_LEXER_INPUT} ${ESQL_LEXER_OUTPUT}
-  COMPILE_FLAGS "--noline --never-interactive --prefix=esql_yy")
-add_flex_bison_dependency(esql_lexer esql_grammar)
-add_custom_target(gen_esql_grammar DEPENDS ${BISON_esql_grammar_OUTPUTS})
-add_custom_target(gen_esql_lexer DEPENDS ${FLEX_esql_lexer_OUTPUTS})
 
 # Build types
 if(CMAKE_BUILD_TYPE MATCHES "Coverage")
@@ -415,6 +398,7 @@ set(OBJECT_DIR               ${CMAKE_SOURCE_DIR}/src/object)
 set(ODBC_DIR                 ${CMAKE_SOURCE_DIR}/src/odbc)
 set(OLEDB_DIR                ${CMAKE_SOURCE_DIR}/src/oledb)
 set(OPTIMIZER_DIR            ${CMAKE_SOURCE_DIR}/src/optimizer)
+set(REWRITER_DIR             ${CMAKE_SOURCE_DIR}/src/optimizer/rewriter)
 set(PARSER_DIR               ${CMAKE_SOURCE_DIR}/src/parser)
 set(QUERY_DIR                ${CMAKE_SOURCE_DIR}/src/query)
 set(REPLICATION_DIR          ${CMAKE_SOURCE_DIR}/src/replication)
@@ -425,6 +409,10 @@ set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/cubrid-cci/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
+set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
+set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
+set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
+set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -452,6 +440,10 @@ include_directories(
   src/thread
   src/transaction
   src/xasl
+  src/query/parallel/px_hash_join
+  src/query/parallel/px_heap_scan
+  src/query/parallel
+  src/query/parallel/px_query_execute
   )
 if(WITH_CCI)
   include_directories(
@@ -605,9 +597,17 @@ configure_file(cmake/version.h.cmake version.h)
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
   add_definitions(-DGCC -DLINUX -D_GNU_SOURCE -DI386 -DX86)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -pthread")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
-
+  if(SUPPORT_XA)
+    add_definitions(-DCCI_XA)
+  endif(SUPPORT_XA)
+  if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")  
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wwrite-strings  -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -pthread")
+  else()
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
+  endif()
+ 
   if(SIZEOF_OFF64_T)
     add_definitions( -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64)
   endif(SIZEOF_OFF64_T)
@@ -698,108 +698,27 @@ endif(USE_DUMA)
 
 
 # For CUBRID environment variable option
-if(USE_CUBRID_ENV)
-  message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
-  set(CUBRID_PREFIXDIR .)
-  set(CUBRID_3RDPARTYDIR 3rdparty)
-  set(CUBRID_BINDIR bin)
-  set(CUBRID_LIBDIR lib)
-  set(CUBRID_SRCDIR src)
-  set(CUBRID_INCLUDEDIR include)
-  set(CUBRID_VARDIR var)
-  set(CUBRID_DATADIR share)
-  set(CUBRID_CONFDIR conf)
-  set(CUBRID_VMDIR vm)
-  set(CUBRID_LOCALEDIR msg)
-  set(CUBRID_LOGDIR log)
-  set(CUBRID_TMPDIR tmp)
-  set(CUBRID_SHLOCALESDIR locales)
-  set(CUBRID_TZDIR timezones)
-  set(CUBRID_DEMODIR demo)
-  set(CUBRID_COMPATDIR compat)
-  set(CUBRID_CCIDIR cci)
-  set(CUBRID_DATABASES databases)
-  set(CUBRID_SOCK CUBRID_SOCK)
-else(USE_CUBRID_ENV)
-  message(WARNING "This build does not use CUBRID environment variables")
-  list(APPEND COMMON_DEFS DO_NOT_USE_CUBRIDENV)
-
-  set(CUBRID_PREFIXDIR ${CMAKE_INSTALL_PREFIX} CACHE STRING "The prefix directory for CUBRID (default: ${CMAKE_INSTALL_PREFIX}")
-  list(APPEND DIR_DEFS CUBRID_PREFIXDIR="${CUBRID_PREFIXDIR}")
-  set(CUBRID_3RDPARTYDIR 3rdparty CACHE STRING "The directory for license files of 3rd party")
-  list(APPEND DIR_DEFS CUBRID_3RDPARTYDIR="${CUBRID_PREFIXDIR}/${CUBRID_3RDPARTYDIR}")
-  set(CUBRID_BINDIR bin CACHE STRING "The directory for binary files")
-  if(IS_ABSOLUTE ${CUBRID_BINDIR})
-    list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_BINDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_BINDIR="${CUBRID_PREFIXDIR}/${CUBRID_BINDIR}")
-  endif()
-  set(CUBRID_LIBDIR lib CACHE STRING "The directory for library files")
-  if(IS_ABSOLUTE ${CUBRID_LIBDIR})
-    list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_LIBDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_LIBDIR="${CUBRID_PREFIXDIR}/${CUBRID_LIBDIR}")
-  endif()
-  set(CUBRID_SRCDIR src CACHE STRING "The directory for source files")
-  if(IS_ABSOLUTE ${CUBRID_SRCDIR})
-    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_SRCDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_SRCDIR="${CUBRID_PREFIXDIR}/${CUBRID_SRCDIR}")
-  endif()
-  set(CUBRID_VARDIR var CACHE STRING "The directory for variable data files")
-  if(IS_ABSOLUTE ${CUBRID_VARDIR})
-    list(APPEND DIR_DEFS CUBRID_VARDIR="${CUBRID_VARDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_VARDIR="${CUBRID_PREFIXDIR}/${CUBRID_VARDIR}")
-  endif()
-  set(CUBRID_DATADIR share CACHE STRING "The directory for shared data files")
-  if(IS_ABSOLUTE ${CUBRID_DATADIR})
-    list(APPEND DIR_DEFS CUBRID_DATADIR="${CUBRID_DATADIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_DATADIR="${CUBRID_PREFIXDIR}/${CUBRID_DATADIR}")
-  endif()
-  set(CUBRID_CONFDIR conf CACHE STRING "The directory for configuration files")
-  if(IS_ABSOLUTE ${CUBRID_CONFDIR})
-    list(APPEND DIR_DEFS CUBRID_CONFDIR="${CUBRID_CONFDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_CONFDIR="${CUBRID_PREFIXDIR}/${CUBRID_CONFDIR}")
-  endif()
-  set(CUBRID_VMDIR vm CACHE STRING "The directory for PL file")
-  if(IS_ABSOLUTE ${CUBRID_VMDIR})
-    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_VMDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_VMDIR="${CUBRID_PREFIXDIR}/${CUBRID_VMDIR}")
-  endif()
-  set(CUBRID_LOCALEDIR msg CACHE STRING "The directory for message files")
-  if(IS_ABSOLUTE ${CUBRID_LOCALEDIR})
-    list(APPEND DIR_DEFS CUBRID_LOCALEDIR="${CUBRID_LOCALEDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_LOCALEDIR="${CUBRID_PREFIXDIR}/${CUBRID_LOCALEDIR}")
-  endif()
-  set(CUBRID_LOGDIR log CACHE STRING "The directory for log files")
-  if(IS_ABSOLUTE ${CUBRID_LOGDIR})
-    list(APPEND DIR_DEFS CUBRID_LOGDIR="${CUBRID_LOGDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_LOGDIR="${CUBRID_PREFIXDIR}/${CUBRID_LOGDIR}")
-  endif()
-  set(CUBRID_TMPDIR tmp CACHE STRING "The directory for temporary files")
-  if(IS_ABSOLUTE ${CUBRID_TMPDIR})
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_TMPDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_TMPDIR}")
-  endif()
-  if(IS_ABSOLUTE ${CUBRID_CCIDIR})
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_CCIDIR}")
-  else()
-    list(APPEND DIR_DEFS CUBRID_TMPDIR="${CUBRID_PREFIXDIR}/${CUBRID_CCIDIR}")
-  endif()
-  # directories for install
-  set(CUBRID_INCLUDEDIR include CACHE STRING "The directory for header files")
-  set(CUBRID_SHLOCALESDIR locales CACHE STRING "The directory for locale files")
-  set(CUBRID_TZDIR timezones CACHE STRING "The directory for timezone files")
-  set(CUBRID_DEMODIR demo CACHE STRING "The directory for demo data files")
-  set(CUBRID_COMPATDIR compat CACHE STRING "The directory for compatible files")
-endif(USE_CUBRID_ENV)
+message(STATUS "Default install prefix: ${CMAKE_INSTALL_PREFIX}")
+set(CUBRID_PREFIXDIR .)
+set(CUBRID_3RDPARTYDIR 3rdparty)
+set(CUBRID_BINDIR bin)
+set(CUBRID_LIBDIR lib)
+set(CUBRID_SRCDIR src)
+set(CUBRID_INCLUDEDIR include)
+set(CUBRID_VARDIR var)
+set(CUBRID_DATADIR share)
+set(CUBRID_CONFDIR conf)
+set(CUBRID_VMDIR vm)
+set(CUBRID_LOCALEDIR msg)
+set(CUBRID_LOGDIR log)
+set(CUBRID_TMPDIR tmp)
+set(CUBRID_SHLOCALESDIR locales)
+set(CUBRID_TZDIR timezones)
+set(CUBRID_DEMODIR demo)
+set(CUBRID_COMPATDIR compat)
+set(CUBRID_CCIDIR cci)
+set(CUBRID_DATABASES databases)
+set(CUBRID_SOCK CUBRID_SOCK)
 
 if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   message("Build JDBC Driver from cubird-jdbc submodule")
@@ -808,11 +727,7 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
   add_subdirectory(cubrid-jdbc)
 
   # dist JDBC
-  if(USE_CUBRID_ENV)
-    set(CUBRID_JDBCDIR jdbc)
-  else(USE_CUBRID_ENV)
-    set(CUBRID_JDBCDIR jdbc CACHE STRING "The directory for JDBC driver file")
-  endif(USE_CUBRID_ENV)
+  set(CUBRID_JDBCDIR jdbc)
 
   install(DIRECTORY ${JDBC_DIR}/
     DESTINATION ${CUBRID_JDBCDIR} COMPONENT JDBC
@@ -821,6 +736,7 @@ if(WITH_JDBC AND EXISTS ${CMAKE_SOURCE_DIR}/cubrid-jdbc/src)
     PATTERN "cmake" EXCLUDE
     PATTERN "src" EXCLUDE
     PATTERN "output" EXCLUDE
+    PATTERN "release" EXCLUDE
   )
 endif()
 
@@ -929,29 +845,27 @@ install(DIRECTORY DESTINATION ${CUBRID_VARDIR})
 install(DIRECTORY DESTINATION ${CUBRID_TMPDIR})
 install(DIRECTORY DESTINATION ${CUBRID_DATABASES})
 install(DIRECTORY DESTINATION "${CUBRID_VARDIR}/${CUBRID_SOCK}")
-if(USE_CUBRID_ENV)
-  install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
-    DESTINATION ${CUBRID_3RDPARTYDIR}
-    FILES_MATCHING PATTERN "*.txt")
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/COPYING
-    ${CMAKE_SOURCE_DIR}/CREDITS
-    ${CMAKE_SOURCE_DIR}/README.md
-    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
-    DESTINATION ${CUBRID_PREFIXDIR})
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/3rdparty/license/
+  DESTINATION ${CUBRID_3RDPARTYDIR}
+  FILES_MATCHING PATTERN "*.txt")
+install(FILES
+  ${CMAKE_SOURCE_DIR}/COPYING
+  ${CMAKE_SOURCE_DIR}/CREDITS
+  ${CMAKE_SOURCE_DIR}/README.md
+  ${CMAKE_SOURCE_DIR}/contrib/readme/README_TAR_INSTALL
+  DESTINATION ${CUBRID_PREFIXDIR})
 # on Windows, databases.txt is create from 'make_cubrid_demo.bat' because databases.txt is deleted in MSI file for install.
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt.sample
-    DESTINATION ${CUBRID_DATABASES})
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
-    DESTINATION ${CUBRID_VARDIR}/${CUBRID_SOCK}
-    RENAME README.txt)
-  install(FILES
-    ${CMAKE_SOURCE_DIR}/contrib/readme/README_TMP.txt
-    DESTINATION ${CUBRID_TMPDIR}
-    RENAME README.txt)
-endif(USE_CUBRID_ENV)
+install(FILES
+  ${CMAKE_SOURCE_DIR}/contrib/readme/databases.txt.sample
+  DESTINATION ${CUBRID_DATABASES})
+install(FILES
+  ${CMAKE_SOURCE_DIR}/contrib/readme/README_SOCK.txt
+  DESTINATION ${CUBRID_VARDIR}/${CUBRID_SOCK}
+  RENAME README.txt)
+install(FILES
+  ${CMAKE_SOURCE_DIR}/contrib/readme/README_TMP.txt
+  DESTINATION ${CUBRID_TMPDIR}
+  RENAME README.txt)
 
 if(WITH_SOURCES)
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/ DESTINATION ${CUBRID_SRCDIR})

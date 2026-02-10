@@ -31,6 +31,8 @@
 #include <sys/resource.h>
 #endif /* WINDOWS */
 
+#include "trace_log.h"
+
 #include "perf_monitor.h"
 
 #include "error_manager.h"
@@ -293,6 +295,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_METHSCANS, "Num_query_methscans"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_NLJOINS, "Num_query_nljoins"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_MJOINS, "Num_query_mjoins"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS, "Num_query_hashjoins"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS_PARTITIONED, "Num_query_hashjoins_partitioned"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_HASHJOINS_PARALLEL, "Num_query_hashjoins_parallel"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_OBJFETCHES, "Num_query_objfetches"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_QM_NUM_HOLDABLE_CURSORS, "Num_query_holdable_cursors"),
 
@@ -622,7 +627,7 @@ PSTAT_METADATA pstat_Metadata[] = {
 STATIC_INLINE void perfmon_add_stat_at_offset (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, const int offset,
 					       UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 
-static void perfmon_server_calc_stats (UINT64 * stats);
+static void perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat);
 
 STATIC_INLINE const char *perfmon_stat_module_name (const int module) __attribute__ ((ALWAYS_INLINE));
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -879,7 +884,7 @@ perfmon_print_stats (FILE * stream)
 	   (int) (elapsed_total_time - perfmon_Stat_info.elapsed_start_time));
 
   if (perfmon_calc_diff_stats (diff_result, perfmon_Stat_info.current_server_stats,
-			       perfmon_Stat_info.base_server_stats) != NO_ERROR)
+			       perfmon_Stat_info.base_server_stats, true) != NO_ERROR)
     {
       assert (false);
       goto exit;
@@ -932,7 +937,7 @@ perfmon_print_global_stats (FILE * stream, bool cumulative, const char *substr)
   else
     {
       if (perfmon_calc_diff_stats (diff_result, perfmon_Stat_info.current_global_stats,
-				   perfmon_Stat_info.old_global_stats) != NO_ERROR)
+				   perfmon_Stat_info.old_global_stats, true) != NO_ERROR)
 	{
 	  assert (false);
 	  goto exit;
@@ -1025,7 +1030,7 @@ xperfmon_server_copy_stats_for_trace (THREAD_ENTRY * thread_p, UINT64 * to_stats
  *   to_stats(out): buffer to copy
  */
 void
-xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
+xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats, bool need_pgbuf_stat)
 {
   UINT64 *from_stats;
 
@@ -1033,7 +1038,7 @@ xperfmon_server_copy_stats (THREAD_ENTRY * thread_p, UINT64 * to_stats)
 
   if (from_stats != NULL)
     {
-      perfmon_server_calc_stats (from_stats);
+      perfmon_server_calc_stats (from_stats, need_pgbuf_stat);
       perfmon_copy_values (to_stats, from_stats);
     }
 }
@@ -1050,7 +1055,7 @@ xperfmon_server_copy_global_stats (UINT64 * to_stats)
     {
       perfmon_get_peek_stats (pstat_Global.global_stats);
       perfmon_copy_values (to_stats, pstat_Global.global_stats);
-      perfmon_server_calc_stats (to_stats);
+      perfmon_server_calc_stats (to_stats, true);
     }
 }
 
@@ -1068,13 +1073,32 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
       return 0;
     }
 
-  /* This routine is called from the query execute scan routine in TRACE ON state.
-   * Therefore, there is no need to call perfmon_get_peek_stats,
-   * which retrieves overall statistical information,
-   * because the server's overall statistical information is not needed,
-   * and only I/O fetch and time information are needed.
-   */
-  stats = pstat_Global.tran_stats[tran_index];
+  assert ((thread_p && thread_p->m_uses_px_stats && thread_p->m_px_orig_thread_entry) || (thread_p == NULL)
+	  || (!thread_p->m_uses_px_stats));
+
+  if (thread_p->m_px_orig_thread_entry && thread_p->m_uses_px_stats)
+    {
+      if (thread_p->m_px_stats != NULL)
+	{
+	  stats = thread_p->m_px_stats;
+	}
+      else
+	{
+	  /* impossible case */
+	  assert (false);
+	  return 0;
+	}
+    }
+  else
+    {
+      /* This routine is called from the query execute scan routine in TRACE ON state.
+       * Therefore, there is no need to call perfmon_get_peek_stats,
+       * which retrieves overall statistical information,
+       * because the server's overall statistical information is not needed,
+       * and only I/O fetch and time information are needed.
+       */
+      stats = pstat_Global.tran_stats[tran_index];
+    }
 
   if (stats != NULL)
     {
@@ -1379,7 +1403,7 @@ perfmon_calc_diff_stats_for_trace (UINT64 * stats_diff, UINT64 * new_stats, UINT
 }
 
 int
-perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats)
+perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_stats, bool need_pgbuf_stat)
 {
   int i, j;
   int offset;
@@ -1433,8 +1457,104 @@ perfmon_calc_diff_stats (UINT64 * stats_diff, UINT64 * new_stats, UINT64 * old_s
 	}
     }
 
-  perfmon_server_calc_stats (stats_diff);
+  perfmon_server_calc_stats (stats_diff, need_pgbuf_stat);
   return NO_ERROR;
+}
+
+void
+perfmon_trace_dump_stats_to_buffer (const UINT64 * stats, char *buffer, int buf_size, int trace_level)
+{
+  int i;
+  int ret;
+  UINT64 *stats_ptr;
+  int remained_size;
+  const char *s;
+  char *p;
+
+  if (buffer == NULL || buf_size <= 0)
+    {
+      return;
+    }
+
+  p = buffer;
+  remained_size = buf_size - 1;
+  ret = snprintf (p, remained_size, "\n *** SERVER EXECUTION STATISTICS *** \n");
+  remained_size -= ret;
+  p += ret;
+
+  if (remained_size <= 0)
+    {
+      return;
+    }
+
+  stats_ptr = (UINT64 *) stats;
+  for (i = 0; i < PSTAT_COUNT; i++)
+    {
+      if (pstat_Metadata[i].valtype == PSTAT_COMPLEX_VALUE)
+	{
+	  break;
+	}
+
+      if (trace_level < TRACE_LOG_LEVEL_DETAIL)
+	{
+	  switch (i)
+	    {
+	    case PSTAT_PB_NUM_FETCHES:
+	    case PSTAT_BT_NUM_COVERED:
+	    case PSTAT_BT_NUM_NONCOVERED:
+	    case PSTAT_QM_NUM_ISCANS:
+	    case PSTAT_QM_NUM_SSCANS:
+	    case PSTAT_SORT_NUM_DATA_PAGES:
+	    case PSTAT_PB_HIT_RATIO:
+	    case PSTAT_FILE_NUM_IOREADS:
+	    case PSTAT_FILE_NUM_IOWRITES:
+	    case PSTAT_LOG_NUM_IOWRITES:
+	    case PSTAT_LK_NUM_WAITED_TIME_ON_OBJECTS:
+	    case PSTAT_BT_NUM_SPLITS:
+	    case PSTAT_PC_NUM_HIT:
+	    case PSTAT_LOG_HIT_RATIO:
+	    case PSTAT_VACUUM_DATA_HIT_RATIO:
+	      break;
+	    default:
+	      continue;
+	    }
+	}
+
+      s = pstat_Metadata[i].stat_name;
+
+      if (s)
+	{
+	  int offset = pstat_Metadata[i].start_offset;
+
+	  if (pstat_Metadata[i].valtype != PSTAT_COMPUTED_RATIO_VALUE)
+	    {
+	      if (pstat_Metadata[i].valtype != PSTAT_COUNTER_TIMER_VALUE)
+		{
+		  ret = snprintf (p, remained_size, "%-29s = %10llu\n", pstat_Metadata[i].stat_name,
+				  (unsigned long long) stats_ptr[offset]);
+		}
+	      else
+		{
+		  perfmon_print_timer_to_buffer (&p, i, stats_ptr, &remained_size);
+		  ret = 0;
+		}
+	    }
+	  else
+	    {
+	      ret = snprintf (p, remained_size, "%-29s = %10.2f\n", pstat_Metadata[i].stat_name,
+			      (float) stats_ptr[offset] / 100);
+	    }
+	  remained_size -= ret;
+	  p += ret;
+	  if (remained_size <= 0)
+	    {
+	      assert (remained_size == 0);	/* should not overrun the buffer */
+	      return;
+	    }
+	}
+    }
+
+  buffer[buf_size - 1] = '\0';
 }
 
 /*
@@ -1678,7 +1798,7 @@ perfmon_get_current_times (time_t * cpu_user_time, time_t * cpu_sys_time, time_t
  *   stats(in/out): server statistics block to be processed
  */
 static void
-perfmon_server_calc_stats (UINT64 * stats)
+perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
 {
   int page_type;
   int module;
@@ -1864,22 +1984,25 @@ perfmon_server_calc_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_PB_PAGE_PROMOTE_FAILED].start_offset] *= 100;
 
 #if defined (SERVER_MODE)
-  pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LRU3_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_VICT_CAND].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_HIGH_PRIO].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_LOW_PRIO].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
-		    &(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
+  if (need_pgbuf_stat)
+    {
+      pgbuf_peek_stats (&(stats[pstat_Metadata[PSTAT_PB_FIXED_CNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_DIRTY_CNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_LRU1_CNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_LRU2_CNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_LRU3_CNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_VICT_CAND].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_AVOID_DEALLOC_CNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_AVOID_VICTIM_CNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_PRIVATE_QUOTA].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_PRIVATE_COUNT].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_HIGH_PRIO].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_WAIT_THREADS_LOW_PRIO].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_FLUSHED_BCBS_WAIT_FOR_ASSIGN].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_LFCQ_BIG_PRV_NUM].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_LFCQ_PRV_NUM].start_offset]),
+			&(stats[pstat_Metadata[PSTAT_PB_LFCQ_SHR_NUM].start_offset]));
+    }
 
   css_get_thread_stats (&stats[pstat_Metadata[PSTAT_THREAD_STATS].start_offset]);
   perfmon_peek_thread_daemon_stats (stats);
@@ -3307,6 +3430,44 @@ perfmon_stop_watch (THREAD_ENTRY * thread_p)
 
   pstat_Global.is_watching[tran_index] = false;
 }
+
+void
+perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p)
+{
+  assert (thread_is_on_trace (thread_p));
+
+  /*
+   * m_px_stats should be NULL.
+   * memset is a temporary safeguard.
+   * TODO: replace with assert().
+   */
+  if (thread_p->m_px_stats == NULL)
+    {
+      thread_p->m_px_stats = (UINT64 *) calloc (1, PERFMON_VALUES_MEMSIZE);
+      if (thread_p->m_px_stats == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, PERFMON_VALUES_MEMSIZE);
+	  return;
+	}
+    }
+  else
+    {
+      memset (thread_p->m_px_stats, 0, PERFMON_VALUES_MEMSIZE);
+    }
+  thread_p->m_uses_px_stats = true;
+}
+
+void
+perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p)
+{
+  if (thread_p->m_px_stats != NULL)
+    {
+      free_and_init (thread_p->m_px_stats);
+      thread_p->m_uses_px_stats = false;
+    }
+  assert (thread_p->m_uses_px_stats == false);
+}
+
 #endif /* SERVER_MODE || SA_MODE */
 
 /*

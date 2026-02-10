@@ -65,11 +65,9 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "transaction_transient.hpp"
 #include "xserver_interface.h"
+#include "catalog_class.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-/* TODO : remove */
-extern bool catcls_Enable;
 
 static const int LOCATOR_GUESS_NUM_NESTED_REFERENCES = 100;
 #define LOCATOR_GUESS_HT_SIZE    LOCATOR_GUESS_NUM_NESTED_REFERENCES * 2
@@ -83,12 +81,6 @@ typedef enum
   FOR_MOVE			/* It is an update statement on partitioned table, move a record from one partition to
 				 * another */
 } LOCATOR_INDEX_ACTION_FLAG;
-
-extern int catcls_insert_catalog_classes (THREAD_ENTRY * thread_p, RECDES * record);
-extern int catcls_delete_catalog_classes (THREAD_ENTRY * thread_p, const char *name, OID * class_oid);
-extern int catcls_update_catalog_classes (THREAD_ENTRY * thread_p, const char *name, RECDES * record, OID * class_oid_p,
-					  UPDATE_INPLACE_STYLE force_in_place);
-extern int catcls_remove_entry (THREAD_ENTRY * thread_p, OID * class_oid);
 
 typedef struct locator_classname_action LOCATOR_CLASSNAME_ACTION;
 struct locator_classname_action
@@ -7568,7 +7560,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       old_recdes = &copy_recdes;
 
-      /* Fall through */
+      [[fallthrough]];
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
@@ -8274,7 +8266,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   DB_VALUE *repl_old_key = NULL;
   DB_VALUE new_dbvalue, old_dbvalue;
   bool new_isnull, old_isnull;
-  PR_TYPE *pr_type;
+  const PR_TYPE *pr_type;
   OR_INDEX *index = NULL;
   int i, j, k, num_btids, old_num_btids, unique_pk;
   bool found_btid = true;
@@ -10978,8 +10970,8 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       */
 
 		      /* May be lock change */
-		      lockhint->classes[j].lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lockhint->classes[j].lock != NA_LOCK);
+		      lockhint->classes[j].lock =
+			lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      /* Make sure that subclasses are obtained */
 		      lockhint->classes[j].need_subclasses = 1;
@@ -10991,8 +10983,7 @@ locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lockhint_subc
 		       * revisit if a lock conversion is needed as a result of
 		       * several super classes
 		       */
-		      lock = lock_Conv[lockhint->classes[j].lock][lockhint->classes[ref_num].lock];
-		      assert (lock != NA_LOCK);
+		      lock = lock_conv (lockhint->classes[j].lock, lockhint->classes[ref_num].lock);
 
 		      if (lockhint->classes[j].lock != lock)
 			{
@@ -11297,8 +11288,7 @@ xlocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, int num_classes, con
 	    {
 	      /* Duplicate class, merge the lock and the subclass entry */
 	      assert ((*hlock)->classes[i].lock >= NULL_LOCK && (*hlock)->classes[j].lock >= NULL_LOCK);
-	      (*hlock)->classes[i].lock = lock_Conv[(*hlock)->classes[i].lock][(*hlock)->classes[j].lock];
-	      assert ((*hlock)->classes[i].lock != NA_LOCK);
+	      (*hlock)->classes[i].lock = lock_conv ((*hlock)->classes[i].lock, (*hlock)->classes[j].lock);
 
 	      if ((*hlock)->classes[i].need_subclasses == 0)
 		{

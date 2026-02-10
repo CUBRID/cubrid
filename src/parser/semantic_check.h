@@ -63,6 +63,7 @@ extern PT_NODE *pt_find_order_value_in_list (PARSER_CONTEXT * parser, const PT_N
 					     const PT_NODE * order_list);
 extern bool pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
 extern bool pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column);
+extern bool pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column);
 extern PT_NODE *pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert);
 extern int pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int default_cs, int default_coll);
 extern PT_NODE *pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -73,6 +74,6 @@ extern STATEMENT_SET_FOLD pt_check_union_is_foldable (PARSER_CONTEXT * parser, P
 
 extern PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as);
 
-extern PT_NODE *pt_resolve_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * sort_spec, PT_NODE * select_list);
+extern bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 
 #endif /* _SEMANTIC_CHECK_H_ */

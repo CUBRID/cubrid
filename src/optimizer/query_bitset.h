@@ -28,7 +28,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "optimizer.h"
+/*
+ * Forward Declarations
+ */
+struct qo_env;
+typedef struct qo_env QO_ENV;
 
 /*
  * The maximum number of elements permitted in a set.
@@ -46,6 +50,7 @@
 		>> _LOG2_WORDSIZE)
 
 typedef unsigned int BITSET_CARRIER;
+typedef struct bitset BITSET;
 typedef struct bitset_iterator BITSET_ITERATOR;
 
 struct bitset
@@ -65,24 +70,12 @@ struct bitset_iterator
   int next;
 };
 
-#define BITSET_CLEAR(s)		memset((char *)(s).setp, 0, \
-				  (s).nwords * sizeof(BITSET_CARRIER))
-#define BITSET_MEMBER(s, x)	((_WORD(x) < (s).nwords) \
-				  && ((s).setp[_WORD(x)]  & (1L << _BIT(x))))
-#define BITPATTERN(s)		((s).setp[0])
-
-/*
- * Use these macros when you have to actually move a bitset from one
- * region to another; it will maintain the proper self-relative pointer
- * if necessary.  DON'T do DELSET() on the old set after using this
- * macro!
- */
-#define BITSET_MOVE(dst, src) \
-    do { \
-	(dst) = (src); \
-	if ((src).setp == (src).set.word) \
-	    (dst).setp = (dst).set.word; \
-    } while(0)
+#define BITSET_IS_VALID(p)      (((p)->nwords > 0) && ((p)->setp != NULL))
+#define BITSET_CLEAR(s)		(assert (BITSET_IS_VALID (&(s))), \
+                                 memset((char *)(s).setp, 0, (s).nwords * sizeof(BITSET_CARRIER)))
+#define BITSET_MEMBER(s, x)	(assert (BITSET_IS_VALID (&(s))), \
+                                 ((_WORD(x) < (s).nwords) && ((s).setp[_WORD(x)]  & (1L << _BIT(x)))))
+#define BITPATTERN(s)		(assert (BITSET_IS_VALID (&(s))), (s).setp[0])
 
 extern BITSET EMPTY_SET;
 
@@ -91,6 +84,7 @@ extern void set_stats (FILE * fp);
 #endif
 extern void bitset_extend (BITSET * dst, int nwords);
 extern void bitset_assign (BITSET *, const BITSET *);
+extern void bitset_exchange (BITSET * v1, BITSET * v2);
 extern void bitset_add (BITSET *, int);
 extern void bitset_remove (BITSET *, int);
 extern void bitset_union (BITSET *, const BITSET *);

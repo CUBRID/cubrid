@@ -39,10 +39,9 @@ namespace cubmethod
 //////////////////////////////////////////////////////////////////////////
 // header
 //////////////////////////////////////////////////////////////////////////
-  header::header (uint64_t i, int c, int r)
+  header::header (uint64_t i, int c)
     : id (i)
     , command (c)
-    , req_id (r)
   {
     //
   }
@@ -57,7 +56,6 @@ namespace cubmethod
   {
     serializator.pack_bigint (id);
     serializator.pack_int (command);
-    serializator.pack_int (req_id);
   }
 
   size_t
@@ -65,7 +63,6 @@ namespace cubmethod
   {
     size_t size = serializator.get_packed_bigint_size (start_offset); // id
     size += serializator.get_packed_int_size (size); // command
-    size += serializator.get_packed_int_size (size); // req_id
     return size;
   }
 
@@ -74,7 +71,6 @@ namespace cubmethod
   {
     deserializator.unpack_bigint (id);
     deserializator.unpack_int (command);
-    deserializator.unpack_int (req_id);
   }
 
 //////////////////////////////////////////////////////////////////////////
