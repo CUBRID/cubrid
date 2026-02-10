@@ -5450,10 +5450,8 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
     }
   else
     {
-      int client_type = db_get_client_type ();
-
       /* in the case of loaddb, it can just check the column from the attr_def node. */
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb ())
 	{
 	  PT_NODE *cols;
 
@@ -7089,7 +7087,7 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
 	  if (au_fetch_class (classop, &class_, fetchmode, type) == NO_ERROR)
 	    {
 	      /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
 		{
 		  if (intl_identifier_casecmp (class_name, class_->header.ch_name) != 0)
 		    {

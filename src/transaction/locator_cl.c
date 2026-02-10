@@ -52,6 +52,7 @@
 #include "network_interface_cl.h"
 #include "execute_statement.h"
 #include "log_lsa.hpp"
+#include "object_primitive.h"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
@@ -348,8 +349,7 @@ locator_cache_lock (MOP mop, MOBJ ignore_notgiven_object, void *xcache_lock)
   else
     {
       assert (cache_lock->implicit_lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-      lock = lock_Conv[cache_lock->implicit_lock][ws_get_lock (mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (cache_lock->implicit_lock, ws_get_lock (mop));
     }
 
   /*
@@ -471,8 +471,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 		}
 
 	      assert (ws_get_lock (mop) >= NULL_LOCK);
-	      lock = lock_Conv[lock][ws_get_lock (mop)];
-	      assert (lock != NA_LOCK);
+	      lock = lock_conv (lock, ws_get_lock (mop));
 	      found = true;
 	      /*
 	       * Cache the location of the current on for future initialization of
@@ -510,8 +509,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
 		}
 
 	      assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-	      lock = lock_Conv[lock][ws_get_lock (mop)];
-	      assert (lock != NA_LOCK);
+	      lock = lock_conv (lock, ws_get_lock (mop));
 	      found = true;
 	      lockset->last_reqobj_cached = i;
 	      /*
@@ -566,8 +564,7 @@ locator_cache_lock_set (MOP mop, MOBJ ignore_notgiven_object, void *xlockset)
       lock = locator_to_prefetched_lock (lock);
 
       assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (mop));
 
       /*
        * If a prefetch a class somehow.. I don't have any lock on the root
@@ -764,8 +761,7 @@ locator_lock (MOP mop, LC_OBJTYPE isclass, LOCK lock, LC_FETCH_VERSION_TYPE fetc
 	  cache_lock.class_lock = (lock <= S_LOCK) ? IS_LOCK : IX_LOCK;
 
 	  assert (ws_get_lock (class_mop) >= NULL_LOCK);
-	  cache_lock.class_lock = lock_Conv[cache_lock.class_lock][ws_get_lock (class_mop)];
-	  assert (cache_lock.class_lock != NA_LOCK);
+	  cache_lock.class_lock = lock_conv (cache_lock.class_lock, ws_get_lock (class_mop));
 	}
 
       /* Lock for prefetched instances of the same class */
@@ -1021,8 +1017,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 	{
 	  /* The object is cached */
 	  assert (lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
-	  lock = lock_Conv[lock][ws_get_lock (mop)];
-	  assert (lock != NA_LOCK);
+	  lock = lock_conv (lock, ws_get_lock (mop));
 	  ws_set_lock (mop, lock);
 	  continue;
 	}
@@ -1037,8 +1032,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 
       current_lock = ws_get_lock (mop);
       assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-      lock = lock_Conv[lock][current_lock];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, current_lock);
 
       if (locator_can_skip_fetch_from_server (mop, &lock, TM_TRAN_READ_FETCH_VERSION ()))
 	{
@@ -1232,8 +1226,7 @@ locator_lock_set (int num_mops, MOP * vector_mop, LOCK reqobj_inst_lock, LOCK re
 
 	  current_lock = ws_get_lock (mop);
 	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  lock = lock_Conv[lock][current_lock];
-	  assert (lock != NA_LOCK);
+	  lock = lock_conv (lock, current_lock);
 
 	  /* Object instances are not locked for read in MVCC */
 	  if ((class_mop == sm_Root_class_mop || lock > S_LOCK) && (current_lock == NULL_LOCK || lock != current_lock))
@@ -1483,8 +1476,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 
   current_lock = ws_get_lock (mop);
   assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-  conv_lock = lock_Conv[lock][current_lock];
-  assert (conv_lock != NA_LOCK);
+  conv_lock = lock_conv (lock, current_lock);
 
   if (object != NULL && current_lock != NULL_LOCK && conv_lock == current_lock && WS_MOP_GET_COMPOSITION_FETCH (mop))
     {
@@ -1643,8 +1635,7 @@ locator_lock_nested (MOP mop, LOCK lock, int prune_level, int quit_on_errors, in
 
 	  current_lock = ws_get_lock (mop);
 	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  conv_lock = lock_Conv[lock][current_lock];
-	  assert (conv_lock != NA_LOCK);
+	  conv_lock = lock_conv (lock, current_lock);
 
 	  if (current_lock == NULL_LOCK || conv_lock != current_lock)
 	    {
@@ -1727,8 +1718,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
   if (*class_mop != NULL && class_obj != NULL)
     {
       assert (lock >= NULL_LOCK && ws_get_lock (*class_mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (*class_mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (*class_mop));
 
       ws_set_lock (*class_mop, lock);
       return NO_ERROR;
@@ -1760,8 +1750,7 @@ locator_lock_class_of_instance (MOP inst_mop, MOP * class_mop, LOCK lock)
       if (current_lock != NULL_LOCK)
 	{
 	  assert (lock >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  lock = lock_Conv[lock][current_lock];
-	  assert (lock != NA_LOCK);
+	  lock = lock_conv (lock, current_lock);
 
 	  if (lock == current_lock || OID_ISTEMP (class_oid))
 	    {
@@ -1889,8 +1878,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
     {
       /* The object is cached */
       assert (lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (mop));
 
       ws_set_lock (mop, lock);
       return LC_EXIST;
@@ -1991,8 +1979,7 @@ locator_lock_and_doesexist (MOP mop, LOCK lock, LC_OBJTYPE isclass)
 	    }
 
 	  assert (cache_lock.class_lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
-	  cache_lock.class_lock = lock_Conv[cache_lock.class_lock][ws_get_lock (class_mop)];
-	  assert (cache_lock.class_lock != NA_LOCK);
+	  cache_lock.class_lock = lock_conv (cache_lock.class_lock, ws_get_lock (class_mop));
 
 	}
       /* Lock for prefetched instances of the same class */
@@ -2609,8 +2596,7 @@ locator_keep_mops (MOP mop, MOBJ object, void *kmops)
   keep_mops = (LOCATOR_LIST_KEEP_MOPS *) kmops;
 
   assert (keep_mops->lock >= NULL_LOCK && ws_get_lock (mop) >= NULL_LOCK);
-  lock = lock_Conv[keep_mops->lock][ws_get_lock (mop)];
-  assert (lock != NA_LOCK);
+  lock = lock_conv (keep_mops->lock, ws_get_lock (mop));
 
   ws_set_lock (mop, lock);
   if (keep_mops->fun != NULL && object != NULL)
@@ -2683,8 +2669,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
   else
     {
       assert (lock >= NULL_LOCK && ws_get_lock (class_mop) >= NULL_LOCK);
-      lock = lock_Conv[lock][ws_get_lock (class_mop)];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, ws_get_lock (class_mop));
     }
 
   /*
@@ -3178,13 +3163,24 @@ locator_find_class_with_purpose (const char *classname, bool for_update)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
       do_find_class_by_query (classname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
       if (other_class_name[0] != '\0')
 	{
+	  CUBRID_STMT_TYPE statement_type = db_get_client_statement_type ();
+	  assert (statement_type != CUBRID_STMT_CREATE_SYNONYM);
+
+	  if (statement_type == CUBRID_STMT_CREATE_CLASS
+	      || statement_type == CUBRID_STMT_CREATE_SYNONYM /* safe-guard */ )
+	    {
+	      /* maybe unloaded from version 11.2+ or later */
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	      return NULL;
+	    }
+
 	  found = locator_find_class_by_name (other_class_name, lock, &class_mop);
 	  if (found == LC_CLASSNAME_EXIST)
 	    {
@@ -5665,8 +5661,7 @@ locator_add_class (MOBJ class_obj, const char *classname)
   if (lock != NULL_LOCK)
     {
       assert (lock >= NULL_LOCK);
-      lock = lock_Conv[lock][IX_LOCK];
-      assert (lock != NA_LOCK);
+      lock = lock_conv (lock, IX_LOCK);
 
       ws_set_lock (sm_Root_class_mop, lock);
     }
@@ -5728,6 +5723,11 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
   if (HFID_IS_NULL (hfid))
     {
       OID *oid;
+      SM_CLASS *class_;
+      SM_ATTRIBUTE *attr;
+      int *lob_alloc_attrid_arr = NULL;
+      int lob_local_attrid_arr[2];
+      int lob_attrid_arr_length = 0;
 
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5749,6 +5749,12 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       assert (!OID_ISNULL (sm_ch_rep_dir (class_obj)));
 
       if (heap_create (hfid, oid, reuse_oid) != NO_ERROR)
+	{
+	  return NULL;
+	}
+      au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_NONE);
+
+      if (locator_lob_process_dir (class_, NULL, hfid) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -5879,8 +5885,12 @@ int
 locator_remove_class (MOP class_mop)
 {
   MOBJ class_obj;		/* The class object */
-  const char *classname;	/* The classname */
   HFID *insts_hfid;		/* Heap of instances of the class */
+  SM_CLASS *class_;		/* class info for checking LOB attributes */
+  SM_ATTRIBUTE *attr;		/* attribute info for checking LOB attributes */
+  bool lob_attr_exist = false;
+  const char *classname;	/* The classname */
+  int attrid_arr[1];
   int error_code = NO_ERROR;
 
   class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5903,6 +5913,29 @@ locator_remove_class (MOP class_mop)
       if (error_code != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_NONE);
+
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_attr_exist = true;
+	      break;
+	    }
+	}
+
+      if (lob_attr_exist)
+	{
+	  attrid_arr[0] = -1;
+	  error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 0);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
     }
 
@@ -6247,8 +6280,7 @@ locator_cache_lock_lockhint_classes (LC_LOCKHINT * lockhint)
 		{
 		  lock = ws_get_lock (class_mop);
 		  assert (lockhint->classes[i].lock >= NULL_LOCK && lock >= NULL_LOCK);
-		  lock = lock_Conv[lockhint->classes[i].lock][lock];
-		  assert (lock != NA_LOCK);
+		  lock = lock_conv (lockhint->classes[i].lock, lock);
 
 		  ws_set_lock (class_mop, lock);
 		}
@@ -6345,8 +6377,7 @@ locator_lockhint_classes (int num_classes, const char **many_classnames, LOCK * 
 	   */
 	  current_lock = ws_get_lock (class_mop);
 	  assert (many_locks[i] >= NULL_LOCK && current_lock >= NULL_LOCK);
-	  conv_lock = lock_Conv[many_locks[i]][current_lock];
-	  assert (conv_lock != NA_LOCK);
+	  conv_lock = lock_conv (many_locks[i], current_lock);
 
 	  if (current_lock == NULL_LOCK || current_lock != conv_lock)
 	    {
@@ -6936,7 +6967,7 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_VERSION_TYPE 
     }
 
   /* Check lock */
-  *lock = lock_Conv[*lock][crt_lock];
+  *lock = lock_conv (*lock, crt_lock);
   if (crt_lock != NULL_LOCK && (*lock == crt_lock || OID_ISTEMP (oid)))
     {
       /* Object was already locked and lock doesn't need to be promoted */
@@ -6951,4 +6982,143 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_VERSION_TYPE 
 
   /* We are here because we need to upgrade lock on object. */
   return false;
+}
+
+/*
+ * locator_lob_create_or_remove_dir() - Unified interface for creating or removing LOB directories.
+ * return: error code
+ * prev_hfid(in): HFID of an existing LOB directory to remove.
+ * new_hfid(in): HFID for the new LOB directory to create.
+ * lob_attrid_arr(in): Array of LOB attribute IDs used for create/remove operations.
+ * lob_attrid_arr_length(in): Number of elements in lob_attrid_arr.
+ *
+ * NOTE: This function abstracts the logic of calling lob_create_dir() and lob_remove_dir(),
+ *       allowing the caller to handle both operations through a single interface.
+ */
+int
+locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
+{
+  int error = NO_ERROR;
+
+  assert (prev_hfid != NULL || new_hfid != NULL);
+
+  if (prev_hfid && new_hfid)	/* truncate case */
+    {
+      error = lob_remove_dir (prev_hfid, -1);	/* -1 means remove all LOB directories of the table. */
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (prev_hfid != NULL)
+    {
+      error = lob_remove_dir (prev_hfid, lob_attrid_arr[0]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else if (new_hfid != NULL)
+    {
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return error;
+}
+
+/*
+ * locator_lob_process_dir() - Prepare an array of LOB attrid to create or remove LOB directories.
+ * return: error code
+ * class_(in): Class structure that contains LOB information.
+ * prev_hfid(in): HFID of an existing LOB directory to remove.
+ * new_hfid(in): HFID for the new LOB directory to create.
+ *
+ * NOTE: Call locator_lob_create_or_remove_dir() to handle LOB directories.
+ */
+int
+locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
+{
+  SM_ATTRIBUTE *attr;
+  int lob_attrid_arr_length = 0;
+  int lob_local_attrid_arr[2];
+  int *lob_alloc_attrid_arr = NULL;
+  int *lob_attrid_arr = NULL;
+  int error = NO_ERROR;
+
+  for (int i = 0; i < class_->att_count; i++)
+    {
+      attr = &class_->attributes[i];
+
+      if (TP_IS_LOB_TYPE (attr->type->id))
+	{
+	  lob_attrid_arr_length++;
+	}
+    }
+
+  if (lob_attrid_arr_length == 0)
+    {
+      goto end;
+    }
+  else if (lob_attrid_arr_length > 2)
+    {
+      int index = 0;
+
+      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+      if (lob_alloc_attrid_arr == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_alloc_attrid_arr[index++] = attr->id;
+	    }
+	}
+      lob_attrid_arr = lob_alloc_attrid_arr;
+    }
+  else
+    {
+      int index = 0;
+
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_local_attrid_arr[index++] = attr->id;
+	    }
+	}
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
+
+  /* Create or Remove the lob dir if need */
+  if (lob_attrid_arr_length)
+    {
+      error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+end:
+  free (lob_alloc_attrid_arr);
+
+  return error;
 }
