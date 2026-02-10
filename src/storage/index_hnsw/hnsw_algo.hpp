@@ -178,22 +178,6 @@ namespace cubhnsw
       using neighbors_ref_type = neighbors_ref_t<traits>;
 
       using pinned_t = pinned_block_t<Traits, std::function<void (pinned_block_data<Traits>&)>>;
-      struct context_t
-      {
-	top_candidates_t<Traits> m_top_candidates;
-	top_candidates_t<Traits> m_top_for_refine;
-	next_candidates_t<Traits> m_next_candidates;
-	visited_set_t<Traits> m_visits;
-	std::default_random_engine m_level_generator;
-
-	void clear_candidates ()
-	{
-	  m_top_candidates.clear ();
-	  m_top_for_refine.clear ();
-	  m_next_candidates.clear();
-	  m_visits.clear();
-	}
-      };
 
       algo (const hnsw_build_params &build_params);
 
@@ -638,9 +622,9 @@ namespace cubhnsw
 	  }
 
 	neighbors_ref_type close_header;
+	pinned_t close_node_blk = m_storage->get_node_by_slot_id (thread_p, close_slot, lock_mode::exclusive);
 	{
 	  // TODO: exclusive??
-	  pinned_t close_node_blk = m_storage->get_node_by_slot_id (thread_p, close_slot, lock_mode::exclusive);
 	  close_header = get_neighbors (close_node_blk, level);
 	  if (close_header.size () < layer_connectivity)
 	    {

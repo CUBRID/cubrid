@@ -97,6 +97,8 @@ class hnsw_index_manager
     int save_all_indices (THREAD_ENTRY *thread_p);
     int delete_index_on_disk (THREAD_ENTRY *thread_p, const std::string &prefix, const BTID *btid);
 
+    void finalize ();
+
     // backend management
     void register_backend (std::unique_ptr<hnsw_index_backend> backend);
     const hnsw_index_backend *get_backend () const;
@@ -151,6 +153,8 @@ xhnsw_finalize (THREAD_ENTRY *thread_p)
   assert (index_manager != nullptr);
 
   index_manager->save_all_indices (thread_p);
+
+  index_manager->finalize ();
   return NO_ERROR;
 }
 
@@ -758,6 +762,11 @@ hnsw_index_manager::create_btid (THREAD_ENTRY *thread_p, const hnsw_index_backen
     }
 
   return btid_out;
+}
+
+void hnsw_index_manager::finalize ()
+{
+  m_index_map.clear ();
 }
 
 void hnsw_index_manager::register_backend (std::unique_ptr<hnsw_index_backend> backend)
