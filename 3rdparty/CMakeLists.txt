@@ -384,6 +384,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
     set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
+
+    set(LIBOPENSSL_CONFIGURE_OPTS_PATENT_ALGOS no-idea no-md2 no-mdc2 no-rc5 no-rc4)
+    set(LIBOPENSSL_CONFIGURE_OPTS_REDUNDANTS no-tests no-ui-console no-comp no-ssl3 no-zlib no-engine no-dso no-async)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
@@ -393,9 +396,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config no-shared ${LIBOPENSSL_CONFIGURE_OPTS_REDUNDANTS} ${LIBOPENSSL_CONFIGURE_OPTS_PATENT_ALGOS} --prefix=${3RDPARTY_LIBS_DIR} # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make build_libs AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      make install_dev AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
@@ -554,6 +557,7 @@ if(WITH_HDF STREQUAL "EXTERNAL")
   else()
     set(HDF_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     set(HDF_LIBS ${3RDPARTY_LIBS_DIR}/lib/libhdf5.a)
+    set(HDF_CONFIGURE_OPTS --enable-static --disable-shared --disable-tests --disable-tools --disable-hl --disable-cxx --disable-fortran --disable-parallel --without-zlib --without-szlib)
 
     ADD_BY_PRODUCTS_VARIABLE ("HDF" ${HDF_LIBS})
     externalproject_add(${HDF_TARGET}
@@ -561,9 +565,10 @@ if(WITH_HDF STREQUAL "EXTERNAL")
       TIMEOUT               600
       LOG_BUILD             TRUE
       DOWNLOAD_NO_PROGRESS  1
-      CONFIGURE_COMMAND     ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_IN_SOURCE       true
+      CONFIGURE_COMMAND     <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} ${HDF_CONFIGURE_OPTS}
+      BUILD_IN_SOURCE       false
       BUILD_COMMAND         make CFLAGS=-fPIC CXXFLAGS=-fPIC # to allow static linking in shared library
+      INSTALL_COMMAND       make install && rm -rf <SOURCE_DIR>
       "${HDF_BYPRODUCTS}"
     )
 

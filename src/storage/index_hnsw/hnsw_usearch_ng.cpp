@@ -39,6 +39,8 @@
 #include "db_vector.hpp"	// db_vector_is_all_zeros
 #if defined (SERVER_MODE)
 #include "thread_worker_pool.hpp"
+#include "thread_worker_pool_taskcap.hpp"
+#include "lockfree_circular_queue.hpp"
 #endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -102,7 +104,28 @@ class hnsw_usearch_ng final:public hnsw_index
 				 float *distances) override;
     virtual int dump (cubthread::entry *thread_p, FILE *fp) override;
 
-    int add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index);
+  protected:
+
+    struct hnsw_build_worker_context final
+    {
+      std::mutex m_mutex;
+      std::condition_variable m_cv;
+
+      std::atomic<int> m_active_tasks {0};
+      int m_pushed_tasks {0};
+
+      int tran_index {0};
+    };
+
+    struct hnsw_build_worker_job final
+    {
+      hnsw_build_worker_context *m_ctx;
+      OID m_oid;
+      const float *m_vector;
+    };
+
+    void init_worker_pool ();
+    void add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &job);
 
     VPID m_root_vpid;
 
@@ -110,9 +133,20 @@ class hnsw_usearch_ng final:public hnsw_index
     std::unique_ptr < storage_type > m_storage;
 
 #if defined (SERVER_MODE)
-    cubthread::entry_workpool *m_worker_pool;
-    size_t m_worker_pool_size;
+    cubthread::entry_workpool *m_build_worker_pool;
+    cubthread::worker_pool_task_capper<cubthread::entry> *m_build_worker_task_capper;
+    std::vector<cubthread::entry_callable_task> m_build_worker_tasks;
+    std::size_t m_build_worker_size;
+
+    std::atomic<int> m_pending_jobs {0};
+    std::mutex m_worker_mtx;
+    std::condition_variable m_worker_cv;
+    std::atomic<bool> m_stop {false};
+
+    std::mutex m_single_thread_mtx;
+    bool m_force_single_thread {true};
 #endif
+    lockfree::circular_queue<hnsw_build_worker_job> *m_build_worker_job_queue;
 };
 
 // =====================================================================
@@ -208,18 +242,88 @@ hnsw_usearch_ng::init (cubthread::entry *thread_p, PAGE_PTR page_ptr, RECDES &re
 
   m_algo->set_storage (m_storage.get ());
 
-#if defined (SERVER_MODE)
-  m_worker_pool_size = std::thread::hardware_concurrency ();
-  m_worker_pool = cubthread::get_manager ()->create_worker_pool (
-			  m_worker_pool_size, m_worker_pool_size, "hnsw insertion worker pool", NULL, 1, false);
-#endif
+  init_worker_pool ();
+
   return NO_ERROR;
+}
+
+void
+hnsw_usearch_ng::init_worker_pool ()
+{
+#if defined (SERVER_MODE)
+  // TODO (CUBVEC): parameterize the worker size
+  m_build_worker_size = std::min (static_cast<std::size_t> (std::thread::hardware_concurrency ()),
+				  static_cast<std::size_t> (16));
+
+  if (m_build_worker_size > 1)
+    {
+      m_build_worker_pool = cubthread::get_manager ()->create_worker_pool (
+				    m_build_worker_size, m_build_worker_size, "hnsw insertion worker pool", NULL, 1, false);
+      m_build_worker_task_capper = new cubthread::worker_pool_task_capper<cubthread::entry> (m_build_worker_pool);
+
+      const std::size_t queue_size = m_build_worker_size * 256;
+      m_build_worker_job_queue = new lockfree::circular_queue<hnsw_build_worker_job> (queue_size);
+      m_build_worker_tasks.reserve (m_build_worker_size);
+      for (std::size_t i = 0; i < m_build_worker_size; ++i)
+	{
+	  auto exec_func = [this] (cubthread::entry &entry)
+	  {
+	    while (true)
+	      {
+		std::unique_lock<std::mutex> lock (m_worker_mtx);
+		m_worker_cv.wait (lock, [&] { return m_pending_jobs.load () > 0 || m_stop.load (); });
+
+		if (m_stop.load (std::memory_order_acquire))
+		  {
+		    // exit
+		    return;
+		  }
+
+		if (m_pending_jobs.fetch_sub (1, std::memory_order_acq_rel) <= 0)
+		  {
+		    continue;
+		  }
+
+		hnsw_build_worker_job job;
+		if (!m_build_worker_job_queue->consume (job))
+		  {
+		    // should not happen
+		    assert (false);
+		    continue;
+		  }
+
+		this->add_internal (entry, job);
+	      }
+	  };
+	  m_build_worker_task_capper->push_task (new cubthread::entry_callable_task (exec_func));
+	}
+    }
+  else
+    {
+      m_build_worker_pool = nullptr;
+      m_build_worker_task_capper = nullptr;
+      m_build_worker_job_queue = nullptr;
+    }
+#endif
 }
 
 hnsw_usearch_ng::~hnsw_usearch_ng ()
 {
 #if defined (SERVER_MODE)
-  cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
+  m_stop.store (true, std::memory_order_release);
+
+  m_worker_cv.notify_all ();
+
+  cubthread::get_manager()->destroy_worker_pool (m_build_worker_pool);
+
+  if (m_build_worker_task_capper != nullptr)
+    {
+      delete m_build_worker_task_capper;
+    }
+  if (m_build_worker_job_queue)
+    {
+      delete m_build_worker_job_queue;
+    }
 #endif
 }
 
@@ -234,43 +338,100 @@ hnsw_usearch_ng::prepare_to_add (cubthread::entry *thread_p, int n_vectors, cons
 int
 hnsw_usearch_ng::add (cubthread::entry *thread_p, int n_vectors, const OID *oid, const float *vector)
 {
-
+  hnsw_build_worker_context ctx;
+  ctx.tran_index = thread_p->tran_index;
   // Push insert each vector insertion task to worker pool
+
+  std::vector<hnsw_build_worker_job> jobs;
+  jobs.reserve (n_vectors);
 
   for (int i = 0; i < n_vectors; ++i)
     {
-#if defined (SERVER_MODE)
-      auto exec_f = std::bind (&hnsw_usearch_ng::add_vector, std::ref (*this), std::placeholders::_1, oid[i],
-			       vector + i * m_build_params.dimension, thread_p->tran_index);
-      cubthread::entry_callable_task *task = new cubthread::entry_callable_task (exec_f);
-      cubthread::get_manager()->push_task (m_worker_pool, task);
-#else
-      if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
-	  && db_vector_is_all_zeros (vector + i * m_build_params.dimension, m_build_params.dimension))
-	{
-	  er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping add");
-	  continue;
-	}
-      m_algo->add (thread_p, oid[i], vector + i * m_build_params.dimension);
-#endif
+      hnsw_build_worker_job job;
+      job.m_ctx = &ctx;
+      job.m_oid = oid[i];
+      job.m_vector = vector + i * m_build_params.dimension;
+
+      jobs.emplace_back (job);
     }
+
+  for (auto &job : jobs)
+    {
+#if defined (SERVER_MODE)
+      if (m_stop.load (std::memory_order_acquire))
+	{
+	  // exit
+	  return ER_FAILED;
+	}
+
+      if (m_force_single_thread)
+	{
+	  std::lock_guard<std::mutex> lk (m_single_thread_mtx);
+	  job.m_ctx = nullptr;
+	  this->add_internal (*thread_p, job);
+	}
+      else if (m_build_worker_job_queue != nullptr && m_build_worker_job_queue->produce (std::move (job)))
+	{
+	  ctx.m_pushed_tasks++;
+	}
+      else
+#endif
+	{
+	  // SERVER_MODE: if worker pool is not available, perform the job on the current thread
+	  // SA_MODE : always reach here
+	  // fallback to single thread execution
+	  job.m_ctx = nullptr;
+	  this->add_internal (*thread_p, job);
+	}
+    }
+
+#if defined (SERVER_MODE)
+  if (ctx.m_pushed_tasks > 0)
+    {
+      // notify the worker pool to start working
+      m_pending_jobs.fetch_add (ctx.m_pushed_tasks, std::memory_order_relaxed);
+      m_worker_cv.notify_all ();
+
+      // wait for all jobs to be completed
+      std::unique_lock<std::mutex> lock (ctx.m_mutex);
+      ctx.m_cv.wait (lock, [&ctx]
+      {
+	return ctx.m_active_tasks.load (std::memory_order_acquire) == 0;
+      });
+    }
+#endif
+
   return NO_ERROR;
 }
 
-int
-hnsw_usearch_ng::add_vector (cubthread::entry &thread_ref, const OID oid, const float *vector, const int tran_index)
+void
+hnsw_usearch_ng::add_internal (cubthread::entry &thread_ref, hnsw_build_worker_job &job)
 {
-  thread_ref.tran_index = tran_index;
-
-  if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
-      && db_vector_is_all_zeros (vector, m_build_params.dimension))
+  int error = NO_ERROR;
+  hnsw_build_worker_context *ctx = job.m_ctx;
+  if (ctx)
     {
-      er_log_debug (ARG_FILE_LINE, "Vector is all zeros, skipping search");
-      return NO_ERROR;
+      thread_ref.tran_index = ctx->tran_index;
+      ctx->m_active_tasks.fetch_add (1, std::memory_order_relaxed);
     }
 
-  m_algo->add (&thread_ref, oid, vector);
-  return NO_ERROR;
+  if (m_build_params.metric == DB_VECTOR_DISTANCE_METRIC::METRIC_COSINE
+      && db_vector_is_all_zeros (job.m_vector, m_build_params.dimension))
+    {
+      // Just skip if the vector is all zeros
+      error = NO_ERROR;
+    }
+  else
+    {
+      cubhnsw::add_result_t<traits> result = m_algo->add (&thread_ref, job.m_oid, job.m_vector);
+      error = result.error;
+    }
+
+  if (ctx && ctx->m_active_tasks.fetch_sub (1, std::memory_order_acq_rel) == 1)
+    {
+      std::lock_guard<std::mutex> lk (ctx->m_mutex);
+      ctx->m_cv.notify_all ();
+    }
 }
 
 int
