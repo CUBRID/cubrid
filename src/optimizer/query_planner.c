@@ -531,6 +531,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
+  plan->limit_nljoin_guessed_card = 0.0;
 
   return plan;
 }
@@ -1440,13 +1441,14 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
 {
   double fixed = plan->fixed_cpu_cost + plan->fixed_io_cost;
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
+  double card = (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan) && plan->limit_nljoin_guessed_card > 0)
+    ? plan->limit_nljoin_guessed_card : (plan->info)->cardinality;
 
-  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable,
-	   (plan->info)->cardinality);
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable, card);
 #if TEST_DUMP_PLAN_SCAN_COST
-  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f fanout %.5f", (int) howfar,
+  fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f hit_prob %.5f", (int) howfar,
 	   ' ', "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
-	   (plan->info)->group_rows, (plan->info)->fanout);
+	   (plan->info)->group_rows, (plan->info)->hit_prob);
 #endif
 }
 
@@ -3231,11 +3233,11 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
 
 
 /*
- * qo_can_apply_fanout () -
- *   return: true if fanout can be applied to reduce guessed_result_cardinality for LIMIT, false otherwise
+ * qo_can_apply_limit_card () -
+ *   return: true if limit-based cardinality can be applied for guessed_result_cardinality, false otherwise
  *   env(in):
  *
- * Fanout should NOT be applied when the query has:
+ * Limit card should NOT be applied when the query has:
  * 1. ORDER BY (sort needed, cannot stop early)
  * 2. Analytic (window functions need full partition)
  * 3. DISTINCT (deduplication needs full result)
@@ -3244,7 +3246,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
  * 6. Window / Recursive CTE / Hierarchical Query (CONNECT BY)
  */
 static bool
-qo_can_apply_fanout (QO_ENV * env)
+qo_can_apply_limit_card (QO_ENV * env)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *tree;
@@ -3355,10 +3357,10 @@ qo_nljoin_cost (QO_PLAN * planp)
     }
   else if (outer->plan_type == QO_PLANTYPE_SCAN && QO_PLAN_HAS_LIMIT (planp))
     {
-      if (qo_can_apply_fanout (planp->info->env))
+      if (qo_can_apply_limit_card (planp->info->env))
 	{
 	  guessed_result_cardinality =
-	    MAX (MIN (((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) / (outer->info)->fanout,
+	    MAX (MIN (((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) / (outer->info)->hit_prob,
 		      (outer->info)->cardinality), 1.0);
 	}
       else
@@ -3366,10 +3368,16 @@ qo_nljoin_cost (QO_PLAN * planp)
 	  guessed_result_cardinality = (outer->info)->cardinality;
 	}
     }
+  else if (outer->plan_type == QO_PLANTYPE_JOIN && QO_PLAN_HAS_LIMIT (planp) && outer->limit_nljoin_guessed_card > 0)
+    {
+      /* outer is already an NL join with limit; use its guessed cardinality (3+ tables) */
+      guessed_result_cardinality = outer->limit_nljoin_guessed_card;
+    }
   else
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
+  planp->limit_nljoin_guessed_card = guessed_result_cardinality;
   inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
 
   /* inner side IO cost of nested-loop block join */
@@ -5734,7 +5742,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->scan_rows = cardinality;	/* after iscan_cost, sscan_cost. it'll be replaced accurately */
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
-  info->fanout = 1;
+  info->hit_prob = 1.0;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -7722,7 +7730,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (new_info == NULL)
     {
 
-      double selectivity, cardinality, total_rows, head_fanout, tail_fanout;
+      double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       BITSET eqclasses;
 
       bitset_init (&eqclasses, planner->env);
@@ -7732,8 +7740,9 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
-      head_fanout = tail_info->cardinality;
-      tail_fanout = head_info->cardinality;
+      /* hit_prob: B's hit_prob = NDV(B.key)/NDV(A.key); formula is ratio only, no card */
+      head_hit_prob = 1.0;
+      tail_hit_prob = 1.0;
       if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* set lower bound of outer join result */
@@ -7766,14 +7775,41 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		{
 		  selectivity *= QO_TERM_SELECTIVITY (term);
 		  selectivity = MAX (1.0 / MAX (head_info->cardinality, tail_info->cardinality), selectivity);
+		  /* hit_prob: B's hit_prob = NDV(B.key)/NDV(A.key). Only use NDV ratio when term's head/tail
+		   * match current join: term's head on head side, term's tail is tail_node (or vice versa). */
+		  if (QO_TERM_HEAD_KEY_NDV (term) > 0 && QO_TERM_TAIL_KEY_NDV (term) > 0)
+		    {
+		      int term_head_idx = QO_NODE_IDX (QO_TERM_HEAD (term));
+		      int term_tail_idx = QO_NODE_IDX (QO_TERM_TAIL (term));
+		      int tail_node_idx = QO_NODE_IDX (tail_node);
+
+		      if (term_head_idx != tail_node_idx && term_tail_idx == tail_node_idx)
+			{
+			  /* term's head is on head side, term's tail is tail_node: use head_ndv/tail_ndv */
+			  head_hit_prob *= (QO_TERM_HEAD_KEY_NDV (term) / QO_TERM_TAIL_KEY_NDV (term));
+			  tail_hit_prob *= (QO_TERM_TAIL_KEY_NDV (term) / QO_TERM_HEAD_KEY_NDV (term));
+			}
+		      else if (term_head_idx == tail_node_idx && term_tail_idx != tail_node_idx)
+			{
+			  /* term's head is tail_node, term's tail is on head side: swap ratio */
+			  head_hit_prob *= (QO_TERM_TAIL_KEY_NDV (term) / QO_TERM_HEAD_KEY_NDV (term));
+			  tail_hit_prob *= (QO_TERM_HEAD_KEY_NDV (term) / QO_TERM_TAIL_KEY_NDV (term));
+			}
+		      else
+			{
+			  /* term does not connect head partition to tail_node (e.g. both in head); do nothing (* 1) */
+			}
+		    }
+		  else
+		    {
+		      /* NDV not available; do nothing for hit_prob (* 1) */
+		    }
 		}
 	    }
 	  cardinality *= selectivity;
 	  cardinality = MAX (1.0, cardinality);
 	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
-	  head_fanout *= selectivity;
-	  tail_fanout *= selectivity;
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
@@ -7792,8 +7828,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_assign (&eqclasses, &(head_info->eqclasses));
       bitset_union (&eqclasses, &(tail_info->eqclasses));
 
-      head_info->fanout = head_fanout;
-      tail_info->fanout = tail_fanout;
+      head_info->hit_prob = head_hit_prob;
+      tail_info->hit_prob = tail_hit_prob;
 
       new_info = planner->join_info[QO_INFO_INDEX (QO_PARTITION_M_OFFSET (partition), *visited_rel_nodes)] =
 	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);

@@ -220,6 +220,9 @@ struct qo_plan
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
   bool need_final_sort;
+
+  /* Guessed result cardinality for NL join when LIMIT is present (3+ tables); used for cost and dump */
+  double limit_nljoin_guessed_card;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -303,7 +306,7 @@ struct qo_info
   double scan_rows;		/* Number of rows required for scanning */
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
-  double fanout;		/* Number of inner rows matched per outer row on average */
+  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
 
   /*
    * One plan for each equivalence class, in each case the best we have
