@@ -567,7 +567,7 @@ namespace cubhnsw
 			 candidates_view_t<Traits> &out, std::size_t &refines_counter) const
   {
     out = {};
-    std::size_t old_computed_distances;
+    std::size_t old_computed_distances = 0;
 
     candidate_t<Traits> *top_data = top.data();
     std::size_t const top_count = top.size();
