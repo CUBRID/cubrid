@@ -16107,6 +16107,7 @@ exit_on_error:
       if (xasl->proc.buildlist.a_eval_list != NULL)
 	{
 	  ANALYTIC_EVAL_TYPE *a_eval_p;
+	  ANALYTIC_TYPE *a_func_list;
 	  for (a_eval_p = xasl->proc.buildlist.a_eval_list; a_eval_p; a_eval_p = a_eval_p->next)
 	    {
 	      if (a_eval_p->current_values != NULL)
@@ -16124,6 +16125,22 @@ exit_on_error:
 		      pr_clear_value (&a_eval_p->temp_values[i]);
 		    }
 		  db_private_free_and_init (thread_p, a_eval_p->temp_values);
+		}
+
+	      for (a_func_list = a_eval_p->head; a_func_list; a_func_list = a_func_list->next)
+		{
+		  if (a_func_list->group_list_id != NULL)
+		    {
+		      qfile_close_list (thread_p, a_func_list->group_list_id);
+		      qfile_destroy_list (thread_p, a_func_list->group_list_id);
+		      a_func_list->group_list_id = NULL;
+		    }
+		  if (a_func_list->order_list_id != NULL)
+		    {
+		      qfile_close_list (thread_p, a_func_list->order_list_id);
+		      qfile_destroy_list (thread_p, a_func_list->order_list_id);
+		      a_func_list->order_list_id = NULL;
+		    }
 		}
 	    }
 	}
