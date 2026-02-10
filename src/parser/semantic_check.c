@@ -14502,7 +14502,6 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-
   return error;
 }
 
