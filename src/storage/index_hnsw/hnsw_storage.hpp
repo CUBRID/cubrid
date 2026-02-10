@@ -20,8 +20,7 @@
 
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
-
-#include "thread_entry.hpp"
+#include "hnsw_algo_common.hpp"
 #include "scoped_holder.hpp"
 
 namespace cubhnsw
@@ -117,12 +116,13 @@ namespace cubhnsw
       virtual void set_empty (bool is_empty) noexcept = 0;
 
       virtual void init_root (std::byte *root_block, std::size_t &root_size) = 0;
-      virtual slot_id_t add_node (cubthread::entry *thread_ref, const OID &key, const float *vector,
+      virtual slot_id_t add_node (algo_context_t<Traits> &context, const OID &key, const float *vector,
 				  const level_t &level) = 0;
 
-      virtual pinned_t get_root (cubthread::entry *thread_ref, lock_mode mode) = 0;
-      virtual pinned_t get_node_by_slot_id (cubthread::entry *thread_p, const slot_id_t &slot_id, const lock_mode &mode) = 0;
-      virtual pinned_t get_vector_by_slot_id (cubthread::entry *thread_p, const slot_id_t &slot_id,
+      virtual pinned_t get_root (algo_context_t<Traits> &context, lock_mode mode) = 0;
+      virtual pinned_t get_node_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
+					    const lock_mode &mode) = 0;
+      virtual pinned_t get_vector_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
 					      const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive

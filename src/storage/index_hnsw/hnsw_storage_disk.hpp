@@ -68,10 +68,12 @@ namespace cubhnsw
   {
     public:
       using base = storage<disk_traits_t>;
+      using traits = typename base::traits;
 
       using block_group_id_t = disk_traits_t::block_group_id_t;
       using block_id_t = disk_traits_t::block_id_t;
       using slot_id_t = disk_traits_t::slot_id_t;
+
 
       using page_handle = scoped_holder<PAGE_PTR, std::function<void (PAGE_PTR)>>;
 
@@ -84,13 +86,13 @@ namespace cubhnsw
 
       virtual void init_root (std::byte *root_block, std::size_t &root_size) override;
 
-      virtual slot_id_t add_node (cubthread::entry *thread_p, const OID &key, const float *vector,
+      virtual slot_id_t add_node (algo_context_t<traits> &context, const OID &key, const float *vector,
 				  const level_t &level) override;
 
-      virtual pinned_t get_root (cubthread::entry *thread_p, lock_mode mode) override;
-      virtual pinned_t get_node_by_slot_id (cubthread::entry *thread_p, const slot_id_t &slot_id,
+      virtual pinned_t get_root (algo_context_t<traits> &context, lock_mode mode) override;
+      virtual pinned_t get_node_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot_id,
 					    const lock_mode &mode) override;
-      virtual pinned_t get_vector_by_slot_id (cubthread::entry *thread_p, const slot_id_t &slot_id,
+      virtual pinned_t get_vector_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot_id,
 					      const lock_mode &mode) override;
 
       // promote lockmode from shared to exclusive
@@ -99,14 +101,14 @@ namespace cubhnsw
 
     protected:
 
-      slot_id_t add_vector (cubthread::entry *thread_p, const OID &key, const float *vector);
+      slot_id_t add_vector (algo_context_t<traits> &context, const OID &key, const float *vector);
 
       // page alloc helpers
       static int initialize_new_page (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 
       int create_continous_file (THREAD_ENTRY *thread_p, VFID &vfid, VPID &vpid);
       PAGE_PTR alloc_new_page (cubthread::entry *thread_p, VFID &vfid, VPID &vpid);
-      page_handle get_page_to_insert (cubthread::entry *thread_p, VFID &vfid, VPID &last_vpid, std::size_t bytes);
+      page_handle get_page_to_insert (algo_context_t<traits> &context, VFID &vfid, VPID &last_vpid, std::size_t bytes);
 
     private:
       VFID m_vfid;

@@ -58,7 +58,7 @@ namespace cubhnsw
   }
 
   disk_storage::slot_id_t
-  disk_storage::add_vector (cubthread::entry *thread_p, const OID &key, const float *vector)
+  disk_storage::add_vector (algo_context_t<traits> &context, const OID &key, const float *vector)
   {
     std::size_t bytes = this->get_dimension () * sizeof (float);
 
@@ -68,13 +68,13 @@ namespace cubhnsw
 	return slot_id_t { -1, -1, -1 };
       }
 
-    page_handle page_ptr = get_page_to_insert (thread_p, m_vec_pool_vfid, m_last_vec_vpid, bytes);
+    page_handle page_ptr = get_page_to_insert (context, m_vec_pool_vfid, m_last_vec_vpid, bytes);
     assert (page_ptr.get() != nullptr);
 
     RECDES recdes = { IO_MAX_PAGE_SIZE, (int) bytes, REC_HOME, (char *) vector };
     PGSLOTID slot_id;
 
-    int error_code = spage_insert (thread_p, page_ptr.get(), &recdes, &slot_id);
+    int error_code = spage_insert (context.m_thread_p, page_ptr.get(), &recdes, &slot_id);
     if (error_code != SP_SUCCESS)
       {
 	assert (false);
@@ -85,10 +85,11 @@ namespace cubhnsw
   }
 
   disk_storage::page_handle
-  disk_storage::get_page_to_insert (cubthread::entry *thread_p, VFID &vfid, VPID &last_vpid, std::size_t bytes)
+  disk_storage::get_page_to_insert (algo_context_t<traits> &context, VFID &vfid, VPID &last_vpid, std::size_t bytes)
   {
     PAGE_PTR page_ptr = nullptr;
 
+    cubthread::entry *thread_p = context.m_thread_p;
     if (VPID_ISNULL (&last_vpid))
       {
 	// alloc a new page in case of root page
@@ -133,11 +134,11 @@ namespace cubhnsw
   }
 
   disk_storage::slot_id_t
-  disk_storage::add_node (cubthread::entry *thread_p, const OID &key, const float *vector, const level_t &level)
+  disk_storage::add_node (algo_context_t<traits> &context, const OID &key, const float *vector, const level_t &level)
   {
     // insert node
     std::size_t bytes = this->node_bytes_ (level, get_dimension(), get_connectivity());
-    page_handle page_ptr = get_page_to_insert (thread_p, m_vfid, m_last_node_vpid, bytes);
+    page_handle page_ptr = get_page_to_insert (context, m_vfid, m_last_node_vpid, bytes);
 
     RECDES recdes;
     char rec_buf[IO_MAX_PAGE_SIZE];
@@ -156,7 +157,7 @@ namespace cubhnsw
 
     PGSLOTID slot_id;
 
-    int error_code = spage_insert (thread_p, page_ptr.get(), &recdes, &slot_id);
+    int error_code = spage_insert (context.m_thread_p, page_ptr.get(), &recdes, &slot_id);
     if (error_code != SP_SUCCESS)
       {
 	ASSERT_ERROR ();
@@ -167,7 +168,7 @@ namespace cubhnsw
   }
 
   disk_storage::pinned_t
-  disk_storage::get_root (cubthread::entry *thread_p, lock_mode mode)
+  disk_storage::get_root (algo_context_t<traits> &context, lock_mode mode)
   {
     VPID root_vpid = m_root_vpid;
 
@@ -177,7 +178,7 @@ namespace cubhnsw
 	pgbuf_mode = PGBUF_LATCH_WRITE;
       }
 
-    PAGE_PTR root_page_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
+    PAGE_PTR root_page_ptr = pgbuf_fix (context.m_thread_p, &root_vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
     assert (root_page_ptr != nullptr);
 
     // TODO: hardcoded slot id 1
@@ -186,6 +187,7 @@ namespace cubhnsw
 
     OID oid = { root_vpid.pageid, 1, root_vpid.volid };
 
+    cubthread::entry *thread_p = context.m_thread_p;
     return make_pinned_block<disk_traits_t> (oid, (std::byte *) root_page_ptr + slotp->offset_to_record,
 	   slotp->record_length, mode,
 	   [this, root_page_ptr, thread_p] (auto& blk) noexcept
@@ -204,7 +206,7 @@ namespace cubhnsw
   }
 
   disk_storage::pinned_t
-  disk_storage::get_node_by_slot_id (cubthread::entry *thread_p, const slot_id_t &id, const lock_mode &mode)
+  disk_storage::get_node_by_slot_id (algo_context_t<traits> &context, const slot_id_t &id, const lock_mode &mode)
   {
     VPID vpid = { id.pageid, id.volid };
 
@@ -214,12 +216,18 @@ namespace cubhnsw
 	pgbuf_mode = PGBUF_LATCH_WRITE;
       }
 
-    PAGE_PTR node_page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
+    PAGE_PTR node_page_ptr = pgbuf_fix (context.m_thread_p, &vpid, OLD_PAGE, pgbuf_mode, PGBUF_UNCONDITIONAL_LATCH);
     assert (node_page_ptr != nullptr);
 
     SPAGE_SLOT *slotp = spage_get_slot (node_page_ptr, id.slotid);
     assert (slotp != nullptr);
 
+    if (context.m_is_perf_tracking)
+      {
+	context.m_visited_nodes++;
+      }
+
+    cubthread::entry *thread_p = context.m_thread_p;
     return make_pinned_block<disk_traits_t> (id, (std::byte *) node_page_ptr + slotp->offset_to_record,
 	   slotp->record_length, mode,
 	   [this, node_page_ptr, thread_p] (auto& blk) noexcept
@@ -239,10 +247,10 @@ namespace cubhnsw
   }
 
   disk_storage::pinned_t
-  disk_storage::get_vector_by_slot_id (cubthread::entry *thread_p, const slot_id_t &slot, const lock_mode &mode)
+  disk_storage::get_vector_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot, const lock_mode &mode)
   {
     // get node by slot id
-    return get_node_by_slot_id (thread_p, slot, lock_mode::shared);
+    return get_node_by_slot_id (context, slot, lock_mode::shared);
   }
 
   // promote lockmode from shared to exclusive
