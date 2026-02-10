@@ -71,6 +71,7 @@
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
+#include "trace_log.h"
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "scan_manager.h"
@@ -2178,6 +2179,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   er_clear ();
 
   event_log_init (db_name);
+  trace_log_init (db_name);
 
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
@@ -3870,6 +3872,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 #if defined(SERVER_MODE)
   css_free_accessible_ip_info ();
   event_log_final ();
+  trace_log_final ();
 #endif
 }
 
