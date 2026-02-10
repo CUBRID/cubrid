@@ -4267,14 +4267,12 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
 
       sort_param->tot_buffers = 8;
       new_internal_memory =
-	(char *) realloc (sort_param->internal_memory,
-			  (size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
+	(char *) realloc (sort_param->internal_memory, (size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
       if (new_internal_memory == NULL)
 	{
 	  sort_param->tot_buffers = 4;
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
-		  (size_t) (8 * DB_PAGESIZE));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (8 * DB_PAGESIZE));
 	  goto clear;
 	}
       sort_param->internal_memory = new_internal_memory;
