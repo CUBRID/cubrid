@@ -298,6 +298,10 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	  bind_len = 0;
 	  /* type = CCI_U_TYPE_BFILE; */
 	}
+      else if (memcmp (p, "BLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_BLOB;
+	}
       break;
 
     case 'C':
@@ -312,6 +316,10 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	  value_p = (char *) "";
 	  bind_len = 0;
 	  /* type = CCI_U_TYPE_CFILE; */
+	}
+      else if (memcmp (p, "CLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_CLOB;
 	}
       break;
 

@@ -2354,6 +2354,7 @@ _op_get_value_string (DB_VALUE * value)
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
+    case DB_TYPE_CLOB:
       db_string_p_tmp = db_get_string (value);
       if (db_string_p_tmp != NULL)
 	{
@@ -2362,6 +2363,7 @@ _op_get_value_string (DB_VALUE * value)
       break;
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+    case DB_TYPE_BLOB:
       size = ((db_get_string_length (value) + 3) / 4) + 4;
       db_string_p = (char *) malloc (size);
       if (db_string_p == NULL)
@@ -2558,6 +2560,14 @@ _op_get_set_value (DB_VALUE * val)
 
     case DB_TYPE_CFILE:
       snprintf (result, result_size, "%s%s%s", "CFILE'", return_result, "'");
+      break;
+
+    case DB_TYPE_BLOB:
+      snprintf (result, result_size, "%s%s%s", "BLOB'", return_result, "'");
+      break;
+
+    case DB_TYPE_CLOB:
+      snprintf (result, result_size, "%s%s%s", "CLOB'", return_result, "'");
       break;
 
     default:
