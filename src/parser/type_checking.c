@@ -2809,6 +2809,163 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_CLOB_LENGTH:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_CLOB;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_BLOB_LENGTH:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_BLOB;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_BIT_TO_BLOB:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BLOB;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CHAR_TO_CLOB:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_CLOB;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CHAR_TO_BLOB:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BLOB;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_BLOB_FROM_FILE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BLOB;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CLOB_FROM_FILE:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_CLOB;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_BLOB_TO_BIT:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_BLOB;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARBIT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CLOB_TO_CHAR:
+      num = 0;
+
+      /* one overload */
+
+      /* arg1 */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_CLOB;
+
+      /* arg2 */
+      sig.arg2_type.type = pt_arg_type::NORMAL;
+      sig.arg2_type.val.type = PT_TYPE_INTEGER;
+
+      /* return type */
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_INST_NUM:
     case PT_ROWNUM:
     case PT_ORDERBY_NUM:
@@ -6584,6 +6741,15 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CFILE_FROM_FILE:
     case PT_CFILE_LENGTH:
     case PT_CFILE_TO_CHAR:
+    case PT_BIT_TO_BLOB:
+    case PT_BLOB_FROM_FILE:
+    case PT_BLOB_LENGTH:
+    case PT_BLOB_TO_BIT:
+    case PT_CHAR_TO_BLOB:
+    case PT_CHAR_TO_CLOB:
+    case PT_CLOB_FROM_FILE:
+    case PT_CLOB_LENGTH:
+    case PT_CLOB_TO_CHAR:
     case PT_TYPEOF:
     case PT_INDEX_CARDINALITY:
     case PT_INCR:
@@ -8739,6 +8905,15 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_CFILE_FROM_FILE:
     case PT_CFILE_LENGTH:
     case PT_CFILE_TO_CHAR:
+    case PT_BIT_TO_BLOB:
+    case PT_BLOB_FROM_FILE:
+    case PT_BLOB_LENGTH:
+    case PT_BLOB_TO_BIT:
+    case PT_CHAR_TO_BLOB:
+    case PT_CHAR_TO_CLOB:
+    case PT_CLOB_FROM_FILE:
+    case PT_CLOB_LENGTH:
+    case PT_CLOB_TO_CHAR:
     case PT_TYPEOF:
     case PT_YEARF:
     case PT_MONTHF:
@@ -11270,6 +11445,14 @@ pt_common_type (PT_TYPE_ENUM arg1_type, PT_TYPE_ENUM arg2_type)
 	    }
 	  break;
 
+	case PT_TYPE_CLOB:
+	  common_type = PT_TYPE_NONE;
+	  break;
+
+	case PT_TYPE_BLOB:
+	  common_type = PT_TYPE_NONE;
+	  break;
+
 	default:
 	  common_type = PT_TYPE_NONE;
 	  break;
@@ -11892,6 +12075,64 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       break;
+
+    case PT_BIT_TO_BLOB:
+    case PT_CHAR_TO_BLOB:
+    case PT_BLOB_FROM_FILE:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_BLOB);
+      if (dt == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      break;
+
+    case PT_BLOB_LENGTH:
+    case PT_CLOB_LENGTH:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_BIGINT);
+      if (dt == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      break;
+
+    case PT_BLOB_TO_BIT:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
+      if (dt == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      break;
+    case PT_CLOB_TO_CHAR:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_VARCHAR);
+      if (dt == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (arg2 != NULL)
+	{
+	  assert (arg2->node_type == PT_VALUE);
+	  assert (arg2->type_enum == PT_TYPE_INTEGER);
+	  dt->info.data_type.units = arg2->info.value.data_value.i;
+	  dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (dt->info.data_type.units);
+	  do_detect_collation = false;
+	}
+      break;
+
+
+    case PT_CHAR_TO_CLOB:
+    case PT_CLOB_FROM_FILE:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_CLOB);
+      if (dt == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      break;
+
     case PT_LIST_DBS:
     case PT_TO_CHAR:
     case PT_USER:
@@ -16946,6 +17187,114 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
+    case PT_BIT_TO_BLOB:
+      error = db_bit_to_blob (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CHAR_TO_BLOB:
+      error = db_char_to_blob (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_BLOB_FROM_FILE:
+      error = db_blob_from_file (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_BLOB_TO_BIT:
+      error = db_blob_to_bit (arg1, arg2, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_BLOB_LENGTH:
+      error = db_blob_length (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CHAR_TO_CLOB:
+      error = db_char_to_clob (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CLOB_FROM_FILE:
+      error = db_clob_from_file (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CLOB_TO_CHAR:
+      error = db_clob_to_char (arg1, arg2, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CLOB_LENGTH:
+      error = db_clob_length (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
     case PT_TO_DATE:
       error = db_to_date (arg1, arg2, arg3, result);
       if (error < 0)
@@ -17930,9 +18279,11 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
     }
-  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BFILE || op == PT_CHAR_TO_BFILE
-	   || op == PT_BFILE_TO_BIT || op == PT_BFILE_LENGTH || op == PT_CHAR_TO_CFILE || op == PT_CFILE_TO_CHAR
-	   || op == PT_CFILE_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
+  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BFILE || op == PT_CHAR_TO_BFILE ||
+	   op == PT_BFILE_TO_BIT || op == PT_BFILE_LENGTH || op == PT_CHAR_TO_CFILE || op == PT_CFILE_TO_CHAR ||
+	   op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB ||
+	   op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR ||
+	   op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
     {
       goto end;
     }
@@ -18319,7 +18670,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
       domain = pt_xasl_node_to_domain (parser, expr);
 
       if (domain
-	  && (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)) || type1 == PT_TYPE_NULL || type2 == PT_TYPE_NULL))
+	  && (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)) || TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (domain))
+	      || type1 == PT_TYPE_NULL || type2 == PT_TYPE_NULL))
 	{
 	  if (opd3)		/* REPLACE */
 	    {
@@ -19371,6 +19723,7 @@ pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE **
     {
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
+    case PT_TYPE_CLOB:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       dt->info.data_type.units = (int) LANG_SYS_CODESET;
       dt->info.data_type.collation_id = LANG_SYS_COLLATION;
@@ -19385,6 +19738,7 @@ pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE **
 
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
+    case PT_TYPE_BLOB:
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
       dt->info.data_type.units = INTL_CODESET_RAW_BITS;
       break;
@@ -19631,7 +19985,6 @@ pt_coerce_value_internal (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 	  }
 
 	err = tp_value_cast (db_src, &db_dest, desired_domain, implicit_coercion);
-
 	switch (err)
 	  {
 	  case DOMAIN_INCOMPATIBLE:
@@ -22697,7 +23050,7 @@ coerce_arg:
 
   /* step 4: update collation of expression result */
 coerce_result:
-  if (op == PT_CHR || op == PT_CFILE_TO_CHAR)
+  if (op == PT_CHR || op == PT_CFILE_TO_CHAR || op == PT_CLOB_TO_CHAR)
     {
       /* for these operators, we don't want the arguments' collations to infere common collation, but special values of
        * arg2 */

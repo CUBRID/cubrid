@@ -1170,6 +1170,10 @@ qdump_data_type_string (DB_TYPE type)
       return "BFILE";
     case DB_TYPE_CFILE:
       return "CFILE";
+    case DB_TYPE_BLOB:
+      return "BLOB";
+    case DB_TYPE_CLOB:
+      return "CLOB";
     case DB_TYPE_TIME:
       return "TIME";
     case DB_TYPE_TIMESTAMP:

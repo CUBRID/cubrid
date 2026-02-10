@@ -642,6 +642,10 @@ get_cci_type (char *p)
 	{
 	  type = CCI_U_TYPE_NULL;
 	}
+      else if (memcmp (p, "BLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_BLOB;
+	}
       break;
 
     case 'C':
@@ -652,6 +656,10 @@ get_cci_type (char *p)
       else if (memcmp (p, "CFILE", 6) == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
+	}
+      else if (memcmp (p, "CLOB", 5) == 0)
+	{
+	  type = CCI_U_TYPE_CLOB;
 	}
       break;
 

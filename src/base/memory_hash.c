@@ -701,6 +701,17 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	case DB_TYPE_POINTER:
 	  hash = GET_PTR_FOR_HASH (db_get_pointer (val));
 	  break;
+
+	case DB_TYPE_BLOB:
+	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
+	  break;
+
+	case DB_TYPE_CLOB:
+	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+	  hash = mht_1str_pseudo_key (db_get_string (val), db_get_string_size (val));
+	  break;
+
 	case DB_TYPE_BFILE:
 	case DB_TYPE_CFILE:
 	case DB_TYPE_SUB:
@@ -2447,6 +2458,40 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 
 	    hashcode = mht_get_shiftmult32 (x, ht_size);
 	  }
+	  break;
+
+	case DB_TYPE_BLOB:
+	case DB_TYPE_CLOB:
+	  // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+	  ptr = db_get_string (val);
+	  if (ptr)
+	    {
+	      len = db_get_string_size (val);
+	      if (len < 0)
+		{
+		  len = (int) strlen (ptr);
+		}
+
+	      i = len;
+	      for (i--; 0 <= i && ptr[i]; i--)
+		{
+		  /* only the trailing ASCII space is ignored; the hashing for other characters depend on collation */
+		  if (ptr[i] != 0x20)
+		    {
+		      break;
+		    }
+		}
+	      i++;
+	    }
+	  if (!ptr || ptr[0] == 0 || i <= 0)
+	    {
+	      hashcode = 0;
+	    }
+	  else
+	    {
+	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, i);
+	      hashcode %= ht_size;
+	    }
 	  break;
 	case DB_TYPE_BFILE:
 	case DB_TYPE_CFILE:

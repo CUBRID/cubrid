@@ -58,8 +58,8 @@ catcls_add_data_type (struct db_object *class_mop)
     "NCHAR", "VARNCHAR", NULL /* RESULTSET */, NULL /* MIDXKEY */,
     NULL /* TABLE */,
     "BIGINT", "DATETIME",
-    "BFILE", "CFILE", "ENUM",
-    "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
+    "BFILE", "CFILE", "BLOB", "CLOB",
+    "ENUM", "TIMESTAMPTZ", "TIMESTAMPLTZ", "DATETIMETZ", "DATETIMELTZ",
     "JSON"
   };
 

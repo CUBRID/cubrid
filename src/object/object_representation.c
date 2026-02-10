@@ -2627,11 +2627,13 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
+	case DB_TYPE_CLOB:
 	  /* collation id */
 	  size += OR_INT_SIZE;
 	  [[fallthrough]];
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
+	case DB_TYPE_BLOB:
 	  /*
 	   * Hack, if the precision is -1, it is a special value indicating
 	   * either the maximum precision for the varying types or a floating
@@ -2650,7 +2652,9 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
 	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
-	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
+	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION)
+	      || (id == DB_TYPE_BLOB && d->precision == DB_MAX_LOB_PRECISION)
+	      || (id == DB_TYPE_CLOB && d->precision == DB_MAX_LOB_PRECISION))
 	    {
 	      precision = 0;
 	    }
@@ -2814,6 +2818,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	    }
 	  break;
 
+	case DB_TYPE_CLOB:
 	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CHAR:
@@ -2822,6 +2827,7 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	  [[fallthrough]];
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
+	case DB_TYPE_BLOB:
 	  carrier |= ((int) (d->codeset)) << OR_DOMAIN_CODSET_SHIFT;
 
 	  /*
@@ -2840,7 +2846,9 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	   */
 	  if ((id == DB_TYPE_VARCHAR && d->precision == DB_MAX_VARCHAR_PRECISION)
 	      || (id == DB_TYPE_VARNCHAR && d->precision == DB_MAX_VARNCHAR_PRECISION)
-	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION))
+	      || (id == DB_TYPE_VARBIT && d->precision == DB_MAX_VARBIT_PRECISION)
+	      || (id == DB_TYPE_CLOB && d->precision == DB_MAX_LOB_PRECISION)
+	      || (id == DB_TYPE_BLOB && d->precision == DB_MAX_LOB_PRECISION))
 	    {
 	      precision = 0;
 	    }
@@ -3452,6 +3460,46 @@ unpack_domain (OR_BUF * buf, int *is_null)
 	    case DB_TYPE_BFILE:
 	    case DB_TYPE_CFILE:
 	      dom = tp_domain_find_noparam (type, is_desc);
+	      break;
+
+	    case DB_TYPE_CLOB:
+	      collation_storage = or_get_int (buf, &rc);
+	      if (rc != NO_ERROR)
+		{
+		  goto error;
+		}
+	      collation_id = collation_storage & OR_DOMAIN_COLLATION_MASK;
+
+	      if ((collation_storage & OR_DOMAIN_COLL_ENFORCE_FLAG) == OR_DOMAIN_COLL_ENFORCE_FLAG)
+		{
+		  collation_flag = TP_DOMAIN_COLL_ENFORCE;
+		}
+	      else if ((collation_storage & OR_DOMAIN_COLL_LEAVE_FLAG) == OR_DOMAIN_COLL_LEAVE_FLAG)
+		{
+		  collation_flag = TP_DOMAIN_COLL_LEAVE;
+		}
+	      else
+		{
+		  collation_flag = TP_DOMAIN_COLL_NORMAL;
+		}
+	      [[fallthrough]];
+	    case DB_TYPE_BLOB:
+	      codeset = ((carrier & OR_DOMAIN_CODSET_MASK) >> OR_DOMAIN_CODSET_SHIFT);
+	      precision = ((carrier & OR_DOMAIN_PRECISION_MASK) >> OR_DOMAIN_PRECISION_SHIFT);
+	      /* do we have an extra precision word ? */
+	      if (precision == OR_DOMAIN_PRECISION_MAX)
+		{
+		  precision = or_get_int (buf, &rc);
+		  if (rc != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      if (precision == 0)
+		{
+		  precision = DB_MAX_VARBIT_PRECISION;
+		}
+	      dom = tp_domain_find_charbit (type, codeset, collation_id, collation_flag, precision, is_desc);
 	      break;
 
 	    case DB_TYPE_NUMERIC:

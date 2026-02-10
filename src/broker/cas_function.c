@@ -146,6 +146,8 @@ static const char *type_str_tbl[] = {
   "DATETIME",			/* CCI_U_TYPE_DATETIME */
   "BFILE",			/* CCI_U_TYPE_BFILE */
   "CFILE",			/* CCI_U_TYPE_CFILE */
+  "BLOB",			/* CCI_U_TYPE_BLOB */
+  "CLOB",			/* CCI_U_TYPE_CLOB */
   "ENUM",			/* CCI_U_TYPE_ENUM */
   "USHORT",			/* CCI_U_TYPE_USHORT */
   "UINT",			/* CCI_U_TYPE_UINT */
@@ -2545,6 +2547,45 @@ bind_value_print (char type, void *net_value, bool slow_log)
 	db_value_clear (&db_val);
       }
       break;
+    case CCI_U_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      {
+	char *str_val;
+	int val_size;
+	net_arg_get_str (&str_val, &val_size, net_value);
+	if (type != CCI_U_TYPE_NUMERIC)
+	  {
+	    write2_func ("(%d)", val_size);
+	    fwrite_func (str_val, val_size);
+	  }
+	else
+	  {
+	    fwrite_func (str_val, val_size - 1);
+	  }
+      }
+      break;
+    case CCI_U_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      {
+#if defined(CAS_FOR_CGW)
+	INTL_CODESET charset = INTL_CODESET_UTF8;
+#else
+	INTL_CODESET charset = CAS_SCHEMA_DEFAULT_CHARSET;
+#endif /* CAS_FOR_CGW */
+	char *str_val;
+	int val_size;
+	int num_chars = 0;
+
+	net_arg_get_str (&str_val, &val_size, net_value);
+	if (val_size > 0)
+	  {
+	    num_chars = intl_char_count ((const unsigned char *) str_val, val_size, charset, &num_chars) - 1;
+	  }
+	write2_func ("(%d)", num_chars);
+	fwrite_func (str_val, val_size - 1);
+      }
+      break;
+
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
     default:
       write2_func ("NULL");

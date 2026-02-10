@@ -560,7 +560,17 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
 	      /* UNKNOWN, maybe host variable */
 	      || result_info->attr_types[i] == DB_TYPE_NULL || result_info->attr_types[i] == DB_TYPE_VARIABLE
 	      || value_type == result_info->attr_types[i]
-	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i])));
+	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i]))
+	      || (TP_IS_BIT_TYPE (value_type) && TP_IS_BIT_TYPE (result_info->attr_types[i]))
+	      || (TP_IS_CHAR_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_CLOB))
+	      || (TP_IS_BIT_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_BLOB)));
+
+      //TODO : develop에 merge하기 전에 지우기
+      if ((TP_IS_CHAR_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_CLOB))
+	  || (TP_IS_BIT_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_BLOB)))
+	{
+	  assert_release (false);
+	}
 
       switch (value_type)
 	{

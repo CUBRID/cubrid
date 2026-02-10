@@ -539,6 +539,9 @@ extern "C"
 /* This constant defines the maximum length of a bit string that can be used as the value of an attribute. */
 #define DB_MAX_BIT_LENGTH 0x3fffffff
 
+/* This constant defines the maximum length of a LOB value that can be used as the value of an attribute. */
+#define DB_MAX_LOB_LENGTH 0x3fffffff
+
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION 38
 
@@ -568,6 +571,9 @@ extern "C"
 
 /* The maximum precision that can be specified for a BIT VARYING domain. */
 #define DB_MAX_VARBIT_PRECISION DB_MAX_BIT_PRECISION
+
+/* The maximum precision that can be specified for a LOB domain (applies to both CLOB and BLOB). */
+#define DB_MAX_LOB_PRECISION DB_MAX_LOB_LENGTH
 
 /* This constant indicates that the system defined default for determining the length of a string is to be used for a DB_VALUE. */
 #define DB_DEFAULT_STRING_LENGTH -1
@@ -728,12 +734,14 @@ extern "C"
     DB_TYPE_DATETIME = 32,
     DB_TYPE_BFILE = 33,
     DB_TYPE_CFILE = 34,
-    DB_TYPE_ENUMERATION = 35,
-    DB_TYPE_TIMESTAMPTZ = 36,
-    DB_TYPE_TIMESTAMPLTZ = 37,
-    DB_TYPE_DATETIMETZ = 38,
-    DB_TYPE_DATETIMELTZ = 39,
-    DB_TYPE_JSON = 40,
+    DB_TYPE_BLOB = 35,
+    DB_TYPE_CLOB = 36,
+    DB_TYPE_ENUMERATION = 37,
+    DB_TYPE_TIMESTAMPTZ = 38,
+    DB_TYPE_TIMESTAMPLTZ = 39,
+    DB_TYPE_DATETIMETZ = 40,
+    DB_TYPE_DATETIMELTZ = 41,
+    DB_TYPE_JSON = 42,
 
     /* aliases */
     DB_TYPE_LIST = DB_TYPE_SEQUENCE,
