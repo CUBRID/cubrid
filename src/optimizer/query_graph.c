@@ -1744,8 +1744,6 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   QO_TERM_MULTI_COL_SEGS (term) = NULL;	/* init */
   QO_TERM_MULTI_COL_CNT (term) = 0;	/* init */
   QO_TERM_PRED_ORDER (term) = pt_is_expr_node (conjunct) ? conjunct->info.expr.pred_order : 0;
-  QO_TERM_HEAD_KEY_NDV (term) = 0.0;
-  QO_TERM_TAIL_KEY_NDV (term) = 0.0;
 
   env->nterms++;
 
@@ -2707,29 +2705,10 @@ wrapup:
       if (QO_NODE_NCARD (QO_TERM_TAIL (term)) == 0)
 	{
 	  QO_TERM_SELECTIVITY (term) = 0.0;
-	  QO_TERM_HEAD_KEY_NDV (term) = 0.0;
-	  QO_TERM_TAIL_KEY_NDV (term) = 0.0;
 	}
       else
 	{
 	  QO_TERM_SELECTIVITY (term) = 1.0 / QO_NODE_NCARD (QO_TERM_TAIL (term));
-	  /* Store join key NDV for hit_prob: B's hit_prob = NDV(B.key)/NDV(A.key) */
-	  if (QO_TERM_SEG (term) != NULL && QO_TERM_OID_SEG (term) != NULL)
-	    {
-	      QO_ATTR_INFO *head_info = QO_SEG_INFO (QO_TERM_SEG (term));
-	      QO_ATTR_INFO *tail_info = QO_SEG_INFO (QO_TERM_OID_SEG (term));
-	      QO_TERM_HEAD_KEY_NDV (term) =
-		(head_info != NULL && head_info->ndv > 0) ? (double) head_info->ndv :
-		(double) QO_NODE_NCARD (QO_TERM_HEAD (term));
-	      QO_TERM_TAIL_KEY_NDV (term) =
-		(tail_info != NULL && tail_info->ndv > 0) ? (double) tail_info->ndv :
-		(double) QO_NODE_NCARD (QO_TERM_TAIL (term));
-	    }
-	  else
-	    {
-	      QO_TERM_HEAD_KEY_NDV (term) = (double) QO_NODE_NCARD (QO_TERM_HEAD (term));
-	      QO_TERM_TAIL_KEY_NDV (term) = (double) QO_NODE_NCARD (QO_TERM_TAIL (term));
-	    }
 	}
       break;
 
@@ -6072,8 +6051,6 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
   INT_PTR_EXCHANGE (t0->multi_col_segs, t1->multi_col_segs);
   INT_EXCHANGE (t0->multi_col_cnt, t1->multi_col_cnt);
   INT_EXCHANGE (t0->pred_order, t1->pred_order);
-  DOUBLE_EXCHANGE (t0->head_key_ndv, t1->head_key_ndv);
-  DOUBLE_EXCHANGE (t0->tail_key_ndv, t1->tail_key_ndv);
   /*
    * DON'T exchange the 'idx' values!
    */

@@ -710,13 +710,6 @@ struct qo_term
   int pred_order;
 
   /*
-   * Join key NDV for hit_prob: B's hit_prob = NDV(B.key)/NDV(A.key).
-   * Used when computing hit_prob in planner_visit_node (replacing fanout).
-   */
-  double head_key_ndv;
-  double tail_key_ndv;
-
-  /*
    * WARNING!!! WARNING!!! WARNING!!!
    *
    * If you add any more elements to this struct, be sure to update the
@@ -748,8 +741,6 @@ struct qo_term
 #define QO_TERM_MULTI_COL_SEGS(t)  (t)->multi_col_segs
 #define QO_TERM_MULTI_COL_CNT(t)   (t)->multi_col_cnt
 #define QO_TERM_PRED_ORDER(t)   (t)->pred_order
-#define QO_TERM_HEAD_KEY_NDV(t) (t)->head_key_ndv
-#define QO_TERM_TAIL_KEY_NDV(t) (t)->tail_key_ndv
 
 #define QO_TERM_EQUAL_OP             1	/* is equal op ? */
 #define QO_TERM_RANGELIST            2	/* is RANGE (r1, r2, ...) ? */

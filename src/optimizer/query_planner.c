@@ -1445,11 +1445,9 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
     ? plan->limit_nljoin_guessed_card : (plan->info)->cardinality;
 
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable, card);
-#if TEST_DUMP_PLAN_SCAN_COST
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f hit_prob %.5f", (int) howfar,
 	   ' ', "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
 	   (plan->info)->group_rows, (plan->info)->hit_prob);
-#endif
 }
 
 
@@ -7743,7 +7741,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
-      /* hit_prob: B's hit_prob = NDV(B.key)/NDV(A.key); formula is ratio only, no card */
       head_hit_prob = 1.0;
       tail_hit_prob = 1.0;
       if (IS_OUTER_JOIN_TYPE (join_type))
@@ -7778,35 +7775,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		{
 		  selectivity *= QO_TERM_SELECTIVITY (term);
 		  selectivity = MAX (1.0 / MAX (head_info->cardinality, tail_info->cardinality), selectivity);
-		  /* hit_prob: B's hit_prob = NDV(B.key)/NDV(A.key). Only use NDV ratio when term's head/tail
-		   * match current join: term's head on head side, term's tail is tail_node (or vice versa). */
-		  if (QO_TERM_HEAD_KEY_NDV (term) > 0 && QO_TERM_TAIL_KEY_NDV (term) > 0)
-		    {
-		      int term_head_idx = QO_NODE_IDX (QO_TERM_HEAD (term));
-		      int term_tail_idx = QO_NODE_IDX (QO_TERM_TAIL (term));
-		      int tail_node_idx = QO_NODE_IDX (tail_node);
-
-		      if (term_head_idx != tail_node_idx && term_tail_idx == tail_node_idx)
-			{
-			  /* term's head is on head side, term's tail is tail_node: use head_ndv/tail_ndv */
-			  head_hit_prob *= (QO_TERM_HEAD_KEY_NDV (term) / QO_TERM_TAIL_KEY_NDV (term));
-			  tail_hit_prob *= (QO_TERM_TAIL_KEY_NDV (term) / QO_TERM_HEAD_KEY_NDV (term));
-			}
-		      else if (term_head_idx == tail_node_idx && term_tail_idx != tail_node_idx)
-			{
-			  /* term's head is tail_node, term's tail is on head side: swap ratio */
-			  head_hit_prob *= (QO_TERM_TAIL_KEY_NDV (term) / QO_TERM_HEAD_KEY_NDV (term));
-			  tail_hit_prob *= (QO_TERM_HEAD_KEY_NDV (term) / QO_TERM_TAIL_KEY_NDV (term));
-			}
-		      else
-			{
-			  /* term does not connect head partition to tail_node (e.g. both in head); do nothing (* 1) */
-			}
-		    }
-		  else
-		    {
-		      /* NDV not available; do nothing for hit_prob (* 1) */
-		    }
+		  /* head_hit_prob, tail_hit_prob remain 1.0 */
 		}
 	    }
 	  cardinality *= selectivity;
