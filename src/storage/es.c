@@ -510,7 +510,8 @@ es_move_file_with_prefix (const char *src_path, const char *metaname, const char
   if (es_type == ES_POSIX)
     {
       memcpy (new_path, ES_POSIX_PATH_PREFIX, sizeof (ES_POSIX_PATH_PREFIX));
-      ret = xes_posix_move_file_with_prefix (ES_POSIX_PATH_POS (src_path), metaname, prefix, ES_POSIX_PATH_POS (new_path));
+      ret =
+	xes_posix_move_file_with_prefix (ES_POSIX_PATH_POS (src_path), metaname, prefix, ES_POSIX_PATH_POS (new_path));
       es_log ("es_copy_file: xes_posix_copy_file(%s) -> %s: %d\n", src_path, new_path, ret);
     }
   else
