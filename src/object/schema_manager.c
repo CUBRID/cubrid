@@ -15701,12 +15701,14 @@ int
 sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
+  HFID prev_hfid;
   SM_CLASS *class_ = NULL;
-  int error = NO_ERROR;
-  bool reuse_oid = false;
-  int partition_type = DB_NOT_PARTITIONED_CLASS;
   OID *oid = NULL;
   DB_OBJLIST *subs;
+  bool reuse_oid = false;
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  int attrid_arr[1];
+  int error = NO_ERROR;
 
   oid = ws_oid (class_mop);
   assert (!OID_ISTEMP (oid));
@@ -15717,7 +15719,8 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   if (error != NO_ERROR || class_ == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      error = er_errid ();
+      return error;
     }
 
   error = sm_partitioned_class_type (class_mop, &partition_type, NULL, NULL);
@@ -15742,11 +15745,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   insts_hfid = sm_ch_heap ((MOBJ) class_);
   assert (!HFID_IS_NULL (insts_hfid));
 
+  prev_hfid = *insts_hfid;
+
   /* Destroy the heap */
   error = heap_destroy_newly_created (insts_hfid, oid, true);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   HFID_SET_NULL (insts_hfid);
@@ -15755,19 +15760,34 @@ sm_truncate_using_destroy_heap (MOP class_mop)
   error = locator_flush_class (class_mop);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   /* Create a new heap */
   error = heap_create (insts_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
+    }
+
+  /* Destroy and Create the lob dir if need */
+  attrid_arr[0] = -1;
+  error = locator_lob_create_or_remove_dir (&prev_hfid, NULL, attrid_arr, 1);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
 
+end:
   return error;
 }
 
