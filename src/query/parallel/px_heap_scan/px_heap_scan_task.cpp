@@ -75,8 +75,7 @@ namespace parallel_heap_scan
     int level;
     xasl_node *xptr;
     ACCESS_SPEC_TYPE *spec_ptr;
-    bool iscan_oid_order = false;
-    bool mvcc_select_lock_needed = false;
+    bool fixed_scan = false;
 
     thread_ref.m_px_orig_thread_entry = m_parent_thread_p;
     thread_ref.conn_entry = m_parent_thread_p->conn_entry;
@@ -125,7 +124,6 @@ namespace parallel_heap_scan
 		    && qfile_is_sort_list_covered (xptr->after_iscan_list, xptr->orderby_list))
 		  {
 		    spec_ptr->grouped_scan = false;
-		    iscan_oid_order = false;
 		  }
 
 		if (specp->type == TARGET_LIST)
@@ -147,13 +145,17 @@ namespace parallel_heap_scan
 		  }
 		else if (specp->type == TARGET_CLASS)
 		  {
+		    if (xptr->scan_ptr == NULL)
+		      {
+			fixed_scan = true;
+		      }
 
 		    switch (specp->access)
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
 			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
-							S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
+							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 							&scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
 							specp->s.cls_node.cls_regu_list_rest, specp->s.cls_node.num_attrs_pred,
@@ -174,7 +176,7 @@ namespace parallel_heap_scan
 			specp->indexptr->btid = scan_info.btid;
 			err_code =
 				scan_open_index_scan (&thread_ref, &specp->s_id, false,
-						      S_SELECT, specp->s_id.fixed, specp->s_id.grouped,
+						      S_SELECT, fixed_scan, specp->s_id.grouped,
 						      specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
 						      specp->indexptr, &scan_info.oid, &scan_info.hfid, specp->s.cls_node.cls_regu_list_key,
 						      specp->where_key, specp->s.cls_node.cls_regu_list_pred, specp->where_pred,
