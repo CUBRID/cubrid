@@ -3355,29 +3355,31 @@ qo_nljoin_cost (QO_PLAN * planp)
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
       guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
     }
-  else if (outer->plan_type == QO_PLANTYPE_SCAN && QO_PLAN_HAS_LIMIT (planp))
+  else if (QO_PLAN_HAS_LIMIT (planp) && qo_can_apply_limit_card (planp->info->env))
     {
-      if (qo_can_apply_limit_card (planp->info->env))
+      if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
 	  guessed_result_cardinality =
 	    MAX (MIN (((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) / (outer->info)->hit_prob,
 		      (outer->info)->cardinality), 1.0);
 	}
+      else if (outer->plan_type == QO_PLANTYPE_JOIN)
+	{
+	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
+	}
       else
 	{
-	  guessed_result_cardinality = (outer->info)->cardinality;
+	  /* won't come here */
+          guessed_result_cardinality = (outer->info)->cardinality;
 	}
-    }
-  else if (outer->plan_type == QO_PLANTYPE_JOIN && QO_PLAN_HAS_LIMIT (planp) && outer->limit_nljoin_guessed_card > 0)
-    {
-      /* outer is already an NL join with limit; use its guessed cardinality (3+ tables) */
-      guessed_result_cardinality = outer->limit_nljoin_guessed_card;
+      /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
+      planp->limit_nljoin_guessed_card = guessed_result_cardinality * ((planp->info)->cardinality / (outer->info)->cardinality);
     }
   else
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
-  planp->limit_nljoin_guessed_card = guessed_result_cardinality;
+  guessed_result_cardinality = MAX (1.0, guessed_result_cardinality);
   inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
 
   /* inner side IO cost of nested-loop block join */
