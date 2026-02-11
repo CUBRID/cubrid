@@ -393,24 +393,24 @@ elo_move_with_prefix (DB_ELO * elo, const char *prefix, DB_ELO * dest)
     {
       ret = es_rename_file (elo->locator, elo->meta_data, rename_uri);
       if (ret != NO_ERROR)
-        {
-          goto error_return;
-        }
+	{
+	  goto error_return;
+	}
 
       es_move_file_with_prefix (rename_uri, elo->meta_data, prefix, out_uri);
       locator = db_private_strdup (NULL, out_uri);
       if (locator == NULL)
-        {
-          assert (er_errid () != NO_ERROR);
-          ret = er_errid ();
-          goto error_return;
-        }
+	{
+	  assert (er_errid () != NO_ERROR);
+	  ret = er_errid ();
+	  goto error_return;
+	}
 
       ret = lob_locator_change_state (elo->locator, locator, LOB_PERMANENT_CREATED);
       if (ret != NO_ERROR)
-        {
-          goto error_return;
-        }
+	{
+	  goto error_return;
+	}
     }
   else
     {
