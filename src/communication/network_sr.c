@@ -339,6 +339,15 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sfile_apply_tde_to_class_files;
 
+  /* lob */
+  req_p = &net_Requests[NET_SERVER_LOB_CREATE_DIR];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slob_create_dir;
+
+  req_p = &net_Requests[NET_SERVER_LOB_REMOVE_DIR];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = slob_remove_dir;
+
   /* tde */
   req_p = &net_Requests[NET_SERVER_TDE_IS_LOADED];
   req_p->processing_function = stde_is_loaded;

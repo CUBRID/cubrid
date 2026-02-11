@@ -51,7 +51,6 @@
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
-static int rv;
 #endif
 
 #if !defined (NDEBUG)
@@ -149,9 +148,7 @@ area_create (const char *name, size_t element_size, size_t alloc_count)
 {
   AREA *area;
   size_t adjust;
-#if defined (SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   area = (AREA *) malloc (sizeof (AREA));
   if (area == NULL)
@@ -249,9 +246,7 @@ void
 area_destroy (AREA * area)
 {
   AREA *a, *prev;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   assert (area != NULL);
 
@@ -365,9 +360,8 @@ area_alloc (AREA * area)
   AREA_BLOCK *block, *hint_block;
   int used_count, i, entry_idx;
   char *entry_ptr;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
+
 #if !defined (NDEBUG)
   int *prefix;
 #endif /* !NDEBUG */
@@ -855,9 +849,7 @@ void
 area_dump (FILE * fp)
 {
   AREA *area;
-#if defined(SERVER_MODE)
   int rv;
-#endif /* SERVER_MODE */
 
   if (fp == NULL)
     {
