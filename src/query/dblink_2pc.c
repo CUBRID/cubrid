@@ -221,6 +221,13 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
   err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
   (void) cci_disconnect (conn_handle, &err_buf);
 
-  return err;
+  if (err == CCI_ER_NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err);
+
+  return ER_DBLINK;
 }
 #endif
