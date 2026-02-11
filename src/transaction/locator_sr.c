@@ -8088,16 +8088,20 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+	  if (heap_recdes_contains_oos (recdes))
 	    {
-	      error_code = repl_log_insert (thread_p,
-					    class_oid,
-					    &thread_p->oos_oids[i],
-					    LOG_REPLICATION_DATA,
-					    RVREPL_OOS_INSERT, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
-	    }
+	      // insert oos replication log
+	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+		{
+		  error_code = repl_log_insert (thread_p,
+						class_oid,
+						&thread_p->oos_oids[i],
+						LOG_REPLICATION_DATA,
+						RVREPL_OOS_INSERT, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
+		}
 
-	  thread_p->oos_oids.clear ();
+	      thread_p->oos_oids.clear ();
+	    }
 
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
