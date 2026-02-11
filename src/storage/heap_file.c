@@ -1270,8 +1270,7 @@ heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_pt
       else
 	{
 	  assert (scan_cache->page_latch > NULL_LOCK);
-	  page_lock = lock_Conv[scan_cache->page_latch][lock];
-	  assert (page_lock != NA_LOCK);
+	  page_lock = lock_conv (scan_cache->page_latch, lock);
 	}
     }
   else
