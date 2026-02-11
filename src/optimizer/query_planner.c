@@ -3355,7 +3355,7 @@ qo_nljoin_cost (QO_PLAN * planp)
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
       guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
     }
-  else if (QO_PLAN_HAS_LIMIT (planp) && qo_can_apply_limit_card (planp->info->env))
+  else if (QO_PLAN_HAS_LIMIT (planp) && planp->info->planner->can_apply_limit_card)
     {
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
@@ -7080,6 +7080,7 @@ qo_alloc_planner (QO_ENV * env)
   planner->info_list = NULL;
 
   planner->cleanup_needed = true;
+  planner->can_apply_limit_card = qo_can_apply_limit_card (env);
 
   return planner;
 }

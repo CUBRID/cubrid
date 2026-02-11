@@ -414,6 +414,9 @@ struct qo_planner
    * control flow takes an unexpected longjmp.
    */
   int cleanup_needed;
+
+  /* Cached result of qo_can_apply_limit_card(env); set once in qo_alloc_planner */
+  bool can_apply_limit_card;
 };
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
