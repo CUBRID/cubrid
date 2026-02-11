@@ -47,7 +47,6 @@
 #include "filter_pred_cache.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
-#include "oos_oid_queue.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
@@ -5301,7 +5300,7 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       goto err;
     }
 
-  error_code = oos_oid_queue_push (oos_oid);
+  oos_push_oos_oid (thread_p, &oos_oid);
 
 err:
   return error_code;
@@ -6982,6 +6981,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
 
+  assert (thread_p->oos_oids.size () == 0);	//heexoo_test
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
@@ -8088,6 +8088,17 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
+	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+	    {
+	      error_code = repl_log_insert (thread_p,
+					    class_oid,
+					    &thread_p->oos_oids[i],
+					    LOG_REPLICATION_DATA,
+					    RVREPL_OOS_INSERT, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
+	    }
+
+	  thread_p->oos_oids.clear ();
+
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
@@ -13992,10 +14003,15 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
   HEAP_CACHE_ATTRINFO attr_info;
   OR_CLASSREP *classrep = NULL;
   OR_ATTRIBUTE *attrepr = NULL;
+  OID oos_oid = oid_Null_oid;
+  OR_BUF buf = { NULL, NULL, NULL, NULL };
   char *oid_ptr = NULL;
   int offset_size = 0;
   int offset = 0;
+  int oos_oid_count = 0;
   int error = NO_ERROR;
+
+  assert (thread_p->oos_oids.size () > 0);
 
   error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
   if (error != NO_ERROR)
@@ -14004,6 +14020,7 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
     }
 
   classrep = attr_info.last_classrepr;
+  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
 
   for (int i = 0; i < classrep->n_attributes; i++)
     {
@@ -14019,7 +14036,6 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  continue;
 	}
 
-      offset_size = OR_GET_OFFSET_SIZE (recdes->data);
       offset = 0;
 
       switch (offset_size)
@@ -14045,21 +14061,20 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  continue;
 	}
 
+      oos_oid = thread_p->oos_oids[oos_oid_count];
       oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
 
-      OID new_oid;
-      if (!oos_oid_queue_pop (&new_oid))
-	{
-	  error = ER_FAILED;
-	  goto end;
-	}
-
-      OR_BUF buf;
-      buf.buffer = (char *) recdes->data;
       buf.ptr = oid_ptr;
       buf.endptr = (char *) recdes->data + recdes->length;
 
-      or_put_oid (&buf, &new_oid);
+      or_put_oid (&buf, &oos_oid);
+
+      oos_oid_count++;
+
+      if (oos_oid_count >= (int) thread_p->oos_oids.size ())
+	{
+	  goto end;
+	}
     }
 
 end:

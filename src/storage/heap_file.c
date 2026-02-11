@@ -12297,12 +12297,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	      return S_ERROR;
 	    }
 
-	  // TODO : Add a way to determine whether it is a replication target
-	  // TODO: Find a way to obtain the Replication Key at this point, or change where repl_log_insert is called.
-	  //       For now, since this is a POC, an arbitrary value is temporarily passed as a dbvalue.
-	  repl_log_insert (thread_p, &attr_info->class_oid, &oos_oid, LOG_REPLICATION_DATA, RVREPL_OOS_INSERT,
-			   &attr_info->values[i].dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
-
+	  thread_p->oos_oids.push_back (oos_oid);	// for replication log
 	  (*oos_oids)[i] = oos_oid;
 	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
 	    {

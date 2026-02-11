@@ -666,6 +666,12 @@ oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   return NO_ERROR;
 }
 
+void
+oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
+{
+  thread_p->oos_oids.push_back (*oid);
+}
+
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 int
 bridge_oos_get_max_chunk_size_within_page ()

@@ -38,3 +38,15 @@ extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
+
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+extern void oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid);
+
+#ifdef __cplusplus
+}
+#endif
