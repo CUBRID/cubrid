@@ -468,7 +468,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     default:
-      assert (false);
       break;
     }
   tdes->cur_repl_record++;
