@@ -310,7 +310,7 @@ namespace cubthread
 
       bool m_skip_end_resource_tracks_in_recycle;
 
-      std::vector<OID> oos_oids;  /* out-of-space OID list */
+      std::vector<OID> oos_oids;
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
