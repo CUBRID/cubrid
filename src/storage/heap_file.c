@@ -7926,6 +7926,10 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 {
   using namespace oos_log;
 
+  // HOTFIX!
+  // todo: this function is buggy. by doing this, we give up unloaddb.
+  return S_SUCCESS;
+
   if (!heap_recdes_contains_oos (context->recdes_p))
     {
       return S_SUCCESS;
