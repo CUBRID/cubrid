@@ -700,7 +700,8 @@ static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * a
 					RECDES * raw);
 static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					   RECDES * raw, bool * is_oos);
-static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
+static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
+						bool is_oos);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
@@ -10647,7 +10648,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *
  */
 static int
-heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw)
+heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw, bool is_oos)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -10680,7 +10681,7 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
       pr_type = pr_type_from_id (attrepr->type);
       if (pr_type)
 	{
-	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, false, NULL, 0);
+	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, is_oos, NULL, 0);
 	}
       value->state = HEAP_READ_ATTRVALUE;
       if (rv != NO_ERROR)
@@ -10750,7 +10751,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw);
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, is_oos);
+  // TODO: heap_attrvalue_transform_to_dbvalue() used to PEEK &raw when creating value (dbvalue),
+  // but oos_insert() makes &raw point to newly allocated memory.
+  // Thus,
+  // 1) we need to free &raw only when is_oos is true.
+  // 2) we need to create dbvalue with mr_data_readval...(...COPY).
+  // This can be refactored later when dbvalue supports zero-copy to OOS data.
+  // oos_insert(OID) must be refactored to oos_read(PAGE_PTR, slotid, PEEK/COPY) and allow PEEK mode.
   if (is_oos)
     {
       recdes_free_data_area (&raw);
