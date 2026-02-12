@@ -313,7 +313,6 @@
 #define pthread_mutex_destroy(a)
 #define pthread_mutex_lock(a)	0
 #define pthread_mutex_unlock(a)
-static int rv;
 #endif
 
 /* User input states when requesting relocation of a (backup) volume. */
