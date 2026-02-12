@@ -6982,6 +6982,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   int has_index;
 
   assert (thread_p->oos_oids.size () == 0);	//heexoo_test
+  thread_p->oos_oids.clear ();
+
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
@@ -7131,6 +7133,11 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
 	}
       pr_clear_value (&key_value);
+
+      if (obj->operation != LC_FLUSH_INSERT_OOS)
+	{
+	  thread_p->oos_oids.clear ();
+	}
     }
 
   if (force_scancache != NULL)
@@ -8099,8 +8106,6 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 						LOG_REPLICATION_DATA,
 						RVREPL_OOS_INSERT, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
 		}
-
-	      thread_p->oos_oids.clear ();
 	    }
 
 	  error_code =
