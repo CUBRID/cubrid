@@ -11510,3 +11510,93 @@ stdes_reset_query_start_info (THREAD_ENTRY * thread_p, unsigned int rid, char *r
 
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, NULL, 0, NULL, 0);
 }
+
+/*
+ * slob_create_dir - Called when a request is sent from the client to the server.
+ *                   Invokes xlob_create_dir() to create the LOB directory
+ *
+ *   thread_p(in): the thread pointer
+ *   rid(in): the request id
+ *   request(in): the request
+ *   reqlen(in): the request length
+ */
+void
+slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  HFID hfid;
+  int *attrid_arr = NULL;
+  int attrid_arr_length = 0;
+  int error = NO_ERROR;
+
+  ptr = or_unpack_hfid (request, &hfid);
+  ptr = or_unpack_int (ptr, &attrid_arr_length);
+  if (ptr == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  ptr = or_unpack_int_array (ptr, attrid_arr_length, &attrid_arr);
+  if (ptr == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  error = xlob_create_dir (thread_p, &hfid, attrid_arr, attrid_arr_length);
+
+end:
+  db_private_free_and_init (thread_p, attrid_arr);
+
+  ptr = or_pack_errcode (reply, error);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  return;
+}
+
+/*
+ * slob_remove_dir - Called when a request is sent from the client to the server.
+ *                   Invokes xlob_remove_dir() to remove the LOB directory
+ *
+ *   thread_p(in): the thread pointer
+ *   rid(in): the request id
+ *   request(in): the request
+ *   reqlen(in): the request length
+ */
+void
+slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  HFID hfid;
+  int attrid;
+  int error = NO_ERROR;
+
+  ptr = or_unpack_hfid (request, &hfid);
+  assert (ptr != NULL);
+
+  ptr = or_unpack_int (ptr, &attrid);
+  if (ptr == NULL)
+    {
+      goto error_end;
+    }
+
+  error = xlob_remove_dir (thread_p, &hfid, attrid);
+  if (error != NO_ERROR)
+    {
+      goto error_end;
+    }
+
+  ptr = or_pack_errcode (reply, error);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  return;
+
+error_end:
+  (void) return_error_to_client (thread_p, rid);
+  return;
+}
