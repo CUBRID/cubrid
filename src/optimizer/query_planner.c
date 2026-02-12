@@ -1447,9 +1447,12 @@ qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
     ? plan->limit_nljoin_guessed_card : (plan->info)->cardinality;
 
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f card %.0f", (int) howfar, ' ', "cost:", fixed + variable, card);
+
+#if TEST_DUMP_PLAN_SCAN_COST
   fprintf (f, "\n" INDENTED_TITLE_FMT "%.0f expected %.0f scan %.0f total %.0f group %.0f hit_prob %.5f", (int) howfar,
 	   ' ', "cost:", fixed + variable, (plan->info)->cardinality, (plan->info)->scan_rows, (plan->info)->total_rows,
 	   (plan->info)->group_rows, (plan->info)->hit_prob);
+#endif /* TEST_DUMP_PLAN_SCAN_COST */
 }
 
 
