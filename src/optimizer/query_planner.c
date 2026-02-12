@@ -3362,16 +3362,16 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
-                planp->limit_nljoin_guessed_card = guessed_result_cardinality =
+	  planp->limit_nljoin_guessed_card = guessed_result_cardinality =
 	    MAX (MIN (((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) / (outer->info)->hit_prob,
 		      (outer->info)->cardinality), 1.0);
 	}
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
 	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
-          /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
-      planp->limit_nljoin_guessed_card =
-      guessed_result_cardinality * ((planp->info)->cardinality / (outer->info)->cardinality);
+	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
+	  planp->limit_nljoin_guessed_card =
+	    guessed_result_cardinality * ((planp->info)->cardinality / (outer->info)->cardinality);
 	}
       else
 	{
