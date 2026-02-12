@@ -428,7 +428,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   switch (rcvindex)
     {
     case RVREPL_DATA_INSERT:
-    case RVREPL_OOS_INSERT:
       if (!LSA_ISNULL (&tdes->repl_insert_lsa))
 	{
 	  LSA_COPY (&repl_rec->lsa, &tdes->repl_insert_lsa);
@@ -455,6 +454,17 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       else
 	{
 	  LSA_COPY (&repl_rec->lsa, &tdes->tail_lsa);
+	}
+      break;
+    case RVREPL_OOS_INSERT:
+      if (!tdes->oos_insert_lsa_queue.is_empty ())
+	{
+	  LOG_LSA oos_lsa = tdes->oos_insert_lsa_queue.pop ();
+	  LSA_COPY (&repl_rec->lsa, &oos_lsa);
+	}
+      else
+	{
+	  assert (false);
 	}
       break;
     default:
