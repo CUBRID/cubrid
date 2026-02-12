@@ -195,6 +195,8 @@ static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static void qo_dump_info (QO_INFO *, FILE *);
 static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
 
+static void qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
+				  double *out_head_factor, double *out_tail_factor);
 static void planner_visit_node (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NODE *, QO_NODE *, BITSET *, BITSET *,
 				BITSET *, BITSET *, BITSET *, BITSET *, BITSET *, int);
 static double planner_nodeset_join_cost (QO_PLANNER *, BITSET *);
@@ -3368,10 +3370,11 @@ qo_nljoin_cost (QO_PLAN * planp)
       else
 	{
 	  /* won't come here */
-          guessed_result_cardinality = (outer->info)->cardinality;
+	  guessed_result_cardinality = (outer->info)->cardinality;
 	}
       /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
-      planp->limit_nljoin_guessed_card = guessed_result_cardinality * ((planp->info)->cardinality / (outer->info)->cardinality);
+      planp->limit_nljoin_guessed_card =
+	guessed_result_cardinality * ((planp->info)->cardinality / (outer->info)->cardinality);
     }
   else
     {
@@ -7197,6 +7200,74 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
  *   remaining_subqueries(in):
  *   num_path_inner(in):
  */
+/*
+ * qo_get_term_hit_prob () -
+ *
+ * hit_prob = min(1, ndv(tail) / ndv(head))
+ *
+ * Although filters may reduce data, NDV cannot be adjusted
+ * accurately. To avoid biased estimation, we conservatively
+ * assume the original NDV relationship is maintained.
+ */
+static void
+qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
+		      double *out_head_factor, double *out_tail_factor)
+{
+  const BITSET *term_segs = (const BITSET *) &(term->segments);
+  BITSET_ITERATOR seg_iter;
+  int seg_idx;
+  QO_SEGMENT *head_seg = NULL, *tail_seg = NULL;
+  INT64 head_ndv = 1, tail_ndv = 1;
+
+  *out_head_factor = 1.0;
+  *out_tail_factor = 1.0;
+  if (bitset_cardinality (term_segs) != 2)
+    {
+      return;
+    }
+
+  for (seg_idx = bitset_iterate (term_segs, &seg_iter); seg_idx != -1; seg_idx = bitset_next_member (&seg_iter))
+    {
+      QO_SEGMENT *seg = QO_ENV_SEG (env, seg_idx);
+      QO_NODE *node = QO_SEG_HEAD (seg);
+      int node_idx = QO_NODE_IDX (node);
+
+      if (BITSET_MEMBER (head_info->nodes, node_idx))
+	{
+	  head_seg = seg;
+	}
+      else if (BITSET_MEMBER (tail_info->nodes, node_idx))
+	{
+	  tail_seg = seg;
+	}
+    }
+  if (head_seg == NULL || tail_seg == NULL)
+    {
+      return;
+    }
+
+  if (QO_SEG_INFO (head_seg) != NULL && QO_SEG_INFO (head_seg)->ndv > 0)
+    {
+      head_ndv = QO_SEG_INFO (head_seg)->ndv;
+    }
+  else
+    {
+      return;
+    }
+
+  if (QO_SEG_INFO (tail_seg) != NULL && QO_SEG_INFO (tail_seg)->ndv > 0)
+    {
+      tail_ndv = QO_SEG_INFO (tail_seg)->ndv;
+    }
+  else
+    {
+      return;
+    }
+
+  *out_head_factor = MIN (1.0, (double) tail_ndv / (double) head_ndv);
+  *out_tail_factor = MIN (1.0, (double) head_ndv / (double) tail_ndv);
+}
+
 static void
 planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM hint, QO_NODE * head_node,
 		    QO_NODE * tail_node, BITSET * visited_nodes, BITSET * visited_rel_nodes, BITSET * visited_terms,
@@ -7775,7 +7846,11 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		{
 		  selectivity *= QO_TERM_SELECTIVITY (term);
 		  selectivity = MAX (1.0 / MAX (head_info->cardinality, tail_info->cardinality), selectivity);
-		  /* head_hit_prob, tail_hit_prob remain 1.0 */
+
+		  double head_factor, tail_factor;
+		  qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+		  head_hit_prob *= head_factor;
+		  tail_hit_prob *= tail_factor;
 		}
 	    }
 	  cardinality *= selectivity;
