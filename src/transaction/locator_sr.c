@@ -14089,7 +14089,7 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  continue;
 	}
 
-      assert (oos_oid_count < thread_p->oos_oids.size ());
+      assert (oos_oid_count < (int) thread_p->oos_oids.size ());
       oos_oid = thread_p->oos_oids[oos_oid_count];
       oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
 
