@@ -8890,6 +8890,19 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
 
+	  if (heap_recdes_contains_oos (new_recdes))
+	    {
+	      // insert oos replication log
+	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+		{
+		  error_code = repl_log_insert (thread_p,
+						class_oid,
+						&thread_p->oos_oids[i],
+						LOG_REPLICATION_DATA,
+						RVREPL_OOS_INSERT, new_key, REPL_INFO_TYPE_RBR_NORMAL);
+		}
+	    }
+
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
@@ -8900,6 +8913,19 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
       else
 	{
+	  if (heap_recdes_contains_oos (new_recdes))
+	    {
+	      // insert oos replication log
+	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+		{
+		  error_code = repl_log_insert (thread_p,
+						class_oid,
+						&thread_p->oos_oids[i],
+						LOG_REPLICATION_DATA,
+						RVREPL_OOS_INSERT, new_key, REPL_INFO_TYPE_RBR_NORMAL);
+		}
+	    }
+
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
