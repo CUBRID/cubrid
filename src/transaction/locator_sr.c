@@ -5275,6 +5275,8 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
   HFID oos_hfid = HFID_INITIALIZER;
   VFID oos_vfid = VFID_INITIALIZER;
   OID oos_oid = OID_INITIALIZER;
+  LOG_TDES *tdes = NULL;
+  int tran_index = 0;
 
   if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
     {
@@ -5287,6 +5289,19 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       error_code = S_ERROR;
       goto err;
     }
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return S_ERROR;
+    }
+
+  /* init oos tracking info */
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.clear ();
 
   /* The recdes data from the log includes the OOS record header. Since oos_insert adds its own header,
    * we must skip the existing header to avoid duplication. */
