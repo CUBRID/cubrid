@@ -98,7 +98,7 @@ static int sp_builtin_init ()
   db_sys_datetime (&current_datetime);
 
   // common
-  v.lang = SP_LANG_PLCSQL;
+  v.lang = SP_LANG_JAVA;
   v.is_system_generated = true;
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
   v.owner = Au_public_user;
