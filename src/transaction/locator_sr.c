@@ -8105,6 +8105,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 						&thread_p->oos_oids[i],
 						LOG_REPLICATION_DATA,
 						RVREPL_OOS_INSERT, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
+		  if (error_code != NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      goto error;
+		    }
 		}
 	    }
 
@@ -14070,6 +14075,7 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
 	  continue;
 	}
 
+      assert (oos_oid_count < thread_p->oos_oids.size ());
       oos_oid = thread_p->oos_oids[oos_oid_count];
       oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
 
