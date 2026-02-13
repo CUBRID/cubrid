@@ -77,11 +77,19 @@ public class TypeNumeric extends Type {
     // ---------------------------------------------------------------------------
 
     private static String getPlcName(int precision, short scale) {
-        return String.format("Numeric(%d, %d)", precision, scale);
+        if (precision == NumericValue.DB_DEFAULT_NUMERIC_PRECISION) {
+            return "Numeric";
+        } else {
+            return String.format("Numeric(%d, %d)", precision, scale);
+        }
     }
 
     private static String getTypicalValueStr(int precision, short scale) {
-        return String.format("cast(0.1 as numeric(%d, %d))", precision, scale);
+        if (precision == NumericValue.DB_DEFAULT_NUMERIC_PRECISION) {
+            return "cast(0.1 as numeric)";
+        } else {
+            return String.format("cast(0.1 as numeric(%d, %d))", precision, scale);
+        }
     }
 
     private TypeNumeric(int precision, short scale) {

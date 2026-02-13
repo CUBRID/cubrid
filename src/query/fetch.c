@@ -21,7 +21,6 @@
  * fetch.c - Object/Tuple value fetch routines
  */
 
-#include "numeric_opfunc.h"
 #ident "$Id$"
 
 #include "config.h"

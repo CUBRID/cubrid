@@ -125,9 +125,24 @@ static double numeric_Pow_of_10[10] = {
   1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
 };
 
+/*
+ * this LUT is a lookup table that converts precision to a byte count
+ * for fast value storage.
+ * it stores values for precision 1 through 40 (precision 0 is 0).
+ *
+ * the original formula, ceil(precision / log10(256)), can cause an issue at
+ * 7, 12, 19, 24, and 36 bytes, where the most significant bit of the highest
+ * byte becomes 1 and may be misinterpreted as a sign bit.
+ *
+ * to prevent this, the formula is modified as shown below to add one extra
+ * byte when the sign bit could be set, enabling safe reading and writing
+ * of values.
+ *
+ * modified formula: ceil((precision / log10(256) + 1) / 8)
+ */
 const int _gv_numeric_precision_to_bytes_lookup[DB_MAX_NUMERIC_PRECISION + 1] = {
-  0, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 13, 14, 14,
-  15, 15, 15, 16, 16, 17, 17
+  0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5, 5, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14,
+  15, 15, 16, 16, 16, 17, 17
 };
 
 /* precomputed lookup table for 10^1 through 10^16 */
@@ -2932,8 +2947,8 @@ numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* Perform the multiplication */
   numeric_mul (db_locate_numeric (dbv1), db_locate_numeric (dbv2), &positive_ans, temp);
   /* Check for overflow.  Reset precision & scale if necessary */
-  prec = DB_VALUE_PRECISION (dbv1) + DB_VALUE_PRECISION (dbv2) + 1;
-  scale = DB_VALUE_SCALE (dbv1) + DB_VALUE_SCALE (dbv2);
+  prec = db_get_numeric_precision (dbv1, NULL) + db_get_numeric_precision (dbv2, NULL) + 1;
+  scale = db_get_numeric_scale (dbv1, NULL) + db_get_numeric_scale (dbv2, NULL);
   ret = numeric_get_msb_for_dec (prec, scale, temp, &prec, &scale, result);
   if (ret != NO_ERROR)
     {
@@ -3143,8 +3158,8 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
   /* In order to maintain the proper number of scaling in the output, find the maximum scale of the two args and make
    * sure that the scale of dbv1 exceeds the scale of dbv2 by that amount. */
   numeric_shortnum_to_longnum (long_dbv1_copy, db_locate_numeric (dbv1));
-  scale1 = DB_VALUE_SCALE (dbv1);
-  scale2 = DB_VALUE_SCALE (dbv2);
+  scale1 = db_get_numeric_scale (dbv1, NULL);
+  scale2 = db_get_numeric_scale (dbv2, NULL);
   max_scale = MAX (scale1, scale2);
   if (scale2 > 0)
     {
@@ -3160,7 +3175,7 @@ numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * a
    * Update the domain information of the answer. Check to see if precision
    * needs to be updated due to carry
    */
-  prec = DB_VALUE_PRECISION (dbv1) + scaleup;
+  prec = db_get_numeric_precision (dbv1, NULL) + scaleup;
   scale = max_scale;
   if (prec > DB_MAX_NUMERIC_PRECISION)
     {
