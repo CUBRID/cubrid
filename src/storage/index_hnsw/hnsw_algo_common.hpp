@@ -75,7 +75,7 @@ namespace cubhnsw
   {
     inline bool operator() (const OID &a, const OID &b) const noexcept
     {
-      return memcmp (&a, &b, sizeof (OID)) == 0;
+      return a.pageid == b.pageid && a.slotid == b.slotid && a.volid == b.volid;
     }
   };
 
