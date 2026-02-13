@@ -239,6 +239,9 @@ struct qo_plan
 
 #define NPLANS		4	/* Maximum number of plans to keep in a PlanVec */
 #define QO_PLAN_HAS_LIMIT(plan) (plan && plan->info && plan->info->env && \
+        PT_IS_SELECT (plan->info->env->pt_tree) && \
+        ( plan->info->env->pt_tree->info.query.limit != NULL || plan->info->env->pt_tree->info.query.orderby_for != NULL))
+#define QO_PLAN_HAS_CONSTANT_LIMIT(plan) (plan && plan->info && plan->info->env && \
 				  !DB_IS_NULL (&QO_ENV_LIMIT_VALUE (plan->info->env)) && \
                                   db_get_bigint (&QO_ENV_LIMIT_VALUE (plan->info->env)) > 0)
 

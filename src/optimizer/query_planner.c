@@ -84,6 +84,7 @@
 #define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
 #define ISCAN_IO_HIT_RATIO 0.5
 #define SSCAN_DEFAULT_CARD 100
+#define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
@@ -3326,7 +3327,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality;
+  double guessed_result_cardinality, limit_val;
 
   inner = planp->plan_un.join.inner;
 
@@ -3360,11 +3361,13 @@ qo_nljoin_cost (QO_PLAN * planp)
     }
   else if (QO_PLAN_HAS_LIMIT (planp) && planp->info->planner->can_apply_limit_card)
     {
+      limit_val = QO_PLAN_HAS_CONSTANT_LIMIT (planp)
+	? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env)) : GUESSED_BIND_LIMIT_CARD;
+
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
-	  planp->limit_nljoin_guessed_card = guessed_result_cardinality =
-	    MAX (MIN (((double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env))) / (outer->info)->hit_prob,
-		      (outer->info)->cardinality), 1.0);
+	  planp->limit_nljoin_guessed_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
+	  guessed_result_cardinality = MIN (planp->limit_nljoin_guessed_card, (outer->info)->cardinality);
 	}
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
