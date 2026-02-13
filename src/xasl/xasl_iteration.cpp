@@ -138,6 +138,43 @@ extern "C" {
       dst_node->spec_list->s_id.scan_stats.multi_range_opt = dst_node->spec_list->s_id.scan_stats.multi_range_opt ? true : src_node->spec_list->s_id.scan_stats.multi_range_opt;
       /* agl copy needed..? */
 
+      /* partition stats copy needed */
+      if (dst_node->spec_list->s_id.partition_stats && src_node->spec_list->s_id.partition_stats)
+	{
+	  if (timercmp (&src_node->spec_list->s_id.partition_stats->elapsed_scan,
+			&dst_node->spec_list->s_id.partition_stats->elapsed_scan, >))
+	    {
+	      dst_node->spec_list->s_id.partition_stats->elapsed_scan = src_node->spec_list->s_id.partition_stats->elapsed_scan;
+	    }
+	  dst_node->spec_list->s_id.partition_stats->num_fetches += src_node->spec_list->s_id.partition_stats->num_fetches;
+	  dst_node->spec_list->s_id.partition_stats->num_ioreads += src_node->spec_list->s_id.partition_stats->num_ioreads;
+	  dst_node->spec_list->s_id.partition_stats->read_rows += src_node->spec_list->s_id.partition_stats->read_rows;
+	  dst_node->spec_list->s_id.partition_stats->qualified_rows += src_node->spec_list->s_id.partition_stats->qualified_rows;
+	  dst_node->spec_list->s_id.partition_stats->read_keys += src_node->spec_list->s_id.partition_stats->read_keys;
+	  dst_node->spec_list->s_id.partition_stats->qualified_keys += src_node->spec_list->s_id.partition_stats->qualified_keys;
+	  dst_node->spec_list->s_id.partition_stats->key_qualified_rows +=
+		  src_node->spec_list->s_id.partition_stats->key_qualified_rows;
+	  dst_node->spec_list->s_id.partition_stats->data_qualified_rows +=
+		  src_node->spec_list->s_id.partition_stats->data_qualified_rows;
+	  if (timercmp (&src_node->spec_list->s_id.partition_stats->elapsed_lookup,
+			&dst_node->spec_list->s_id.partition_stats->elapsed_lookup, >))
+	    {
+	      dst_node->spec_list->s_id.partition_stats->elapsed_lookup = src_node->spec_list->s_id.partition_stats->elapsed_lookup;
+	    }
+	  dst_node->spec_list->s_id.partition_stats->covered_index = dst_node->spec_list->s_id.partition_stats->covered_index ?
+	      true : src_node->spec_list->s_id.partition_stats->covered_index;
+	  dst_node->spec_list->s_id.partition_stats->multi_range_opt = dst_node->spec_list->s_id.partition_stats->multi_range_opt
+	      ? true : src_node->spec_list->s_id.partition_stats->multi_range_opt;
+	  dst_node->spec_list->s_id.partition_stats->index_skip_scan = dst_node->spec_list->s_id.partition_stats->index_skip_scan
+	      ? true : src_node->spec_list->s_id.partition_stats->index_skip_scan;
+	  dst_node->spec_list->s_id.partition_stats->loose_index_scan =
+		  dst_node->spec_list->s_id.partition_stats->loose_index_scan ? true :
+		  src_node->spec_list->s_id.partition_stats->loose_index_scan;
+	  dst_node->spec_list->s_id.partition_stats->noscan = dst_node->spec_list->s_id.partition_stats->noscan ?
+	      src_node->spec_list->s_id.partition_stats->noscan:false;
+	  dst_node->spec_list->s_id.partition_stats->agl = NULL;
+	}
+
       if (dst_node->sq_cache != nullptr && src_node->sq_cache != nullptr)
 	{
 	  dst_node->sq_cache->stats.hit += src_node->sq_cache->stats.hit;

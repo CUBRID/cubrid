@@ -23,6 +23,7 @@
 #include "px_heap_scan_task.hpp"
 #include "error_code.h"
 #include "error_manager.h"
+#include "heap_file.h"
 #include "storage_common.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -32,6 +33,7 @@
 #include "xasl_unpack_info.hpp"
 #include "memoize.hpp"
 #include "scan_manager.h"
+#include "partition_sr.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -76,6 +78,7 @@ namespace parallel_heap_scan
     xasl_node *xptr;
     ACCESS_SPEC_TYPE *spec_ptr;
     bool fixed_scan = false;
+    bool partition_pruned = false;
 
     thread_ref.m_px_orig_thread_entry = m_parent_thread_p;
     thread_ref.conn_entry = m_parent_thread_p->conn_entry;
@@ -148,6 +151,25 @@ namespace parallel_heap_scan
 		    if (xptr->scan_ptr == NULL)
 		      {
 			fixed_scan = true;
+		      }
+
+		    if (thread_ref.on_trace && HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
+		      {
+			err_code = partition_prune_spec (&thread_ref, m_vd, xptr->curr_spec);
+			if (err_code != NO_ERROR)
+			  {
+			    return err_code;
+			  }
+			/* prune partition stats */
+			for (PARTITION_SPEC_TYPE *part_spec = xptr->curr_spec->parts; part_spec != NULL; part_spec = part_spec->next)
+			  {
+			    if (HFID_EQ (&part_spec->hfid, &scan_info.hfid))
+			      {
+				specp->s_id.partition_stats = &part_spec->scan_stats;
+				partition_pruned = true;
+				break;
+			      }
+			  }
 		      }
 
 		    switch (specp->access)
@@ -224,6 +246,19 @@ namespace parallel_heap_scan
 		if (err_code != NO_ERROR)
 		  {
 		    return err_code;
+		  }
+
+		if (thread_ref.on_trace && partition_pruned)
+		  {
+		    specp->s_id.partition_stats->covered_index = specp->s_id.scan_stats.covered_index;
+		    specp->s_id.partition_stats->multi_range_opt = specp->s_id.scan_stats.multi_range_opt;
+		    specp->s_id.partition_stats->index_skip_scan = specp->s_id.scan_stats.index_skip_scan;
+		    specp->s_id.partition_stats->loose_index_scan = specp->s_id.scan_stats.loose_index_scan;
+		    specp->s_id.partition_stats->noscan = specp->s_id.scan_stats.noscan;
+
+		    /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
+		    specp->s_id.partition_stats->agl = NULL;
+		    partition_pruned = false;
 		  }
 	      }
 	  }
