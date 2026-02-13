@@ -847,7 +847,19 @@ struct rvfun RV_fun[] = {
    oos_rv_redo_insert,
    oos_rv_redo_delete,
    NULL,
-   NULL}
+   NULL},
+  {RVREPL_OOS_INSERT,
+   "RVREPL_OOS_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVREPL_OOS_DELETE,
+   "RVREPL_OOS_DELETE",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
 };
 
 /*

@@ -939,7 +939,6 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
 				       const PGBUF_WATCHER heap_header_watcher, HEAP_HDR_STATS * heap_hdr,
 				       const VPID new_next_vpid, const VPID new_last_vpid, const int new_num_pages);
 
-static bool heap_recdes_contains_oos (const RECDES * record);
 static SCAN_CODE heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p,
 								     HEAP_GET_CONTEXT * context);
 
@@ -12276,6 +12275,8 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   VFID oos_vfid;
   OID oos_oid;
   RECDES recdes;
+  LOG_TDES *tdes;
+  int tran_index;
   int i;
 
   recdes.area_size = IO_MAX_PAGE_SIZE;
@@ -12291,6 +12292,19 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
     {
       return S_ERROR;
     }
+
+  /* Find transaction descriptor for current logging transaction */
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return S_ERROR;
+    }
+
+  /* init oos tracking info */
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.clear ();
 
   for (i = 0; i < attr_info->num_values; i++)
     {
@@ -12309,6 +12323,8 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	    {
 	      return S_ERROR;
 	    }
+
+	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
 	  (*oos_oids)[i] = oos_oid;
 	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
 	    {
@@ -27608,7 +27624,7 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 
 // *INDENT-ON*
 
-static bool
+bool
 heap_recdes_contains_oos (const RECDES * record)
 {
   int flag = (INT32) OR_GET_MVCC_FLAG (record->data);

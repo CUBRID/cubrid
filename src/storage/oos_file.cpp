@@ -31,14 +31,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-struct oos_record_header
-{
-  int total_size;
-  int chunk_index;
-  OID next_chunk_oid;
-};
-using OOS_RECORD_HEADER = struct oos_record_header;
-
 // ****************************************************************************
 // static functions
 // ****************************************************************************
@@ -672,6 +664,12 @@ oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
 
   return NO_ERROR;
+}
+
+void
+oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
+{
+  thread_p->oos_oids.push_back (*oid);
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
