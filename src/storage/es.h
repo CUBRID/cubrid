@@ -42,6 +42,7 @@ extern ssize_t es_write_file (const char *uri, const void *buf, size_t count, of
 extern ssize_t es_read_file (const char *uri, void *buf, size_t count, off_t offset);
 extern int es_delete_file (const char *uri);
 extern int es_copy_file (const char *in_uri, const char *metaname, char *out_uri);
+extern int es_copy_file_with_prefix (const char *in_uri, const char *metaname, const char *prefix, char *out_uri);
 extern int es_rename_file (const char *in_uri, const char *metaname, char *out_uri);
 extern off_t es_get_file_size (const char *uri);
 

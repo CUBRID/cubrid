@@ -1544,13 +1544,21 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 {
   int i;
 
-  *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
-  if (*number_array)
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  if (n > 0)
     {
-      ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-      for (i = 0; i < n; i++)
+      *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
+      if (*number_array)
 	{
-	  ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	  for (i = 0; i < n; i++)
+	    {
+	      ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	    }
+	}
+      else
+	{
+	  ptr = NULL;
 	}
     }
   else
@@ -5752,6 +5760,36 @@ or_header_size (char *ptr)
   return mvcc_header_size_lookup[OR_GET_MVCC_FLAG (ptr)];
 }
 
+/*
+ * or_pack_int_array - write a int array
+ *    return: advanced buffer pointer
+ *    buffer(out): output buffer
+ *    count(in): array length
+ *    int_array(in): int array
+ */
+char *
+or_pack_int_array (char *buffer, int count, const int *int_array)
+{
+  int i;
+  char *ptr;
+
+  assert (buffer != NULL && int_array != NULL && count >= 0);
+
+  if (count < 0 || int_array == NULL)
+    {
+      count = 0;
+    }
+
+  /* pack count + that many integers */
+  ptr = or_pack_int (buffer, count);
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_int (ptr, int_array[i]);
+    }
+
+  return ptr;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_packed_string_array_length - get the amount of space needed to pack an
@@ -5793,36 +5831,6 @@ or_packed_db_value_array_length (int count, DB_VALUE * val)
       size += or_db_value_size (val++);
     }
   return size;
-}
-
-/*
- * or_pack_int_array - write a int array
- *    return: advanced buffer pointer
- *    buffer(out): output buffer
- *    count(in): array length
- *    int_array(in): int array
- */
-char *
-or_pack_int_array (char *buffer, int count, int *int_array)
-{
-  int i;
-  char *ptr;
-
-  if (!int_array)
-    {
-      /* there are no values to pack, so pack a count of 0 */
-      ptr = or_pack_int (buffer, 0);
-    }
-  else
-    {
-      /* pack count + that many integers */
-      ptr = or_pack_int (buffer, count);
-      for (i = 0; i < count; i++)
-	{
-	  ptr = or_pack_int (ptr, int_array[i]);
-	}
-    }
-  return ptr;
 }
 
 /*
