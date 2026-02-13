@@ -6981,7 +6981,6 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
 
-  assert (thread_p->oos_oids.size () == 0);	//heexoo_test
   thread_p->oos_oids.clear ();
 
   /* need to start a topop to ensure the atomic operation. */
