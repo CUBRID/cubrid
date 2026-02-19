@@ -67,7 +67,7 @@
  * variable can be removed, it is only retained to allow for a quick disable
  * in the event that something ugly happens.
  */
-int tf_Allow_fixups = 1;
+const int tf_Allow_fixups = 1;
 
 
 /*

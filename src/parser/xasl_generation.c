@@ -7692,7 +7692,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      PT_ERRORc (parser, node, er_msg ());
 		    }
-		  return regu;
 		}
 	      break;
 
