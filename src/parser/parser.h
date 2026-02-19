@@ -404,10 +404,9 @@ extern "C"
   extern int pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag);
   extern int pt_user_specified_name_compare (const char *p, const char *q);
 
-  extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node);
   extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 
-  extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale);
+  extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser);
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);

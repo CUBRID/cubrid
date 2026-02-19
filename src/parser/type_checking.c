@@ -11835,7 +11835,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_TO_NUMBER:
       {
 	/* the TO_NUMBER() function processes NUMERIC values, so it is always handled as FLOAT NUMERIC. */
-	dt = pt_make_prim_data_type_fortonum (parser, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
+	dt = pt_make_prim_data_type_fortonum (parser);
 	break;
       }
 
