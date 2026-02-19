@@ -68,11 +68,11 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_BTREE_MANAGER_PAGE_DEALLOC_FAIL, fi_handler_random_fail, FI_INIT_STATE}
 };
 
-FI_TEST_CODE fi_Group_none[] = {
+const FI_TEST_CODE fi_Group_none[] = {
   FI_TEST_NONE
 };
 
-FI_TEST_CODE fi_Group_recovery[] = {
+const FI_TEST_CODE fi_Group_recovery[] = {
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE,
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP,
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT,
@@ -80,7 +80,7 @@ FI_TEST_CODE fi_Group_recovery[] = {
   FI_TEST_NONE
 };
 
-FI_TEST_CODE *fi_Groups[FI_GROUP_MAX + 1] = {
+const FI_TEST_CODE *const fi_Groups[FI_GROUP_MAX + 1] = {
   fi_Group_none,
   fi_Group_recovery
 };
