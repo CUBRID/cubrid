@@ -9901,7 +9901,7 @@ attr_def_one
 			    node->info.attr_def.ordering_info = $5;
 			  }
 			unsigned int mask = $4;
-			if (!(mask & COLUMN_CONSTRAINT_INVISIBLE))
+			if (node != NULL && !(mask & COLUMN_CONSTRAINT_INVISIBLE))
 			  {
 			    node->info.attr_def.attr_invisible = 0;
 			  }

@@ -2688,6 +2688,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
       att->is_autoincrement = 0;
+      att->is_invisible = 0;
       att->is_notnull = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL) ? 1 : 0;
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
@@ -2768,6 +2769,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
       att->is_autoincrement = 0;
+      att->is_invisible = 0;
       att->is_notnull = 0;
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
