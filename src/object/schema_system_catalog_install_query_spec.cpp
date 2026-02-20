@@ -220,7 +220,9 @@ sm_define_view_vclass_spec (void)
 	  "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[q].[spec] AS [vclass_def], "
 	  "[c].[comment] AS [comment], "
-	  /* TODO: set to actual invalidation time once validity check logic is implemented, currently set to NULL */
+	  "[c].[created_time] AS [created_time], "
+	  "[c].[updated_time] AS [updated_time], "
+	  /* TODO: set to actual invalidation time once validity check logic is implemented */
 	  "[q].[invalidated_time] AS [invalidated_time] "
 	"FROM "
 	  /* CT_QUERYSPEC_NAME */
@@ -1124,7 +1126,9 @@ sm_define_view_partition_spec (void)
 	  "TRIM (SUBSTRING ([pp].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [pp].[pexpr]) - 8))) AS [partition_expr], "
 	  "[p].[pvalues] AS [partition_values], "
           "CASE [p].[class_partition_type] WHEN 2 THEN 'PARTITION CLASS' ELSE NULL END AS [class_partition_type], "
-	  "[p].[comment] AS [comment] "
+	  "[p].[comment] AS [comment], "
+	  "[s].[created_time] AS [created_time], "
+	  "[s].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_PARTITION_NAME */
 	  "[%s] AS [p], "

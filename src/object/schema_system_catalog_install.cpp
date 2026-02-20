@@ -1335,6 +1335,8 @@ namespace cubschema
       {"owner_name", format_varchar (255)},
       {"vclass_def", format_varchar (1073741823)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}
@@ -1757,6 +1759,8 @@ namespace cubschema
       {"partition_values", "sequence of"},
       {"class_partition_type", format_varchar (32)},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
     },
