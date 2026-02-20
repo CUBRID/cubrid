@@ -4401,6 +4401,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      spec = QO_NODE_ENTITY_SPEC (node);
 	      if (spec->info.spec.id == arg->info.name.spec_id)
 		{
+		  p_node = QO_ENV_NODE (env, i);
 		  break;
 		}
 	    }
@@ -4414,60 +4415,53 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
       if (found && tree->info.query.q.select.leading)
 	{
-	  /* find last leading node */
-	  for (arg = tree->info.query.q.select.leading; arg->next; arg = arg->next)
+	  if (!tree->info.query.q.select.leading->next)
 	    {
-	      ;			/* nop */
-	    }
-	  for (i = 0; i < env->nnodes; i++)
-	    {
-	      node = QO_ENV_NODE (env, i);
-	      spec = QO_NODE_ENTITY_SPEC (node);
-	      if (spec->info.spec.id == arg->info.name.spec_id)
+	      /* If arg is one, it is the root node */
+	      for (i = 0; i < env->nnodes; i++)
 		{
-		  last_ordered_idx = QO_NODE_IDX (node);
-		  break;
+		  node = QO_ENV_NODE (env, i);
+		  if (node != p_node)
+		    {		/* skip out the first ordered node */
+		      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+		    }
 		}
 	    }
-
-	  /* iterate over all nodes */
-	  for (i = 0; i < env->nnodes; i++)
+	  else
 	    {
-	      node = QO_ENV_NODE (env, i);
-	      spec = QO_NODE_ENTITY_SPEC (node);
-	      /* check for arg list */
-	      p_arg = NULL;
-	      for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
+	      /* If there are two or more args, it only depends on the previous arg. */
+	      for (i = 0; i < env->nnodes; i++)
 		{
-		  if (spec->info.spec.id == arg->info.name.spec_id)
+		  node = QO_ENV_NODE (env, i);
+		  spec = QO_NODE_ENTITY_SPEC (node);
+		  /* check for arg list */
+		  p_arg = NULL;
+		  for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
 		    {
-		      if (p_arg)
-			{	/* skip out the first leading spec */
-			  /* find prev node */
-			  for (k = 0; k < env->nnodes; k++)
-			    {
-			      p_node = QO_ENV_NODE (env, k);
-			      p_spec = QO_NODE_ENTITY_SPEC (p_node);
-			      if (p_spec->info.spec.id == p_arg->info.name.spec_id)
+		      if (spec->info.spec.id == arg->info.name.spec_id)
+			{
+			  if (p_arg)
+			    {	/* skip out the first leading spec */
+			      /* find prev node */
+			      for (k = 0; k < env->nnodes; k++)
 				{
-				  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
-				  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
-				  break;
+				  p_node = QO_ENV_NODE (env, k);
+				  p_spec = QO_NODE_ENTITY_SPEC (p_node);
+				  if (p_spec->info.spec.id == p_arg->info.name.spec_id)
+				    {
+				      bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)),
+						     &(QO_NODE_OUTER_DEP_SET (p_node)));
+				      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+				      break;
+				    }
 				}
 			    }
+			  break;	/* exit loop for arg traverse */
 			}
-		      break;	/* exit loop for arg traverse */
+		      p_arg = arg;	/* save previous arg */
 		    }
-		  p_arg = arg;	/* save previous arg */
-		}
-
-	      /* not found in arg list */
-	      if (!arg)
-		{
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), last_ordered_idx);
-		}
-
-	    }			/* for (i = ... ) */
+		}		/* for (i = ... ) */
+	    }
 	}
     }
 
