@@ -2008,10 +2008,14 @@ namespace cubschema
     {
       {"name", format_varchar (255)},
       {"id", "integer"},
+      /* kept for compatibility; always NULL in view */
+      {"password", AU_PASSWORD_CLASS_NAME},
 //       {"direct_groups", format_sequence (CT_USER_NAME)},
       {"direct_groups", format_set (format_varchar (255))},
 //       {"groups", format_sequence (CT_USER_NAME)},
       {"groups", format_set (format_varchar (255))},
+      /* kept for compatibility; always NULL in view */
+      {"authorization", AU_AUTH_CLASS_NAME},
       {"triggers", format_sequence ("object")},
       {"is_loginable", format_varchar (3)},
       {"is_system_created", format_varchar (3)},
