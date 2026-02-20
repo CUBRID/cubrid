@@ -219,7 +219,9 @@ sm_define_view_vclass_spec (void)
 	  "[q].[class_of].[class_name] AS [vclass_name], "
 	  "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[q].[spec] AS [vclass_def], "
-	  "[c].[comment] AS [comment] "
+	  "[c].[comment] AS [comment], "
+	  /* TODO: set to actual invalidation time once validity check logic is implemented, currently set to NULL */
+	  "[q].[invalidated_time] AS [invalidated_time] "
 	"FROM "
 	  /* CT_QUERYSPEC_NAME */
 	  "[%s] AS [q], "
@@ -1661,7 +1663,9 @@ sm_define_view_server_spec (void)
 	  "CAST ([ds].[owner].[name] AS VARCHAR(255)) AS [owner], " /* string -> varchar(255) */
 	  "[ds].[comment] AS [comment], "
           "[ds].[created_time] AS [created_time], "
-          "[ds].[updated_time] AS [updated_time] "
+          "[ds].[updated_time] AS [updated_time], "
+	  /* TODO: set to actual invalidation time once validity check logic is implemented, currently set to NULL */
+	  "[ds].[invalidated_time] AS [invalidated_time] "
 	"FROM "
 	  /* CT_SERVER_NAME */
 	  "[%s] AS [ds] "

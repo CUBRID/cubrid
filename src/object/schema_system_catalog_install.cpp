@@ -687,7 +687,8 @@ namespace cubschema
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
-      {"spec", format_varchar (1073741823)}
+      {"spec", format_varchar (1073741823)},
+      {"invalidated_time", "datetime"}
     },
 // constraints
     {
@@ -1243,7 +1244,8 @@ namespace cubschema
       {"owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
-      {"updated_time", "datetime"}
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"}
     },
 // constraints
     {
@@ -1346,6 +1348,7 @@ namespace cubschema
       {"owner_name", format_varchar (255)},
       {"vclass_def", format_varchar (1073741823)},
       {"comment", format_varchar (2048)},
+      {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}
     },
@@ -2161,6 +2164,7 @@ namespace cubschema
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_server_spec ()}
     },
