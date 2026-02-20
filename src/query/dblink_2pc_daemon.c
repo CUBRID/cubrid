@@ -327,6 +327,17 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
     {
       return ER_FAILED;
     }
+
+  if (!daemon_thread_started)
+    {
+      int err = dblink_2pc_daemon_start ();
+
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
+
   if (global_tran_queue == NULL)
     {
       return ER_FAILED;		/* daemon not started (e.g. start failed) */

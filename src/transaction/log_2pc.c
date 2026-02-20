@@ -441,7 +441,10 @@ log_2pc_check_duplicate_global_tran_id (int gtrid)
 static int
 log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision)
 {
-  int i;
+  int i, error;
+  DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
+  TRAN_STATE state;
+  char new_state;
 
   /* Start the first phase of 2PC. Prepare to commit or voting phase */
   if (tdes->state == TRAN_ACTIVE)
@@ -473,6 +476,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	   */
 	  lock_unlock_all_shared_get_all_exclusive (thread_p, NULL);
 	}
+
 #ifdef LOG_2PC_ACK_RECV_REQUIRED
       tdes->coord->ack_received = (bool *) calloc (i);
       if (tdes->coord->ack_received == NULL)
@@ -482,72 +486,60 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 #endif
+
 #ifdef CCI_XA
-      {
-	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-	int i;
-	int error_code;
-	/* Persist participant rows to _db_global_tran (state 'P') before prepare, using server transaction */
-	log_sysop_start (thread_p);
-	for (i = 0; i < tdes->coord->num_particps; i++)
-	  {
-	    error_code = dblink_global_tran_insert_row (thread_p, tdes->gtrid, participants[i].conn_handle,
-							participants[i].conn_url, participants[i].user_name,
-							participants[i].password, DBLINK_2PC_STATE_PREPARE);
-	    if (error_code != NO_ERROR)
-	      {
-		log_sysop_abort (thread_p);
-		return error_code;
-	      }
-	  }
-	log_sysop_commit (thread_p);
-      }
+      /* Persist participant rows to _db_global_tran (state 'P') before prepare, using server transaction */
+      log_sysop_start (thread_p);
+      for (i = 0; i < tdes->coord->num_particps; i++)
+	{
+	  error = dblink_global_tran_insert_row (thread_p, tdes->gtrid, participants[i].conn_handle,
+						 participants[i].conn_url, participants[i].user_name,
+						 participants[i].password, DBLINK_2PC_STATE_PREPARE);
+	  if (error != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      return error;
+	    }
+	}
+      log_sysop_commit (thread_p);
 #endif
+
       *decision =
 	log_2pc_send_prepare (thread_p, tdes->gtrid, tdes->coord->num_particps, tdes->coord->block_particps_ids);
+
 #ifdef CCI_XA
-      {
-	DBLINK_CONN_INFO *participants = (DBLINK_CONN_INFO *) tdes->coord->block_particps_ids;
-	int i;
-	int error_code;
-	TRAN_STATE state;
-	char new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
+      new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
 
-	/* First perform local commit/abort before updating _db_global_tran; on failure return error without catalog update */
-	if (*decision)
-	  {
-	    state = log_commit_local (thread_p, tdes, false, false);
-	    if (state != TRAN_UNACTIVE_COMMITTED && state != TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE)
-	      {
-		return ER_FAILED;
-	      }
-	  }
-	else
-	  {
-	    state = log_abort_local (thread_p, tdes, false);
-	    if (state != TRAN_UNACTIVE_ABORTED)
-	      {
-		return ER_FAILED;
-	      }
-	  }
+      /* Update _db_global_tran state based on decision, using server transaction */
+      for (i = 0; i < tdes->coord->num_particps; i++)
+	{
+	  error = dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      /* First perform local commit/abort before updating _db_global_tran; on failure return error without catalog update */
+      if (*decision)
+	{
+	  state = log_commit_local (thread_p, tdes, false, false);
+	  if (state != TRAN_UNACTIVE_WILL_COMMIT && state != TRAN_UNACTIVE_COMMITTED)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  state = log_abort_local (thread_p, tdes, false);
+	  if (state != TRAN_UNACTIVE_ABORTED)
+	    {
+	      return ER_FAILED;
+	    }
+	}
 
-	/* Update _db_global_tran state based on decision, using server transaction */
-	log_sysop_start (thread_p);
-	for (i = 0; i < tdes->coord->num_particps; i++)
-	  {
-	    error_code =
-	      dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
-	    if (error_code != NO_ERROR)
-	      {
-		log_sysop_abort (thread_p);
-		return error_code;
-	      }
-	  }
-	log_sysop_commit (thread_p);
-	/* Enqueue participant data to daemon for recovery path */
-	(void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state,
-					  tdes->coord->num_particps, tdes->coord->block_particps_ids);
-      }
+      /* Enqueue participant data to daemon for recovery path */
+      (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state,
+					tdes->coord->num_particps, tdes->coord->block_particps_ids);
 #endif
     }
   else
@@ -746,6 +738,9 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
 	}
     }
 
+  state = tdes->state;
+
+#ifndef CCI_XA
   /*
    * PHASE II of 2PC: Inform decsion to participants (i.e., either commit or
    *                  abort)
@@ -758,6 +753,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
     {
       state = tdes->state;
     }
+#endif
 
   return state;
 }
@@ -1288,7 +1284,7 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   /*
    * Check if the current site is not only a participant but also a
-   * coordinator for some other participnats. If the current site is a
+   * coordinator for some other participants. If the current site is a
    * coordinator of the transaction,its participants must prepare to commit
    * before we can proceed with the prepare to commit. If not all the
    * participants are willing to commit, the prepare to commit cannot be

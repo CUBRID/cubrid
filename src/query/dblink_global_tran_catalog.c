@@ -50,14 +50,14 @@
 
 /* _db_global_tran column order: gtrid(0), bqual(1), conn_url(2), user(3), password(4), state(5), created_date(6), updated_date(7) */
 #define GLOBAL_TRAN_NUM_ATTRS  8
-#define GLOBAL_TRAN_ATTR_GTRID    0
-#define GLOBAL_TRAN_ATTR_BQUAL    1
-#define GLOBAL_TRAN_ATTR_CONN_URL 2
-#define GLOBAL_TRAN_ATTR_USER     3
-#define GLOBAL_TRAN_ATTR_PASSWORD 4
-#define GLOBAL_TRAN_ATTR_STATE    5
-#define GLOBAL_TRAN_ATTR_CREATED  6
-#define GLOBAL_TRAN_ATTR_UPDATED  7
+#define GLOBAL_TRAN_ATTR_GTRID    7
+#define GLOBAL_TRAN_ATTR_BQUAL    6
+#define GLOBAL_TRAN_ATTR_CONN_URL 5
+#define GLOBAL_TRAN_ATTR_USER     4
+#define GLOBAL_TRAN_ATTR_PASSWORD 3
+#define GLOBAL_TRAN_ATTR_STATE    2
+#define GLOBAL_TRAN_ATTR_CREATED  1
+#define GLOBAL_TRAN_ATTR_UPDATED  0
 
 static void
 get_current_datetime (DB_DATETIME * dt)
