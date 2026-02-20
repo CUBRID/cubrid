@@ -103,6 +103,21 @@ namespace cubhnsw
   template <typename Traits>
   using visited_set_t = typename visit_set_helper<typename Traits::slot_id_t>::type;
 
+  template <typename T>
+  struct vector_cache_helper
+  {
+    using type = std::unordered_map<T, std::vector<float>>;
+  };
+
+  template <>
+  struct vector_cache_helper<OID>
+  {
+    using type = std::unordered_map<OID, std::vector<float>, oid_hash, oid_equal>;
+  };
+
+  template <typename Traits>
+  using vector_cache_t = typename vector_cache_helper<typename Traits::slot_id_t>::type;
+
   template <typename Traits>
   using candidates_view_t = std::vector<candidate_t<Traits>>;
 
