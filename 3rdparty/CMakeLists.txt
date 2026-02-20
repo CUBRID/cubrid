@@ -35,8 +35,8 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 set(WITH_FAISS_URL "https://github.com/facebookresearch/faiss/archive/refs/tags/v1.8.0.tar.gz")               # Faiss
 set(WITH_OPENBLAS_URL "https://github.com/xianyi/OpenBLAS/archive/refs/tags/v0.3.24.tar.gz")                  # OpenBLAS
 set(WITH_LAPACK_URL "http://www.netlib.org/lapack/lapack-3.11.0.tar.gz")                                      # LAPACK
-set(WITH_USEARCH_URL "https://github.com/unum-cloud/usearch")                   
-set(WITH_ANKERL_URL "https://github.com/martinus/unordered_dense.git")                              # usearch
+set(WITH_USEARCH_URL "https://github.com/unum-cloud/usearch")                                                # usearch
+set(WITH_ANKERL_URL "https://github.com/martinus/unordered_dense.git")                                 # ankerl
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
 # It is optional but highly recommended to set this value. If not set, the file will be downloaded
