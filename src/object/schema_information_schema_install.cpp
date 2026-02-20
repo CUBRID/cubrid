@@ -152,7 +152,7 @@ namespace cubschema
       {"ordinal_position", "integer"},
       {"column_default", format_varchar (255)},
       {"is_nullable", format_varchar (3)},
-      {"data_type",format_varchar (16)},
+      {"data_type", format_varchar (16)},
       {"character_maximum_length", "bigint"},
       {"character_octet_length", "bigint"},
       {"numeric_precision", "integer"},

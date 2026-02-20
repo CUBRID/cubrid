@@ -23,7 +23,7 @@ namespace cubschema
   information_schema_definition::information_schema_definition (const std::string &n, const attr_vec_type &attrs,
       const cstr_vec_type &cts,
       const authorization &au,
-      row_init_type ri = nullptr)
+      row_init_type ri)
     : name {n}
     , attributes {attrs}
     , constraints {cts}

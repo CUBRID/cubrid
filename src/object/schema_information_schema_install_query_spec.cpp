@@ -91,18 +91,18 @@
 /* Composite macros (used in query specs) */
 /* ----------------------------------------------------------------------------- */
 
-#define AUTH_CHECK_CLASS(owner_name_expr, class_of_expr) \
+#define AUTH_CHECK_OBJECT_ANY(owner_name_expr, object_of_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_ANY_GRANT(class_of_expr) \
+    "OR " AUTH_CHECK_ANY_GRANT(object_of_expr) \
   ")"
 
-#define AUTH_CHECK_CLASS_WRITE(owner_name_expr, class_of_expr) \
+#define AUTH_CHECK_OBJECT_WRITE(owner_name_expr, object_of_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_WRITE_GRANT(class_of_expr) \
+    "OR " AUTH_CHECK_WRITE_GRANT(object_of_expr) \
   ")"
 
 #define AUTH_CHECK_SCHEMA(user_name_expr, user_expr) \
@@ -141,13 +141,6 @@
     "OR " AUTH_CHECK_ANY_GRANT(sp_of_expr) \
   ")"
 
-#define AUTH_CHECK_TRIGGER(owner_name_expr, class_of_expr) \
-  "(" \
-    AUTH_CHECK_DBA " " \
-    "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
-    "OR " AUTH_CHECK_ANY_GRANT(class_of_expr) \
-  ")"
-
 /* CUBRID does not currently support column privilege.
  * This view returns empty results until column privilege support is implemented.
  */
@@ -156,7 +149,7 @@ const char *sm_define_view_column_privileges_spec (void)
   static char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "NULL AS [grantor], "
       "NULL AS [grantee], "
@@ -181,7 +174,7 @@ const char *sm_define_view_columns_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
       "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
@@ -234,7 +227,7 @@ const char *sm_define_view_columns_spec (void)
       /* CT_COLLATION_NAME */
       "INNER JOIN [%s] AS [coll] ON [coll].[coll_id] = [dom].[collation_id] "
     "WHERE "
-      AUTH_CHECK_CLASS("[cls].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
     SM_CLASSFLAG_REUSE_OID,
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME,
@@ -255,7 +248,7 @@ const char *sm_define_view_domains_spec (void)
   static char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "NULL AS [domain_catalog], "
       "NULL AS [domain_schema], "
@@ -295,7 +288,7 @@ const char *sm_define_view_foreign_servers_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [foreign_server_catalog], " /* string -> varchar(255) */
       "[srv].[link_name] AS [foreign_server_name], "
@@ -316,7 +309,7 @@ const char *sm_define_view_foreign_servers_spec (void)
       /* CT_SERVER_NAME */
       "[%s] AS [srv] "
     "WHERE "
-      AUTH_CHECK_OWNER("[srv].[owner].[name]"),
+      AUTH_CHECK_OBJECT_ANY("[srv].[owner].[name]", "[srv]"),
     CT_SERVER_NAME);
   // *INDENT-ON*
 
@@ -328,7 +321,7 @@ const char *sm_define_view_key_column_usage_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
@@ -347,7 +340,7 @@ const char *sm_define_view_key_column_usage_spec (void)
       /* CT_INDEXKEY_NAME */
       "LEFT OUTER JOIN [%s] AS [ref_key] ON [ref_key].[index_of] = [idx].[referential_index] AND [ref_key].[key_order] = [idx_key].[key_order] "
     "WHERE "
-      AUTH_CHECK_CLASS("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
+      AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ") "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEXKEY_NAME,
@@ -363,7 +356,7 @@ const char *sm_define_view_parameters_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [specific_catalog], " /* string -> varchar(255) */
       "CAST ([sp_args].[sp_of].[owner].[name] AS VARCHAR(255)) AS [specific_schema], " /* string -> varchar(255) */
@@ -422,7 +415,7 @@ const char *sm_define_view_partitions_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
       "CAST ([super].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
@@ -451,19 +444,16 @@ const char *sm_define_view_partitions_spec (void)
       "[%s] AS [part] "
       /* CT_CLASS_NAME - partition class */
       "INNER JOIN [%s] AS [part_cls] ON [part_cls] = [part].[class_of], "
-      "TABLE ([part_cls].[super_classes]) AS [t] ([super]) "
-      /* CT_CLASS_NAME - super class for partition info */
-      "INNER JOIN [%s] AS [super_cls] ON [super] = [super_cls], "
-      "TABLE ([super_cls].[partition]) AS [t2] ([part_info]) "
+      "TABLE ([part_cls].[super_classes]) AS [t] ([super]), "
+      "TABLE ([super].[partition]) AS [t2] ([part_info]) "
     "WHERE "
-      AUTH_CHECK_CLASS("[super].[owner].[name]", "[super].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[super].[owner].[name]", "[super].[class_of]"),
     DB_PARTITION_HASH,
     DB_PARTITION_RANGE,
     DB_PARTITION_LIST,
     DB_PARTITION_RANGE,
     DB_PARTITION_LIST,
     CT_PARTITION_NAME,
-    CT_CLASS_NAME,
     CT_CLASS_NAME);
   // *INDENT-ON*
 
@@ -475,7 +465,7 @@ const char *sm_define_view_referential_constraints_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
@@ -495,7 +485,7 @@ const char *sm_define_view_referential_constraints_spec (void)
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
     "WHERE "
-      AUTH_CHECK_CLASS_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
+      AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND [idx].[is_foreign_key] = 1",
     SM_FK_MATCH_NONE,
     SM_FK_MATCH_PARTIAL,
@@ -518,7 +508,7 @@ const char *sm_define_view_routine_privileges_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST ([auth].[grantor].[name] AS VARCHAR(255)) AS [grantor], " /* string -> varchar(255) */
       "CAST ([auth].[grantee].[name] AS VARCHAR(255)) AS [grantee], " /* string -> varchar(255) */
@@ -552,7 +542,7 @@ const char *sm_define_view_routines_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR(255)) AS [routine_catalog], " /* string -> varchar(255) */
@@ -638,7 +628,7 @@ const char *sm_define_view_schemata_spec (void)
   static char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [catalog_name], " /* string -> varchar(255) */
       "CAST ([usr].[name] AS VARCHAR(255)) AS [schema_name], " /* string -> varchar(255) */
@@ -672,7 +662,7 @@ const char *sm_define_view_sequences_spec (void)
   static char stmt [2048];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [sequence_catalog], " /* string -> varchar(255) */
       "CAST ([serial].[owner].[name] AS VARCHAR(255)) AS [sequence_schema], " /* string -> varchar(255) */
@@ -710,7 +700,7 @@ const char *sm_define_view_statistics_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
       "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
@@ -747,7 +737,7 @@ const char *sm_define_view_statistics_spec (void)
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
     "WHERE "
-      AUTH_CHECK_CLASS("[cls].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
     CT_CLASS_NAME,
@@ -762,7 +752,7 @@ const char *sm_define_view_synonyms_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [synonym_catalog], " /* string -> varchar(255) */
       "CAST ([syn].[owner].[name] AS VARCHAR(255)) AS [synonym_schema], " /* string -> varchar(255) */
@@ -790,7 +780,7 @@ const char *sm_define_view_table_constraints_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "CAST ([idx].[class_of].[owner].[name] AS VARCHAR(255)) AS [constraint_schema], " /* string -> varchar(255) */
@@ -811,7 +801,7 @@ const char *sm_define_view_table_constraints_spec (void)
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
     "WHERE "
-      AUTH_CHECK_CLASS("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
+      AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEX_NAME);
   // *INDENT-ON*
@@ -824,7 +814,7 @@ const char *sm_define_view_table_privileges_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST ([auth].[grantor].[name] AS VARCHAR(255)) AS [grantor], " /* string -> varchar(255) */
       "CAST ([auth].[grantee].[name] AS VARCHAR(255)) AS [grantee], " /* string -> varchar(255) */
@@ -855,7 +845,7 @@ const char *sm_define_view_tables_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
       "CAST ([cls].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
@@ -901,7 +891,7 @@ const char *sm_define_view_tables_spec (void)
       /* CT_SERIAL_NAME */
       "LEFT OUTER JOIN [%s] AS [serial] ON [serial].[class_name] = [cls].[class_name] "
     "WHERE "
-      AUTH_CHECK_CLASS("[cls].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
     SM_CLASS_CT,
     SM_CLASS_CT,
     SM_CLASS_CT,
@@ -922,7 +912,7 @@ const char *sm_define_view_triggers_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [trigger_catalog], " /* string -> varchar(255) */
       "CAST ([tr].[owner].[name] AS VARCHAR(255)) AS [trigger_schema], " /* string -> varchar(255) */
@@ -964,7 +954,7 @@ const char *sm_define_view_triggers_spec (void)
       /* CT_CLASS_NAME */
       "LEFT OUTER JOIN [%s] AS [cls] ON [cls].[class_of] = [tr].[target_class] "
     "WHERE "
-      AUTH_CHECK_TRIGGER("[tr].[owner].[name]", "[cls].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[tr].[owner].[name]", "[cls].[class_of]"),
     TR_TIME_BEFORE,
     TR_TIME_AFTER,
     TR_TIME_DEFERRED,
@@ -980,7 +970,7 @@ const char *sm_define_view_views_spec (void)
   static char stmt [4096];
 
   // *INDENT-OFF*
-  sprintf (stmt,
+  snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR(255)) AS [table_catalog], " /* string -> varchar(255) */
       "CAST ([q].[class_of].[owner].[name] AS VARCHAR(255)) AS [table_schema], " /* string -> varchar(255) */
@@ -1002,7 +992,7 @@ const char *sm_define_view_views_spec (void)
       /* CT_QUERYSPEC_NAME */
       "[%s] AS [q] "
     "WHERE "
-      AUTH_CHECK_CLASS("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]"),
+      AUTH_CHECK_OBJECT_ANY("[q].[class_of].[owner].[name]", "[q].[class_of].[class_of]"),
     SM_CLASSFLAG_WITHCHECKOPTION,
     SM_CLASSFLAG_LOCALCHECKOPTION,
     SM_CLASSFLAG_REUSE_OID,
