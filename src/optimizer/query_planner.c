@@ -3359,7 +3359,8 @@ qo_nljoin_cost (QO_PLAN * planp)
       /* cardinality of a SORT_LIMIT plan is given by the value of the query limit */
       guessed_result_cardinality = (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env));
     }
-  else if (QO_PLAN_HAS_LIMIT (planp) && planp->info->planner->can_apply_limit_card)
+  else if (QO_PLAN_HAS_LIMIT (planp)
+	   && (planp->info->planner->can_apply_limit_card || qo_plan_is_orderby_skip_candidate (planp)))
     {
       limit_val = QO_PLAN_HAS_CONSTANT_LIMIT (planp)
 	? (double) db_get_bigint (&QO_ENV_LIMIT_VALUE (outer->info->env)) : GUESSED_BIND_LIMIT_CARD;
