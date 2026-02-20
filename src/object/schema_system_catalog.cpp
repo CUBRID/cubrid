@@ -108,6 +108,7 @@ namespace cubschema
     CTV_HA_APPLY_INFO_NAME,        // "db_ha_apply_info"
     CTV_COLLATION_NAME,	// "db_collation"
     CTV_USER_NAME,			// "db_user"
+    CTV_AUTHORIZATION_NAME,		// "db_authorization"
     CTV_CHARSET_NAME,		// "db_charset"
     CTV_SERVER_NAME,		// "db_server"
     CTV_SYNONYM_NAME			// "db_synonym"

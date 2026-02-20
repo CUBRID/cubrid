@@ -76,6 +76,7 @@
 #define CTV_PARTITION_NAME         "db_partition"
 #define CTV_COLLATION_NAME      "db_collation"
 #define CTV_USER_NAME              "db_user"
+#define CTV_AUTHORIZATION_NAME     "db_authorization"
 #define CTV_CHARSET_NAME	   "db_charset"
 #define CTV_SERVER_NAME         "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
