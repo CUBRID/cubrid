@@ -1,16 +1,16 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
   "agents": {
-    "sisyphus":   { "model": "opencode/claude-sonnet-4-6", "variant": "high" },
-    "momus":      { "model": "opencode/gemini-3-pro" },
+    "sisyphus":   { "model": "opencode/claude-sonnet-4-6" },
+    "momus":      { "model": "opencode/gemini-3-flash" },
     "hephaestus": { "model": "opencode/gpt-5.1-codex" },
     "oracle":     { "model": "opencode/kimi-k2-thinking" },
     "librarian":  { "model": "opencode/gemini-3-flash" },
     "explore":    { "model": "opencode/gemini-3-flash" },
-    "prometheus": { "model": "opencode/claude-3-5-haiku" },
+    "prometheus": { "model": "opencode/claude-haiku-4-5" },
     "metis":      { "model": "opencode/gpt-5-nano" },
     "atlas":      { "model": "opencode/minimax-m2.5-free" },
-    "looker":     { "model": "opencode/kimi-k2.5-free" }
+    "looker":     { "model": "opencode/gemini-3-flash" }
   },
   "categories": {
     "deep":               { "model": "opencode/gpt-5.1-codex", "variant": "high" },
@@ -18,8 +18,8 @@
     "quick":              { "model": "opencode/gemini-3-flash" },
     "unspecified-high":   { "model": "opencode/gemini-3.1-pro" },
     "unspecified-low":    { "model": "opencode/gemini-3-flash" },
-    "visual-engineering": { "model": "opencode/kimi-k2.5-free" },
+    "visual-engineering": { "model": "opencode/gemini-3-flash" },
     "writing":            { "model": "opencode/glm-5-free" },
-    "artistry":           { "model": "opencode/gemini-3-pro" }
+    "artistry":           { "model": "opencode/claude-haiku-4-5" }
   }
 }
