@@ -21,8 +21,12 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
       - name: Install oh-my-opencode
-        run: npx oh-my-opencode install --no-tui --claude=no --openai=no --gemini=no --opencode-zen=yes
+        run: |
+          npm install -g oh-my-opencode
+          mkdir -p ~/.config/opencode
+          echo '{"plugin":["oh-my-opencode"],"default_agent":"sisyphus"}' > ~/.config/opencode/opencode.json
 
       - uses: anomalyco/opencode/github@latest
         env:
