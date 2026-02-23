@@ -6,7 +6,7 @@
       "variant": "high"
     },
     "momus": {
-      "model": "opencode/claude-sonnet-4-6",
+      "model": "opencode/claude-opus-4-5",
       "variant": "max"
     },
     "hephaestus": {
@@ -25,13 +25,16 @@
     },
     "prometheus": {
       "model": "opencode/claude-sonnet-4-6",
-      "variant": "medium"
+      "variant": "high"
     },
     "metis": {
       "model": "opencode/claude-sonnet-4-6",
       "variant": "high"
     },
     "atlas": {
+      "model": "opencode/kimi-k2.5-free"
+    },
+    "looker": {
       "model": "opencode/kimi-k2.5-free"
     }
   },
@@ -40,11 +43,28 @@
       "model": "opencode/deepseek-v3-coder",
       "variant": "max"
     },
-    "unspecified-high": {
-      "model": "opencode/claude-sonnet-4-6"
+    "ultrabrain": {
+      "model": "opencode/claude-opus-4-5",
+      "variant": "max"
     },
     "quick": {
       "model": "opencode/gemini-3-flash"
+    },
+    "unspecified-high": {
+      "model": "opencode/claude-sonnet-4-6",
+      "variant": "high"
+    },
+    "unspecified-low": {
+      "model": "opencode/claude-sonnet-4-6"
+    },
+    "visual-engineering": {
+      "model": "opencode/gemini-3-pro"
+    },
+    "writing": {
+      "model": "opencode/gemini-3-flash"
+    },
+    "artistry": {
+      "model": "opencode/gemini-3-pro"
     }
   }
 }
