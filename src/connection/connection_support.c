@@ -179,8 +179,10 @@ static LAST_ACCESS_STATUS *css_get_access_status_with_name (LAST_ACCESS_STATUS *
 							    const char *user_name);
 static LAST_ACCESS_STATUS *css_get_unused_access_status (LAST_ACCESS_STATUS ** access_status_array, int num_user);
 
+#if defined (SERVER_MODE)
 static int css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id,
 					      const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size);
+#endif
 #endif /* !CS_MODE */
 
 #if !defined(SERVER_MODE)
