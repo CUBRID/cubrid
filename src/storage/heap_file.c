@@ -27636,4 +27636,4 @@ heap_recdes_contains_oos (const RECDES * record)
 {
   int flag = (INT32) OR_GET_MVCC_FLAG (record->data);
   return flag & OR_MVCC_FLAG_HAS_OOS;
-};
+}
