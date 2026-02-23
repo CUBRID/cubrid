@@ -721,12 +721,8 @@ exit:
 		    {
 		      if (query_entry->list_id)
 			{
-			  qfile_update_qlist_count (&thread_ref, query_entry->list_id, 1);        // required?
+			  qfile_update_qlist_count (&thread_ref, query_entry->list_id, 1);
 			  qfile_close_list (&thread_ref, query_entry->list_id);
-			}
-		      else
-			{
-			  ; // no data, no list?
 			}
 		    }
 
