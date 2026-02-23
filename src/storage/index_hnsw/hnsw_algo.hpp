@@ -203,6 +203,9 @@ namespace cubhnsw
     // pre-reserve top_for_refine
     context.m_top_for_refine.reserve (connectivity_max);
 
+    // pre-reserve for visits
+    context.m_visits.reserve (connectivity_max);
+
     top_candidates_t<Traits> &top = context.m_top_candidates;
     next_candidates_t<Traits> &next = context.m_next_candidates;
 
@@ -338,6 +341,11 @@ namespace cubhnsw
     next_candidates_t<Traits> &next = context.m_next_candidates;
 
     std::size_t expansion_size = std::max (k, expansion);
+
+    // pre-reserve for visits
+    context.m_visits.reserve (expansion_size);
+
+    // pre-reserve for top and next
     if (!top.reserve (expansion_size) || !next.reserve (expansion_size))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, expansion_size * sizeof (candidate_t<Traits>));
@@ -426,14 +434,10 @@ namespace cubhnsw
 	  {
 	    slot_id_t successor_slot = candidate_neighbors.at (i);
 
-	    bool already_visited = (visits.find (successor_slot) != visits.end());
-	    if (already_visited)
+	    auto [it, inserted] = visits.insert (successor_slot);
+	    if (!inserted)
 	      {
 		continue;
-	      }
-	    else
-	      {
-		visits.insert (successor_slot);
 	      }
 
 	    distance_t sucessor_dist = compute_distance_from_query_ (context, query, successor_slot);

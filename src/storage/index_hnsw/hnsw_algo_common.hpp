@@ -24,6 +24,7 @@
 #define _HNSW_ALGO_COMMON_HPP_
 
 #include <random>
+#include <ankerl/unordered_dense.h>
 
 #include "hnsw_api.hpp"
 #include "hnsw_graph_base.hpp"
@@ -59,45 +60,35 @@ namespace cubhnsw
     }
   };
 
-
   struct oid_hash
   {
-    std::size_t operator() (const OID &o) const noexcept
+    inline std::size_t operator() (const OID &o) const noexcept
     {
-      std::size_t h = 0;
-      auto mix = [&h] (auto v)
-      {
-	std::size_t x = std::hash<std::decay_t<decltype (v)>> {} (v);
-	h ^= x + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
-      };
-
-      mix (o.volid);
-      mix (o.pageid);
-      mix (o.slotid);
-      return h;
+      // bit packing of oid
+      return (uint64_t (uint32_t (o.pageid)) << 32)
+	     | (uint64_t (uint16_t (o.slotid)) << 16)
+	     |  uint64_t (uint16_t (o.volid));
     }
   };
 
   struct oid_equal
   {
-    bool operator() (const OID &a, const OID &b) const noexcept
+    inline bool operator() (const OID &a, const OID &b) const noexcept
     {
-      return a.pageid == b.pageid
-	     && a.slotid == b.slotid
-	     && a.volid == b.volid;
+      return a.pageid == b.pageid && a.slotid == b.slotid && a.volid == b.volid;
     }
   };
 
   template <typename T>
   struct visit_set_helper
   {
-    using type = std::unordered_set<T>;
+    using type = ankerl::unordered_dense::set<T>;
   };
 
   template <>
   struct visit_set_helper<OID>
   {
-    using type = std::unordered_set<OID, oid_hash, oid_equal>;
+    using type = ankerl::unordered_dense::set<OID, oid_hash, oid_equal>;
   };
 
   template <typename Traits>
