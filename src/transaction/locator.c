@@ -1215,7 +1215,7 @@ locator_dump_lockset_area_info (FILE * out_fp, LC_LOCKSET * lockset)
   fprintf (out_fp, "Mem = %p, length = %d, num_reqobjs = %d,", (void *) (lockset->mem), lockset->length,
 	   lockset->num_reqobjs);
   fprintf (out_fp, "Reqobj_inst_lock = %s, Reqobj_class_lock = %s,\n",
-	   LOCK_TO_LOCKMODE_STRING (lockset->reqobj_inst_lock), LOCK_TO_LOCKMODE_STRING (lockset->reqobj_class_lock));
+	   lock_to_lockmode_string (lockset->reqobj_inst_lock), lock_to_lockmode_string (lockset->reqobj_class_lock));
 
   fprintf (out_fp, " num_reqobjs_processed = %d, last_reqobj_cached = %d, \n", lockset->num_reqobjs_processed,
 	   lockset->last_reqobj_cached);
@@ -1861,7 +1861,7 @@ locator_dump_lockhint_classes (FILE * out_fp, LC_LOCKHINT * lockhint)
     {
       fprintf (out_fp, "class_oid  = %d|%d|%d, chn = %d, lock = %s, subclasses = %d\n", lockhint->classes[i].oid.volid,
 	       lockhint->classes[i].oid.pageid, lockhint->classes[i].oid.slotid, lockhint->classes[i].chn,
-	       LOCK_TO_LOCKMODE_STRING (lockhint->classes[i].lock), lockhint->classes[i].need_subclasses);
+	       lock_to_lockmode_string (lockhint->classes[i].lock), lockhint->classes[i].need_subclasses);
     }
 }
 

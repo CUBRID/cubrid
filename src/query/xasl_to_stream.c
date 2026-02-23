@@ -3468,6 +3468,13 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_regu_variable_list (build_list_proc->a_scan_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   offset = xts_save_outptr_list (build_list_proc->a_outptr_list);
   if (offset == ER_FAILED)
     {
@@ -6237,6 +6244,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + PTR_SIZE		/* g_agg_list */
 	   + PTR_SIZE		/* a_func_list */
 	   + PTR_SIZE		/* a_regu_list */
+	   + PTR_SIZE		/* a_scan_regu_list */
 	   + PTR_SIZE		/* a_outptr_list */
 	   + PTR_SIZE		/* a_outptr_list_ex */
 	   + PTR_SIZE		/* a_outptr_list_interm */

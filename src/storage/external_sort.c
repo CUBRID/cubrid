@@ -55,6 +55,7 @@
 #include "object_representation.h"
 #include "px_worker_manager.hpp"
 #include "px_callable_task.hpp"
+#include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
 
 #include <functional>
@@ -1425,12 +1426,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   /* The size of a sort buffer is limited to PRM_SR_NBUFFERS. */
   sort_param->tot_buffers = MIN (prm_get_integer_value (PRM_ID_SR_NBUFFERS), input_pages);
-  sort_param->tot_buffers = MAX (4, sort_param->tot_buffers);
+  sort_param->tot_buffers = MAX (16, sort_param->tot_buffers);
 
   sort_param->internal_memory = (char *) malloc ((size_t) sort_param->tot_buffers * (size_t) DB_PAGESIZE);
   if (sort_param->internal_memory == NULL)
     {
-      sort_param->tot_buffers = 4;
+      sort_param->tot_buffers = 16;
 
       sort_param->internal_memory = (char *) malloc (sort_param->tot_buffers * DB_PAGESIZE);
       if (sort_param->internal_memory == NULL)
@@ -4336,8 +4337,9 @@ sort_split_input_temp_file (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
   bool is_first_vpid = false;
   PAGE_PTR page_p;
   VPID next_vpid, prev_vpid, first_vpid[SORT_MAX_PARALLEL], last_vpid[SORT_MAX_PARALLEL];
-  QFILE_LIST_SCAN_ID *scan_id_p;
   SORT_INFO *sort_info_p, *org_sort_info_p;
+
+  assert (parallel_num <= SORT_MAX_PARALLEL);
 
   /* init vpid */
   for (i = 0; i < parallel_num; i++)
@@ -4672,24 +4674,17 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       /* get scan id of input file */
       sort_info_p = (SORT_INFO *) sort_param->get_arg;
 
-      if (sort_info_p->parallelism > 0)
+      parallel_num =
+	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, sort_info_p->input_file->page_cnt,
+						 sort_info_p->parallelism /* hint */ );
+      if (parallel_num < 2)
 	{
-	  parallel_num = sort_info_p->parallelism;
-	}
-      else
-	{
-	  parallel_num = prm_get_integer_value (PRM_ID_PARALLELISM);
-	}
-
-      if (parallel_num <= 1)
-	{
+	  /* single process */
 	  return 1;
 	}
-
-      /* Find the number of parallel processes by page_cnt and tuple_cnt */
-      if (sort_info_p->input_file->page_cnt <= parallel_num || sort_info_p->input_file->tuple_cnt <= parallel_num)
+      /* check tuple_cnt */
+      if (sort_info_p->input_file->tuple_cnt <= parallel_num)
 	{
-	  /* TO_DO : need to check the appropriate number of parallels depending on the number of pages */
 	  return 1;
 	}
 

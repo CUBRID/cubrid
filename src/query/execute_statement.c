@@ -1342,13 +1342,20 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
       do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
       if (other_serial_name[0] != '\0')
 	{
+	  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_SERIAL)
+	    {
+	      /* maybe unloaded from version 11.2+ or later */
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	      return NULL;
+	    }
+
 	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_UNIQUE_NAME);
 	  if (serial_mop)
 	    {
@@ -19969,6 +19976,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *class_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -19985,10 +19993,23 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	  return error;
+	}
+    }
+
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20037,6 +20058,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
     }
 
 end:
@@ -20061,6 +20084,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *serial_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20077,10 +20101,21 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
+
   serial_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20160,6 +20195,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *trigger_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20176,10 +20212,22 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
+
   trigger_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20313,6 +20361,8 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
     }
 
 end:
@@ -20337,6 +20387,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *sp_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20353,10 +20404,22 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	  return error;
+	}
+    }
+
   sp_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20405,6 +20468,8 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
     }
 
 end:

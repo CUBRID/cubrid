@@ -22,6 +22,7 @@
 
 #include "load_common.hpp"
 
+#include "db_client_type.hpp"
 #include "dbtype_def.h"
 #include "error_code.h"
 #include "intl_support.h"
@@ -538,21 +539,24 @@ namespace cubload
   }
 
   load_status::load_status ()
-    : m_load_completed (false)
+    : m_load_client_type (DB_CLIENT_TYPE_LOADDB_UTILITY)
+    , m_load_completed (false)
     , m_load_failed (false)
     , m_load_stats ()
   {
   }
 
-  load_status::load_status (bool load_completed, bool load_failed, std::vector<stats> &load_stats)
-    : m_load_completed (load_completed)
+  load_status::load_status (int load_client_type, bool load_completed, bool load_failed, std::vector<stats> &load_stats)
+    : m_load_client_type (load_client_type)
+    , m_load_completed (load_completed)
     , m_load_failed (load_failed)
     , m_load_stats (load_stats)
   {
   }
 
   load_status::load_status (load_status &&other) noexcept
-    : m_load_completed (other.m_load_completed)
+    : m_load_client_type (other.m_load_client_type)
+    , m_load_completed (other.m_load_completed)
     , m_load_failed (other.m_load_failed)
     , m_load_stats (std::move (other.m_load_stats))
   {
@@ -561,11 +565,18 @@ namespace cubload
   load_status &
   load_status::operator= (load_status &&other) noexcept
   {
+    m_load_client_type = other.m_load_client_type;
     m_load_completed = other.m_load_completed;
     m_load_failed = other.m_load_failed;
     m_load_stats = std::move (other.m_load_stats);
 
     return *this;
+  }
+
+  int
+  load_status::get_load_client_type ()
+  {
+    return m_load_client_type;
   }
 
   bool
@@ -589,6 +600,7 @@ namespace cubload
   void
   load_status::pack (cubpacking::packer &serializator) const
   {
+    serializator.pack_int (m_load_client_type);
     serializator.pack_bool (m_load_completed);
     serializator.pack_bool (m_load_failed);
 
@@ -602,6 +614,7 @@ namespace cubload
   void
   load_status::unpack (cubpacking::unpacker &deserializator)
   {
+    deserializator.unpack_int (m_load_client_type);
     deserializator.unpack_bool (m_load_completed);
     deserializator.unpack_bool (m_load_failed);
 
@@ -618,7 +631,8 @@ namespace cubload
   size_t
   load_status::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
   {
-    size_t size = serializator.get_packed_bool_size (start_offset); // m_load_completed
+    size_t size = serializator.get_packed_int_size (start_offset); // m_load_client_type
+    size += serializator.get_packed_bool_size (size); // m_load_completed
     size += serializator.get_packed_bool_size (size); // m_load_failed
     size += serializator.get_packed_bigint_size (size); // m_load_stats size
     for (const stats &s : m_load_stats)
