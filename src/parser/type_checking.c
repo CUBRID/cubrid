@@ -60,7 +60,6 @@
 #include "db.h"
 #include "tz_support.h"
 #include "func_type.hpp"
-#include "string_opfunc.h"
 
 #include "dbtype.h"
 

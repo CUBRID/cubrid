@@ -75,5 +75,6 @@ extern int util_bsearch (const void *key, const void *base, int n_elems, unsigne
 			 int (*func_compare) (const void *, const void *), bool * out_found);
 
 extern void util_get_second_and_ms_since_epoch (time_t * secs, int *msec);
+extern void util_get_ms_since_epoch (uint64_t *msec);
 
 #endif /* _UTIL_FUNC_H_ */

@@ -57,7 +57,9 @@
 #include "tz_support.h"
 #include "util_func.h"
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_entry.hpp"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #include <algorithm>
 #include <string>
@@ -156,10 +158,10 @@ typedef enum
 
 #define MAX_TOKEN_SIZE 16000
 
-#if !defined (CS_MODE)
+#if defined (SERVER_MODE) || defined (SA_MODE)
 static int uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes);
 static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, unsigned char *out_bytes);
-#endif /* !defined (CS_MODE) */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 typedef enum
 {
@@ -26044,7 +26046,8 @@ db_uuid (THREAD_ENTRY * thread_p, UUID_VERSION version, DB_VALUE * result){
     break;
     
   }
-  
+  assert(false);
+  return 0;
 }
 
 int

@@ -8080,7 +8080,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_UTC_TIME || node->info.expr.op == PT_UTC_DATE
 		       || node->info.expr.op == PT_PI || node->info.expr.op == PT_LOCAL_TRANSACTION_ID
 		       || node->info.expr.op == PT_ROW_COUNT || node->info.expr.op == PT_LIST_DBS
-		       || node->info.expr.op == PT_SYS_GUID || node->info.expr.op == PT_LAST_INSERT_ID
+		       || node->info.expr.op == PT_SYS_GUID || node->info.expr.op == PT_UUID
+		       || node->info.expr.op == PT_LAST_INSERT_ID
 		       || node->info.expr.op == PT_DBTIMEZONE || node->info.expr.op == PT_SESSIONTIMEZONE
 		       || node->info.expr.op == PT_UTC_TIMESTAMP)
 		{
@@ -9291,6 +9292,26 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_SYS_GUID:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_SYS_GUID, domain);
+		  break;
+
+		case PT_UUID:
+		  {
+		    /* PT_UUID takes 0 or 1 argument (defaults to 4 if no argument) */
+		    int uuid_version = 4;
+		    PT_NODE *arg1 = node->info.expr.arg1;
+		    if (arg1 != NULL && arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_INTEGER)
+		      {
+		        uuid_version = arg1->info.value.data_value.i;
+		      }
+		    if (uuid_version == 7)
+		      {
+		        regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID7, domain);
+		      }
+		    else
+		      {
+		        regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID4, domain);
+		      }
+		  }
 		  break;
 
 		case PT_BIT_TO_BLOB:
@@ -28240,6 +28261,7 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
+	case PT_UUID:
 	case PT_RAND:
 	case PT_DRAND:
 	case PT_RANDOM:
