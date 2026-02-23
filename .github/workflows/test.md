@@ -72,10 +72,10 @@ gh repo sync tw-kang/cubrid-testcases-private-ex --branch develop
 cd cubrid   # tw-kang/cubrid 로컬 디렉터리
 
 git checkout cubridqa-1320
-git pull origin cubridqa-1320
+git pull twkang cubridqa-1320
 
 git checkout -b test/sync-tc
-git push origin test/sync-tc
+git push twkang test/sync-tc
 ```
 
 > **이후 워크플로우 파일을 수정하면 `cubridqa-1320`에 커밋하고, `test/sync-tc`에 merge하여 반영한다.**
@@ -86,7 +86,7 @@ git checkout cubridqa-1320
 # ... 파일 수정 및 커밋 ...
 git checkout test/sync-tc
 git merge cubridqa-1320
-git push origin test/sync-tc
+git push twkang test/sync-tc
 ```
 
 ### 1-3. 현재 워크플로우 파일 상태 확인
@@ -163,12 +163,12 @@ MIIEow...
 ```bash
 cd cubrid
 git checkout cubridqa-1320
-git pull origin cubridqa-1320
+git pull twkang cubridqa-1320
 git checkout -b feature/test-scenario-a
 echo "test" >> dummy.txt
 git add dummy.txt
 git commit -m "test: scenario A"
-git push origin feature/test-scenario-a
+git push twkang feature/test-scenario-a
 
 gh pr create \
   --repo tw-kang/cubrid \
@@ -215,7 +215,7 @@ git checkout tc/pr-7
 echo "tc change for pr-7" >> testcase.txt
 git add testcase.txt
 git commit -m "test: add TC for engine PR #7"
-git push origin tc/pr-7
+git push twkang tc/pr-7
 cd ..
 ```
 
@@ -258,12 +258,12 @@ gh api repos/tw-kang/cubrid-testcases-private-ex/branches \
 
 ```bash
 cd cubrid
-git checkout cubridqa-1320 && git pull origin cubridqa-1320
+git checkout cubridqa-1320 && git pull twkang cubridqa-1320
 git checkout -b feature/test-scenario-c
 echo "test" >> dummy2.txt
 git add dummy2.txt
 git commit -m "test: scenario C"
-git push origin feature/test-scenario-c
+git push twkang feature/test-scenario-c
 gh pr create \
   --repo tw-kang/cubrid \
   --base test/sync-tc \
@@ -314,7 +314,7 @@ git checkout feature/test-scenario-a
 echo "update" >> dummy.txt
 git add dummy.txt
 git commit -m "test: trigger synchronize"
-git push origin feature/test-scenario-a
+git push twkang feature/test-scenario-a
 ```
 
 **검증**
@@ -344,7 +344,7 @@ Actions 탭 → 방금 실행된 `tc-branch-sync.yml` 로그 → **"Sync TC bran
 git checkout -b feature/test-scenario-e
 echo "e" >> dummy3.txt
 git add dummy3.txt && git commit -m "test: scenario E"
-git push origin feature/test-scenario-e
+git push twkang feature/test-scenario-e
 gh pr create \
   --repo tw-kang/cubrid \
   --base test/sync-tc \
@@ -394,7 +394,7 @@ gh pr list --repo tw-kang/cubrid --json number --jq '.[].number' | \
 
 # 테스트용 로컬 및 원격 브랜치 삭제
 for branch in feature/test-scenario-a feature/test-scenario-c feature/test-scenario-e; do
-  git push origin --delete "$branch" 2>/dev/null && echo "Deleted remote: $branch"
+  git push twkang --delete "$branch" 2>/dev/null && echo "Deleted remote: $branch"
   git branch -D "$branch" 2>/dev/null && echo "Deleted local: $branch"
 done
 ```
@@ -402,7 +402,7 @@ done
 ### `test/sync-tc` 브랜치 삭제 (테스트 완전 종료 시)
 
 ```bash
-git push origin --delete test/sync-tc
+git push twkang --delete test/sync-tc
 git branch -D test/sync-tc
 ```
 
@@ -438,7 +438,7 @@ git checkout cubridqa-1320
 # ... 수정 및 커밋 ...
 git checkout test/sync-tc
 git merge cubridqa-1320
-git push origin test/sync-tc
+git push twkang test/sync-tc
 ```
 
 ### PR 생성 시 upstream 방지
@@ -459,7 +459,7 @@ gh pr create --base test/sync-tc ...
 `tw-kang/cubrid`의 **Settings → Secrets**에 별도로 등록해야 한다.
 
 ### TC fork `develop` 브랜치 보호 설정 비활성화 권장
-Branch Protection이 활성화된 경우 `tc-branch-finalize.yml`의 `git push origin develop`이 실패한다.  
+Branch Protection이 활성화된 경우 `tc-branch-finalize.yml`의 `git push twkang develop`이 실패한다.  
 테스트 단계에서는 비활성화하는 것을 권장한다.
 
 ```
