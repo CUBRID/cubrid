@@ -791,7 +791,8 @@ namespace cubschema
       {"object_of", "object"},
       {"auth_type", format_varchar (7)},
       {"is_grantable", "integer"},
-      {"created_time", "datetime"}
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -1700,6 +1701,7 @@ namespace cubschema
       {"auth_type", format_varchar (7)},
       {"is_grantable", format_varchar (3)},
       {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_auth_spec ()}
     },

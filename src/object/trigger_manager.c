@@ -1967,7 +1967,7 @@ register_user_trigger (DB_OBJECT * object)
       error = set_insert_element (table, 0, &value);
       if (error != NO_ERROR)
 	{
-	  error = au_update_user_timestamp (Au_user);
+	  error = au_update_timestamps (Au_user);
 	}
       /* if an error is set, probably must abort the transaction */
     }
@@ -2035,7 +2035,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
 	}
       if (error != NO_ERROR)
 	{
-	  error = au_update_user_timestamp (Au_user);
+	  error = au_update_timestamps (Au_user);
 	}
       /* else, should have "trigger not found" error ? */
     }

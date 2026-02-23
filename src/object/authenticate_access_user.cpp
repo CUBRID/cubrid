@@ -444,7 +444,7 @@ au_make_user (const char *name)
 		  db_make_null (&value);
 		  obj_set (user, "comment", &value);
 
-		  au_set_user_timestamps (user);
+		  au_set_new_timestamps (user);
 		}
 	    }
 	  else
@@ -728,96 +728,6 @@ au_set_user_comment (MOP user, const char *comment)
   return error;
 }
 
-int
-au_set_user_timestamps (MOP user)
-{
-  DB_VALUE current_datetime;
-  int save;
-  int error = NO_ERROR;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-  if (obj_set (user, "created_time", &current_datetime) != NO_ERROR ||
-      obj_set (user, "updated_time", &current_datetime) != NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-  AU_RESTORE (save);
-
-  return error;
-}
-
-int
-au_update_user_timestamp (MOP user)
-{
-  DB_VALUE current_datetime;
-  int save;
-  int error = NO_ERROR;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-  if (obj_set (user, "updated_time", &current_datetime) != NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-  AU_RESTORE (save);
-
-  return error;
-}
-
-
-int
-au_set_password_timestamps (MOP pass)
-{
-  DB_VALUE current_datetime;
-  int save;
-  int error = NO_ERROR;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-  if (obj_set (pass, "created_time", &current_datetime) != NO_ERROR ||
-      obj_set (pass, "updated_time", &current_datetime) != NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-  AU_RESTORE (save);
-
-  return error;
-}
-
-int
-au_update_password_timestamp (MOP pass)
-{
-  DB_VALUE current_datetime;
-  int save;
-  int error = NO_ERROR;
-
-  if (db_sys_datetime (&current_datetime) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-  if (obj_set (pass, "updated_time", &current_datetime) != NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-  AU_RESTORE (save);
-
-  return error;
-}
 
 /*
  * GROUP HIERARCHY MAINTENANCE
@@ -1097,7 +1007,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
 
   if (error == NO_ERROR)
     {
-      error = au_update_user_timestamp (member);
+      error = au_update_timestamps (member);
     }
 
   AU_ENABLE (save);
@@ -1201,7 +1111,7 @@ au_drop_member (MOP group, MOP member)
 
   if (error == NO_ERROR)
     {
-      error = au_update_user_timestamp (member);
+      error = au_update_timestamps (member);
     }
 
   AU_ENABLE (save);
@@ -1452,7 +1362,7 @@ au_drop_user (MOP user)
 		    {
 		      db_make_set (&value, new_groups);
 		      obj_set (auser, "groups", &value);
-		      error = au_update_user_timestamp (auser);
+		      error = au_update_timestamps (auser);
 		    }
 
 		  if (new_groups)

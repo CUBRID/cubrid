@@ -517,3 +517,48 @@ au_disable_passwords (void)
 {
   AU_DISABLE_PASSWORDS ();
 }
+
+int
+au_set_new_timestamps (MOP obj)
+{
+  DB_VALUE current_datetime;
+  int save;
+  int error = NO_ERROR;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+  if (obj_set (obj, "created_time", &current_datetime) != NO_ERROR ||
+      obj_set (obj, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+  AU_RESTORE (save);
+
+  return error;
+}
+
+int
+au_update_timestamps (MOP obj)
+{
+  DB_VALUE current_datetime;
+  int save;
+  int error = NO_ERROR;
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+  if (obj_set (obj, "updated_time", &current_datetime) != NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+  AU_RESTORE (save);
+
+  return error;
+}

@@ -2171,7 +2171,7 @@ do_create_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
     }
 
   // for syncronizing created_time and updated_time
-  error = au_set_user_timestamps (user);
+  error = au_set_new_timestamps (user);
   if (error != NO_ERROR)
     {
       goto end;
@@ -2405,7 +2405,7 @@ do_alter_user (const PARSER_CONTEXT * parser, const PT_NODE * statement)
  */
   if (statement->info.alter_user.members == NULL)
     {
-      error = au_update_user_timestamp (user);
+      error = au_update_timestamps (user);
       if (error != NO_ERROR)
 	{
 	  goto end;
