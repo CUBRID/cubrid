@@ -131,6 +131,9 @@ static void *op_server_shm_open (int shm_key);
 #define GRANT_ENTRY_TYPE(index)         (index + 3)
 #endif
 
+#define DBMT_ERROR_MSG_SIZE 5000	/* this is defined in cm_job_task.h on cubridmanager */
+#define LINE_BUF_SIZE 1024
+
 static int get_dbvoldir (char *vol_dir, size_t vol_dir_size, char *dbname);
 static int getservershmid (char *dir, char *dbname);
 
@@ -166,6 +169,7 @@ static void _op_get_db_user_authorization (nvplist * res, DB_OBJECT * user);
 static T_EMGR_VERSION get_client_version (char *cli_ver_val);
 
 static bool is_class_entry (DB_COLLECTION * col, int index);
+static void error_file_to_buf (const char *err_file, char *err_buf);
 
 #if defined(WINDOWS)
 static void
@@ -519,8 +523,12 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
       char cmd_name[PATH_MAX];
       const char *argv[6];
       int argc = 0;
+      int exit_code = 0;
+      char cubrid_err_file[PATH_MAX];
 
       (void) envvar_bindir_file (cmd_name, PATH_MAX, UTIL_CUBRID);
+      make_temp_filename (cubrid_err_file, "optimizedb.", PATH_MAX);
+
       argv[argc++] = cmd_name;
       argv[argc++] = UTIL_OPTION_OPTIMIZEDB;
       if (classname != NULL)
@@ -531,10 +539,16 @@ cm_ts_optimizedb (nvplist * req, nvplist * res, char *_dbmt_error)
       argv[argc++] = dbname;
       argv[argc++] = NULL;
 
-      if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
+      if (run_child (argv, 1, NULL, NULL, cubrid_err_file, &exit_code) < 0)
 	{			/* optimizedb */
 	  strcpy (_dbmt_error, argv[0]);
 	  return ERR_SYSTEM_CALL;
+	}
+
+      if (exit_code != 0)
+	{
+	  error_file_to_buf (cubrid_err_file, _dbmt_error);
+	  return ERR_WITH_MSG;
 	}
     }
   else
@@ -2998,4 +3012,73 @@ getservershmid (char *dir, char *dbname)
 
   fclose (fdkey_file);
   return shm_key;
+}
+
+/*
+ * base code: read_error_file () at cm_dep_tasks.c on cubridmanager
+ * fill error message from file to buffer
+ */
+
+static void
+error_file_to_buf (const char *err_file, char *err_buf)
+{
+  FILE *fp;
+  char buf[LINE_BUF_SIZE];
+  int msg_size = 0;
+  size_t i;
+  char *ptr;
+
+  if (err_buf == NULL)
+    {
+      return;
+    }
+
+  memset (err_buf, 0, DBMT_ERROR_MSG_SIZE);
+
+  if ((fp = fopen (err_file, "r")) == NULL)
+    {
+      return;
+    }
+
+  while (1)
+    {
+      memset (buf, 0, LINE_BUF_SIZE);
+      if (fgets (buf, LINE_BUF_SIZE - 1, fp) == NULL)
+	{
+	  break;
+	}
+
+      if ((ptr = strchr (buf, '\n')) != NULL)
+	{
+	  *ptr = '\0';
+	}
+
+      ut_trim (buf);
+
+      if (buf[0] == '\0')
+	{
+	  continue;
+	}
+
+      if ((DBMT_ERROR_MSG_SIZE - msg_size - 1) > 0)
+	{
+	  snprintf (err_buf + msg_size, DBMT_ERROR_MSG_SIZE - msg_size - 1, "%s ", buf);
+	}
+      else
+	{
+	  break;
+	}
+
+      msg_size = strlen (err_buf);
+    }
+
+  if (msg_size > 0)
+    {
+      err_buf[msg_size - 1] = '\0';
+    }
+
+  fclose (fp);
+  unlink (err_file);
+
+  return;
 }
