@@ -1,0 +1,126 @@
+#
+#
+#  Copyright 2016 CUBRID Corporation
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+
+
+name: TC Branch Sync
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches:
+      - develop
+      - 'release/11.**'
+      - 'feature/**'
+
+concurrency:
+  group: tc-branch-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  TC_PUB_REPO: CUBRID/cubrid-testcases
+  TC_PRIV_REPO: CUBRID/cubrid-testcases-private-ex
+  TC_BRANCH_PREFIX: tc/pr-
+
+jobs:
+  sync-tc-branch:
+    name: Sync TC branch
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: CUBRID
+          repositories: "cubrid-testcases,cubrid-testcases-private-ex"
+
+      - name: Sync TC branch (cubrid-testcases)
+        id: sync-pub
+        continue-on-error: true
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
+          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PUB_REPO}.git"
+
+          if git ls-remote --exit-code --heads "${REPO_URL}" "${BRANCH}" 2>/dev/null; then
+            echo "[info] Branch '${BRANCH}' already exists in ${TC_PUB_REPO}, skipping"
+          else
+            echo "[info] Creating branch '${BRANCH}' from develop in ${TC_PUB_REPO}"
+            git clone --depth=1 --branch develop "${REPO_URL}" tc-pub
+            cd tc-pub
+            git checkout -b "${BRANCH}"
+            git push origin "${BRANCH}"
+            echo "[info] Branch '${BRANCH}' created successfully in ${TC_PUB_REPO}"
+          fi
+
+      - name: Sync TC branch (cubrid-testcases-private-ex)
+        id: sync-priv
+        continue-on-error: true
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
+          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PRIV_REPO}.git"
+
+          if git ls-remote --exit-code --heads "${REPO_URL}" "${BRANCH}" 2>/dev/null; then
+            echo "[info] Branch '${BRANCH}' already exists in ${TC_PRIV_REPO}, skipping"
+          else
+            echo "[info] Creating branch '${BRANCH}' from develop in ${TC_PRIV_REPO}"
+            git clone --depth=1 --branch develop "${REPO_URL}" tc-priv
+            cd tc-priv
+            git checkout -b "${BRANCH}"
+            git push origin "${BRANCH}"
+            echo "[info] Branch '${BRANCH}' created successfully in ${TC_PRIV_REPO}"
+          fi
+
+      - name: Fail if any sync step failed
+        if: steps.sync-pub.outcome == 'failure' || steps.sync-priv.outcome == 'failure'
+        run: |
+          echo "[error] One or more TC branch sync steps failed."
+          echo "  cubrid-testcases        : ${{ steps.sync-pub.outcome }}"
+          echo "  cubrid-testcases-private-ex : ${{ steps.sync-priv.outcome }}"
+          exit 1
+
+      - name: Post failure comment on PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUB_RESULT: ${{ steps.sync-pub.outcome }}
+          PRIV_RESULT: ${{ steps.sync-priv.outcome }}
+        run: |
+          BODY=$(printf '⚠️ **TC Branch Sync Failed** (PR #%s)\n\nFailed to create `tc/pr-%s` in one or more TC repositories:\n- `CUBRID/cubrid-testcases`: %s\n- `CUBRID/cubrid-testcases-private-ex`: %s\n\nThe GitHub App (`TC_APP_ID` / `TC_APP_PRIVATE_KEY`) may be misconfigured.\n\nWorkflow logs: %s' \
+            "${PR_NUMBER}" "${PR_NUMBER}" "${PUB_RESULT}" "${PRIV_RESULT}" "${RUN_URL}")
+
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${{ github.repository }}" \
+            --body "${BODY}"

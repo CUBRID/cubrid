@@ -1,0 +1,152 @@
+#
+#
+#  Copyright 2016 CUBRID Corporation
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+name: TC Branch Finalize
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches:
+      - develop
+      - 'release/11.**'
+      - 'feature/**'
+
+env:
+  TC_PUB_REPO: CUBRID/cubrid-testcases
+  TC_PRIV_REPO: CUBRID/cubrid-testcases-private-ex
+  TC_BRANCH_PREFIX: tc/pr-
+
+jobs:
+  finalize-tc-branch:
+    name: Finalize TC branch
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: CUBRID
+          repositories: "cubrid-testcases,cubrid-testcases-private-ex"
+
+      - name: Merge TC branch into develop (cubrid-testcases)
+        id: merge-pub
+        if: github.event.pull_request.merged == true
+        continue-on-error: true
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
+          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PUB_REPO}.git"
+
+          if ! git ls-remote --exit-code --heads "${REPO_URL}" "${BRANCH}" 2>/dev/null; then
+            echo "[info] Branch '${BRANCH}' not found in ${TC_PUB_REPO}, nothing to merge"
+            exit 0
+          fi
+
+          echo "[info] Merging '${BRANCH}' into develop in ${TC_PUB_REPO}"
+          git clone --branch develop "${REPO_URL}" tc-pub
+          cd tc-pub
+          git fetch origin "${BRANCH}:${BRANCH}"
+          git merge --no-ff "${BRANCH}" -m "Merge TC branch '${BRANCH}' into develop (Engine PR #${PR_NUMBER})"
+          git push origin develop
+          git push origin --delete "${BRANCH}"
+          echo "[info] Merged and deleted '${BRANCH}' in ${TC_PUB_REPO}"
+
+      - name: Merge TC branch into develop (cubrid-testcases-private-ex)
+        id: merge-priv
+        if: github.event.pull_request.merged == true
+        continue-on-error: true
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
+          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PRIV_REPO}.git"
+
+          if ! git ls-remote --exit-code --heads "${REPO_URL}" "${BRANCH}" 2>/dev/null; then
+            echo "[info] Branch '${BRANCH}' not found in ${TC_PRIV_REPO}, nothing to merge"
+            exit 0
+          fi
+
+          echo "[info] Merging '${BRANCH}' into develop in ${TC_PRIV_REPO}"
+          git clone --branch develop "${REPO_URL}" tc-priv
+          cd tc-priv
+          git fetch origin "${BRANCH}:${BRANCH}"
+          git merge --no-ff "${BRANCH}" -m "Merge TC branch '${BRANCH}' into develop (Engine PR #${PR_NUMBER})"
+          git push origin develop
+          git push origin --delete "${BRANCH}"
+          echo "[info] Merged and deleted '${BRANCH}' in ${TC_PRIV_REPO}"
+
+      - name: Fail if any merge step failed
+        if: github.event.pull_request.merged == true && (steps.merge-pub.outcome == 'failure' || steps.merge-priv.outcome == 'failure')
+        run: |
+          echo "[error] One or more TC branch merge steps failed."
+          echo "  cubrid-testcases            : ${{ steps.merge-pub.outcome }}"
+          echo "  cubrid-testcases-private-ex : ${{ steps.merge-priv.outcome }}"
+          exit 1
+
+      - name: Post merge failure comment on PR
+        if: failure() && github.event.pull_request.merged == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUB_RESULT: ${{ steps.merge-pub.outcome }}
+          PRIV_RESULT: ${{ steps.merge-priv.outcome }}
+        run: |
+          BODY=$(printf '❌ **TC Branch Auto-Merge Failed** (PR #%s)\n\nFailed to merge `tc/pr-%s` into `develop` in one or more TC repositories:\n- `CUBRID/cubrid-testcases`: %s\n- `CUBRID/cubrid-testcases-private-ex`: %s\n\nThis may be due to a merge conflict or a misconfigured GitHub App (`TC_APP_ID` / `TC_APP_PRIVATE_KEY`).\n**Manual action required**: please merge the TC branch into develop and delete it.\n\nWorkflow logs: %s' \
+            "${PR_NUMBER}" "${PR_NUMBER}" "${PUB_RESULT}" "${PRIV_RESULT}" "${RUN_URL}")
+          gh pr comment "${PR_NUMBER}" \
+            --repo "${{ github.repository }}" \
+            --body "${BODY}"
+
+      - name: Delete TC branch (PR closed without merge)
+        id: delete-branches
+        if: github.event.pull_request.merged == false
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
+
+          PUB_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PUB_REPO}.git"
+          if git ls-remote --exit-code --heads "${PUB_URL}" "${BRANCH}" 2>/dev/null; then
+            git push "${PUB_URL}" --delete "${BRANCH}"
+            echo "[info] Deleted '${BRANCH}' from ${TC_PUB_REPO}"
+          else
+            echo "[info] Branch '${BRANCH}' not found in ${TC_PUB_REPO}, skipping"
+          fi
+
+          PRIV_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PRIV_REPO}.git"
+          if git ls-remote --exit-code --heads "${PRIV_URL}" "${BRANCH}" 2>/dev/null; then
+            git push "${PRIV_URL}" --delete "${BRANCH}"
+            echo "[info] Deleted '${BRANCH}' from ${TC_PRIV_REPO}"
+          else
+            echo "[info] Branch '${BRANCH}' not found in ${TC_PRIV_REPO}, skipping"
+          fi
