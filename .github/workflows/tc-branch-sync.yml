@@ -25,14 +25,15 @@ on:
       - develop
       - 'release/11.**'
       - 'feature/**'
+      - 'test/sync-tc'   # test only
 
 concurrency:
   group: tc-branch-sync-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
-  TC_PUB_REPO: CUBRID/cubrid-testcases
-  TC_PRIV_REPO: CUBRID/cubrid-testcases-private-ex
+  TC_PUB_REPO: tw-kang/cubrid-testcases
+  TC_PRIV_REPO: tw-kang/cubrid-testcases-private-ex
   TC_BRANCH_PREFIX: tc/pr-
 
 jobs:
@@ -56,7 +57,7 @@ jobs:
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          owner: CUBRID
+          owner: tw-kang
           repositories: "cubrid-testcases,cubrid-testcases-private-ex"
 
       - name: Sync TC branch (cubrid-testcases)
