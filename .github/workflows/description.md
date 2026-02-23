@@ -36,13 +36,17 @@
 
 ## 구현된 파일
 
-### 1. `tc-branch-sync.yml` — TC 브랜치 생성 및 유지
+### 1. `tc-branch-sync.yml` — TC 브랜치 생성 / Revert 처리
 
 - **트리거**: `pull_request_target` (opened, reopened, synchronize)
 - **대상 브랜치**: `develop`, `release/11.**`, `feature/**`
 - **동작**:
-  - 엔진 PR이 열리거나 갱신될 때 두 TC repo에 `tc/pr-<PR_NUMBER>` 브랜치가 없으면 `develop` 기준으로 생성
-  - 이미 존재하면 skip (개발자가 TC를 이미 수정 중일 수 있으므로)
+  - PR body에서 `Reverts #N` 패턴을 먼저 감지하여 일반 PR / Revert PR를 분기
+  - **일반 PR**: 두 TC repo에 `tc/pr-<PR_NUMBER>` 브랜치가 없으면 `develop` 기준으로 생성 (idempotent — 이미 존재하면 skip)
+  - **Revert PR**: 원본 PR의 TC merge commit을 `git revert -m 1`으로 취소, revert 커밋을 `tc/pr-<REVERT_PR>` 브랜치에 push
+    - 브랜치가 이미 있으면 force-push, 없으면 신규 생성
+    - 원본 PR에 TC 변경이 없었던 경우(머지 커밋 부재) silently skip
+    - conflict 발생 시 PR에 수동 복원 요청 코멘트 게시
   - `cubrid-testcases`와 `cubrid-testcases-private-ex`를 독립적으로 처리 (`continue-on-error`)
   - 어느 한 쪽이라도 실패하면 전체 실패로 간주하고 엔진 PR에 코멘트 게시
 - **concurrency**: 같은 PR 번호에 대한 중복 실행은 이전 것을 취소하고 최신 실행만 유지
@@ -153,4 +157,3 @@ GitHub Branch Protection의 "Require status checks to pass"와 연계하면, CI 
 | 항목 | 설명 |
 |------|------|
 | develop 자동 동기화 | 개발자가 엔진 PR에 develop을 머지할 때, 대응 TC 브랜치에도 develop을 자동 머지 |
-| Revert 자동화 | 머지된 엔진 PR이 revert될 때 TC repo에도 자동으로 revert 처리 또는 알림 코멘트 게시 |
