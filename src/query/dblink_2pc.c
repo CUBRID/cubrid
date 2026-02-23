@@ -186,7 +186,7 @@ int
 dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn_url,
 					  const char *user_name, const char *password, bool is_commit)
 {
-  int err, conn_handle;
+  int err, conn_handle = bqual;
   XID xid;
   T_CCI_ERROR err_buf;
   char type = is_commit ? CCI_TRAN_COMMIT : CCI_TRAN_ROLLBACK;
@@ -197,6 +197,21 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
       return ER_FAILED;
     }
 
+  /* try to connect with conntion handle first */
+  xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
+  xid.gtrid_length = sizeof (int);
+  xid.bqual_length = sizeof (int);
+  memcpy (xid.data, &gtrid, xid.gtrid_length);
+  memcpy (xid.data + xid.gtrid_length, &bqual, xid.bqual_length);
+
+  err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
+
+  if (err == CCI_ER_NO_ERROR)
+    {
+      return err;
+    }
+
+  /* try to connect for cci_xa_end_tran, maybe recoverying */
   if (strstr (conn_url, ":?"))
     {
       snprintf (conn_url_gateway, sizeof (conn_url_gateway), "%s%s", conn_url, "&__gateway=true");
@@ -211,12 +226,6 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
     {
       return ER_DBLINK;
     }
-
-  xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
-  xid.gtrid_length = sizeof (int);
-  xid.bqual_length = sizeof (int);
-  memcpy (xid.data, &gtrid, xid.gtrid_length);
-  memcpy (xid.data + xid.gtrid_length, &bqual, xid.bqual_length);
 
   err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
   (void) cci_disconnect (conn_handle, &err_buf);
