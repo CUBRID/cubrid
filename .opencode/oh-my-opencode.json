@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
+  "agents": {
+    "sisyphus": {
+      "model": "opencode/claude-sonnet-4-6",
+      "variant": "high"
+    },
+    "momus": {
+      "model": "opencode/claude-sonnet-4-6",
+      "variant": "max"
+    },
+    "hephaestus": {
+      "model": "opencode/deepseek-v3-coder",
+      "variant": "high"
+    },
+    "oracle": {
+      "model": "opencode/gemini-3-pro",
+      "variant": "high"
+    },
+    "librarian": {
+      "model": "opencode/gemini-3-flash"
+    },
+    "explore": {
+      "model": "opencode/gemini-3-flash"
+    },
+    "prometheus": {
+      "model": "opencode/claude-sonnet-4-6",
+      "variant": "medium"
+    },
+    "metis": {
+      "model": "opencode/claude-sonnet-4-6",
+      "variant": "high"
+    },
+    "atlas": {
+      "model": "opencode/kimi-k2.5-free"
+    }
+  },
+  "categories": {
+    "deep": {
+      "model": "opencode/deepseek-v3-coder",
+      "variant": "max"
+    },
+    "unspecified-high": {
+      "model": "opencode/claude-sonnet-4-6"
+    },
+    "quick": {
+      "model": "opencode/gemini-3-flash"
+    }
+  }
+}
