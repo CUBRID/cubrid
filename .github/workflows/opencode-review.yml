@@ -22,22 +22,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install opencode
-        run: |
-          curl -fsSL https://opencode.ai/install | bash
-          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
-
-      - name: Install oh-my-opencode
+      - name: Configure oh-my-opencode
         run: |
           npm install -g oh-my-opencode
-          oh-my-opencode install --no-tui --claude=no --openai=no --gemini=no --copilot=no --opencode-zen=yes
+          mkdir -p $HOME/.config/opencode
+          echo '{"plugin":["oh-my-opencode@latest"]}' > $HOME/.config/opencode/opencode.json
 
       - name: Verify setup
         run: |
-          opencode --version
-          grep -q "oh-my-opencode" ~/.config/opencode/opencode.json \
+          oh-my-opencode --version
+          grep -q "oh-my-opencode" $HOME/.config/opencode/opencode.json \
             && echo "✅ oh-my-opencode plugin registered" \
-            || (echo "❌ oh-my-opencode not registered in opencode.json" && exit 1)
+            || (echo "❌ oh-my-opencode not registered" && exit 1)
 
       - uses: anomalyco/opencode/github@latest
         env:
