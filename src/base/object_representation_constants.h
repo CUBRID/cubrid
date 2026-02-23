@@ -161,6 +161,7 @@
 #define OR_MVCC_HEADER_SIZE_LOOKUP_MASK	0x7	// == 0b111, we only use 3 bits to determine the header size.
 					    // The size of the 'mvcc_header_size_lookup' array is currently 8.
 					    // Buffer overflow may happen when the flag value is greater than 7.
+					    // TODO: remove all usages of this macro and wrap the access to the 'mvcc_header_size_lookup' array with a function that checks the flag value before accessing the array.
 #define OR_MVCC_FLAG_SHIFT_BITS	    24
 
 /* The following flags are used for dynamic MVCC information */
