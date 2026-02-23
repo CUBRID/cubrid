@@ -511,7 +511,7 @@ static void qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * 
 				      int peek);
 static void qexec_clear_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state);
 static void qexec_clear_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
-static void qexec_clear_analytic_stats_list (THREAD_ENTRY * thread_p, ANALYTIC_STATS ** stats_list);
+static void qexec_clear_analytic_stats_list (ANALYTIC_STATS ** stats_list);
 static int qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state);
 static int qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
 						    ANALYTIC_STATE * analytic_state);
@@ -2502,7 +2502,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       // clear trace stats
       if (xasl->analytic_stats != NULL)
 	{
-	  qexec_clear_analytic_stats_list (thread_p, &xasl->analytic_stats);
+	  qexec_clear_analytic_stats_list (&xasl->analytic_stats);
 	}
       memset (&xasl->orderby_stats, 0, sizeof (ORDERBY_STATS));
       memset (&xasl->groupby_stats, 0, sizeof (GROUPBY_STATS));
@@ -20862,7 +20862,7 @@ query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 static void
-qexec_clear_analytic_stats_list (THREAD_ENTRY * thread_p, ANALYTIC_STATS ** stats_list)
+qexec_clear_analytic_stats_list (ANALYTIC_STATS ** stats_list)
 {
   ANALYTIC_STATS *curr_stats, *next_stats;
 
