@@ -28418,7 +28418,8 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   SORT_LIST *sort_list;
   QO_INDEX_ENTRY *index_entry;
   PT_NODE *attr;
-  int col_idx = 0, is_desc = 0, covered_count = 0;
+  int col_idx = 0, covered_count = 0;
+  bool is_desc;
 
   if (!qo_is_iscan (qo_plan))
     {
@@ -28431,10 +28432,17 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   sort_list = eval->sort_list;
   while (sort_list != NULL && col_idx < index_entry->col_num)
     {
-      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
-      is_desc = index_entry->constraints->asc_desc[col_idx];
-
       const char *column_name = db_attribute_name (index_entry->constraints->attributes[col_idx]);
+      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
+
+      if (qo_plan->info->env->pt_tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC)
+	{
+	  is_desc = ~index_entry->constraints->asc_desc[col_idx];
+	}
+      else
+	{
+	  is_desc = index_entry->constraints->asc_desc[col_idx];
+	}
 
       if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
 	  && !pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
