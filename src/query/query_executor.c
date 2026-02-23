@@ -14524,45 +14524,54 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	}
     }
 
-  /* a list of one tuple with a single value needs to be produced */
-  if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+  if (xasl->list_id->type_list.type_cnt != 0)
     {
-      GOTO_EXIT_ON_ERROR;
+      qfile_truncate_list (thread_p, xasl->list_id);
     }
+  else
+    {
+      /* a list of one tuple with a single value needs to be produced */
+      if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
 
-  /* If BUILDVALUE_PROC does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the
-   * last one. Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can
-   * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the
-   * last result file. */
-  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
-  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
-      && (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST)) && xasl->option != Q_DISTINCT)
-    {
-      QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
-    }
-  t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag, NULL);
-  if (t_list_id == NULL)
-    {
+      /* If BUILDVALUE_PROC does not have 'order by'(xasl->orderby_list), then the list file to be open at here will be the
+       * last one. Otherwise, the last list file will be open at qexec_orderby_distinct(). (Note that only one that can
+       * have 'group by' is BUILDLIST_PROC type.) And, the top most XASL is the other condition for the list file to be the
+       * last result file. */
+      QFILE_SET_FLAG (ls_flag, QFILE_FLAG_ALL);
+      if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
+	  && (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
+	  && xasl->option != Q_DISTINCT)
+	{
+	  QFILE_SET_FLAG (ls_flag, QFILE_FLAG_RESULT_FILE);
+	}
+      t_list_id = qfile_open_list (thread_p, &type_list, NULL, xasl_state->query_id, ls_flag, NULL);
+      if (t_list_id == NULL)
+	{
+	  if (type_list.domp)
+	    {
+	      db_private_free_and_init (thread_p, type_list.domp);
+	    }
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+	    /***** WHAT IN THE WORLD IS THIS? *****/
       if (type_list.domp)
 	{
 	  db_private_free_and_init (thread_p, type_list.domp);
 	}
-      GOTO_EXIT_ON_ERROR;
-    }
 
-      /***** WHAT IN THE WORLD IS THIS? *****/
-  if (type_list.domp)
-    {
-      db_private_free_and_init (thread_p, type_list.domp);
-    }
+      if (qfile_copy_list_id (xasl->list_id, t_list_id, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
 
-  if (qfile_copy_list_id (xasl->list_id, t_list_id, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   output = xasl->list_id;
-  QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
 
   if (buildvalue->having_pred == NULL || ev_res == V_TRUE)
     {
