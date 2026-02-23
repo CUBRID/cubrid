@@ -3008,6 +3008,8 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
 
   PERF_UTIME_TRACKER_START (&thread_ref, &perf_tracker);
 
+  pgbuf_thread_variables_init (&thread_ref);
+
   m_oldest_visible_mvccid = log_Gl.mvcc_table.update_global_oldest_visible ();
   vacuum_er_log (VACUUM_ER_LOG_MASTER, "update oldest_visible = %lld", (long long int) m_oldest_visible_mvccid);
 

@@ -1404,7 +1404,9 @@ sm_define_view_serial_spec (void)
           "[serial].[updated_time] AS [updated_time] "
         "FROM "
 	  /* CT_SERIAL_NAME */
-          "[%s] AS [serial] ",
+          "[%s] AS [serial] "
+        "WHERE "
+          "[serial].[class_name] IS NULL",
         CT_SERIAL_NAME);
   // *INDENT-ON*
 

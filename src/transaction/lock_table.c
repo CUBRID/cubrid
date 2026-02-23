@@ -23,9 +23,7 @@
 
 #ident "$Id$"
 
-#include "config.h"
-
-#include "storage_common.h"
+#include "lock_table.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -66,7 +64,7 @@
  */
 
 /* *INDENT-OFF* */
-LOCK_COMPATIBILITY lock_Comp[12][12] = {
+const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
   /* N/A */
   { /* N/A */ LOCK_COMPAT_UNKNOWN, /* NON2PL */ LOCK_COMPAT_UNKNOWN, /* NULL */ LOCK_COMPAT_UNKNOWN,
     /* SCH-S */ LOCK_COMPAT_UNKNOWN, /* IS */ LOCK_COMPAT_UNKNOWN, /* S */ LOCK_COMPAT_UNKNOWN,
@@ -178,7 +176,7 @@ LOCK_COMPATIBILITY lock_Comp[12][12] = {
  */
 
 /* *INDENT-OFF* */
-LOCK lock_Conv[12][12] = {
+const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
   /* N/A */
   { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ NA_LOCK, /* SCH-S */ NA_LOCK,
     /* IS */ NA_LOCK, /* S */ NA_LOCK, /* IX */ NA_LOCK, /* BU */ NA_LOCK, /* SIX */ NA_LOCK,

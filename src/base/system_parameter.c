@@ -772,8 +772,10 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ENABLE_JVM_HEAP_DUMP "enable_jvm_heap_dump"
 
 #define PRM_NAME_PARALLELISM "parallelism"
-
 #define PRM_NAME_MAX_PARALLEL_WORKERS "max_parallel_workers"
+#define PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD "parallel_heap_scan_page_threshold"
+#define PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD "parallel_hash_join_page_threshold"
+#define PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD "parallel_sort_page_threshold"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -941,8 +943,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_DEFAULT_BUFFER_SIZE 256
 
 /* initial error and integer lists */
-static int int_list_initial[1] = { 0 };
-static int prm_stored_procedure_return_numeric_size_default_arr[] = { 2, 38, 15 };
+static const int int_list_initial[1] = { 0 };
+static const int prm_stored_procedure_return_numeric_size_default_arr[] = { 2, 38, 15 };
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #define LOGPB_BUFFER_NPAGES_LOWER 128
@@ -2121,7 +2123,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = NULL}},
-   {false, {.integer_list = int_list_initial}},
+   {false, {.integer_list = (int *) int_list_initial}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -2132,7 +2134,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = NULL}},
-   {false, {.integer_list = int_list_initial}},
+   {false, {.integer_list = (int *) int_list_initial}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -2556,7 +2558,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = NULL}},
-   {false, {.integer_list = int_list_initial}},
+   {false, {.integer_list = (int *) int_list_initial}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -2567,7 +2569,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = NULL}},
-   {false, {.integer_list = int_list_initial}},
+   {false, {.integer_list = (int *) int_list_initial}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -3104,7 +3106,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = NULL}},
-   {false, {.integer_list = int_list_initial}},
+   {false, {.integer_list = (int *) int_list_initial}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -3137,7 +3139,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = NULL}},
-   {false, {.integer_list = int_list_initial}},
+   {false, {.integer_list = (int *) int_list_initial}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -3316,12 +3318,11 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_SQL_TRACE_EXECUTION_PLAN,
    PRM_NAME_SQL_TRACE_EXECUTION_PLAN,
    (PRM_USER_CHANGE | PRM_FOR_SERVER),
-   PRM_BOOLEAN,
+   PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE,
-   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   {false, {.i = 2}}, {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -3938,7 +3939,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = NULL}},
-   {false, {.integer_list = int_list_initial}},
+   {false, {.integer_list = (int *) int_list_initial}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
@@ -5047,7 +5048,7 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_CLIENT | PRM_FOR_SERVER),
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.integer_list = prm_stored_procedure_return_numeric_size_default_arr}},
+   {false, {.integer_list = (int *) prm_stored_procedure_return_numeric_size_default_arr}},
    {false, {.integer_list = NULL}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
@@ -5085,9 +5086,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2}},
-   {false, {.i = 0}},
-   {false, {.i = 32}},
+   {false, {.i = 4}},
+   {false, {.i = 4}},
+   {false, {.i = PRM_MAX_PARALLELISM}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5097,9 +5098,45 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 32}},
+   {false, {.i = 100}},
+   {false, {.i = 100}},
+   {false, {.i = 1000}},
    {false, {.i = 0}},
-   {false, {.i = 128}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2048}},
+   {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2048}},
+   {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2048}},
+   {false, {.i = 2048}},
+   {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5144,7 +5181,7 @@ SYSPRM_PARAM prm_Def[] = {
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
-static int prm_Def_size = (int) (DIM (prm_Def));
+static const int prm_Def_size = (int) (DIM (prm_Def));
 #define MAX_SYSTEM_PARAMS  prm_Def_size
 
 static int num_session_parameters = 0;
@@ -5208,7 +5245,7 @@ struct keyval
   int val;
 };
 
-static KEYVAL boolean_words[] = {
+static const KEYVAL boolean_words[] = {
   {"yes", 1},
   {"y", 1},
   {"1", 1},
@@ -5221,7 +5258,7 @@ static KEYVAL boolean_words[] = {
   {"off", 0}
 };
 
-static KEYVAL er_log_level_words[] = {
+static const KEYVAL er_log_level_words[] = {
   {"fatal", ER_FATAL_ERROR_SEVERITY},
   {"error", ER_ERROR_SEVERITY},
   {"syntax", ER_SYNTAX_ERROR_SEVERITY},
@@ -5229,7 +5266,7 @@ static KEYVAL er_log_level_words[] = {
   {"notification", ER_NOTIFICATION_SEVERITY}
 };
 
-static KEYVAL isolation_level_words[] = {
+static const KEYVAL isolation_level_words[] = {
   {"tran_serializable", TRAN_SERIALIZABLE},
   {"tran_no_phantom_read", TRAN_SERIALIZABLE},
 
@@ -5249,18 +5286,18 @@ static KEYVAL isolation_level_words[] = {
   {"cursor_stability", TRAN_READ_COMMITTED},
 };
 
-static KEYVAL pgbuf_debug_page_validation_level_words[] = {
+static const KEYVAL pgbuf_debug_page_validation_level_words[] = {
   {"fetch", PGBUF_DEBUG_PAGE_VALIDATION_FETCH},
   {"free", PGBUF_DEBUG_PAGE_VALIDATION_FREE},
   {"all", PGBUF_DEBUG_PAGE_VALIDATION_ALL}
 };
 
-static KEYVAL null_words[] = {
+static const KEYVAL null_words[] = {
   {"null", 0},
   {"0", 0}
 };
 
-static KEYVAL ha_mode_words[] = {
+static const KEYVAL ha_mode_words[] = {
   {HA_MODE_OFF_STR, HA_MODE_OFF},
   {"no", HA_MODE_OFF},
   {"n", HA_MODE_OFF},
@@ -5282,7 +5319,7 @@ static KEYVAL ha_mode_words[] = {
   {"2", HA_MODE_REPLICA}
 };
 
-static KEYVAL ha_server_state_words[] = {
+static const KEYVAL ha_server_state_words[] = {
   {HA_SERVER_STATE_IDLE_STR, HA_SERVER_STATE_IDLE},
   {HA_SERVER_STATE_ACTIVE_STR, HA_SERVER_STATE_ACTIVE},
   {HA_SERVER_STATE_TO_BE_ACTIVE_STR, HA_SERVER_STATE_TO_BE_ACTIVE},
@@ -5292,7 +5329,7 @@ static KEYVAL ha_server_state_words[] = {
   {HA_SERVER_STATE_DEAD_STR, HA_SERVER_STATE_DEAD}
 };
 
-static KEYVAL ha_log_applier_state_words[] = {
+static const KEYVAL ha_log_applier_state_words[] = {
   {HA_LOG_APPLIER_STATE_UNREGISTERED_STR, HA_LOG_APPLIER_STATE_UNREGISTERED},
   {HA_LOG_APPLIER_STATE_RECOVERING_STR, HA_LOG_APPLIER_STATE_RECOVERING},
   {HA_LOG_APPLIER_STATE_WORKING_STR, HA_LOG_APPLIER_STATE_WORKING},
@@ -5300,36 +5337,36 @@ static KEYVAL ha_log_applier_state_words[] = {
   {HA_LOG_APPLIER_STATE_ERROR_STR, HA_LOG_APPLIER_STATE_ERROR}
 };
 
-static KEYVAL compat_words[] = {
+static const KEYVAL compat_words[] = {
   {"cubrid", COMPAT_CUBRID},
   {"default", COMPAT_CUBRID},
   {"mysql", COMPAT_MYSQL},
   {"oracle", COMPAT_ORACLE}
 };
 
-static KEYVAL check_peer_alive_words[] = {
+static const KEYVAL check_peer_alive_words[] = {
   {"none", CSS_CHECK_PEER_ALIVE_NONE},
   {"server_only", CSS_CHECK_PEER_ALIVE_SERVER_ONLY},
   {"client_only", CSS_CHECK_PEER_ALIVE_CLIENT_ONLY},
   {"both", CSS_CHECK_PEER_ALIVE_BOTH},
 };
 
-static KEYVAL query_trace_format_words[] = {
+static const KEYVAL query_trace_format_words[] = {
   {"text", QUERY_TRACE_TEXT},
   {"json", QUERY_TRACE_JSON},
 };
 
-static KEYVAL fi_test_words[] = {
+static const KEYVAL fi_test_words[] = {
   {"recovery", FI_GROUP_RECOVERY},
 };
 
-static KEYVAL ha_repl_filter_type_words[] = {
+static const KEYVAL ha_repl_filter_type_words[] = {
   {"none", REPL_FILTER_NONE},
   {"include_table", REPL_FILTER_INCLUDE_TBL},
   {"exclude_table", REPL_FILTER_EXCLUDE_TBL}
 };
 
-static KEYVAL tde_algorithm_words[] = {
+static const KEYVAL tde_algorithm_words[] = {
   /* {"none", TDE_ALGORITHM_NONE}, */
   {"aes", TDE_ALGORITHM_AES},
   {"aria", TDE_ALGORITHM_ARIA}
@@ -5337,7 +5374,7 @@ static KEYVAL tde_algorithm_words[] = {
 
 /* *INDENT-OFF* */
 using namespace cubregex;
-static KEYVAL regexp_engine_words[] = {
+static const KEYVAL regexp_engine_words[] = {
   {get_engine_name(engine_type::LIB_CPPSTD), engine_type::LIB_CPPSTD},
   {get_engine_name(engine_type::LIB_RE2), engine_type::LIB_RE2}
 };
@@ -9687,6 +9724,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *tz_leap_second_support_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *thread_core_count_prm;
+  SYSPRM_PARAM *max_parallel_workers_prm;
+  SYSPRM_PARAM *parallelism_prm;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -9744,6 +9783,49 @@ prm_tune_parameters (void)
 	{
 	  sprintf (newval, "%d", core_upper_limit);
 	  (void) prm_set (thread_core_count_prm, newval, false);
+	}
+
+      /* set parallelism to system_cpu_count if it is greater than cubthread::system_core_count () */
+      parallelism_prm = GET_PRM (PRM_ID_PARALLELISM);
+      if (PRM_GET_INT (parallelism_prm->value) > system_cpu_count)
+	{
+	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (parallelism_prm, newval, false);
+	}
+
+      /* set parallelism to max_parallel_workers if it is greater than max_parallel_workers */
+      max_parallel_workers_prm = GET_PRM (PRM_ID_MAX_PARALLEL_WORKERS);
+      if (PRM_GET_INT (parallelism_prm->value) > PRM_GET_INT (max_parallel_workers_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_parallel_workers_prm->value));
+	  (void) prm_set (parallelism_prm, newval, false);
+	}
+
+      if (PRM_GET_BOOL (test_mode_prm->value) == true)
+	{
+	  SYSPRM_PARAM *heap_scan_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HEAP_SCAN_PAGE_THRESHOLD);
+	  SYSPRM_PARAM *hash_join_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD);
+	  SYSPRM_PARAM *sort_page_threshold_prm = GET_PRM (PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD);
+
+	  if (PRM_GET_INT (heap_scan_page_threshold_prm->value) ==
+	      PRM_GET_INT (heap_scan_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 32);	/* TODO: 0 ? */
+	      (void) prm_set (heap_scan_page_threshold_prm, newval, false);
+	    }
+
+	  if (PRM_GET_INT (hash_join_page_threshold_prm->value) ==
+	      PRM_GET_INT (hash_join_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 0);
+	      (void) prm_set (hash_join_page_threshold_prm, newval, false);
+	    }
+
+	  if (PRM_GET_INT (sort_page_threshold_prm->value) == PRM_GET_INT (sort_page_threshold_prm->default_value))
+	    {
+	      sprintf (newval, "%d", 0);
+	      (void) prm_set (sort_page_threshold_prm, newval, false);
+	    }
 	}
 #endif
     }
