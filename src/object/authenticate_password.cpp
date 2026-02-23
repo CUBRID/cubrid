@@ -252,6 +252,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
   DB_VALUE value;
   MOP pass, pclass;
   int save, len;
+  bool is_new_pass = false;
   char pbuf[AU_MAX_PASSWORD_BUF + 4];
 
   AU_DISABLE (save);
@@ -293,6 +294,8 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 		  pass = db_get_object (&value);
 		}
 
+
+	      is_new_pass = (pass == NULL);
 	      if (pass == NULL)
 		{
 		  pclass = sm_find_class (AU_PASSWORD_CLASS_NAME);
@@ -342,6 +345,18 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 			  db_make_string (&value, pbuf);
 			}
 		      error = obj_set (pass, "password", &value);
+		    }
+		  /* set password timestamps */
+		  if (error == NO_ERROR)
+		    {
+		      if (is_new_pass)
+			{
+			  error = au_set_password_timestamps (pass);
+			}
+		      else
+			{
+			  error = au_update_password_timestamp (pass);
+			}
 		    }
 		}
 	    }
