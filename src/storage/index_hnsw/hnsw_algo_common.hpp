@@ -106,13 +106,13 @@ namespace cubhnsw
   template <typename T>
   struct vector_cache_helper
   {
-    using type = std::unordered_map<T, std::vector<float>>;
+    using type = ankerl::unordered_dense::map<T, std::vector<float>>;
   };
 
   template <>
   struct vector_cache_helper<OID>
   {
-    using type = std::unordered_map<OID, std::vector<float>, oid_hash, oid_equal>;
+    using type = ankerl::unordered_dense::map<OID, float *, oid_hash, oid_equal>;
   };
 
   template <typename Traits>
