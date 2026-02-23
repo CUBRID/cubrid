@@ -35,9 +35,6 @@
 #include "porting.h"
 #include "connection_globals.h"
 #include "connection_defs.h"
-#include "connection_cl.h"
-#include "connection_less.h"
-#include "connection_list_cl.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #else /* WINDOWS */
@@ -49,26 +46,21 @@
 #include "network_interface_cl.h"
 #include "network.h"
 
+#if defined (SERVER_MODE)
+#error Belongs to not server module
+#endif /* !defined (SERVER_MODE) */
+
 static void (*css_Previous_sigpipe_handler) (int sig_no) = NULL;
-/* TODO: M2 - remove css_Errno */
-int css_Errno = 0;
-CSS_MAP_ENTRY *css_Client_anchor;
 
-static void css_internal_server_shutdown (void);
-static void css_handle_pipe_shutdown (int sig);
-static void css_set_pipe_signal (void);
-static int css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid);
-
-/*
- * css_internal_server_shutdown() -
- *   return:
- */
-static void
-css_internal_server_shutdown (void)
+client_support::client_support ()
 {
-#if !defined(WINDOWS)
-  syslog (LOG_ALERT, "Lost connection to server\n");
-#endif /* not WINDOWS */
+  css_Client_anchor = NULL;
+  css_Errno = 0;
+  m_multiple_count = 1;
+}
+
+client_support::~client_support ()
+{
 }
 
 /*
@@ -76,29 +68,15 @@ css_internal_server_shutdown (void)
  *   return:
  *   sig(in):
  */
-static void
-css_handle_pipe_shutdown (int sig)
+void
+client_support::css_handle_pipe_shutdown (int sig)
 {
-  CSS_CONN_ENTRY *conn;
-  CSS_MAP_ENTRY *entry;
-
-  conn = css_find_exception_conn ();
-  if (conn != NULL)
+  /* Avoid an infinite loop by checking if the previous handle is myself */
+  if (css_Previous_sigpipe_handler != NULL
+      && css_Previous_sigpipe_handler != SIG_IGN
+      && css_Previous_sigpipe_handler != SIG_DFL && css_Previous_sigpipe_handler != css_handle_pipe_shutdown)
     {
-      entry = css_return_entry_from_conn (conn, css_Client_anchor);
-      if (entry != NULL)
-	{
-	  css_remove_queued_connection_by_entry (entry, &css_Client_anchor);
-	}
-      css_internal_server_shutdown ();
-    }
-  else
-    {
-      /* Avoid an infinite loop by checking if the previous handle is myself */
-      if (css_Previous_sigpipe_handler != NULL && css_Previous_sigpipe_handler != css_handle_pipe_shutdown)
-	{
-	  (*css_Previous_sigpipe_handler) (sig);
-	}
+      (*css_Previous_sigpipe_handler) (sig);
     }
 }
 
@@ -110,11 +88,11 @@ css_handle_pipe_shutdown (int sig)
  *       If so, make note of them so that we can pass on errors on fds that
  *       we do not know.
  */
-static void
-css_set_pipe_signal (void)
+void
+client_support::css_set_pipe_signal (void)
 {
 #if !defined(WINDOWS)
-  css_Previous_sigpipe_handler = os_set_signal_handler (SIGPIPE, css_handle_pipe_shutdown);
+  css_Previous_sigpipe_handler = os_set_signal_handler (SIGPIPE, client_support::css_handle_pipe_shutdown);
   if ((css_Previous_sigpipe_handler == SIG_IGN) || (css_Previous_sigpipe_handler == SIG_ERR)
       || (css_Previous_sigpipe_handler == SIG_DFL)
 #if !defined(LINUX)
@@ -135,26 +113,36 @@ css_set_pipe_signal (void)
  *   host_name(in):
  */
 int
-css_client_init (int sockid, const char *server_name, const char *host_name)
+client_support::css_client_init (int sockid, const char *server_name, const char *host_name)
 {
   CSS_CONN_ENTRY *conn;
-  int error = NO_ERROR;
+  int i, error = NO_ERROR;
 
 #if defined(WINDOWS)
   (void) css_windows_startup ();
 #endif /* WINDOWS */
 
-  css_Service_id = sockid;
+  m_master_port_id = sockid;
   css_set_pipe_signal ();
-  conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
-  if (conn != NULL)
+
+  //connection_less 를 몇개를 갖을 건가로 처리해야 하나?  
+
+  for (i = 0; i < m_multiple_count; i++)
     {
-      css_queue_connection (conn, (char *) host_name, &css_Client_anchor);
-    }
-  else
-    {
-      /* At here, er_errid () can be NO_ERROR */
-      error = er_errid ();
+      conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
+      if (conn != NULL)
+	{
+	  if (css_queue_connection (conn, (char *) host_name, &css_Client_anchor) == NULL)
+	    {
+	      error = ER_FAILED;
+	    }
+	}
+      else
+	{
+	  /* At here, er_errid () can be NO_ERROR */
+	  error = er_errid ();
+	  break;
+	}
     }
 
   return error;
@@ -171,7 +159,7 @@ css_client_init (int sockid, const char *server_name, const char *host_name)
  *   arg_buffer_size(in): The size of arg_buffer.
  */
 unsigned int
-css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size)
+client_support::css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -213,8 +201,8 @@ css_send_request_to_server (char *host, int request, char *arg_buffer, int arg_b
  *       also enroll a data buffer to be filled with returned data.
  */
 unsigned int
-css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffer, int arg_buffer_size,
-					char *data_buffer, int data_buffer_size)
+client_support::css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffer, int arg_buffer_size,
+							char *data_buffer, int data_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -258,8 +246,8 @@ css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffe
  *       also enroll a data buffer to be filled with returned data.
  */
 unsigned int
-css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size, char *data_buffer,
-			int data_buffer_size, char *reply_buffer, int reply_size)
+client_support::css_send_req_to_server (char *host, int request, char *arg_buffer, int arg_buffer_size,
+					char *data_buffer, int data_buffer_size, char *reply_buffer, int reply_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -358,9 +346,9 @@ css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffe
  *       buffers to the server and also enroll a data buffer to be filled with returned data.
  */
 unsigned int
-css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int arg_buffer_size, char *data1_buffer,
-			       int data1_buffer_size, char *data2_buffer, int data2_buffer_size, char *reply_buffer,
-			       int reply_size)
+client_support::css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int arg_buffer_size,
+					       char *data1_buffer, int data1_buffer_size, char *data2_buffer,
+					       int data2_buffer_size, char *reply_buffer, int reply_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -398,7 +386,7 @@ css_send_req_to_server_2_data (char *host, int request, char *arg_buffer, int ar
  *   arg_buffer_size(in):
  */
 unsigned int
-css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int arg_buffer_size)
+client_support::css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int arg_buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -433,7 +421,7 @@ css_send_req_to_server_no_reply (char *host, int request, char *arg_buffer, int 
  *   buffer_size: size of data buffer
  */
 int
-css_queue_receive_data_buffer (unsigned int eid, char *buffer, int buffer_size)
+client_support::css_queue_receive_data_buffer (unsigned int eid, char *buffer, int buffer_size)
 {
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
@@ -468,7 +456,7 @@ css_queue_receive_data_buffer (unsigned int eid, char *buffer, int buffer_size)
  *   buffer_size(in): size of data buffer
  */
 unsigned int
-css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer_size)
+client_support::css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer_size)
 {
   CSS_MAP_ENTRY *entry;
 
@@ -507,7 +495,7 @@ css_send_error_to_server (char *host, unsigned int eid, char *buffer, int buffer
  *   buffer_size(in): size of data buffer
  */
 unsigned int
-css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_size)
+client_support::css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_size)
 {
   CSS_MAP_ENTRY *entry;
 
@@ -539,8 +527,8 @@ css_send_data_to_server (char *host, unsigned int eid, char *buffer, int buffer_
  *   entry(in):
  *   eid(in):
  */
-static int
-css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
+int
+client_support::css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
 {
   char *error_buffer;
   int error_size, rc, errid = NO_ERROR;
@@ -561,7 +549,7 @@ css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid)
  *   size(out): size of data buffer that was returned
  */
 unsigned int
-css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
+client_support::css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
 {
   return css_receive_data_from_server_with_timeout (eid, buffer, size, -1);
 }
@@ -575,7 +563,7 @@ css_receive_data_from_server (unsigned int eid, char **buffer, int *size)
  *   timeout(in) : timeout in milli-second
  */
 unsigned int
-css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer, int *size, int timeout)
+client_support::css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer, int *size, int timeout)
 {
   CSS_MAP_ENTRY *entry;
   int rid;
@@ -606,7 +594,7 @@ css_receive_data_from_server_with_timeout (unsigned int eid, char **buffer, int 
  *   size(out): size of error buffer that was returned
  */
 unsigned int
-css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
+client_support::css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
 {
   CSS_MAP_ENTRY *entry;
 
@@ -644,7 +632,7 @@ css_receive_error_from_server (unsigned int eid, char **buffer, int *size)
  *   return: void
  */
 void
-css_terminate (bool server_error)
+client_support::css_terminate (bool server_error)
 {
   while (css_Client_anchor)
     {
@@ -678,7 +666,7 @@ css_terminate (bool server_error)
  *   host_name(in):
  */
 void
-css_cleanup_client_queues (char *host_name)
+client_support::css_cleanup_client_queues (char *host_name)
 {
   CSS_MAP_ENTRY *entry;
 
@@ -688,6 +676,7 @@ css_cleanup_client_queues (char *host_name)
       css_remove_all_unexpected_packets (entry->conn);
     }
 }
+
 
 /*
  * css_ha_server_state - return the current HA server state

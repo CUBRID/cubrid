@@ -84,6 +84,11 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+
+#if !defined (SERVER_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) */
+
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -1365,7 +1370,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
       goto shutdown;
     }
 
+#if defined(WINDOWS)
   css_Server_connection_socket = INVALID_SOCKET;
+#endif
 
   conn = css_connect_to_master_server (port_id, server_name, name_length);
   if (conn != NULL)

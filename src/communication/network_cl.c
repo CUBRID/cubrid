@@ -39,7 +39,7 @@
 #include "network.h"
 #include "network_interface_cl.h"
 #include "chartype.h"
-#include "connection_cl.h"
+//#include "connection_cl.h"
 #include "server_interface.h"
 #include "memory_alloc.h"
 #include "databases_file.h"
@@ -63,6 +63,10 @@
 #include "packer.hpp"
 #include "network_histogram.hpp"
 
+#if !defined (CS_MODE)
+#error Does not belong to cs module
+#endif /* SERVER_MODE */
+
 /*
  * To check for errors from the comm system. Note that if we get any error
  * other than RECORD_TRUNCATED or CANT_ALLOC_BUFFER, we will call it a
@@ -84,26 +88,10 @@
   } while (0)
 
 #if defined(CS_MODE)
-unsigned short method_request_id;
+unsigned short method_request_id;	// TODO: ctshim
 #endif /* CS_MODE */
 
-/* Contains the name of the current sever host machine.  */
-static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = "";
-
-/* Contains the name of the current server name. */
-static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = "";
-
-static void return_error_to_server (char *host, unsigned int eid);
-static int client_capabilities (void);
-static int check_server_capabilities (int server_cap, int client_type, int rel_compare,
-				      REL_COMPATIBILITY * compatibility, const char *server_host, int opt_cap);
-static int net_set_alloc_err_if_not_set (int err, const char *file, const int line);
-static void net_consume_expected_packets (int rc, int num_packets);
-static int compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, const char *file,
-				    const int line);
-static int net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-					char *databuf, int datasize, char *replydata, int replydatasize);
-static int set_server_error (int error);
+class network_cl __gv_network_cl;
 
 /*
  * Shouldn't know about db_Connect_status at this level, must set this
@@ -119,8 +107,8 @@ static int set_server_error (int error);
  * Note:
  */
 
-static int
-set_server_error (int error)
+int
+network_cl::set_server_error (int error)
 {
   int server_error;
 
@@ -183,8 +171,8 @@ set_server_error (int error)
  *
  * Note:
  */
-static void
-return_error_to_server (char *host, unsigned int eid)
+void
+network_cl::return_error_to_server (char *host, unsigned int eid)
 {
   char *area;
   OR_ALIGNED_BUF (1024) a_buffer;
@@ -205,8 +193,8 @@ return_error_to_server (char *host, unsigned int eid)
  *
  * return:
  */
-static int
-client_capabilities (void)
+int
+network_cl::client_capabilities (void)
 {
   int capabilities = 0;
 
@@ -229,9 +217,9 @@ client_capabilities (void)
  *
  * return:
  */
-static int
-check_server_capabilities (int server_cap, int client_type, int rel_compare, REL_COMPATIBILITY * compatibility,
-			   const char *server_host, int opt_cap)
+int
+network_cl::check_server_capabilities (int server_cap, int client_type, int rel_compare,
+				       REL_COMPATIBILITY * compatibility, const char *server_host, int opt_cap)
 {
   int client_cap;
 
@@ -329,8 +317,8 @@ check_server_capabilities (int server_cap, int client_type, int rel_compare, REL
  *   line(in):
  *
  */
-static int
-net_set_alloc_err_if_not_set (int err, const char *file, const int line)
+int
+network_cl::net_set_alloc_err_if_not_set (int err, const char *file, const int line)
 {
   /* don't set error if there already is one */
   if (err == NO_ERROR)
@@ -342,8 +330,8 @@ net_set_alloc_err_if_not_set (int err, const char *file, const int line)
   return err;
 }
 
-static void
-net_consume_expected_packets (int rc, int num_packets)
+void
+network_cl::net_consume_expected_packets (int rc, int num_packets)
 {
   char *reply = NULL;
   int i, size = 0;
@@ -374,8 +362,9 @@ net_consume_expected_packets (int rc, int num_packets)
  *    Compares sizes and buffers that have been queued with the actual
  *    received values after a data read.  Called by macro of the same name.
  */
-static int
-compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, const char *file, const int line)
+int
+network_cl::compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, const char *file,
+				     const int line)
 {
   int err = NO_ERROR;
 
@@ -413,7 +402,7 @@ compare_size_and_buffer (int *replysize, int size, char **replybuf, char *buf, c
  *
  */
 int
-net_client_request_no_reply (int request, char *argbuf, int argsize)
+network_cl::net_client_request_no_reply (int request, char *argbuf, int argsize)
 {
   unsigned int rc;
   int error;
@@ -445,27 +434,6 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
   return error;
 }
 
-/*
- * net_client_get_server_host () - the name of the current sever host machine
- *
- * return: string
- */
-char *
-net_client_get_server_host (void)
-{
-  return net_Server_host;
-}
-
-/*
- * net_client_get_server_name () - the name of the current sever
- *
- * return: string
- */
-char *
-net_client_get_server_name (void)
-{
-  return net_Server_name;
-}
 
 /*
  * net_client_request_internal -
@@ -486,9 +454,9 @@ net_client_get_server_name (void)
  *       request.  All network interface routines will call either this
  *       function or net_client_request2.
  */
-static int
-net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-			     int datasize, char *replydata, int replydatasize)
+int
+network_cl::net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					 char *databuf, int datasize, char *replydata, int replydatasize)
 {
   unsigned int rc;
   int size;
@@ -577,8 +545,8 @@ net_client_request_internal (int request, char *argbuf, int argsize, char *reply
  *    function or net_client_request2.
  */
 int
-net_client_request (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf, int datasize,
-		    char *replydata, int replydatasize)
+network_cl::net_client_request (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
+				int datasize, char *replydata, int replydatasize)
 {
   return (net_client_request_internal (request, argbuf, argsize, replybuf, replysize, databuf, datasize, replydata,
 				       replydatasize));
@@ -605,8 +573,8 @@ net_client_request (int request, char *argbuf, int argsize, char *replybuf, int 
  *    function or net_client_request2.
  */
 int
-net_client_request_send_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				    char *databuf, INT64 datasize, char *replydata, int replydatasize)
+network_cl::net_client_request_send_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+						char *databuf, INT64 datasize, char *replydata, int replydatasize)
 {
   unsigned int rc;
   int size;
@@ -697,8 +665,8 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
  * Note:
  */
 int
-net_client_request_recv_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				    char *databuf, int datasize, char *replydata, INT64 * replydatasize_ptr)
+network_cl::net_client_request_recv_large_data (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+						char *databuf, int datasize, char *replydata, INT64 * replydatasize_ptr)
 {
   unsigned int rc;
   int size;
@@ -812,8 +780,8 @@ net_client_request_recv_large_data (int request, char *argbuf, int argsize, char
  *    field in the reply argument buffer.
  */
 int
-net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf, int datasize,
-		     char **replydata_ptr, int *replydatasize_ptr)
+network_cl::net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
+				 int datasize, char **replydata_ptr, int *replydatasize_ptr)
 {
   unsigned int rc;
   int size;
@@ -919,8 +887,8 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
  *    field in the reply argument buffer.
  */
 int
-net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-			       int datasize, char *replydata, int *replydatasize_ptr)
+network_cl::net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					   char *databuf, int datasize, char *replydata, int *replydatasize_ptr)
 {
   unsigned int rc;
   int size;
@@ -1015,9 +983,9 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
  *    functino or net_client_request2.
  */
 int
-net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf1, int datasize1, char *databuf2,
-			   int datasize2, char *reply0, int replysize0, char *reply1, int replysize1, char *reply2,
-			   int replysize2)
+network_cl::net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf1, int datasize1,
+				       char *databuf2, int datasize2, char *reply0, int replysize0, char *reply1,
+				       int replysize1, char *reply2, int replysize2)
 {
   unsigned int rid;
   int rc;
@@ -1041,8 +1009,9 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
 	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
 
-      rid = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
-					   datasize2, NULL, 0);
+      rid =
+	css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1,
+				       databuf2, datasize2, NULL, 0);
       if (rid == 0)
 	{
 	  return set_server_error (css_Errno);
@@ -1135,10 +1104,10 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
  *    that indicates that the request is complete and this routine returns.
  */
 int
-net_client_request_with_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf1,
-				  int datasize1, char *databuf2, int datasize2, char **replydata_listid,
-				  int *replydatasize_listid, char **replydata_page, int *replydatasize_page,
-				  char **replydata_plan, int *replydatasize_plan)
+network_cl::net_client_request_with_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					      char *databuf1, int datasize1, char *databuf2, int datasize2,
+					      char **replydata_listid, int *replydatasize_listid, char **replydata_page,
+					      int *replydatasize_page, char **replydata_plan, int *replydatasize_plan)
 {
   unsigned int rc;
   int size, error;
@@ -1176,8 +1145,9 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	  histo_add_request (request, argsize + datasize1 + datasize2);
 	}
 
-      rc = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
-					  datasize2, replybuf, replysize);
+      rc =
+	css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1,
+				       databuf2, datasize2, replybuf, replysize);
       if (rc == 0)
 	{
 	  return set_server_error (css_Errno);
@@ -1631,7 +1601,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		      {
 			ptr = or_pack_string_with_length (ptr, user_response_buffer, pr_len);
 		      }
-		    error2 = net_client_send_data (net_Server_host, rc, promptdata, CAST_STRLEN (ptr - promptdata));
+		    error2 = net_client_send_data (rc, promptdata, CAST_STRLEN (ptr - promptdata));
 		    if (error2 != NO_ERROR)
 		      {
 			/* the error should have already been generated */
@@ -1737,8 +1707,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 }
 
 int
-net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				    char **replydata_ptr, int *replydatasize_ptr)
+network_cl::net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+						char **replydata_ptr, int *replydatasize_ptr)
 {
   unsigned int rc;
   int error;
@@ -1942,8 +1912,8 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
  * Note:
  */
 int
-net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize, char *replybuf, int replysize,
-			     char **logpg_area_buf, bool verbose)
+network_cl::net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize, char *replybuf,
+					 int replysize, char **logpg_area_buf, bool verbose)
 {
   unsigned int rc;
   char *reply = NULL;
@@ -1970,8 +1940,9 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
       if (ctx_ptr->rc == -1)
 	{
 	  /* HEADER PAGE REQUEST */
-	  rc = css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, NULL, 0, NULL, 0, replybuf,
-					      replysize);
+	  rc =
+	    css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, NULL, 0, NULL, 0,
+					   replybuf, replysize);
 	  if (rc == 0)
 	    {
 	      return set_server_error (css_Errno);
@@ -1982,7 +1953,7 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
 	{
 	  /* END PROTOCOL */
 	  rc = ctx_ptr->rc;
-	  error = net_client_send_data (net_Server_host, rc, argbuf, argsize);
+	  error = net_client_send_data (rc, argbuf, argsize);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -2066,8 +2037,9 @@ net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, int argsize,
  * Note:
  */
 int
-net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize, char *replybuf,
-				       int replysize, char *databuf1, int datasize1, char *databuf2, int datasize2)
+network_cl::net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, char *argbuf, int argsize,
+						   char *replybuf, int replysize, char *databuf1, int datasize1,
+						   char *databuf2, int datasize2)
 {
   unsigned int rc;
   int size;
@@ -2094,8 +2066,8 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 	{
 	  /* It sends a new request */
 	  rc =
-	    css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
-					   datasize2, replybuf, replysize);
+	    css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1,
+					   databuf2, datasize2, replybuf, replysize);
 	  if (rc == 0)
 	    {
 	      return set_server_error (css_Errno);
@@ -2106,7 +2078,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
 	{
 	  /* It sends the same request with new arguments */
 	  rc = ctx_ptr->rc;
-	  error = net_client_send_data (net_Server_host, rc, argbuf, argsize);
+	  error = net_client_send_data (rc, argbuf, argsize);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -2214,7 +2186,7 @@ net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int request, cha
  * note:
  */
 void
-net_client_logwr_send_end_msg (int rc, int error)
+network_cl::net_client_logwr_send_end_msg (int rc, int error)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_INT64_SIZE) a_request;
   char *request;
@@ -2227,7 +2199,7 @@ net_client_logwr_send_end_msg (int rc, int error)
   ptr = or_pack_int (ptr, LOGWR_MODE_ASYNC);
   ptr = or_pack_int (ptr, error);
 
-  net_client_send_data (net_Server_host, rc, request, OR_ALIGNED_BUF_SIZE (a_request));
+  net_client_send_data (rc, request, OR_ALIGNED_BUF_SIZE (a_request));
 
   return;
 }
@@ -2245,7 +2217,7 @@ net_client_logwr_send_end_msg (int rc, int error)
  * Note:
  */
 int
-net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length)
+network_cl::net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length)
 {
   char *reply = NULL;
   int error;
@@ -2310,8 +2282,8 @@ net_client_get_next_log_pages (int rc, char *replybuf, int replysize, int length
  * Note:
  */
 int
-net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
-				  LC_COPYAREA ** reply_copy_area)
+network_cl::net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					      LC_COPYAREA ** reply_copy_area)
 {
   unsigned int rc;
   int size;
@@ -2498,9 +2470,9 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
  * Note:
  */
 int
-net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-				   int datasize, char *recvbuffer, int recvbuffer_size, LC_COPYAREA ** reply_copy_area,
-				   int *eid)
+network_cl::net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					       char *databuf, int datasize, char *recvbuffer, int recvbuffer_size,
+					       LC_COPYAREA ** reply_copy_area, int *eid)
 {
   unsigned int rc;
   int size;
@@ -2729,9 +2701,9 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
  * Note:
  */
 int
-net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize, char *databuf1, int datasize1,
-					 char *databuf2, int datasize2, char *replybuf, int replysize,
-					 LC_COPYAREA ** reply_copy_area)
+network_cl::net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize, char *databuf1,
+						     int datasize1, char *databuf2, int datasize2, char *replybuf,
+						     int replysize, LC_COPYAREA ** reply_copy_area)
 {
   unsigned int rid;
   int size;
@@ -2759,8 +2731,8 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
     }
 
   rid =
-    css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2, datasize2,
-				   replybuf, replysize);
+    css_send_req_to_server_2_data (net_Server_host, request, argbuf, argsize, databuf1, datasize1, databuf2,
+				   datasize2, replybuf, replysize);
   if (rid == 0)
     {
       return set_server_error (css_Errno);
@@ -2890,8 +2862,8 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
  * Note:
  */
 int
-net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recvbuffer, int recvbuffer_size,
-			  LC_COPYAREA ** reply_copy_area, int rc)
+network_cl::net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recvbuffer, int recvbuffer_size,
+				      LC_COPYAREA ** reply_copy_area, int rc)
 {
   int size;
   int error, p_size;
@@ -3109,9 +3081,9 @@ net_client_recv_copyarea (int request, char *replybuf, int replysize, char *recv
  * Note:
  */
 int
-net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize, char *databuf,
-				   int datasize, char **recvbuffer, int *recvbuffer_size,
-				   LC_COPYAREA ** reply_copy_area)
+network_cl::net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char *replybuf, int replysize,
+					       char *databuf, int datasize, char **recvbuffer, int *recvbuffer_size,
+					       LC_COPYAREA ** reply_copy_area)
 {
   unsigned int rc;
   int size;
@@ -3301,8 +3273,8 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
  * Note:
  */
 int
-net_client_request_recv_stream (int request, char *argbuf, int argsize, char *replybuf, int replybuf_size,
-				char *databuf, int datasize, FILE * outfp)
+network_cl::net_client_request_recv_stream (int request, char *argbuf, int argsize, char *replybuf, int replybuf_size,
+					    char *databuf, int datasize, FILE * outfp)
 {
   unsigned int rc;
   int size;
@@ -3360,8 +3332,9 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
       histo_add_request (request, send_argsize + datasize);
     }
 
-  rc = css_send_req_to_server (net_Server_host, request, send_argbuffer, send_argsize, databuf, datasize, recv_replybuf,
-			       recv_replybuf_size);
+  rc =
+    css_send_req_to_server (net_Server_host, request, send_argbuffer, send_argsize, databuf, datasize,
+			    recv_replybuf, recv_replybuf_size);
   if (rc == 0)
     {
       error = set_server_error (css_Errno);
@@ -3437,7 +3410,7 @@ end:
  */
 
 int
-net_client_ping_server (int client_val, int *server_val, int timeout)
+network_cl::net_client_ping_server (int client_val, int *server_val, int timeout)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
@@ -3458,8 +3431,9 @@ net_client_ping_server (int client_val, int *server_val, int timeout)
 
   /* you can envelope something useful into the request */
   or_pack_int (request, client_val);
-  eid = css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING, request, OR_INT_SIZE, reply_buf,
-						OR_INT_SIZE);
+  eid =
+    css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING, request, OR_INT_SIZE,
+					    reply_buf, OR_INT_SIZE);
   if (eid == 0)
     {
       error = ER_NET_CANT_CONNECT_SERVER;
@@ -3492,7 +3466,7 @@ net_client_ping_server (int client_val, int *server_val, int timeout)
  * return:
  */
 int
-net_client_ping_server_with_handshake (int client_type, bool check_capabilities, int opt_cap)
+network_cl::net_client_ping_server_with_handshake (int client_type, bool check_capabilities, int opt_cap)
 {
   const char *client_release;
   char *server_release, *server_host, *server_handshake, *ptr;
@@ -3523,8 +3497,9 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
   ptr = or_pack_int (ptr, client_type);
   ptr = or_pack_string_with_length (ptr, boot_Host_name, strlen2);
 
-  eid = css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING_WITH_HANDSHAKE, request, request_size,
-						reply, reply_size);
+  eid =
+    css_send_request_to_server_with_buffer (net_Server_host, NET_SERVER_PING_WITH_HANDSHAKE, request,
+					    request_size, reply, reply_size);
   if (eid == 0)
     {
       error = ER_NET_CANT_CONNECT_SERVER;
@@ -3613,7 +3588,7 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
  *    Need to be careful that we don't expect a reply here.
  */
 void
-net_client_shutdown_server (void)
+network_cl::net_client_shutdown_server (void)
 {
   css_send_request_to_server (net_Server_host, NET_SERVER_SHUTDOWN, NULL, 0);
 }
@@ -3631,7 +3606,7 @@ net_client_shutdown_server (void)
  *    communications. It sets up CSS and verifies connection with the server.
  */
 int
-net_client_init (const char *dbname, const char *hostname)
+network_cl::net_client_init (const char *dbname, const char *hostname)
 {
   int error = NO_ERROR;
 
@@ -3685,7 +3660,7 @@ end:
  * Note:
  */
 void
-net_cleanup_client_queues (void)
+network_cl::net_cleanup_client_queues (void)
 {
   if (net_Server_host[0] != '\0' && net_Server_name[0] != '\0')
     {
@@ -3701,7 +3676,7 @@ net_cleanup_client_queues (void)
  * Note: This is called during shutdown to close the communication interface.
  */
 int
-net_client_final (void)
+network_cl::net_client_final (void)
 {
   css_terminate (false);
   return NO_ERROR;
@@ -3720,13 +3695,13 @@ net_client_final (void)
  * Note: Send a data buffer to the server.
  */
 int
-net_client_send_data (char *host, unsigned int rc, char *databuf, int datasize)
+network_cl::net_client_send_data (unsigned int rc, char *databuf, int datasize)
 {
   int error;
 
   if (databuf != NULL)
     {
-      error = css_send_data_to_server (host, rc, databuf, datasize);
+      error = css_send_data_to_server (net_Server_host, rc, databuf, datasize);
       if (error != NO_ERROR)
 	{
 	  return set_server_error (error);
@@ -3747,7 +3722,7 @@ net_client_send_data (char *host, unsigned int rc, char *databuf, int datasize)
  * Note:
  */
 int
-net_client_receive_action (int rc, int *action)
+network_cl::net_client_receive_action (int rc, int *action)
 {
   int size;
   int error;

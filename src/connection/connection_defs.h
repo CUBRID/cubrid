@@ -496,6 +496,8 @@ private:
 #endif				// not c++ = c
 };
 
+
+#if !defined (SERVER_MODE)
 /*
  * This is the mapping entry from a host/key to/from the entry id.
  */
@@ -503,13 +505,16 @@ typedef struct css_mapping_entry CSS_MAP_ENTRY;
 struct css_mapping_entry
 {
   char *key;			/* host name (or some such) */
-  CSS_CONN_ENTRY *conn;		/* the connection */
-#if !defined(SERVER_MODE)
-  CSS_MAP_ENTRY *next;
+#if defined(MULTI_CONN_TO_A_SERVER)
+  int64 owner_tid;
 #endif
+  CSS_CONN_ENTRY *conn;		/* the connection */
+  CSS_MAP_ENTRY *next;
   unsigned short id;		/* host id to help identify the connection */
 };
+#endif
 
+#if !defined (CS_MODE)
 /*
  * This data structure is the information of user access status written
  * when client login server.
@@ -523,5 +528,6 @@ struct last_access_status
   char program_name[32];
   LAST_ACCESS_STATUS *next;
 };
+#endif
 
 #endif /* _CONNECTION_DEFS_H_ */

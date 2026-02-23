@@ -46,7 +46,7 @@
 #include <syslog.h>
 #endif
 
-#include "connection_cl.h"
+#include "client_support.h"	//#include "connection_cl.h"
 #include "dbi.h"
 #include "environment_variable.h"
 #include "error_context.hpp"

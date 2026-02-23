@@ -55,6 +55,9 @@
 #include "porting.h"
 #include "cubrid_getopt.h"
 
+class connection_cl __gv_cls_conn_cl;
+#define __gv_cvar (__gv_cls_conn_cl)
+
 #define COMMDB_CMD_ALLOWED_ON_REMOTE() \
   ((commdb_Arg_deact_stop_all == true) \
   || (commdb_Arg_deact_confirm_stop_all == true) 	\
@@ -149,7 +152,7 @@ send_request_no_args (CSS_CONN_ENTRY * conn, int command)
 {
   unsigned short request_id;
 
-  if (css_send_request (conn, command, &request_id, NULL, 0) == NO_ERRORS)
+  if (__gv_cvar.css_send_request (conn, command, &request_id, NULL, 0) == NO_ERRORS)
     return (request_id);
   else
     return (0);
@@ -168,7 +171,7 @@ send_request_one_arg (CSS_CONN_ENTRY * conn, int command, char *buffer, int size
 {
   unsigned short request_id;
 
-  if (css_send_request (conn, command, &request_id, buffer, size) == NO_ERRORS)
+  if (__gv_cvar.css_send_request (conn, command, &request_id, buffer, size) == NO_ERRORS)
     return (request_id);
   else
     return (0);
@@ -189,7 +192,7 @@ send_request_two_args (CSS_CONN_ENTRY * conn, int command, char *buffer1, int si
 {
   unsigned short request_id;
 
-  if (css_send_request (conn, command, &request_id, buffer1, size1) == NO_ERRORS)
+  if (__gv_cvar.css_send_request (conn, command, &request_id, buffer1, size1) == NO_ERRORS)
     if (css_send_data (conn, request_id, buffer2, size2) == NO_ERRORS)
       return (request_id);
   return (0);
@@ -217,7 +220,7 @@ send_for_start_time (CSS_CONN_ENTRY * conn)
 static void
 return_string (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size)
 {
-  css_receive_data (conn, request_id, buffer, buffer_size, -1);
+  __gv_cvar.css_receive_data (conn, request_id, buffer, buffer_size, -1);
 }
 
 /*
@@ -290,7 +293,7 @@ return_integer_data (CSS_CONN_ENTRY * conn, unsigned short request_id)
   int size;
   int *buffer = NULL;
 
-  if (css_receive_data (conn, request_id, (char **) &buffer, &size, -1) == NO_ERRORS)
+  if (__gv_cvar.css_receive_data (conn, request_id, (char **) &buffer, &size, -1) == NO_ERRORS)
     {
       if (size == sizeof (int))
 	{
@@ -1415,7 +1418,7 @@ main (int argc, char **argv)
       goto error;
     }
 
-  conn = css_connect_to_master_for_info (hostname, port_id, &rid);
+  conn = __gv_cvar.css_connect_to_master_for_info (hostname, port_id, &rid);
   if (conn == NULL)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING11), hostname);

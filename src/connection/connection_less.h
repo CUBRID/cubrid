@@ -28,11 +28,43 @@
 
 #include "connection_defs.h"
 
-extern unsigned int css_make_eid (unsigned short host_id, unsigned short rid);
-extern CSS_MAP_ENTRY *css_queue_connection (CSS_CONN_ENTRY * conn, const char *host, CSS_MAP_ENTRY ** anchor);
-extern CSS_MAP_ENTRY *css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY * anchor);
-extern void css_remove_queued_connection_by_entry (CSS_MAP_ENTRY * entry, CSS_MAP_ENTRY ** anchor);
-extern CSS_MAP_ENTRY *css_return_open_entry (char *host, CSS_MAP_ENTRY ** anchor);
-extern unsigned int css_return_eid_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY ** anchor, unsigned short rid);
-extern CSS_MAP_ENTRY *css_return_entry_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY * anchor);
+class connection_less
+{
+private:
+  unsigned short m_entry_id;
+
+public:
+  int m_work_seqno;		// ctshim
+
+private:
+  unsigned short css_make_entry_id (CSS_MAP_ENTRY * anchor);
+  CSS_MAP_ENTRY *css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor);
+  int css_test_for_open_conn (CSS_CONN_ENTRY * conn);
+
+protected:
+  unsigned int css_make_eid (unsigned short host_id, unsigned short rid);
+  CSS_MAP_ENTRY *css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY * anchor);
+  CSS_MAP_ENTRY *css_queue_connection (CSS_CONN_ENTRY * conn, const char *host, CSS_MAP_ENTRY ** anchor);
+
+  void css_remove_queued_connection_by_entry (CSS_MAP_ENTRY * entry, CSS_MAP_ENTRY ** anchor);
+
+  CSS_MAP_ENTRY *css_return_open_entry (char *host, CSS_MAP_ENTRY ** anchor);
+
+#if defined(UNUSED_FUNCTION)
+  CSS_MAP_ENTRY *css_return_entry_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY * anchor);
+  unsigned int css_return_eid_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY ** anchor, unsigned short rid);
+#endif
+
+
+public:
+    connection_less ()
+  {
+    m_entry_id = 0;
+    m_work_seqno = -1;
+  };
+  ~connection_less ()
+  {
+  };
+
+};
 #endif /* _CONNECTION_LESS_H_ */
