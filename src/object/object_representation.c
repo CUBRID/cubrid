@@ -5758,11 +5758,8 @@ int
 or_header_size (char *ptr)
 {
   int mvcc_flag = OR_GET_MVCC_FLAG (ptr);
-  int idx = mvcc_flag & 0x07;	// 0x07 to get last 3 bits. the 4th bit is used for OR_MVCC_FLAG_HAS_OOS (= 0b1000)
 
-  assert (0 <= idx && idx < (int) (sizeof (mvcc_header_size_lookup) / sizeof (mvcc_header_size_lookup[0])));
-
-  return mvcc_header_size_lookup[idx];
+  return mvcc_header_size_lookup[mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 }
 
 /*
