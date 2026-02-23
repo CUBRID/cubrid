@@ -135,19 +135,22 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
-
+          # git push --delete requires a git repo context; initialise a temp one
+          TMPDIR_GIT=$(mktemp -d)
+          git init "${TMPDIR_GIT}" --quiet
           PUB_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PUB_REPO}.git"
           if git ls-remote --exit-code --heads "${PUB_URL}" "${BRANCH}" 2>/dev/null; then
-            git push "${PUB_URL}" --delete "${BRANCH}"
+            git -C "${TMPDIR_GIT}" push "${PUB_URL}" --delete "${BRANCH}"
             echo "[info] Deleted '${BRANCH}' from ${TC_PUB_REPO}"
           else
             echo "[info] Branch '${BRANCH}' not found in ${TC_PUB_REPO}, skipping"
           fi
-
           PRIV_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PRIV_REPO}.git"
           if git ls-remote --exit-code --heads "${PRIV_URL}" "${BRANCH}" 2>/dev/null; then
-            git push "${PRIV_URL}" --delete "${BRANCH}"
+            git -C "${TMPDIR_GIT}" push "${PRIV_URL}" --delete "${BRANCH}"
             echo "[info] Deleted '${BRANCH}' from ${TC_PRIV_REPO}"
           else
             echo "[info] Branch '${BRANCH}' not found in ${TC_PRIV_REPO}, skipping"
           fi
+
+          rm -rf "${TMPDIR_GIT}"
