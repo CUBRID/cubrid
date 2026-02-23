@@ -982,7 +982,8 @@ sm_define_view_auth_spec (void)
 	  "CAST ([c].[owner].[name] AS VARCHAR(255)) AS [owner_name], " /* string -> varchar(255) */
 	  "[a].[auth_type] AS [auth_type], "
 	  "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable], "
-	  "[a].[created_time] AS [created_time] "
+	  "[a].[created_time] AS [created_time], "
+	  "[a].[updated_time] AS [updated_time] "
 	"FROM "
 	  /* CT_CLASSAUTH_NAME, CT_CLASS_NAME */
 	  "[%s] AS [a], [%s] AS [c] "
@@ -1009,7 +1010,8 @@ sm_define_view_auth_spec (void)
           "CAST ([s].[owner].[name] AS VARCHAR(255)) AS [owner_name], "
           "[a].[auth_type] AS [auth_type], "
           "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable], "
-          "[a].[created_time] AS [created_time] "
+          "[a].[created_time] AS [created_time], "
+          "[a].[updated_time] AS [updated_time] "
         "FROM "
           /* CT_CLASSAUTH_NAME, CT_STORED_PROC_NAME */
 	  "[%s] AS [a], [%s] AS [s] "

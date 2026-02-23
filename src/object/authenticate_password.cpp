@@ -351,11 +351,11 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 		    {
 		      if (is_new_pass)
 			{
-			  error = au_set_password_timestamps (pass);
+			  error = au_set_new_timestamps (pass);
 			}
 		      else
 			{
-			  error = au_update_password_timestamp (pass);
+			  error = au_update_timestamps (pass);
 			}
 		    }
 		}
@@ -365,7 +365,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 
   if (error == NO_ERROR)
     {
-      error = au_update_user_timestamp (user);
+      error = au_update_timestamps (user);
     }
 
   AU_ENABLE (save);

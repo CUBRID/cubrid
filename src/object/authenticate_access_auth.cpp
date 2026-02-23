@@ -197,14 +197,13 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
   db_make_int (&value, (int) grant_option);
   obj_set (m_au_obj, "is_grantable", &value);
 
-
   if (au_obj == nullptr)
     {
-      DB_VALUE current_datetime;
-      if (db_sys_datetime (&current_datetime) == NO_ERROR)
-	{
-	  obj_set (m_au_obj, "created_time", &current_datetime);
-	}
+      au_set_new_timestamps (m_au_obj);
+    }
+  else
+    {
+      au_update_timestamps (m_au_obj);
     }
 
   pr_clear_value (&value);
