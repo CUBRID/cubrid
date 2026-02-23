@@ -1,0 +1,104 @@
+================================================================
+CUBRID PR <-> TC Branch Transaction: Implementation Summary
+================================================================
+
+COMPLETED (this session)
+----------------------------------------------------------------
+File: .github/workflows/tc-branch-sync.yml
+  - Trigger: pull_request_target (opened, reopened, synchronize)
+  - Creates tc/pr-<N> branch in both TC repos from develop
+  - Skips silently if branch already exists
+  - On failure: posts a comment on the Engine PR
+
+File: .github/workflows/tc-branch-finalize.yml
+  - Trigger: pull_request_target (closed)
+  - If merged:   merges tc/pr-<N> into develop in both TC repos,
+                 then deletes tc/pr-<N>
+                 On conflict/failure: posts a comment on the Engine PR
+  - If rejected: deletes tc/pr-<N> from both TC repos
+
+================================================================
+SETUP REQUIRED BEFORE WORKFLOWS CAN RUN
+================================================================
+
+1. Create a GitHub App in the CUBRID organization:
+   - Go to: https://github.com/organizations/CUBRID/settings/apps
+   - Set the following repository permission: Contents: Write
+   - Install the App on both TC repos:
+       CUBRID/cubrid-testcases
+       CUBRID/cubrid-testcases-private-ex
+
+2. Add the following two secrets to CUBRID/cubrid:
+     Settings -> Secrets -> Actions
+
+     Secret name : TC_APP_ID
+     Secret value: <the GitHub App's numeric App ID>
+
+     Secret name : TC_APP_PRIVATE_KEY
+     Secret value: <the GitHub App's private key (full PEM content)>
+
+   The workflows use actions/create-github-app-token@v1 to exchange
+   these credentials for a short-lived installation token at runtime.
+
+================================================================
+REMAINING CI WORK (to be done manually)
+================================================================
+
+Modify the existing CI workflow(s) that checkout TC repos so they
+use the tc/pr-<N> branch when available, falling back to develop.
+
+In every step that clones a TC repo, replace the fixed branch
+with the following shell logic:
+
+  PR_BRANCH="tc/pr-${GITHUB_PULL_REQUEST_NUMBER}"
+  # or: tc/pr-${{ github.event.pull_request.number }}
+
+  if git ls-remote --exit-code --heads \
+       https://github.com/CUBRID/cubrid-testcases.git \
+       "${PR_BRANCH}" 2>/dev/null; then
+    TC_BRANCH="${PR_BRANCH}"
+  else
+    TC_BRANCH="develop"
+  fi
+
+  git clone -b "${TC_BRANCH}" \
+    https://github.com/CUBRID/cubrid-testcases.git
+
+Apply the same logic to cubrid-testcases-private-ex.
+
+Additionally, to block Engine PR merges when TC has a conflict
+(preventing the state where engine is merged but TC cannot merge),
+add a merge-dry-run check inside CI:
+
+  cd cubrid-testcases
+  git fetch origin develop:develop
+  git merge --no-commit --no-ff develop || {
+    echo "TC branch conflicts with develop. Resolve before merging."
+    git merge --abort
+    exit 1
+  }
+  git merge --abort
+
+This makes CI fail when a TC conflict exists, so GitHub branch
+protection rules (require status checks to pass) will prevent
+the Engine PR from being merged until the conflict is resolved.
+
+================================================================
+FUTURE ENHANCEMENTS (not yet implemented)
+================================================================
+
+1. Auto-sync develop into tc/pr-<N>
+   When a developer merges develop into their Engine PR branch,
+   automatically merge the latest develop into the corresponding
+   TC branch as well.
+   Approach: on synchronize event, detect if the new HEAD commit
+   is a merge commit with develop as a parent, then merge develop
+   into tc/pr-<N>.
+
+2. Revert automation
+   When a merged Engine PR is reverted (new PR with title starting
+   with 'Revert ...'), detect the original PR number and create a
+   matching revert in the TC repos.
+   Current behavior: tc-branch-sync.yml creates a fresh tc/pr-<N>
+   branch. A bot comment is NOT yet posted to remind about TC revert.
+   Consider adding a revert-detection step to tc-branch-sync.yml.
