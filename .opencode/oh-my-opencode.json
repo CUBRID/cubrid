@@ -1,70 +1,25 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
   "agents": {
-    "sisyphus": {
-      "model": "opencode/claude-sonnet-4-6",
-      "variant": "high"
-    },
-    "momus": {
-      "model": "opencode/claude-opus-4-5",
-      "variant": "max"
-    },
-    "hephaestus": {
-      "model": "opencode/deepseek-v3-coder",
-      "variant": "high"
-    },
-    "oracle": {
-      "model": "opencode/gemini-3-pro",
-      "variant": "high"
-    },
-    "librarian": {
-      "model": "opencode/gemini-3-flash"
-    },
-    "explore": {
-      "model": "opencode/gemini-3-flash"
-    },
-    "prometheus": {
-      "model": "opencode/claude-sonnet-4-6",
-      "variant": "high"
-    },
-    "metis": {
-      "model": "opencode/claude-sonnet-4-6",
-      "variant": "high"
-    },
-    "atlas": {
-      "model": "opencode/kimi-k2.5-free"
-    },
-    "looker": {
-      "model": "opencode/kimi-k2.5-free"
-    }
+    "sisyphus":   { "model": "opencode/claude-sonnet-4-6", "variant": "high" },
+    "momus":      { "model": "opencode/gemini-3-pro" },
+    "hephaestus": { "model": "opencode/deepseek-v3-coder" },
+    "oracle":     { "model": "opencode/gemini-3-pro" },
+    "librarian":  { "model": "opencode/gemini-3-flash" },
+    "explore":    { "model": "opencode/gemini-3-flash" },
+    "prometheus": { "model": "opencode/claude-sonnet-4-6" },
+    "metis":      { "model": "opencode/gemini-3-pro" },
+    "atlas":      { "model": "opencode/kimi-k2.5-free" },
+    "looker":     { "model": "opencode/kimi-k2.5-free" }
   },
   "categories": {
-    "deep": {
-      "model": "opencode/deepseek-v3-coder",
-      "variant": "max"
-    },
-    "ultrabrain": {
-      "model": "opencode/claude-opus-4-5",
-      "variant": "max"
-    },
-    "quick": {
-      "model": "opencode/gemini-3-flash"
-    },
-    "unspecified-high": {
-      "model": "opencode/claude-sonnet-4-6",
-      "variant": "high"
-    },
-    "unspecified-low": {
-      "model": "opencode/claude-sonnet-4-6"
-    },
-    "visual-engineering": {
-      "model": "opencode/gemini-3-pro"
-    },
-    "writing": {
-      "model": "opencode/gemini-3-flash"
-    },
-    "artistry": {
-      "model": "opencode/gemini-3-pro"
-    }
+    "deep":               { "model": "opencode/deepseek-v3-coder", "variant": "high" },
+    "ultrabrain":         { "model": "opencode/claude-sonnet-4-6", "variant": "high" },
+    "quick":              { "model": "opencode/gemini-3-flash" },
+    "unspecified-high":   { "model": "opencode/claude-sonnet-4-6" },
+    "unspecified-low":    { "model": "opencode/gemini-3-flash" },
+    "visual-engineering": { "model": "opencode/gemini-3-flash" },
+    "writing":            { "model": "opencode/gemini-3-flash" },
+    "artistry":           { "model": "opencode/gemini-3-pro" }
   }
 }
