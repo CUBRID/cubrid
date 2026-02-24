@@ -354,6 +354,9 @@ add_commas (char *string)
 
       temp = string;
 
+      temp[l2--] = '\0';
+      l1--;
+
       /* Checks for a decimal point to avoid double-free core dumps in the scenarios described below
        *  select cast(23421.234 as numeric(7,0));  
        */
