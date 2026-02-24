@@ -23,26 +23,34 @@
 #define _BASE_RESOURCES_HPP_
 
 #include <set>
+#include <limits>
 #include <optional>
-
-#define CONST_PATH(name, path) \
-  inline constexpr const char *name = path
 
 namespace os::resources
 {
   namespace path
   {
-    CONST_PATH (cpu_online, "/sys/devices/system/cpu/online");
+    inline constexpr const char *cpu_online = "/sys/devices/system/cpu/online";
   }
 
   namespace cpu
   {
-    int sysconf_nprocessors ();
+    struct context
+    {
+      context () :
+	max (std::numeric_limits<double>::max ()),
+	effective (std::nullopt)
+      {
+      }
+
+      double max;
+      std::optional<std::set<std::size_t>> effective;
+    };
+
     std::optional<std::set<std::size_t>> affinity_cpuset ();
     std::optional<std::set<std::size_t>> online_cpuset ();
 
-    /* cpuset.cpus.effective */
-    std::optional<std::set<std::size_t>> effective ();
+    context effective ();
   }
 }
 

@@ -23,34 +23,39 @@
 #define _CGROUP_HPP_
 
 #include <set>
-#include <string>
 #include <optional>
-
-#include "fs_path.hpp"
-#include "fs_parser.hpp"
+#include <filesystem>
 
 namespace os::cgroup
 {
-  std::string mountpoint ();
+  namespace path
+  {
+    inline constexpr const char *proc_mountinfo = "/proc/self/mountinfo";
+    inline constexpr const char *proc_cgroup = "/proc/self/cgroup";
+  }
+
+  std::optional<std::filesystem::path> mountpoint ();
+  std::optional<std::filesystem::path> relative ();
 
   namespace cpu
   {
-    class cache
+    struct context
     {
-      public:
-	cache ();
-	~cache ();
+      context () :
+	max_v2 (std::nullopt),
+	effective_v2 (std::nullopt)
+      {
+      }
 
-      private:
-	std::string mountpoint;
-	std::string relative;
+      std::optional<double> max_v2;
+      std::optional<std::set<std::size_t>> effective_v2;
     };
 
-    /* cpu.max */
-    double max ();
+    /* cgroup v2 */
+    std::optional<double> max_v2 (std::filesystem::path path);
+    std::optional<std::set<std::size_t>> effective_v2 (std::filesystem::path path);
 
-    /* cpuset.cpus.effective */
-    std::optional<std::set<std::size_t>> effective ();
+    context quota_v2 ();
   }
 }
 

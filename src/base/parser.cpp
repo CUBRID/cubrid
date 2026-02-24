@@ -19,7 +19,52 @@
  * parser.cpp - parser module for fs (proc, sys...)
  */
 
+#include "parser.hpp"
+
 namespace os::parser
 {
+  std::vector<std::string> string_to_vector (std::string str, char separator)
+  {
+    std::vector<std::string> vec;
+    std::string_view view (str);
+    std::size_t pos, end;
+
+    pos = 0;
+    while (pos < view.length ())
+      {
+	end = view.find (separator, pos);
+	if (end == std::string::npos)
+	  {
+	    vec.emplace_back (view.substr (pos));
+	    break;
+	  }
+	vec.emplace_back (view.substr (pos, end - pos));
+	pos = end + 1;
+      }
+
+    return vec;
+  }
+
+  std::vector<std::string> string_to_vector (std::string str, std::string separator)
+  {
+    std::vector<std::string> vec;
+    std::string_view view (str);
+    std::size_t pos, end;
+
+    pos = 0;
+    while (pos < view.length ())
+      {
+	end = view.find (separator, pos);
+	if (end == std::string::npos)
+	  {
+	    vec.emplace_back (view.substr (pos));
+	    break;
+	  }
+	vec.emplace_back (view.substr (pos, end - pos));
+	pos = end + separator.length ();
+      }
+
+    return vec;
+  }
 }
 

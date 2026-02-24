@@ -19,11 +19,13 @@
  * resources.hpp - get machine resource information.
  */
 
+#include <thread>
 #include <fstream>
 #include <sched.h>
 #include <unistd.h>
 
 #include "resources.hpp"
+#include "cgroup.hpp"
 #include "parser.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -32,18 +34,6 @@ namespace os::resources
 {
   namespace cpu
   {
-    int sysconf_nprocessors ()
-    {
-      long val;
-
-      val = ::sysconf (_SC_NPROCESSORS_ONLN);
-      if (val <= 0)
-	{
-	  return 0;
-	}
-      return static_cast<int> (val);
-    }
-
     std::optional<std::set<std::size_t>> affinity_cpuset ()
     {
       std::set<std::size_t> cpuset;
@@ -52,8 +42,6 @@ namespace os::resources
       std::size_t i, j;
 
       size = 1024;
-      cpuset.clear ();
-
       /* scales up to 2^18 */
       for (i = 0; i < 8; i++)
 	{
@@ -75,7 +63,9 @@ namespace os::resources
 		  continue;
 		}
 
-	      _er_log_debug (ARG_FILE_LINE, "failed to sched_getaffinity: %s\n", strerror (errno));
+	      /* _er_log_debug (ARG_FILE_LINE, "failed to sched_getaffinity: %s\n", strerror (errno)); */
+
+	      CPU_FREE (bitmap);
 	      return std::nullopt;
 	    }
 
@@ -91,7 +81,7 @@ namespace os::resources
 	  return cpuset;
 	}
 
-      _er_log_debug (ARG_FILE_LINE, "failed to create cpuset: number of cores exceeds 2^18.\n");
+      /* _er_log_debug (ARG_FILE_LINE, "failed to create cpuset: number of cores exceeds 2^18.\n"); */
       return std::nullopt;
     }
 
@@ -99,47 +89,86 @@ namespace os::resources
     {
       std::ifstream file (path::cpu_online);
       std::set<std::size_t> cpuset;
-      std::string_view line, item;
-      std::string data;
-      std::size_t pos, end;
+      std::string line;
 
       if (!file)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "failed to open %s: %s\n", path::cpu_online, strerror (errno));
-	  return std::nullopt;
-	}
-      cpuset.clear ();
-
-      file >> data;
-      if (data.empty ())
-	{
-	  _er_log_debug (ARG_FILE_LINE, "the file %s is empty.\n", path::cpu_online);
+	  /* _er_log_debug (ARG_FILE_LINE, "failed to open %s: %s\n", path::cpu_online, strerror (errno)); */
 	  return std::nullopt;
 	}
 
-      pos = 0;
-      line = data;
-      while ((end = line.find (',', pos)) != std::string::npos)
+      file >> line;
+      if (line.empty ())
 	{
-	  item = line.substr (pos, end - pos);
-	  pos = end + 1;
-
-	  cpuset.merge (parser::range_to_set<std::size_t> (item));
+	  /* _er_log_debug (ARG_FILE_LINE, "the file %s is empty.\n", path::cpu_online); */
+	  return std::nullopt;
 	}
-      item = line.substr (pos);
-      cpuset.merge (parser::range_to_set<std::size_t> (item));
-
-      return cpuset;
+      return parser::range_set_to_set<std::size_t> (line);
     }
 
-    std::optional<std::set<std::size_t>> effective ()
+    context effective ()
     {
-      std::optional<std::set<std::size_t>> affinity, online;
-      int nprocessors;
+      static const context ctx = []() -> context
+      {
+	std::optional<std::set<std::size_t>> affinity, online;
+	cgroup::cpu::context cgroup;
+	context ctx;
+	int nprocessors;
 
-      nprocessors = sysconf_nprocessors ();
-      affinity = affinity_cpuset ();
-      online = online_cpuset ();
+	affinity = affinity_cpuset ();
+	if (affinity)
+	  {
+	    ctx.max = affinity->size ();
+	    ctx.effective = std::move (*affinity);
+	  }
+
+	online = online_cpuset ();
+	if (online)
+	  {
+	    if (ctx.effective)
+	      {
+		ctx.max = ctx.max > online->size () ? online->size () : ctx.max;
+		ctx.effective = parser::intersection (*ctx.effective, *online);
+	      }
+	    else
+	      {
+		ctx.max = online->size ();
+		ctx.effective = std::move (*online);
+	      }
+	  }
+
+	cgroup = cgroup::cpu::quota_v2 ();
+	if (cgroup.max_v2 &&
+	    *cgroup.max_v2 != std::numeric_limits<double>::max () && ctx.max > *cgroup.max_v2)
+	  {
+	    ctx.max = *cgroup.max_v2;
+	  }
+	if (cgroup.effective_v2)
+	  {
+	    if (ctx.effective)
+	      {
+		ctx.effective = parser::intersection (*ctx.effective, *cgroup.effective_v2);
+	      }
+	    else
+	      {
+		ctx.effective = *cgroup.effective_v2;
+	      }
+	  }
+
+	if (ctx.max == std::numeric_limits<double>::max ())
+	  {
+	    nprocessors = std::thread::hardware_concurrency();
+	    if (nprocessors == 0)
+	      {
+		nprocessors = 1;
+	      }
+	    ctx.max = nprocessors;
+	  }
+
+	return ctx;
+      } ();
+
+      return ctx;
     }
   }
 }
