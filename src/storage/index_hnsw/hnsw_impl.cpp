@@ -489,7 +489,7 @@ hnsw_impl::dump (cubthread::entry *thread_p, FILE *fp)
   return ER_FAILED;
 }
 
-HNSW_REGISTER_BACKEND ("usearchng",[] (const char *id)
+HNSW_REGISTER_BACKEND ("hnsw_impl",[] (const char *id)
 {
   return std::make_unique < hnsw_impl_backend >
 	 (id);
