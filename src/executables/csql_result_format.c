@@ -916,6 +916,15 @@ numeric_to_string (DB_VALUE * value, bool commas)
   int comma_length = 0;
   int str_length = 0;
 
+  do
+    {
+      /* Force-disable commas to preserve legacy behavior.
+       * TODO: Once the comma display requirement is finalized, update default_numeric_profile.commas and delete this block.
+       */
+      commas = false;
+    }
+  while (0);
+
   numeric_db_value_print (value, str_buf);
 
   comma_length = COMMAS_OFFSET (commas, DB_VALUE_PRECISION (value));
@@ -934,6 +943,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
     {
       add_commas (return_string);
     }
+
   return return_string;
 }
 
