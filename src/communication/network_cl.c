@@ -98,6 +98,17 @@ class network_cl __gv_network_cl;
  * to disable all db_ functions
  */
 
+
+network_cl::network_cl ()
+{
+  net_Server_host[0] = '\0';
+  net_Server_name[0] = '\0';
+}
+
+network_cl::~network_cl ()
+{
+}
+
 /*
  * set_server_error -
  *
