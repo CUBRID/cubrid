@@ -527,14 +527,14 @@ au_set_new_timestamps (MOP obj)
 
   if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
-      return ER_FAILED;
+      return er_errid ();
     }
 
   AU_SAVE_AND_DISABLE (save);
   if (obj_set (obj, "created_time", &current_datetime) != NO_ERROR ||
       obj_set (obj, "updated_time", &current_datetime) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = er_errid ();
     }
   AU_RESTORE (save);
 
@@ -550,13 +550,13 @@ au_update_timestamps (MOP obj)
 
   if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
-      return ER_FAILED;
+      return er_errid ();
     }
 
   AU_SAVE_AND_DISABLE (save);
   if (obj_set (obj, "updated_time", &current_datetime) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = er_errid ();
     }
   AU_RESTORE (save);
 
