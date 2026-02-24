@@ -68,7 +68,7 @@ struct t_schema_file_list_info
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_get_start_line_no (std::string & file_name);
-static void ldr_compat_serial_call_target (DB_SESSION * session, int stmt_id);
+static void ldr_compat_serial_call_target (DB_SESSION * session);
 static FILE *ldr_check_file (std::string & file_name, int &error_code);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
@@ -965,16 +965,15 @@ loaddb_user (UTIL_FUNCTION_ARG * arg)
  *   old name to the current one before compilation.
  *   return: void
  *   session(in): current DB session
- *   stmt_id(in): 1-based index of the parsed statement
  */
 static void
-ldr_compat_serial_call_target (DB_SESSION * session, int stmt_id)
+ldr_compat_serial_call_target (DB_SESSION * session)
 {
   PT_NODE *statement = NULL;
   PT_NODE *on_call_target = NULL;
   const char *origin_name = NULL;
 
-  statement = db_get_statement (session, stmt_id - 1);
+  statement = db_get_statement (session, 0);
   if (statement == NULL)
     {
       return;
@@ -1107,7 +1106,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
 	  if (statement_type == CUBRID_STMT_CALL)
 	    {
-	      ldr_compat_serial_call_target (session, stmt_id);
+	      ldr_compat_serial_call_target (session);
 	    }
 
 	  stmt_id = db_compile_statement (session);
