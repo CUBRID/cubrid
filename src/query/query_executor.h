@@ -68,7 +68,7 @@ struct val_descr
   int dbval_cnt;		/* Value Count */
   DB_DATETIME sys_datetime;
   DB_TIMESTAMP sys_epochtime;
-  int sys_epochtime_ms;	/* Epoch time in milliseconds for UUIDv7 [0~1000) */
+  int sys_epochtime_ms;		/* Epoch time in milliseconds for UUIDv7 [0~1000) */
   long lrand;
   double drand;
   XASL_STATE *xasl_state;	/* XASL_STATE pointer */

@@ -17257,7 +17257,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
        * During semantic checking, flag.do_not_fold is not considered; therefore, a dummy value is returned.
        * Any PT_EXPR that contains PT_SYS_GUID or PT_UUID must always have flag.do_not_fold set to true.
        */
-      db_make_string(result, "0123456789ABCDEF0123456789ABCDEF");
+      db_make_string (result, "0123456789ABCDEF0123456789ABCDEF");
       return 1;
     case PT_UUID:
       db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, "0123456789ABCDEF", GUID_STANDARD_BYTES_LENGTH * 8);

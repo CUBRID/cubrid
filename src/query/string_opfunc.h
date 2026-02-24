@@ -157,14 +157,14 @@ typedef enum
 
 typedef enum
 {
-  UUID_V1,
-  UUID_V2,
-  UUID_V3,
+  UUID_V1,			/* not supported */
+  UUID_V2,			/* not supported */
+  UUID_V3,			/* not supported */
   UUID_V4,
-  UUID_V5,
-  UUID_V6,
+  UUID_V5,			/* not supported */
+  UUID_V6,			/* not supported */
   UUID_V7,
-  UUID_V8,
+  UUID_V8,			/* not supported */
 } UUID_VERSION;
 
 #define GUID_STANDARD_BYTES_LENGTH 16
@@ -369,10 +369,7 @@ extern int db_like_bound (const DB_VALUE * const src_pattern, const DB_VALUE * c
 extern int db_hex (const DB_VALUE * param, DB_VALUE * result);
 #if !defined (CS_MODE)
 /* todo(rem): this does not belong here */
-extern int db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result);
-extern int db_uuid (THREAD_ENTRY * thread_p, UUID_VERSION version, DB_VALUE * result);
-extern int db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result, bool is_raw);
-extern int db_uuidv7 (THREAD_ENTRY * thread_p, DB_VALUE * result);
+extern int db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result);
 extern int db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, DB_VALUE * result);
 #endif /* !defined (CS_MODE) */
 extern int db_ascii (const DB_VALUE * param, DB_VALUE * result);

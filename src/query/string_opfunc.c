@@ -57,9 +57,9 @@
 #include "tz_support.h"
 #include "util_func.h"
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
+#if !defined (CS_MODE)
 #include "thread_entry.hpp"
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#endif /* !defined (CS_MODE) */
 
 #include <algorithm>
 #include <string>
@@ -158,10 +158,10 @@ typedef enum
 
 #define MAX_TOKEN_SIZE 16000
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
+#if !defined (CS_MODE)
 static int uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes);
 static int uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t epoch_ms, unsigned char *out_bytes);
-#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#endif /* !defined (CS_MODE) */
 
 typedef enum
 {
@@ -26020,44 +26020,21 @@ error:
 
 #if !defined (CS_MODE)
 /*
- * db_guid() - Generate a type 4 (randomly generated) UUID.
+ * db_uuidv4() - Generate a type 4 (randomly generated) UUID.
  *   return: error code or NO_ERROR
  *   thread_p(in): thread context
- *   result(out): HEX encoded UUID string
+ *   result(out): HEX encoded UUID string(32-character uppercase hexadecimal)
  * Note:
+ *   Behavior matches SQL function SYS_GUID()
  */
 int
-db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
-{
-  return db_uuidv4(thread_p,result,false);
-}
-
-int
-db_uuid (THREAD_ENTRY * thread_p, UUID_VERSION version, DB_VALUE * result){
-  switch (version){
-    case UUID_V4:
-      return db_uuidv4(thread_p,result,true);
-    break;
-    case UUID_V7:
-      return db_uuidv7(thread_p,result);
-    break;
-    default:
-    
-    break;
-    
-  }
-  assert(false);
-  return 0;
-}
-
-int
-db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result, bool is_raw)
+db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result)
 {
   int i = 0, error_code = NO_ERROR;
   const char hex_digit[] = "0123456789ABCDEF";
-  unsigned char guid_bytes_buf[GUID_STANDARD_BYTES_LENGTH];
-  char *guid_bytes_alloc = NULL;
-  unsigned char *guid_bytes = NULL;
+  unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
+  // char *guid_bytes_alloc = NULL;
+  // unsigned char *guid_bytes = NULL;
   char *guid_hex = NULL;
 
   if (result == NULL)
@@ -26065,21 +26042,6 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result, bool is_raw)
       error_code = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
       goto error;
-    }
-
-  if (is_raw)
-    {
-      guid_bytes_alloc = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH);
-      if (guid_bytes_alloc == NULL)
-        {
-          error_code = er_errid ();
-          goto error;
-        }
-      guid_bytes = (unsigned char *) guid_bytes_alloc;
-    }
-  else
-    {
-      guid_bytes = guid_bytes_buf;
     }
 
   db_make_null (result);
@@ -26091,41 +26053,29 @@ db_uuidv4 (THREAD_ENTRY * thread_p, DB_VALUE * result, bool is_raw)
       goto error;
     }
 
-  if (is_raw)
+  guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
+  if (guid_hex == NULL)
     {
-      db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, (char *) guid_bytes, GUID_STANDARD_BYTES_LENGTH * 8);
-      result->need_clear = true;
-      return NO_ERROR;
+      error_code = er_errid ();
+      goto error;
     }
-  else
+
+  guid_hex[GUID_STANDARD_BYTES_LENGTH * 2] = '\0';
+
+  /* Encode the bytes to HEX */
+  for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
     {
-      guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
-      if (guid_hex == NULL)
-        {
-          error_code = er_errid ();
-          goto error;
-        }
-
-      guid_hex[GUID_STANDARD_BYTES_LENGTH * 2] = '\0';
-
-      /* Encode the bytes to HEX */
-      for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
-        {
-          guid_hex[i * 2] = hex_digit[(guid_bytes[i] >> 4) & 0xF];
-          guid_hex[i * 2 + 1] = hex_digit[(guid_bytes[i] & 0xF)];
-        }
-
-      db_make_string (result, guid_hex);
-      result->need_clear = true;
-
-      return NO_ERROR;
+      guid_hex[i * 2] = hex_digit[(guid_bytes[i] >> 4) & 0xF];
+      guid_hex[i * 2 + 1] = hex_digit[(guid_bytes[i] & 0xF)];
     }
+
+  db_make_string (result, guid_hex);
+  result->need_clear = true;
+
+  return NO_ERROR;
 
 error:
-  if (guid_bytes_alloc != NULL)
-    {
-      db_private_free (thread_p, guid_bytes_alloc);
-    }
+  db_make_null (result);
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
@@ -26193,6 +26143,7 @@ db_uuid_bin (THREAD_ENTRY * thread_p, UUID_VERSION version, uint64_t epoch_ms, D
   return NO_ERROR;
 
 error:
+  db_make_null (result);
   if (guid_bytes != NULL)
     {
       db_private_free (thread_p, guid_bytes);
@@ -26255,11 +26206,11 @@ uuidv7_generate_bytes (THREAD_ENTRY * thread_p, uint64_t xasl_vd_epoch_ms, unsig
        */
       seq++;
       if (seq > GUID_V7_SEQ_MAX || seq == 0)
-        {
-          /* Sequence overflow: advance timestamp by 1ms to preserve monotonicity */
-          last_ms++;
-          seq = 0;
-        }
+	{
+	  /* Sequence overflow: advance timestamp by 1ms to preserve monotonicity */
+	  last_ms++;
+	  seq = 0;
+	}
     }
 
   /* Save updated state back to thread */
@@ -26317,74 +26268,6 @@ uuidv4_generate_bytes (THREAD_ENTRY * thread_p, unsigned char *out_bytes)
   out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
 
   return NO_ERROR;
-}
-
-/*
- * db_uuidv7() - Generate a type 7 (time ordered) UUID as HEX string.
- *   return: error code or NO_ERROR
- *   thread_p(in): thread context
- *   result(out): HEX encoded UUID string (32 characters)
- * Note:
- *   This function is for backward compatibility (string output).
- *   It gets current time directly since there's no val_descr available.
- */
-int
-db_uuidv7 (THREAD_ENTRY * thread_p, DB_VALUE * result)
-{
-  int i = 0, error_code = NO_ERROR;
-  const char hex_digit[] = "0123456789ABCDEF";
-  unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
-  char *guid_hex = NULL;
-  uint64_t epoch_ms = 0;
-
-  if (result == NULL)
-    {
-      error_code = ER_OBJ_INVALID_ARGUMENTS;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-      goto error;
-    }
-
-  db_make_null (result);
-
-  /* Get current time for standalone call (no val_descr context) */
-  util_get_ms_since_epoch (&epoch_ms);
-
-  /* Generate UUIDv7 bytes using per-thread monotonic state */
-  error_code = uuidv7_generate_bytes (thread_p, epoch_ms, guid_bytes);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
-  if (guid_hex == NULL)
-    {
-      error_code = er_errid ();
-      goto error;
-    }
-
-  guid_hex[GUID_STANDARD_BYTES_LENGTH * 2] = '\0';
-
-  /* Encode the bytes to HEX */
-  for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
-    {
-      guid_hex[i * 2] = hex_digit[(guid_bytes[i] >> 4) & 0xF];
-      guid_hex[i * 2 + 1] = hex_digit[(guid_bytes[i] & 0xF)];
-    }
-
-  db_make_string (result, guid_hex);
-  result->need_clear = true;
-
-  return NO_ERROR;
-
-error:
-  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-    {
-      er_clear ();
-      error_code = NO_ERROR;
-    }
-
-  return error_code;
 }
 #endif /* !defined (CS_MODE) */
 

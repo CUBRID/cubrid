@@ -3514,7 +3514,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* sys_guid() is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-      if (db_guid (thread_p, arithptr->value) != NO_ERROR)
+      if (db_uuidv4 (thread_p, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3534,7 +3534,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* uuid(7) is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-      if (db_uuid_bin (thread_p, UUID_V7, ((uint64_t)vd->sys_epochtime * 1000ULL) + (uint64_t)vd->sys_epochtime_ms, arithptr->value) != NO_ERROR)
+      if (db_uuid_bin
+	  (thread_p, UUID_V7, ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) vd->sys_epochtime_ms,
+	   arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}

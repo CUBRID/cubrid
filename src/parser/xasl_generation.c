@@ -9301,15 +9301,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    PT_NODE *arg1 = node->info.expr.arg1;
 		    if (arg1 != NULL && arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_INTEGER)
 		      {
-		        uuid_version = arg1->info.value.data_value.i;
+			uuid_version = arg1->info.value.data_value.i;
 		      }
 		    if (uuid_version == 7)
 		      {
-		        regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID7, domain);
+			regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID7, domain);
 		      }
 		    else
 		      {
-		        regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID4, domain);
+			regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID4, domain);
 		      }
 		  }
 		  break;
