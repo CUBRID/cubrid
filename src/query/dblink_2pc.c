@@ -235,7 +235,7 @@ dblink_2pc_send_decision_one_participant (int gtrid, int bqual, const char *conn
       return NO_ERROR;
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
 
   return ER_DBLINK;
 }

@@ -922,6 +922,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   /* Recover pending _db_global_tran (state 'A'/'C'): send decision to participants, delete on success */
   dblink_2pc_daemon_recovery_with_thread (thread_p);
   /* Start send_2pc_decision daemon for coordinator recovery (_db_global_tran) */
+#if 0
   error_code = dblink_2pc_daemon_start ();
   if (error_code != NO_ERROR)
     {
@@ -929,6 +930,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery:dblink_2pc_daemon_start");
       return;
     }
+#endif
 #endif
 
   /* Dismount any archive and checkpoint the database */

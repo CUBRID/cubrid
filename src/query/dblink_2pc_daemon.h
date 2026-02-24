@@ -57,7 +57,7 @@ extern int dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participant
  * Returns NO_ERROR on success, ER_OUT_OF_VIRTUAL_MEMORY if queue alloc failed,
  * ER_FAILED if thread creation failed. On failure, caller should not proceed (e.g. fatal error).
  */
-extern int dblink_2pc_daemon_start (void);
+extern int dblink_2pc_daemon_init (void);
 
 /* Stop the daemon thread. Called during server shutdown. */
 extern void dblink_2pc_daemon_stop (void);
