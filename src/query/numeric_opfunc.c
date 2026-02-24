@@ -2373,14 +2373,19 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer)
       numeric_div (arg, numeric_get_pow_of_10 (scale), zero_scale_arg, rem);
       if (!numeric_is_zero (rem))
 	{
-	  /* The signs of the input, quotient, and remainder will be the same. 
-	     Here, we intend to make it negative */
+	  /* The signs of the input, quotient(except for zero), and remainder will be the same. 
+	     Here, we force 'rem' to be negative */
 	  if (!numeric_is_negative (rem))
 	    {
 	      numeric_negate (rem);
 	    }
 
 	  /* round */
+	  /* If (10^'scale' + 'rem' + 'rem') <= 0 (where 'rem' is a negative remainder), round up; otherwise, disregard. 
+	   * If adding the negative remainder twice to a power of 10 results in a negative value, the remainder is considered large enough to round up.
+	   * Otherwise, it is disregarded. 
+	   * Note: Since the remainder is expressed as a negative value, addition is used instead of subtraction.
+	   */
 	  numeric_add (numeric_get_pow_of_10 (scale), rem, tmp, DB_NUMERIC_BUF_SIZE);
 	  numeric_add (tmp, rem, tmp, DB_NUMERIC_BUF_SIZE);
 	  if (numeric_is_negative (tmp) || numeric_is_zero (tmp))
