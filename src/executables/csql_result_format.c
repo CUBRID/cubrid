@@ -909,6 +909,7 @@ numeric_to_string (DB_VALUE * value, bool commas)
   int comma_length;
   int max_length;
 
+#if 0
   /*
    * Allocate string length based on precision plus the commas plus a
    * character for each of the sign, decimal point, and NULL terminator.
@@ -929,7 +930,22 @@ numeric_to_string (DB_VALUE * value, bool commas)
       return (duplicate_string ("NUM OVERFLOW"));
     }
   strcpy (return_string, str_buf);
+#else
+  prec = DB_VALUE_PRECISION (value);
+  comma_length = COMMAS_OFFSET (commas, prec);
 
+  numeric_db_value_print (value, str_buf);
+
+  max_length = strlen (str_buf) + comma_length + 2;
+  return_string = (char *) malloc (max_length);
+
+  strcpy (return_string, str_buf);
+
+  if (commas == true)
+    {
+      add_commas (return_string);
+    }
+#endif
   return return_string;
 }
 
