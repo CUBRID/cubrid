@@ -122,8 +122,8 @@ namespace cubhnsw
       virtual pinned_t get_root (algo_context_t<Traits> &context, lock_mode mode) = 0;
       virtual pinned_t get_node_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
 					    const lock_mode &mode) = 0;
-      virtual pinned_t get_vector_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
-					      const lock_mode &mode) = 0;
+      virtual const float *get_vector_by_slot_id (algo_context_t<Traits> &context, const slot_id_t &slot_id,
+	  const lock_mode &mode) = 0;
 
       // promote lockmode from shared to exclusive
       virtual void promote_root (pinned_t &root) = 0;

@@ -92,8 +92,8 @@ namespace cubhnsw
       virtual pinned_t get_root (algo_context_t<traits> &context, lock_mode mode) override;
       virtual pinned_t get_node_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot_id,
 					    const lock_mode &mode) override;
-      virtual pinned_t get_vector_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot_id,
-					      const lock_mode &mode) override;
+      virtual const float *get_vector_by_slot_id (algo_context_t<traits> &context, const slot_id_t &slot_id,
+	  const lock_mode &mode) override;
 
       // promote lockmode from shared to exclusive
       // TODO: not implemented
@@ -118,6 +118,8 @@ namespace cubhnsw
 
       VFID m_vec_pool_vfid;
       VPID m_last_vec_vpid;
+
+      vector_cache_t<traits> m_vector_cache;  // (slot_id_t, vector) cache
 
       bool m_is_empty = true;
   };

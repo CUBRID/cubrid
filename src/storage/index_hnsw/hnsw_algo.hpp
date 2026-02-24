@@ -108,22 +108,16 @@ namespace cubhnsw
       inline distance_t compute_distance_from_query_ (algo_context_t<Traits> &context, const float *query,
 	  const slot_id_t &slot) const
       {
-	pinned_t vec_blk = m_storage->get_vector_by_slot_id (context, slot, lock_mode::shared);
-	node_type node = node_type (vec_blk->data);
-	return compute_distance_ (context, query, node.get_vector());
+	const float *vec = m_storage->get_vector_by_slot_id (context, slot, lock_mode::shared);
+	return compute_distance_ (context, query, vec);
       }
 
       inline distance_t compute_distance_between (algo_context_t<Traits> &context, const slot_id_t &a,
 	  const slot_id_t &b) const
       {
-	auto get_vec = [&] (const slot_id_t &slot) -> const float *
-	{
-	  pinned_t vec_blk = m_storage->get_vector_by_slot_id (context, slot, lock_mode::shared);
-	  node_type node = node_type (vec_blk->data);
-	  return node.get_vector();
-	};
-
-	return compute_distance_ (context, get_vec (a), get_vec (b));
+	const float *avec = m_storage->get_vector_by_slot_id (context, a, lock_mode::shared);
+	const float *bvec = m_storage->get_vector_by_slot_id (context, b, lock_mode::shared);
+	return compute_distance_ (context, avec, bvec);
       }
 
       inline neighbors_ref_type get_neighbors (const pinned_t &node_blk, const level_t level)
