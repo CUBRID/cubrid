@@ -15771,13 +15771,6 @@ sm_truncate_using_destroy_heap (MOP class_mop)
     }
 
   /* Destroy and Create the lob dir if need */
-  attrid_arr[0] = -1;
-  error = locator_lob_create_or_remove_dir (&prev_hfid, NULL, attrid_arr, 1);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
   error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
   if (error != NO_ERROR)
     {
