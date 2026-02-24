@@ -77,7 +77,7 @@
 
 #define TEMP_SETUP_COST 5.0
 #define QO_CPU_WEIGHT 0.0025
-#define ISCAN_OID_ACCESS_OVERHEAD 20
+#define ISCAN_OID_ACCESS_OVERHEAD 1
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 30
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
@@ -4253,10 +4253,6 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
 	}
-      else
-	{
-	  goto cost_cmp;	/* give up */
-	}
     }
 
   /* a order by skip plan is always preferred to a sort plan */
@@ -4370,12 +4366,12 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
 
       /* check index scan */
-      if (qo_is_iscan (a) && qo_is_seq_scan (b))
+      if ((qo_is_iscan (a) || qo_is_iscan_from_orderby (a)) && qo_is_seq_scan (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if (qo_is_iscan (b) && qo_is_seq_scan (a))
+      if ((qo_is_iscan (b) || qo_is_iscan_from_orderby (b)) && qo_is_seq_scan (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -4400,6 +4396,24 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 		  return PLAN_COMP_GT;
 		}
 	    }
+	}
+    }
+
+  /* prefer order by skip plan over sort plan */
+  if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_SORT)
+    {
+      if (qo_is_iscan_from_orderby (a->plan_un.join.outer))
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
+	}
+    }
+  else if (b->plan_type == QO_PLANTYPE_JOIN && a->plan_type == QO_PLANTYPE_SORT)
+    {
+      if (qo_is_iscan_from_orderby (b->plan_un.join.outer))
+	{
+	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
+	  return PLAN_COMP_LT;
 	}
     }
 
