@@ -5724,10 +5724,6 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
     {
       OID *oid;
       SM_CLASS *class_;
-      SM_ATTRIBUTE *attr;
-      int *lob_alloc_attrid_arr = NULL;
-      int lob_local_attrid_arr[2];
-      int lob_attrid_arr_length = 0;
 
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -7069,10 +7065,12 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
     {
       goto end;
     }
-  else if (lob_attrid_arr_length > 2)
+  else if (lob_attrid_arr_length <= 2)
     {
-      int index = 0;
-
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
+  else
+    {
       lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
       if (lob_alloc_attrid_arr == NULL)
 	{
@@ -7080,31 +7078,16 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
 	  goto end;
 	}
 
-      for (int i = 0; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_alloc_attrid_arr[index++] = attr->id;
-	    }
-	}
       lob_attrid_arr = lob_alloc_attrid_arr;
     }
-  else
+
+  for (int i = 0, index = 0; i < class_->att_count; i++)
     {
-      int index = 0;
-
-      for (int i = 0; i < class_->att_count; i++)
-	{
-	  attr = &class_->attributes[i];
-
-	  if (TP_IS_LOB_TYPE (attr->type->id))
-	    {
-	      lob_local_attrid_arr[index++] = attr->id;
-	    }
-	}
-      lob_attrid_arr = lob_local_attrid_arr;
+      attr = &class_->attributes[i];
+      if (TP_IS_LOB_TYPE (attr->type->id))
+        {
+          lob_attrid_arr[index++] = attr->id;
+        }
     }
 
   /* Create or Remove the lob dir if need */
