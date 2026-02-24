@@ -4413,7 +4413,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
       if (qo_is_iscan_from_orderby (b->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
-	  return PLAN_COMP_LT;
+	  return PLAN_COMP_GT;
 	}
     }
 
