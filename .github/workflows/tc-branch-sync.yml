@@ -162,10 +162,91 @@ jobs:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           ORIGINAL_PR: ${{ steps.detect.outputs.original_pr }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           echo "::add-mask::${APP_TOKEN}"
           ORIG_BRANCH="${TC_BRANCH_PREFIX}${ORIGINAL_PR}"
           REVERT_BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
+          OVERALL="success"
+
+          # Extract header like [CBRD-1234] from PR title (fallback: full title)
+          HEADER=$(printf '%s\n' "${PR_TITLE}" | grep -oE '^\[[^]]+\]' || printf '%s\n' "${PR_TITLE}")
+
+          for REPO in "${TC_PUB_REPO}" "${TC_PRIV_REPO}"; do
+            KEY="pub"
+            if [ "${REPO}" = "${TC_PRIV_REPO}" ]; then
+              KEY="priv"
+            fi
+
+            REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git"
+            DIR="tc-revert-${KEY}"
+
+            if ! git clone --branch develop "${REPO_URL}" "${DIR}"; then
+              echo "[error] Failed to clone develop from ${REPO}"
+              echo "${KEY}_status=clone_failed" >> "${GITHUB_OUTPUT}"
+              OVERALL="failure"
+              continue
+            fi
+
+            cd "${DIR}"
+
+            MERGE_COMMIT=$(git log --grep="Merge TC branch '${ORIG_BRANCH}' into develop" --format="%H" -1)
+            if [ -z "${MERGE_COMMIT}" ]; then
+              echo "[info] No TC merge commit found for PR #${ORIGINAL_PR} in ${REPO}, nothing to revert"
+              echo "${KEY}_status=no_tc_changes" >> "${GITHUB_OUTPUT}"
+              cd ..
+              continue
+            fi
+
+            echo "[info] Found merge commit ${MERGE_COMMIT} for PR #${ORIGINAL_PR} in ${REPO}"
+            if ! git revert --no-commit -m 1 "${MERGE_COMMIT}"; then
+              git reset --hard HEAD
+              echo "[warn] Revert has conflicts in ${REPO}, manual action required"
+              echo "${KEY}_status=conflict" >> "${GITHUB_OUTPUT}"
+              cd ..
+              continue
+            fi
+            if ! git commit -m "${HEADER} Revert TC changes for engine PR #${ORIGINAL_PR} (reverted by engine PR #${PR_NUMBER})"; then
+              echo "[error] Failed to create revert commit in ${REPO}"
+              echo "${KEY}_status=commit_failed" >> "${GITHUB_OUTPUT}"
+              OVERALL="failure"
+              cd ..
+              continue
+            fi
+
+            if git ls-remote --exit-code --heads "${REPO_URL}" "${REVERT_BRANCH}" 2>/dev/null; then
+              if ! git push origin "HEAD:refs/heads/${REVERT_BRANCH}" --force; then
+                echo "[error] Failed to force-push revert commit to existing branch '${REVERT_BRANCH}' in ${REPO}"
+                echo "${KEY}_status=push_failed" >> "${GITHUB_OUTPUT}"
+                OVERALL="failure"
+                cd ..
+                continue
+              fi
+              echo "[info] Force-pushed revert commit to existing branch '${REVERT_BRANCH}' in ${REPO}"
+            else
+              if ! git checkout -b "${REVERT_BRANCH}"; then
+                echo "[error] Failed to create revert branch '${REVERT_BRANCH}' in ${REPO}"
+                echo "${KEY}_status=checkout_failed" >> "${GITHUB_OUTPUT}"
+                OVERALL="failure"
+                cd ..
+                continue
+              fi
+              if ! git push origin "${REVERT_BRANCH}"; then
+                echo "[error] Failed to push revert branch '${REVERT_BRANCH}' to ${REPO}"
+                echo "${KEY}_status=push_failed" >> "${GITHUB_OUTPUT}"
+                OVERALL="failure"
+                cd ..
+                continue
+              fi
+              echo "[info] Created branch '${REVERT_BRANCH}' with revert commit in ${REPO}"
+            fi
+            echo "${KEY}_status=applied" >> "${GITHUB_OUTPUT}"
+            cd ..
+          done
+
+          if [ "${OVERALL}" != "success" ]; then
+            exit 1
+          fi
 
       - name: Post comment on revert PR
         if: steps.detect.outputs.is_revert == 'true' && steps.revert-tc.outcome != 'failure'

@@ -66,10 +66,14 @@ jobs:
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           echo "::add-mask::${APP_TOKEN}"
           BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
           OVERALL="success"
+
+          # Extract header like [CBRD-1234] from PR title (fallback: full title)
+          HEADER=$(printf '%s\n' "${PR_TITLE}" | grep -oE '^\[[^]]+\]' || printf '%s\n' "${PR_TITLE}")
 
           for REPO in "${TC_PUB_REPO}" "${TC_PRIV_REPO}"; do
             KEY="pub"
@@ -87,7 +91,7 @@ jobs:
               continue
             fi
 
-            echo "[info] Merging '${BRANCH}' into develop in ${REPO}"
+            echo "[info] Squash-merging '${BRANCH}' into develop in ${REPO}"
             DIR="tc-${KEY}"
             if ! git clone --branch develop "${REPO_URL}" "${DIR}"; then
               echo "[error] Failed to clone develop from ${REPO}"
@@ -109,11 +113,22 @@ jobs:
               continue
             fi
 
-            if ! git merge --no-ff "${BRANCH}" -m "Merge TC branch '${BRANCH}' into develop (Engine PR #${PR_NUMBER})"; then
-              echo "[error] Failed to merge '${BRANCH}' into develop in ${REPO}"
+            # Squash merge TC branch into develop with header-prefixed commit message
+            if ! git merge --squash "${BRANCH}"; then
+              echo "[error] Failed to squash-merge '${BRANCH}' into develop in ${REPO}"
               echo "${KEY}_merge_done=false" >> "${GITHUB_OUTPUT}"
               echo "${KEY}_delete_failed=false" >> "${GITHUB_OUTPUT}"
               echo "${KEY}_status=merge_failed" >> "${GITHUB_OUTPUT}"
+              OVERALL="failure"
+              cd ..
+              continue
+            fi
+
+            if ! git commit -m "${HEADER} Merge TC branch '${BRANCH}' into develop (Engine PR #${PR_NUMBER})"; then
+              echo "[error] Failed to create squash commit for '${BRANCH}' in ${REPO}"
+              echo "${KEY}_merge_done=false" >> "${GITHUB_OUTPUT}"
+              echo "${KEY}_delete_failed=false" >> "${GITHUB_OUTPUT}"
+              echo "${KEY}_status=commit_failed" >> "${GITHUB_OUTPUT}"
               OVERALL="failure"
               cd ..
               continue

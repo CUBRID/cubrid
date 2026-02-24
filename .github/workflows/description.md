@@ -35,6 +35,7 @@ PR closed (rejected) → tc/pr-<N> 삭제
   - PR body에서 `Reverts #N` 패턴 감지 → 일반 PR / Revert PR 분기
   - **일반 PR**: 두 TC repo에 대해 단일 step 내 loop으로 `tc/pr-<N>` 생성 (이미 존재하면 skip)
   - **Revert PR**: 두 TC repo에 대해 단일 step 내 loop으로 원본 PR의 TC merge commit을 `git revert -m 1`으로 취소 후 `tc/pr-<N>`에 push
+    - revert 커밋 메시지 앞에도 엔진 PR 타이틀의 헤더(예: `[CBRD-1234]`)를 그대로 사용한다.
     - 브랜치 존재 시 force-push, 없으면 신규 생성
     - 원본 PR에 TC 변경 없으면 silently skip
     - conflict 시 PR에 수동 처리 요청 코멘트 게시
@@ -44,7 +45,8 @@ PR closed (rejected) → tc/pr-<N> 삭제
 ### `tc-branch-finalize.yml`
 - **트리거**: `pull_request_target` (closed)
 - **merged == true**:
-  - 두 TC repo에 대해 단일 step 내 loop으로 `tc/pr-<N>` → develop `--no-ff` 머지 후 브랜치 삭제
+  - 두 TC repo에 대해 단일 step 내 loop으로 `tc/pr-<N>` → develop **squash merge** 후 브랜치 삭제
+  - squash 커밋 메시지 앞에는 엔진 PR 타이틀의 헤더(예: `[CBRD-1234]`)를 그대로 사용한다.
   - 머지 성공 후 브랜치 삭제 실패 시 워크플로우가 실패로 표시되고, PR에 **TC Branch Finalize Failed** 코멘트로 수동 정리 요청
 - **merged == false**:
   - `tc/pr-<N>` 브랜치만 삭제 (GitHub REST API `DELETE /repos/.../git/refs/heads/...` 사용)
