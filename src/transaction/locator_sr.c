@@ -8904,6 +8904,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 						&thread_p->oos_oids[i],
 						LOG_REPLICATION_DATA,
 						RVREPL_OOS_INSERT, new_key, REPL_INFO_TYPE_RBR_NORMAL);
+		  if (error_code != NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      goto error;
+		    }
 		}
 	    }
 
@@ -8927,6 +8932,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 						&thread_p->oos_oids[i],
 						LOG_REPLICATION_DATA,
 						RVREPL_OOS_INSERT, new_key, REPL_INFO_TYPE_RBR_NORMAL);
+		  if (error_code != NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      goto error;
+		    }
 		}
 	    }
 
