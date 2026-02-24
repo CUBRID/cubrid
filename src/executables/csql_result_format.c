@@ -51,7 +51,7 @@
 #define FORMERBYTE(x)   ((UX_CHAR)(((unsigned)(x) & 0xff00) >> 8))
 #define LATTERBYTE(x)   ((UX_CHAR)((x) & 0xff))
 
-#define COMMAS_OFFSET(COND, N)   (COND == TRUE ? (N / 3) : 0)
+#define COMMAS_OFFSET(COND, N)   ((COND) == TRUE ? ((N) / 3) : 0)
 
 #define TIME_STRING_MAX         20
 
@@ -354,13 +354,18 @@ add_commas (char *string)
 
       temp = string;
 
-      do
+      /* Checks for a decimal point to avoid double-free core dumps in the scenarios described below
+       *  select cast(23421.234 as numeric(7,0));  
+       */
+      if (string[last_digit + 1] == '.')
 	{
+	  do
+	    {
+	      temp[l2--] = string[l1--];
+	    }
+	  while (string[l1] != '.');
 	  temp[l2--] = string[l1--];
 	}
-      while (string[l1] != '.');
-
-      temp[l2--] = string[l1--];
 
       for (i = 0; num_of_commas; i++)
 	{
@@ -905,47 +910,27 @@ numeric_to_string (DB_VALUE * value, bool commas)
 {
   char str_buf[NUMERIC_MAX_STRING_SIZE];
   char *return_string;
-  int prec;
-  int comma_length;
-  int max_length;
+  int comma_length = 0;
+  int str_length = 0;
 
-#if 0
-  /*
-   * Allocate string length based on precision plus the commas plus a
-   * character for each of the sign, decimal point, and NULL terminator.
-   */
-  prec = DB_VALUE_PRECISION (value);
-  comma_length = COMMAS_OFFSET (commas, prec);
-  max_length = prec + comma_length + 3;
-  return_string = (char *) malloc (max_length);
+  numeric_db_value_print (value, str_buf);
+
+  comma_length = COMMAS_OFFSET (commas, DB_VALUE_PRECISION (value));
+  str_length = strlen (str_buf) + 1;	// include '\0'
+
+
+  return_string = (char *) malloc (str_length + comma_length + 1);
   if (return_string == NULL)
     {
       return (NULL);
     }
 
-  numeric_db_value_print (value, str_buf);
-  if (strlen (str_buf) > max_length - 1)
-    {
-      free_and_init (return_string);
-      return (duplicate_string ("NUM OVERFLOW"));
-    }
-  strcpy (return_string, str_buf);
-#else
-  prec = DB_VALUE_PRECISION (value);
-  comma_length = COMMAS_OFFSET (commas, prec);
-
-  numeric_db_value_print (value, str_buf);
-
-  max_length = strlen (str_buf) + comma_length + 2;
-  return_string = (char *) malloc (max_length);
-
-  strcpy (return_string, str_buf);
+  memcpy (return_string, str_buf, str_length);
 
   if (commas == true)
     {
       add_commas (return_string);
     }
-#endif
   return return_string;
 }
 
