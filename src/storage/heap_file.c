@@ -12132,12 +12132,11 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 {
   HEAP_ATTRVALUE *value;
   DB_VALUE *dbvalue;
+  ATTR_ID attrid;
   const PR_TYPE *pr_type;
-  DB_ELO dest_elo, *elo_p;
-  char *save_meta_data, *new_meta_data;
-  int rv;
 
   value = &attr_info->values[index];
+  attrid = value->attrid;
   pr_type = value->last_attrepr->domain->type;
   if (pr_type == NULL)
     {
@@ -12178,8 +12177,17 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       buf->ptr = *ptr_varvals;
 
       if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-	  && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+	  && TP_IS_LOB_TYPE (pr_type->id))
 	{
+	  DB_ELO dest_elo, *elo_p;
+	  HFID hfid;
+	  INT32 hpgid;
+	  int32_t fileid;
+	  short volid;
+	  char *save_meta_data, *new_meta_data;
+	  char lob_path_prefix[PATH_MAX];
+	  int ret;
+
 	  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
 
 	  elo_p = db_get_elo (dbvalue);
@@ -12195,22 +12203,27 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    {
 	      return S_ERROR;
 	    }
+
+	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
+
+	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
+
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
-	  rv = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
+	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
 
 	  free_and_init (elo_p->meta_data);
+	  if (ret != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
 	  elo_p->meta_data = save_meta_data;
 
 	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
 	   * elo again. Otherwize it will generate 2 copies. */
 	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
-
-	  if (rv < 0)
-	    {
-	      return S_ERROR;
-	    }
 
 	  pr_clear_value (dbvalue);
 	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
@@ -26737,3 +26750,22 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 }
 
 // *INDENT-ON*
+
+/*
+ * heap_rv_lob_remove_dir () - Recovery function for LOB directories.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ *
+ * NOTE: This function is called when creating or deleting a LOB directory.
+ *       If a LOB directory is created and the transaction is rolled back, this
+ *       function will be called to remove the created directory.
+ *       If a LOB directory deletion command is issued and the transaction is
+ *       committed, this function will be called to actually remove the directory.
+ */
+int
+heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return fileio_lob_remove_matching_dir (rcv->data);
+}
