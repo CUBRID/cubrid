@@ -62,9 +62,6 @@ extern int dblink_2pc_daemon_start (void);
 /* Stop the daemon thread. Called during server shutdown. */
 extern void dblink_2pc_daemon_stop (void);
 
-/* Run recovery: read _db_global_tran (state 'A'/'C'), send decision, delete on success. Called by daemon on startup. */
-extern void dblink_2pc_daemon_recovery (void);
-
 /*
  * Run recovery using thread_p (catalog access). Call from log_recovery before daemon_start.
  * Scans _db_global_tran for state 'A'/'C', sends decision to each participant, deletes row on success.

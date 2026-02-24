@@ -35,9 +35,13 @@
 #include "error_manager.h"
 #include "log_manager.h"
 #include "memory_alloc.h"
+#include "thread_daemon.hpp"
+#include "thread_entry_task.hpp"
+#include "thread_looper.hpp"
 #include "thread_manager.hpp"
 
 #include <assert.h>
+#include <chrono>
 #include <stddef.h>
 #include <string.h>
 #include <time.h>
@@ -70,11 +74,10 @@ static int global_tran_queue_head = 0;
 static int global_tran_queue_tail = 0;
 static int global_tran_queue_count = 0;
 static pthread_mutex_t global_tran_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t global_tran_queue_cond = PTHREAD_COND_INITIALIZER;
 
-static volatile int daemon_stop_requested;
-static pthread_t daemon_thread_id;
-static bool daemon_thread_started = false;
+static
+  cubthread::daemon *
+  dblink_2pc_Daemon = NULL;
 
 static void
 global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
@@ -98,9 +101,13 @@ global_tran_queue_entry_free (GLOBAL_TRAN_QUEUE_ENTRY * e)
 static int
 global_tran_queue_expand (void)
 {
-  GLOBAL_TRAN_QUEUE_ENTRY *new_queue;
-  int new_size;
-  int i, j;
+  GLOBAL_TRAN_QUEUE_ENTRY *
+    new_queue;
+  int
+    new_size;
+  int
+    i,
+    j;
 
   new_size = global_tran_queue_size + GLOBAL_TRAN_QUEUE_GROW_SIZE;
   new_queue = (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (new_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
@@ -144,10 +151,14 @@ global_tran_queue_expand (void)
 static int
 dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DBLINK_CONN_INFO * participants)
 {
-  int i;
-  int ret;
-  int error_count = 0;
-  bool is_commit = (state == DBLINK_2PC_STATE_COMMIT);
+  int
+    i;
+  int
+    ret;
+  int
+    error_count = 0;
+  bool
+    is_commit = (state == DBLINK_2PC_STATE_COMMIT);
 
   for (i = 0; i < num_participants; i++)
     {
@@ -164,11 +175,14 @@ dblink_2pc_daemon_send_decision (int gtrid, char state, int num_participants, DB
 }
 
 /* Callback for dblink_global_tran_scan_for_recovery: enqueue participant data to daemon */
-static bool
+static
+  bool
 dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data)
 {
-  DBLINK_CONN_INFO participant;
-  char state;
+  DBLINK_CONN_INFO
+    participant;
+  char
+    state;
 
   (void) arg;
 
@@ -195,13 +209,6 @@ dblink_2pc_recovery_callback (void *arg, const DBLINK_GLOBAL_TRAN_ROW * row_data
   return true;			/* continue to next row */
 }
 
-/* Run by daemon thread on startup; actual recovery runs in log_recovery with thread_p (recovery_with_thread). */
-void
-dblink_2pc_daemon_recovery (void)
-{
-  /* Recovery is done in log_recovery via dblink_2pc_daemon_recovery_with_thread(thread_p) before daemon_start */
-}
-
 void
 dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p)
 {
@@ -212,37 +219,29 @@ dblink_2pc_daemon_recovery_with_thread (THREAD_ENTRY * thread_p)
   (void) dblink_global_tran_scan_for_recovery (thread_p, dblink_2pc_recovery_callback, (void *) thread_p);
 }
 
-static void *
-dblink_2pc_daemon_thread (void *arg)
+#if defined(SERVER_MODE)
+static void
+dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 {
-  GLOBAL_TRAN_QUEUE_ENTRY e;
-  struct timespec ts;
-  int ret;
-  char send_state;
-  THREAD_ENTRY *thread_p;
-  int i;
+  GLOBAL_TRAN_QUEUE_ENTRY
+    e;
+  int
+    ret;
+  char
+    send_state;
+  THREAD_ENTRY *
+    thread_p;
+  int
+    i;
 
-  (void) arg;
-
-  /* First run recovery */
-  dblink_2pc_daemon_recovery ();
-
-  while (!daemon_stop_requested)
+  while (true)
     {
       pthread_mutex_lock (&global_tran_queue_mutex);
 
-      while (global_tran_queue_count == 0 && !daemon_stop_requested)
-	{
-	  ts.tv_sec = time (NULL) + 5;
-	  ts.tv_nsec = 0;
-	  ret = pthread_cond_timedwait (&global_tran_queue_cond, &global_tran_queue_mutex, &ts);
-	  (void) ret;
-	}
-
-      if (daemon_stop_requested)
+      if (global_tran_queue == NULL || global_tran_queue_count == 0)
 	{
 	  pthread_mutex_unlock (&global_tran_queue_mutex);
-	  break;
+	  return;
 	}
 
       /* Dequeue one entry */
@@ -255,7 +254,6 @@ dblink_2pc_daemon_thread (void *arg)
       /* Determine decision state */
       if (e.state == DBLINK_2PC_STATE_PREPARE)
 	{
-	  /* PREPARE state before decision: send ABORT for recovery */
 	  send_state = DBLINK_2PC_STATE_ABORT;
 	}
       else
@@ -268,17 +266,13 @@ dblink_2pc_daemon_thread (void *arg)
 
       if (ret == NO_ERROR)
 	{
-	  /* Success: delete from _db_global_tran catalog */
-	  thread_p = thread_get_thread_entry_info ();
-	  if (thread_p != NULL)
+	  thread_p = &thread_ref;
+	  log_sysop_start (thread_p);
+	  for (i = 0; i < e.num_participants; i++)
 	    {
-	      log_sysop_start (thread_p);
-	      for (i = 0; i < e.num_participants; i++)
-		{
-		  (void) dblink_global_tran_delete_row (thread_p, e.gtrid, e.participants[i].conn_handle);
-		}
-	      log_sysop_commit (thread_p);
+	      (void) dblink_global_tran_delete_row (thread_p, e.gtrid, e.participants[i].conn_handle);
 	    }
+	  log_sysop_commit (thread_p);
 	  global_tran_queue_entry_free (&e);
 	}
       else
@@ -286,64 +280,50 @@ dblink_2pc_daemon_thread (void *arg)
 	  /* Error: re-enqueue for retry */
 	  pthread_mutex_lock (&global_tran_queue_mutex);
 
-	  /* Expand queue if full */
 	  if (global_tran_queue_count >= global_tran_queue_size)
 	    {
 	      if (global_tran_queue_expand () != NO_ERROR)
 		{
-		  /* Failed to expand, free entry (will be recovered on next restart) */
 		  pthread_mutex_unlock (&global_tran_queue_mutex);
 		  global_tran_queue_entry_free (&e);
-		  sleep (1);
-		  continue;
+		  return;
 		}
 	    }
 
-	  /* Enqueue for retry */
 	  global_tran_queue[global_tran_queue_tail].gtrid = e.gtrid;
 	  global_tran_queue[global_tran_queue_tail].state = send_state;
 	  global_tran_queue[global_tran_queue_tail].num_participants = e.num_participants;
-	  global_tran_queue[global_tran_queue_tail].participants = e.participants;	/* transfer ownership */
+	  global_tran_queue[global_tran_queue_tail].participants = e.participants;
 	  global_tran_queue_tail = (global_tran_queue_tail + 1) % global_tran_queue_size;
 	  global_tran_queue_count++;
 
 	  pthread_mutex_unlock (&global_tran_queue_mutex);
-
-	  /* Wait a bit before retry */
-	  sleep (1);
+	  return;
 	}
     }
-
-  return NULL;
 }
+#endif /* SERVER_MODE */
 
 int
 dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *block_particps_ids)
 {
-  size_t block_size;
-  DBLINK_CONN_INFO *copy;
+  size_t
+    block_size;
+  DBLINK_CONN_INFO *
+    copy;
 
   if (block_particps_ids == NULL || num_participants <= 0)
     {
       return ER_FAILED;
     }
 
-  if (!daemon_thread_started)
-    {
-      int err = dblink_2pc_daemon_start ();
-
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-    }
-
   if (global_tran_queue == NULL)
     {
-      return ER_FAILED;		/* daemon not started (e.g. start failed) */
+      return ER_FAILED;
     }
 
-  block_size = (size_t) num_participants *sizeof (DBLINK_CONN_INFO);
+  block_size = (size_t) num_participants *
+  sizeof (DBLINK_CONN_INFO);
   copy = (DBLINK_CONN_INFO *) malloc (block_size);
   if (copy == NULL)
     {
@@ -371,8 +351,14 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
   global_tran_queue_tail = (global_tran_queue_tail + 1) % global_tran_queue_size;
   global_tran_queue_count++;
 
-  pthread_cond_signal (&global_tran_queue_cond);
   pthread_mutex_unlock (&global_tran_queue_mutex);
+
+#if defined(SERVER_MODE)
+  if (dblink_2pc_Daemon != NULL)
+    {
+      dblink_2pc_Daemon->wakeup ();
+    }
+#endif /* SERVER_MODE */
 
   return NO_ERROR;
 }
@@ -380,17 +366,12 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, int num_participants, void *bl
 int
 dblink_2pc_daemon_start (void)
 {
-  int err;
-
-  daemon_stop_requested = 0;
-  daemon_thread_started = false;
   global_tran_queue_head = 0;
   global_tran_queue_tail = 0;
   global_tran_queue_count = 0;
   global_tran_queue_size = 0;
   global_tran_queue = NULL;
 
-  /* Allocate initial queue before creating thread; avoid daemon accessing NULL queue */
   global_tran_queue =
     (GLOBAL_TRAN_QUEUE_ENTRY *) malloc (GLOBAL_TRAN_QUEUE_INIT_SIZE * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
   if (global_tran_queue == NULL)
@@ -400,32 +381,40 @@ dblink_2pc_daemon_start (void)
   global_tran_queue_size = GLOBAL_TRAN_QUEUE_INIT_SIZE;
   memset (global_tran_queue, 0, global_tran_queue_size * sizeof (GLOBAL_TRAN_QUEUE_ENTRY));
 
-  err = pthread_create (&daemon_thread_id, NULL, dblink_2pc_daemon_thread, NULL);
-  if (err != 0)
-    {
-      free (global_tran_queue);
-      global_tran_queue = NULL;
-      global_tran_queue_size = 0;
-      return ER_FAILED;
-    }
-  daemon_thread_started = true;
+#if defined(SERVER_MODE)
+  {
+    cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
+    cubthread::entry_callable_task * daemon_task = new cubthread::entry_callable_task (dblink_2pc_daemon_execute);
+
+    dblink_2pc_Daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "dblink_2pc_daemon");
+    if (dblink_2pc_Daemon == NULL)
+      {
+	free (global_tran_queue);
+	global_tran_queue = NULL;
+	global_tran_queue_size = 0;
+	delete
+	  daemon_task;
+	return ER_FAILED;
+      }
+  }
+#endif /* SERVER_MODE */
+
   return NO_ERROR;
 }
 
 void
 dblink_2pc_daemon_stop (void)
 {
-  int i;
+  int
+    i;
 
-  daemon_stop_requested = 1;
-  if (daemon_thread_started)
+#if defined(SERVER_MODE)
+  if (dblink_2pc_Daemon != NULL)
     {
-      pthread_cond_signal (&global_tran_queue_cond);
-      pthread_join (daemon_thread_id, NULL);
-      daemon_thread_started = false;
+      cubthread::get_manager ()->destroy_daemon (dblink_2pc_Daemon);
     }
+#endif /* SERVER_MODE */
 
-  /* Free remaining queue entries */
   if (global_tran_queue != NULL)
     {
       for (i = 0; i < global_tran_queue_size; i++)
