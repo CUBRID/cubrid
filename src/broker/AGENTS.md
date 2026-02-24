@@ -1,25 +1,65 @@
 # src/broker/ — Connection Broker & CAS
 
-## OVERVIEW
+138 code files. Separate process architecture — broker spawns CAS (Common Application Server) worker processes.
 
-CUBRID broker manages client connections, dispatches to CAS (CUBRID Application Server) processes. 138 files — largest module by file count.
+## Key Files
 
-## KEY FILES
+| File | Role |
+|------|------|
+| `broker.c` | Main broker process — listens, dispatches to CAS |
+| `cas.c` | CAS worker process — handles client sessions |
+| `cas_execute.c` | SQL execution within CAS |
+| `cas_function.c` | CAS protocol function dispatch |
+| `cas_network.c` | CAS network I/O |
+| `cas_handle.c` | Connection/statement handle management |
+| `broker_shm.c/h` | Shared memory IPC between broker and CAS processes |
+| `broker_config.c` | Broker configuration parsing |
+| `broker_monitor.c` | `broker_monitor` utility |
+| `broker_admin.c` | `cubrid broker` admin commands |
+| `broker_log.c` | Query logging (slow query log, error log) |
+| `broker_acl.c` | Access control list management |
+| `shard_metadata.c` | Shard routing metadata |
+| `shard_proxy.c` | Shard proxy process |
+| `cas_dbms_util.c` | DBMS utility functions for CAS |
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `cas_execute.c` | 10k | CAS statement execution |
-| `broker.c` | | Broker main loop |
-| `cas.c` | | CAS process entry point |
-| `broker_shm.c` | | Shared memory for broker↔CAS |
-| `shard_*.c` | | Database sharding support |
+## Architecture
 
-## CODEOWNER
+```
+Client App → Broker (port listener) → CAS₁, CAS₂, ... CASₙ → cub_server
+                  ↕ shared memory ↕
+```
 
-All files → @beyondykk9
+- **Broker**: Single process, binds port, routes connections via shared memory
+- **CAS**: One process per client connection, reusable via connection pooling
+- **Shared memory**: `T_SHM_BROKER`, `T_SHM_APPL_SERVER` — status, config, statistics
+- **Shard proxy**: Optional layer for database sharding
 
-## NOTES
+## Where to Look
 
-- Broker is a separate process from the DB server
-- CAS = one process per client connection (process pool model)
-- Configuration via `cubrid_broker.conf`
+| Task | File |
+|------|------|
+| Fix client dispatch | `broker.c` |
+| Fix query execution in CAS | `cas_execute.c` |
+| Fix connection pooling | `cas.c`, `broker_shm.c` |
+| Fix slow query log | `broker_log.c` |
+| Fix broker config | `broker_config.c` |
+| Fix ACL/security | `broker_acl.c` |
+| Fix shard routing | `shard_metadata.c`, `shard_proxy.c` |
+
+## Conventions
+
+- Functions prefixed `cas_` (CAS process), `broker_` (broker process), `shm_` (shared memory)
+- Broker and CAS are separate processes — communicate only through shared memory
+- CAS uses its own error handling: `cas_error_log_write()`, not `er_set()`
+- Config values come from `cubrid_broker.conf` — parsed in `broker_config.c`
+
+## Gotchas
+
+- Top-level `broker/` directory is just CMake target — actual code is here in `src/broker/`
+- CAS processes fork from broker — shared memory must be carefully synchronized
+- `T_BROKER_INFO` and `T_APPL_SERVER_INFO` are packed structs in shared memory — alignment matters
+- Shard code (`shard_*.c`) is a significant subsystem within this module
+
+## Owner
+
+CODEOWNERS: @beyondykk9
