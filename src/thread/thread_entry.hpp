@@ -312,6 +312,8 @@ namespace cubthread
 
       bool m_skip_end_resource_tracks_in_recycle;
 
+      std::vector<OID> oos_oids;
+
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;
 
