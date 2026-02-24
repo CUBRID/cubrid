@@ -100,7 +100,7 @@ namespace cubpl
 	  {
 	    // Since the list was not created in this thread,
 	    // incrementing the count of the list (m_qlist_count) is required
-	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
+	    //qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
 	    qfile_close_list (m_thread, m_query_entry->list_id);
 	  }
 
