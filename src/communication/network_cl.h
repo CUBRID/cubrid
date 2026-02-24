@@ -135,4 +135,3 @@ public:
 extern class network_cl __gv_network_cl;
 
 #endif /* _NETWORK_CL_H_ */
-
