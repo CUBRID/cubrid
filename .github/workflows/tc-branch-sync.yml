@@ -40,6 +40,7 @@ jobs:
   sync-tc-branch:
     name: Sync TC branch
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       issues: write
       pull-requests: write
@@ -80,64 +81,81 @@ jobs:
       # Normal PR: create empty tc/pr-<N> branch from develop (idempotent)
       # ──────────────────────────────────────────────────────────────────────
 
-      - name: Sync TC branch (cubrid-testcases)
-        id: sync-pub
+      - name: Sync TC branches
+        id: sync-tc
         if: steps.detect.outputs.is_revert == 'false'
         continue-on-error: true
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          echo "::add-mask::${APP_TOKEN}"
           BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
-          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PUB_REPO}.git"
+          OVERALL="success"
 
-          if git ls-remote --exit-code --heads "${REPO_URL}" "${BRANCH}" 2>/dev/null; then
-            echo "[info] Branch '${BRANCH}' already exists in ${TC_PUB_REPO}, skipping"
-          else
-            echo "[info] Creating branch '${BRANCH}' from develop in ${TC_PUB_REPO}"
-            git clone --depth=1 --branch develop "${REPO_URL}" tc-pub
-            cd tc-pub
-            git checkout -b "${BRANCH}"
-            git push origin "${BRANCH}"
-            echo "[info] Branch '${BRANCH}' created successfully in ${TC_PUB_REPO}"
-          fi
+          for REPO in "${TC_PUB_REPO}" "${TC_PRIV_REPO}"; do
+            KEY="pub"
+            if [ "${REPO}" = "${TC_PRIV_REPO}" ]; then
+              KEY="priv"
+            fi
 
-      - name: Sync TC branch (cubrid-testcases-private-ex)
-        id: sync-priv
-        if: steps.detect.outputs.is_revert == 'false'
-        continue-on-error: true
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
-          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PRIV_REPO}.git"
+            REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${REPO}.git"
+            echo "[info] Syncing TC branch '${BRANCH}' in ${REPO}"
 
-          if git ls-remote --exit-code --heads "${REPO_URL}" "${BRANCH}" 2>/dev/null; then
-            echo "[info] Branch '${BRANCH}' already exists in ${TC_PRIV_REPO}, skipping"
-          else
-            echo "[info] Creating branch '${BRANCH}' from develop in ${TC_PRIV_REPO}"
-            git clone --depth=1 --branch develop "${REPO_URL}" tc-priv
-            cd tc-priv
-            git checkout -b "${BRANCH}"
-            git push origin "${BRANCH}"
-            echo "[info] Branch '${BRANCH}' created successfully in ${TC_PRIV_REPO}"
+            if git ls-remote --exit-code --heads "${REPO_URL}" "${BRANCH}" 2>/dev/null; then
+              echo "[info] Branch '${BRANCH}' already exists in ${REPO}, skipping"
+              echo "${KEY}_sync_status=exists" >> "${GITHUB_OUTPUT}"
+              continue
+            fi
+
+            DIR="tc-${KEY}"
+            if ! git clone --depth=1 --branch develop "${REPO_URL}" "${DIR}"; then
+              echo "[error] Failed to clone develop from ${REPO}"
+              echo "${KEY}_sync_status=clone_failed" >> "${GITHUB_OUTPUT}"
+              OVERALL="failure"
+              continue
+            fi
+
+            cd "${DIR}"
+            if ! git checkout -b "${BRANCH}"; then
+              echo "[error] Failed to create branch '${BRANCH}' in ${REPO}"
+              echo "${KEY}_sync_status=checkout_failed" >> "${GITHUB_OUTPUT}"
+              OVERALL="failure"
+              cd ..
+              continue
+            fi
+
+            if ! git push origin "${BRANCH}"; then
+              echo "[error] Failed to push branch '${BRANCH}' to ${REPO}"
+              echo "${KEY}_sync_status=push_failed" >> "${GITHUB_OUTPUT}"
+              OVERALL="failure"
+              cd ..
+              continue
+            fi
+
+            echo "[info] Branch '${BRANCH}' created successfully in ${REPO}"
+            echo "${KEY}_sync_status=created" >> "${GITHUB_OUTPUT}"
+            cd ..
+          done
+
+          if [ "${OVERALL}" != "success" ]; then
+            exit 1
           fi
 
       - name: Fail if any sync step failed
-        if: steps.detect.outputs.is_revert == 'false' && (steps.sync-pub.outcome == 'failure' || steps.sync-priv.outcome == 'failure')
+        if: steps.detect.outputs.is_revert == 'false' && steps.sync-tc.outcome == 'failure'
         run: |
           echo "[error] One or more TC branch sync steps failed."
-          echo "  cubrid-testcases        : ${{ steps.sync-pub.outcome }}"
-          echo "  cubrid-testcases-private-ex : ${{ steps.sync-priv.outcome }}"
+          echo "  cubrid-testcases            : ${{ steps.sync-tc.outputs.pub_sync_status || 'unknown' }}"
+          echo "  cubrid-testcases-private-ex : ${{ steps.sync-tc.outputs.priv_sync_status || 'unknown' }}"
           exit 1
 
       # ──────────────────────────────────────────────────────────────────────
       # Revert PR: find original merge commit and push revert commit to tc/pr-<N>
       # ──────────────────────────────────────────────────────────────────────
 
-      - name: Revert TC changes (cubrid-testcases)
-        id: revert-pub
+      - name: Revert TC changes
+        id: revert-tc
         if: steps.detect.outputs.is_revert == 'true'
         continue-on-error: true
         env:
@@ -145,89 +163,18 @@ jobs:
           ORIGINAL_PR: ${{ steps.detect.outputs.original_pr }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          echo "::add-mask::${APP_TOKEN}"
           ORIG_BRANCH="${TC_BRANCH_PREFIX}${ORIGINAL_PR}"
           REVERT_BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
-          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PUB_REPO}.git"
-
-          git clone --branch develop "${REPO_URL}" tc-pub
-          cd tc-pub
-
-          MERGE_COMMIT=$(git log --grep="Merge TC branch '${ORIG_BRANCH}' into develop" --format="%H" -1)
-          if [ -z "${MERGE_COMMIT}" ]; then
-            echo "[info] No TC merge commit found for PR #${ORIGINAL_PR} in ${TC_PUB_REPO}, nothing to revert"
-            echo "pub_status=no_tc_changes" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          echo "[info] Found merge commit ${MERGE_COMMIT} for PR #${ORIGINAL_PR}"
-          if ! git revert --no-commit -m 1 "${MERGE_COMMIT}"; then
-            git reset --hard HEAD
-            echo "[warn] Revert has conflicts in ${TC_PUB_REPO}, manual action required"
-            echo "pub_status=conflict" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          git commit -m "Revert TC changes for engine PR #${ORIGINAL_PR} (reverted by engine PR #${PR_NUMBER})"
-
-          if git ls-remote --exit-code --heads "${REPO_URL}" "${REVERT_BRANCH}" 2>/dev/null; then
-            git push origin "HEAD:refs/heads/${REVERT_BRANCH}" --force
-            echo "[info] Force-pushed revert commit to existing branch '${REVERT_BRANCH}' in ${TC_PUB_REPO}"
-          else
-            git checkout -b "${REVERT_BRANCH}"
-            git push origin "${REVERT_BRANCH}"
-            echo "[info] Created branch '${REVERT_BRANCH}' with revert commit in ${TC_PUB_REPO}"
-          fi
-          echo "pub_status=applied" >> "${GITHUB_OUTPUT}"
-
-      - name: Revert TC changes (cubrid-testcases-private-ex)
-        id: revert-priv
-        if: steps.detect.outputs.is_revert == 'true'
-        continue-on-error: true
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-          ORIGINAL_PR: ${{ steps.detect.outputs.original_pr }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          ORIG_BRANCH="${TC_BRANCH_PREFIX}${ORIGINAL_PR}"
-          REVERT_BRANCH="${TC_BRANCH_PREFIX}${PR_NUMBER}"
-          REPO_URL="https://x-access-token:${APP_TOKEN}@github.com/${TC_PRIV_REPO}.git"
-
-          git clone --branch develop "${REPO_URL}" tc-priv
-          cd tc-priv
-
-          MERGE_COMMIT=$(git log --grep="Merge TC branch '${ORIG_BRANCH}' into develop" --format="%H" -1)
-          if [ -z "${MERGE_COMMIT}" ]; then
-            echo "[info] No TC merge commit found for PR #${ORIGINAL_PR} in ${TC_PRIV_REPO}, nothing to revert"
-            echo "priv_status=no_tc_changes" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          echo "[info] Found merge commit ${MERGE_COMMIT} for PR #${ORIGINAL_PR}"
-          if ! git revert --no-commit -m 1 "${MERGE_COMMIT}"; then
-            git reset --hard HEAD
-            echo "[warn] Revert has conflicts in ${TC_PRIV_REPO}, manual action required"
-            echo "priv_status=conflict" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          git commit -m "Revert TC changes for engine PR #${ORIGINAL_PR} (reverted by engine PR #${PR_NUMBER})"
-
-          if git ls-remote --exit-code --heads "${REPO_URL}" "${REVERT_BRANCH}" 2>/dev/null; then
-            git push origin "HEAD:refs/heads/${REVERT_BRANCH}" --force
-            echo "[info] Force-pushed revert commit to existing branch '${REVERT_BRANCH}' in ${TC_PRIV_REPO}"
-          else
-            git checkout -b "${REVERT_BRANCH}"
-            git push origin "${REVERT_BRANCH}"
-            echo "[info] Created branch '${REVERT_BRANCH}' with revert commit in ${TC_PRIV_REPO}"
-          fi
-          echo "priv_status=applied" >> "${GITHUB_OUTPUT}"
 
       - name: Post comment on revert PR
-        if: steps.detect.outputs.is_revert == 'true' && steps.revert-pub.outcome != 'failure' && steps.revert-priv.outcome != 'failure'
+        if: steps.detect.outputs.is_revert == 'true' && steps.revert-tc.outcome != 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ORIGINAL_PR: ${{ steps.detect.outputs.original_pr }}
-          PUB_STATUS: ${{ steps.revert-pub.outputs.pub_status }}
-          PRIV_STATUS: ${{ steps.revert-priv.outputs.priv_status }}
+          PUB_STATUS: ${{ steps.revert-tc.outputs.pub_status }}
+          PRIV_STATUS: ${{ steps.revert-tc.outputs.priv_status }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ "${PUB_STATUS}" = "conflict" ] || [ "${PRIV_STATUS}" = "conflict" ]; then
@@ -243,12 +190,10 @@ jobs:
             --repo "${{ github.repository }}" \
             --body "${BODY}"
 
-      - name: Fail if any revert step failed
-        if: steps.detect.outputs.is_revert == 'true' && (steps.revert-pub.outcome == 'failure' || steps.revert-priv.outcome == 'failure')
+      - name: Fail if revert step failed
+        if: steps.detect.outputs.is_revert == 'true' && steps.revert-tc.outcome == 'failure'
         run: |
           echo "[error] One or more TC revert steps failed."
-          echo "  cubrid-testcases            : ${{ steps.revert-pub.outcome }}"
-          echo "  cubrid-testcases-private-ex : ${{ steps.revert-priv.outcome }}"
           exit 1
 
       # ──────────────────────────────────────────────────────────────────────
@@ -263,8 +208,8 @@ jobs:
           ORIGINAL_PR: ${{ steps.detect.outputs.original_pr }}
           IS_REVERT: ${{ steps.detect.outputs.is_revert }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          PUB_RESULT: ${{ steps.sync-pub.outcome }}${{ steps.revert-pub.outcome }}
-          PRIV_RESULT: ${{ steps.sync-priv.outcome }}${{ steps.revert-priv.outcome }}
+          PUB_RESULT: ${{ steps.detect.outputs.is_revert == 'true' && steps.revert-tc.outputs.pub_status || steps.sync-tc.outputs.pub_sync_status }}
+          PRIV_RESULT: ${{ steps.detect.outputs.is_revert == 'true' && steps.revert-tc.outputs.priv_status || steps.sync-tc.outputs.priv_sync_status }}
         run: |
           if [ "${IS_REVERT}" = "true" ]; then
             BODY=$(printf '⚠️ **TC Revert Failed** (PR #%s)\n\nFailed to process TC revert for engine PR #%s:\n- `CUBRID/cubrid-testcases`: %s\n- `CUBRID/cubrid-testcases-private-ex`: %s\n\nThe GitHub App (`TC_APP_ID` / `TC_APP_PRIVATE_KEY`) may be misconfigured.\n\nWorkflow logs: %s' \
