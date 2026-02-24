@@ -756,8 +756,6 @@ target_include_directories(cubridsa
     ${EP_INCLUDES}
   )
 
-target_link_libraries(cubridsa PRIVATE usearch::usearch)
-
 target_link_libraries(cubridsa
   PRIVATE
     ${EP_LIBS}
