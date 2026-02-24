@@ -17,17 +17,16 @@
  */
 
 #include <stdexcept>
+#include <cmath>
+#include <cstddef>
+
 #include "vector_opfunc.hpp"
 #include "dbtype.h"
 #include "dbtype_def.h"
 #include "db_vector.hpp"
-#include "faiss/utils/distances.h"
 #include "vector_distance_enum.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-static float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim);
-static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim);
 
 /**
  * @brief Converts a DB_VALUE vector of floats into a std::vector<float>.
@@ -106,7 +105,7 @@ int vector_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
   catch (const std::exception &e)
     {
       // TODO: handle this error with CUBRID error code.
-      std::fprintf (stderr, "faiss error: %s\n", e.what());
+      std::fprintf (stderr, "cubvec error: %s\n", e.what());
       std::abort();
     }
 }
@@ -139,7 +138,7 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
     }
   catch (const std::exception &e)
     {
-      std::fprintf (stderr, "faiss error: %s\n", e.what());
+      std::fprintf (stderr, "cubvec error: %s\n", e.what());
       std::abort();
     }
 
@@ -155,45 +154,84 @@ static int vector_distance_internal (DB_VALUE *result, DB_VALUE *args[], int num
   return NO_ERROR;
 }
 
-int vector_l1_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+static inline float
+cubvec_l1_distance (const float *__restrict vec1,
+		    const float *__restrict vec2,
+		    size_t dim)
 {
-  return vector_distance_internal (result, args, num_args, faiss::fvec_L1);
+  float sum = 0.0f;
+
+  #pragma omp simd reduction(+:sum)
+  for (size_t i = 0; i < dim; ++i)
+    {
+      float diff = vec1[i] - vec2[i];
+      sum += std::fabs (diff);
+    }
+
+  return sum;
 }
 
-int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+static inline float
+cubvec_l2_sqr_distance (const float *__restrict vec1, const float *__restrict vec2, size_t dim)
 {
-  return vector_distance_internal (result, args, num_args, cubvec_l2_distance);
+  float sum = 0.0f;
+
+  const float *__restrict v1 = vec1;
+  const float *__restrict v2 = vec2;
+
+  #pragma omp simd aligned(v1, v2:32) reduction(+:sum)
+  for (size_t i = 0; i < dim; ++i)
+    {
+      float diff = v1[i] - v2[i];
+      sum += diff * diff;
+    }
+
+  return sum;
 }
 
-static float cubvec_l2_distance (const float *vec1, const float *vec2, size_t dim)
+static inline float
+cubvec_l2_distance (const float *__restrict vec1, const float *__restrict vec2, size_t dim)
 {
-  float l2 = faiss::fvec_L2sqr (vec1, vec2, dim);
-  return std::sqrt (l2);
+  return std::sqrt (cubvec_l2_sqr_distance (vec1, vec2, dim));
 }
 
-int vector_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
+static inline float
+cubvec_norm_L2sqr (const float *__restrict vec,
+		   size_t dim)
 {
-  return vector_distance_internal (result, args, num_args, faiss::fvec_inner_product);
+  float sum = 0.0f;
+
+  #pragma omp simd reduction(+:sum)
+  for (size_t i = 0; i < dim; ++i)
+    {
+      float v = vec[i];
+      sum += v * v;
+    }
+
+  return sum;
 }
 
-int vector_negative_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
+static inline float cubvec_inner_product (const float *vec1, const float *vec2, size_t dim)
 {
-  int retval = vector_distance_internal (result, args, num_args, faiss::fvec_inner_product);
-  db_make_double (result, -db_get_double (result));
-  return retval;
+  float sum = 0.0f;
+
+  #pragma omp simd reduction(+:sum)
+  for (std::size_t i = 0; i < dim; ++i)
+    {
+      sum += vec1[i] * vec2[i];
+    }
+
+  return sum;
 }
 
-int vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
-{
-  return vector_distance_internal (result, args, num_args, cubvec_cosine_distance);
-}
 
-static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_t dim)
+static inline float
+cubvec_cosine_distance (const float *__restrict vec1, const float *__restrict vec2, size_t dim)
 {
 
-  float ip = faiss::fvec_inner_product (vec1, vec2, dim);
-  float norm1 = faiss::fvec_norm_L2sqr (vec1, dim);
-  float norm2 = faiss::fvec_norm_L2sqr (vec2, dim);
+  float ip = cubvec_inner_product (vec1, vec2, dim);
+  float norm1 = cubvec_norm_L2sqr (vec1, dim);
+  float norm2 = cubvec_norm_L2sqr (vec2, dim);
 
   // Handle zero vectors to avoid division by zero
   if (norm1 == 0.0f || norm2 == 0.0f)
@@ -219,4 +257,31 @@ static float cubvec_cosine_distance (const float *vec1, const float *vec2, size_
   assert (distance <= 2.0f && distance >= 0.0f);
   return distance;
 
+}
+
+int vector_l1_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  return vector_distance_internal (result, args, num_args, cubvec_l1_distance);
+}
+
+int vector_l2_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  return vector_distance_internal (result, args, num_args, cubvec_l2_distance);
+}
+
+int vector_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  return vector_distance_internal (result, args, num_args, cubvec_inner_product);
+}
+
+int vector_negative_inner_product (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  int retval = vector_distance_internal (result, args, num_args, cubvec_inner_product);
+  db_make_double (result, -db_get_double (result));
+  return retval;
+}
+
+int vector_cosine_distance (DB_VALUE *result, DB_VALUE *args[], int num_args)
+{
+  return vector_distance_internal (result, args, num_args, cubvec_cosine_distance);
 }
