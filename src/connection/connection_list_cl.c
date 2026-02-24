@@ -292,7 +292,9 @@ connection_list_cl::css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor
  *   conn(in):
  *   request_id(in):
  */
-bool
+/* *INDENT-OFF* */
+bool 
+/* *INDENT-ON* */
 connection_list_cl::css_is_request_aborted (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
   if (css_find_queue_entry (conn->abort_queue, request_id) != NULL)
