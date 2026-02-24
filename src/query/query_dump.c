@@ -3383,14 +3383,13 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	  if (curr->analytic_sort)
 	    {
 	      json_object_set_new (analytic, "sort", json_true ());
-	      json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
 	    }
 	  else
 	    {
-	      json_object_set_new (analytic, "sort", json_false ());
-	      json_object_set_new (analytic, "fetch", json_integer (curr->analytic_fetches));
+	      json_object_set_new (analytic, "sort", json_string ("skip"));
 	    }
 
+	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
 	  json_object_set_new (analytic, "ioread", json_integer (curr->analytic_ioreads));
 	  json_object_set_new (analytic, "rows", json_integer (curr->rows));
 	  json_array_append_new (analytic_array, analytic);
@@ -3810,15 +3809,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
 	  if (curr->analytic_sort)
 	    {
-	      fprintf (fp, ", sort: true, page: %lld, ioread: %lld",
-		       (long long int) curr->analytic_pages, (long long int) curr->analytic_ioreads);
+	      fprintf (fp, ", sort: true");
 	    }
 	  else
 	    {
-	      fprintf (fp, ", sort: skip, fetch: %lld, ioread: %lld",
-		       (long long int) curr->analytic_fetches, (long long int) curr->analytic_ioreads);
+	      fprintf (fp, ", sort: skip");
 	    }
 
+	  fprintf (fp, ", page: %lld, ioread: %lld", (long long int) curr->analytic_pages,
+		   (long long int) curr->analytic_ioreads);
 	  fprintf (fp, ", rows: %d)\n", curr->rows);
 	}
     }

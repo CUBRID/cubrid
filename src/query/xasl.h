@@ -986,7 +986,6 @@ struct analytic_stat
   struct timeval analytic_time;
   UINT64 analytic_pages;
   UINT64 analytic_ioreads;
-  UINT64 analytic_fetches;
   int rows;
   bool run_analytic;
   bool analytic_sort;

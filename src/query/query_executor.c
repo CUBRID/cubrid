@@ -21112,19 +21112,11 @@ wrapup:
 	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
 	  new_stat->analytic_sort = !(is_first && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT));
 
-	  if (!new_stat->analytic_sort)
-	    {
-	      new_stat->analytic_fetches = (perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches);
+	  new_stat->analytic_pages =
+	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
+	  new_stat->analytic_ioreads =
+	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads);
 
-	      new_stat->analytic_ioreads = (perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads);
-	    }
-	  else
-	    {
-	      new_stat->analytic_pages =
-		(perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
-	      new_stat->analytic_ioreads =
-		(perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads);
-	    }
 	  if (list_id != NULL)
 	    {
 	      new_stat->rows = list_id->tuple_cnt;
