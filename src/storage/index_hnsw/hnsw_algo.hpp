@@ -105,22 +105,6 @@ namespace cubhnsw
 	return metric_table[static_cast<size_t> (m_metric)] (v1, v2, m_dimension);
       }
 
-      // Returns pointer to vector for slot, using algo's cache to avoid repeated page fix/unfix.
-      inline const float *get_vector_cached_ (algo_context_t<Traits> &context, const slot_id_t &slot) const
-      {
-	auto it = m_vector_cache.find (slot);
-	if (it != m_vector_cache.end ())
-	  {
-	    return it->second.data ();
-	  }
-	pinned_t node_blk = m_storage->get_node_by_slot_id (context, slot, lock_mode::shared);
-	node_type node = node_type (node_blk->data);
-	const float *vec = node.get_vector ();
-	std::vector<float> &cached = m_vector_cache[slot];
-	cached.assign (vec, vec + m_dimension);
-	return cached.data ();
-      }
-
       inline distance_t compute_distance_from_query_ (algo_context_t<Traits> &context, const float *query,
 	  const slot_id_t &slot) const
       {
@@ -149,7 +133,6 @@ namespace cubhnsw
 
       // variables
       storage_t *m_storage {nullptr};
-      mutable vector_cache_t<Traits> m_vector_cache;  // (slot_id_t, vector) to avoid repeated page fix/unfix
 
       // from build_params
       vector_distance_metric_t m_metric;
