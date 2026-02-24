@@ -28416,12 +28416,14 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 				     ANALYTIC_INFO * info)
 {
   SORT_LIST *sort_list;
+  QO_ENV *env;
   QO_INDEX_ENTRY *index_entry;
-  PT_NODE *attr;
-  int col_idx = 0, covered_count = 0;
-  bool is_desc;
+  QO_SEGMENT *seg;
+  PT_NODE *attr, *node;
+  int i, seg_idx, covered_count = 0;
+  bool is_desc, is_desc_index;
 
-  if (!qo_is_iscan (qo_plan))
+  if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
     {
       return 0;
     }
@@ -28429,33 +28431,41 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   assert (qo_plan->plan_un.scan.index->head);
   index_entry = qo_plan->plan_un.scan.index->head;
 
+  is_desc_index = qo_plan->info->env->pt_tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC;
+
   sort_list = eval->sort_list;
-  while (sort_list != NULL && col_idx < index_entry->col_num)
+  for (i = 0; i < index_entry->nsegs && sort_list; i++)
     {
-      const char *column_name = db_attribute_name (index_entry->constraints->attributes[col_idx]);
-      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
-
-      if (qo_plan->info->env->pt_tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC)
-	{
-	  is_desc = ~index_entry->constraints->asc_desc[col_idx];
-	}
-      else
-	{
-	  is_desc = index_entry->constraints->asc_desc[col_idx];
-	}
-
-      if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
-	  && !pt_str_compare (pt_get_name (attr), column_name, CASE_INSENSITIVE))
-	{
-	  covered_count++;
-	}
-      else
-	{
+      seg_idx = (index_entry->seg_idxs[i]);
+      if (seg_idx == -1)
+	{			/* not exist in query */
 	  break;
 	}
 
+      seg = QO_ENV_SEG (env, seg_idx);
+      if (QO_SEG_FUNC_INDEX (seg) == true)
+	{
+	  is_desc = index_entry->constraints->func_index_info->fi_domain->is_desc;
+	}
+      else if (is_desc_index)
+	{
+	  is_desc = ~index_entry->constraints->asc_desc[seg_idx - 1];
+	}
+      else
+	{
+	  is_desc = index_entry->constraints->asc_desc[seg_idx - 1];
+	}
+
+      node = QO_SEG_PT_NODE (seg);
+      attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
+
+      if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
+	  && pt_check_path_eq (parser, attr, node) == 0)
+	{
+	  covered_count++;
+	}
+
       sort_list = sort_list->next;
-      col_idx++;
     }
 
   return covered_count;
