@@ -1211,7 +1211,9 @@ connection_cl::css_connect_to_master_timeout (const char *host_name, int port_id
  *   return:
  *   port_id(in):
  */
+/* *INDENT-OFF* */
 bool
+/* *INDENT-ON* */
 connection_cl::css_does_master_exist (int port_id)
 {
   SOCKET fd;
@@ -1236,7 +1238,9 @@ connection_cl::css_does_master_exist (int port_id)
  *   conn(in):
  *   request_id(in):
  */
+/* *INDENT-OFF* */
 bool
+/* *INDENT-ON* */
 connection_cl::css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id)
 {
 #if defined(CS_MODE)

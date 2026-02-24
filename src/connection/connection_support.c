@@ -1518,10 +1518,10 @@ int
 css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id,
 				   const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size)
 {
-  NET_HEADER
-    local_header = DEFAULT_HEADER_DATA;
-  NET_HEADER
-    data_header = DEFAULT_HEADER_DATA;
+/* *INDENT-OFF* */
+  NET_HEADER local_header = DEFAULT_HEADER_DATA;
+  NET_HEADER data_header = DEFAULT_HEADER_DATA;
+/* *INDENT-ON* */
 
   if (!conn || conn->status != CONN_OPEN)
     {
