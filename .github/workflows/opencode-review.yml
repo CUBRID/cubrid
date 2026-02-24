@@ -1,16 +1,28 @@
 name: opencode-review
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+  # issue_comment: fork PR 포함 모든 PR에서 maintainer가 /oc review 를 코멘트할 때 실행
+  # - base repo 컨텍스트에서 실행 → secrets 접근 가능, GITHUB_TOKEN write 가능
+  # - assertPermissions()가 코멘트 작성자(maintainer)의 권한을 체크 → 통과
+  # pull_request 트리거는 외부 fork PR에서 세 가지 이유로 동작 불가:
+  #   1. assertPermissions(): 외부 기여자는 write 권한 없음 → 즉시 실패
+  #   2. GITHUB_TOKEN이 read-only → 코멘트 작성 403
+  #   3. secrets(OPENCODE_API_KEY)가 null → 모델 호출 불가
+  issue_comment:
+    types: [created]
 
 concurrency:
-  group: opencode-review-${{ github.event.pull_request.number }}
+  group: opencode-review-${{ github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false
+    if: |
+      github.event.issue.pull_request != null &&
+      (
+        contains(github.event.comment.body, '/oc') ||
+        contains(github.event.comment.body, '/opencode')
+      )
     runs-on: ubuntu-24.04
     permissions:
       id-token: write
@@ -18,7 +30,7 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
