@@ -28447,13 +28447,14 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 	{
 	  is_desc = index_entry->constraints->func_index_info->fi_domain->is_desc;
 	}
-      else if (is_desc_index)
-	{
-	  is_desc = ~index_entry->constraints->asc_desc[seg_idx - 1];
-	}
       else
 	{
 	  is_desc = index_entry->constraints->asc_desc[seg_idx - 1];
+	}
+
+      if (is_desc_index)
+	{
+	  is_desc = !is_desc;
 	}
 
       node = QO_SEG_PT_NODE (seg);
