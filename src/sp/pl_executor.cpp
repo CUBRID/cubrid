@@ -719,11 +719,11 @@ exit:
 		  QMGR_QUERY_ENTRY *query_entry = qmgr_get_query_entry (&thread_ref, qid, NULL_TRAN_INDEX);
 		  if (query_entry)
 		    {
-		      if (query_entry->list_id)
-			{
-			  qfile_update_qlist_count (&thread_ref, query_entry->list_id, 1);
-			  qfile_close_list (&thread_ref, query_entry->list_id);
-			}
+		      // Since the list was not created in this thread,
+		      // incrementing the count of the list (m_qlist_count) is required
+		      // to make the assertion on m_qlist_count in qexec_execute_query() hold
+		      qfile_update_qlist_count (&thread_ref, query_entry->list_id, 1);
+		      qfile_close_list (&thread_ref, query_entry->list_id);
 		    }
 
 		  xqmgr_end_query (&thread_ref, qid);
