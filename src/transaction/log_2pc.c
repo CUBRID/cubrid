@@ -511,17 +511,16 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
 
       /* Update _db_global_tran state based on decision, using server transaction */
-      log_sysop_start (thread_p);
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
 	  error = dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
 	  if (error != NO_ERROR)
 	    {
-	      log_sysop_abort (thread_p);
+	      (void) log_abort_local (thread_p, tdes, false);
 	      return error;
 	    }
 	}
-      log_sysop_commit (thread_p);
+
       /* First perform local commit/abort before updating _db_global_tran; on failure return error without catalog update */
       if (*decision)
 	{
