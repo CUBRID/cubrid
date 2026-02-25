@@ -1,25 +1,25 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
   "agents": {
-    "sisyphus":   { "model": "opencode/claude-sonnet-4-6" },
-    "momus":      { "model": "opencode/gemini-3-flash" },
-    "hephaestus": { "model": "opencode/gpt-5.1-codex" },
-    "oracle":     { "model": "opencode/kimi-k2-thinking" },
+    "sisyphus":   { "model": "opencode/kimi-k2.5" },
+    "momus":      { "model": "opencode/gpt-5.2" },
+    "hephaestus": { "model": "opencode/gpt-5.3-codex" },
+    "oracle":     { "model": "opencode/gpt-5.2" },
     "librarian":  { "model": "opencode/gemini-3-flash" },
-    "explore":    { "model": "opencode/gemini-3-flash" },
-    "prometheus": { "model": "opencode/claude-haiku-4-5" },
-    "metis":      { "model": "opencode/gpt-5-nano" },
-    "atlas":      { "model": "opencode/minimax-m2.5-free" },
-    "looker":     { "model": "opencode/gemini-3-flash" }
+    "explore":    { "model": "opencode/grok-code-fast-1" },
+    "prometheus": { "model": "opencode/kimi-k2.5" },
+    "metis":      { "model": "opencode/kimi-k2.5" },
+    "atlas":      { "model": "opencode/kimi-k2.5" },
+    "looker":     { "model": "opencode/kimi-k2.5" }
   },
   "categories": {
-    "deep":               { "model": "opencode/gpt-5.1-codex", "variant": "high" },
-    "ultrabrain":         { "model": "opencode/claude-sonnet-4-6", "variant": "high" },
-    "quick":              { "model": "opencode/gemini-3-flash" },
-    "unspecified-high":   { "model": "opencode/gemini-3.1-pro" },
-    "unspecified-low":    { "model": "opencode/gemini-3-flash" },
-    "visual-engineering": { "model": "opencode/gemini-3-flash" },
-    "writing":            { "model": "opencode/glm-5-free" },
-    "artistry":           { "model": "opencode/claude-haiku-4-5" }
+    "deep":               { "model": "opencode/gpt-5.3-codex", "variant": "high" },
+    "ultrabrain":         { "model": "opencode/gpt-5.3-codex", "variant": "high" },
+    "quick":              { "model": "opencode/claude-haiku-4-5" },
+    "unspecified-high":   { "model": "opencode/gpt-5.2" },
+    "unspecified-low":    { "model": "opencode/claude-sonnet-4-6" },
+    "visual-engineering": { "model": "opencode/gemini-3-pro" },
+    "writing":            { "model": "opencode/gemini-3-flash" },
+    "artistry":           { "model": "opencode/gemini-3-pro" }
   }
 }
