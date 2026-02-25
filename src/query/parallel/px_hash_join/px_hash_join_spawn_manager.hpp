@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "error_manager.h"		/* er_errid, NO_ERROR, assert_release_error */
 #include "thread_entry.hpp"		/* cubthread::entry */
 #include "xasl_spawner.hpp"		/* cubxasl::spawner */
 
