@@ -35,7 +35,6 @@ namespace parallel_query
 {
   // forward declaration
   class worker_manager;
-  class worker_manager_with_dedicated_pool;
 
   class callable_task : public cubthread::task<cubthread::entry>
   {
@@ -51,23 +50,11 @@ namespace parallel_query
       template <typename F>
       callable_task (worker_manager *worker_manager_p, F &&f, bool delete_on_retire = true);
 
-      // constructor with worker_manager_with_dedicated_pool
-      template <typename F>
-      callable_task (worker_manager_with_dedicated_pool *worker_manager_p, const F &f, bool delete_on_retire = true);
-      template <typename F>
-      callable_task (worker_manager_with_dedicated_pool *worker_manager_p, F &&f, bool delete_on_retire = true);
-
       // constructor with custom retire
       template <typename FuncExec, typename FuncRetire>
       callable_task (worker_manager *worker_manager_p, const FuncExec &fe, const FuncRetire &fr);
       template <typename FuncExec, typename FuncRetire>
       callable_task (worker_manager *worker_manager_p, FuncExec &&fe, FuncRetire &&fr);
-
-      // constructor with worker_manager_with_dedicated_pool
-      template <typename FuncExec, typename FuncRetire>
-      callable_task (worker_manager_with_dedicated_pool *worker_manager_p, const FuncExec &fe, const FuncRetire &fr);
-      template <typename FuncExec, typename FuncRetire>
-      callable_task (worker_manager_with_dedicated_pool *worker_manager_p, FuncExec &&fe, FuncRetire &&fr);
 
       void execute (cubthread::entry &context) override;
       void retire () override;
@@ -76,14 +63,12 @@ namespace parallel_query
       exec_func_type m_exec_f;
       retire_func_type m_retire_f;
       worker_manager *m_worker_manager_p;
-      worker_manager_with_dedicated_pool *m_worker_manager_with_dedicated_pool_p;
   };
 
   template <typename F>
   callable_task::callable_task (worker_manager *worker_manager_p, const F &f, bool delete_on_retire)
     : m_exec_f (f)
     , m_worker_manager_p (worker_manager_p)
-    , m_worker_manager_with_dedicated_pool_p (nullptr)
   {
     if (delete_on_retire)
       {
@@ -99,7 +84,6 @@ namespace parallel_query
   callable_task::callable_task (worker_manager *worker_manager_p, F &&f, bool delete_on_retire)
     : m_exec_f (std::move (f))
     , m_worker_manager_p (worker_manager_p)
-    , m_worker_manager_with_dedicated_pool_p (nullptr)
   {
     if (delete_on_retire)
       {
@@ -116,7 +100,6 @@ namespace parallel_query
     : m_exec_f (fe)
     , m_retire_f (fr)
     , m_worker_manager_p (worker_manager_p)
-    , m_worker_manager_with_dedicated_pool_p (nullptr)
   {
   }
 
@@ -125,58 +108,6 @@ namespace parallel_query
     : m_exec_f (std::move (fe))
     , m_retire_f (std::move (fr))
     , m_worker_manager_p (worker_manager_p)
-    , m_worker_manager_with_dedicated_pool_p (nullptr)
-  {
-  }
-
-  template <typename F>
-  callable_task::callable_task (worker_manager_with_dedicated_pool *worker_manager_p, const F &f, bool delete_on_retire)
-    : m_exec_f (f)
-    , m_worker_manager_p (nullptr)
-    , m_worker_manager_with_dedicated_pool_p (worker_manager_p)
-  {
-    if (delete_on_retire)
-      {
-	m_retire_f = [this] { delete this; };
-      }
-    else
-      {
-	m_retire_f = [] {};  // do nothing
-      }
-  }
-
-  template <typename F>
-  callable_task::callable_task (worker_manager_with_dedicated_pool *worker_manager_p, F &&f, bool delete_on_retire)
-    : m_exec_f (std::move (f))
-    , m_worker_manager_p (nullptr)
-    , m_worker_manager_with_dedicated_pool_p (worker_manager_p)
-  {
-    if (delete_on_retire)
-      {
-	m_retire_f = [this] { delete this; };
-      }
-    else
-      {
-	m_retire_f = [] {};  // do nothing
-      }
-  }
-
-  template <typename FuncExec, typename FuncRetire>
-  callable_task::callable_task (worker_manager_with_dedicated_pool *worker_manager_p, const FuncExec &fe,
-				const FuncRetire &fr)
-    : m_exec_f (fe)
-    , m_retire_f (fr)
-    , m_worker_manager_p (nullptr)
-    , m_worker_manager_with_dedicated_pool_p (worker_manager_p)
-  {
-  }
-
-  template <typename FuncExec, typename FuncRetire>
-  callable_task::callable_task (worker_manager_with_dedicated_pool *worker_manager_p, FuncExec &&fe, FuncRetire &&fr)
-    : m_exec_f (std::move (fe))
-    , m_retire_f (std::move (fr))
-    , m_worker_manager_p (nullptr)
-    , m_worker_manager_with_dedicated_pool_p (worker_manager_p)
   {
   }
 } // namespace parallel_query

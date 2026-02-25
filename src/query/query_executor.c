@@ -8532,21 +8532,11 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
       lock = IX_LOCK;
     }
 #if defined(SERVER_MODE)
-  THREAD_ENTRY *target_thread_p = NULL;
+  THREAD_ENTRY *main_thread_p = NULL;
   if (thread_p->m_px_orig_thread_entry != NULL)
     {
-      target_thread_p = thread_p;
-      while (target_thread_p->m_px_orig_thread_entry != NULL)
-	{
-	  if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
-	    {
-	      break;
-	    }
-	  target_thread_p = target_thread_p->m_px_orig_thread_entry;
-	  assert (target_thread_p != thread_p);
-	}
-      assert (target_thread_p != NULL);
-      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);
+      main_thread_p = thread_get_main_thread (thread_p);
+      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     }
 #endif
   for (partition_spec = spec->parts; partition_spec != NULL; partition_spec = partition_spec->next)
@@ -8556,18 +8546,18 @@ qexec_prune_spec (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, VAL_DESCR * 
 	{
 	  ASSERT_ERROR_AND_SET (error);
 #if defined(SERVER_MODE)
-	  if (target_thread_p != NULL)
+	  if (main_thread_p != NULL)
 	    {
-	      pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
+	      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 	    }
 #endif
 	  return error;
 	}
     }
 #if defined(SERVER_MODE)
-  if (target_thread_p != NULL)
+  if (main_thread_p != NULL)
     {
-      pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
+      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
     }
 #endif
   return NO_ERROR;

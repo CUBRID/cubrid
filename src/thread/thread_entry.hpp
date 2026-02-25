@@ -308,8 +308,6 @@ namespace cubthread
       entry *m_px_orig_thread_entry;
       bool m_uses_px_stats;
 
-      bool m_skip_end_resource_tracks_in_recycle;
-
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;
 
@@ -471,6 +469,42 @@ thread_set_sort_stats_active (cubthread::entry *thread_p, bool new_flag)
   bool old_flag = thread_p->sort_stats_active;
   thread_p->sort_stats_active = new_flag;
   return old_flag;
+}
+
+inline cubthread::entry *
+thread_get_main_thread (cubthread::entry *thread_p)
+{
+  assert (thread_p != nullptr);
+
+  cubthread::entry *current = thread_p;
+
+  // Safety limit to prevent infinite traversal in case of corrupted hierarchy
+  constexpr int MAX_DEPTH = 8;
+
+  for (int i = 0; i < MAX_DEPTH; ++i)
+    {
+      cubthread::entry *parent = current->m_px_orig_thread_entry;
+
+      // Found root (nullptr) or a self-referencing main thread
+      if (parent == nullptr || parent == current)
+	{
+
+	  return current;
+	}
+
+      // Detect logical cycles (looping back to the starting thread)
+      if ( unlikely (parent == thread_p))
+	{
+	  assert (false && "Cycle detected in thread hierarchy");
+	  return thread_p;
+	}
+
+      current = parent;
+    }
+
+  // Fallback for unexpectedly deep chains or undetected complex cycles
+  assert (false && "Thread hierarchy depth exceeded limit");
+  return thread_p;
 }
 
 inline void
