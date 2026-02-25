@@ -5198,14 +5198,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
-#else
-   {false, {.i = 3}},
-   {false, {.i = 3}},
-#endif
-   {false, {.i = 8192}},
+   {false, {.i = -1}},
+   {false, {.i = -1}},
+   {false, {.i = 1048576}},
    {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -9865,17 +9860,18 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *call_stack_dump_activation_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
-#if defined (SERVER_MODE)
   SYSPRM_PARAM *task_worker_prm;
   SYSPRM_PARAM *task_group_prm;
+#if defined (SERVER_MODE)
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
-  int system_cpu_count;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
+  int system_cpu_count;
+  int task_worker;
   int max_clients;
 
   /* Find the parameters that require tuning */
@@ -9922,12 +9918,22 @@ prm_tune_parameters (void)
 	}
 
 #if defined (SERVER_MODE)
-      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
-      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
-      max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
       system_cpu_count = cubthread::system_core_count ();
+      task_worker = css_get_max_connections ();
+#else
+      system_cpu_count = 1;
+      task_worker = system_cpu_count * 6;
+#endif
 
+      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
+      if (PRM_GET_INT (task_worker_prm->value) < 0)
+	{
+	  /* the value of task worker is default. */
+	  sprintf (newval, "%d", task_worker);
+	  (void) prm_set (task_worker_prm, newval, false);
+	}
+
+      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
       if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
@@ -9938,6 +9944,11 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
 	  (void) prm_set (task_group_prm, newval, false);
 	}
+
+#if defined (SERVER_MODE)
+      max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+
       if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
 	{
 	  sprintf (newval, "%d", system_cpu_count);
