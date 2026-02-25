@@ -151,7 +151,8 @@ static const char *schema_type_str[] = {
   "PRIMARY_KEY",
   "IMPORTED_KEYS",
   "EXPORTED_KEYS",
-  "CROSS_REFERENCE"
+  "CROSS_REFERENCE",
+  "ATTR_WITH_SYNONYM"
 };
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
