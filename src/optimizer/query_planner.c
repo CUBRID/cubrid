@@ -3382,12 +3382,12 @@ qo_nljoin_cost (QO_PLAN * planp)
 	  /* won't come here */
 	  guessed_result_cardinality = (outer->info)->cardinality;
 	}
+      guessed_result_cardinality = MAX (1.0, guessed_result_cardinality);
     }
   else
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
-  guessed_result_cardinality = MAX (1.0, guessed_result_cardinality);
   inner_cpu_cost = guessed_result_cardinality * inner->variable_cpu_cost;
 
   /* inner side IO cost of nested-loop block join */
