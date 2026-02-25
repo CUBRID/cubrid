@@ -5197,14 +5197,9 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-#if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
-#else
-   {false, {.i = 3}},
-   {false, {.i = 3}},
-#endif
-   {false, {.i = 8192}},
+   {false, {.i = -1}},
+   {false, {.i = -1}},
+   {false, {.i = 1048576}},
    {false, {.i = 1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -9864,17 +9859,18 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *call_stack_dump_activation_prm;
   SYSPRM_PARAM *test_mode_prm;
   SYSPRM_PARAM *tz_leap_second_support_prm;
+  SYSPRM_PARAM *task_worker_prm;
+  SYSPRM_PARAM *task_group_prm;
 #if defined (SERVER_MODE)
   SYSPRM_PARAM *max_parallel_workers_prm;
   SYSPRM_PARAM *parallelism_prm;
-  SYSPRM_PARAM *task_group_prm;
-  SYSPRM_PARAM *task_worker_prm;
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
-  int system_cpu_count;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
+  int system_cpu_count;
+  int task_worker;
   int max_clients;
 
   /* Find the parameters that require tuning */
@@ -9921,15 +9917,46 @@ prm_tune_parameters (void)
 	}
 
 #if defined (SERVER_MODE)
-      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
-      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
       system_cpu_count = cubthread::system_core_count ();
-      int safe_core_count = (css_get_max_workers () / 3);
-      int core_upper_limit = MIN (safe_core_count, system_cpu_count);
-      if (PRM_GET_INT (task_group_prm->value) > core_upper_limit)
+      task_worker = css_get_max_connections ();
+#else
+      system_cpu_count = 1;
+      task_worker = system_cpu_count * 6;
+#endif
+
+      task_worker_prm = GET_PRM (PRM_ID_TASK_WORKER);
+      if (PRM_GET_INT (task_worker_prm->value) < 0)
 	{
-	  sprintf (newval, "%d", core_upper_limit);
+	  /* the value of task worker is default. */
+	  sprintf (newval, "%d", task_worker);
+	  (void) prm_set (task_worker_prm, newval, false);
+	}
+
+      task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
+      if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
+        {
+	  sprintf (newval, "%d", system_cpu_count);
 	  (void) prm_set (task_group_prm, newval, false);
+	}
+      if (PRM_GET_INT (task_group_prm->value) > PRM_GET_INT (task_worker_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
+	  (void) prm_set (task_group_prm, newval, false);
+	}
+
+#if defined (SERVER_MODE)
+      max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+
+      if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
+	{
+	  sprintf (newval, "%d", system_cpu_count);
+	  (void) prm_set (max_connection_workers_prm, newval, false);
+	}
+      if (PRM_GET_INT (min_connection_workers_prm->value) > PRM_GET_INT (max_connection_workers_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_connection_workers_prm->value));
+	  (void) prm_set (min_connection_workers_prm, newval, false);
 	}
 
       /* set parallelism to system_cpu_count if it is greater than cubthread::system_core_count () */
@@ -9973,30 +10000,6 @@ prm_tune_parameters (void)
 	      sprintf (newval, "%d", 0);
 	      (void) prm_set (sort_page_threshold_prm, newval, false);
 	    }
-	}
-
-      max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-      min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
-
-      if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
-	{
-	  sprintf (newval, "%d", system_cpu_count);
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-      if (PRM_GET_INT (task_group_prm->value) > PRM_GET_INT (task_worker_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (task_worker_prm->value));
-	  (void) prm_set (task_group_prm, newval, false);
-	}
-      if (PRM_GET_INT (max_connection_workers_prm->value) > system_cpu_count)
-	{
-	  sprintf (newval, "%d", system_cpu_count);
-	  (void) prm_set (max_connection_workers_prm, newval, false);
-	}
-      if (PRM_GET_INT (min_connection_workers_prm->value) > PRM_GET_INT (max_connection_workers_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (max_connection_workers_prm->value));
-	  (void) prm_set (min_connection_workers_prm, newval, false);
 	}
 #endif
     }
