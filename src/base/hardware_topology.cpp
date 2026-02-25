@@ -116,7 +116,7 @@ namespace cubbase
       }
     else
       {
-	_er_log_debug (__FILE__, __LINE__, "warning: no IRQ lines found for %s in /proc/interrupts.\n", ifname.c_str ());
+	_er_log_debug (__FILE__, __LINE__, "warning: no IRQ found for %s in /proc/interrupts.\n", ifname.c_str ());
       }
     free (qs.v);
 
