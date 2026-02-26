@@ -9934,7 +9934,7 @@ prm_tune_parameters (void)
 
       task_group_prm = GET_PRM (PRM_ID_TASK_GROUP);
       if (PRM_GET_INT (task_group_prm->value) > system_cpu_count)
-        {
+	{
 	  sprintf (newval, "%d", system_cpu_count);
 	  (void) prm_set (task_group_prm, newval, false);
 	}
