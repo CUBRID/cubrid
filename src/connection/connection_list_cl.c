@@ -38,7 +38,6 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
-//#include "system_parameter.h"
 #include "connection_support.h"
 #include "connection_list_cl.h"
 

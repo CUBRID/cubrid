@@ -39,7 +39,6 @@
 #include "network.h"
 #include "network_interface_cl.h"
 #include "chartype.h"
-//#include "connection_cl.h"
 #include "server_interface.h"
 #include "memory_alloc.h"
 #include "databases_file.h"
