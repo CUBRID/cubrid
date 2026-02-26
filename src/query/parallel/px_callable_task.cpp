@@ -30,23 +30,15 @@ namespace parallel_query
 {
   void callable_task::execute (cubthread::entry &context)
   {
-    assert (m_worker_manager_p != nullptr || m_worker_manager_with_dedicated_pool_p != nullptr);
+    assert (m_worker_manager_p != nullptr);
     m_exec_f (context);
   }
 
   void callable_task::retire ()
   {
-    assert (m_worker_manager_p != nullptr || m_worker_manager_with_dedicated_pool_p != nullptr);
-    if (m_worker_manager_p != nullptr)
-      {
-	m_worker_manager_p->pop_task ();
-	m_worker_manager_p = nullptr;
-      }
-    else
-      {
-	m_worker_manager_with_dedicated_pool_p->pop_task ();
-	m_worker_manager_with_dedicated_pool_p = nullptr;
-      }
+    assert (m_worker_manager_p != nullptr);
+    m_worker_manager_p->pop_task ();
+    m_worker_manager_p = nullptr;
     m_retire_f ();
   }
 } // namespace parallel_query
