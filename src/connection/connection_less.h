@@ -43,7 +43,10 @@ private:
   CSS_MAP_ENTRY *css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor);
   int css_test_for_open_conn (CSS_CONN_ENTRY * conn);
 
-protected:
+public:
+    connection_less ();
+   ~connection_less ();
+
   unsigned int css_make_eid (unsigned short host_id, unsigned short rid);
   CSS_MAP_ENTRY *css_return_entry_from_eid (unsigned int eid, CSS_MAP_ENTRY * anchor);
   CSS_MAP_ENTRY *css_queue_connection (CSS_CONN_ENTRY * conn, const char *host, CSS_MAP_ENTRY ** anchor);
@@ -56,19 +59,5 @@ protected:
   CSS_MAP_ENTRY *css_return_entry_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY * anchor);
   unsigned int css_return_eid_from_conn (CSS_CONN_ENTRY * conn, CSS_MAP_ENTRY ** anchor, unsigned short rid);
 #endif
-
-
-public:
-    connection_less ()
-  {
-    m_entry_id = 0;
-#if defined(MULTI_CONN_TO_A_SERVER)
-    m_work_seqno = -1;
-#endif
-  };
-  ~connection_less ()
-  {
-  };
-
 };
 #endif /* _CONNECTION_LESS_H_ */

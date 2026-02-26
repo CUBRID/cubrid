@@ -113,12 +113,8 @@ class connection_support:public connection_list_cl
 private:
 
 public:
-  connection_support ()
-  {
-  };
-  ~connection_support ()
-  {
-  };
+  connection_support ();
+  ~connection_support ();
 
   virtual unsigned short css_get_request_id (CSS_CONN_ENTRY * conn) = 0;
 

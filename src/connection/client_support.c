@@ -132,7 +132,7 @@ client_support::css_client_init (int sockid, const char *server_name, const char
       conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
       if (conn != NULL)
 	{
-	  if (css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor) == NULL)
+	  if (m_conn_less.css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor) == NULL)
 	    {
 	      error = ER_FAILED;
 	    }
@@ -148,7 +148,7 @@ client_support::css_client_init (int sockid, const char *server_name, const char
   conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name);
   if (conn != NULL)
     {
-      css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor);
+      m_conn_less.css_queue_connection (conn, (char *) host_name, &m_css_Client_anchor);
     }
   else
     {
@@ -176,7 +176,7 @@ client_support::css_send_request_to_server (char *host, int request, char *arg_b
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
 
-  entry = css_return_open_entry (host, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host, &m_css_Client_anchor);
   if (entry != NULL)
     {
       entry->conn->set_tran_index (tm_Tran_index);
@@ -184,7 +184,7 @@ client_support::css_send_request_to_server (char *host, int request, char *arg_b
       m_css_errno = css_send_request (entry->conn, (int) request, &rid, arg_buffer, (int) arg_buffer_size);
       if (m_css_errno != NO_ERRORS)
 	{
-	  css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+	  m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
 	  return 0;
 	}
       tm_Tran_invalidate_snapshot = 0;
@@ -195,7 +195,7 @@ client_support::css_send_request_to_server (char *host, int request, char *arg_b
       return 0;
     }
 
-  return (css_make_eid (entry->id, rid));
+  return (m_conn_less.css_make_eid (entry->id, rid));
 }
 #endif
 
@@ -219,7 +219,7 @@ client_support::css_send_request_to_server_with_buffer (char *host, int request,
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
 
-  entry = css_return_open_entry (host, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host, &m_css_Client_anchor);
   if (entry == NULL)
     {
       m_css_errno = SERVER_WAS_NOT_FOUND;
@@ -234,12 +234,12 @@ client_support::css_send_request_to_server_with_buffer (char *host, int request,
 						   data_buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
-      css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
       return 0;
     }
 
   tm_Tran_invalidate_snapshot = 0;
-  return (css_make_eid (entry->id, rid));
+  return (m_conn_less.css_make_eid (entry->id, rid));
 }
 
 /*
@@ -264,7 +264,7 @@ client_support::css_send_req_to_server (char *host, int request, char *arg_buffe
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
 
-  entry = css_return_open_entry (host, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host, &m_css_Client_anchor);
   if (entry == NULL)
     {
       m_css_errno = SERVER_WAS_NOT_FOUND;
@@ -282,12 +282,12 @@ client_support::css_send_req_to_server (char *host, int request, char *arg_buffe
 					     data_buffer_size, reply_buffer, reply_size);
   if (m_css_errno != NO_ERRORS)
     {
-      css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
       return 0;
     }
 
   tm_Tran_invalidate_snapshot = 0;
-  return (css_make_eid (entry->id, rid));
+  return (m_conn_less.css_make_eid (entry->id, rid));
 }
 
 #if 0
@@ -330,7 +330,7 @@ css_send_req_to_server_with_large_data (char *host, int request, char *arg_buffe
 	}
       else
 	{
-	  css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+	  m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
 	  return 0;
 	}
     }
@@ -365,7 +365,7 @@ client_support::css_send_req_to_server_2_data (char *host, int request, char *ar
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
 
-  entry = css_return_open_entry (host, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host, &m_css_Client_anchor);
   if (entry == NULL)
     {
       m_css_errno = SERVER_WAS_NOT_FOUND;
@@ -381,12 +381,12 @@ client_support::css_send_req_to_server_2_data (char *host, int request, char *ar
 					     reply_size);
   if (m_css_errno != NO_ERRORS)
     {
-      css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
       return 0;
     }
 
   tm_Tran_invalidate_snapshot = 0;
-  return (css_make_eid (entry->id, rid));
+  return (m_conn_less.css_make_eid (entry->id, rid));
 }
 
 /*
@@ -403,7 +403,7 @@ client_support::css_send_req_to_server_no_reply (char *host, int request, char *
   CSS_MAP_ENTRY *entry;
   unsigned short rid;
 
-  entry = css_return_open_entry (host, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host, &m_css_Client_anchor);
   if (entry == NULL)
     {
       m_css_errno = SERVER_WAS_NOT_FOUND;
@@ -417,12 +417,12 @@ client_support::css_send_req_to_server_no_reply (char *host, int request, char *
   m_css_errno = css_send_request_no_reply (entry->conn, request, &rid, arg_buffer, arg_buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
-      css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
       return 0;
     }
 
   tm_Tran_invalidate_snapshot = 0;
-  return (css_make_eid (entry->id, rid));
+  return (m_conn_less.css_make_eid (entry->id, rid));
 }
 
 /*
@@ -441,7 +441,7 @@ client_support::css_queue_receive_data_buffer (unsigned int eid, char *buffer, i
 
   if (buffer && (buffer_size > 0))
     {
-      entry = css_return_entry_from_eid (eid, m_css_Client_anchor);
+      entry = m_conn_less.css_return_entry_from_eid (eid, m_css_Client_anchor);
       if (entry != NULL)
 	{
 	  rid = CSS_RID_FROM_EID (eid);
@@ -474,7 +474,7 @@ client_support::css_send_error_to_server (char *host, unsigned int eid, char *bu
 
   assert (er_errid () != NO_ERROR);
 
-  entry = css_return_open_entry (host, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host, &m_css_Client_anchor);
   if (entry == NULL)
     {
       m_css_errno = SERVER_WAS_NOT_FOUND;
@@ -489,7 +489,7 @@ client_support::css_send_error_to_server (char *host, unsigned int eid, char *bu
   m_css_errno = css_send_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
-      css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
       return m_css_errno;
     }
 
@@ -511,7 +511,7 @@ client_support::css_send_data_to_server (char *host, unsigned int eid, char *buf
 {
   CSS_MAP_ENTRY *entry;
 
-  entry = css_return_open_entry (host, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host, &m_css_Client_anchor);
   if (entry == NULL)
     {
       m_css_errno = SERVER_WAS_NOT_FOUND;
@@ -525,7 +525,7 @@ client_support::css_send_data_to_server (char *host, unsigned int eid, char *buf
   m_css_errno = css_send_data (entry->conn, CSS_RID_FROM_EID (eid), buffer, buffer_size);
   if (m_css_errno != NO_ERRORS)
     {
-      css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
       return m_css_errno;
     }
 
@@ -580,7 +580,7 @@ client_support::css_receive_data_from_server_with_timeout (unsigned int eid, cha
   CSS_MAP_ENTRY *entry;
   int rid;
 
-  entry = css_return_entry_from_eid (eid, m_css_Client_anchor);
+  entry = m_conn_less.css_return_entry_from_eid (eid, m_css_Client_anchor);
   if (entry == NULL)
     {
       m_css_errno = SERVER_WAS_NOT_FOUND;
@@ -610,7 +610,7 @@ client_support::css_receive_error_from_server (unsigned int eid, char **buffer, 
 {
   CSS_MAP_ENTRY *entry;
 
-  entry = css_return_entry_from_eid (eid, m_css_Client_anchor);
+  entry = m_conn_less.css_return_entry_from_eid (eid, m_css_Client_anchor);
   if (entry != NULL)
     {
       m_css_errno = css_receive_error (entry->conn, CSS_RID_FROM_EID (eid), buffer, size);
@@ -627,7 +627,7 @@ client_support::css_receive_error_from_server (unsigned int eid, char **buffer, 
 	   */
 	  if (m_css_errno != CANT_ALLOC_BUFFER)
 	    {
-	      css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
+	      m_conn_less.css_remove_queued_connection_by_entry (entry, &m_css_Client_anchor);
 	    }
 	  return m_css_errno;
 	}
@@ -653,7 +653,7 @@ client_support::css_terminate (bool server_error)
 	  m_css_Client_anchor->conn->status = CONN_CLOSING;
 	}
       css_send_close_request (m_css_Client_anchor->conn);
-      css_remove_queued_connection_by_entry (m_css_Client_anchor, &m_css_Client_anchor);
+      m_conn_less.css_remove_queued_connection_by_entry (m_css_Client_anchor, &m_css_Client_anchor);
     }
 
 #if defined(WINDOWS)
@@ -682,7 +682,7 @@ client_support::css_cleanup_client_queues (char *host_name)
 {
   CSS_MAP_ENTRY *entry;
 
-  entry = css_return_open_entry (host_name, &m_css_Client_anchor);
+  entry = m_conn_less.css_return_open_entry (host_name, &m_css_Client_anchor);
   if (entry != NULL)
     {
       css_remove_all_unexpected_packets (entry->conn);

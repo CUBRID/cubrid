@@ -33,6 +33,18 @@
 #error Does not belong to server module
 #endif
 
+connection_less::connection_less ()
+{
+  m_entry_id = 0;
+#if defined(MULTI_CONN_TO_A_SERVER)
+  m_work_seqno = -1;
+#endif
+}
+
+connection_less::~connection_less ()
+{
+}
+
 /*
  * css_make_eid() - create an eid which is a combination of the entry id and
  *                  the request id

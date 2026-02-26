@@ -1496,6 +1496,16 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code, int re
   header_p->flags = htons (flags);
 }
 
+#if !defined (SERVER_MODE)
+connection_support::connection_support ()
+{
+}
+
+connection_support::~connection_support ()
+{
+}
+#endif
+
 /*
  * css_send_request_with_data_buffer () - transfer a request to the server.
  *   return: enum css_error_code (See connection_defs.h)

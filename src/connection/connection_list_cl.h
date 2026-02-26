@@ -50,26 +50,22 @@ private:
 protected:
   char *css_get_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int *buffer_size);
 
-
-public:
-    connection_list_cl ()
-  {
-  };
-  ~connection_list_cl ()
-  {
-  };
-
   void css_queue_unexpected_data_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *header, int size,
 					 int rc);
   void css_queue_unexpected_error_packet (CSS_CONN_ENTRY * conn, unsigned short request_id, char *header, int size,
 					  int rc);
-  void css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short request_id,
-				    NET_HEADER * header, int size);
-  int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer);
-  CSS_QUEUE_ENTRY *css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int key);
-  void css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * entry);
+  void css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn, unsigned short request_id, NET_HEADER * header,
+				    int size);
   void css_queue_remove_header_entry (CSS_QUEUE_ENTRY ** anchor, unsigned short request_id);
   void css_queue_remove_header (CSS_QUEUE_ENTRY ** anchor);
+  CSS_QUEUE_ENTRY *css_find_queue_entry (CSS_QUEUE_ENTRY * header, unsigned int key);
+  void css_queue_remove_header_entry_ptr (CSS_QUEUE_ENTRY ** anchor, CSS_QUEUE_ENTRY * entry);
+
+public:
+    connection_list_cl ();
+   ~connection_list_cl ();
+  int css_queue_user_data_buffer (CSS_CONN_ENTRY * conn, unsigned short request_id, int size, char *buffer);
+  void css_queue_find_and_remove_header_entry_ptr (CSS_CONN_ENTRY * conn, unsigned short request_id);
 };
 
 #endif /* _CONNECTION_LIST_CL_H_ */

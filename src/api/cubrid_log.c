@@ -673,12 +673,7 @@ cubrid_log_error:
 
   if (g_conn_entry != NULL)
     {
-      queue_entry = __gv_cvar.css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-      if (queue_entry != NULL)
-	{
-	  queue_entry->buffer = NULL;
-	  __gv_cvar.css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-	}
+      __gv_cvar.css_queue_find_and_remove_header_entry_ptr (g_conn_entry, rid);
 
       __gv_cvar.css_free_conn (g_conn_entry);
       g_conn_entry = NULL;
@@ -792,12 +787,7 @@ cubrid_log_error:
       free_and_init (recv_data);
     }
 
-  queue_entry = __gv_cvar.css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-  if (queue_entry != NULL)
-    {
-      queue_entry->buffer = NULL;
-      __gv_cvar.css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-    }
+  __gv_cvar.css_queue_find_and_remove_header_entry_ptr (g_conn_entry, rid);
 
   if (a_request != NULL)
     {
@@ -1031,12 +1021,7 @@ cubrid_log_error:
       free_and_init (recv_data);
     }
 
-  queue_entry = __gv_cvar.css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-  if (queue_entry != NULL)
-    {
-      queue_entry->buffer = NULL;
-      __gv_cvar.css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-    }
+  __gv_cvar.css_queue_find_and_remove_header_entry_ptr (g_conn_entry, rid);
 
   return err_code;
 }
@@ -1253,12 +1238,7 @@ cubrid_log_error:
       free_and_init (recv_data);
     }
 
-  queue_entry = __gv_cvar.css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-  if (queue_entry != NULL)
-    {
-      queue_entry->buffer = NULL;
-      __gv_cvar.css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-    }
+  __gv_cvar.css_queue_find_and_remove_header_entry_ptr (g_conn_entry, rid);
 
   return err_code;
 }
@@ -1911,13 +1891,7 @@ cubrid_log_error:
 
   if (g_conn_entry != NULL)
     {
-      queue_entry = __gv_cvar.css_find_queue_entry (g_conn_entry->buffer_queue, rid);
-      if (queue_entry != NULL)
-	{
-	  queue_entry->buffer = NULL;
-	  __gv_cvar.css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
-	}
-
+      __gv_cvar.css_queue_find_and_remove_header_entry_ptr (g_conn_entry, rid);
       __gv_cvar.css_free_conn (g_conn_entry);
       g_conn_entry = NULL;
     }

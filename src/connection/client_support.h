@@ -35,11 +35,12 @@
 #endif
 
 #define MAX_MULTIPLE_CONNECTION (100)
-class client_support:public connection_less, public connection_cl
+class client_support:public connection_cl
 {
 private:
   int m_multiple_count;		// TODO: multi-connection support
   int m_css_errno;
+  class connection_less m_conn_less;
 
   // TODO: Integrating this into connection_less reduces function call complexity
   CSS_MAP_ENTRY *m_css_Client_anchor;

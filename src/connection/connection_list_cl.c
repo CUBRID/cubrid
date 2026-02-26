@@ -41,6 +41,15 @@
 #include "connection_support.h"
 #include "connection_list_cl.h"
 
+
+connection_list_cl::connection_list_cl ()
+{
+}
+
+connection_list_cl::~connection_list_cl ()
+{
+}
+
 /*
  * css_make_queue_entry() -
  *   return:
@@ -620,5 +629,17 @@ connection_list_cl::css_queue_unexpected_packet (int type, CSS_CONN_ENTRY * conn
 
     default:
       TPRINTF ("Asked to queue an unknown packet id = %d.\n", type);
+    }
+}
+
+void
+connection_list_cl::css_queue_find_and_remove_header_entry_ptr (CSS_CONN_ENTRY * conn, unsigned short request_id)
+{
+  CSS_QUEUE_ENTRY *queue_entry;
+  queue_entry = css_find_queue_entry (conn->buffer_queue, request_id);
+  if (queue_entry != NULL)
+    {
+      queue_entry->buffer = NULL;
+      css_queue_remove_header_entry_ptr (&conn->buffer_queue, queue_entry);
     }
 }
