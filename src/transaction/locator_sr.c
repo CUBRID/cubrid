@@ -8904,6 +8904,19 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       /* insert oos replication log */
       if (heap_recdes_contains_oos (new_recdes))
 	{
+	  if (new_key == NULL)
+	    {
+	      db_make_null (&new_dbvalue);
+	      new_key =
+		heap_attrvalue_get_key (thread_p, pk_btid_index, new_attrinfo, new_recdes, &new_btid, &new_dbvalue,
+					aligned_newbuf, NULL, NULL, oid, false);
+	      if (new_key == NULL)
+		{
+		  error_code = ER_FAILED;
+		  goto error;
+		}
+	    }
+
 	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 	    {
 	      error_code =
@@ -8914,6 +8927,12 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		  assert (er_errid () != NO_ERROR);
 		  goto error;
 		}
+	    }
+
+	  if (new_key == &new_dbvalue)
+	    {
+	      pr_clear_value (&new_dbvalue);
+	      new_key = NULL;
 	    }
 	}
 
