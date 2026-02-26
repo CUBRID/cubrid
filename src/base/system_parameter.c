@@ -11863,6 +11863,7 @@ sysprm_set_error (SYSPRM_ERR rc, const char *data)
 {
   int error;
 
+
   /* first check if error was already set */
   error = er_errid ();
   if (error != NO_ERROR)
