@@ -780,6 +780,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
 #define PRM_NAME_VECTOR_INDEX_EF_SEARCH "hnsw_ef_search"
+#define PRM_NAME_VECTOR_INDEX_DEBUG "hnsw_debug"
+
 // #endregion 
 
 /*
@@ -5194,7 +5196,19 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = PRM_VECTOR_INDEX_EF_SEARCH}},
    {false, {.i = prm_vector_index_ef_search_upper}},
    {false, {.i = prm_vector_index_ef_search_lower}},
-      (char *) NULL,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_VECTOR_INDEX_DEBUG,
+   PRM_NAME_VECTOR_INDEX_DEBUG,
+   (PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_SERVER | PRM_FOR_CLIENT),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   {false, {.i = 1}},
+   {false, {.i = 0}},
+   (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
 };
