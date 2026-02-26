@@ -60,7 +60,7 @@
 #include "log_volids.hpp"
 #include "tde.h"
 #include "flashback_cl.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "memory_monitor_cl.hpp"
 #if !defined(WINDOWS)
 #include "heartbeat.h"
