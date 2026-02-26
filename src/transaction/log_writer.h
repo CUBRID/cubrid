@@ -184,7 +184,7 @@ struct logwr_info
     , flush_end_cond PTHREAD_COND_INITIALIZER
     , flush_end_mutex PTHREAD_MUTEX_INITIALIZER
     , skip_flush (false)
-    , flush_completed (false)
+    , flush_completed (true)
     , is_init (false)
     , trace_last_writer (false)
     , last_writer_client_info ()

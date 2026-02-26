@@ -645,6 +645,7 @@ logpb_initialize_pool (THREAD_ENTRY * thread_p)
   pthread_cond_init (&writer_info->flush_end_cond, NULL);
   pthread_mutex_init (&writer_info->flush_end_mutex, NULL);
 
+  writer_info->flush_completed = true;
   writer_info->is_init = true;
 
   return error_code;

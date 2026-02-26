@@ -2631,6 +2631,45 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 
       if (entry->status == LOGWR_STATUS_WAIT)
 	{
+	  LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+
+	  /* Avoid sleeping if logs were flushed while sending previous pages.
+	   * Acquire wr_list_mutex to synchronize with LFT which may concurrently
+	   * change entry->status to LOGWR_STATUS_FETCH under the same mutex.
+	   */
+	  if (!LSA_ISNULL (&entry->last_sent_eof_lsa) && LSA_LT (&entry->last_sent_eof_lsa, &nxio_lsa))
+	    {
+	      rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
+	      if (entry->status == LOGWR_STATUS_WAIT)
+		{
+		  entry->status = LOGWR_STATUS_DELAY;
+		}
+	      pthread_mutex_unlock (&writer_info->wr_list_mutex);
+	    }
+
+	  if (entry->status == LOGWR_STATUS_WAIT)
+	    {
+	      bool flush_in_progress;
+
+	      /* If a flush is already in progress, join it without sleeping. */
+	      rv = pthread_mutex_lock (&writer_info->flush_wait_mutex);
+	      flush_in_progress = (writer_info->flush_completed == false);
+	      pthread_mutex_unlock (&writer_info->flush_wait_mutex);
+
+	      if (flush_in_progress)
+		{
+		  rv = pthread_mutex_lock (&writer_info->wr_list_mutex);
+		  if (entry->status == LOGWR_STATUS_WAIT)
+		    {
+		      entry->status = LOGWR_STATUS_FETCH;
+		    }
+		  pthread_mutex_unlock (&writer_info->wr_list_mutex);
+		}
+	    }
+	}
+
+      if (entry->status == LOGWR_STATUS_WAIT)
+	{
 	  bool continue_checking = true;
 
 	  if (mode == LOGWR_MODE_ASYNC)
@@ -2703,10 +2742,14 @@ xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MO
 	}
       else
 	{
-	  assert (entry->status == LOGWR_STATUS_DELAY);
+	  assert (entry->status == LOGWR_STATUS_DELAY || entry->status == LOGWR_STATUS_FETCH);
 	  pthread_mutex_unlock (&writer_info->flush_start_mutex);
-	  LOG_CS_ENTER (thread_p);
-	  check_cs_own = true;
+
+	  if (entry->status == LOGWR_STATUS_DELAY)
+	    {
+	      LOG_CS_ENTER (thread_p);
+	      check_cs_own = true;
+	    }
 	}
 
       if (thread_p->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
