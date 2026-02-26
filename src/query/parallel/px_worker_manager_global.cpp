@@ -33,80 +33,124 @@
 namespace parallel_query
 {
   worker_manager_global::worker_manager_global()
+    : m_worker_pool (nullptr),
+      m_init_flag (),
+      m_available (0),
+      m_capacity (0)
   {
-    m_is_initialized = false;
-    m_max_parallel_workers = 0;
-    m_worker_pool = nullptr;
-    m_current_parallel_workers = 0;
   }
 
   worker_manager_global::~worker_manager_global()
   {
-    if (m_worker_pool != nullptr)
-      {
-	cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
-      }
+    destroy();
   }
 
   void worker_manager_global::init()
   {
-    if (m_is_initialized)
-      {
-	return;
-      }
-    m_is_initialized = true;
-    m_max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
-    if (m_max_parallel_workers <= 1)
-      {
-	return;
-      }
-    int pool_size = m_max_parallel_workers;
-    int task_max_count = m_max_parallel_workers * TASK_QUEUE_SIZE_PER_CORE;
-    m_worker_pool = cubthread::get_manager()->create_worker_pool (pool_size, task_max_count,
-		    "parallel_query_worker_pool", NULL, 1, false);
+    std::call_once (m_init_flag, [this] ()
+    {
+      int max_parallel_workers = prm_get_integer_value (PRM_ID_MAX_PARALLEL_WORKERS);
+      if (max_parallel_workers < 2)
+	{
+	  /* parallel execution requires at least 2 workers */
+	  assert (m_worker_pool == nullptr);
+	  return;
+	}
+
+      int pool_size = max_parallel_workers;
+      int task_max_count = max_parallel_workers * TASK_QUEUE_SIZE_PER_CORE;
+
+      assert (m_worker_pool == nullptr);
+      m_worker_pool = cubthread::get_manager()->create_worker_pool (
+			      pool_size, task_max_count,
+			      "parallel_query_worker_pool", NULL, 1, false);
+      if (m_worker_pool == nullptr)
+	{
+	  return;
+	}
+
+      m_capacity = max_parallel_workers;
+      m_available = max_parallel_workers;
+    });
   }
 
   void worker_manager_global::destroy()
   {
-    assert (m_current_parallel_workers.load () == 0);
-    if (m_worker_pool != nullptr)
+    if (m_worker_pool == nullptr)
       {
-	cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
-	m_worker_pool = nullptr;
+	/* init() was not called or failed */
+	return;
       }
-    m_is_initialized = false;
+
+    /* all workers should be released before destroy */
+    assert (m_available.load () == m_capacity);
+
+    cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
+    m_worker_pool = nullptr;
   }
 
-  bool worker_manager_global::try_reserve_workers (int parallelism)
+  int worker_manager_global::try_reserve_workers (const int num_workers)
   {
-    int expected;
+    assert (num_workers > 0);
+    assert (num_workers <= PRM_MAX_PARALLELISM);
+
+    /* safe-guard */
+    if (num_workers <= 0)
+      {
+	return 0;
+      }
+
+    /* safe-guard */
+    int requested = MIN (num_workers, PRM_MAX_PARALLELISM);
+
+    /* minimum parallel degree:
+     * - 2 for parallel execution (heap scan, hash join, sort)
+     * - 1 for parallel subquery (main thread + 1 worker for uncorrelated subquery)
+     */
+    const int min_degree = (requested == 1) ? 1 : 2;
+
+    int available = m_available.load ();
+
     while (true)
       {
-	expected = m_current_parallel_workers.load ();
-	if (expected + parallelism > m_max_parallel_workers)
+	/* check if enough workers available */
+	if (available < min_degree)
 	  {
-	    return false;
+	    return 0;
 	  }
-	if (m_current_parallel_workers.compare_exchange_weak (expected, expected + parallelism))
+
+	/* reserve as many as possible, up to requested */
+	int reserved = (requested <= available) ? requested : available;
+
+	if (m_available.compare_exchange_weak (available, available - reserved))
 	  {
-	    break;
+	    return reserved;
 	  }
-	else
-	  {
-	    std::this_thread::yield();
-	  }
+
+	/* CAS failed: available is updated with actual value, retry */
+	std::this_thread::yield ();
       }
-    return true;
   }
 
-  void worker_manager_global::release_workers (int parallelism)
+  void worker_manager_global::release_workers (const int num_workers)
   {
-    m_current_parallel_workers.fetch_sub (parallelism);
+    assert (num_workers > 0);
+    assert (m_worker_pool != nullptr);
+    assert (m_available.load () + num_workers <= m_capacity);
+
+    /* safe-guard */
+    if (num_workers <= 0)
+      {
+	return;
+      }
+
+    m_available.fetch_add (num_workers);
   }
 
   void worker_manager_global::push_task (cubthread::entry_task *task)
   {
+    assert (task != nullptr);
+    assert (m_worker_pool != nullptr);
     cubthread::get_manager()->push_task (m_worker_pool, task);
   }
-
 }
