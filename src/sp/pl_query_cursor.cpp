@@ -96,10 +96,11 @@ namespace cubpl
 	    m_query_entry = qmgr_get_query_entry (m_thread, m_query_id, tran_index);
 	  }
 
-	if (m_query_entry && m_query_entry->list_id)
+	if (m_query_entry)
 	  {
 	    // Since the list was not created in this thread,
 	    // incrementing the count of the list (m_qlist_count) is required
+	    // to make the assertion on m_qlist_count in qexec_execute_query() hold
 	    qfile_update_qlist_count (m_thread, m_query_entry->list_id, 1);
 	    qfile_close_list (m_thread, m_query_entry->list_id);
 	  }
