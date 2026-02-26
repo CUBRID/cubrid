@@ -34,9 +34,22 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Configure oh-my-opencode
+      - name: Cache oh-my-opencode
+        id: cache-oh-my-opencode
+        uses: actions/cache@v4
+        with:
+          path: ~/.oh-my-opencode-global
+          key: oh-my-opencode-${{ runner.os }}-${{ runner.arch }}-latest
+
+      - name: Install oh-my-opencode
+        if: steps.cache-oh-my-opencode.outputs.cache-hit != 'true'
+        shell: bash
+        run: npm install -g oh-my-opencode --prefix ~/.oh-my-opencode-global
+
+      - name: Configure and Add oh-my-opencode to PATH
+        shell: bash
         run: |
-          npm install -g oh-my-opencode
+          echo "$HOME/.oh-my-opencode-global/bin" >> $GITHUB_PATH
           mkdir -p $HOME/.config/opencode
           echo '{"plugin":["oh-my-opencode@latest"]}' > $HOME/.config/opencode/opencode.json
 
