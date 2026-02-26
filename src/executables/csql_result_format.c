@@ -347,15 +347,15 @@ add_commas (char *string)
   if (num_of_commas)
     {
       char *temp;
-      int l1, l2;
+      int src_idx, dest_idx;
 
-      l1 = string_len;
-      l2 = string_len + num_of_commas;
+      src_idx = string_len;
+      dest_idx = string_len + num_of_commas;
 
       temp = string;
 
-      temp[l2--] = '\0';
-      l1--;
+      temp[dest_idx--] = '\0';
+      src_idx--;
 
       /* Checks for a decimal point to avoid double-free core dumps in the scenarios described below
        *  select cast(23421.234 as numeric(7,0));  
@@ -364,22 +364,22 @@ add_commas (char *string)
 	{
 	  do
 	    {
-	      temp[l2--] = string[l1--];
+	      temp[dest_idx--] = string[src_idx--];
 	    }
-	  while (string[l1] != '.');
-	  temp[l2--] = string[l1--];
+	  while (string[src_idx] != '.');
+	  temp[dest_idx--] = string[src_idx--];
 	}
 
       for (i = 0; num_of_commas; i++)
 	{
 	  if (i && !(i % 3) && num_of_commas)
 	    {
-	      temp[l2--] = COMMA_CHAR;
+	      temp[dest_idx--] = COMMA_CHAR;
 	      --num_of_commas;
 	    }
-	  if (l1 && l2)
+	  if (src_idx && dest_idx)
 	    {
-	      temp[l2--] = string[l1--];
+	      temp[dest_idx--] = string[src_idx--];
 	    }
 	}
     }
