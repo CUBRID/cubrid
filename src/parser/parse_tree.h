@@ -825,6 +825,7 @@ struct json_t;
 #define PT_METHOD_ARG_LIST(n)           ((n)->info.method_call.arg_list)
 #define PT_METHOD_CALL_AUTH_ID(n)	((n)->info.method_call.auth_id)
 #define PT_METHOD_CALL_AUTH_NAME(n)	((n)->info.method_call.auth_name)
+#define PT_METHOD_CALL_ON_CALL_TARGET(n)	((n)->info.method_call.on_call_target)
 
 /* Check node_type of PT_NODE */
 #define PT_NODE_IS_EXPR(n)		(PT_ASSERT_NOT_NULL ((n)), (n)->node_type == PT_EXPR)
