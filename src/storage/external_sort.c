@@ -1545,7 +1545,7 @@ cleanup:
 	}
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
-      sort_param->px_worker_manager->release_workers (sort_param->px_parallel_num);
+      sort_param->px_worker_manager->release_workers ();
       free_and_init (px_sort_param);
     }
   else

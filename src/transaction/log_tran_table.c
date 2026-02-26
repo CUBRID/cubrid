@@ -4007,7 +4007,6 @@ MVCC_SNAPSHOT *
 logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  THREAD_ENTRY *parent_thread_p = NULL;
   if (!tdes->is_active_worker_transaction ())
     {
       /* System transactions do not have snapshots */
@@ -4016,19 +4015,12 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 
   assert (tdes != NULL);
 
+  THREAD_ENTRY *main_thread_p = NULL;
+
   if (thread_p->m_px_orig_thread_entry != NULL)
     {
-      parent_thread_p = thread_p->m_px_orig_thread_entry;
-      while (parent_thread_p->m_px_orig_thread_entry != NULL)
-	{
-	  if (parent_thread_p->m_px_orig_thread_entry == parent_thread_p)
-	    {
-	      break;
-	    }
-	  parent_thread_p = parent_thread_p->m_px_orig_thread_entry;
-	  assert (parent_thread_p != thread_p);
-	}
-      pthread_mutex_lock (&parent_thread_p->m_px_lock_mutex);
+      main_thread_p = thread_get_main_thread (thread_p);
+      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     }
 
   if (!tdes->mvccinfo.snapshot.valid)
@@ -4036,9 +4028,9 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
       log_Gl.mvcc_table.build_mvcc_info (*tdes);
     }
 
-  if (parent_thread_p != NULL)
+  if (main_thread_p != NULL)
     {
-      pthread_mutex_unlock (&parent_thread_p->m_px_lock_mutex);
+      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
     }
 
   return &tdes->mvccinfo.snapshot;
