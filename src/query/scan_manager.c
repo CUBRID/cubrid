@@ -4455,7 +4455,11 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
 #if SERVER_MODE && !WINDOWS
     case S_PARALLEL_HEAP_SCAN:
-      scan_reset_scan_block_parallel_heap_scan (thread_p, s_id);
+      if (scan_reset_scan_block_parallel_heap_scan (thread_p, s_id) != NO_ERROR)
+	{
+	  status = S_ERROR;
+	  break;
+	}
       break;
 #endif /* SERVER_MODE && !WINDOWS */
 
