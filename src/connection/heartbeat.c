@@ -90,6 +90,7 @@ static int hb_process_master_request (void);
 
 static CSS_CONN_ENTRY *hb_Conn = NULL;
 
+// class variable for network_cl
 #define __gv_cvar (__gv_network_cl)
 #endif //#if defined(CS_MODE)
 
@@ -743,7 +744,6 @@ hb_process_term (void)
   if (hb_Conn)
     {
       css_shutdown_conn (hb_Conn);
-      // TODO: When will allocated memory be cleaned up?
       hb_Conn = NULL;
     }
   hb_Proc_shutdown = true;

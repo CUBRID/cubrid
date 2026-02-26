@@ -50,12 +50,12 @@
 class connection_cl:public connection_support
 {
 private:
-//  /* the queue anchor for all the connection structures */
-//  CSS_CONN_ENTRY * css_Conn_anchor;
-//  int css_Client_id;
+/* the queue anchor for all the connection structures */
+//  CSS_CONN_ENTRY * m_css_conn_anchor;
+//  int m_css_client_id;
 
 public:
-  int m_master_port_id;
+  int m_service_port_id;
 
 private:
   void css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);

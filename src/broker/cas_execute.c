@@ -68,7 +68,7 @@
 #include "system_parameter.h"
 #include "schema_manager.h"
 #include "object_representation.h"
-#include "client_support.h"	//#include "connection_cl.h"
+#include "connection_cl.h"
 #include "db_set_function.h"
 #include "dbi.h"
 #include "parse_tree.h"

@@ -1511,12 +1511,14 @@ css_set_net_header (NET_HEADER * header_p, int type, short function_code, int re
  */
 #if defined (SERVER_MODE)
 static int
-#else
-int
-  connection_support::
-#endif
 css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id,
 				   const char *arg_buffer, int arg_size, char *reply_buffer, int reply_size)
+#else
+int
+connection_support::css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned short *request_id,
+						       const char *arg_buffer, int arg_size, char *reply_buffer,
+						       int reply_size)
+#endif
 {
 /* *INDENT-OFF* */
   NET_HEADER local_header = DEFAULT_HEADER_DATA;
@@ -1557,7 +1559,6 @@ css_send_request_with_data_buffer (CSS_CONN_ENTRY * conn, int request, unsigned 
   return ERROR_ON_WRITE;
 }
 
-//#if !defined (CS_MODE) && !defined (SA_MODE)
 #if defined (SERVER_MODE)
 /*
  * css_send_request() - to send a request to the server without registering
@@ -2672,7 +2673,7 @@ css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int timeout)
 
 
 
-#if defined(CS_MODE) || defined(SA_MODE)
+#if !defined (SERVER_MODE)
 /*
  * css_send_request_no_reply () - transfer a request to the server (no reply)
  *   return: enum css_error_code (See connection_defs.h)

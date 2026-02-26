@@ -76,7 +76,7 @@
 #include "util_func.h"
 #include "master_server_monitor.hpp"
 
-/* The __gv_cls_conn_cl is declared within mater_request.c. */
+// The __gv_cls_conn_cl is declared within mater_request.c
 extern class connection_cl __gv_cls_conn_cl;
 #define __gv_cvar (__gv_cls_conn_cl)
 

@@ -106,8 +106,7 @@ extern int css_platform_independent_poll (POLL_FD * fds, int num_of_fds, int tim
 extern int css_send_request_with_socket (SOCKET & socket, int command, unsigned short *request_id,
 					 const char *arg_buffer, int arg_buffer_size);
 #endif
-#if 1
-//#if defined (CS_MODE) || defined (SA_MODE)
+
 #if !defined (SERVER_MODE)
 class connection_support:public connection_list_cl
 {
@@ -145,7 +144,7 @@ public:
 				      char *reply_buffer, int reply_size);
 #endif
 };
-#endif /* defined (CS_MODE) || defined (SA_MODE) */
-#endif
+#endif /* !defined (SERVER_MODE) */
+
 
 #endif /* _CONNECTION_SUPPORT_H_ */

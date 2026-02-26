@@ -96,7 +96,6 @@
 
 #if defined(CS_MODE)
 #include "network.h"
-#include "client_support.h"	//#include "connection_cl.h"
 #endif /* CS_MODE */
 #include "network_interface_cl.h"
 
@@ -1656,13 +1655,6 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	    }
 	}
 
-#if 0				// ctshim
-      if (client_type == DB_CLIENT_TYPE_CSQL)
-	{
-	  printf ("*** set max work = %d\n", 5);
-	  //__gv_network_cl.css_set_client_multi_connect (5);
-	}
-#endif
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n", db->name, hostlist[n]);
       error = __gv_network_cl.net_client_init (db->name, hostlist[n]);
       if (error != NO_ERROR)

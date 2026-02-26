@@ -55,9 +55,6 @@
 #include "porting.h"
 #include "cubrid_getopt.h"
 
-class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
-
 #define COMMDB_CMD_ALLOWED_ON_REMOTE() \
   ((commdb_Arg_deact_stop_all == true) \
   || (commdb_Arg_deact_confirm_stop_all == true) 	\
@@ -140,6 +137,11 @@ static bool commdb_Arg_ha_start_util_process = false;
 static char *commdb_Arg_ha_util_process_args = NULL;
 static bool commdb_Arg_shutdown_reviving_server = false;
 static char *commdb_Arg_shutdown_reviving_server_name = NULL;
+
+// class variable for connection_cl
+class connection_cl __gv_cls_conn_cl;
+#define __gv_cvar (__gv_cls_conn_cl)
+
 
 /*
  * send_request_no_args() - send request without argument

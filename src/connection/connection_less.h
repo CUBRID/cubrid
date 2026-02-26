@@ -34,7 +34,9 @@ private:
   unsigned short m_entry_id;
 
 public:
-  int m_work_seqno;		// ctshim
+#if defined(MULTI_CONN_TO_A_SERVER)
+  int m_work_seqno;
+#endif
 
 private:
   unsigned short css_make_entry_id (CSS_MAP_ENTRY * anchor);
@@ -60,7 +62,9 @@ public:
     connection_less ()
   {
     m_entry_id = 0;
+#if defined(MULTI_CONN_TO_A_SERVER)
     m_work_seqno = -1;
+#endif
   };
   ~connection_less ()
   {

@@ -71,8 +71,6 @@
 #else /* WINDOWS */
 #include "tcp.h"
 #endif /* WINDOWS */
-//#include "connection_list_cl.h"
-#include "connection_support.h"
 #include "connection_cl.h"
 #include "master_util.h"
 
@@ -99,9 +97,14 @@
 CSS_CONN_ENTRY *css_Conn_anchor = NULL;
 int css_Client_id = 0;
 
+#if defined(MULTI_CONN_TO_A_SERVER)
 pthread_mutex_t Conn_anchor_lock = PTHREAD_MUTEX_INITIALIZER;
 #define CS_LOCK()   pthread_mutex_lock(&Conn_anchor_lock)
 #define CS_UnLOCK() pthread_mutex_unlock(&Conn_anchor_lock)
+#else
+#define CS_LOCK()
+#define CS_UnLOCK()
+#endif
 
 /*
  * css_shutdown_conn () -
@@ -126,9 +129,9 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
 
 connection_cl::connection_cl ()
 {
-  //css_Conn_anchor = NULL;
-  //css_Client_id = 0;
-  m_master_port_id = DEFAULT_MASTER_PORT_NO;
+  //m_css_conn_anchor = NULL;
+  //m_css_client_id = 0;
+  m_service_port_id = DEFAULT_MASTER_PORT_NO;
 }
 
 connection_cl::~connection_cl ()
@@ -147,7 +150,9 @@ connection_cl::css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->request_id = 0;
   conn->fd = fd;
   conn->status = CONN_OPEN;
+  CS_LOCK ();
   conn->client_id = ++css_Client_id;
+  CS_UnLOCK ();
   conn->data_queue = NULL;
   conn->request_queue = NULL;
   conn->abort_queue = NULL;
@@ -249,7 +254,6 @@ connection_cl::css_free_conn (CSS_CONN_ENTRY * conn)
  *   fd(in): Socket fd
  */
 CSS_CONN_ENTRY *
-//connection_cl::
 css_find_conn_from_fd (SOCKET fd)
 {
   CSS_CONN_ENTRY *p;
@@ -794,7 +798,7 @@ connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char 
     }
 
   /* timeout in second in css_common_connect() */
-  return (css_common_connect (host_name, conn, DATA_REQUEST, server_name, length, m_master_port_id,
+  return (css_common_connect (host_name, conn, DATA_REQUEST, server_name, length, m_service_port_id,
 			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
 }
 
@@ -889,7 +893,7 @@ connection_cl::css_connect_to_master_server (int master_port_id, const char *ser
   int datagram_fd, socket_fd;
 #endif
 
-  m_master_port_id = master_port_id;
+  m_service_port_id = master_port_id;
   if (GETHOSTNAME (hname, CUB_MAXHOSTNAMELEN) != 0)
     {
       return NULL;

@@ -27,7 +27,6 @@
 #include <stdio.h>
 #include <string.h>
 
-//#include "connection_cl.h"
 #include "connection_less.h"
 
 #if defined(SERVER_MODE)
@@ -166,21 +165,22 @@ CSS_MAP_ENTRY *
 connection_less::css_get_queued_entry (char *host, CSS_MAP_ENTRY * anchor)
 {
   CSS_MAP_ENTRY *map_entry_p;
-
+#if defined(MULTI_CONN_TO_A_SERVER)
   int seqno = 0;
+#endif
 
   for (map_entry_p = anchor; map_entry_p; map_entry_p = map_entry_p->next)
     {
       if (strcmp (host, map_entry_p->key) == 0)
 	{
 #if defined(MULTI_CONN_TO_A_SERVER)
-	  // (map_entry_p->conn_ownerid) 
-#endif
 	  if (m_work_seqno == -1 || (++seqno == m_work_seqno))
 	    {
-	      //printf ("***\t\t find work_seqno = %d\n", m_work_seqno);
 	      return (map_entry_p);
 	    }
+#else
+	  return (map_entry_p);
+#endif
 	}
     }
 

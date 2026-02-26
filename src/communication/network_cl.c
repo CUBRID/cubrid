@@ -88,7 +88,9 @@
   } while (0)
 
 #if defined(CS_MODE)
-unsigned short method_request_id;	// TODO: ctshim
+#if !defined(MULTI_CONN_TO_A_SERVER)
+unsigned short method_request_id;	// TODO: dive into class network_cl or connection_cl
+#endif
 #endif /* CS_MODE */
 
 class network_cl __gv_network_cl;
@@ -438,7 +440,7 @@ network_cl::net_client_request_no_reply (int request, char *argbuf, int argsize)
   rc = css_send_req_to_server_no_reply (net_Server_host, request, argbuf, argsize);
   if (rc == 0)
     {
-      error = css_Errno;
+      error = css_get_errno ();
       return set_server_error (error);
     }
 
@@ -492,7 +494,7 @@ network_cl::net_client_request_internal (int request, char *argbuf, int argsize,
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
     {
-      error = css_Errno;
+      error = css_get_errno ();
       return set_server_error (error);
     }
 
@@ -614,7 +616,7 @@ network_cl::net_client_request_send_large_data (int request, char *argbuf, int a
 
   if (rc == 0)
     {
-      error = css_Errno;
+      error = css_get_errno ();
       return set_server_error (error);
     }
 
@@ -707,7 +709,7 @@ network_cl::net_client_request_recv_large_data (int request, char *argbuf, int a
       rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
       if (rc == 0)
 	{
-	  return set_server_error (css_Errno);
+	  return set_server_error (css_get_errno ());
 	}
 
       error = css_receive_data_from_server (rc, &reply, &size);
@@ -819,7 +821,7 @@ network_cl::net_client_request2 (int request, char *argbuf, int argsize, char *r
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
     {
-      error = css_Errno;
+      error = css_get_errno ();
       return set_server_error (error);
     }
 
@@ -926,7 +928,7 @@ network_cl::net_client_request2_no_malloc (int request, char *argbuf, int argsiz
       rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
       if (rc == 0)
 	{
-	  return set_server_error (css_Errno);
+	  return set_server_error (css_get_errno ());
 	}
 
       error = css_receive_data_from_server (rc, &reply, &size);
@@ -1025,7 +1027,7 @@ network_cl::net_client_request_3_data (int request, char *argbuf, int argsize, c
 				       databuf2, datasize2, NULL, 0);
       if (rid == 0)
 	{
-	  return set_server_error (css_Errno);
+	  return set_server_error (css_get_errno ());
 	}
 
       css_queue_receive_data_buffer (rid, reply0, replysize0);
@@ -1161,7 +1163,7 @@ network_cl::net_client_request_with_callback (int request, char *argbuf, int arg
 				       databuf2, datasize2, replybuf, replysize);
       if (rc == 0)
 	{
-	  return set_server_error (css_Errno);
+	  return set_server_error (css_get_errno ());
 	}
 
       do
@@ -1749,7 +1751,7 @@ network_cl::net_client_request_method_callback (int request, char *argbuf, int a
 					  replybuf, replysize);
       if (rc == 0)
 	{
-	  return set_server_error (css_Errno);
+	  return set_server_error (css_get_errno ());
 	}
     }
 
@@ -1956,7 +1958,7 @@ network_cl::net_client_check_log_header (LOGWR_CONTEXT * ctx_ptr, char *argbuf, 
 					   replybuf, replysize);
 	  if (rc == 0)
 	    {
-	      return set_server_error (css_Errno);
+	      return set_server_error (css_get_errno ());
 	    }
 	  ctx_ptr->rc = rc;
 	}
@@ -2081,7 +2083,7 @@ network_cl::net_client_request_with_logwr_context (LOGWR_CONTEXT * ctx_ptr, int 
 					   databuf2, datasize2, replybuf, replysize);
 	  if (rc == 0)
 	    {
-	      return set_server_error (css_Errno);
+	      return set_server_error (css_get_errno ());
 	    }
 	  ctx_ptr->rc = rc;
 	}
@@ -2323,7 +2325,7 @@ network_cl::net_client_request_recv_copyarea (int request, char *argbuf, int arg
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, NULL, 0, replybuf, replysize);
   if (rc == 0)
     {
-      return set_server_error (css_Errno);
+      return set_server_error (css_get_errno ());
     }
 
   /*
@@ -2511,7 +2513,7 @@ network_cl::net_client_request_2recv_copyarea (int request, char *argbuf, int ar
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
     {
-      return set_server_error (css_Errno);
+      return set_server_error (css_get_errno ());
     }
 
   *eid = rc;
@@ -2746,7 +2748,7 @@ network_cl::net_client_request_3_data_recv_copyarea (int request, char *argbuf, 
 				   datasize2, replybuf, replysize);
   if (rid == 0)
     {
-      return set_server_error (css_Errno);
+      return set_server_error (css_get_errno ());
     }
 
   error = css_receive_data_from_server (rid, &reply, &size);
@@ -3125,7 +3127,7 @@ network_cl::net_client_request_3recv_copyarea (int request, char *argbuf, int ar
   rc = css_send_req_to_server (net_Server_host, request, argbuf, argsize, databuf, datasize, replybuf, replysize);
   if (rc == 0)
     {
-      return set_server_error (css_Errno);
+      return set_server_error (css_get_errno ());
     }
 
   /*
@@ -3348,7 +3350,7 @@ network_cl::net_client_request_recv_stream (int request, char *argbuf, int argsi
 			    recv_replybuf, recv_replybuf_size);
   if (rc == 0)
     {
-      error = set_server_error (css_Errno);
+      error = set_server_error (css_get_errno ());
       goto end;
     }
 

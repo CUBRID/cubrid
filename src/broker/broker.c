@@ -78,9 +78,6 @@
 #include "broker_wsa_init.h"
 #endif
 
-class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
-
 #ifdef WIN_FW
 #if !defined(WINDOWS)
 #error DEFINE ERROR
@@ -218,6 +215,11 @@ enum SERVER_STATE
   SERVER_STATE_REGISTERED_AND_ACTIVE = 7,
   SERVER_STATE_REGISTERED_AND_TO_BE_ACTIVE = 8
 };
+
+// class variable for connection_cl
+class connection_cl __gv_cls_conn_cl;
+#define __gv_cvar (__gv_cls_conn_cl)
+
 
 typedef struct t_clt_table T_CLT_TABLE;
 struct t_clt_table

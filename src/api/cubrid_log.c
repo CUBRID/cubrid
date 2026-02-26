@@ -56,10 +56,6 @@
 #include "wintcp.h"
 #endif
 
-class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
-
-
 #define CUBRID_LOG_WRITE_TRACELOG(msg, ...) \
   do\
     {\
@@ -102,6 +98,9 @@ typedef enum
   DATA_ITEM_TYPE_TIMER
 } DATA_ITEM_TYPE;
 
+// class variable for connection_cl
+class connection_cl __gv_cls_conn_cl;
+#define __gv_cvar (__gv_cls_conn_cl)
 
 CUBRID_LOG_STAGE g_stage = CUBRID_LOG_STAGE_CONFIGURATION;
 

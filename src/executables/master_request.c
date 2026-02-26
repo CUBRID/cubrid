@@ -58,11 +58,6 @@
 #include "master_heartbeat.h"
 #include "master_server_monitor.hpp"
 
-#if !defined(SERVER_MODE)
-class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
-#endif
-
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -74,6 +69,12 @@ class connection_cl __gv_cls_conn_cl;
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
+
+#if !defined(SERVER_MODE)
+// class variable for connection_cl
+class connection_cl __gv_cls_conn_cl;
+#define __gv_cvar (__gv_cls_conn_cl)
+#endif
 
 static void css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, int command);
 static void css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, const char *message);

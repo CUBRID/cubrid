@@ -42,7 +42,6 @@
 #include "error_manager.h"
 #include "system_parameter.h"
 #include "connection_cl.h"
-
 #include "util_func.h"
 #include "util_support.h"
 
@@ -58,6 +57,7 @@
 
 #include <string>
 
+// class variable for connection_cl
 class connection_cl __gv_cls_conn_cl;
 #define __gv_cvar (__gv_cls_conn_cl)
 

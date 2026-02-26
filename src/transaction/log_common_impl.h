@@ -50,6 +50,7 @@
 #define NUM_NON_SYSTEM_TRANS (css_get_max_conn ())
 #define MAX_NTRANS \
   (NUM_NON_SYSTEM_TRANS + NUM_SYSTEM_TRANS)
+
 #define VACUUM_NULL_LOG_BLOCKID -1
 
 enum LOG_HA_FILESTAT

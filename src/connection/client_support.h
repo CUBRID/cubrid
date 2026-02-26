@@ -34,30 +34,42 @@
 #error Belongs to not server module
 #endif
 
+#define MAX_MULTIPLE_CONNECTION (100)
 class client_support:public connection_less, public connection_cl
 {
 private:
-  int m_multiple_count;
-  CSS_MAP_ENTRY *css_Client_anchor;	// connection_less의 멤버로 이동하면 함수 호출이 단순해짐
+  int m_multiple_count;		// TODO: multi-connection support
+  int m_css_errno;
+
+  // TODO: Integrating this into connection_less reduces function call complexity
+  CSS_MAP_ENTRY *m_css_Client_anchor;
 
 private:
   static void css_handle_pipe_shutdown (int sig);
   void css_set_pipe_signal (void);
   int css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid);
 
-//protected:
-public:
-  int css_Errno;
+protected:
+  int css_get_errno ()
+  {
+    return m_css_errno;
+  };
 
 public:
-    client_support ();
-   ~client_support ();
+  client_support ();
+  ~client_support ();
 
   int css_set_client_multi_connect (int max)
   {
-    if (max >= 1)
-      m_multiple_count = max;
-    return NO_ERROR;
+    // TODO:
+#if defined(MULTI_CONN_TO_A_SERVER)
+    if (max >= 0 && max <= MAX_MULTIPLE_CONNECTION)
+      {
+	m_multiple_count = (max > 0) ? max : 1;
+	return NO_ERROR;
+      }
+#endif
+    return ER_FAILED;
   }
 
   int css_client_init (int sockid, const char *server_name, const char *host_name);

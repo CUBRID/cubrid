@@ -953,15 +953,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 
 	  if (csql_execute)
 	    {
-#if 0				//defined(CS_MODE)  // ctshim
-	      static int xdbg = 0;
-	      if (++xdbg > 5)
-		{
-		  xdbg = 1;
-		}
-	      __gv_network_cl.m_work_seqno = xdbg;
-	      printf ("*** set work_seqno = %d\n", xdbg);
-#endif
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
 	      csql_edit_contents_clear ();
