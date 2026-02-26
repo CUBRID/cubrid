@@ -1612,8 +1612,8 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   ptr = or_pack_int (ptr, NO_ERROR);
 
   error =
-    __gv_network_cl.net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-						 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
+    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
   if (error != NO_ERROR)
     {
       return error;
@@ -1638,8 +1638,8 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
   ptr = or_pack_int (ptr, ER_GENERIC_ERROR);
 
   error =
-    __gv_network_cl.net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-						 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
+    net_client_check_log_header (&ctx, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				 OR_ALIGNED_BUF_SIZE (a_reply), (char **) &logpg_area, verbose);
   return error;
 }
 #endif /* !WINDOWS */
@@ -1740,11 +1740,11 @@ end:
       if (logwr_Gl.start_pageid >= NULL_PAGEID && error == NO_ERROR)
 	{
 	  /* to shutdown log writer thread of cub_server */
-	  __gv_network_cl.net_client_logwr_send_end_msg (ctx.rc, ER_FAILED);
+	  net_client_logwr_send_end_msg (ctx.rc, ER_FAILED);
 	}
       else
 	{
-	  __gv_network_cl.net_client_logwr_send_end_msg (ctx.rc, error);
+	  net_client_logwr_send_end_msg (ctx.rc, error);
 	}
     }
 

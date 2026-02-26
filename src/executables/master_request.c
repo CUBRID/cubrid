@@ -41,7 +41,7 @@
 
 #include "system_parameter.h"
 #include "connection_globals.h"
-#include "connection_cl.h"
+#include "client_support.h"
 #include "error_manager.h"
 #include "utility.h"
 #include "message_catalog.h"
@@ -69,12 +69,6 @@
 #define HA_SERVER_FORMAT_STRING " HA-Server %s (rel %s, pid %d)\n"
 #define HA_COPYLOGDB_FORMAT_STRING " HA-copylogdb %s (rel %s, pid %d)\n"
 #define HA_APPLYLOGDB_FORMAT_STRING " HA-applylogdb %s (rel %s, pid %d)\n"
-
-#if !defined(SERVER_MODE)
-// class variable for connection_cl
-class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
-#endif
 
 static void css_send_command_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, int command);
 static void css_send_message_to_server (const SOCKET_QUEUE_ENTRY * sock_entry, const char *message);

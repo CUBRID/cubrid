@@ -52,6 +52,8 @@
 
 static void (*css_Previous_sigpipe_handler) (int sig_no) = NULL;
 
+class client_support __gv_client_support;
+
 client_support::client_support ()
 {
   m_css_Client_anchor = NULL;

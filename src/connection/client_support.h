@@ -50,7 +50,8 @@ private:
   void css_set_pipe_signal (void);
   int css_test_for_server_errors (CSS_MAP_ENTRY * entry, unsigned int eid);
 
-protected:
+//protected:
+public:
   int css_get_errno ()
   {
     return m_css_errno;
@@ -97,5 +98,9 @@ public:
 };
 
 extern HA_SERVER_STATE css_ha_server_state (void);
+
+extern class client_support __gv_client_support;
+#define __gv_cvar (__gv_client_support)
+
 
 #endif /* _CLIENT_SUPPORT_H_ */

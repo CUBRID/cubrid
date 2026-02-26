@@ -41,7 +41,7 @@
 #endif /* SOLARIS || LINUX */
 
 #include "connection_defs.h"
-#include "connection_cl.h"
+#include "client_support.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
 #endif /* WINDOWS */
@@ -137,11 +137,6 @@ static bool commdb_Arg_ha_start_util_process = false;
 static char *commdb_Arg_ha_util_process_args = NULL;
 static bool commdb_Arg_shutdown_reviving_server = false;
 static char *commdb_Arg_shutdown_reviving_server_name = NULL;
-
-// class variable for connection_cl
-class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
-
 
 /*
  * send_request_no_args() - send request without argument

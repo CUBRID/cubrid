@@ -89,9 +89,6 @@ static const char *hb_type_to_str (HB_PROC_TYPE type);
 static int hb_process_master_request (void);
 
 static CSS_CONN_ENTRY *hb_Conn = NULL;
-
-// class variable for network_cl
-#define __gv_cvar (__gv_network_cl)
 #endif //#if defined(CS_MODE)
 
 static char hb_Exec_path[PATH_MAX];

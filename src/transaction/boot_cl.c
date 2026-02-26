@@ -1384,7 +1384,7 @@ boot_shutdown_client (bool is_er_final)
 	{
 	  (void) boot_unregister_client (tm_Tran_index);
 #if defined(CS_MODE)
-	  (void) __gv_network_cl.net_client_final ();
+	  (void) net_client_final (false);
 #else /* CS_MODE */
 #if defined(WINDOWS)
 	  css_windows_shutdown ();
@@ -1466,7 +1466,7 @@ boot_server_die_or_changed (void)
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
       boot_Is_client_all_final = false;
 #if defined(CS_MODE)
-      __gv_network_cl.css_terminate (true);
+      net_client_final (true);
 #endif /* !CS_MODE */
       if (prm_get_bool_value (PRM_ID_TEST_MODE))
 	{
@@ -1656,7 +1656,7 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	}
 
       er_log_debug (ARG_FILE_LINE, "trying to connect '%s@%s'\n", db->name, hostlist[n]);
-      error = __gv_network_cl.net_client_init (db->name, hostlist[n]);
+      error = net_client_init (db->name, hostlist[n]);
       if (error != NO_ERROR)
 	{
 	  if (error == ERR_CSS_TCP_CONNECT_TIMEDOUT)
@@ -1680,10 +1680,10 @@ boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabiliti
 	  er_log_debug (ARG_FILE_LINE, "ping server with handshake\n");
 	  /* ping to validate availability and to check compatibility */
 	  er_clear ();
-	  error = __gv_network_cl.net_client_ping_server_with_handshake (client_type, check_capabilities, opt_cap);
+	  error = net_client_ping_server_with_handshake (client_type, check_capabilities, opt_cap);
 	  if (error != NO_ERROR)
 	    {
-	      __gv_network_cl.css_terminate (false);
+	      net_client_final (false);
 	    }
 	}
 

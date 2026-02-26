@@ -50,7 +50,7 @@
 #endif
 
 #include "connection_defs.h"
-#include "connection_cl.h"
+#include "client_support.h"
 
 #include "system_parameter.h"
 #include "databases_file.h"
@@ -215,11 +215,6 @@ enum SERVER_STATE
   SERVER_STATE_REGISTERED_AND_ACTIVE = 7,
   SERVER_STATE_REGISTERED_AND_TO_BE_ACTIVE = 8
 };
-
-// class variable for connection_cl
-class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
-
 
 typedef struct t_clt_table T_CLT_TABLE;
 struct t_clt_table

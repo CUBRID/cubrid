@@ -58,7 +58,7 @@
 #include "porting.h"
 #include "error_manager.h"
 #include "connection_globals.h"
-#include "connection_cl.h"
+#include "client_support.h"
 #include "system_parameter.h"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -75,10 +75,6 @@
 #include "dbi.h"
 #include "util_func.h"
 #include "master_server_monitor.hpp"
-
-// The __gv_cls_conn_cl is declared within mater_request.c
-extern class connection_cl __gv_cls_conn_cl;
-#define __gv_cvar (__gv_cls_conn_cl)
 
 static void css_master_error (const char *error_string);
 static int css_master_timeout (void);

@@ -295,8 +295,8 @@ locator_fetch (OID * oidp, int chn, LOCK lock, LC_FETCH_VERSION_TYPE fetch_versi
   *fetch_copyarea = NULL;
 
   req_error =
-    __gv_network_cl.net_client_request_recv_copyarea (NET_SERVER_LC_FETCH, request, OR_ALIGNED_BUF_SIZE (a_request),
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
+    net_client_request_recv_copyarea (NET_SERVER_LC_FETCH, request, OR_ALIGNED_BUF_SIZE (a_request),
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (!req_error)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
@@ -361,8 +361,8 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
   *fetch_copyarea = NULL;
 
   req_error =
-    __gv_network_cl.net_client_request_recv_copyarea (NET_SERVER_LC_GET_CLASS, request, OR_ALIGNED_BUF_SIZE (a_request),
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
+    net_client_request_recv_copyarea (NET_SERVER_LC_GET_CLASS, request, OR_ALIGNED_BUF_SIZE (a_request),
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (!req_error)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
@@ -436,8 +436,8 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   *fetch_copyarea = NULL;
 
   req_error =
-    __gv_network_cl.net_client_request_recv_copyarea (NET_SERVER_LC_FETCHALL, request, OR_ALIGNED_BUF_SIZE (a_request),
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
+    net_client_request_recv_copyarea (NET_SERVER_LC_FETCHALL, request, OR_ALIGNED_BUF_SIZE (a_request),
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (req_error == NO_ERROR)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
@@ -536,8 +536,8 @@ locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_c
     }
 
   req_error =
-    __gv_network_cl.net_client_request_recv_copyarea (NET_SERVER_LC_DOESEXIST, request, OR_ALIGNED_BUF_SIZE (a_request),
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
+    net_client_request_recv_copyarea (NET_SERVER_LC_DOESEXIST, request, OR_ALIGNED_BUF_SIZE (a_request),
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), fetch_copyarea);
   if (!req_error)
     {
       ptr = reply + NET_COPY_AREA_SENDRECV_SIZE;
@@ -592,8 +592,8 @@ locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea)
 
   *synch_copyarea = NULL;
   req_error =
-    __gv_network_cl.net_client_request_recv_copyarea (NET_SERVER_LC_NOTIFY_ISOLATION_INCONS, NULL, 0, reply,
-						      OR_ALIGNED_BUF_SIZE (a_reply), synch_copyarea);
+    net_client_request_recv_copyarea (NET_SERVER_LC_NOTIFY_ISOLATION_INCONS, NULL, 0, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), synch_copyarea);
 
   if (!req_error)
     {
@@ -656,10 +656,10 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
   request_ptr = or_pack_int (request_ptr, content_size);
 
   req_error =
-    __gv_network_cl.net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request,
-							     NET_COPY_AREA_SENDRECV_SIZE, desc_ptr, desc_size,
-							     content_ptr, content_size, reply,
-							     OR_ALIGNED_BUF_SIZE (a_reply), reply_copy_area);
+    net_client_request_3_data_recv_copyarea (NET_SERVER_LC_REPL_FORCE, request,
+					     NET_COPY_AREA_SENDRECV_SIZE, desc_ptr, desc_size,
+					     content_ptr, content_size, reply,
+					     OR_ALIGNED_BUF_SIZE (a_reply), reply_copy_area);
 
   if (req_error == NO_ERROR)
     {
@@ -744,9 +744,9 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
     }
 
   req_error =
-    __gv_network_cl.net_client_request_3_data (NET_SERVER_LC_FORCE, request, request_size, desc_ptr, desc_size,
-					       content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					       desc_ptr, desc_size, NULL, 0);
+    net_client_request_3_data (NET_SERVER_LC_FORCE, request, request_size, desc_ptr, desc_size,
+			       content_ptr, content_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			       desc_ptr, desc_size, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &error_code);
@@ -840,10 +840,10 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       ptr = or_pack_int (request, send_size);
 
       req_error =
-	__gv_network_cl.net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, request,
-							   OR_ALIGNED_BUF_SIZE (a_request), reply,
-							   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
-							   packed_size, fetch_copyarea, &eid);
+	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, request,
+					   OR_ALIGNED_BUF_SIZE (a_request), reply,
+					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
+					   packed_size, fetch_copyarea, &eid);
     }
   else
     {
@@ -851,8 +851,8 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       packed = lockset->packed;
       packed_size = lockset->packed_size;
       req_error =
-	__gv_network_cl.net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-						  packed, packed_size, fetch_copyarea, eid);
+	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				  packed, packed_size, fetch_copyarea, eid);
     }
 
   if (!req_error)
@@ -937,10 +937,9 @@ locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int cl
   ptr = or_pack_int (ptr, prune_level);
 
   req_error =
-    __gv_network_cl.net_client_request_3recv_copyarea (NET_SERVER_LC_FETCH_ALLREFS_LOCKSET, request,
-						       OR_ALIGNED_BUF_SIZE (a_request), reply,
-						       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &packed, &packed_size,
-						       fetch_copyarea);
+    net_client_request_3recv_copyarea (NET_SERVER_LC_FETCH_ALLREFS_LOCKSET, request,
+				       OR_ALIGNED_BUF_SIZE (a_request), reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &packed, &packed_size, fetch_copyarea);
 
   if (!req_error)
     {
@@ -1021,8 +1020,8 @@ locator_find_class_oid (const char *class_name, OID * class_oid, LOCK lock)
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_lock (ptr, lock);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LC_FIND_CLASSOID, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LC_FIND_CLASSOID, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &xfound);
@@ -1090,8 +1089,8 @@ locator_reserve_class_names (const int num_classes, const char **class_names, OI
       ptr = or_pack_oid (ptr, &class_oids[i]);
     }
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &xreserved);
@@ -1149,8 +1148,8 @@ locator_get_reserved_class_name_oid (const char *classname, OID * class_oid)
   (void) pack_const_string (request, classname);
 
   request_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LC_RESERVE_CLASSNAME_GET_OID, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   free_and_init (request);
 
   if (request_error != NO_ERROR)
@@ -1205,8 +1204,8 @@ locator_delete_class_name (const char *class_name)
     }
 
   (void) pack_const_string_with_length (request, class_name, strlen);
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LC_DELETE_CLASSNAME, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LC_DELETE_CLASSNAME, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &xdeleted);
@@ -1266,8 +1265,8 @@ locator_rename_class_name (const char *old_name, const char *new_name, OID * cla
   ptr = pack_const_string_with_length (ptr, new_name, strlen2);
   ptr = or_pack_oid (ptr, class_oid);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LC_RENAME_CLASSNAME, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LC_RENAME_CLASSNAME, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &xrenamed);
@@ -1328,8 +1327,8 @@ locator_assign_oid (const HFID * hfid, OID * perm_oid, int expected_length, OID 
   ptr = or_pack_oid (ptr, class_oid);
   ptr = pack_const_string_with_length (ptr, class_name, strlen);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LC_ASSIGN_OID, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LC_ASSIGN_OID, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &success);
@@ -1392,8 +1391,7 @@ locator_assign_oid_batch (LC_OIDSET * oidset)
     }
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LC_ASSIGN_OID_BATCH, buffer, packed_size, buffer, packed_size, NULL,
-					0, NULL, 0);
+    net_client_request (NET_SERVER_LC_ASSIGN_OID_BATCH, buffer, packed_size, buffer, packed_size, NULL, 0, NULL, 0);
 
   if (!req_error)
     {
@@ -1494,9 +1492,9 @@ locator_find_lockhint_class_oids (int num_classes, const char **many_classnames,
     }
 
   req_error =
-    __gv_network_cl.net_client_request_3recv_copyarea (NET_SERVER_LC_FIND_LOCKHINT_CLASSOIDS, request, request_size,
-						       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &packed,
-						       &packed_size, fetch_copyarea);
+    net_client_request_3recv_copyarea (NET_SERVER_LC_FIND_LOCKHINT_CLASSOIDS, request, request_size,
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &packed,
+				       &packed_size, fetch_copyarea);
 
   if (!req_error)
     {
@@ -1594,10 +1592,10 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_cop
       ptr = or_pack_int (request, send_size);
 
       req_error =
-	__gv_network_cl.net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, request,
-							   OR_ALIGNED_BUF_SIZE (a_request), reply,
-							   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
-							   packed_size, fetch_copyarea, &eid);
+	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, request,
+					   OR_ALIGNED_BUF_SIZE (a_request), reply,
+					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
+					   packed_size, fetch_copyarea, &eid);
     }
   else
     {
@@ -1605,9 +1603,8 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_cop
       packed = lockhint->packed;
       packed_size = lockhint->packed_size;
       req_error =
-	__gv_network_cl.net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), packed, packed_size, fetch_copyarea,
-						  eid);
+	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), packed, packed_size, fetch_copyarea, eid);
     }
 
   if (!req_error)
@@ -1671,8 +1668,8 @@ heap_create (HFID * hfid, const OID * class_oid, bool reuse_oid)
   ptr = or_pack_oid (ptr, (OID *) class_oid);
   ptr = or_pack_int (ptr, (int) reuse_oid);
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_HEAP_CREATE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_HEAP_CREATE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -1721,8 +1718,8 @@ heap_destroy (const HFID * hfid)
   (void) or_pack_hfid (request, hfid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_HEAP_DESTROY, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_HEAP_DESTROY, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -1772,8 +1769,8 @@ heap_destroy_newly_created (const HFID * hfid, const OID * class_oid, const bool
   ptr = or_pack_int (ptr, (int) force);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_HEAP_DESTROY_WHEN_NEW, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_HEAP_DESTROY_WHEN_NEW, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -1823,9 +1820,8 @@ heap_get_class_num_objects_pages (HFID * hfid, int approximation, int *nobjs, in
   ptr = or_pack_int (ptr, approximation);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES, request,
-					OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					NULL, 0);
+    net_client_request (NET_SERVER_HEAP_GET_CLASS_NOBJS_AND_NPAGES, request,
+			OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &status);
@@ -1879,8 +1875,8 @@ heap_has_instance (HFID * hfid, OID * class_oid, int has_visible_instance)
   ptr = or_pack_int (ptr, has_visible_instance);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_HEAP_HAS_INSTANCE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_HEAP_HAS_INSTANCE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &status);
@@ -1926,8 +1922,8 @@ heap_reclaim_addresses (const HFID * hfid)
   ptr = or_pack_hfid (request, hfid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_HEAP_RECLAIM_ADDRESSES, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_HEAP_RECLAIM_ADDRESSES, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -1966,8 +1962,8 @@ heap_get_maxslotted_reclength (int &maxslotted_reclength)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH, NULL, 0, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_HEAP_GET_MAXSLOTTED_RECLENGTH, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &maxslotted_reclength);
@@ -2014,9 +2010,8 @@ file_apply_tde_to_class_files (const OID * class_oid)
 
   ptr = or_pack_oid (request, class_oid);
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES, request,
-					OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					NULL, 0);
+    net_client_request (NET_SERVER_FILE_APPLY_TDE_TO_CLASS_FILES, request,
+			OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -2059,8 +2054,8 @@ tde_get_data_keys ()
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_TDE_GET_DATA_KEYS, NULL, 0, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_TDE_GET_DATA_KEYS, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &area_size);
@@ -2098,8 +2093,7 @@ tde_is_loaded (int *is_loaded)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TDE_IS_LOADED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					0, NULL, 0);
+    net_client_request (NET_SERVER_TDE_IS_LOADED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void *) or_unpack_int (reply, is_loaded);
@@ -2137,8 +2131,8 @@ tde_get_mk_file_path (char *mk_path)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_TDE_GET_MK_FILE_PATH, NULL, 0, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_TDE_GET_MK_FILE_PATH, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &area_size);
@@ -2181,8 +2175,7 @@ tde_get_mk_info (int *mk_index, time_t * created_time, time_t * set_time)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TDE_GET_MK_INFO, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					0, NULL, 0);
+    net_client_request (NET_SERVER_TDE_GET_MK_INFO, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -2231,8 +2224,8 @@ tde_change_mk_on_server (int mk_index)
 
   ptr = or_pack_int (request, mk_index);
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TDE_CHANGE_MK_ON_SERVER, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TDE_CHANGE_MK_ON_SERVER, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -2278,8 +2271,8 @@ disk_get_total_numpages (VOLID volid)
   (void) or_pack_int (request, (int) volid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_DISK_TOTALPGS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_DISK_TOTALPGS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &npages);
@@ -2325,8 +2318,8 @@ disk_get_free_numpages (VOLID volid)
   (void) or_pack_int (request, (int) volid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_DISK_FREEPGS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_DISK_FREEPGS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &npages);
@@ -2375,8 +2368,8 @@ disk_get_remarks (VOLID volid)
   (void) or_pack_int (request, (int) volid);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_DISK_REMARKS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_DISK_REMARKS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error && area != NULL)
     {
       or_unpack_int (reply, &area_size);
@@ -2431,8 +2424,8 @@ disk_get_fullname (VOLID volid, char *vol_fullname)
   (void) or_pack_int (request, (int) volid);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_DISK_VLABEL, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_DISK_VLABEL, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error && area != NULL)
     {
       or_unpack_int (reply, &area_size);
@@ -2487,8 +2480,8 @@ log_reset_wait_msecs (int wait_msecs)
   (void) or_pack_int (request, wait_msecs);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LOG_RESET_WAIT_MSECS, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LOG_RESET_WAIT_MSECS, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &wait);
@@ -2533,8 +2526,8 @@ log_reset_isolation (TRAN_ISOLATION isolation)
   ptr = or_pack_int (request, (int) isolation);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LOG_RESET_ISOLATION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LOG_RESET_ISOLATION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &error_code);
@@ -2573,8 +2566,7 @@ log_set_interrupt (int set)
   request = OR_ALIGNED_BUF_START (a_request);
   or_pack_int (request, set);
 
-  (void) __gv_network_cl.net_client_request_no_reply (NET_SERVER_LOG_SET_INTERRUPT, request,
-						      OR_ALIGNED_BUF_SIZE (a_request));
+  (void) net_client_request_no_reply (NET_SERVER_LOG_SET_INTERRUPT, request, OR_ALIGNED_BUF_SIZE (a_request));
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -2604,8 +2596,7 @@ log_checkpoint (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LOG_CHECKPOINT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					0, NULL, 0);
+    net_client_request (NET_SERVER_LOG_CHECKPOINT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_errcode (reply, &error);
@@ -2640,8 +2631,7 @@ log_dump_stat (FILE * outfp)
       outfp = stdout;
     }
 
-  req_error =
-    __gv_network_cl.net_client_request_recv_stream (NET_SERVER_LOG_DUMP_STAT, NULL, 0, NULL, 0, NULL, 0, outfp);
+  req_error = net_client_request_recv_stream (NET_SERVER_LOG_DUMP_STAT, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -2676,9 +2666,8 @@ log_set_suppress_repl_on_transaction (int set)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION, request,
-					OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					NULL, 0);
+    net_client_request (NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION, request,
+			OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   if (req_error == NO_ERROR)
     {
@@ -2729,9 +2718,8 @@ log_find_lob_locator (const char *locator, char *real_locator)
 
   (void) pack_const_string_with_length (request, locator, strlen);
   req_error =
-    __gv_network_cl.net_client_request2_no_malloc (NET_SERVER_LOG_FIND_LOB_LOCATOR, request, request_size, reply,
-						   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, real_locator,
-						   &real_loc_size);
+    net_client_request2_no_malloc (NET_SERVER_LOG_FIND_LOB_LOCATOR, request, request_size, reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, real_locator, &real_loc_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &real_loc_size);
@@ -2773,8 +2761,8 @@ log_add_lob_locator (const char *locator, LOB_LOCATOR_STATE state)
 
   ptr = pack_const_string_with_length (request, locator, strlen);
   ptr = or_pack_int (ptr, (int) state);
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LOG_ADD_LOB_LOCATOR, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LOG_ADD_LOB_LOCATOR, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &error_code);
@@ -2816,8 +2804,8 @@ log_change_state_of_locator (const char *locator, const char *new_locator, LOB_L
   ptr = pack_const_string_with_length (request, locator, strlen);
   ptr = pack_const_string_with_length (ptr, new_locator, strlen2);
   ptr = or_pack_int (ptr, (int) state);
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LOG_CHANGE_STATE_OF_LOCATOR, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &error_code);
@@ -2856,8 +2844,8 @@ log_drop_lob_locator (const char *locator)
     }
 
   ptr = pack_const_string_with_length (request, locator, strlen);
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LOG_DROP_LOB_LOCATOR, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LOG_DROP_LOB_LOCATOR, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &error_code);
@@ -2903,8 +2891,8 @@ log_supplement_statement (int ddl_type, int objtype, OID * classoid, OID * objoi
   request_size = ptr - start_ptr;
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SUPPLEMENT_STMT, start_ptr, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_SUPPLEMENT_STMT, start_ptr, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   if (!req_error)
     {
@@ -2965,8 +2953,8 @@ tran_server_commit (bool retain_lock)
   assert (CAST_BUFLEN (ptr - request) <= (int) OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_COMMIT, request, CAST_BUFLEN (ptr - request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_COMMIT, request, CAST_BUFLEN (ptr - request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &tran_state_int);
@@ -2983,7 +2971,7 @@ tran_server_commit (bool retain_lock)
 	}
     }
 
-  __gv_network_cl.net_cleanup_client_queues ();
+  net_cleanup_client_queues ();
 
   return tran_state;
 #else /* CS_MODE */
@@ -3022,8 +3010,7 @@ tran_server_abort (void)
   net_Deferred_end_queries_count = 0;
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_ABORT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_ABORT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &tran_state_int);
@@ -3040,7 +3027,7 @@ tran_server_abort (void)
 	}
     }
 
-  __gv_network_cl.net_cleanup_client_queues ();
+  net_cleanup_client_queues ();
 
   return tran_state;
 #else /* CS_MODE */
@@ -3129,8 +3116,8 @@ tran_is_blocked (int tran_index)
   (void) or_pack_int (request, tran_index);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_ISBLOCKED, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_ISBLOCKED, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &temp);
@@ -3170,8 +3157,8 @@ tran_server_has_updated (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_HAS_UPDATED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_HAS_UPDATED, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &has_updated);
@@ -3210,8 +3197,8 @@ tran_server_is_active_and_has_updated (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED, NULL, 0, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_ISACTIVE_AND_HAS_UPDATED, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &isactive_and_has_updated);
@@ -3256,8 +3243,8 @@ tran_wait_server_active_trans (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS, NULL, 0, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_WAIT_SERVER_ACTIVE_TRANS, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -3297,8 +3284,8 @@ tran_server_set_global_tran_info (int gtrid, void *info, int size)
   or_pack_int (request, gtrid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_SET_GTRINFO, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), (char *) info, size, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_SET_GTRINFO, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), (char *) info, size, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &success);
@@ -3346,10 +3333,9 @@ tran_server_get_global_tran_info (int gtrid, void *buffer, int size)
   ptr = or_pack_int (request, gtrid);
   ptr = or_pack_int (ptr, size);
   req_error =
-    __gv_network_cl.net_client_request2_no_malloc (NET_SERVER_TM_SERVER_GET_GTRINFO, request,
-						   OR_ALIGNED_BUF_SIZE (a_request), reply,
-						   OR_ALIGNED_BUF_SIZE (a_reply), (char *) buffer, size,
-						   (char *) buffer, &size);
+    net_client_request2_no_malloc (NET_SERVER_TM_SERVER_GET_GTRINFO, request,
+				   OR_ALIGNED_BUF_SIZE (a_request), reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), (char *) buffer, size, (char *) buffer, &size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &size);
@@ -3390,8 +3376,8 @@ tran_server_2pc_start (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_2PC_START, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_2PC_START, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &gtrid);
@@ -3430,8 +3416,8 @@ tran_server_2pc_prepare (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_2PC_PREPARE, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_2PC_PREPARE, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, (int *) &state);
@@ -3484,8 +3470,8 @@ tran_server_2pc_recovery_prepared (int gtrids[], int size)
   or_pack_int (request, size);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED, request,
-					OR_ALIGNED_BUF_SIZE (a_request), reply, reply_size, NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_2PC_RECOVERY_PREPARED, request,
+			OR_ALIGNED_BUF_SIZE (a_request), reply, reply_size, NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &count);
@@ -3536,8 +3522,8 @@ tran_server_2pc_attach_global_tran (int gtrid)
   or_pack_int (request, gtrid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_2PC_ATTACH_GT, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_2PC_ATTACH_GT, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &tran_index);
@@ -3583,8 +3569,8 @@ tran_server_2pc_prepare_global_tran (int gtrid)
 
   or_pack_int (request, gtrid);
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_2PC_PREPARE_GT, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_SERVER_2PC_PREPARE_GT, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &tran_state_int);
@@ -3737,8 +3723,8 @@ tran_server_savepoint (const char *savept_name, LOG_LSA * savept_lsa)
     }
 
   ptr = pack_const_string_with_length (request, savept_name, strlen);
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_SAVEPOINT, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_TM_SERVER_SAVEPOINT, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &success);
@@ -3792,8 +3778,8 @@ tran_server_partial_abort (const char *savept_name, LOG_LSA * savept_lsa)
     }
 
   ptr = pack_const_string_with_length (request, savept_name, strlen);
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_TM_SERVER_PARTIAL_ABORT, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_TM_SERVER_PARTIAL_ABORT, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &tran_state_int);
@@ -3834,8 +3820,7 @@ acl_reload ()
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_ACL_RELOAD, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					NULL, 0);
+    net_client_request (NET_SERVER_ACL_RELOAD, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_errcode (reply, &error);
@@ -3865,7 +3850,7 @@ acl_dump (FILE * outfp)
       outfp = stdout;
     }
 
-  req_error = __gv_network_cl.net_client_request_recv_stream (NET_SERVER_ACL_DUMP, NULL, 0, NULL, 0, NULL, 0, outfp);
+  req_error = net_client_request_recv_stream (NET_SERVER_ACL_DUMP, NULL, 0, NULL, 0, NULL, 0, outfp);
 #endif /* !CS_MODE */
 }
 
@@ -3894,8 +3879,8 @@ lock_dump (FILE * outfp, int is_contention)
   (void) or_pack_int (request, is_contention);
 
   req_error =
-    __gv_network_cl.net_client_request_recv_stream (NET_SERVER_LK_DUMP, request, OR_ALIGNED_BUF_SIZE (a_request), NULL,
-						    0, NULL, 0, outfp);
+    net_client_request_recv_stream (NET_SERVER_LK_DUMP, request, OR_ALIGNED_BUF_SIZE (a_request), NULL,
+				    0, NULL, 0, outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -3990,9 +3975,9 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
   packer.set_buffer_and_pack_all (ext_blk, *client_credential, client_lock_wait, clisol_toint);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, ext_blk.get_ptr (),
-					 (int) packer.get_current_size (), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_BO_REGISTER_CLIENT, ext_blk.get_ptr (),
+			 (int) packer.get_current_size (), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
+			 0, &area, &area_size);
   if (!req_error)
     {
       or_unpack_int (reply, &area_size);
@@ -4069,8 +4054,8 @@ boot_unregister_client (int tran_index)
   (void) or_pack_int (request, tran_index);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_UNREGISTER_CLIENT, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BO_UNREGISTER_CLIENT, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error == NO_ERROR)
     {
       or_unpack_int (reply, &error_code);
@@ -4164,9 +4149,9 @@ boot_backup (const char *backup_path, FILEIO_BACKUP_LEVEL backup_level, bool del
   ptr = or_pack_int (ptr, sleep_msecs);
   ptr = or_pack_int (ptr, separate_keys);
   req_error =
-    __gv_network_cl.net_client_request_with_callback (NET_SERVER_BO_BACKUP, request, request_size, reply,
-						      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1, &rd2,
-						      &d2, NULL, NULL);
+    net_client_request_with_callback (NET_SERVER_BO_BACKUP, request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1, &rd2,
+				      &d2, NULL, NULL);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &cb_type);
@@ -4232,8 +4217,8 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
   ptr = or_pack_int (ptr, (int) ext_info->max_writesize_in_sec);
   ptr = or_pack_int (ptr, (int) ext_info->purpose);
   ptr = or_pack_int (ptr, (int) ext_info->overwrite);
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_BO_ADD_VOLEXT, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_BO_ADD_VOLEXT, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &int_volid);
@@ -4301,9 +4286,9 @@ boot_check_db_consistency (int check_flag, OID * oids, int num_oids, BTID * inde
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   req_error =
-    __gv_network_cl.net_client_request_with_callback (NET_SERVER_BO_CHECK_DBCONSISTENCY, request, (int) request_size,
-						      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1,
-						      &rd2, &d2, NULL, NULL);
+    net_client_request_with_callback (NET_SERVER_BO_CHECK_DBCONSISTENCY, request, (int) request_size,
+				      reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &rd1, &d1,
+				      &rd2, &d2, NULL, NULL);
   free_and_init (request);
 
   if (!req_error)
@@ -4345,8 +4330,7 @@ boot_find_number_permanent_volumes (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_FIND_NPERM_VOLS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BO_FIND_NPERM_VOLS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &nvols);
@@ -4385,8 +4369,7 @@ boot_find_number_temp_volumes (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_FIND_NTEMP_VOLS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BO_FIND_NTEMP_VOLS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &nvols);
@@ -4426,8 +4409,7 @@ boot_find_last_permanent (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_FIND_LAST_PERM, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BO_FIND_LAST_PERM, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &int_volid);
@@ -4465,8 +4447,7 @@ boot_find_last_temp (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_FIND_LAST_TEMP, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BO_FIND_LAST_TEMP, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &nvols);
@@ -4611,8 +4592,8 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_SES_CHECK_SESSION, request, request_size, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_SES_CHECK_SESSION, request, request_size, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
   if (req_error == NO_ERROR)
     {
@@ -4726,8 +4707,8 @@ csession_end_session (SESSION_ID session_id, bool is_keep_session)
   ptr = or_pack_int (ptr, is_keep_session);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_END_SESSION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_SES_END_SESSION, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error != NO_ERROR)
     {
       return ER_FAILED;
@@ -4772,8 +4753,8 @@ csession_set_row_count (int rows)
   ptr = or_pack_int (request, rows);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_SET_ROW_COUNT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_SES_SET_ROW_COUNT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error != NO_ERROR)
     {
       return ER_FAILED;
@@ -4816,8 +4797,8 @@ csession_get_row_count (int *rows)
   request = OR_ALIGNED_BUF_START (a_request);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_GET_ROW_COUNT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_SES_GET_ROW_COUNT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error != NO_ERROR)
     {
       return ER_FAILED;
@@ -4866,8 +4847,8 @@ csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id)
   ptr = or_pack_int (request, update_last_insert_id);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_SES_GET_LAST_INSERT_ID, request, OR_ALIGNED_BUF_SIZE (a_request),
-					 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
+    net_client_request2 (NET_SERVER_SES_GET_LAST_INSERT_ID, request, OR_ALIGNED_BUF_SIZE (a_request),
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
   if (req_error != NO_ERROR)
     {
       db_make_null (value);
@@ -4921,8 +4902,8 @@ csession_reset_cur_insert_id (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_RESET_CUR_INSERT_ID, NULL, 0, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_SES_RESET_CUR_INSERT_ID, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error != NO_ERROR)
     {
       return ER_FAILED;
@@ -5005,8 +4986,8 @@ csession_create_prepared_statement (const char *name, const char *alias_print, c
     }
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_CREATE_PREPARED_STATEMENT, request, req_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), stmt_info, info_length, NULL, 0);
+    net_client_request (NET_SERVER_SES_CREATE_PREPARED_STATEMENT, request, req_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), stmt_info, info_length, NULL, 0);
   if (req_error != NO_ERROR)
     {
       goto cleanup;
@@ -5153,9 +5134,9 @@ csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stm
   ptr = or_pack_int (ptr, get_xasl_header);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_SES_GET_PREPARED_STATEMENT, request, req_size,
-					 OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					 &reply_data, &reply_size);
+    net_client_request2 (NET_SERVER_SES_GET_PREPARED_STATEMENT, request, req_size,
+			 OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+			 &reply_data, &reply_size);
   if (req_error != NO_ERROR)
     {
       goto error;
@@ -5246,9 +5227,8 @@ csession_delete_prepared_statement (const char *name)
   pack_const_string_with_length (request, name, name_len);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_DELETE_PREPARED_STATEMENT, request, req_len,
-					OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
-					0);
+    net_client_request (NET_SERVER_SES_DELETE_PREPARED_STATEMENT, request, req_len,
+			OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (request != NULL)
     {
       free_and_init (request);
@@ -5301,8 +5281,8 @@ clogin_user (const char *username)
   pack_const_string_with_length (request, username, username_len);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_AU_LOGIN_USER, request, req_len, OR_ALIGNED_BUF_START (a_reply),
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_AU_LOGIN_USER, request, req_len, OR_ALIGNED_BUF_START (a_reply),
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (request != NULL)
     {
       free_and_init (request);
@@ -5368,9 +5348,9 @@ csession_set_session_variables (DB_VALUE * variables, const int count)
     }
 
   err =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_SET_SESSION_VARIABLES, OR_ALIGNED_BUF_START (a_request),
-					OR_ALIGNED_BUF_SIZE (a_request), OR_ALIGNED_BUF_START (a_reply),
-					OR_ALIGNED_BUF_SIZE (a_reply), data_request, req_size, NULL, 0);
+    net_client_request (NET_SERVER_SES_SET_SESSION_VARIABLES, OR_ALIGNED_BUF_START (a_request),
+			OR_ALIGNED_BUF_SIZE (a_request), OR_ALIGNED_BUF_START (a_reply),
+			OR_ALIGNED_BUF_SIZE (a_reply), data_request, req_size, NULL, 0);
   if (err != NO_ERROR)
     {
       goto cleanup;
@@ -5437,9 +5417,9 @@ csession_drop_session_variables (DB_VALUE * variables, const int count)
     }
 
   err =
-    __gv_network_cl.net_client_request (NET_SERVER_SES_DROP_SESSION_VARIABLES, OR_ALIGNED_BUF_START (a_request),
-					OR_ALIGNED_BUF_SIZE (a_request), OR_ALIGNED_BUF_START (a_reply),
-					OR_ALIGNED_BUF_SIZE (a_reply), data_request, req_size, NULL, 0);
+    net_client_request (NET_SERVER_SES_DROP_SESSION_VARIABLES, OR_ALIGNED_BUF_START (a_request),
+			OR_ALIGNED_BUF_SIZE (a_request), OR_ALIGNED_BUF_START (a_reply),
+			OR_ALIGNED_BUF_SIZE (a_reply), data_request, req_size, NULL, 0);
   if (err != NO_ERROR)
     {
       goto cleanup;
@@ -5495,9 +5475,8 @@ csession_get_variable (DB_VALUE * name, DB_VALUE * value)
   or_pack_db_value (request, name);
 
   err =
-    __gv_network_cl.net_client_request2 (NET_SERVER_SES_GET_SESSION_VARIABLE, request, req_size,
-					 OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply,
-					 &reply_size);
+    net_client_request2 (NET_SERVER_SES_GET_SESSION_VARIABLE, request, req_size,
+			 OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply, &reply_size);
   if (err != NO_ERROR)
     {
       goto cleanup;
@@ -5675,8 +5654,8 @@ boot_change_ha_mode (HA_SERVER_STATE state, bool force, int timeout)
   ptr = or_pack_int (ptr, (int) timeout);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_CHANGE_HA_MODE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BO_CHANGE_HA_MODE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &server_state);
@@ -5712,9 +5691,8 @@ boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state)
   ptr = or_pack_int (request, (int) state);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE, request,
-					OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					NULL, 0);
+    net_client_request (NET_SERVER_BO_NOTIFY_HA_LOG_APPLIER_STATE, request,
+			OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -5762,8 +5740,8 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
   ptr = or_pack_int (ptr, (int) timestamp);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_QST_GET_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, length_ptr);
+    net_client_request2 (NET_SERVER_QST_GET_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, length_ptr);
   if (!req_error)
     {
       or_unpack_int (reply, length_ptr);
@@ -5833,8 +5811,8 @@ stats_update_statistics (MOP classop, int with_fullscan)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_QST_UPDATE_STATISTICS, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_errcode (reply, &error);
@@ -5976,8 +5954,8 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_int (ptr, deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &error);
@@ -6160,8 +6138,8 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), stream, stream_size, NULL, 0);
+    net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), stream, stream_size, NULL, 0);
 
   if (req_error == NO_ERROR)
     {
@@ -6275,8 +6253,8 @@ btree_delete_index (BTID * btid)
   (void) or_pack_btid (request, btid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BTREE_DELINDEX, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BTREE_DELINDEX, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -6354,8 +6332,8 @@ locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid)
   ptr = or_pack_hfid (ptr, hfid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LC_REM_CLASS_FROM_INDEX, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LC_REM_CLASS_FROM_INDEX, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -6432,8 +6410,7 @@ btree_find_unique (BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid)
   request_size = CAST_BUFLEN (ptr - request);
 
   req_error =
-    __gv_network_cl.net_client_request (request_id, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL,
-					0, NULL, 0);
+    net_client_request (request_id, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       int istatus;
@@ -6530,9 +6507,8 @@ btree_find_multi_uniques (OID * class_oid, int pruning_type, BTID * btids, DB_VA
     }
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_BTREE_FIND_MULTI_UNIQUES, request, req_size,
-					 OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area,
-					 &area_size);
+    net_client_request2 (NET_SERVER_BTREE_FIND_MULTI_UNIQUES, request, req_size,
+			 OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (req_error != NO_ERROR)
     {
       result = BTREE_ERROR_OCCURRED;
@@ -6660,8 +6636,8 @@ btree_class_test_unique (char *buf, int buf_size)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BTREE_CLASS_UNIQUE_TEST, buf, buf_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BTREE_CLASS_UNIQUE_TEST, buf, buf_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -6718,9 +6694,9 @@ qfile_get_list_file_page (QUERY_ID query_id, VOLID volid, PAGEID pageid, char *b
   ptr = or_pack_int (ptr, (int) pageid);
 
   req_error =
-    __gv_network_cl.net_client_request2_no_malloc (NET_SERVER_LS_GET_LIST_FILE_PAGE, request,
-						   OR_ALIGNED_BUF_SIZE (a_request), reply,
-						   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, buffer, buffer_size);
+    net_client_request2_no_malloc (NET_SERVER_LS_GET_LIST_FILE_PAGE, request,
+				   OR_ALIGNED_BUF_SIZE (a_request), reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, buffer, buffer_size);
   if (!req_error)
     {
       ptr = or_unpack_int (&reply[OR_INT_SIZE], &error);
@@ -6813,9 +6789,9 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 
   /* send SERVER_QM_QUERY_PREPARE request with request data and XASL stream; receive XASL file id (XASL_ID) as a reply */
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_QM_QUERY_PREPARE, request, request_size, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), (char *) stream->buffer, stream->buffer_size,
-					 &reply_buffer, &reply_buffer_size);
+    net_client_request2 (NET_SERVER_QM_QUERY_PREPARE, request, request_size, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), (char *) stream->buffer, stream->buffer_size,
+			 &reply_buffer, &reply_buffer_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &reply_buffer_size);
@@ -7040,10 +7016,10 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
     }
 
   req_error =
-    __gv_network_cl.net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE, request, request_len, reply,
-						      OR_ALIGNED_BUF_SIZE (a_reply), senddata, senddata_size, NULL, 0,
-						      &replydata_listid, &replydata_size_listid, &replydata_page,
-						      &replydata_size_page, &replydata_plan, &replydata_size_plan);
+    net_client_request_with_callback (NET_SERVER_QM_QUERY_EXECUTE, request, request_len, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), senddata, senddata_size, NULL, 0,
+				      &replydata_listid, &replydata_size_listid, &replydata_page,
+				      &replydata_size_page, &replydata_plan, &replydata_size_plan);
   if (replydata_plan != NULL)
     {
       db_set_execution_plan (replydata_plan, replydata_size_plan);
@@ -7084,7 +7060,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	  if (tran_state == TRAN_UNACTIVE_COMMITTED || tran_state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS
 	      || tran_state == TRAN_UNACTIVE_ABORTED || tran_state == TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS)
 	    {
-	      __gv_network_cl.net_cleanup_client_queues ();
+	      net_cleanup_client_queues ();
 	    }
 
 	  tran_set_latest_query_status (end_query_result, tran_state, should_conn_reset);
@@ -7257,12 +7233,11 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   /* change senddata_size as real packing size */
   senddata_size = CAST_BUFLEN (ptr - senddata);
 
-  req_error = __gv_network_cl.net_client_request_with_callback (NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE, request,
-								OR_ALIGNED_BUF_SIZE (a_request), reply,
-								OR_ALIGNED_BUF_SIZE (a_reply), xasl_stream,
-								xasl_stream_size, senddata, senddata_size, &replydata,
-								&replydata_size_listid, &page_ptr, &replydata_size_page,
-								NULL, NULL);
+  req_error = net_client_request_with_callback (NET_SERVER_QM_QUERY_PREPARE_AND_EXECUTE, request,
+						OR_ALIGNED_BUF_SIZE (a_request), reply,
+						OR_ALIGNED_BUF_SIZE (a_reply), xasl_stream,
+						xasl_stream_size, senddata, senddata_size, &replydata,
+						&replydata_size_listid, &page_ptr, &replydata_size_page, NULL, NULL);
   if (!req_error)
     {
       /* should be the same as replydata_size */
@@ -7351,8 +7326,8 @@ qmgr_end_query (QUERY_ID query_id)
   assert (CAST_BUFLEN (ptr - request) <= (int) OR_ALIGNED_BUF_SIZE (a_request));
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_QM_QUERY_END, request, CAST_BUFLEN (ptr - request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_QM_QUERY_END, request, CAST_BUFLEN (ptr - request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error == NO_ERROR)
     {
       or_unpack_int (reply, &status);
@@ -7408,8 +7383,8 @@ qmgr_drop_all_query_plans (void)
 
   /* send SERVER_QM_QUERY_DROP_ALL_PLANS request with request data; receive status code (int) as a reply */
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_QM_QUERY_DROP_ALL_PLANS, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_QM_QUERY_DROP_ALL_PLANS, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       /* first argument should be status code (int) */
@@ -7469,8 +7444,8 @@ qmgr_drop_query_plans_by_sha1 (char *sha1)
 
   pack_const_string_with_length (request, sha1, strlen1);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_QM_QUERY_DROP_SHA1_PLANS, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_SHA1_PLANS, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &success);
@@ -7513,8 +7488,7 @@ qmgr_dump_query_plans (FILE * outfp)
       outfp = stdout;
     }
 
-  req_error =
-    __gv_network_cl.net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_PLANS, NULL, 0, NULL, 0, NULL, 0, outfp);
+  req_error = net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_PLANS, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7545,8 +7519,7 @@ qmgr_dump_query_cache (FILE * outfp)
       outfp = stdout;
     }
 
-  req_error =
-    __gv_network_cl.net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_CACHE, NULL, 0, NULL, 0, NULL, 0, outfp);
+  req_error = net_client_request_recv_stream (NET_SERVER_QM_QUERY_DUMP_CACHE, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -7582,8 +7555,8 @@ qp_get_sys_timestamp (DB_VALUE * value)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_QPROC_GET_SYS_TIMESTAMP, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_QPROC_GET_SYS_TIMESTAMP, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_utime (reply, &sysutime);
@@ -7632,8 +7605,8 @@ serial_get_current_value (DB_VALUE * value, OID * oid_p, int cached_num)
   ptr = or_pack_int (ptr, cached_num);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_QPROC_GET_CURRENT_VALUE, request, OR_ALIGNED_BUF_SIZE (a_request),
-					 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_QPROC_GET_CURRENT_VALUE, request, OR_ALIGNED_BUF_SIZE (a_request),
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error && area != NULL)
     {
       ptr = or_unpack_int (reply, &area_size);
@@ -7686,8 +7659,8 @@ serial_get_next_value (DB_VALUE * value, OID * oid_p, int cached_num, int num_al
   ptr = or_pack_int (ptr, is_auto_increment);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_QPROC_GET_NEXT_VALUE, request, OR_ALIGNED_BUF_SIZE (a_request),
-					 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_QPROC_GET_NEXT_VALUE, request, OR_ALIGNED_BUF_SIZE (a_request),
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error && area != NULL)
     {
       ptr = or_unpack_int (reply, &area_size);
@@ -7740,8 +7713,8 @@ serial_decache (OID * oid)
   or_pack_oid (request, oid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SERIAL_DECACHE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_SERIAL_DECACHE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -7786,8 +7759,8 @@ synonym_remove_xasl_by_oid (OID * oid)
   or_pack_oid (request, oid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_SYNONYM_REMOVE_XASL_BY_OID, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -7825,8 +7798,8 @@ perfmon_server_start_stats (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_MNT_SERVER_START_STATS, NULL, 0, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_MNT_SERVER_START_STATS, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &status);
@@ -7862,8 +7835,8 @@ perfmon_server_stop_stats (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_MNT_SERVER_STOP_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_MNT_SERVER_STOP_STATS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
   if (!req_error)
     {
       return ER_FAILED;
@@ -7908,8 +7881,8 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply,
-					nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_MNT_SERVER_COPY_STATS, NULL, 0, reply,
+			nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL, 0);
   if (!req_error)
     {
       perfmon_unpack_stats (reply, to_stats);
@@ -7959,8 +7932,8 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply,
-						  nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_MNT_SERVER_COPY_GLOBAL_STATS, NULL, 0, reply,
+				  nr_statistic_values * OR_INT64_SIZE, NULL, 0, NULL, 0);
   if (!req_error)
     {
       perfmon_unpack_stats (reply, to_stats);
@@ -8010,8 +7983,8 @@ catalog_check_rep_dir (OID * class_id, OID * rep_dir_p)
   ptr = or_pack_oid (request, class_id);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_CT_CHECK_REP_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_CT_CHECK_REP_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   if (req_error)
     {
@@ -8077,8 +8050,8 @@ thread_kill_tran_index (int kill_tran_index, char *kill_user, char *kill_host, i
   ptr = pack_const_string_with_length (ptr, kill_host, strlen2);
   ptr = or_pack_int (ptr, kill_pid);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_CSS_KILL_TRANSACTION, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_CSS_KILL_TRANSACTION, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &success);
@@ -8142,8 +8115,8 @@ thread_kill_or_interrupt_tran (int *tran_index_list, int num_tran_index, bool is
   ptr = or_pack_int (ptr, (interrupt_only) ? 1 : 0);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   if (!req_error)
     {
@@ -8178,8 +8151,7 @@ thread_dump_cs_stat (FILE * outfp)
       outfp = stdout;
     }
 
-  req_error =
-    __gv_network_cl.net_client_request_recv_stream (NET_SERVER_CSS_DUMP_CS_STAT, NULL, 0, NULL, 0, NULL, 0, outfp);
+  req_error = net_client_request_recv_stream (NET_SERVER_CSS_DUMP_CS_STAT, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
   er_log_debug (ARG_FILE_LINE, "thread_dump_cs_stat: THIS IS ONLY a C/S function");
   return;
@@ -8214,8 +8186,8 @@ logtb_get_pack_tran_table (char **buffer_p, int *size_p, bool include_query_exec
   or_pack_int (request, ((include_query_exec_info) ? 1 : 0));
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_LOG_GETPACK_TRANTB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, buffer_p, size_p);
+    net_client_request2 (NET_SERVER_LOG_GETPACK_TRANTB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, buffer_p, size_p);
   if (req_error)
     {
       assert (er_errid () != NO_ERROR);
@@ -8419,8 +8391,7 @@ logtb_dump_trantable (FILE * outfp)
       outfp = stdout;
     }
 
-  req_error =
-    __gv_network_cl.net_client_request_recv_stream (NET_SERVER_LOG_DUMP_TRANTB, NULL, 0, NULL, 0, NULL, 0, outfp);
+  req_error = net_client_request_recv_stream (NET_SERVER_LOG_DUMP_TRANTB, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -8458,8 +8429,8 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
   ptr = or_pack_btid (request, btid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BTREE_GET_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_BTREE_GET_STATISTICS, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &status);
@@ -8532,8 +8503,8 @@ btree_get_index_key_type (BTID btid, TP_DOMAIN ** key_type_p)
   ptr = or_pack_btid (request, &btid);
 
   error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_BTREE_GET_KEY_TYPE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_data, &reply_data_size);
+    net_client_request2 (NET_SERVER_BTREE_GET_KEY_TYPE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_data, &reply_data_size);
   if (error != NO_ERROR)
     {
       return error;
@@ -8589,8 +8560,8 @@ db_local_transaction_id (DB_VALUE * result_trid)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_TM_LOCAL_TRANSACTION_ID, NULL, 0, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_TM_LOCAL_TRANSACTION_ID, NULL, 0, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &success);
@@ -8639,8 +8610,8 @@ qp_get_server_info (PARSER_CONTEXT * parser, int server_info_bits)
   ptr = or_pack_int (request, server_info_bits);
 
   status =
-    __gv_network_cl.net_client_request2 (NET_SERVER_QPROC_GET_SERVER_INFO, request, OR_ALIGNED_BUF_SIZE (a_request),
-					 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &val_size);
+    net_client_request2 (NET_SERVER_QPROC_GET_SERVER_INFO, request, OR_ALIGNED_BUF_SIZE (a_request),
+			 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &val_size);
   if (status != NO_ERROR)
     {
       goto error_exit;
@@ -8728,8 +8699,8 @@ sysprm_change_server_parameters (const SYSPRM_ASSIGN_VALUE * assignments)
 
   (void) sysprm_pack_assign_values (request, assignments);
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_PRM_SET_PARAMETERS, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_PRM_SET_PARAMETERS, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error == NO_ERROR)
     {
       int unpack_value;
@@ -8784,8 +8755,8 @@ sysprm_obtain_server_parameters (SYSPRM_ASSIGN_VALUE ** prm_values_ptr)
 
   (void) sysprm_pack_assign_values (request_data, *prm_values_ptr);
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_PRM_GET_PARAMETERS, request_data, request_size, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &receive_data, &receive_size);
+    net_client_request2 (NET_SERVER_PRM_GET_PARAMETERS, request_data, request_size, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &receive_data, &receive_size);
   if (req_error != NO_ERROR)
     {
       rc = PRM_ERR_COMM_ERR;
@@ -8852,8 +8823,8 @@ sysprm_get_force_server_parameters (SYSPRM_ASSIGN_VALUE ** change_values)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_PRM_GET_FORCE_PARAMETERS, NULL, 0, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_PRM_GET_FORCE_PARAMETERS, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (req_error != NO_ERROR)
     {
       error = req_error;
@@ -8916,8 +8887,8 @@ sysprm_dump_server_parameters (FILE * outfp, unsigned int in_flags, SYSPRM_DUMP_
   ptr = or_pack_int (ptr, old_style);
 
   req_error =
-    __gv_network_cl.net_client_request_recv_stream (NET_SERVER_PRM_DUMP_PARAMETERS, request,
-						    OR_ALIGNED_BUF_SIZE (a_request), NULL, 0, NULL, 0, outfp);
+    net_client_request_recv_stream (NET_SERVER_PRM_DUMP_PARAMETERS, request,
+				    OR_ALIGNED_BUF_SIZE (a_request), NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
   THREAD_ENTRY *thread_p = enter_server ();
 
@@ -8949,8 +8920,8 @@ pl_get_server_port (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_JSP_GET_SERVER_PORT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_JSP_GET_SERVER_PORT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &port);
@@ -8988,8 +8959,8 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_REPL_LOG_GET_APPEND_LSA, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_REPL_LOG_GET_APPEND_LSA, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_log_lsa (reply, lsa);
@@ -9065,8 +9036,8 @@ repl_set_info (REPL_INFO * repl_info)
       ptr = pack_const_string_with_length (ptr, repl_schema->db_user, strlen3);
       ptr = pack_const_string_with_length (ptr, repl_schema->sys_prm_context, strlen4);
       req_error =
-	__gv_network_cl.net_client_request (NET_SERVER_REPL_INFO, request, request_size, reply,
-					    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+	net_client_request (NET_SERVER_REPL_INFO, request, request_size, reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
       if (!req_error)
 	{
 	  or_unpack_int (reply, &success);
@@ -9144,8 +9115,8 @@ locator_check_fk_validity (OID * cls_oid, HFID * hfid, TP_DOMAIN * key_type, int
   ptr = or_pack_btid (ptr, pk_btid);
   ptr = or_pack_string_with_length (ptr, fk_name, strlen);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_LC_CHECK_FK_VALIDITY, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_LC_CHECK_FK_VALIDITY, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &error);
@@ -9258,9 +9229,9 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   ptr = or_pack_int (ptr, ctx_ptr->last_error);
 
   req_error =
-    __gv_network_cl.net_client_request_with_logwr_context (ctx_ptr, NET_SERVER_LOGWR_GET_LOG_PAGES, request,
-							   OR_ALIGNED_BUF_SIZE (a_request), reply,
-							   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request_with_logwr_context (ctx_ptr, NET_SERVER_LOGWR_GET_LOG_PAGES, request,
+					   OR_ALIGNED_BUF_SIZE (a_request), reply,
+					   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   logwr_Gl.mode = save_mode;
 
@@ -9402,9 +9373,7 @@ boot_compact_classes (OID ** class_oids, int num_classes, int space_to_process, 
       ptr = or_pack_int (ptr, ids_repr[i]);
     }
 
-  req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_COMPACT_DB, request, request_size, reply, reply_size, NULL, 0,
-					NULL, 0);
+  req_error = net_client_request (NET_SERVER_BO_COMPACT_DB, request, request_size, reply, reply_size, NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &success);
@@ -9480,8 +9449,7 @@ boot_heap_compact (OID * class_oid)
   or_pack_oid (request, class_oid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_HEAP_COMPACT, request, request_size, reply, reply_size, NULL, 0,
-					NULL, 0);
+    net_client_request (NET_SERVER_BO_HEAP_COMPACT, request, request_size, reply, reply_size, NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &success);
@@ -9510,8 +9478,7 @@ compact_db_start (void)
   reply_size = OR_INT_SIZE;
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_COMPACT_DB_START, NULL, 0, reply, reply_size, NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_BO_COMPACT_DB_START, NULL, 0, reply, reply_size, NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &success);
@@ -9540,8 +9507,7 @@ compact_db_stop (void)
   reply_size = OR_INT_SIZE;
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_BO_COMPACT_DB_STOP, NULL, 0, reply, reply_size, NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_BO_COMPACT_DB_STOP, NULL, 0, reply, reply_size, NULL, 0, NULL, 0);
   if (!req_error)
     {
       (void) or_unpack_int (reply, &success);
@@ -9571,8 +9537,8 @@ es_posix_create_file (char *new_path)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   req_error =
-    __gv_network_cl.net_client_request2_no_malloc (NET_SERVER_ES_CREATE_FILE, NULL, 0, reply,
-						   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, new_path, &path_size);
+    net_client_request2_no_malloc (NET_SERVER_ES_CREATE_FILE, NULL, 0, reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, new_path, &path_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &path_size);
@@ -9618,8 +9584,8 @@ es_posix_write_file (const char *path, const void *buf, size_t count, off_t offs
   ptr = or_pack_int64 (ptr, (INT64) offset);
   ptr = or_pack_int64 (ptr, (INT64) count);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_ES_WRITE_FILE, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), (char *) buf, (int) count, NULL, 0);
+  req_error = net_client_request (NET_SERVER_ES_WRITE_FILE, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), (char *) buf, (int) count, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int64 (reply, &ret);
@@ -9666,8 +9632,8 @@ es_posix_read_file (const char *path, void *buf, size_t count, off_t offset)
   ptr = or_pack_int64 (ptr, (INT64) count);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_ES_READ_FILE, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, (char *) buf, (int) count);
+    net_client_request (NET_SERVER_ES_READ_FILE, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, (char *) buf, (int) count);
   if (!req_error)
     {
       ptr = or_unpack_int64 (reply, &ret);
@@ -9709,8 +9675,8 @@ es_posix_delete_file (const char *path)
 
   ptr = pack_const_string_with_length (request, path, strlen);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_ES_DELETE_FILE, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_ES_DELETE_FILE, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &error);
@@ -9757,8 +9723,8 @@ es_posix_copy_file (const char *src_path, const char *metaname, char *new_path)
   ptr = pack_const_string_with_length (ptr, metaname, metalen);
 
   req_error =
-    __gv_network_cl.net_client_request2_no_malloc (NET_SERVER_ES_COPY_FILE, request, request_size, reply,
-						   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, new_path, &path_size);
+    net_client_request2_no_malloc (NET_SERVER_ES_COPY_FILE, request, request_size, reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, new_path, &path_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &path_size);
@@ -9805,8 +9771,8 @@ es_posix_rename_file (const char *src_path, const char *metaname, char *new_path
   ptr = pack_const_string_with_length (ptr, metaname, metalen);
 
   req_error =
-    __gv_network_cl.net_client_request2_no_malloc (NET_SERVER_ES_RENAME_FILE, request, request_size, reply,
-						   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, new_path, &path_size);
+    net_client_request2_no_malloc (NET_SERVER_ES_RENAME_FILE, request, request_size, reply,
+				   OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, new_path, &path_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &path_size);
@@ -9850,8 +9816,8 @@ es_posix_get_file_size (const char *path)
 
   ptr = pack_const_string_with_length (request, path, strlen);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_ES_GET_FILE_SIZE, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_ES_GET_FILE_SIZE, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int64 (reply, &tmp_int64);
@@ -9883,9 +9849,7 @@ cvacuum (void)
   reply = OR_ALIGNED_BUF_START (a_reply);
 
   /* Send request to server */
-  err =
-    __gv_network_cl.net_client_request (NET_SERVER_VACUUM, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL,
-					0);
+  err = net_client_request (NET_SERVER_VACUUM, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
 
   if (err == NO_ERROR)
     {
@@ -9925,7 +9889,7 @@ vacuum_dump (FILE * outfp)
       outfp = stdout;
     }
 
-  req_error = __gv_network_cl.net_client_request_recv_stream (NET_SERVER_VACUUM_DUMP, NULL, 0, NULL, 0, NULL, 0, outfp);
+  req_error = net_client_request_recv_stream (NET_SERVER_VACUUM_DUMP, NULL, 0, NULL, 0, NULL, 0, outfp);
 #else /* CS_MODE */
 
   THREAD_ENTRY *thread_p = enter_server ();
@@ -9951,8 +9915,7 @@ log_get_mvcc_snapshot (void)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
   err =
-    __gv_network_cl.net_client_request (NET_SERVER_GET_MVCC_SNAPSHOT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_GET_MVCC_SNAPSHOT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (err != NO_ERROR)
     {
       or_unpack_int (reply, &err);
@@ -10003,9 +9966,8 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
   ptr = or_pack_int (ptr, attribute_id);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN, request,
-					OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					NULL, 0);
+    net_client_request (NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN, request,
+			OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &success);
@@ -10054,8 +10016,8 @@ boot_get_server_locales (LANG_COLL_COMPAT ** server_collations, LANG_LOCALE_COMP
   *server_locales_cnt = 0;
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_BO_GET_LOCALES_INFO, NULL, 0, OR_ALIGNED_BUF_START (a_reply),
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_data, &reply_size);
+    net_client_request2 (NET_SERVER_BO_GET_LOCALES_INFO, NULL, 0, OR_ALIGNED_BUF_START (a_reply),
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_data, &reply_size);
   if (req_error != NO_ERROR)
     {
       goto error;
@@ -10170,8 +10132,8 @@ tran_lock_rep_read (LOCK lock_rr_tran)
   ptr = or_pack_int (ptr, (int) lock_rr_tran);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LOCK_RR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LOCK_RR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &req_error);
@@ -10206,8 +10168,8 @@ boot_get_server_timezone_checksum (char *timezone_checksum)
   char *temp_str;
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_TZ_GET_CHECKSUM, NULL, 0, OR_ALIGNED_BUF_START (a_reply),
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_data, &reply_size);
+    net_client_request2 (NET_SERVER_TZ_GET_CHECKSUM, NULL, 0, OR_ALIGNED_BUF_START (a_reply),
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_data, &reply_size);
   if (req_error != NO_ERROR)
     {
       goto error;
@@ -10287,8 +10249,8 @@ chksum_insert_repl_log_and_demote_table_lock (REPL_INFO * repl_info, const OID *
       ptr = pack_const_string_with_length (ptr, repl_stmt->db_user, strlen3);
       ptr = pack_const_string_with_length (ptr, repl_stmt->sys_prm_context, strlen4);
       req_error =
-	__gv_network_cl.net_client_request (NET_SERVER_CHKSUM_REPL, request, request_size, reply,
-					    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+	net_client_request (NET_SERVER_CHKSUM_REPL, request, request_size, reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
       if (!req_error)
 	{
 	  or_unpack_int (reply, &success);
@@ -10347,8 +10309,8 @@ log_does_active_user_exist (const char *user_name, bool * existed)
 
   (void) pack_const_string_with_length (request, user_name, strlen);
 
-  req_error = __gv_network_cl.net_client_request (NET_SERVER_AU_DOES_ACTIVE_USER_EXIST, request, request_size, reply,
-						  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  req_error = net_client_request (NET_SERVER_AU_DOES_ACTIVE_USER_EXIST, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &xexisted);
@@ -10421,8 +10383,8 @@ locator_redistribute_partition_data (OID * class_oid, int no_oids, OID * oid_lis
     }
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LC_REDISTRIBUTE_PARTITION_DATA, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &success);
@@ -10472,9 +10434,8 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
   ptr = or_pack_int (request, spacevols != NULL ? 1 : 0);
   ptr = or_pack_int (ptr, spacefiles != NULL ? 1 : 0);
 
-  error_code = __gv_network_cl.net_client_request2 (NET_SERVER_SPACEDB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-						    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply,
-						    &data_reply_size);
+  error_code = net_client_request2 (NET_SERVER_SPACEDB, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
   if (error_code != NO_ERROR)
     {
       assert (data_reply == NULL);
@@ -10546,8 +10507,8 @@ locator_demote_class_lock (const OID * class_oid, LOCK lock, LOCK * ex_lock)
   ptr = or_pack_lock (ptr, lock);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LC_DEMOTE_CLASS_LOCK, request, OR_ALIGNED_BUF_SIZE (a_request),
-					reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LC_DEMOTE_CLASS_LOCK, request, OR_ALIGNED_BUF_SIZE (a_request),
+			reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &rc);
@@ -10584,9 +10545,8 @@ loaddb_init (cubload::load_args & args)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LD_INIT, eb.get_ptr (), (int) packer.get_current_size (), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  int req_error = net_client_request (NET_SERVER_LD_INIT, eb.get_ptr (), (int) packer.get_current_size (), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);
@@ -10614,9 +10574,8 @@ loaddb_install_class (const cubload::batch & batch, bool & class_is_ignored, std
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area = NULL;
   int area_size;
-  int req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
-					 reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+  int req_error = net_client_request2 (NET_SERVER_LD_INSTALL_CLASS, eb.get_ptr (), (int) packer.get_current_size (),
+				       reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   if (!req_error)
     {
       ptr = or_unpack_int (reply, &area_size);
@@ -10657,10 +10616,9 @@ loaddb_load_batch (const cubload::batch & batch, bool use_temp_batch, bool & is_
       packer.set_buffer_and_pack_all (eb, use_temp_batch, batch);
     }
 
-  int req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (),
-					 reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
+  int req_error = net_client_request2 (NET_SERVER_LD_LOAD_BATCH, eb.get_ptr (), (int) packer.get_current_size (),
+				       reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
       return req_error;
@@ -10700,10 +10658,9 @@ loaddb_fetch_status (load_status & status)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_LD_FETCH_STATUS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-					 NULL,
-					 0, &data_reply, &data_reply_size);
+  int req_error = net_client_request2 (NET_SERVER_LD_FETCH_STATUS, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				       NULL,
+				       0, &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
       return req_error;
@@ -10735,9 +10692,8 @@ loaddb_destroy ()
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LD_DESTROY, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
-					NULL, 0);
+  int req_error = net_client_request (NET_SERVER_LD_DESTROY, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0,
+				      NULL, 0);
   if (!req_error)
     {
       or_unpack_int (reply, &rc);
@@ -10753,7 +10709,7 @@ int
 loaddb_interrupt ()
 {
 #if defined(CS_MODE)
-  return __gv_network_cl.net_client_request_no_reply (NET_SERVER_LD_INTERRUPT, NULL, 0);
+  return net_client_request_no_reply (NET_SERVER_LD_INTERRUPT, NULL, 0);
 #else /* CS_MODE */
   return NO_ERROR;
 #endif /* !CS_MODE */
@@ -10773,9 +10729,9 @@ loaddb_update_stats (bool verbose)
   MOP classop;
 
   /* get class oid */
-  int req_error = __gv_network_cl.net_client_request2 (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply,
-						       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply,
-						       &data_reply_size);
+  int req_error = net_client_request2 (NET_SERVER_LD_UPDATE_STATS, NULL, 0, reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply,
+				       &data_reply_size);
   if (req_error != NO_ERROR)
     {
       return req_error;
@@ -10844,10 +10800,9 @@ pl_call (const cubpl::pl_signature & sig, const std::vector < std::reference_wra
     OR_ALIGNED_BUF (OR_INT_SIZE * 3) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-    req_error = __gv_network_cl.net_client_request_method_callback (NET_SERVER_PL_CALL, eb.get_ptr (),
-								    (int) packer.get_current_size (), reply,
-								    OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
-								    &data_reply_size);
+    req_error = net_client_request_method_callback (NET_SERVER_PL_CALL, eb.get_ptr (),
+						    (int) packer.get_current_size (), reply,
+						    OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
     if (req_error != NO_ERROR)
       {
 	goto error;
@@ -11033,8 +10988,8 @@ flashback_get_and_show_summary (dynamic_array * class_list, const char *user, ti
   request_size = ptr - start_ptr;
 
   error_code =
-    __gv_network_cl.net_client_request2 (NET_SERVER_FLASHBACK_GET_SUMMARY, start_ptr, request_size, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_FLASHBACK_GET_SUMMARY, start_ptr, request_size, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
   if (error_code == NO_ERROR)
     {
@@ -11139,8 +11094,8 @@ flashback_get_loginfo (int trid, char *user, OID * classlist, int num_class, LOG
   request_size = ptr - start_ptr;
 
   error_code =
-    __gv_network_cl.net_client_request2 (NET_SERVER_FLASHBACK_GET_LOGINFO, start_ptr, request_size, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
+    net_client_request2 (NET_SERVER_FLASHBACK_GET_LOGINFO, start_ptr, request_size, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
 
   if (error_code == NO_ERROR)
     {
@@ -11200,10 +11155,9 @@ plcsql_transfer_file (const PLCSQL_COMPILE_REQUEST & compile_request, PLCSQL_COM
 
   OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  req_error = __gv_network_cl.net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
-								  (int) packer.get_current_size (),
-								  reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply,
-								  &data_reply_size);
+  req_error = net_client_request_method_callback (NET_SERVER_PLCSQL_TRANSFER_FILE, eb.get_ptr (),
+						  (int) packer.get_current_size (),
+						  reply, OR_ALIGNED_BUF_SIZE (a_reply), &data_reply, &data_reply_size);
   if (req_error != NO_ERROR)
     {
       goto error;
@@ -11301,8 +11255,8 @@ mmon_get_server_info (MMON_SERVER_INFO & server_info)
   int error = NO_ERROR;
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+    net_client_request2 (NET_SERVER_MMON_GET_SERVER_INFO, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
 
   if (req_error)
     {
@@ -11370,8 +11324,8 @@ mmon_disable_force ()
   int error = NO_ERROR;
 
   req_error =
-    __gv_network_cl.net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
-					 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
+    net_client_request2 (NET_SERVER_MMON_DISABLE_FORCE, NULL, 0, reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &buffer, &bufsize);
 
   if (req_error)
     {
@@ -11419,8 +11373,7 @@ tdes_set_query_start_info (char *sql_user_text)
   ptr = or_pack_string (request, sql_user_text);
   assert (ptr <= request + request_len);
 
-  __gv_network_cl.net_client_request (NET_SERVER_TDES_SET_QUERY_START_INFO, request, request_len, NULL, 0, NULL, 0,
-				      NULL, 0);
+  net_client_request (NET_SERVER_TDES_SET_QUERY_START_INFO, request, request_len, NULL, 0, NULL, 0, NULL, 0);
 
   free_and_init (request);
 #endif /* !CS_MODE */
@@ -11437,7 +11390,7 @@ tdes_reset_query_start_info (PT_NODE * node)
 #if defined(CS_MODE)
   if (pt_is_ddl_statement (node))
     {
-      __gv_network_cl.net_client_request (NET_SERVER_TDES_RESET_QUERY_START_INFO, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
+      net_client_request (NET_SERVER_TDES_RESET_QUERY_START_INFO, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
     }
 #endif
 }
@@ -11486,8 +11439,8 @@ lob_create_dir (HFID * hfid, int *attrid_arr, int lob_attrid_arr_length)
   ptr = or_pack_int_array (ptr, lob_attrid_arr_length, attrid_arr);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LOB_CREATE_DIR, request, request_size, reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LOB_CREATE_DIR, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (req_error == NO_ERROR)
     {
       ptr = or_unpack_errcode (reply, &error);
@@ -11538,8 +11491,8 @@ lob_remove_dir (HFID * hfid, int attrid)
   ptr = or_pack_int (ptr, attrid);
 
   req_error =
-    __gv_network_cl.net_client_request (NET_SERVER_LOB_REMOVE_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-					OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+    net_client_request (NET_SERVER_LOB_REMOVE_DIR, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
       ptr = or_unpack_errcode (reply, &error);

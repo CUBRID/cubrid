@@ -1042,7 +1042,7 @@ db_ping_server (int client_val, int *server_val)
 
   CHECK_CONNECT_ERROR ();
 #if defined (CS_MODE)
-  error = __gv_network_cl.net_client_ping_server (client_val, server_val, 5000);
+  error = net_client_ping_server (client_val, server_val, 5000);
 #endif /* CS_MODE */
   return error;
 }
