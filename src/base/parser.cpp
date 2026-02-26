@@ -21,6 +21,9 @@
 
 #include "parser.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace os::parser
 {
   std::vector<std::string> string_to_vector (std::string str, char separator)

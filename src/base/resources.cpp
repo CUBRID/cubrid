@@ -16,7 +16,7 @@
  */
 
 /*
- * resources.hpp - get machine resource information.
+ * resources.cpp - get machine resource information.
  */
 
 #include <thread>
@@ -29,6 +29,9 @@
 #include "parser.hpp"
 #include "error_manager.h"
 #include "system_parameter.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace os::resources
 {
