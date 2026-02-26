@@ -46,6 +46,17 @@ jobs:
           grep -q "oh-my-opencode" $HOME/.config/opencode/opencode.json \
             && echo "✅ oh-my-opencode plugin registered" \
             || (echo "❌ oh-my-opencode not registered" && exit 1)
+      
+      - name: Get PR Target Commit
+        id: pr-context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.issue.number }}
+          COMMIT_ID=$(gh pr view $PR_NUMBER --repo ${{ github.repository }} --json commits --jq '.commits[-1].oid')
+          
+          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
+          echo "COMMIT_ID=$COMMIT_ID" >> $GITHUB_ENV
 
       - uses: anomalyco/opencode/github@latest
         env:
@@ -58,7 +69,22 @@ jobs:
           prompt: |
             You are a strict and expert C/C++ DBMS Senior developer reviewing this pull request.
             
-            CRITICAL INSTRUCTION:
+            [CRITICAL INSTRUCTION]
             1. Do NOT just leave a single general summary comment on the PR.
             2. If you find leftover debug codes, commented-out codes, potential bugs, or memory leaks, you MUST leave **inline comments on the exact lines of code**.
-            3. Point out the exact line and provide a clear reason for the change, just like a human reviewer would.
+            3. To leave an inline comment, you MUST use your Shell/Bash execution tool to run the GitHub CLI (`gh api`) command. DO NOT output plain text for the review.
+            
+            [COMMAND FORMAT TO USE]
+            The environment variables $GITHUB_REPOSITORY, $PR_NUMBER, and $COMMIT_ID are already set in your terminal.
+            Run this exact command format for each issue you find:
+            
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              /repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments \
+              -f body="[Your review comment]" \
+              -f commit_id="$COMMIT_ID" \
+              -f path="[The exact file path from the diff]" \
+              -F line=[The exact line number in the new code] \
+              -f side="RIGHT"
+              
