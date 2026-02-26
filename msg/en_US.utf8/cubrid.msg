@@ -1972,6 +1972,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 332 Stored Procedures can be invoked only through CALL statements.
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
 
+334 UUID only support version 4 and 7. UUID(%1$d) is unavailable.
+
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

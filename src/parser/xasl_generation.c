@@ -9303,13 +9303,27 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		      {
 			uuid_version = arg1->info.value.data_value.i;
 		      }
-		    if (uuid_version == 7)
+		    switch (uuid_version)
 		      {
+		      case 1:
+		      case 2:
+		      case 3:
+		      case 5:
+		      case 6:
+		      case 8:
+			{
+			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				      MSGCAT_SEMANTIC_NOT_SUPPORT_UUID_VERSION, uuid_version);
+			}
+			break;
+		      case 7:
 			regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID7, domain);
-		      }
-		    else
-		      {
+			break;
+		      case 4:
+		      default:
 			regu = pt_make_regu_arith (NULL, NULL, NULL, T_UUID4, domain);
+
+			break;
 		      }
 		  }
 		  break;
