@@ -896,15 +896,4 @@ util_get_second_and_ms_since_epoch (time_t * secs, int *msec)
   *msec = static_cast<int> (rest_in_msec.count ());
   assert (*msec < 1000);
 }
-
-void util_get_ms_since_epoch (uint64_t *msec)
-{
-  assert (msec != NULL);
-  std::chrono::seconds secs_since_epoch;
-  std::chrono::milliseconds rest_in_msec;
-  util_get_seconds_and_rest_since_epoch<std::chrono::milliseconds> (secs_since_epoch, rest_in_msec);
-  assert (rest_in_msec.count() < 1000);
-  *msec = static_cast<uint64_t>(secs_since_epoch.count());
-  *msec += static_cast<uint64_t>(rest_in_msec.count());
-}
 // *INDENT-ON*
