@@ -181,6 +181,7 @@ namespace cubhnsw
     algo_context_t<Traits> context;
     context.m_thread_p = thread_p;
     context.m_is_perf_tracking = perfmon_is_perf_tracking ();
+    context.m_is_debugging = prm_get_integer_value (PRM_ID_VECTOR_INDEX_DEBUG) != 0;
     context.clear_candidates();
 
     std::size_t connectivity_max = m_connectivity * 2 + 1;
@@ -259,9 +260,24 @@ namespace cubhnsw
 	(void) seek_down_ (context, vector, entry_slot, curr_max_level, new_target_level, closest_slot);
       }
 
+      if (context.m_is_debugging)
+	{
+	  for (const auto &node : context.m_accessed_nodes)
+	    {
+	      fprintf (stdout, "%s ->", node.c_str());
+	    }
+	  fprintf (stdout, "\n");
+	  context.m_accessed_nodes.clear();
+	}
+
       level_t level = (std::min) (new_target_level, curr_max_level);
 
       pinned_t new_node_blk = m_storage->get_node_by_slot_id (context, new_slot, lock_mode::exclusive);
+
+      if (context.m_is_debugging)
+	{
+	  fprintf (stdout, "target level: %d\n", level);
+	}
 
       while (true)
 	{
@@ -276,6 +292,18 @@ namespace cubhnsw
 	    closest_slot = closest_view[0].slot;
 	  }
 	  form_reverse_links_ (context, new_node_blk, vector, closest_view, level);
+
+	  if (context.m_is_debugging)
+	    {
+	      fprintf (stdout, "level: %d\n", level);
+	      for (const auto &node : context.m_accessed_nodes)
+		{
+		  fprintf (stdout, "%s ->", node.c_str());
+		}
+	      fprintf (stdout, "\n");
+	      context.m_accessed_nodes.clear();
+	    }
+
 	  if (level == 0)
 	    {
 	      break;

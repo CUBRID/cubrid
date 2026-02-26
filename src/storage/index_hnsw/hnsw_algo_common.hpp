@@ -24,6 +24,8 @@
 #define _HNSW_ALGO_COMMON_HPP_
 
 #include <random>
+#include <deque>
+#include <string_view>
 #include <ankerl/unordered_dense.h>
 
 #include "hnsw_api.hpp"
@@ -154,6 +156,9 @@ namespace cubhnsw
     std::size_t m_computed_distances{};
     std::size_t m_computed_distances_in_refines{};
     std::size_t m_computed_distances_in_reverse_refines{};
+
+    bool m_is_debugging {false};
+    std::deque<std::string_view> m_accessed_nodes; // for debug
 
     void clear_candidates ()
     {

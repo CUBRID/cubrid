@@ -225,6 +225,10 @@ namespace cubhnsw
     if (context.m_is_perf_tracking)
       {
 	context.m_visited_nodes++;
+	if (context.m_is_debugging)
+	  {
+	    context.m_accessed_nodes.push_back (dump_oid (id));
+	  }
       }
 
     cubthread::entry *thread_p = context.m_thread_p;
