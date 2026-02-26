@@ -82,7 +82,7 @@ jobs:
                   - run:
                       name: Test
                       environment:
-                        BRANCH_TESTCASES: feature/connection-pool
+                        BRANCH_TESTCASES: feature/cp
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
