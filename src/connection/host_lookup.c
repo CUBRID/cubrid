@@ -266,6 +266,7 @@ gethostbyname_uhost (const char *name)
 
   if (prm_get_bool_value (PRM_ID_USE_USER_HOSTS) == USE_GLIBC_HOSTS)
     {
+      // TODO : Not thread-safe function
       hp = gethostbyname (name);
     }
   else

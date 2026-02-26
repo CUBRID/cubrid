@@ -44,7 +44,7 @@ extern const LOCK lk_Conv[][9];	/* TODO : From lock.c */
 extern int vid_flush_instance (MOP mop, void *arg);
 
 
-extern bool vid_inhibit_null_check;
+extern const bool vid_inhibit_null_check;
 
 extern int vid_is_new_pobj (MOP mop);
 extern int vid_make_vobj (const OID * view_oid, const OID * class_oid, const DB_VALUE * keys, DB_VALUE * vobj);

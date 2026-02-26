@@ -1651,7 +1651,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
   SM_ATTRIBUTE *tmp_attr, *ref_attr;
   int n_ref_atts, i, j;
   bool found;
-  const char *tmp, *ref_cls_name = NULL;
+  const char *tmp = NULL;
 
   if (template_->op == NULL && intl_identifier_casecmp (template_->name, fk_info->ref_class) == 0)
     {
@@ -1670,7 +1670,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 
       OID_SET_NULL (&fk_info->ref_class_oid);
       BTID_SET_NULL (&fk_info->ref_class_pk_btid);
-      ref_cls_name = template_->name;
     }
   else
     {
@@ -1697,14 +1696,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 
       fk_info->ref_class_oid = *(ws_oid (ref_clsop));
       fk_info->ref_class_pk_btid = pk->index_btid;
-      ref_cls_name = sm_ch_name ((MOBJ) ref_cls);
-
-      fk_info->index_catalog_of_ref_class = find_index_catalog_class (pk->name);
-      if (fk_info->index_catalog_of_ref_class == NULL)
-	{
-	  ERROR1 (error, ER_SM_CONSTRAINT_NOT_FOUND, pk->name);
-	  return error;
-	}
     }
 
   /* check pk'size and fk's size */

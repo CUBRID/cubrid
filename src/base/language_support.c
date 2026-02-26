@@ -120,7 +120,7 @@ struct lang_defaults
 
 /* Order of language/charset pair is important: first encoutered charset is
  * the default for a language */
-LANG_DEFAULTS builtin_Langs[] = {
+static const LANG_DEFAULTS builtin_Langs[] = {
   /* English - ISO-8859-1 - default lang and charset */
   {LANG_NAME_ENGLISH, INTL_LANG_ENGLISH, INTL_CODESET_ISO88591},
   /* English - UTF-8 */
