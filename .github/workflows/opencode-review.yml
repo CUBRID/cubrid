@@ -47,21 +47,11 @@ jobs:
             && echo "✅ oh-my-opencode plugin registered" \
             || (echo "❌ oh-my-opencode not registered" && exit 1)
       
-      - name: Get PR Target Commit
-        id: pr-context
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER=${{ github.event.issue.number }}
-          COMMIT_ID=$(gh pr view $PR_NUMBER --repo ${{ github.repository }} --json commits --jq '.commits[-1].oid')
-          
-          echo "PR_NUMBER=$PR_NUMBER" >> $GITHUB_ENV
-          echo "COMMIT_ID=$COMMIT_ID" >> $GITHUB_ENV
-
       - uses: anomalyco/opencode/github@latest
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
         with:
           model: opencode/kimi-k2.5
           agent: sisyphus
@@ -75,8 +65,12 @@ jobs:
             3. To leave an inline comment, you MUST use your Shell/Bash execution tool to run the GitHub CLI (`gh api`) command. DO NOT output plain text for the review.
             
             [COMMAND FORMAT TO USE]
-            The environment variables $GITHUB_REPOSITORY, $PR_NUMBER, and $COMMIT_ID are already set in your terminal.
-            Run this exact command format for each issue you find:
+            The environment variables $GITHUB_REPOSITORY and $PR_NUMBER are already set in your terminal.
+            
+            Before leaving a comment, you must FIRST fetch the target COMMIT_ID of this PR using the following command:
+            COMMIT_ID=$(gh pr view $PR_NUMBER --repo $GITHUB_REPOSITORY --json commits --jq '.commits[-1].oid')
+            
+            Then, run this exact command format for each issue you find, using the $COMMIT_ID you just fetched:
             
             gh api \
               --method POST \
@@ -86,5 +80,4 @@ jobs:
               -f commit_id="$COMMIT_ID" \
               -f path="[The exact file path from the diff]" \
               -F line=[The exact line number in the new code] \
-              -f side="RIGHT"
-              
+              -f side="RIGHT"        
