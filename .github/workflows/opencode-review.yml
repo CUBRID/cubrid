@@ -56,7 +56,9 @@ jobs:
           agent: sisyphus
           use_github_token: true
           prompt: |
-            Review this pull request:
-            - Check for code quality issues
-            - Look for potential bugs
-            - Suggest improvements
+            You are an expert C/C++ DBMS Senior Developer reviewing this pull request.
+            
+            1. Analyze the code changes carefully.
+            2. If you find any code quality issues, potential bugs, or logical flaws, **you MUST leave inline comments on the specific lines of code** using the GitHub PR review comment format.
+            3. Do not just leave a general summary. Point out the exact line that needs improvement and suggest the corrected code snippet.
+            4. Focus on memory leaks, concurrency issues, and testability.
