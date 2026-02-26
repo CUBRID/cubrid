@@ -8864,6 +8864,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     {
       assert (repl_info != NULL);
 
+      bool free_old_key = false;
+
       if (repl_old_key == NULL)
 	{
 	  key_domain = NULL;
@@ -8893,58 +8895,40 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	       */
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
-
-	  if (heap_recdes_contains_oos (new_recdes))
-	    {
-	      // insert oos replication log
-	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
-		{
-		  error_code = repl_log_insert (thread_p,
-						class_oid,
-						&thread_p->oos_oids[i],
-						LOG_REPLICATION_DATA,
-						RVREPL_OOS_INSERT, new_key, REPL_INFO_TYPE_RBR_NORMAL);
-		  if (error_code != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      goto error;
-		    }
-		}
-	    }
-
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  if (repl_old_key == &old_dbvalue)
-	    {
-	      pr_clear_value (&old_dbvalue);
-	    }
 	}
       else
 	{
-	  if (heap_recdes_contains_oos (new_recdes))
+	  free_old_key = true;
+	}
+
+      /* insert oos replication log */
+      if (heap_recdes_contains_oos (new_recdes))
+	{
+	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
 	    {
-	      // insert oos replication log
-	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+	      error_code =
+		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i], LOG_REPLICATION_DATA, RVREPL_OOS_INSERT,
+				 new_key, REPL_INFO_TYPE_RBR_NORMAL);
+	      if (error_code != NO_ERROR)
 		{
-		  error_code = repl_log_insert (thread_p,
-						class_oid,
-						&thread_p->oos_oids[i],
-						LOG_REPLICATION_DATA,
-						RVREPL_OOS_INSERT, new_key, REPL_INFO_TYPE_RBR_NORMAL);
-		  if (error_code != NO_ERROR)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      goto error;
-		    }
+		  assert (er_errid () != NO_ERROR);
+		  goto error;
 		}
 	    }
+	}
 
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+      error_code =
+	repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
+			 (REPL_INFO_TYPE) repl_info->repl_info_type);
+
+      if (free_old_key)
+	{
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
+	}
+      else if (repl_old_key == &old_dbvalue)
+	{
+	  pr_clear_value (&old_dbvalue);
 	}
     }
   else
